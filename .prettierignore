@@ -1,0 +1,19 @@
+# misc
+pnpm-lock.yaml
+pnpm-workspace.yaml
+package-lock.json
+
+# dependencies
+node_modules
+target
+
+# build
+/build
+/.svelte-kit
+/package
+/src-tauri/gen/
+
+# tests
+*.spec.ts
+*.e2e-spec.ts
+coverage
