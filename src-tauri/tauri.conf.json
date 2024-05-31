@@ -1,0 +1,33 @@
+{
+    "productName": "Zaku",
+    "identifier": "app.zaku",
+    "build": {
+        "beforeDevCommand": "pnpm run dev",
+        "devUrl": "http://localhost:1420",
+        "beforeBuildCommand": "pnpm run build",
+        "frontendDist": "../build"
+    },
+    "app": {
+        "windows": [
+            {
+                "title": "Zaku",
+                "width": 1180,
+                "height": 755
+            }
+        ],
+        "security": {
+            "csp": null
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.icns",
+            "icons/icon.ico"
+        ]
+    }
+}
