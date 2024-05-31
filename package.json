@@ -1,0 +1,46 @@
+{
+    "name": "zaku",
+    "version": "0.0.0",
+    "description": "Fast, open-source API client with fangs",
+    "license": "MIT",
+    "author": "Mayank Verma <errmayank@gmail.com>",
+    "repository": "https://github.com/buildzaku/zaku",
+    "homepage": "https://zaku.app",
+    "type": "module",
+    "scripts": {
+        "dev": "vite dev",
+        "build": "vite build",
+        "preview": "vite preview",
+        "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+        "check-watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+        "lint": "eslint .",
+        "format": "prettier --write \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
+        "format-check": "prettier --check \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
+        "tauri": "tauri"
+    },
+    "devDependencies": {
+        "@sveltejs/adapter-static": "3.0.1",
+        "@sveltejs/kit": "2.5.10",
+        "@sveltejs/vite-plugin-svelte": "3.1.1",
+        "@tauri-apps/cli": "2.0.0-beta.20",
+        "@types/eslint": "8.56.10",
+        "autoprefixer": "10.4.19",
+        "eslint": "9.3.0",
+        "eslint-plugin-svelte": "2.39.0",
+        "globals": "15.3.0",
+        "postcss": "8.4.38",
+        "prettier": "3.2.5",
+        "prettier-plugin-svelte": "3.2.3",
+        "svelte": "4.2.17",
+        "svelte-check": "3.8.0",
+        "tailwindcss": "3.4.3",
+        "tslib": "2.6.2",
+        "typescript": "5.4.5",
+        "typescript-eslint": "8.0.0-alpha.24",
+        "vite": "5.2.12"
+    },
+    "dependencies": {
+        "@tauri-apps/api": "2.0.0-beta.13",
+        "@tauri-apps/plugin-shell": "2.0.0-beta.5"
+    }
+}

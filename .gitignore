@@ -1,0 +1,27 @@
+# dependencies
+node_modules
+target
+.pnp
+.pnp.js
+
+# testing
+coverage
+
+# build
+/build
+/.svelte-kit
+/package
+
+# misc
+.DS_Store
+*.pem
+*.local
+*.tsbuildinfo
+.vscode
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# local env files
+.env
+.env.*
+!.env.example
