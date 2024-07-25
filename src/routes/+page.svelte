@@ -1,9 +1,143 @@
-<script>
-    import { Button } from "$lib/components/ui/button";
+<script lang="ts">
     import { toggleMode } from "mode-watcher";
+    import { fetch } from "@tauri-apps/plugin-http";
+    import Sun from "svelte-radix/Sun.svelte";
+    import Moon from "svelte-radix/Moon.svelte";
+
+    import { version } from "$app/environment";
+    import { Button } from "$lib/components/primitives/button";
+    import { Input } from "$lib/components/primitives/input";
+    import type { KeyValuePair, RequestStatus } from "$lib/utils/api";
+    import {
+        ResizablePaneGroup,
+        ResizablePane,
+        ResizableHandle,
+    } from "$lib/components/primitives/resizable";
+    import { SelectMethod } from "$lib/components/select-method";
+    import { METHODS } from "$lib/utils/constants";
+    import { Sidebar } from "$lib/components/primitives/sidebar";
+    import { RequestConfigPane } from "$lib/components/request-config-pane";
+    import { ResponsePane } from "$lib/components/response-pane";
+
+    let requestStatus: RequestStatus = "idle";
+    let currentUrl = "";
+    let json = "";
+    let error = "";
+    let method = METHODS.GET;
+    let iframeSrcDoc = "";
+
+    let currentRequestParams: KeyValuePair[] = [];
+    let currentRequestHeaders: KeyValuePair[] = [
+        {
+            key: "Cache-Control",
+            value: "no-cache",
+            include: true,
+        },
+        {
+            key: "User-Agent",
+            value: `Zaku/${version}`,
+            include: true,
+        },
+    ];
+
+    async function handleSend() {
+        try {
+            requestStatus = "loading";
+
+            const validProtocol = new RegExp(/^(https?:\/\/)/i);
+            if (!validProtocol.test(currentUrl)) {
+                throw new Error("Invalid or missing Protocol");
+            }
+
+            const url = new URL(currentUrl);
+
+            currentRequestParams.reduceRight((acc, cur) => {
+                if (cur.include && !url.searchParams.has(cur.key)) {
+                    url.searchParams.set(cur.key, cur.value);
+                }
+
+                return acc;
+            }, []);
+
+            const response = await fetch(url, {
+                method: method.value,
+                headers: currentRequestHeaders.reduceRight((acc: Record<string, string>, cur) => {
+                    if (cur.include && !(cur.key in acc)) {
+                        acc[cur.key] = cur.value;
+                    }
+                    return acc;
+                }, {}),
+            });
+
+            if (!response.ok) {
+                throw new Error(`${response.status}`);
+            }
+
+            json = await response.text();
+            iframeSrcDoc = json;
+
+            requestStatus = "success";
+        } catch (err) {
+            requestStatus = "error";
+            if (err instanceof Error) {
+                error = err.message;
+            } else {
+                error = "Not found";
+            }
+        }
+    }
 </script>
 
-<div class="w-dvw h-dvh flex flex-col gap-4 justify-center items-center">
-    <h1 class="text-4xl font-semibold">Zaku</h1>
-    <Button on:click={toggleMode}>Hello!</Button>
+<div class="flex h-dvh w-dvw flex-col items-center justify-center gap-4">
+    <ResizablePaneGroup direction="horizontal" class="w-full">
+        <ResizablePane
+            defaultSize={15}
+            minSize={15}
+            maxSize={40}
+            collapsedSize={5}
+            collapsible={true}
+        >
+            <Sidebar />
+        </ResizablePane>
+        <ResizableHandle withHandle />
+        <ResizablePane defaultSize={50}>
+            <ResizablePaneGroup direction="vertical">
+                <div class="p-3">
+                    <nav class="mb-3 flex justify-end">
+                        <Button on:click={toggleMode} variant="outline" size="icon">
+                            <Sun
+                                class="h-[16px] w-[16px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0"
+                            />
+                            <Moon
+                                class="absolute h-[16px] w-[16px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100"
+                            />
+                            <span class="sr-only">Toggle theme</span>
+                        </Button>
+                    </nav>
+                    <div>
+                        <form class="flex gap-2">
+                            <SelectMethod bind:selected={method} />
+                            <Input bind:value={currentUrl} type="text" class="font-mono text-xs" />
+                            <Button type="submit" on:click={handleSend}>Send</Button>
+                        </form>
+                    </div>
+                </div>
+                <ResizablePane defaultSize={25} minSize={20} collapsedSize={5.5} collapsible={true}>
+                    <RequestConfigPane
+                        bind:parameters={currentRequestParams}
+                        bind:headers={currentRequestHeaders}
+                    />
+                </ResizablePane>
+                <ResizableHandle withHandle />
+                <ResizablePane defaultSize={75} minSize={20} collapsedSize={5} collapsible={true}>
+                    <ResponsePane
+                        bind:status={requestStatus}
+                        bind:raw={json}
+                        bind:preview={iframeSrcDoc}
+                        bind:error
+                    />
+                </ResizablePane>
+            </ResizablePaneGroup>
+        </ResizablePane>
+    </ResizablePaneGroup>
 </div>
