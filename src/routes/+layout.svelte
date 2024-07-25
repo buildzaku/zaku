@@ -3,5 +3,5 @@
     import "../app.css";
 </script>
 
-<ModeWatcher defaultMode="system" track={false} />
+<ModeWatcher defaultMode="dark" track={false} />
 <slot />

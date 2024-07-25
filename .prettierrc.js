@@ -10,7 +10,7 @@ const config = {
     bracketSpacing: true,
     arrowParens: "avoid",
     endOfLine: "lf",
-    plugins: ["prettier-plugin-svelte"],
+    plugins: ["prettier-plugin-svelte", "prettier-plugin-tailwindcss"],
     overrides: [
         { files: ["*.svelte"], options: { parser: "svelte" } },
         { files: ["*.js", "*.cjs", "*.mjs"], options: { parser: "babel" } },
