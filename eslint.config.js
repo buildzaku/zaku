@@ -27,4 +27,12 @@ export default [
     {
         ignores: ["build/", ".svelte-kit/", "dist/", "src-tauri/"],
     },
+    {
+        rules: {
+            "@typescript-eslint/no-unused-vars": [
+                "warn",
+                { varsIgnorePattern: "^\\$\\$(Props|Events|Slots)$" },
+            ],
+        },
+    },
 ];
