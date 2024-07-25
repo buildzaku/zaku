@@ -6,14 +6,41 @@ const config = {
     content: ["./src/**/*.{html,js,svelte,ts}"],
     safelist: ["dark"],
     theme: {
-        container: {
-            center: true,
-            padding: "2rem",
-            screens: {
-                "2xl": "1400px",
-            },
-        },
         extend: {
+            fontSize: {
+                tiny: [
+                    "0.6875rem",
+                    {
+                        lineHeight: "1rem",
+                        letterSpacing: "0em",
+                        fontWeight: "400",
+                    },
+                ],
+                small: [
+                    "0.8125rem",
+                    {
+                        lineHeight: "1.25rem",
+                        letterSpacing: "0em",
+                        fontWeight: "400",
+                    },
+                ],
+                medium: [
+                    "0.9375rem",
+                    {
+                        lineHeight: "1.5rem",
+                        letterSpacing: "0em",
+                        fontWeight: "400",
+                    },
+                ],
+                large: [
+                    "1.0625rem",
+                    {
+                        lineHeight: "1.75rem",
+                        letterSpacing: "0em",
+                        fontWeight: "400",
+                    },
+                ],
+            },
             colors: {
                 border: "hsl(var(--border) / <alpha-value>)",
                 input: "hsl(var(--input) / <alpha-value>)",
@@ -48,11 +75,35 @@ const config = {
                     DEFAULT: "hsl(var(--card) / <alpha-value>)",
                     foreground: "hsl(var(--card-foreground) / <alpha-value>)",
                 },
+                "method-get": {
+                    DEFAULT: "hsl(var(--method-get) / <alpha-value>)",
+                },
+                "method-post": {
+                    DEFAULT: "hsl(var(--method-post) / <alpha-value>)",
+                },
+                "method-put": {
+                    DEFAULT: "hsl(var(--method-put) / <alpha-value>)",
+                },
+                "method-patch": {
+                    DEFAULT: "hsl(var(--method-patch) / <alpha-value>)",
+                },
+                "method-delete": {
+                    DEFAULT: "hsl(var(--method-delete) / <alpha-value>)",
+                },
+                "method-head": {
+                    DEFAULT: "hsl(var(--method-head) / <alpha-value>)",
+                },
+                "method-options": {
+                    DEFAULT: "hsl(var(--method-options) / <alpha-value>)",
+                },
             },
             borderRadius: {
                 lg: "var(--radius)",
                 md: "calc(var(--radius) - 2px)",
                 sm: "calc(var(--radius) - 4px)",
+            },
+            borderWidth: {
+                DEFAULT: "0.5px",
             },
             fontFamily: {
                 sans: [...fontFamily.sans],

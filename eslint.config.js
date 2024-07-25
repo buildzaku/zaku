@@ -1,13 +1,13 @@
-import js from "@eslint/js";
-import ts from "typescript-eslint";
-import svelte from "eslint-plugin-svelte";
+import eslintJs from "@eslint/js";
+import eslintTs from "typescript-eslint";
+import eslintPluginSvelte from "eslint-plugin-svelte";
 import globals from "globals";
 
-/** @type {import('eslint').Linter.FlatConfig[]} */
+/** @type {import('eslint').Linter.Config[]} */
 export default [
-    js.configs.recommended,
-    ...ts.configs.recommended,
-    ...svelte.configs["flat/recommended"],
+    eslintJs.configs.recommended,
+    ...eslintTs.configs.recommended,
+    ...eslintPluginSvelte.configs["flat/recommended"],
     {
         languageOptions: {
             globals: {
@@ -26,5 +26,13 @@ export default [
     },
     {
         ignores: ["build/", ".svelte-kit/", "dist/", "src-tauri/"],
+    },
+    {
+        rules: {
+            "@typescript-eslint/no-unused-vars": [
+                "warn",
+                { varsIgnorePattern: "^\\$\\$(Props|Events|Slots)$" },
+            ],
+        },
     },
 ];
