@@ -1,8 +1,29 @@
-# Zaku
+<br>
 
-## Trying it out
+<p align="center">
+    <img width="82px" src="./assets/zaku-icon.png" alt="Zaku Icon">
+</p>
 
-If you want to give Zaku a try, download it from the release assets based on your operating system.
+<p align="center">
+    <img height="19px" src="./assets/zaku.svg" alt="Zaku">
+</p>
+
+<h5 align="center">Fast, open-source API client with fangs</h5>
+
+<p align="center">
+    <a href="https://github.com/buildzaku/zaku/actions/workflows/release.yml" target="_blank"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/buildzaku/zaku/release.yml?style=flat&logo=github&labelColor=%2324292e" /></a>
+    <a href="https://github.com/buildzaku/zaku/releases/latest" target="_blank"><img alt="Release" src="https://img.shields.io/github/v/release/buildzaku/zaku?sort=semver&style=flat&labelColor=%2324292e"></a>
+    <a href="https://github.com/buildzaku/zaku/blob/main/LICENSE.md" target="_blank"><img alt="License" src="https://img.shields.io/github/license/buildzaku/zaku?style=flat&labelColor=%2324292e&color=%2354d024"></a>
+</p>
+
+> [!WARNING]
+> Please keep in mind that Zaku is in early stages of development, expect
+> breaking changes. Also, we're not ready for contributions just yet.
+> Thanks for checking it out and stay tuned for updates!
+
+## Test it out
+
+If you want to give Zaku a try, download it from the [release assets](https://github.com/buildzaku/zaku/releases/latest) based on your operating system.
 
 ### macOS Users
 
@@ -12,8 +33,12 @@ Zaku is not code signed yet, so you'll see this warning
 
 To work around this you need to remove the quarantine attribute flagged by Apple, read more about it [here](https://discussions.apple.com/thread/253714860).
 
-Basically run this command from your terminal
+<b>TL;DR:</b> After installing Zaku, run this command from your terminal
 
 ```sh
 xattr -c /Applications/Zaku.app
 ```
+
+## License
+
+Zaku is licensed under the [MIT license](https://github.com/buildzaku/zaku/blob/main/LICENSE.md).
