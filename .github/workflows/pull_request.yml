@@ -5,7 +5,6 @@ on: [pull_request]
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 env:
-    CI: "true"
     NODE_VERSION: 20.16.0
     PNPM_VERSION: 9.6.0
 
@@ -92,13 +91,13 @@ jobs:
             matrix:
                 include:
                     - platform: "macos-latest"
-                      args: "--target aarch64-apple-darwin"
+                      args: "--ci --verbose --bundles dmg --target aarch64-apple-darwin"
                     - platform: "macos-latest"
-                      args: "--target x86_64-apple-darwin"
+                      args: "--ci --verbose --bundles dmg --target x86_64-apple-darwin"
                     - platform: "ubuntu-latest"
-                      args: ""
+                      args: "--ci --verbose --bundles deb"
                     - platform: "windows-latest"
-                      args: ""
+                      args: "--ci --verbose --bundles msi"
         runs-on: ${{ matrix.platform }}
         steps:
             - name: "Checkout repository"
