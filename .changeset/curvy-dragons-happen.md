@@ -2,4 +2,4 @@
 "zaku": patch
 ---
 
-On release sync snapcraft.yaml with latest metadata
+On release, sync snapcraft.yaml with latest metadata
