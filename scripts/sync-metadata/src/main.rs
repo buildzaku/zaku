@@ -43,9 +43,9 @@ fn main() -> std::io::Result<()> {
     let snapcraft_yaml_content = fs::read_to_string(&snapcraft_yaml_path).unwrap();
     let mut snapcraft_yaml: Value = from_str(&snapcraft_yaml_content).unwrap();
 
-    snapcraft_yaml["name"] = Value::String(package_json.name);
-    snapcraft_yaml["version"] = Value::String(package_json.version);
-    snapcraft_yaml["summary"] = Value::String(package_json.description);
+    snapcraft_yaml["name"] = Value::String(package_json.name.clone());
+    snapcraft_yaml["version"] = Value::String(package_json.version.clone());
+    snapcraft_yaml["summary"] = Value::String(package_json.description.clone());
 
     let snapcraft_yaml_string = to_string(&snapcraft_yaml).unwrap();
     fs::write(&snapcraft_yaml_path, snapcraft_yaml_string).unwrap();
