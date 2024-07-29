@@ -1,14 +1,13 @@
 name: zaku
 base: core18
 version: 0.1.0
-summary: Zaku
+summary: Fast, open-source API client with fangs
 description: |
     Fast, open-source API client with fangs
 grade: stable
 confinement: strict
 architectures:
     - amd64
-
 parts:
     zaku-amd64:
         plugin: dump
@@ -16,7 +15,6 @@ parts:
         source-type: deb
         organize:
             usr/bin/zaku: usr/bin/zaku-amd64
-
 apps:
     zaku-amd64:
         command: zaku-amd64
