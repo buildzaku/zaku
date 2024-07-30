@@ -17,6 +17,10 @@
             "identifier": "http:default",
             "allow": [{ "url": "https://*" }, { "url": "http://*" }]
         },
-        "window:allow-start-dragging"
+        "window:allow-start-dragging",
+        "window:allow-close",
+        "window:allow-minimize",
+        "window:allow-is-fullscreen",
+        "window:allow-set-fullscreen"
     ]
 }

@@ -2,4 +2,4 @@
 "zaku": patch
 ---
 
-Add a not so custom titlebar
+custom titlebar and minor UI adjustments

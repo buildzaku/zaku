@@ -1,8 +1,5 @@
 <script lang="ts">
-    import { toggleMode } from "mode-watcher";
     import { fetch } from "@tauri-apps/plugin-http";
-    import Sun from "svelte-radix/Sun.svelte";
-    import Moon from "svelte-radix/Moon.svelte";
 
     import { version } from "$app/environment";
     import { Button } from "$lib/components/primitives/button";
@@ -88,32 +85,25 @@
     }
 </script>
 
-<div class="mt-7 flex h-[calc(100dvh-1.75rem)] w-dvw flex-col items-center justify-center gap-4">
+<div class="flex size-full flex-col items-center justify-center gap-4">
     <ResizablePaneGroup direction="horizontal" class="w-full">
         <ResizablePane
             defaultSize={15}
             minSize={15}
-            maxSize={40}
+            maxSize={45}
             collapsedSize={5}
             collapsible={true}
         >
             <Sidebar />
         </ResizablePane>
-        <ResizableHandle withHandle />
-        <ResizablePane defaultSize={50}>
-            <ResizablePaneGroup direction="vertical">
+        <ResizablePane
+            defaultSize={50}
+            class="relative my-1.5 mr-1.5 rounded-md border border-l-0 bg-card"
+        >
+            <ResizableHandle withHandle class="absolute z-10 h-full" />
+            <ResizablePaneGroup direction="vertical" class="size-full">
                 <div class="p-3">
-                    <nav class="mb-3 flex justify-end">
-                        <Button on:click={toggleMode} variant="outline" size="icon">
-                            <Sun
-                                class="h-[16px] w-[16px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0"
-                            />
-                            <Moon
-                                class="absolute h-[16px] w-[16px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100"
-                            />
-                            <span class="sr-only">Toggle theme</span>
-                        </Button>
-                    </nav>
+                    <div class="mb-3 flex">New HTTP request</div>
                     <div>
                         <form class="flex gap-2">
                             <SelectMethod bind:selected={method} />

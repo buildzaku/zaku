@@ -54,6 +54,6 @@
         @apply select-none overscroll-none border-border;
     }
     body {
-        @apply bg-background text-small text-foreground;
+        @apply bg-transparent text-small text-foreground;
     }
 }

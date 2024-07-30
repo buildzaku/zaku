@@ -6,5 +6,9 @@
 </script>
 
 <ModeWatcher defaultMode="dark" track={false} />
-<TitleBar />
-<slot />
+<main class="h-dvh w-dvw rounded-lg border-[1px] bg-background">
+    <TitleBar class="h-8" />
+    <div class="h-[calc(100dvh-2rem-1px)]">
+        <slot />
+    </div>
+</main>
