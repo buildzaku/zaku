@@ -5,7 +5,13 @@
 </p>
 
 <p align="center">
-    <img height="19px" src="./assets/zaku.svg" alt="Zaku">
+  <a href="https://zaku.app" target="_blank">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./assets/zaku-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="./assets/zaku-light.svg">
+      <img alt="Zaku" src="./assets/zaku-light.svg" height="19px" style="max-width: 100%;">
+    </picture>
+  </a>
 </p>
 
 <h5 align="center">Fast, open-source API client with fangs</h5>
@@ -17,8 +23,8 @@
 </p>
 
 > [!WARNING]
-> Please keep in mind that Zaku is in early stages of development, expect
-> breaking changes. Also, we're not ready for contributions just yet.
+> Zaku is in early stages of development, expect breaking changes.
+> Also, we're not ready for contributions just yet.
 > Thanks for checking it out and stay tuned for updates!
 
 ## Test it out
