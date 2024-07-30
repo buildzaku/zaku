@@ -16,6 +16,7 @@
         {
             "identifier": "http:default",
             "allow": [{ "url": "https://*" }, { "url": "http://*" }]
-        }
+        },
+        "window:allow-start-dragging"
     ]
 }

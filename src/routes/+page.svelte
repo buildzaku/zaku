@@ -88,7 +88,7 @@
     }
 </script>
 
-<div class="flex h-dvh w-dvw flex-col items-center justify-center gap-4">
+<div class="mt-7 flex h-[calc(100dvh-1.75rem)] w-dvw flex-col items-center justify-center gap-4">
     <ResizablePaneGroup direction="horizontal" class="w-full">
         <ResizablePane
             defaultSize={15}

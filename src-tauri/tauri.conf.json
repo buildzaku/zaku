@@ -12,7 +12,12 @@
             {
                 "title": "Zaku",
                 "width": 1180,
-                "height": 755
+                "height": 755,
+                "minWidth": 800,
+                "minHeight": 512,
+                "decorations": true,
+                "titleBarStyle": "Overlay",
+                "hiddenTitle": true
             }
         ],
         "security": {
