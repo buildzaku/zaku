@@ -12,9 +12,15 @@
             {
                 "title": "Zaku",
                 "width": 1180,
-                "height": 755
+                "height": 755,
+                "minWidth": 800,
+                "minHeight": 512,
+                "decorations": false,
+                "transparent": true,
+                "shadow": false
             }
         ],
+        "macOSPrivateApi": true,
         "security": {
             "csp": null
         }

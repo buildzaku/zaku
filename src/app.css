@@ -51,9 +51,9 @@
 
 @layer base {
     * {
-        @apply border-border select-none overscroll-none;
+        @apply select-none overscroll-none border-border;
     }
     body {
-        @apply bg-background text-foreground text-small;
+        @apply bg-transparent text-small text-foreground;
     }
 }
