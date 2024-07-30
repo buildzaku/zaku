@@ -8,6 +8,14 @@ const config = {
     theme: {
         extend: {
             fontSize: {
+                micro: [
+                    "0.5625rem",
+                    {
+                        lineHeight: "0.875rem",
+                        letterSpacing: "0em",
+                        fontWeight: "400",
+                    },
+                ],
                 tiny: [
                     "0.6875rem",
                     {
