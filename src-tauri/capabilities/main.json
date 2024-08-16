@@ -1,6 +1,6 @@
 {
     "$schema": "../gen/schemas/desktop-schema.json",
-    "identifier": "default",
+    "identifier": "main",
     "description": "Capability for the main window",
     "windows": ["main"],
     "permissions": [
@@ -21,6 +21,8 @@
         "window:allow-close",
         "window:allow-minimize",
         "window:allow-is-fullscreen",
-        "window:allow-set-fullscreen"
+        "window:allow-set-fullscreen",
+        "store:default",
+        "dialog:default"
     ]
 }

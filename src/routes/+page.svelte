@@ -12,7 +12,7 @@
     } from "$lib/components/primitives/resizable";
     import { SelectMethod } from "$lib/components/select-method";
     import { METHODS } from "$lib/utils/constants";
-    import { Sidebar } from "$lib/components/primitives/sidebar";
+    import { Sidebar } from "$lib/components/sidebar";
     import { RequestConfigPane } from "$lib/components/request-config-pane";
     import { ResponsePane } from "$lib/components/response-pane";
 
