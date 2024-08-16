@@ -1,5 +1,3 @@
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::collections::VecDeque;
 use std::fs;
 use std::io::{Error, ErrorKind};
@@ -8,37 +6,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
-use crate::types::AppState;
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct CreateWorkspaceDto {
-    name: String,
-    path: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct WorkspaceConfig {
-    name: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Collection {
-    name: String,
-    requests: Vec<Request>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Request {
-    name: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Workspace {
-    path: String,
-    config: WorkspaceConfig,
-    collections: Vec<Collection>,
-    requests: Vec<Request>,
-}
+use crate::types::{AppState, Collection, CreateWorkspaceDto, Request, Workspace, WorkspaceConfig};
 
 #[tauri::command]
 pub fn get_active_workspace(state: State<Mutex<AppState>>) -> Option<Workspace> {
@@ -70,7 +38,10 @@ pub fn set_active_workspace(
 
                 tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
                     store
-                        .insert("active_workspace_path".to_string(), json!(path.to_str()))
+                        .insert(
+                            "active_workspace_path".to_string(),
+                            serde_json::json!(path.to_str()),
+                        )
                         .map_err(|e| e.to_string())
                         .unwrap();
 

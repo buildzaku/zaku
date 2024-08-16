@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 pub mod types;
-pub mod utils;
+pub mod workspace;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -37,7 +37,7 @@ fn main() {
             match active_workspace_path {
                 Some(path) => {
                     // Proceed with loading the workspace if active_workspace_path exists
-                    match utils::workspace::parse_workspace(&path) {
+                    match workspace::parse_workspace(&path) {
                         Ok(active_workspace) => {
                             let state = app.app_handle().state::<Mutex<AppState>>();
 
@@ -63,8 +63,8 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            utils::workspace::get_active_workspace,
-            utils::workspace::set_active_workspace,
+            workspace::get_active_workspace,
+            workspace::set_active_workspace,
         ]);
 
     app.run(tauri::generate_context!())
