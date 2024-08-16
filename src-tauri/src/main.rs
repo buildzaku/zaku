@@ -5,9 +5,13 @@ use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_store::StoreCollection;
 
+pub mod constants;
+pub mod core;
 pub mod types;
-pub mod workspace;
+pub mod utils;
 
+use constants::ZakuStoreKey;
+use core::workspace;
 use types::AppState;
 
 fn main() {
@@ -24,7 +28,7 @@ fn main() {
                 app.handle().clone(),
                 stores.clone(),
                 app_data_dir.clone(),
-                |store| match store.get("active_workspace_path") {
+                |store| match store.get(ZakuStoreKey::ActiveWorkspacePath.to_string()) {
                     Some(value) if value.is_string() => {
                         let path_string = value.as_str().unwrap();
 
@@ -61,11 +65,12 @@ fn main() {
             return Ok(());
         })
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             workspace::get_active_workspace,
             workspace::set_active_workspace,
+            workspace::delete_active_workspace,
+            utils::window::show_main_window
         ]);
 
     app.run(tauri::generate_context!())

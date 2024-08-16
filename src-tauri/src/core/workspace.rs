@@ -3,9 +3,10 @@ use std::fs;
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State, Wry};
+use tauri::{AppHandle, Emitter, Manager, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
+use crate::constants::{ZakuEvent, ZakuStoreKey};
 use crate::types::{AppState, Collection, CreateWorkspaceDto, Request, Workspace, WorkspaceConfig};
 
 #[tauri::command]
@@ -15,7 +16,7 @@ pub fn get_active_workspace(state: State<Mutex<AppState>>) -> Option<Workspace> 
 
     return state.active_workspace.clone();
 }
-//  -> Option<Workspace>
+
 #[tauri::command]
 pub fn set_active_workspace(
     create_workspace_dto: CreateWorkspaceDto,
@@ -39,7 +40,7 @@ pub fn set_active_workspace(
                 tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
                     store
                         .insert(
-                            "active_workspace_path".to_string(),
+                            ZakuStoreKey::ActiveWorkspacePath.to_string(),
                             serde_json::json!(path.to_str()),
                         )
                         .map_err(|e| e.to_string())
@@ -47,8 +48,9 @@ pub fn set_active_workspace(
 
                     store.save().unwrap();
 
-                    // Retrieve the path
-                    let saved_path = store.get("active_workspace_path").unwrap();
+                    let saved_path = store
+                        .get(ZakuStoreKey::ActiveWorkspacePath.to_string())
+                        .unwrap();
 
                     println!("Retrieved path: {}", saved_path);
 
@@ -60,11 +62,36 @@ pub fn set_active_workspace(
                 eprintln!("Unable to set app state, {}", err);
             }
         },
-        false => eprintln!("Path does not exist."),
+        false => {
+            eprintln!("Path does not exist.");
+        }
     }
-    // let state = state.lock().unwrap();
+}
 
-    // return state.active_workspace.clone();
+#[tauri::command]
+pub fn delete_active_workspace(
+    app_handle: AppHandle,
+    stores: State<'_, StoreCollection<Wry>>,
+    state: State<Mutex<AppState>>,
+) {
+    println!("deleting active workspace");
+    let app_data_dir = app_handle.path().app_data_dir().unwrap();
+
+    tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
+        store
+            .delete(ZakuStoreKey::ActiveWorkspacePath.to_string())
+            .map_err(|e| e.to_string())
+            .unwrap();
+
+        store.save().unwrap();
+
+        return Ok(());
+    })
+    .unwrap();
+
+    *state.lock().unwrap() = AppState {
+        active_workspace: None,
+    };
 }
 
 pub fn parse_workspace(path: &Path) -> Result<Workspace, Error> {

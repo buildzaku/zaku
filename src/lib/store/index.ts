@@ -68,25 +68,8 @@ export async function getPersistedStore() {
 
 export const StoreKey = {
     CurrentWorkspacePath: "active_workspace_path",
-    WorkspacePathList: "workspace_path_list",
+    WorkspacePaths: "workspace_paths",
 };
-
-// export async function initializeCurrentWorkspace(): Promise<void> {
-//     const persistedStore = await getPersistedStore();
-//     const activeWorkspacePathRaw = await persistedStore.get(StoreKey.CurrentWorkspacePath);
-//     const activeWorkspacePathResult = Struct.safeParse(Struct.string(), activeWorkspacePathRaw);
-//     const activeWorkspacePathParsed: string | null = activeWorkspacePathResult.success
-//         ? activeWorkspacePathResult.output
-//         : null;
-
-//     if (activeWorkspacePathParsed !== null) {
-//         await activeWorkspace.set(activeWorkspacePathParsed);
-//         // need to populate data from config, collections & requests to the store
-//         await tick();
-//     }
-
-//     return;
-// }
 
 // Define the type for WorkspaceConfig
 export type WorkspaceConfig = {
@@ -120,35 +103,30 @@ type CreateWorkspaceDto = {
 function createWorkspaceStore() {
     const { set, subscribe } = writable<Workspace | null>(null);
 
-    return {
-        initialize: async () => {
-            const activeWorkspace: Workspace | null = await invoke("get_active_workspace");
-            set(activeWorkspace);
-            await tick();
+    async function synchronize() {
+        const activeWorkspace: Workspace | null = await invoke("get_active_workspace");
+        set(activeWorkspace);
+        await tick();
 
-            return;
-        },
+        return;
+    }
+
+    return {
+        synchronize,
         set: async (dto: CreateWorkspaceDto) => {
             console.log("invookdingng");
             await invoke("set_active_workspace", { createWorkspaceDto: dto });
-            console.log("invokeed setset");
-            // const persistedStore = await getPersistedStore();
-            // await persistedStore.set(StoreKey.CurrentWorkspacePath, dto.path);
-            // await persistedStore.save();
+            await synchronize();
 
-            // set(workspace);
+            return;
+        },
+        delete: async () => {
+            await invoke("delete_active_workspace");
+            await synchronize();
 
             return;
         },
         subscribe,
-        // clear: async (workspace: WorkspaceConfig) => {
-        //     const persistedStore = await getPersistedStore();
-        //     await persistedStore.delete(StoreKey.CurrentWorkspace);
-        //     await persistedStore.save();
-        //     set(null);
-
-        //     return;
-        // },
     };
 }
 

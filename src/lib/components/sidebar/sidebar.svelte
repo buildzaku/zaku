@@ -1,14 +1,12 @@
 <script lang="ts">
     import { activeWorkspace, getPersistedStore } from "$lib/store";
     import { Button } from "$lib/components/primitives/button";
+    import { invoke } from "@tauri-apps/api/core";
 
     async function handleDelete() {
-        console.log("cleariing store");
-        const persistedStore = await getPersistedStore();
-        console.log(await persistedStore.entries());
-        await persistedStore.clear();
-        await persistedStore.save();
-        await persistedStore.reset();
+        console.log("deleting workspace... pepeoeo");
+
+        await activeWorkspace.delete();
     }
 </script>
 

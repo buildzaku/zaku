@@ -12,7 +12,6 @@
         "resources:default",
         "menu:default",
         "tray:default",
-        "shell:allow-open",
         {
             "identifier": "http:default",
             "allow": [{ "url": "https://*" }, { "url": "http://*" }]

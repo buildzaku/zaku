@@ -53,17 +53,7 @@
     data-tauri-drag-region
     class={cn("flex w-full cursor-default items-center justify-between", $$props["class"])}
 >
-    <div class="ml-3 flex gap-2">
-        <button on:click={handleClose}>
-            <div class="size-3 rounded-full bg-[#ff5f57]" />
-        </button>
-        <button on:click={handleMinimize}>
-            <div class="size-3 rounded-full bg-[#febc2e]" />
-        </button>
-        <button on:click={handleFullscreen}>
-            <div class="size-3 rounded-full bg-[#28c840]" />
-        </button>
-    </div>
+    <div />
     <div class="flex h-full items-center gap-1.5">
         <Button
             on:click={handleFolder}
