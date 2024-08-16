@@ -1,12 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-pub mod types;
-pub mod workspace;
-
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_store::StoreCollection;
+
+pub mod types;
+pub mod workspace;
+
 use types::AppState;
 
 fn main() {
