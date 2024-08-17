@@ -16,7 +16,7 @@
     import { tick } from "svelte";
     import { Struct } from "$lib/utils/struct";
     import { goto } from "$app/navigation";
-    import { activeWorkspace } from "$lib/store";
+    import { activeWorkspace, createWorkspace } from "$lib/store";
 
     let workspaceName: string = "";
     let workspacePath: string = "";
@@ -64,7 +64,7 @@
 
         console.log({ workspaceData });
 
-        await activeWorkspace.set(workspaceData);
+        await createWorkspace(workspaceData);
 
         // await persistedStore.set(StoreKey.CurrentWorkspace, workspaceData);
 

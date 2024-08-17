@@ -67,6 +67,7 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            workspace::create_workspace,
             workspace::get_active_workspace,
             workspace::set_active_workspace,
             workspace::delete_active_workspace,

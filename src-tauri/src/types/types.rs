@@ -33,3 +33,13 @@ pub struct Workspace {
     pub collections: Vec<Collection>,
     pub requests: Vec<Request>,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct CreateWorkspaceResult {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ZakuError {
+    pub error: String,
+}

@@ -113,9 +113,9 @@ function createWorkspaceStore() {
 
     return {
         synchronize,
-        set: async (dto: CreateWorkspaceDto) => {
+        set: async (path: string) => {
             console.log("invookdingng");
-            await invoke("set_active_workspace", { createWorkspaceDto: dto });
+            await invoke("set_active_workspace", { path });
             await synchronize();
 
             return;
@@ -131,6 +131,30 @@ function createWorkspaceStore() {
 }
 
 export const activeWorkspace = createWorkspaceStore();
+
+export async function createWorkspace(dto: CreateWorkspaceDto) {
+    try {
+        const createWorkspaceResultSchema = Struct.strictObject({
+            path: Struct.string(),
+        });
+        const createWorkspaceRawResult = await invoke("create_workspace", {
+            createWorkspaceDto: dto,
+        });
+
+        const createWorkspaceResult = Struct.parse(
+            createWorkspaceResultSchema,
+            createWorkspaceRawResult,
+        );
+
+        await activeWorkspace.set(createWorkspaceResult.path);
+
+        return;
+    } catch (error) {
+        console.error("yoyoyoyoyoy createWorkspace");
+
+        console.log(error);
+    }
+}
 
 // function createWorkspaces() {
 //     const { set, subscribe } = writable<Workspace[]>([]);
