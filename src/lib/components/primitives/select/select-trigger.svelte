@@ -3,10 +3,14 @@
     import CaretDown from "svelte-radix/CaretDown.svelte";
     import { cn } from "$lib/utils/style.js";
 
-    type $$Props = SelectPrimitive.TriggerProps;
+    type $$Props = SelectPrimitive.TriggerProps & {
+        withCaret?: boolean;
+    };
     type $$Events = SelectPrimitive.TriggerEvents;
 
     let className: $$Props["class"] = undefined;
+
+    export let withCaret: $$Props["withCaret"] = true;
     export { className as class };
 </script>
 
@@ -18,7 +22,9 @@
     {...$$restProps}
 >
     <slot />
-    <div>
-        <CaretDown class="h-4 w-4 text-muted-foreground opacity-50" />
-    </div>
+    {#if withCaret}
+        <div>
+            <CaretDown class="h-4 w-4 text-muted-foreground opacity-50" />
+        </div>
+    {/if}
 </SelectPrimitive.Trigger>

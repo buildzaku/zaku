@@ -65,9 +65,6 @@
         console.log({ workspaceData });
 
         await createWorkspace(workspaceData);
-
-        // await persistedStore.set(StoreKey.CurrentWorkspace, workspaceData);
-
         await goto("/workspace");
     }
 </script>
@@ -75,7 +72,6 @@
 <div class="flex size-full flex-col items-center justify-center gap-2">
     <h1 class="my-2 text-2xl font-medium">Welcome to Zaku</h1>
     <Dialog
-        open={true}
         onOpenChange={() => {
             workspaceName = "";
             workspacePath = "";

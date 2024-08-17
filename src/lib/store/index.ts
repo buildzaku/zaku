@@ -3,7 +3,7 @@ import { Store } from "@tauri-apps/plugin-store";
 import { appDataDir } from "@tauri-apps/api/path";
 import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
 import { Struct, type ValueOf } from "$lib/utils/struct";
-import type { InferInput } from "valibot";
+
 import { tick } from "svelte";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -69,6 +69,11 @@ export async function getPersistedStore() {
 export const StoreKey = {
     CurrentWorkspacePath: "active_workspace_path",
     WorkspacePaths: "workspace_paths",
+};
+
+export type WorkspaceStoreDto = {
+    path: string;
+    name: string;
 };
 
 // Define the type for WorkspaceConfig
@@ -156,7 +161,7 @@ export async function createWorkspace(dto: CreateWorkspaceDto) {
     }
 }
 
-// function createWorkspaces() {
+// function createWorkspacesStore() {
 //     const { set, subscribe } = writable<Workspace[]>([]);
 
 //     return {
@@ -173,4 +178,4 @@ export async function createWorkspace(dto: CreateWorkspaceDto) {
 //     };
 // }
 
-// export const workspaces = createWorkspaces();
+// export const workspaces = createWorkspacesStore();

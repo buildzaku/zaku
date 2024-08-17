@@ -15,6 +15,7 @@
     import { Sidebar } from "$lib/components/sidebar";
     import { RequestConfigPane } from "$lib/components/request-config-pane";
     import { ResponsePane } from "$lib/components/response-pane";
+    import { cn } from "$lib/utils/style";
 
     let requestStatus: RequestStatus = "idle";
     let currentUrl = "";
@@ -22,6 +23,8 @@
     let error = "";
     let method = METHODS.GET;
     let iframeSrcDoc = "";
+
+    let isLeftPaneCollapsed = false;
 
     let currentRequestParams: KeyValuePair[] = [];
     let currentRequestHeaders: KeyValuePair[] = [
@@ -93,8 +96,11 @@
             maxSize={45}
             collapsedSize={5}
             collapsible={true}
+            onCollapse={() => (isLeftPaneCollapsed = true)}
+            onExpand={() => (isLeftPaneCollapsed = false)}
+            class={cn(isLeftPaneCollapsed && "w-10 max-w-10")}
         >
-            <Sidebar />
+            <Sidebar bind:isCollapsed={isLeftPaneCollapsed} />
         </ResizablePane>
         <ResizablePane
             defaultSize={50}
