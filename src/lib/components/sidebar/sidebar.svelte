@@ -19,21 +19,22 @@
         await activeWorkspace.delete();
     }
 
+    console.log($activeWorkspace);
     export let isCollapsed = false;
 </script>
 
 {#if $activeWorkspace}
     <div class="flex size-full flex-col justify-between">
-        <div class="flex w-full items-center justify-between border-b p-1.5">
+        <div class="flex w-full items-center justify-center border-b p-1.5">
             <WorkspaceSwitcher
                 activeWorkspace={{
-                    name: $activeWorkspace.config.name,
+                    name: $activeWorkspace.config.meta.name,
                     path: $activeWorkspace.path,
                 }}
                 {isCollapsed}
                 workspaces={[
                     {
-                        name: $activeWorkspace.config.name,
+                        name: $activeWorkspace.config.meta.name,
                         path: $activeWorkspace.path,
                     },
                 ]}

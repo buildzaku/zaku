@@ -9,7 +9,7 @@ use tauri_plugin_store::StoreCollection;
 use crate::constants::ZakuStoreKey;
 use crate::types::{
     AppState, Collection, CreateWorkspaceDto, CreateWorkspaceResult, Request, Workspace,
-    WorkspaceConfig, ZakuError,
+    WorkspaceConfig, WorkspaceMeta, ZakuError,
 };
 
 #[tauri::command]
@@ -97,16 +97,18 @@ pub fn create_workspace(
             let workspace_meta_path = workspace_path.join(".zaku");
             fs::create_dir(&workspace_meta_path).expect("Failed to create .zaku directory");
 
-            let mut workspace_config_file = File::create(&workspace_meta_path.join("config.json"))
-                .expect("Failed to create config.json");
+            let mut workspace_config_file = File::create(&workspace_meta_path.join("config.toml"))
+                .expect("Failed to create config.toml");
 
             let workspace_config = WorkspaceConfig {
-                name: create_workspace_dto.name,
+                meta: WorkspaceMeta {
+                    name: create_workspace_dto.name,
+                },
             };
 
             workspace_config_file
                 .write_all(
-                    serde_json::to_string_pretty(&workspace_config)
+                    toml::to_string_pretty(&workspace_config)
                         .expect("Failed to serialize workspace config")
                         .as_bytes(),
                 )
@@ -199,8 +201,8 @@ pub fn parse_workspace(path: &Path) -> Result<Workspace, Error> {
     // Initialize a vector to store requests found at the root level
     let mut requests: Vec<Request> = Vec::new();
 
-    // Create the full path to the config.json file in the workspace
-    let config_path = path.join(".zaku/config.json");
+    // Create the full path to the config.toml file in the workspace
+    let config_path = path.join(".zaku/config.toml");
 
     // Reading the config file with error context
     let workspace_config_content = fs::read_to_string(&config_path).map_err(|e| {
@@ -211,8 +213,8 @@ pub fn parse_workspace(path: &Path) -> Result<Workspace, Error> {
     })?;
 
     // Parsing workspace config with error context
-    let workspace_config: WorkspaceConfig = serde_json::from_str(&workspace_config_content)
-        .map_err(|err| {
+    let workspace_config: WorkspaceConfig =
+        toml::from_str(&workspace_config_content).map_err(|err| {
             Error::new(
                 ErrorKind::InvalidData,
                 format!("Failed to parse {}: {}", config_path.display(), err),

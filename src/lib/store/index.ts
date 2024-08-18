@@ -69,9 +69,13 @@ export type WorkspaceStoreDto = {
     name: string;
 };
 
+export type WorkspaceMeta = {
+    name: string;
+};
+
 // Define the type for WorkspaceConfig
 export type WorkspaceConfig = {
-    name: string;
+    meta: WorkspaceMeta;
 };
 
 // Define the type for Request

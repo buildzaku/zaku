@@ -20,35 +20,39 @@
     // }}
 </script>
 
-<Select portal={null} selected={{ value: activeWorkspace.path, label: activeWorkspace.name }}>
-    <SelectTrigger
-        class={cn(
-            "flex h-6 items-center gap-2 bg-muted/40 hover:bg-muted/60",
-            isCollapsed && "flex size-6 items-center justify-center p-0",
-        )}
-        withCaret={!isCollapsed}
-        aria-label="Select workspace"
-    >
-        <div class="pointer-events-none flex items-center">
-            <FolderIcon size={16} />
-            <span class={cn(isCollapsed ? "!ml-0 !hidden" : "ml-2")}>
-                {activeWorkspace.name}
-            </span>
-        </div>
-    </SelectTrigger>
-    <SelectContent sameWidth={!isCollapsed} align={isCollapsed ? "start" : undefined}>
-        <SelectGroup>
-            {#each workspaces as workspace}
-                <SelectItem value={workspace.path} label={workspace.name}>
-                    <div
-                        class="flex items-center gap-3 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 [&_svg]:text-foreground"
-                    >
-                        <FolderIcon size={16} />
-                        {workspace.name}
-                    </div>
-                </SelectItem>
-            {/each}
-        </SelectGroup>
-    </SelectContent>
-    <SelectInput hidden name="account" />
-</Select>
+<div class="h-6 w-full">
+    <Select portal={null} selected={{ value: activeWorkspace.path, label: activeWorkspace.name }}>
+        <SelectTrigger
+            class={cn(
+                "flex h-6 w-full items-center gap-2 bg-muted/40 hover:bg-muted/60",
+                isCollapsed && "flex size-6 items-center justify-center p-0",
+            )}
+            withCaret={!isCollapsed}
+            aria-label="Select workspace"
+        >
+            <div class="pointer-events-none flex items-center gap-2 overflow-hidden">
+                <div>
+                    <FolderIcon size={14} />
+                </div>
+                {#if !isCollapsed}
+                    <span class="truncate">{activeWorkspace.name}</span>
+                {/if}
+            </div>
+        </SelectTrigger>
+        <SelectContent sameWidth={!isCollapsed} align={isCollapsed ? "start" : undefined}>
+            <SelectGroup>
+                {#each workspaces as workspace}
+                    <SelectItem value={workspace.path} label={workspace.name}>
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <div>
+                                <FolderIcon size={14} />
+                            </div>
+                            <span class="truncate">{workspace.name}</span>
+                        </div>
+                    </SelectItem>
+                {/each}
+            </SelectGroup>
+        </SelectContent>
+        <SelectInput hidden name="workspace" />
+    </Select>
+</div>

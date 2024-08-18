@@ -7,8 +7,13 @@ pub struct CreateWorkspaceDto {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct WorkspaceConfig {
+pub struct WorkspaceMeta {
     pub name: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct WorkspaceConfig {
+    pub meta: WorkspaceMeta,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
