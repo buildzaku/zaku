@@ -20,12 +20,12 @@
     // }}
 </script>
 
-<div class="h-6 w-full">
+<div class="h-7 w-full">
     <Select portal={null} selected={{ value: activeWorkspace.path, label: activeWorkspace.name }}>
         <SelectTrigger
             class={cn(
-                "flex h-6 w-full items-center gap-2 bg-muted/40 hover:bg-muted/60",
-                isCollapsed && "flex size-6 items-center justify-center p-0",
+                "flex h-7 w-full items-center gap-2 bg-muted/40 hover:bg-muted/60",
+                isCollapsed && "flex size-7 items-center justify-center p-0",
             )}
             withCaret={!isCollapsed}
             aria-label="Select workspace"

@@ -11,6 +11,10 @@
 
     let welcomeMessage: string | null = null;
 
+    const disableContextMenu = (event: MouseEvent) => {
+        event.preventDefault();
+    };
+
     const synchronize = async () => {
         try {
             // console.log("Invoking `create_workspace`");
@@ -36,16 +40,14 @@
     };
 
     onMount(async () => {
-        synchronize();
+        document.addEventListener("contextmenu", disableContextMenu);
+
+        await synchronize();
     });
 
-    // onDestroy(() => {
-    //     console.log("Component unmounting, cleaning up listener");
-
-    //     appWebviewUnlisten();
-    //     unlisten();
-    //     unlisten2();
-    // });
+    onDestroy(() => {
+        document.removeEventListener("contextmenu", disableContextMenu);
+    });
 
     $: $activeWorkspace === null, goto("/");
 </script>

@@ -98,7 +98,7 @@
             collapsible={true}
             onCollapse={() => (isLeftPaneCollapsed = true)}
             onExpand={() => (isLeftPaneCollapsed = false)}
-            class={cn(isLeftPaneCollapsed && "w-9 max-w-9")}
+            class={cn(isLeftPaneCollapsed && "w-10 max-w-10")}
         >
             <Sidebar bind:isCollapsed={isLeftPaneCollapsed} />
         </ResizablePane>

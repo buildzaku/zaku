@@ -16,7 +16,7 @@
 
 <SelectPrimitive.Trigger
     class={cn(
-        "flex h-6 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-2 py-1.5 text-small shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid]:border-destructive [&>span]:line-clamp-1 data-[placeholder]:[&>span]:text-muted-foreground",
+        "flex h-7 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-2 py-1.5 text-small shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid]:border-destructive [&>span]:line-clamp-1 data-[placeholder]:[&>span]:text-muted-foreground",
         className,
     )}
     {...$$restProps}

@@ -93,16 +93,16 @@
                 </div>
                 <div class="flex max-w-[374px] flex-col gap-1">
                     <Label for="location">Location</Label>
-                    <div class="flex h-6 w-full">
+                    <div class="flex h-7 w-full">
                         <div
                             id="workspace-path"
-                            class="container-peepoo flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
+                            class="container-peepoo flex h-7 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
                         >
                             {workspacePath}
                         </div>
                         <Button
                             on:click={handleBrowse}
-                            class="col-span-1 h-6 w-[120px] rounded-l-none"
+                            class="col-span-1 h-7 w-[120px] rounded-l-none"
                             variant="outline"
                         >
                             Browse
