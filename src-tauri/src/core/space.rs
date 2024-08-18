@@ -29,9 +29,9 @@ pub fn set_active_space(
 ) -> Result<(), ZakuError> {
     let space_root_path = PathBuf::from(space_root_path.as_str());
 
-    if space_root_path.exists() {
+    if !space_root_path.exists() {
         return Err(ZakuError {
-            error: format!("Directory already exists at {}", space_root_path.display()),
+            error: format!("Directory does not exist at {}", space_root_path.display()),
         });
     }
 
