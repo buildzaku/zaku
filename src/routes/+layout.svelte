@@ -40,7 +40,7 @@
         }
     });
 
-    $: if (activeSpace === null) {
+    $: if ($activeSpace === null) {
         goto("/");
     }
 </script>
