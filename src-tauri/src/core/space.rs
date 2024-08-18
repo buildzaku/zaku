@@ -157,7 +157,7 @@ pub fn delete_active_space(
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<AppState>>,
-) {
+) -> () {
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
     tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
