@@ -8,10 +8,10 @@ use tauri_plugin_store::StoreCollection;
 pub mod constants;
 pub mod core;
 pub mod types;
-pub mod utils;
 
 use constants::ZakuStoreKey;
-use core::space;
+
+use core::{commands, space};
 use types::AppState;
 
 fn main() {
@@ -58,11 +58,11 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            space::create_space,
-            space::get_active_space,
-            space::set_active_space,
-            space::delete_active_space,
-            utils::window::show_main_window
+            commands::space::create_space,
+            commands::space::get_active_space,
+            commands::space::set_active_space,
+            commands::space::delete_active_space,
+            commands::window::show_main_window
         ]);
 
     app.run(tauri::generate_context!())
