@@ -5077,7 +5077,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tauri-plugin-fs",
  "tauri-plugin-http",
  "tauri-plugin-store",
  "toml 0.8.17",

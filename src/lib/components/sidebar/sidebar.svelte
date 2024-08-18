@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { activeWorkspace, getPersistedStore } from "$lib/store";
+    import { activeWorkspace } from "$lib/store";
     import { Button } from "$lib/components/primitives/button";
     import {
         DropdownMenu,

@@ -4,7 +4,7 @@
     import "../app.css";
     import { TitleBar } from "$lib/components/title-bar";
     import { invoke } from "@tauri-apps/api/core";
-    import { appDataDir } from "@tauri-apps/api/path";
+
     import { onDestroy, onMount } from "svelte";
     import { goto } from "$app/navigation";
     import { activeWorkspace } from "$lib/store";

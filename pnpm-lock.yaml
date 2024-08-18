@@ -38,13 +38,7 @@ importers:
       '@tauri-apps/plugin-dialog':
         specifier: 2.0.0-beta.8
         version: 2.0.0-beta.8
-      '@tauri-apps/plugin-fs':
-        specifier: 2.0.0-beta.8
-        version: 2.0.0-beta.8
       '@tauri-apps/plugin-http':
-        specifier: 2.0.0-beta.8
-        version: 2.0.0-beta.8
-      '@tauri-apps/plugin-store':
         specifier: 2.0.0-beta.8
         version: 2.0.0-beta.8
       bits-ui:
@@ -707,14 +701,8 @@ packages:
   '@tauri-apps/plugin-dialog@2.0.0-beta.8':
     resolution: {integrity: sha512-6iVhEBceWYLUgX6ygBc4/yJ1o/D4YwgoAGt7ebFUTjEyIhp79PeFtE8OTjdyJbtVOc6bAcDeAn4+pbWtSw9/4w==}
 
-  '@tauri-apps/plugin-fs@2.0.0-beta.8':
-    resolution: {integrity: sha512-m0lLmEIHL6J+dH6A1lgIwQ7JYArgTlZORhUcl2xzeef18llMp6Gjs272jCMRAnYEREhu7Wd3zk7PxSR+DsLXYg==}
-
   '@tauri-apps/plugin-http@2.0.0-beta.8':
     resolution: {integrity: sha512-FhZP4WtS1o69Mn7z2RpNIdVS+2nPqmXyz6LhqweuP1FTjgTVraVxIfGLQCOMLpEUwo8zWY2uChllolV6WGYZ/A==}
-
-  '@tauri-apps/plugin-store@2.0.0-beta.8':
-    resolution: {integrity: sha512-GXTEUT0O6Kg5lo6bpC1tuler4DZimeCF9C0ciN+aZft8PmApyKOaNU3aXmiplrzEytbQ96BdsFTSrsCnlpO6Cw==}
 
   '@types/cookie@0.6.0':
     resolution: {integrity: sha512-4Kh9a6B2bQciAhf7FSuMRRkUWecJgJu9nPnx3yzpsfXX/c50REIqpHY4C82bXP90qrLtXtkDxTZosYO3UpOwlA==}
@@ -2817,17 +2805,9 @@ snapshots:
     dependencies:
       '@tauri-apps/api': 2.0.0-rc.0
 
-  '@tauri-apps/plugin-fs@2.0.0-beta.8':
-    dependencies:
-      '@tauri-apps/api': 2.0.0-rc.0
-
   '@tauri-apps/plugin-http@2.0.0-beta.8':
     dependencies:
       '@tauri-apps/api': 2.0.0-beta.15
-
-  '@tauri-apps/plugin-store@2.0.0-beta.8':
-    dependencies:
-      '@tauri-apps/api': 2.0.0-rc.0
 
   '@types/cookie@0.6.0': {}
 

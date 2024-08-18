@@ -1,6 +1,5 @@
 import { writable } from "svelte/store";
-import { Store } from "@tauri-apps/plugin-store";
-import { appDataDir } from "@tauri-apps/api/path";
+
 import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
 import { Struct, type ValueOf } from "$lib/utils/struct";
 
@@ -59,12 +58,6 @@ export type HttpRequestConfig = {
         "text/plain": string;
     };
 };
-
-export async function getPersistedStore() {
-    const dataPath = await appDataDir();
-
-    return new Store(dataPath);
-}
 
 export const StoreKey = {
     CurrentWorkspacePath: "active_workspace_path",
