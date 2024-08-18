@@ -188,7 +188,7 @@ pub fn parse_space(path: &Path) -> Result<Space, Error> {
     directories.push_back(space_root_path.to_path_buf());
 
     while let Some(current_directory) = directories.pop_front() {
-        let sub_directories = fs::read_dir(&current_directory).map_err(|err| {
+        let entries = fs::read_dir(&current_directory).map_err(|err| {
             Error::new(
                 ErrorKind::Other,
                 format!(
@@ -199,7 +199,7 @@ pub fn parse_space(path: &Path) -> Result<Space, Error> {
             )
         })?;
 
-        for entry in sub_directories {
+        for entry in entries {
             let entry = entry.map_err(|err| {
                 Error::new(
                     ErrorKind::Other,
