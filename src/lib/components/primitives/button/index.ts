@@ -20,7 +20,7 @@ const buttonVariants = tv({
             default: "h-7 px-3 py-2",
             sm: "h-6 rounded-md px-3 text-xs",
             lg: "h-9 rounded-md px-8",
-            icon: "h-7 w-7",
+            icon: "size-6",
         },
     },
     defaultVariants: {

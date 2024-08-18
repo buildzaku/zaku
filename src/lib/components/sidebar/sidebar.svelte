@@ -39,7 +39,7 @@
                 ]}
             />
         </div>
-        <div class="flex-grow overflow-y-auto p-2">
+        <div class="flex-grow overflow-y-auto p-1.5">
             {#if !isCollapsed}
                 <!-- TODO - file tree -->
 
@@ -54,12 +54,7 @@
         >
             <DropdownMenu>
                 <DropdownMenuTrigger asChild let:builder>
-                    <Button
-                        builders={[builder]}
-                        size="icon"
-                        variant="ghost-hover"
-                        class="size-6 min-h-6 min-w-6 p-1"
-                    >
+                    <Button builders={[builder]} size="icon" variant="ghost-hover">
                         <SettingsIcon strokeWidth={1.25} size={16} />
                         <span class="sr-only">Settings</span>
                     </Button>
@@ -73,7 +68,7 @@
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
-            <Button variant="ghost-hover" size="icon" class="size-6 min-h-6 min-w-6 p-1">
+            <Button size="icon" variant="ghost-hover">
                 <CookieIcon size={14} />
             </Button>
         </div>

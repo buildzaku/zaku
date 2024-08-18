@@ -23,8 +23,8 @@
 <Select portal={null} selected={{ value: activeWorkspace.path, label: activeWorkspace.name }}>
     <SelectTrigger
         class={cn(
-            "flex items-center gap-2",
-            isCollapsed && "flex size-7 items-center justify-center p-0",
+            "flex h-6 items-center gap-2 bg-muted/40 hover:bg-muted/60",
+            isCollapsed && "flex size-6 items-center justify-center p-0",
         )}
         withCaret={!isCollapsed}
         aria-label="Select workspace"
