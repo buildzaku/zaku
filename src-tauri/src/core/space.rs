@@ -29,17 +29,18 @@ pub fn parse_space(path: &Path) -> Result<Space, Error> {
         })?;
 
         for entry in entries {
-            let entry = entry.map_err(|err| {
-                Error::new(
-                    ErrorKind::Other,
-                    format!(
-                        "Failed to access sub directory in {}: {}",
-                        current_directory.display(),
-                        err
-                    ),
-                )
-            })?;
-            let entry_path = entry.path();
+            let entry_path = entry
+                .map_err(|err| {
+                    Error::new(
+                        ErrorKind::Other,
+                        format!(
+                            "Failed to access sub directory in {}: {}",
+                            current_directory.display(),
+                            err
+                        ),
+                    )
+                })?
+                .path();
 
             if entry_path.is_file() && entry_path.extension() == Some(OsStr::new("toml")) {
                 if current_directory == space_root_path {

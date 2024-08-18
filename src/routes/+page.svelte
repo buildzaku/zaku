@@ -53,6 +53,7 @@
             await createSpace(spaceData);
             await goto("/space");
         } catch (err) {
+            // TODO - show error toast
             console.error(err);
         }
     }
@@ -82,15 +83,16 @@
                 <div class="flex max-w-[374px] flex-col gap-1">
                     <Label for="location">Location</Label>
                     <div class="flex h-6 w-full">
-                        <div
+                        <button
                             id="space-path-container"
                             class="scrollbar-hidden flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
+                            on:click={handleBrowse}
                         >
                             {spacePath}
-                        </div>
+                        </button>
                         <Button
                             on:click={handleBrowse}
-                            class="col-span-1 h-6 w-[120px] rounded-l-none"
+                            class="col-span-1 h-6 w-[80px] rounded-l-none"
                             variant="outline"
                         >
                             Browse
@@ -103,7 +105,7 @@
             </DialogFooter>
         </DialogContent>
     </Dialog>
-    <Button disabled variant="outline">+ Import Space</Button>
+    <Button disabled variant="link" class="text-foreground">+ Open Existing Space</Button>
 </div>
 
 <style lang="postcss">

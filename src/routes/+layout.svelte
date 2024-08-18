@@ -14,20 +14,16 @@
         event.preventDefault();
     };
 
-    const synchronize = async () => {
-        try {
-            await activeSpace.synchronize();
+    const initialize = async () => {
+        await activeSpace.synchronize();
 
-            if ($activeSpace !== null) {
-                await goto("/space");
-            } else if ($page.url.pathname !== "/") {
-                await goto("/");
-            }
-
-            await invoke("show_main_window");
-        } catch (err) {
-            console.error(err);
+        if ($activeSpace !== null) {
+            await goto("/space");
+        } else if ($page.url.pathname !== "/") {
+            await goto("/");
         }
+
+        await invoke("show_main_window");
     };
 
     onMount(async () => {
@@ -35,7 +31,7 @@
             document.addEventListener("contextmenu", disableContextMenu);
         }
 
-        await synchronize();
+        await initialize();
     });
 
     onDestroy(() => {
@@ -52,7 +48,7 @@
 <ModeWatcher defaultMode="dark" track={false} />
 <main class="bg-background">
     <TitleBar class="h-8" />
-    <div id="application" class="h-[calc(100dvh-2rem-1px)]">
+    <div class="h-[calc(100dvh-2rem-1px)]">
         <slot />
     </div>
 </main>
