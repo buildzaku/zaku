@@ -12,16 +12,3 @@ impl fmt::Display for ZakuStoreKey {
         write!(f, "{}", value)
     }
 }
-
-pub enum ZakuEvent {
-    SynchronizeActiveSpace,
-}
-
-impl fmt::Display for ZakuEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match self {
-            ZakuEvent::SynchronizeActiveSpace => "synchronize_active_space",
-        };
-        write!(f, "{}", value)
-    }
-}

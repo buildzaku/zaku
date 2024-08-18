@@ -120,7 +120,7 @@ pub fn create_space(
                         ZakuStoreKey::ActiveSpacePath.to_string(),
                         serde_json::json!(space_root_path.to_str()),
                     )
-                    .map_err(|e| e.to_string())
+                    .map_err(|err| err.to_string())
                     .unwrap();
 
                 store.save().unwrap();
@@ -163,7 +163,7 @@ pub fn delete_active_space(
     tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
         store
             .delete(ZakuStoreKey::ActiveSpacePath.to_string())
-            .map_err(|e| e.to_string())
+            .map_err(|err| err.to_string())
             .unwrap();
 
         store.save().unwrap();
