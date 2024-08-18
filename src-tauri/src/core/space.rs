@@ -79,92 +79,86 @@ pub fn create_space(
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<AppState>>,
 ) -> Result<CreateSpaceResult, ZakuError> {
-    println!("Creating new space");
-
     let location = PathBuf::from(create_space_dto.path.as_str());
+    if !location.exists() {
+        return Err(ZakuError {
+            error: format!("Path does not exist: {}", create_space_dto.path),
+        });
+    }
 
-    match location.exists() {
-        true => {
-            let space_path = location.join(create_space_dto.name.clone());
+    let space_root_path = location.join(create_space_dto.name.clone());
 
-            if space_path.exists() {
-                return Err(ZakuError {
-                    error: format!("Directory already exists at {}", space_path.display()),
-                });
-            }
+    if space_root_path.exists() {
+        return Err(ZakuError {
+            error: format!("Directory already exists at {}", space_root_path.display()),
+        });
+    }
 
-            fs::create_dir(&space_path).expect("Failed to create space directory");
+    fs::create_dir(&space_root_path).expect("Failed to create space directory");
 
-            let space_meta_path = space_path.join(".zaku");
-            fs::create_dir(&space_meta_path).expect("Failed to create .zaku directory");
+    let space_meta_path = space_root_path.join(".zaku");
+    fs::create_dir(&space_meta_path).expect("Failed to create `.zaku` directory");
 
-            let mut space_config_file = File::create(&space_meta_path.join("config.toml"))
-                .expect("Failed to create config.toml");
+    let mut space_config_file =
+        File::create(&space_meta_path.join("config.toml")).expect("Failed to create `config.toml`");
 
-            let space_config = SpaceConfig {
-                meta: SpaceMeta {
-                    name: create_space_dto.name,
-                },
-            };
+    let space_config = SpaceConfig {
+        meta: SpaceMeta {
+            name: create_space_dto.name,
+        },
+    };
 
-            space_config_file
-                .write_all(
-                    toml::to_string_pretty(&space_config)
-                        .expect("Failed to serialize space config")
-                        .as_bytes(),
-                )
-                .expect("Failed to write to config file");
+    space_config_file
+        .write_all(
+            toml::to_string_pretty(&space_config)
+                .expect("Failed to serialize space config")
+                .as_bytes(),
+        )
+        .expect("Failed to write to config file");
 
-            match parse_space(&space_path) {
-                Ok(active_space) => {
-                    let app_data_dir = app_handle.path().app_data_dir().unwrap();
+    match parse_space(&space_root_path) {
+        Ok(active_space) => {
+            let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
-                    tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
-                        store
-                            .insert(
-                                ZakuStoreKey::ActiveSpacePath.to_string(),
-                                serde_json::json!(space_path.to_str()),
-                            )
-                            .map_err(|e| e.to_string())
-                            .unwrap();
-
-                        store.save().unwrap();
-
-                        let saved_path = store
-                            .get(ZakuStoreKey::ActiveSpacePath.to_string())
-                            .unwrap();
-
-                        println!("Retrieved path: {}", saved_path);
-
-                        return Ok(());
-                    })
+            tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
+                store
+                    .insert(
+                        ZakuStoreKey::ActiveSpacePath.to_string(),
+                        serde_json::json!(space_root_path.to_str()),
+                    )
+                    .map_err(|e| e.to_string())
                     .unwrap();
 
-                    *state.lock().unwrap() = AppState {
-                        active_space: Some(active_space),
-                    };
+                store.save().unwrap();
 
-                    return Ok(CreateSpaceResult {
-                        path: space_path
-                            .to_str()
-                            .expect("Failed to convert space path to string")
-                            .to_string(),
-                    });
-                }
-                Err(err) => {
-                    return Err(ZakuError {
-                        error: format!(
-                            "Failed to parse the space {}: {}",
-                            space_path.display(),
-                            err
-                        ),
-                    });
-                }
-            }
+                let saved_path = store
+                    .get(ZakuStoreKey::ActiveSpacePath.to_string())
+                    .unwrap();
+
+                println!("Retrieved path: {}", saved_path);
+
+                return Ok(());
+            })
+            .unwrap();
+
+            *state.lock().unwrap() = AppState {
+                active_space: Some(active_space),
+            };
+
+            return Ok(CreateSpaceResult {
+                path: space_root_path
+                    .to_str()
+                    .expect("Failed to convert space path to string")
+                    .to_string(),
+            });
         }
-        false => {
+        Err(err) => {
             return Err(ZakuError {
-                error: format!("Path does not exist: {}", create_space_dto.path),
+                error: format!(
+                    "Failed to parse the space {}: {}",
+                    space_root_path.display(),
+                    err
+                ),
             });
         }
     }
@@ -192,17 +186,19 @@ pub fn delete_active_space(
     .unwrap();
 
     *state.lock().unwrap() = AppState { active_space: None };
+
+    return ();
 }
 
 pub fn parse_space(path: &Path) -> Result<Space, Error> {
-    let space_path = path;
-    let space_config = parse_space_config(&space_path)?;
+    let space_root_path = path;
+    let space_config = parse_space_config(&space_root_path)?;
 
     let mut collections: Vec<Collection> = Vec::new();
     let mut requests: Vec<Request> = Vec::new();
     let mut directories: VecDeque<PathBuf> = VecDeque::new();
 
-    directories.push_back(space_path.to_path_buf());
+    directories.push_back(space_root_path.to_path_buf());
 
     while let Some(current_directory) = directories.pop_front() {
         let sub_directories = fs::read_dir(&current_directory).map_err(|err| {
@@ -230,7 +226,7 @@ pub fn parse_space(path: &Path) -> Result<Space, Error> {
             let entry_path = entry.path();
 
             if entry_path.is_file() && entry_path.extension() == Some(OsStr::new("toml")) {
-                if current_directory == space_path {
+                if current_directory == space_root_path {
                     requests.push(Request {
                         name: entry_path
                             .file_name()
@@ -259,11 +255,11 @@ pub fn parse_space(path: &Path) -> Result<Space, Error> {
                 }
             } else if entry_path.is_dir() {
                 let entry_name = entry_path.file_name().unwrap().to_string_lossy();
-                if entry_name == ".zaku" && current_directory != space_path {
+                if entry_name == ".zaku" && current_directory != space_root_path {
                     continue;
                 }
 
-                if current_directory == space_path && entry_name != ".zaku" {
+                if current_directory == space_root_path && entry_name != ".zaku" {
                     collections.push(Collection {
                         name: entry_name.into_owned(),
                         requests: Vec::new(),
@@ -276,26 +272,26 @@ pub fn parse_space(path: &Path) -> Result<Space, Error> {
     }
 
     return Ok(Space {
-        path: space_path.to_string_lossy().into_owned(),
+        path: space_root_path.to_string_lossy().into_owned(),
         config: space_config,
         collections,
         requests,
     });
 }
 
-pub fn parse_space_config(path: &Path) -> Result<SpaceConfig, Error> {
-    return fs::read_to_string(path.join(".zaku/config.toml"))
+pub fn parse_space_config(space_root_path: &Path) -> Result<SpaceConfig, Error> {
+    return fs::read_to_string(space_root_path.join(".zaku/config.toml"))
         .map_err(|err| {
             Error::new(
                 ErrorKind::NotFound,
-                format!("Failed to load {}: {}", path.display(), err),
+                format!("Failed to load {}: {}", space_root_path.display(), err),
             )
         })
         .and_then(|content| {
             toml::from_str(&content).map_err(|err| {
                 Error::new(
                     ErrorKind::InvalidData,
-                    format!("Failed to parse {}: {}", path.display(), err),
+                    format!("Failed to parse {}: {}", space_root_path.display(), err),
                 )
             })
         });
