@@ -10,8 +10,6 @@
     import { goto } from "$app/navigation";
     import { activeSpace } from "$lib/store";
 
-    let welcomeMessage: string | null = null;
-
     const disableContextMenu = (event: MouseEvent) => {
         event.preventDefault();
     };
@@ -44,7 +42,9 @@
         }
     });
 
-    $: $activeSpace === null, goto("/");
+    $: if (activeSpace === null) {
+        goto("/");
+    }
 </script>
 
 <ModeWatcher defaultMode="dark" track={false} />
