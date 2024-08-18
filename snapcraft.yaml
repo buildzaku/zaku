@@ -1,6 +1,6 @@
 name: zaku
 base: core18
-version: 0.0.0
+version: 0.1.0
 summary: Zaku
 description: |
     Fast, open-source API client with fangs
