@@ -1,13 +1,13 @@
 <script lang="ts">
+    import { onDestroy, onMount } from "svelte";
     import { dev } from "$app/environment";
+    import { goto } from "$app/navigation";
+    import { page } from "$app/stores";
+    import { invoke } from "@tauri-apps/api/core";
     import { ModeWatcher } from "mode-watcher";
 
     import "../app.css";
     import { TitleBar } from "$lib/components/title-bar";
-    import { invoke } from "@tauri-apps/api/core";
-
-    import { onDestroy, onMount } from "svelte";
-    import { goto } from "$app/navigation";
     import { activeSpace } from "$lib/store";
 
     const disableContextMenu = (event: MouseEvent) => {
@@ -20,6 +20,8 @@
 
             if ($activeSpace !== null) {
                 await goto("/space");
+            } else if ($page.url.pathname !== "/") {
+                await goto("/");
             }
 
             await invoke("show_main_window");

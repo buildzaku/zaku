@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { goto } from "$app/navigation";
     import { activeSpace } from "$lib/store";
     import { Button } from "$lib/components/primitives/button";
     import {
@@ -14,6 +15,7 @@
 
     async function handleDelete() {
         await activeSpace.delete();
+        await goto("/");
     }
 
     export let isCollapsed = false;
