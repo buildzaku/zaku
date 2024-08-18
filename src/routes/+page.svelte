@@ -15,10 +15,10 @@
     import { tick } from "svelte";
     import { Struct } from "$lib/utils/struct";
     import { goto } from "$app/navigation";
-    import { createWorkspace } from "$lib/store";
+    import { createSpace } from "$lib/store";
 
-    let workspaceName: string = "";
-    let workspacePath: string = "";
+    let spaceName: string = "";
+    let spacePath: string = "";
 
     async function handleBrowse() {
         // Open a selection dialog for directories
@@ -32,39 +32,39 @@
         } else {
             console.log(3);
             console.log("selected: ", selected);
-            // workspacePath = selected.length > 35 ? String("...") + selected.slice(-35) : selected;
-            workspacePath = selected;
+            // spacePath = selected.length > 35 ? String("...") + selected.slice(-35) : selected;
+            spacePath = selected;
 
-            const scrollable = document.getElementById("workspace-path");
+            const scrollable = document.getElementById("space-path");
             console.log({ scrollable });
             if (scrollable) {
                 await tick();
                 scrollable.scrollLeft = scrollable.scrollWidth;
             }
-            console.log("workspacePath: ", workspacePath);
+            console.log("spacePath: ", spacePath);
 
             // user selected a single directory
         }
     }
 
-    async function handleCreateWorkspace() {
-        const workspaceSchema = Struct.strictObject({
+    async function handleCreateSpace() {
+        const spaceSchema = Struct.strictObject({
             name: Struct.pipe(Struct.string(), Struct.minLength(1)),
             path: Struct.pipe(Struct.string(), Struct.minLength(1)),
         });
 
         console.log("yoyoyoyoyoy");
-        console.log(workspaceName, workspacePath);
+        console.log(spaceName, spacePath);
 
-        const workspaceData = Struct.parse(workspaceSchema, {
-            name: workspaceName,
-            path: workspacePath,
+        const spaceData = Struct.parse(spaceSchema, {
+            name: spaceName,
+            path: spacePath,
         });
 
-        console.log({ workspaceData });
+        console.log({ spaceData });
 
-        await createWorkspace(workspaceData);
-        await goto("/workspace");
+        await createSpace(spaceData);
+        await goto("/space");
     }
 </script>
 
@@ -72,16 +72,14 @@
     <h1 class="my-2 text-2xl font-medium">Welcome to Zaku</h1>
     <Dialog
         onOpenChange={() => {
-            workspaceName = "";
-            workspacePath = "";
+            spaceName = "";
+            spacePath = "";
         }}
     >
-        <DialogTrigger class={buttonVariants({ variant: "outline" })}>
-            + Create Workspace
-        </DialogTrigger>
+        <DialogTrigger class={buttonVariants({ variant: "outline" })}>+ Create Space</DialogTrigger>
         <DialogContent class="w-[424px] max-w-[424px]">
             <DialogHeader>
-                <DialogTitle>Create workspace</DialogTitle>
+                <DialogTitle>Create a new Space</DialogTitle>
                 <DialogDescription>
                     Make changes to your profile here. Click save when you're done.
                 </DialogDescription>
@@ -89,16 +87,16 @@
             <div class="flex w-full flex-col gap-4 py-4">
                 <div class="flex flex-col gap-1">
                     <Label for="name">Name</Label>
-                    <Input id="name" bind:value={workspaceName} />
+                    <Input id="name" bind:value={spaceName} />
                 </div>
                 <div class="flex max-w-[374px] flex-col gap-1">
                     <Label for="location">Location</Label>
                     <div class="flex h-7 w-full">
                         <div
-                            id="workspace-path"
+                            id="space-path"
                             class="container-peepoo flex h-7 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
                         >
-                            {workspacePath}
+                            {spacePath}
                         </div>
                         <Button
                             on:click={handleBrowse}
@@ -111,10 +109,11 @@
                 </div>
             </div>
             <DialogFooter>
-                <Button type="submit" on:click={handleCreateWorkspace}>Create</Button>
+                <Button type="submit" on:click={handleCreateSpace}>Create</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
+    <Button disabled variant="outline">+ Import Space</Button>
 </div>
 
 <style lang="postcss">

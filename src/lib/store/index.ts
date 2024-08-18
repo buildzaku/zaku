@@ -60,22 +60,22 @@ export type HttpRequestConfig = {
 };
 
 export const StoreKey = {
-    CurrentWorkspacePath: "active_workspace_path",
-    WorkspacePaths: "workspace_paths",
+    CurrentSpacePath: "active_space_path",
+    SpacePaths: "space_paths",
 };
 
-export type WorkspaceStoreDto = {
+export type SpaceStoreDto = {
     path: string;
     name: string;
 };
 
-export type WorkspaceMeta = {
+export type SpaceMeta = {
     name: string;
 };
 
-// Define the type for WorkspaceConfig
-export type WorkspaceConfig = {
-    meta: WorkspaceMeta;
+// Define the type for SpaceConfig
+export type SpaceConfig = {
+    meta: SpaceMeta;
 };
 
 // Define the type for Request
@@ -89,25 +89,25 @@ export type Collection = {
     requests: Request[];
 };
 
-// Define the type for Workspace
-export type Workspace = {
+// Define the type for Space
+export type Space = {
     path: string;
-    config: WorkspaceConfig;
+    config: SpaceConfig;
     collections: Collection[];
     requests: Request[];
 };
 
-type CreateWorkspaceDto = {
+type CreateSpaceDto = {
     path: string;
     name: string;
 };
 
-function createWorkspaceStore() {
-    const { set, subscribe } = writable<Workspace | null>(null);
+function createSpaceStore() {
+    const { set, subscribe } = writable<Space | null>(null);
 
     async function synchronize() {
-        const activeWorkspace: Workspace | null = await invoke("get_active_workspace");
-        set(activeWorkspace);
+        const activeSpace: Space | null = await invoke("get_active_space");
+        set(activeSpace);
         await tick();
 
         return;
@@ -117,13 +117,13 @@ function createWorkspaceStore() {
         synchronize,
         set: async (path: string) => {
             console.log("invookdingng");
-            await invoke("set_active_workspace", { path });
+            await invoke("set_active_space", { path });
             await synchronize();
 
             return;
         },
         delete: async () => {
-            await invoke("delete_active_workspace");
+            await invoke("delete_active_space");
             await synchronize();
 
             return;
@@ -132,47 +132,44 @@ function createWorkspaceStore() {
     };
 }
 
-export const activeWorkspace = createWorkspaceStore();
+export const activeSpace = createSpaceStore();
 
-export async function createWorkspace(dto: CreateWorkspaceDto) {
+export async function createSpace(dto: CreateSpaceDto) {
     try {
-        const createWorkspaceResultSchema = Struct.strictObject({
+        const createSpaceResultSchema = Struct.strictObject({
             path: Struct.string(),
         });
-        const createWorkspaceRawResult = await invoke("create_workspace", {
-            createWorkspaceDto: dto,
+        const createSpaceRawResult = await invoke("create_space", {
+            createSpaceDto: dto,
         });
 
-        const createWorkspaceResult = Struct.parse(
-            createWorkspaceResultSchema,
-            createWorkspaceRawResult,
-        );
+        const createSpaceResult = Struct.parse(createSpaceResultSchema, createSpaceRawResult);
 
-        await activeWorkspace.set(createWorkspaceResult.path);
+        await activeSpace.set(createSpaceResult.path);
 
         return;
     } catch (error) {
-        console.error("yoyoyoyoyoy createWorkspace");
+        console.error("yoyoyoyoyoy createSpace");
 
         console.log(error);
     }
 }
 
-// function createWorkspacesStore() {
-//     const { set, subscribe } = writable<Workspace[]>([]);
+// function createSpacesStore() {
+//     const { set, subscribe } = writable<Space[]>([]);
 
 //     return {
 //         set,
 //         subscribe,
-//         delete: async (workspace: WorkspaceConfig) => {
+//         delete: async (space: SpaceConfig) => {
 //             const persistedStore = await getPersistedStore();
-//             await persistedStore.set(StoreKey.CurrentWorkspace, workspace);
+//             await persistedStore.set(StoreKey.CurrentSpace, space);
 //             await persistedStore.save();
-//             set(workspace);
+//             set(space);
 
 //             return;
 //         },
 //     };
 // }
 
-// export const workspaces = createWorkspacesStore();
+// export const spaces = createSpacesStore();

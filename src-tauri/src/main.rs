@@ -11,24 +11,22 @@ pub mod types;
 pub mod utils;
 
 use constants::ZakuStoreKey;
-use core::workspace;
+use core::space;
 use types::AppState;
 
 fn main() {
     let app = tauri::Builder::default()
-        .manage(Mutex::new(AppState {
-            active_workspace: None,
-        }))
+        .manage(Mutex::new(AppState { active_space: None }))
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             let stores = app.state::<StoreCollection<tauri::Wry>>();
             let app_data_dir = app.path().app_data_dir().unwrap();
 
-            let active_workspace_path: Option<PathBuf> = tauri_plugin_store::with_store(
+            let active_space_path: Option<PathBuf> = tauri_plugin_store::with_store(
                 app.handle().clone(),
                 stores.clone(),
                 app_data_dir.clone(),
-                |store| match store.get(ZakuStoreKey::ActiveWorkspacePath.to_string()) {
+                |store| match store.get(ZakuStoreKey::ActiveSpacePath.to_string()) {
                     Some(value) if value.is_string() => {
                         let path_string = value.as_str().unwrap();
 
@@ -39,19 +37,19 @@ fn main() {
             )
             .unwrap();
 
-            match active_workspace_path {
+            match active_space_path {
                 Some(path) => {
-                    // Proceed with loading the workspace if active_workspace_path exists
-                    match workspace::parse_workspace(&path) {
-                        Ok(active_workspace) => {
+                    // Proceed with loading the space if active_space_path exists
+                    match space::parse_space(&path) {
+                        Ok(active_space) => {
                             let state = app.app_handle().state::<Mutex<AppState>>();
 
                             *state.lock().unwrap() = AppState {
-                                active_workspace: Some(active_workspace),
+                                active_space: Some(active_space),
                             };
                         }
                         Err(e) => {
-                            eprintln!("Failed to parse workspace: {}", e);
+                            eprintln!("Failed to parse space: {}", e);
                         }
                     };
                 }
@@ -67,10 +65,10 @@ fn main() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            workspace::create_workspace,
-            workspace::get_active_workspace,
-            workspace::set_active_workspace,
-            workspace::delete_active_workspace,
+            space::create_space,
+            space::get_active_space,
+            space::set_active_space,
+            space::delete_active_space,
             utils::window::show_main_window
         ]);
 

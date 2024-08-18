@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { activeWorkspace } from "$lib/store";
+    import { activeSpace } from "$lib/store";
     import { Button } from "$lib/components/primitives/button";
     import {
         DropdownMenu,
@@ -10,32 +10,32 @@
     } from "$lib/components/primitives/dropdown-menu";
 
     import { CookieIcon, SettingsIcon, Trash2Icon } from "lucide-svelte";
-    import WorkspaceSwitcher from "../workspace-switcher/workspace-switcher.svelte";
+    import { SpaceSwitcher } from "$lib/components/space-switcher";
     import { cn } from "$lib/utils/style";
 
     async function handleDelete() {
-        console.log("deleting workspace... pepeoeo");
+        console.log("deleting space... pepeoeo");
 
-        await activeWorkspace.delete();
+        await activeSpace.delete();
     }
 
-    console.log($activeWorkspace);
+    console.log($activeSpace);
     export let isCollapsed = false;
 </script>
 
-{#if $activeWorkspace}
+{#if $activeSpace}
     <div class="flex size-full flex-col justify-between">
         <div class="flex w-full items-center justify-center border-b p-1.5">
-            <WorkspaceSwitcher
-                activeWorkspace={{
-                    name: $activeWorkspace.config.meta.name,
-                    path: $activeWorkspace.path,
+            <SpaceSwitcher
+                activeSpace={{
+                    name: $activeSpace.config.meta.name,
+                    path: $activeSpace.path,
                 }}
                 {isCollapsed}
-                workspaces={[
+                spaces={[
                     {
-                        name: $activeWorkspace.config.meta.name,
-                        path: $activeWorkspace.path,
+                        name: $activeSpace.config.meta.name,
+                        path: $activeSpace.path,
                     },
                 ]}
             />
@@ -64,7 +64,7 @@
                     <DropdownMenuItem on:click={handleDelete}>
                         <div class="flex items-center gap-1.5 text-small text-destructive">
                             <Trash2Icon strokeWidth={2.25} size={13} />
-                            <span>Delete workspace</span>
+                            <span>Delete space</span>
                         </div>
                     </DropdownMenuItem>
                 </DropdownMenuContent>

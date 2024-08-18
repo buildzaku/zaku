@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct CreateWorkspaceDto {
+pub struct CreateSpaceDto {
     pub name: String,
     pub path: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct WorkspaceMeta {
+pub struct SpaceMeta {
     pub name: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct WorkspaceConfig {
-    pub meta: WorkspaceMeta,
+pub struct SpaceConfig {
+    pub meta: SpaceMeta,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -28,19 +28,19 @@ pub struct Request {
 }
 
 pub struct AppState {
-    pub active_workspace: Option<Workspace>,
+    pub active_space: Option<Space>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Workspace {
+pub struct Space {
     pub path: String,
-    pub config: WorkspaceConfig,
+    pub config: SpaceConfig,
     pub collections: Vec<Collection>,
     pub requests: Vec<Request>,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CreateWorkspaceResult {
+pub struct CreateSpaceResult {
     pub path: String,
 }
 

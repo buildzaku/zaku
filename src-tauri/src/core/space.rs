@@ -8,38 +8,38 @@ use tauri_plugin_store::StoreCollection;
 
 use crate::constants::ZakuStoreKey;
 use crate::types::{
-    AppState, Collection, CreateWorkspaceDto, CreateWorkspaceResult, Request, Workspace,
-    WorkspaceConfig, WorkspaceMeta, ZakuError,
+    AppState, Collection, CreateSpaceDto, CreateSpaceResult, Request, Space, SpaceConfig,
+    SpaceMeta, ZakuError,
 };
 
 #[tauri::command]
-pub fn get_active_workspace(state: State<Mutex<AppState>>) -> Option<Workspace> {
-    println!("getting active workspace");
+pub fn get_active_space(state: State<Mutex<AppState>>) -> Option<Space> {
+    println!("getting active space");
     let state = state.lock().unwrap();
 
-    return state.active_workspace.clone();
+    return state.active_space.clone();
 }
 
 #[tauri::command]
-pub fn set_active_workspace(
+pub fn set_active_space(
     path: String,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<AppState>>,
 ) {
-    println!("setting active workspace");
+    println!("setting active space");
 
     let path = PathBuf::from(path.as_str());
 
     match path.exists() {
-        true => match parse_workspace(&path) {
-            Ok(active_workspace) => {
+        true => match parse_space(&path) {
+            Ok(active_space) => {
                 let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
                 tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
                     store
                         .insert(
-                            ZakuStoreKey::ActiveWorkspacePath.to_string(),
+                            ZakuStoreKey::ActiveSpacePath.to_string(),
                             serde_json::json!(path.to_str()),
                         )
                         .map_err(|e| e.to_string())
@@ -48,7 +48,7 @@ pub fn set_active_workspace(
                     store.save().unwrap();
 
                     let saved_path = store
-                        .get(ZakuStoreKey::ActiveWorkspacePath.to_string())
+                        .get(ZakuStoreKey::ActiveSpacePath.to_string())
                         .unwrap();
 
                     println!("Retrieved path: {}", saved_path);
@@ -58,7 +58,7 @@ pub fn set_active_workspace(
                 .unwrap();
 
                 *state.lock().unwrap() = AppState {
-                    active_workspace: Some(active_workspace),
+                    active_space: Some(active_space),
                 };
             }
             Err(err) => {
@@ -72,57 +72,57 @@ pub fn set_active_workspace(
 }
 
 #[tauri::command]
-pub fn create_workspace(
-    create_workspace_dto: CreateWorkspaceDto,
+pub fn create_space(
+    create_space_dto: CreateSpaceDto,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<AppState>>,
-) -> Result<CreateWorkspaceResult, ZakuError> {
-    println!("Creating new workspace");
+) -> Result<CreateSpaceResult, ZakuError> {
+    println!("Creating new space");
 
-    let location = PathBuf::from(create_workspace_dto.path.as_str());
+    let location = PathBuf::from(create_space_dto.path.as_str());
 
     match location.exists() {
         true => {
-            let workspace_path = location.join(create_workspace_dto.name.clone());
+            let space_path = location.join(create_space_dto.name.clone());
 
-            if workspace_path.exists() {
+            if space_path.exists() {
                 return Err(ZakuError {
-                    error: format!("Directory already exists at {}", workspace_path.display()),
+                    error: format!("Directory already exists at {}", space_path.display()),
                 });
             }
 
-            fs::create_dir(&workspace_path).expect("Failed to create workspace directory");
+            fs::create_dir(&space_path).expect("Failed to create space directory");
 
-            let workspace_meta_path = workspace_path.join(".zaku");
-            fs::create_dir(&workspace_meta_path).expect("Failed to create .zaku directory");
+            let space_meta_path = space_path.join(".zaku");
+            fs::create_dir(&space_meta_path).expect("Failed to create .zaku directory");
 
-            let mut workspace_config_file = File::create(&workspace_meta_path.join("config.toml"))
+            let mut space_config_file = File::create(&space_meta_path.join("config.toml"))
                 .expect("Failed to create config.toml");
 
-            let workspace_config = WorkspaceConfig {
-                meta: WorkspaceMeta {
-                    name: create_workspace_dto.name,
+            let space_config = SpaceConfig {
+                meta: SpaceMeta {
+                    name: create_space_dto.name,
                 },
             };
 
-            workspace_config_file
+            space_config_file
                 .write_all(
-                    toml::to_string_pretty(&workspace_config)
-                        .expect("Failed to serialize workspace config")
+                    toml::to_string_pretty(&space_config)
+                        .expect("Failed to serialize space config")
                         .as_bytes(),
                 )
                 .expect("Failed to write to config file");
 
-            match parse_workspace(&workspace_path) {
-                Ok(active_workspace) => {
+            match parse_space(&space_path) {
+                Ok(active_space) => {
                     let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
                     tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
                         store
                             .insert(
-                                ZakuStoreKey::ActiveWorkspacePath.to_string(),
-                                serde_json::json!(workspace_path.to_str()),
+                                ZakuStoreKey::ActiveSpacePath.to_string(),
+                                serde_json::json!(space_path.to_str()),
                             )
                             .map_err(|e| e.to_string())
                             .unwrap();
@@ -130,7 +130,7 @@ pub fn create_workspace(
                         store.save().unwrap();
 
                         let saved_path = store
-                            .get(ZakuStoreKey::ActiveWorkspacePath.to_string())
+                            .get(ZakuStoreKey::ActiveSpacePath.to_string())
                             .unwrap();
 
                         println!("Retrieved path: {}", saved_path);
@@ -140,21 +140,21 @@ pub fn create_workspace(
                     .unwrap();
 
                     *state.lock().unwrap() = AppState {
-                        active_workspace: Some(active_workspace),
+                        active_space: Some(active_space),
                     };
 
-                    return Ok(CreateWorkspaceResult {
-                        path: workspace_path
+                    return Ok(CreateSpaceResult {
+                        path: space_path
                             .to_str()
-                            .expect("Failed to convert workspace path to string")
+                            .expect("Failed to convert space path to string")
                             .to_string(),
                     });
                 }
                 Err(err) => {
                     return Err(ZakuError {
                         error: format!(
-                            "Failed to parse the workspace {}: {}",
-                            workspace_path.display(),
+                            "Failed to parse the space {}: {}",
+                            space_path.display(),
                             err
                         ),
                     });
@@ -163,24 +163,24 @@ pub fn create_workspace(
         }
         false => {
             return Err(ZakuError {
-                error: format!("Path does not exist: {}", create_workspace_dto.path),
+                error: format!("Path does not exist: {}", create_space_dto.path),
             });
         }
     }
 }
 
 #[tauri::command]
-pub fn delete_active_workspace(
+pub fn delete_active_space(
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<AppState>>,
 ) {
-    println!("deleting active workspace");
+    println!("deleting active space");
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
     tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
         store
-            .delete(ZakuStoreKey::ActiveWorkspacePath.to_string())
+            .delete(ZakuStoreKey::ActiveSpacePath.to_string())
             .map_err(|e| e.to_string())
             .unwrap();
 
@@ -191,37 +191,37 @@ pub fn delete_active_workspace(
     .unwrap();
 
     *state.lock().unwrap() = AppState {
-        active_workspace: None,
+        active_space: None,
     };
 }
 
-pub fn parse_workspace(path: &Path) -> Result<Workspace, Error> {
+pub fn parse_space(path: &Path) -> Result<Space, Error> {
     // Initialize a vector to store collections
     let mut collections: Vec<Collection> = Vec::new();
     // Initialize a vector to store requests found at the root level
     let mut requests: Vec<Request> = Vec::new();
 
-    // Create the full path to the config.toml file in the workspace
+    // Create the full path to the config.toml file in the space
     let config_path = path.join(".zaku/config.toml");
 
     // Reading the config file with error context
-    let workspace_config_content = fs::read_to_string(&config_path).map_err(|e| {
+    let space_config_content = fs::read_to_string(&config_path).map_err(|e| {
         Error::new(
             ErrorKind::NotFound,
             format!("Failed to load {}: {}", config_path.display(), e),
         )
     })?;
 
-    // Parsing workspace config with error context
-    let workspace_config: WorkspaceConfig =
-        toml::from_str(&workspace_config_content).map_err(|err| {
+    // Parsing space config with error context
+    let space_config: SpaceConfig =
+        toml::from_str(&space_config_content).map_err(|err| {
             Error::new(
                 ErrorKind::InvalidData,
                 format!("Failed to parse {}: {}", config_path.display(), err),
             )
         })?;
 
-    // Stack to keep track of directories to process, starting with the root workspace directory
+    // Stack to keep track of directories to process, starting with the root space directory
     let mut directories_to_process: VecDeque<PathBuf> = VecDeque::new();
     directories_to_process.push_back(path.to_path_buf());
 
@@ -294,9 +294,9 @@ pub fn parse_workspace(path: &Path) -> Result<Workspace, Error> {
         }
     }
 
-    return Ok(Workspace {
+    return Ok(Space {
         path: path.to_string_lossy().into_owned(),
-        config: workspace_config,
+        config: space_config,
         collections,
         requests,
     });

@@ -7,7 +7,7 @@
 
     import { onDestroy, onMount } from "svelte";
     import { goto } from "$app/navigation";
-    import { activeWorkspace } from "$lib/store";
+    import { activeSpace } from "$lib/store";
 
     let welcomeMessage: string | null = null;
 
@@ -17,17 +17,17 @@
 
     const synchronize = async () => {
         try {
-            // console.log("Invoking `create_workspace`");
-            // const createWorkspace = await invoke("create_workspace", { path: "yeoolooo" });
-            // console.log("create_workspace result:");
-            // console.log({ createWorkspace });
+            // console.log("Invoking `create_space`");
+            // const createSpace = await invoke("create_space", { path: "yeoolooo" });
+            // console.log("create_space result:");
+            // console.log({ createSpace });
 
-            await activeWorkspace.synchronize();
-            console.log({ activeWorkspace: $activeWorkspace });
+            await activeSpace.synchronize();
+            console.log({ activeSpace: $activeSpace });
 
-            if ($activeWorkspace !== null) {
+            if ($activeSpace !== null) {
                 console.log("FOUND!!");
-                await goto("/workspace");
+                await goto("/space");
             } else {
                 console.log("NOT FOUND!!");
             }
@@ -49,7 +49,7 @@
         document.removeEventListener("contextmenu", disableContextMenu);
     });
 
-    $: $activeWorkspace === null, goto("/");
+    $: $activeSpace === null, goto("/");
 </script>
 
 <ModeWatcher defaultMode="dark" track={false} />

@@ -1,1 +1,1 @@
-pub mod workspace;
+pub mod space;
