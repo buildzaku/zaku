@@ -39,7 +39,6 @@ fn main() {
 
             match active_space_path {
                 Some(path) => {
-                    // Proceed with loading the space if active_space_path exists
                     match space::parse_space(&path) {
                         Ok(active_space) => {
                             let state = app.app_handle().state::<Mutex<AppState>>();
@@ -57,8 +56,6 @@ fn main() {
                     eprintln!("PATH NOT FOUND!!");
                 }
             }
-
-            println!("returnrnrn");
 
             return Ok(());
         })

@@ -15,7 +15,6 @@ use crate::types::{
 
 #[tauri::command]
 pub fn get_active_space(state: State<Mutex<AppState>>) -> Option<Space> {
-    println!("getting active space");
     let state = state.lock().unwrap();
 
     return state.active_space.clone();
@@ -23,51 +22,47 @@ pub fn get_active_space(state: State<Mutex<AppState>>) -> Option<Space> {
 
 #[tauri::command]
 pub fn set_active_space(
-    path: String,
+    space_root_path: String,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<AppState>>,
-) {
-    println!("setting active space");
+) -> Result<(), ZakuError> {
+    let space_root_path = PathBuf::from(space_root_path.as_str());
 
-    let path = PathBuf::from(path.as_str());
+    if space_root_path.exists() {
+        return Err(ZakuError {
+            error: format!("Directory already exists at {}", space_root_path.display()),
+        });
+    }
 
-    match path.exists() {
-        true => match parse_space(&path) {
-            Ok(active_space) => {
-                let app_data_dir = app_handle.path().app_data_dir().unwrap();
+    match parse_space(&space_root_path) {
+        Ok(active_space) => {
+            let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
-                tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
-                    store
-                        .insert(
-                            ZakuStoreKey::ActiveSpacePath.to_string(),
-                            serde_json::json!(path.to_str()),
-                        )
-                        .map_err(|e| e.to_string())
-                        .unwrap();
+            tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
+                store
+                    .insert(
+                        ZakuStoreKey::ActiveSpacePath.to_string(),
+                        serde_json::json!(space_root_path.to_str()),
+                    )
+                    .map_err(|err| err.to_string())
+                    .unwrap();
+                store.save().unwrap();
 
-                    store.save().unwrap();
+                return Ok(());
+            })
+            .unwrap();
 
-                    let saved_path = store
-                        .get(ZakuStoreKey::ActiveSpacePath.to_string())
-                        .unwrap();
+            *state.lock().unwrap() = AppState {
+                active_space: Some(active_space),
+            };
 
-                    println!("Retrieved path: {}", saved_path);
-
-                    return Ok(());
-                })
-                .unwrap();
-
-                *state.lock().unwrap() = AppState {
-                    active_space: Some(active_space),
-                };
-            }
-            Err(err) => {
-                eprintln!("Unable to set app state, {}", err);
-            }
-        },
-        false => {
-            eprintln!("Path does not exist.");
+            return Ok(());
+        }
+        Err(err) => {
+            return Err(ZakuError {
+                error: format!("Unable to parse space: {}", err),
+            });
         }
     }
 }
@@ -87,7 +82,6 @@ pub fn create_space(
     }
 
     let space_root_path = location.join(create_space_dto.name.clone());
-
     if space_root_path.exists() {
         return Err(ZakuError {
             error: format!("Directory already exists at {}", space_root_path.display()),

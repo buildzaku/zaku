@@ -105,7 +105,6 @@ function createSpaceStore() {
     return {
         synchronize,
         set: async (path: string) => {
-            console.log("invookdingng");
             await invoke("set_active_space", { path });
             await synchronize();
 
