@@ -1,5 +1,16 @@
 # zaku
 
+## 0.2.0
+
+### Minor Changes
+
+-   Setup app state and ability to create space on launch - [`08e83ca`](https://github.com/buildzaku/zaku/commit/08e83ca9748c2960cbf97dcf7b89736d2bcfaaa6) [#7](https://github.com/buildzaku/zaku/pull/7)
+
+    -   Remove unused dependencies
+    -   Pin all crates
+    -   Implement get/set/delete active space invoke commands
+    -   Get rid of problematic custom title bar
+
 ## 0.1.1
 
 ### Patch Changes
