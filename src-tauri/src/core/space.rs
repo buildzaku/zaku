@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
@@ -194,29 +195,14 @@ pub fn delete_active_space(
 }
 
 pub fn parse_space(path: &Path) -> Result<Space, Error> {
-    let root_path = path;
-    let config_path = root_path.join(".zaku/config.toml");
-    let space_config: SpaceConfig = fs::read_to_string(&config_path)
-        .map_err(|e| {
-            Error::new(
-                ErrorKind::NotFound,
-                format!("Failed to load {}: {}", config_path.display(), e),
-            )
-        })
-        .and_then(|content| {
-            toml::from_str(&content).map_err(|err| {
-                Error::new(
-                    ErrorKind::InvalidData,
-                    format!("Failed to parse {}: {}", config_path.display(), err),
-                )
-            })
-        })?;
+    let space_path = path;
+    let space_config = parse_space_config(&space_path)?;
 
     let mut collections: Vec<Collection> = Vec::new();
     let mut requests: Vec<Request> = Vec::new();
-
     let mut directories: VecDeque<PathBuf> = VecDeque::new();
-    directories.push_back(root_path.to_path_buf());
+
+    directories.push_back(space_path.to_path_buf());
 
     while let Some(current_directory) = directories.pop_front() {
         let sub_directories = fs::read_dir(&current_directory).map_err(|err| {
@@ -230,62 +216,87 @@ pub fn parse_space(path: &Path) -> Result<Space, Error> {
             )
         })?;
 
-        for sub_directory in sub_directories {
-            let entry_path = sub_directory
-                .map_err(|err| {
-                    Error::new(
-                        ErrorKind::Other,
-                        format!(
-                            "Failed to access sub directory in {}: {}",
-                            current_directory.display(),
-                            err
-                        ),
-                    )
-                })?
-                .path();
-            let entry_name = entry_path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .into_owned();
+        for entry in sub_directories {
+            let entry = entry.map_err(|err| {
+                Error::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Failed to access sub directory in {}: {}",
+                        current_directory.display(),
+                        err
+                    ),
+                )
+            })?;
+            let entry_path = entry.path();
 
-            if entry_path.is_file() {
-                if entry_name.ends_with(".toml") {
-                    if current_directory == root_path {
-                        requests.push(Request { name: entry_name });
-                    } else {
-                        let parent_directory = current_directory
+            if entry_path.is_file() && entry_path.extension() == Some(OsStr::new("toml")) {
+                if current_directory == space_path {
+                    requests.push(Request {
+                        name: entry_path
                             .file_name()
                             .unwrap()
                             .to_string_lossy()
-                            .into_owned();
-                        if let Some(collection) = collections
-                            .iter_mut()
-                            .find(|collection| collection.name == parent_directory)
-                        {
-                            collection.requests.push(Request { name: entry_name });
+                            .into_owned(),
+                    });
+                } else {
+                    let parent_directory = current_directory.file_name().unwrap().to_string_lossy();
+                    let target_collection = collections
+                        .iter_mut()
+                        .find(|collection| collection.name == parent_directory);
+
+                    match target_collection {
+                        Some(collection) => {
+                            collection.requests.push(Request {
+                                name: entry_path
+                                    .file_name()
+                                    .unwrap()
+                                    .to_string_lossy()
+                                    .into_owned(),
+                            });
                         }
+                        None => (),
                     }
                 }
             } else if entry_path.is_dir() {
-                if entry_name == ".zaku" && current_directory != root_path {
+                let entry_name = entry_path.file_name().unwrap().to_string_lossy();
+                if entry_name == ".zaku" && current_directory != space_path {
                     continue;
-                } else if current_directory == root_path && entry_name != ".zaku" {
+                }
+
+                if current_directory == space_path && entry_name != ".zaku" {
                     collections.push(Collection {
-                        name: entry_name.clone(),
+                        name: entry_name.into_owned(),
                         requests: Vec::new(),
                     });
-
-                    directories.push_back(entry_path);
                 }
+
+                directories.push_back(entry_path);
             }
         }
     }
 
     return Ok(Space {
-        path: root_path.to_string_lossy().into_owned(),
+        path: space_path.to_string_lossy().into_owned(),
         config: space_config,
         collections,
         requests,
     });
+}
+
+pub fn parse_space_config(path: &Path) -> Result<SpaceConfig, Error> {
+    return fs::read_to_string(path.join(".zaku/config.toml"))
+        .map_err(|err| {
+            Error::new(
+                ErrorKind::NotFound,
+                format!("Failed to load {}: {}", path.display(), err),
+            )
+        })
+        .and_then(|content| {
+            toml::from_str(&content).map_err(|err| {
+                Error::new(
+                    ErrorKind::InvalidData,
+                    format!("Failed to parse {}: {}", path.display(), err),
+                )
+            })
+        });
 }
