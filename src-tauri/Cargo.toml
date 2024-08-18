@@ -9,13 +9,13 @@ homepage = "https://zaku.app"
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "=2.0.0-beta.19", features = [] }
+tauri-build = { version = "=2.0.0-rc.3", features = [] }
 
 [dependencies]
 serde = { version = "=1.0.203", features = ["derive"] }
 serde_json = { version = "=1.0.117" }
-tauri = { version = "=2.0.0-beta.24", features = [] }
-tauri-plugin-dialog = { version = "=2.0.0-beta.10" }
-tauri-plugin-http = { version = "=2.0.0-beta.10" }
-tauri-plugin-store = { version = "=2.0.0-beta.10" }
+tauri = { version = "=2.0.0-rc.3", features = [] }
+tauri-plugin-dialog = { version = "=2.0.0-rc.1" }
+tauri-plugin-http = { version = "=2.0.0-rc.0" }
+tauri-plugin-store = { version = "=2.0.0-rc.1" }
 toml = { version = "=0.8.17" }
