@@ -13,13 +13,14 @@ const buttonVariants = tv({
                 "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
             secondary: "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
             ghost: "hover:text-accent-foreground",
+            "ghost-hover": "hover:bg-accent hover:text-accent-foreground",
             link: "text-primary underline-offset-4 hover:underline",
         },
         size: {
-            default: "h-7 px-3 py-2",
-            sm: "h-6 rounded-md px-3 text-xs",
+            default: "h-6 px-3 py-2",
+            sm: "h-5 rounded-md px-3 text-xs",
             lg: "h-9 rounded-md px-8",
-            icon: "h-7 w-7",
+            icon: "size-6",
         },
     },
     defaultVariants: {

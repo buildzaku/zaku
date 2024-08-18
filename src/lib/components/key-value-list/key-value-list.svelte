@@ -21,7 +21,7 @@
 <div class={`flex flex-col gap-2 ${$$props["class"]}`}>
     {#each pairs as pair, index}
         <div class="flex gap-2">
-            <div class="flex size-7 items-center justify-center">
+            <div class="flex size-6 items-center justify-center">
                 <Checkbox
                     checked={pair.include}
                     onCheckedChange={() => {
