@@ -17,7 +17,7 @@
             on:click={toggleMode}
             variant="ghost-hover"
             size="icon"
-            class="size-7 min-h-7 min-w-7 p-1"
+            class="size-6 min-h-6 min-w-6 p-1"
         >
             <Sun size={14} class="block dark:hidden" ariaLabel="light" />
             <Moon size={14} class="hidden dark:block" ariaLabel="dark" />

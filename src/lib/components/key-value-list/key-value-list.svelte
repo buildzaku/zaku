@@ -21,7 +21,7 @@
 <div class={`flex flex-col gap-2 ${$$props["class"]}`}>
     {#each pairs as pair, index}
         <div class="flex gap-2">
-            <div class="flex size-7 items-center justify-center">
+            <div class="flex size-6 items-center justify-center">
                 <Checkbox
                     checked={pair.include}
                     onCheckedChange={() => {
@@ -53,7 +53,7 @@
         </div>
     {/each}
     <div>
-        <Button variant="ghost" on:click={addPair} class="h-7 gap-1 border px-2">
+        <Button variant="ghost" on:click={addPair} class="h-6 gap-1 border px-2">
             <Plus size={14} />
             <span class="text-small">
                 Add {type.replace(/^(.)/, match => match.toUpperCase())}

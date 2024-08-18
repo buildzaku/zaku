@@ -17,10 +17,10 @@ const buttonVariants = tv({
             link: "text-primary underline-offset-4 hover:underline",
         },
         size: {
-            default: "h-7 px-3 py-2",
-            sm: "h-6 rounded-md px-3 text-xs",
+            default: "h-6 px-3 py-2",
+            sm: "h-5 rounded-md px-3 text-xs",
             lg: "h-9 rounded-md px-8",
-            icon: "size-7",
+            icon: "size-6",
         },
     },
     defaultVariants: {

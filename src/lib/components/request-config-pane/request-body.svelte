@@ -51,7 +51,7 @@
                     <CommandItem
                         value={BODY_TYPE}
                         onSelect={value => handleSelect(value, ids.trigger)}
-                        class="flex h-7 justify-between"
+                        class="flex h-6 justify-between"
                     >
                         <span>{BODY_TYPE}</span>
                         <DotFilled
