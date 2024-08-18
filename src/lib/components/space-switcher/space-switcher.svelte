@@ -14,10 +14,6 @@
     export let isCollapsed: boolean;
     export let activeSpace: SpaceStoreDto;
     export let spaces: SpaceStoreDto[];
-
-    // onSelectedChange={e => {
-    //     selectedAccount = spaces.find(account => account.email === e?.value) || spaces[0];
-    // }}
 </script>
 
 <div class="h-6 w-full">

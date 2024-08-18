@@ -14,7 +14,7 @@ tauri-build = { version = "=2.0.0-beta.19", features = [] }
 [dependencies]
 serde = { version = "=1.0.203", features = ["derive"] }
 serde_json = { version = "=1.0.117" }
-tauri = { version = "=2.0.0-beta.24", features = ["macos-private-api"] }
+tauri = { version = "=2.0.0-beta.24", features = [] }
 tauri-plugin-dialog = { version = "=2.0.0-beta.10" }
 tauri-plugin-http = { version = "=2.0.0-beta.10" }
 tauri-plugin-store = { version = "=2.0.0-beta.10" }
