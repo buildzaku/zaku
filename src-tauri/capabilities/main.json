@@ -1,6 +1,6 @@
 {
     "$schema": "../gen/schemas/desktop-schema.json",
-    "identifier": "default",
+    "identifier": "main",
     "description": "Capability for the main window",
     "windows": ["main"],
     "permissions": [
@@ -12,7 +12,6 @@
         "resources:default",
         "menu:default",
         "tray:default",
-        "shell:allow-open",
         {
             "identifier": "http:default",
             "allow": [{ "url": "https://*" }, { "url": "http://*" }]
@@ -21,6 +20,8 @@
         "window:allow-close",
         "window:allow-minimize",
         "window:allow-is-fullscreen",
-        "window:allow-set-fullscreen"
+        "window:allow-set-fullscreen",
+        "store:default",
+        "dialog:default"
     ]
 }

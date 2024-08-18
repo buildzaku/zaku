@@ -1,133 +1,119 @@
 <script lang="ts">
-    import { fetch } from "@tauri-apps/plugin-http";
-
-    import { version } from "$app/environment";
-    import { Button } from "$lib/components/primitives/button";
-    import { Input } from "$lib/components/primitives/input";
-    import type { KeyValuePair, RequestStatus } from "$lib/utils/api";
+    import { Button, buttonVariants } from "$lib/components/primitives/button";
     import {
-        ResizablePaneGroup,
-        ResizablePane,
-        ResizableHandle,
-    } from "$lib/components/primitives/resizable";
-    import { SelectMethod } from "$lib/components/select-method";
-    import { METHODS } from "$lib/utils/constants";
-    import { Sidebar } from "$lib/components/primitives/sidebar";
-    import { RequestConfigPane } from "$lib/components/request-config-pane";
-    import { ResponsePane } from "$lib/components/response-pane";
+        Dialog,
+        DialogContent,
+        DialogDescription,
+        DialogFooter,
+        DialogHeader,
+        DialogTitle,
+        DialogTrigger,
+    } from "$lib/components/primitives/dialog";
+    import { Label } from "$lib/components/primitives/label";
+    import { Input } from "$lib/components/primitives/input";
+    import { open } from "@tauri-apps/plugin-dialog";
+    import { tick } from "svelte";
+    import { Struct } from "$lib/utils/struct";
+    import { goto } from "$app/navigation";
+    import { createSpace } from "$lib/store";
 
-    let requestStatus: RequestStatus = "idle";
-    let currentUrl = "";
-    let json = "";
-    let error = "";
-    let method = METHODS.GET;
-    let iframeSrcDoc = "";
+    let spaceName: string = "";
+    let spacePath: string = "";
 
-    let currentRequestParams: KeyValuePair[] = [];
-    let currentRequestHeaders: KeyValuePair[] = [
-        {
-            key: "Cache-Control",
-            value: "no-cache",
-            include: true,
-        },
-        {
-            key: "User-Agent",
-            value: `Zaku/${version}`,
-            include: true,
-        },
-    ];
+    async function handleBrowse() {
+        const selected = await open({
+            directory: true,
+            multiple: false,
+        });
+        if (selected !== null) {
+            spacePath = selected;
 
-    async function handleSend() {
-        try {
-            requestStatus = "loading";
+            const spacePathContainerElement = document.getElementById("space-path-container");
 
-            const validProtocol = new RegExp(/^(https?:\/\/)/i);
-            if (!validProtocol.test(currentUrl)) {
-                throw new Error("Invalid or missing Protocol");
+            if (spacePathContainerElement) {
+                await tick();
+                const rightMostPosition = spacePathContainerElement.scrollWidth;
+                spacePathContainerElement.scrollLeft = rightMostPosition;
             }
+        }
+    }
 
-            const url = new URL(currentUrl);
-
-            currentRequestParams.reduceRight((acc, cur) => {
-                if (cur.include && !url.searchParams.has(cur.key)) {
-                    url.searchParams.set(cur.key, cur.value);
-                }
-
-                return acc;
-            }, []);
-
-            const response = await fetch(url, {
-                method: method.value,
-                headers: currentRequestHeaders.reduceRight((acc: Record<string, string>, cur) => {
-                    if (cur.include && !(cur.key in acc)) {
-                        acc[cur.key] = cur.value;
-                    }
-                    return acc;
-                }, {}),
+    async function handleCreateSpace() {
+        try {
+            const spaceSchema = Struct.strictObject({
+                name: Struct.pipe(Struct.string(), Struct.minLength(1)),
+                path: Struct.pipe(Struct.string(), Struct.minLength(1)),
             });
 
-            if (!response.ok) {
-                throw new Error(`${response.status}`);
-            }
+            const spaceData = Struct.parse(spaceSchema, {
+                name: spaceName,
+                path: spacePath,
+            });
 
-            json = await response.text();
-            iframeSrcDoc = json;
-
-            requestStatus = "success";
+            await createSpace(spaceData);
+            await goto("/space");
         } catch (err) {
-            requestStatus = "error";
-            if (err instanceof Error) {
-                error = err.message;
-            } else {
-                error = "Not found";
-            }
+            // TODO - show error toast
+            console.error(err);
         }
     }
 </script>
 
-<div class="flex size-full flex-col items-center justify-center gap-4">
-    <ResizablePaneGroup direction="horizontal" class="w-full">
-        <ResizablePane
-            defaultSize={15}
-            minSize={15}
-            maxSize={45}
-            collapsedSize={5}
-            collapsible={true}
-        >
-            <Sidebar />
-        </ResizablePane>
-        <ResizablePane
-            defaultSize={50}
-            class="relative my-1.5 mr-1.5 rounded-md border border-l-0 bg-card"
-        >
-            <ResizableHandle withHandle class="absolute z-10 h-full" />
-            <ResizablePaneGroup direction="vertical" class="size-full">
-                <div class="p-3">
-                    <div class="mb-3 flex">New HTTP request</div>
-                    <div>
-                        <form class="flex gap-2">
-                            <SelectMethod bind:selected={method} />
-                            <Input bind:value={currentUrl} type="text" class="font-mono text-xs" />
-                            <Button type="submit" on:click={handleSend}>Send</Button>
-                        </form>
+<div class="flex size-full flex-col items-center justify-center gap-2">
+    <h1 class="my-2 text-2xl font-medium">Welcome to Zaku</h1>
+    <Dialog
+        onOpenChange={() => {
+            spaceName = "";
+            spacePath = "";
+        }}
+    >
+        <DialogTrigger class={buttonVariants({ variant: "outline" })}>+ Create Space</DialogTrigger>
+        <DialogContent class="w-[424px] max-w-[424px]">
+            <DialogHeader>
+                <DialogTitle>Create a new Space</DialogTitle>
+                <DialogDescription>
+                    Make changes to your profile here. Click save when you're done.
+                </DialogDescription>
+            </DialogHeader>
+            <div class="flex w-full flex-col gap-4 py-4">
+                <div class="flex flex-col gap-1">
+                    <Label for="name">Name</Label>
+                    <Input id="name" bind:value={spaceName} />
+                </div>
+                <div class="flex max-w-[374px] flex-col gap-1">
+                    <Label for="location">Location</Label>
+                    <div class="flex h-6 w-full">
+                        <button
+                            id="space-path-container"
+                            class="scrollbar-hidden flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
+                            on:click={handleBrowse}
+                        >
+                            {spacePath}
+                        </button>
+                        <Button
+                            on:click={handleBrowse}
+                            class="col-span-1 h-6 w-[80px] rounded-l-none"
+                            variant="outline"
+                        >
+                            Browse
+                        </Button>
                     </div>
                 </div>
-                <ResizablePane defaultSize={25} minSize={20} collapsedSize={5.5} collapsible={true}>
-                    <RequestConfigPane
-                        bind:parameters={currentRequestParams}
-                        bind:headers={currentRequestHeaders}
-                    />
-                </ResizablePane>
-                <ResizableHandle withHandle />
-                <ResizablePane defaultSize={75} minSize={20} collapsedSize={5} collapsible={true}>
-                    <ResponsePane
-                        bind:status={requestStatus}
-                        bind:raw={json}
-                        bind:preview={iframeSrcDoc}
-                        bind:error
-                    />
-                </ResizablePane>
-            </ResizablePaneGroup>
-        </ResizablePane>
-    </ResizablePaneGroup>
+            </div>
+            <DialogFooter>
+                <Button type="submit" on:click={handleCreateSpace}>Create</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+    <Button disabled variant="link" class="text-foreground">+ Open Existing Space</Button>
 </div>
+
+<style lang="postcss">
+    .scrollbar-hidden {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+    .scrollbar-hidden::-webkit-scrollbar {
+        display: none;
+    }
+</style>

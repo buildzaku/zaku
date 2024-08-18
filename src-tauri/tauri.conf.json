@@ -15,14 +15,15 @@
                 "height": 755,
                 "minWidth": 800,
                 "minHeight": 512,
-                "decorations": false,
-                "transparent": true,
-                "shadow": false
+                "visible": false,
+                "decorations": true,
+                "titleBarStyle": "Overlay",
+                "hiddenTitle": true
             }
         ],
-        "macOSPrivateApi": true,
         "security": {
-            "csp": null
+            "csp": null,
+            "capabilities": ["main"]
         }
     },
     "bundle": {
