@@ -21,50 +21,40 @@
     let spacePath: string = "";
 
     async function handleBrowse() {
-        // Open a selection dialog for directories
         const selected = await open({
             directory: true,
             multiple: false,
         });
-        if (selected === null) {
-            console.log(2);
-            // user cancelled the selection
-        } else {
-            console.log(3);
-            console.log("selected: ", selected);
-            // spacePath = selected.length > 35 ? String("...") + selected.slice(-35) : selected;
+        if (selected !== null) {
             spacePath = selected;
 
-            const scrollable = document.getElementById("space-path");
-            console.log({ scrollable });
-            if (scrollable) {
-                await tick();
-                scrollable.scrollLeft = scrollable.scrollWidth;
-            }
-            console.log("spacePath: ", spacePath);
+            const spacePathContainerElement = document.getElementById("space-path-container");
 
-            // user selected a single directory
+            if (spacePathContainerElement) {
+                await tick();
+                const rightMostPosition = spacePathContainerElement.scrollWidth;
+                spacePathContainerElement.scrollLeft = rightMostPosition;
+            }
         }
     }
 
     async function handleCreateSpace() {
-        const spaceSchema = Struct.strictObject({
-            name: Struct.pipe(Struct.string(), Struct.minLength(1)),
-            path: Struct.pipe(Struct.string(), Struct.minLength(1)),
-        });
+        try {
+            const spaceSchema = Struct.strictObject({
+                name: Struct.pipe(Struct.string(), Struct.minLength(1)),
+                path: Struct.pipe(Struct.string(), Struct.minLength(1)),
+            });
 
-        console.log("yoyoyoyoyoy");
-        console.log(spaceName, spacePath);
+            const spaceData = Struct.parse(spaceSchema, {
+                name: spaceName,
+                path: spacePath,
+            });
 
-        const spaceData = Struct.parse(spaceSchema, {
-            name: spaceName,
-            path: spacePath,
-        });
-
-        console.log({ spaceData });
-
-        await createSpace(spaceData);
-        await goto("/space");
+            await createSpace(spaceData);
+            await goto("/space");
+        } catch (err) {
+            console.error(err);
+        }
     }
 </script>
 
@@ -93,8 +83,8 @@
                     <Label for="location">Location</Label>
                     <div class="flex h-6 w-full">
                         <div
-                            id="space-path"
-                            class="container-peepoo flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
+                            id="space-path-container"
+                            class="scrollbar-hidden flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
                         >
                             {spacePath}
                         </div>
@@ -117,11 +107,11 @@
 </div>
 
 <style lang="postcss">
-    .container-peepoo {
+    .scrollbar-hidden {
         -ms-overflow-style: none;
         scrollbar-width: none;
     }
-    .container-peepoo::-webkit-scrollbar {
+    .scrollbar-hidden::-webkit-scrollbar {
         display: none;
     }
 </style>

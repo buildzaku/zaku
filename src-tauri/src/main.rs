@@ -47,14 +47,10 @@ fn main() {
                                 active_space: Some(active_space),
                             };
                         }
-                        Err(e) => {
-                            eprintln!("Failed to parse space: {}", e);
-                        }
+                        Err(_) => (),
                     };
                 }
-                None => {
-                    eprintln!("PATH NOT FOUND!!");
-                }
+                None => (),
             }
 
             return Ok(());

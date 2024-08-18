@@ -105,7 +105,7 @@ function createSpaceStore() {
     return {
         synchronize,
         set: async (path: string) => {
-            await invoke("set_active_space", { path });
+            await invoke("set_active_space", { spaceRootPath: path });
             await synchronize();
 
             return;
@@ -123,24 +123,18 @@ function createSpaceStore() {
 export const activeSpace = createSpaceStore();
 
 export async function createSpace(dto: CreateSpaceDto) {
-    try {
-        const createSpaceResultSchema = Struct.strictObject({
-            path: Struct.string(),
-        });
-        const createSpaceRawResult = await invoke("create_space", {
-            createSpaceDto: dto,
-        });
+    const createSpaceResultSchema = Struct.strictObject({
+        path: Struct.string(),
+    });
+    const createSpaceRawResult = await invoke("create_space", {
+        createSpaceDto: dto,
+    });
 
-        const createSpaceResult = Struct.parse(createSpaceResultSchema, createSpaceRawResult);
+    const createSpaceResult = Struct.parse(createSpaceResultSchema, createSpaceRawResult);
 
-        await activeSpace.set(createSpaceResult.path);
+    await activeSpace.set(createSpaceResult.path);
 
-        return;
-    } catch (error) {
-        console.error("yoyoyoyoyoy createSpace");
-
-        console.log(error);
-    }
+    return;
 }
 
 // function createSpacesStore() {

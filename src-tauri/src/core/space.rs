@@ -125,12 +125,6 @@ pub fn create_space(
 
                 store.save().unwrap();
 
-                let saved_path = store
-                    .get(ZakuStoreKey::ActiveSpacePath.to_string())
-                    .unwrap();
-
-                println!("Retrieved path: {}", saved_path);
-
                 return Ok(());
             })
             .unwrap();
@@ -164,7 +158,6 @@ pub fn delete_active_space(
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<AppState>>,
 ) {
-    println!("deleting active space");
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
     tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {

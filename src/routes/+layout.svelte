@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { dev } from "$app/environment";
     import { ModeWatcher } from "mode-watcher";
 
     import "../app.css";
@@ -17,36 +18,30 @@
 
     const synchronize = async () => {
         try {
-            // console.log("Invoking `create_space`");
-            // const createSpace = await invoke("create_space", { path: "yeoolooo" });
-            // console.log("create_space result:");
-            // console.log({ createSpace });
-
             await activeSpace.synchronize();
-            console.log({ activeSpace: $activeSpace });
 
             if ($activeSpace !== null) {
-                console.log("FOUND!!");
                 await goto("/space");
-            } else {
-                console.log("NOT FOUND!!");
             }
 
             await invoke("show_main_window");
-        } catch (error) {
-            console.error("unable to invoke");
-            console.error(error);
+        } catch (err) {
+            console.error(err);
         }
     };
 
     onMount(async () => {
-        document.addEventListener("contextmenu", disableContextMenu);
+        if (!dev) {
+            document.addEventListener("contextmenu", disableContextMenu);
+        }
 
         await synchronize();
     });
 
     onDestroy(() => {
-        document.removeEventListener("contextmenu", disableContextMenu);
+        if (!dev) {
+            document.removeEventListener("contextmenu", disableContextMenu);
+        }
     });
 
     $: $activeSpace === null, goto("/");

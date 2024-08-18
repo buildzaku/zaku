@@ -5,7 +5,6 @@
         DropdownMenu,
         DropdownMenuContent,
         DropdownMenuItem,
-        DropdownMenuSeparator,
         DropdownMenuTrigger,
     } from "$lib/components/primitives/dropdown-menu";
 
@@ -14,12 +13,9 @@
     import { cn } from "$lib/utils/style";
 
     async function handleDelete() {
-        console.log("deleting space... pepeoeo");
-
         await activeSpace.delete();
     }
 
-    console.log($activeSpace);
     export let isCollapsed = false;
 </script>
 
