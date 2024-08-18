@@ -30,23 +30,16 @@ export type Method =
     | "unlink"
     | "UNLINK";
 
-// export type SerializedKey<T extends string> = T | `_${T}`;
 export type MaybeKey<T extends string = string> = T | `_${T}`;
 
 export type SerializedValue = string | number | boolean | null;
 
 export type HttpRequestConfig = {
-    // id: string;
-    // name: string;
-    // description: string;
-    // config: RequestConfig | null;
-
     name: string;
     type: "http";
     method: string;
     headers?: Record<MaybeKey, SerializedValue>;
     params?: Record<MaybeKey, SerializedValue>;
-
     body: {
         active: ValueOf<typeof REQUEST_BODY_TYPES>;
         "application/json": Record<string, SerializedValue>;
@@ -73,23 +66,19 @@ export type SpaceMeta = {
     name: string;
 };
 
-// Define the type for SpaceConfig
 export type SpaceConfig = {
     meta: SpaceMeta;
 };
 
-// Define the type for Request
 export type Request = {
     name: string;
 };
 
-// Define the type for Collection
 export type Collection = {
     name: string;
     requests: Request[];
 };
 
-// Define the type for Space
 export type Space = {
     path: string;
     config: SpaceConfig;
