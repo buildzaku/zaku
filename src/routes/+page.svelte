@@ -14,13 +14,13 @@
     import { tick } from "svelte";
     import { Struct } from "$lib/utils/struct";
     import { goto } from "$app/navigation";
-    import { createSpace } from "$lib/store";
+    import { activeSpace, createSpace } from "$lib/store";
     import { openDirectoryDialog } from "$lib/commands";
 
     let spaceName: string = "";
     let spacePath: string = "";
 
-    async function handleBrowse() {
+    async function handleCreateSpaceBrowse() {
         const selected = await openDirectoryDialog({ title: "Create a new Space" });
 
         if (selected !== null) {
@@ -55,6 +55,20 @@
             console.error(err);
         }
     }
+
+    async function handleOpenExistingSpace() {
+        try {
+            const selectedPath = await openDirectoryDialog({ title: "Open an existing Space" });
+
+            if (selectedPath !== null) {
+                await activeSpace.set(selectedPath);
+                await goto("/space");
+            }
+        } catch (err) {
+            // TODO - show error toast
+            console.error(err);
+        }
+    }
 </script>
 
 <div class="flex size-full flex-col items-center justify-center gap-2">
@@ -70,7 +84,7 @@
             <DialogHeader>
                 <DialogTitle>Create a new Space</DialogTitle>
                 <DialogDescription>
-                    Make changes to your profile here. Click save when you're done.
+                    Separate your projects, work and more. Choose a name and where to save it.
                 </DialogDescription>
             </DialogHeader>
             <div class="flex w-full flex-col gap-4 py-4">
@@ -84,12 +98,12 @@
                         <button
                             id="space-path-container"
                             class="scrollbar-hidden flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
-                            on:click={handleBrowse}
+                            on:click={handleCreateSpaceBrowse}
                         >
                             {spacePath}
                         </button>
                         <Button
-                            on:click={handleBrowse}
+                            on:click={handleCreateSpaceBrowse}
                             class="col-span-1 h-6 w-[80px] rounded-l-none"
                             variant="outline"
                         >
@@ -103,7 +117,13 @@
             </DialogFooter>
         </DialogContent>
     </Dialog>
-    <Button disabled variant="link" class="text-foreground">+ Open Existing Space</Button>
+    <Button
+        variant="link"
+        class="text-xs text-foreground hover:no-underline"
+        on:click={handleOpenExistingSpace}
+    >
+        + Open Existing Space
+    </Button>
 </div>
 
 <style lang="postcss">
