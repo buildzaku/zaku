@@ -13,7 +13,7 @@ pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool,
             error: format!("Failed to get permission state: {}", err),
         })?;
 
-    Ok(permission_state == PermissionState::Granted)
+    return Ok(permission_state == PermissionState::Granted);
 }
 
 #[tauri::command]
