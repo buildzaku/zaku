@@ -1,5 +1,13 @@
 # zaku
 
+## 0.2.1
+
+### Patch Changes
+
+-   Fix URL capability to allow requests on all ports - [`d97ef73`](https://github.com/buildzaku/zaku/commit/d97ef73148e6fc7efd943cca5d3e5e27ed8ed8c6)
+
+-   Fix incorrect reactive check for active space - [`fc8cc61`](https://github.com/buildzaku/zaku/commit/fc8cc615248fec31781e6f7cc538905f676faa68)
+
 ## 0.2.0
 
 ### Minor Changes
