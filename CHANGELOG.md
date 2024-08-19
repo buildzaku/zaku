@@ -1,5 +1,13 @@
 # zaku
 
+## 0.2.2
+
+### Patch Changes
+
+-   Add option to open existing space from filesystem - [`834139d`](https://github.com/buildzaku/zaku/commit/834139dd5c9747e8e49dfd735f9d67250831ccdb) [#11](https://github.com/buildzaku/zaku/pull/11)
+
+-   Add platform specific global shortcuts to toggle devtools - [`3715feb`](https://github.com/buildzaku/zaku/commit/3715feba25d9aaf737e951f3a993e4b3280fb3ba)
+
 ## 0.2.1
 
 ### Patch Changes
