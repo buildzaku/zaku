@@ -11,20 +11,18 @@
     } from "$lib/components/primitives/dialog";
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";
-    import { open } from "@tauri-apps/plugin-dialog";
     import { tick } from "svelte";
     import { Struct } from "$lib/utils/struct";
     import { goto } from "$app/navigation";
     import { createSpace } from "$lib/store";
+    import { openDirectoryDialog } from "$lib/commands";
 
     let spaceName: string = "";
     let spacePath: string = "";
 
     async function handleBrowse() {
-        const selected = await open({
-            directory: true,
-            multiple: false,
-        });
+        const selected = await openDirectoryDialog({ title: "Create a new Space" });
+
         if (selected !== null) {
             spacePath = selected;
 
