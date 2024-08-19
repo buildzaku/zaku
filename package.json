@@ -59,7 +59,6 @@
         "@codemirror/view": "6.29.0",
         "@lezer/highlight": "1.2.0",
         "@tauri-apps/api": "2.0.0-rc.1",
-        "@tauri-apps/plugin-dialog": "2.0.0-rc.0",
         "@tauri-apps/plugin-http": "2.0.0-rc.1",
         "bits-ui": "0.21.12",
         "clsx": "2.1.1",

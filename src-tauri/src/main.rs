@@ -26,7 +26,8 @@ fn main() {
             commands::space::get_active_space,
             commands::space::set_active_space,
             commands::space::delete_active_space,
-            commands::window::show_main_window
+            commands::window::show_main_window,
+            commands::dialog::open_directory_dialog
         ]);
 
     app.run(tauri::generate_context!())
