@@ -11,5 +11,3 @@ export const Struct = {
 };
 
 export type ValueOf<T> = T[keyof T];
-
-export const zakuError = Struct.strictObject({ error: Struct.string() });

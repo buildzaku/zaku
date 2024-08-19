@@ -12,7 +12,7 @@
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";
     import { tick } from "svelte";
-    import { Struct, zakuError } from "$lib/utils/struct";
+    import { Struct } from "$lib/utils/struct";
     import { goto } from "$app/navigation";
     import { activeSpace, createSpace } from "$lib/store";
     import { dispatchNotification, openDirectoryDialog } from "$lib/commands";
@@ -56,7 +56,7 @@
             console.error(err);
             await dispatchNotification({
                 title: "Something went wrong.",
-                body: Struct.parse(zakuError, err).error,
+                body: `Unable to create space ${createSpaceName} at "${createSpacePath}"`,
             });
         }
     }
@@ -74,7 +74,7 @@
             console.error(err);
             await dispatchNotification({
                 title: "Something went wrong.",
-                body: Struct.parse(zakuError, err).error,
+                body: `Unable to open existing space at "${openExistingSpacePath}"`,
             });
         }
     }
