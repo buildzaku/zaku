@@ -1,18 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::Manager;
-use tauri_plugin_store::StoreCollection;
 
 pub mod constants;
 pub mod core;
 pub mod types;
 
-use constants::ZakuStoreKey;
-
-use core::utils::ShortcutCombination;
-use core::{commands, space, utils};
+use core::{commands, shortcuts, state};
 use types::AppState;
 
 fn main() {
@@ -20,93 +14,8 @@ fn main() {
         .manage(Mutex::new(AppState { active_space: None }))
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
-            let stores = app.state::<StoreCollection<tauri::Wry>>();
-            let app_data_dir = app.path().app_data_dir().unwrap();
-
-            let active_space_path: Option<PathBuf> = tauri_plugin_store::with_store(
-                app.handle().clone(),
-                stores.clone(),
-                app_data_dir.clone(),
-                |store| match store.get(ZakuStoreKey::ActiveSpacePath.to_string()) {
-                    Some(value) if value.is_string() => {
-                        let path_string = value.as_str().unwrap();
-
-                        Ok(Some(PathBuf::from(path_string)))
-                    }
-                    _ => Ok(None),
-                },
-            )
-            .unwrap();
-
-            match active_space_path {
-                Some(path) => {
-                    match space::parse_space(&path) {
-                        Ok(active_space) => {
-                            let state = app.app_handle().state::<Mutex<AppState>>();
-
-                            *state.lock().unwrap() = AppState {
-                                active_space: Some(active_space),
-                            };
-                        }
-                        Err(_) => (),
-                    };
-                }
-                None => (),
-            }
-
-            return Ok(());
-        })
-        .setup(|app| {
-            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
-            {
-                use tauri_plugin_global_shortcut::ShortcutState;
-
-                #[cfg(target_os = "macos")]
-                let shortcuts = ["Command+Option+I"];
-
-                #[cfg(target_os = "windows")]
-                let shortcuts = ["Control+Shift+I"];
-
-                #[cfg(target_os = "linux")]
-                let shortcuts = ["Control+Shift+I", "Command+Option+I"];
-
-                app.handle().plugin(
-                    tauri_plugin_global_shortcut::Builder::new()
-                        .with_shortcuts(shortcuts)
-                        .unwrap()
-                        .with_handler(|handler_app, shortcut, event| {
-                            if event.state == ShortcutState::Pressed {
-                                match utils::shortcut_combination(shortcut) {
-                                    #[cfg(target_os = "macos")]
-                                    Some(ShortcutCombination::CommandOptionI) => {
-                                        utils::toggle_devtools(handler_app.app_handle());
-                                    }
-                                    #[cfg(target_os = "macos")]
-                                    Some(ShortcutCombination::ControlShiftI) => {}
-
-                                    #[cfg(target_os = "windows")]
-                                    Some(ShortcutCombination::ControlShiftI) => {
-                                        utils::toggle_devtools(handler_app.app_handle());
-                                    }
-                                    #[cfg(target_os = "windows")]
-                                    Some(ShortcutCombination::CommandOptionI) => {}
-
-                                    #[cfg(target_os = "linux")]
-                                    Some(ShortcutCombination::ControlShiftI) => {
-                                        utils::toggle_devtools(handler_app.app_handle());
-                                    }
-                                    #[cfg(target_os = "linux")]
-                                    Some(ShortcutCombination::CommandOptionI) => {
-                                        utils::toggle_devtools(handler_app.app_handle());
-                                    }
-
-                                    None => {}
-                                }
-                            }
-                        })
-                        .build(),
-                )?;
-            }
+            state::initialize(app);
+            shortcuts::initialize(app);
 
             return Ok(());
         })
