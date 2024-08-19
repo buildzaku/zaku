@@ -29,6 +29,8 @@ fn main() {
             commands::space::delete_active_space,
             commands::window::show_main_window,
             commands::dialog::open_directory_dialog,
+            commands::notification::is_notification_permission_granted,
+            commands::notification::request_notification_permission,
             commands::notification::dispatch_notification
         ]);
 

@@ -12,19 +12,21 @@
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";
     import { tick } from "svelte";
-    import { Struct } from "$lib/utils/struct";
+    import { Struct, zakuError } from "$lib/utils/struct";
     import { goto } from "$app/navigation";
     import { activeSpace, createSpace } from "$lib/store";
-    import { openDirectoryDialog } from "$lib/commands";
+    import { dispatchNotification, openDirectoryDialog } from "$lib/commands";
 
-    let spaceName: string = "";
-    let spacePath: string = "";
+    let createSpaceName: string = "";
+    let createSpacePath: string = "";
+
+    let openExistingSpacePath: string = "";
 
     async function handleCreateSpaceBrowse() {
         const selected = await openDirectoryDialog({ title: "Create a new Space" });
 
         if (selected !== null) {
-            spacePath = selected;
+            createSpacePath = selected;
 
             const spacePathContainerElement = document.getElementById("space-path-container");
 
@@ -44,15 +46,18 @@
             });
 
             const spaceData = Struct.parse(spaceSchema, {
-                name: spaceName,
-                path: spacePath,
+                name: createSpaceName,
+                path: createSpacePath,
             });
 
             await createSpace(spaceData);
             await goto("/space");
         } catch (err) {
-            // TODO - show error toast
             console.error(err);
+            await dispatchNotification({
+                title: "Something went wrong.",
+                body: Struct.parse(zakuError, err).error,
+            });
         }
     }
 
@@ -61,12 +66,16 @@
             const selectedPath = await openDirectoryDialog({ title: "Open an existing Space" });
 
             if (selectedPath !== null) {
+                openExistingSpacePath = selectedPath;
                 await activeSpace.set(selectedPath);
                 await goto("/space");
             }
         } catch (err) {
-            // TODO - show error toast
             console.error(err);
+            await dispatchNotification({
+                title: "Something went wrong.",
+                body: Struct.parse(zakuError, err).error,
+            });
         }
     }
 </script>
@@ -75,8 +84,8 @@
     <h1 class="my-2 text-2xl font-medium">Welcome to Zaku</h1>
     <Dialog
         onOpenChange={() => {
-            spaceName = "";
-            spacePath = "";
+            createSpaceName = "";
+            createSpacePath = "";
         }}
     >
         <DialogTrigger class={buttonVariants({ variant: "outline" })}>+ Create Space</DialogTrigger>
@@ -90,7 +99,7 @@
             <div class="flex w-full flex-col gap-4 py-4">
                 <div class="flex flex-col gap-1">
                     <Label for="name">Name</Label>
-                    <Input id="name" bind:value={spaceName} />
+                    <Input id="name" bind:value={createSpaceName} />
                 </div>
                 <div class="flex max-w-[374px] flex-col gap-1">
                     <Label for="location">Location</Label>
@@ -100,7 +109,7 @@
                             class="scrollbar-hidden flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
                             on:click={handleCreateSpaceBrowse}
                         >
-                            {spacePath}
+                            {createSpacePath}
                         </button>
                         <Button
                             on:click={handleCreateSpaceBrowse}

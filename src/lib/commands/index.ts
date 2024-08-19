@@ -16,5 +16,19 @@ export type DispatchNotificationOptions = {
 };
 
 export async function dispatchNotification(options: DispatchNotificationOptions) {
-    await invoke("dispatch_notification", { options });
+    const isNotificationPermissionGranted: boolean = await invoke(
+        "is_notification_permission_granted",
+    );
+
+    if (isNotificationPermissionGranted) {
+        await invoke("dispatch_notification", { options });
+    } else {
+        const isNotificationPermissionGrantedAfterRequest: boolean = await invoke(
+            "request_notification_permission",
+        );
+
+        if (isNotificationPermissionGrantedAfterRequest) {
+            await invoke("dispatch_notification", { options });
+        }
+    }
 }
