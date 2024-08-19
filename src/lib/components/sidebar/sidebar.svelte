@@ -12,6 +12,7 @@
     import { CookieIcon, SettingsIcon, Trash2Icon } from "lucide-svelte";
     import { SpaceSwitcher } from "$lib/components/space-switcher";
     import { cn } from "$lib/utils/style";
+    import { dispatchNotification } from "$lib/commands";
 
     async function handleDelete() {
         await activeSpace.delete();
@@ -67,7 +68,15 @@
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
-            <Button size="icon" variant="ghost-hover">
+            <Button
+                size="icon"
+                variant="ghost-hover"
+                on:click={() =>
+                    dispatchNotification({
+                        title: "noti from cookie",
+                        body: `test ${new Date(Date.now()).getMilliseconds()}`,
+                    })}
+            >
                 <CookieIcon size={14} />
             </Button>
         </div>

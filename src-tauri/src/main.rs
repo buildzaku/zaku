@@ -12,6 +12,9 @@ use types::AppState;
 fn main() {
     let app = tauri::Builder::default()
         .manage(Mutex::new(AppState { active_space: None }))
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
             state::initialize(app);
@@ -19,15 +22,14 @@ fn main() {
 
             return Ok(());
         })
-        .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::space::create_space,
             commands::space::get_active_space,
             commands::space::set_active_space,
             commands::space::delete_active_space,
             commands::window::show_main_window,
-            commands::dialog::open_directory_dialog
+            commands::dialog::open_directory_dialog,
+            commands::notification::dispatch_notification
         ]);
 
     app.run(tauri::generate_context!())
