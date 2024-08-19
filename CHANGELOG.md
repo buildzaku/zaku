@@ -1,5 +1,11 @@
 # zaku
 
+## 0.2.3
+
+### Patch Changes
+
+-   Implement dispatch, check & request commands for notification - [`8c12516`](https://github.com/buildzaku/zaku/commit/8c12516f3f773a9336c7161f947b93980293066b) [#12](https://github.com/buildzaku/zaku/pull/12)
+
 ## 0.2.2
 
 ### Patch Changes
