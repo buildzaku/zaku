@@ -56,7 +56,7 @@
             console.error(err);
             await dispatchNotification({
                 title: "Something went wrong.",
-                body: `Unable to create space ${createSpaceName} at "${createSpacePath}"`,
+                body: `Unable to create space "${createSpaceName}", make sure the directory exists and try again.`,
             });
         }
     }
@@ -73,8 +73,8 @@
         } catch (err) {
             console.error(err);
             await dispatchNotification({
-                title: "Something went wrong.",
-                body: `Unable to open existing space at "${openExistingSpacePath}"`,
+                title: "Doesn't look like a valid space.",
+                body: "Unable to parse the directory, make sure it is a valid space and try again.",
             });
         }
     }
@@ -128,7 +128,7 @@
     </Dialog>
     <Button
         variant="link"
-        class="text-xs text-foreground hover:no-underline"
+        class="text-foreground hover:no-underline"
         on:click={handleOpenExistingSpace}
     >
         + Open Existing Space
