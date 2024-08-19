@@ -12,7 +12,7 @@
         "core:path:allow-resolve-directory",
         {
             "identifier": "http:default",
-            "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+            "allow": [{ "url": "https://*:*" }, { "url": "http://*:*" }]
         },
         "dialog:allow-open",
         "store:allow-get",
