@@ -26,6 +26,12 @@
         "dialog:default",
         "global-shortcut:allow-is-registered",
         "global-shortcut:allow-register",
-        "global-shortcut:allow-unregister"
+        "global-shortcut:allow-unregister",
+        "notification:allow-is-permission-granted",
+        "notification:allow-check-permissions",
+        "notification:allow-request-permission",
+        "notification:allow-notify",
+        "notification:allow-show",
+        "notification:allow-batch"
     ]
 }
