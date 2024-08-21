@@ -4,7 +4,12 @@ use std::fs::{self};
 use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 
-use crate::types::{Collection, Request, Space, SpaceConfig};
+use tauri::{AppHandle, State, Wry};
+use tauri_plugin_store::StoreCollection;
+
+use crate::types::{Collection, Request, Space, SpaceConfig, SpaceReference};
+
+use super::store;
 
 pub fn parse_space(path: &Path) -> Result<Space, Error> {
     let space_root_path = path;
@@ -111,5 +116,21 @@ pub fn parse_space_config(space_root_path: &Path) -> Result<SpaceConfig, Error> 
                     format!("Failed to parse {}: {}", space_root_path.display(), err),
                 )
             })
+        });
+}
+
+pub fn find_first_valid_space(
+    app_handle: AppHandle,
+    stores: State<'_, StoreCollection<Wry>>,
+) -> Option<SpaceReference> {
+    return store::get_saved_spaces(app_handle, stores)
+        .into_iter()
+        .find_map(|space_reference| {
+            let space_root_path = PathBuf::from(&space_reference.path);
+
+            match parse_space_config(&space_root_path) {
+                Ok(_) => Some(space_reference),
+                Err(_) => None,
+            }
         });
 }

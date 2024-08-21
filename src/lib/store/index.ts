@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
 import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
-import { Struct, type ValueOf } from "$lib/utils/struct";
+import { Struct, type InferInput, type ValueOf } from "$lib/utils/struct";
 
 import { tick } from "svelte";
 import { invoke } from "@tauri-apps/api/core";
@@ -86,9 +86,16 @@ export type Space = {
     requests: Request[];
 };
 
+export const spaceReferenceStruct = Struct.strictObject({
+    path: Struct.string(),
+    name: Struct.string(),
+});
+
+export type SpaceReference = InferInput<typeof spaceReferenceStruct>;
+
 type CreateSpaceDto = {
-    path: string;
     name: string;
+    location: string;
 };
 
 function createSpaceStore() {
@@ -104,8 +111,8 @@ function createSpaceStore() {
 
     return {
         synchronize,
-        set: async (path: string) => {
-            await invoke("set_active_space", { spaceRootPath: path });
+        set: async (spaceReference: SpaceReference) => {
+            await invoke("set_active_space", { space_reference: spaceReference });
             await synchronize();
 
             return;
@@ -123,16 +130,12 @@ function createSpaceStore() {
 export const activeSpace = createSpaceStore();
 
 export async function createSpace(dto: CreateSpaceDto) {
-    const createSpaceResultSchema = Struct.strictObject({
-        path: Struct.string(),
-    });
     const createSpaceRawResult = await invoke("create_space", {
         createSpaceDto: dto,
     });
+    const spaceReference = Struct.parse(spaceReferenceStruct, createSpaceRawResult);
 
-    const createSpaceResult = Struct.parse(createSpaceResultSchema, createSpaceRawResult);
-
-    await activeSpace.set(createSpaceResult.path);
+    await activeSpace.set(spaceReference);
 
     return;
 }

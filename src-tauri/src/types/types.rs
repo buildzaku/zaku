@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateSpaceDto {
     pub name: String,
-    pub path: String,
+    pub location: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -29,6 +29,7 @@ pub struct Request {
 
 pub struct AppState {
     pub active_space: Option<Space>,
+    pub saved_spaces: Vec<SpaceReference>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -40,11 +41,12 @@ pub struct Space {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CreateSpaceResult {
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct ZakuError {
     pub error: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SpaceReference {
+    pub path: String,
+    pub name: String,
 }

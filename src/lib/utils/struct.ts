@@ -11,3 +11,5 @@ export const Struct = {
 };
 
 export type ValueOf<T> = T[keyof T];
+
+export type { InferInput } from "valibot";

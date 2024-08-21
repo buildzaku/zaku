@@ -9,16 +9,36 @@
         DropdownMenuTrigger,
     } from "$lib/components/primitives/dropdown-menu";
 
-    import { CookieIcon, SettingsIcon, Trash2Icon } from "lucide-svelte";
-    import { SpaceSwitcher } from "$lib/components/space-switcher";
+    import { CookieIcon, SettingsIcon, Trash2Icon, PlusIcon } from "lucide-svelte";
+    import { SpaceCreateDialog, SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
+    import { dispatchNotification, openDirectoryDialog } from "$lib/commands";
+
+    export let isCollapsed = false;
+
+    let isCreateSpaceDialogOpen = false;
+
+    async function handleOpenExistingSpace() {
+        try {
+            const selectedPath = await openDirectoryDialog({ title: "Open an existing Space" });
+
+            if (selectedPath !== null) {
+                await activeSpace.set(selectedPath);
+                await goto("/space");
+            }
+        } catch (err) {
+            console.error(err);
+            await dispatchNotification({
+                title: "Doesn't look like a valid space.",
+                body: "Unable to parse the directory, make sure it is a valid space and try again.",
+            });
+        }
+    }
 
     async function handleDelete() {
         await activeSpace.delete();
         await goto("/");
     }
-
-    export let isCollapsed = false;
 </script>
 
 {#if $activeSpace}
@@ -59,6 +79,22 @@
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                        on:click={() => {
+                            isCreateSpaceDialogOpen = true;
+                        }}
+                    >
+                        <div class="flex items-center gap-1.5 text-small">
+                            <PlusIcon strokeWidth={2.25} size={13} />
+                            <span>Create new Space</span>
+                        </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem on:click={handleOpenExistingSpace}>
+                        <div class="flex items-center gap-1.5 text-small">
+                            <PlusIcon strokeWidth={2.25} size={13} />
+                            <span>Open existing Space</span>
+                        </div>
+                    </DropdownMenuItem>
                     <DropdownMenuItem on:click={handleDelete}>
                         <div class="flex items-center gap-1.5 text-small text-destructive">
                             <Trash2Icon strokeWidth={2.25} size={13} />
@@ -72,4 +108,10 @@
             </Button>
         </div>
     </div>
+    <SpaceCreateDialog
+        bind:isOpen={isCreateSpaceDialogOpen}
+        onCreate={async () => {
+            isCreateSpaceDialogOpen = false;
+        }}
+    />
 {/if}

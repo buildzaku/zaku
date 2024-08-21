@@ -11,7 +11,10 @@ use types::AppState;
 
 fn main() {
     let app = tauri::Builder::default()
-        .manage(Mutex::new(AppState { active_space: None }))
+        .manage(Mutex::new(AppState {
+            active_space: None,
+            saved_spaces: Vec::new(),
+        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
@@ -26,7 +29,7 @@ fn main() {
             commands::space::create_space,
             commands::space::get_active_space,
             commands::space::set_active_space,
-            commands::space::delete_active_space,
+            commands::space::delete_space,
             commands::window::show_main_window,
             commands::dialog::open_directory_dialog,
             commands::notification::is_notification_permission_granted,
