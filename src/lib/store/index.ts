@@ -112,7 +112,7 @@ function createSpaceStore() {
     return {
         synchronize,
         set: async (spaceReference: SpaceReference) => {
-            await invoke("set_active_space", { space_reference: spaceReference });
+            await invoke("set_active_space", { spaceReference: spaceReference });
             await synchronize();
 
             return;

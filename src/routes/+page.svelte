@@ -13,6 +13,7 @@
 
             if (selectedPath !== null) {
                 const spaceReference = await getSpaceReference(selectedPath);
+                console.log({ spaceReference });
                 await activeSpace.set(spaceReference);
                 await goto("/space");
             }

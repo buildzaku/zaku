@@ -16,6 +16,9 @@
     import { RequestConfigPane } from "$lib/components/request-config-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
+    import { onMount } from "svelte";
+    import { activeSpace } from "$lib/store";
+    import { goto } from "$app/navigation";
 
     let requestStatus: RequestStatus = "idle";
     let currentUrl = "";
@@ -86,6 +89,13 @@
             }
         }
     }
+
+    onMount(async () => {
+        if ($activeSpace === null) {
+            console.error("Active space not found, navigating to welcome page.");
+            await goto("/");
+        }
+    });
 </script>
 
 <div class="flex size-full flex-col items-center justify-center gap-4">

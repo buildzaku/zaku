@@ -27,11 +27,6 @@ pub struct Request {
     pub name: String,
 }
 
-pub struct AppState {
-    pub active_space: Option<Space>,
-    pub saved_spaces: Vec<SpaceReference>,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Space {
     pub path: String,

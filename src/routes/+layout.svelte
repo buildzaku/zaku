@@ -17,6 +17,8 @@
     const initialize = async () => {
         await activeSpace.synchronize();
 
+        console.log("$activeSpace", $activeSpace);
+
         if ($activeSpace !== null) {
             await goto("/space");
         } else if ($page.url.pathname !== "/") {

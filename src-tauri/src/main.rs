@@ -1,26 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::Mutex;
-
 pub mod constants;
 pub mod core;
 pub mod types;
 
-use core::{commands, shortcuts, state};
-use types::AppState;
+use core::{commands, shortcuts};
 
 fn main() {
     let app = tauri::Builder::default()
-        .manage(Mutex::new(AppState {
-            active_space: None,
-            saved_spaces: Vec::new(),
-        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
-            state::initialize(app);
             shortcuts::initialize(app);
 
             return Ok(());
@@ -30,6 +22,8 @@ fn main() {
             commands::space::get_active_space,
             commands::space::set_active_space,
             commands::space::delete_space,
+            commands::space::get_space_reference,
+            commands::space::get_saved_spaces,
             commands::window::show_main_window,
             commands::dialog::open_directory_dialog,
             commands::notification::is_notification_permission_granted,
