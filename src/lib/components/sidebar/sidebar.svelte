@@ -12,7 +12,7 @@
     import { CookieIcon, SettingsIcon, Trash2Icon, PlusIcon } from "lucide-svelte";
     import { SpaceCreateDialog, SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import { dispatchNotification, openDirectoryDialog } from "$lib/commands";
+    import { dispatchNotification, getSpaceReference, openDirectoryDialog } from "$lib/commands";
 
     export let isCollapsed = false;
 
@@ -23,7 +23,8 @@
             const selectedPath = await openDirectoryDialog({ title: "Open an existing Space" });
 
             if (selectedPath !== null) {
-                await activeSpace.set(selectedPath);
+                const spaceReference = await getSpaceReference(selectedPath);
+                await activeSpace.set(spaceReference);
                 await goto("/space");
             }
         } catch (err) {
@@ -44,19 +45,7 @@
 {#if $activeSpace}
     <div class="flex size-full flex-col justify-between">
         <div class="flex w-full items-center justify-center border-b p-1.5">
-            <SpaceSwitcher
-                activeSpace={{
-                    name: $activeSpace.config.meta.name,
-                    path: $activeSpace.path,
-                }}
-                {isCollapsed}
-                spaces={[
-                    {
-                        name: $activeSpace.config.meta.name,
-                        path: $activeSpace.path,
-                    },
-                ]}
-            />
+            <SpaceSwitcher {isCollapsed} />
         </div>
         <div class="flex-grow overflow-y-auto p-1.5">
             {#if !isCollapsed}

@@ -87,7 +87,7 @@ pub fn get_active_space(
 
     if let Some(active_space_reference) = active_space_reference {
         match space::parse_space(&PathBuf::from(&active_space_reference.path)) {
-            Ok(active_space) => Some(active_space),
+            Ok(active_space) => return Some(active_space),
             Err(_) => match space::find_first_valid_space(app_handle.clone(), stores.clone()) {
                 Some(valid_space_reference) => {
                     store::set_active_space(valid_space_reference.clone(), app_handle, stores);
@@ -107,8 +107,6 @@ pub fn get_active_space(
             None => return None,
         }
     }
-
-    return None;
 }
 
 #[tauri::command]

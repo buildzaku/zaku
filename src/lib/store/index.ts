@@ -140,21 +140,33 @@ export async function createSpace(dto: CreateSpaceDto) {
     return;
 }
 
-// function createSpacesStore() {
-//     const { set, subscribe } = writable<Space[]>([]);
+function createSpaceReferencesStore() {
+    const { set, subscribe } = writable<SpaceReference[]>([]);
 
-//     return {
-//         set,
-//         subscribe,
-//         delete: async (space: SpaceConfig) => {
-//             const persistedStore = await getPersistedStore();
-//             await persistedStore.set(StoreKey.CurrentSpace, space);
-//             await persistedStore.save();
-//             set(space);
+    async function synchronize() {
+        const spaceReferences: SpaceReference[] = await invoke("get_saved_spaces");
+        set(spaceReferences);
+        await tick();
 
-//             return;
-//         },
-//     };
-// }
+        return;
+    }
 
-// export const spaces = createSpacesStore();
+    return {
+        synchronize,
+        // set: async (spaceReference: SpaceReference) => {
+        //     await invoke("set_active_space", { spaceReference: spaceReference });
+        //     await synchronize();
+
+        //     return;
+        // },
+        // delete: async () => {
+        //     await invoke("delete_active_space");
+        //     await synchronize();
+
+        //     return;
+        // },
+        subscribe,
+    };
+}
+
+export const spaceReferences = createSpaceReferencesStore();

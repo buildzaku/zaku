@@ -8,7 +8,7 @@
 
     import "../app.css";
     import { TitleBar } from "$lib/components/title-bar";
-    import { activeSpace } from "$lib/store";
+    import { activeSpace, spaceReferences } from "$lib/store";
 
     const disableContextMenu = (event: MouseEvent) => {
         event.preventDefault();
@@ -16,8 +16,7 @@
 
     const initialize = async () => {
         await activeSpace.synchronize();
-
-        console.log("$activeSpace", $activeSpace);
+        await spaceReferences.synchronize();
 
         if ($activeSpace !== null) {
             await goto("/space");

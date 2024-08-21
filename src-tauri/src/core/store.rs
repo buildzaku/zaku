@@ -31,7 +31,7 @@ pub fn set_active_space(
 ) {
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
-    return tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
+    tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
         store
             .insert(
                 ZakuStoreKey::ActiveSpace.to_string(),
