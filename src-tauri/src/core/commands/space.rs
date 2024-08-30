@@ -6,7 +6,7 @@ use tauri::{AppHandle, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
 use crate::core::{space, store};
-use crate::types::{CreateSpaceDto, Space, SpaceConfig, SpaceMeta, SpaceReference, ZakuError};
+use crate::types::{CreateSpaceDto, SpaceConfig, SpaceMeta, SpaceReference, ZakuError};
 
 #[tauri::command]
 pub fn create_space(
@@ -76,40 +76,6 @@ pub fn create_space(
     store::set_space_references(space_references, app_handle, stores);
 
     return Ok(space_reference);
-}
-
-#[tauri::command]
-pub fn get_active_space(
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
-) -> Option<Space> {
-    let active_space_reference = store::get_active_space(app_handle.clone(), stores.clone());
-
-    if let Some(active_space_reference) = active_space_reference {
-        match space::parse_space(&PathBuf::from(&active_space_reference.path)) {
-            Ok(active_space) => return Some(active_space),
-            Err(_) => {
-                match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
-                    Some(valid_space_reference) => {
-                        store::set_active_space(valid_space_reference.clone(), app_handle, stores);
-
-                        return space::parse_space(&PathBuf::from(&valid_space_reference.path))
-                            .ok();
-                    }
-                    None => return None,
-                }
-            }
-        };
-    } else {
-        match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
-            Some(valid_space_reference) => {
-                store::set_active_space(valid_space_reference.clone(), app_handle, stores);
-
-                return space::parse_space(&PathBuf::from(&valid_space_reference.path)).ok();
-            }
-            None => return None,
-        }
-    }
 }
 
 #[tauri::command]

@@ -89,13 +89,6 @@
             }
         }
     }
-
-    onMount(async () => {
-        if ($activeSpace === null) {
-            console.error("Active space not found, navigating to welcome page.");
-            await goto("/");
-        }
-    });
 </script>
 
 <div class="flex size-full flex-col items-center justify-center gap-4">

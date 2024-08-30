@@ -26,8 +26,8 @@ fn main() {
             return Ok(());
         })
         .invoke_handler(tauri::generate_handler![
+            commands::state::get_zaku_state,
             commands::space::create_space,
-            commands::space::get_active_space,
             commands::space::set_active_space,
             commands::space::delete_space,
             commands::space::get_space_reference,

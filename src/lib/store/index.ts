@@ -56,35 +56,31 @@ export const StoreKey = {
     CurrentSpacePath: "active_space_path",
     SpacePaths: "space_paths",
 };
+const spaceMetaStruct = Struct.strictObject({
+    name: Struct.string(),
+});
 
-export type SpaceStoreDto = {
-    path: string;
-    name: string;
-};
+const spaceConfigStruct = Struct.strictObject({
+    meta: spaceMetaStruct,
+});
 
-export type SpaceMeta = {
-    name: string;
-};
+const requestStruct = Struct.strictObject({
+    name: Struct.string(),
+});
 
-export type SpaceConfig = {
-    meta: SpaceMeta;
-};
+const collectionStruct = Struct.strictObject({
+    name: Struct.string(),
+    requests: Struct.array(requestStruct),
+});
 
-export type Request = {
-    name: string;
-};
+const spaceStruct = Struct.strictObject({
+    path: Struct.string(),
+    config: spaceConfigStruct,
+    collections: Struct.array(collectionStruct),
+    requests: Struct.array(requestStruct),
+});
 
-export type Collection = {
-    name: string;
-    requests: Request[];
-};
-
-export type Space = {
-    path: string;
-    config: SpaceConfig;
-    collections: Collection[];
-    requests: Request[];
-};
+export type Space = InferInput<typeof spaceStruct>;
 
 export const spaceReferenceStruct = Struct.strictObject({
     path: Struct.string(),
@@ -93,10 +89,23 @@ export const spaceReferenceStruct = Struct.strictObject({
 
 export type SpaceReference = InferInput<typeof spaceReferenceStruct>;
 
-type CreateSpaceDto = {
-    name: string;
-    location: string;
-};
+const zakuStateStruct = Struct.strictObject({
+    activeSpace: Struct.nullable(spaceStruct),
+    spaceReferences: Struct.array(spaceReferenceStruct),
+});
+
+export type ZakuState = InferInput<typeof zakuStateStruct>;
+
+const createSpaceDtoStruct = Struct.strictObject({
+    name: Struct.string(),
+    location: Struct.string(),
+});
+
+export type CreateSpaceDto = InferInput<typeof createSpaceDtoStruct>;
+
+const zakuErrorStruct = Struct.strictObject({
+    error: Struct.string(),
+});
 
 function createSpaceStore() {
     const { set, subscribe } = writable<Space | null>(null);

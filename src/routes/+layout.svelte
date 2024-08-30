@@ -9,14 +9,17 @@
     import "../app.css";
     import { TitleBar } from "$lib/components/title-bar";
     import { activeSpace, spaceReferences } from "$lib/store";
+    import { emit, listen } from "@tauri-apps/api/event";
 
     const disableContextMenu = (event: MouseEvent) => {
         event.preventDefault();
     };
 
     const initialize = async () => {
-        await activeSpace.synchronize();
-        await spaceReferences.synchronize();
+        // console.log(await invoke("get_zaku_state"));
+
+        await activeSpace.synchronize().catch(e => console.log(e));
+        await spaceReferences.synchronize().catch(e => console.log(e));
 
         if ($activeSpace !== null) {
             await goto("/space");
