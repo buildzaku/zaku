@@ -4,15 +4,23 @@ pub mod constants;
 pub mod core;
 pub mod types;
 
-use core::{commands, shortcuts};
+use core::{commands, shortcuts, state};
+use std::sync::Mutex;
+
+use types::ZakuState;
 
 fn main() {
     let app = tauri::Builder::default()
+        .manage(Mutex::new(ZakuState {
+            active_space: None,
+            space_references: Vec::new(),
+        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
+            state::initialize(app);
             shortcuts::initialize(app);
 
             return Ok(());

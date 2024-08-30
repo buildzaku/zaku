@@ -22,9 +22,9 @@ pub fn create_space(
     }
 
     let space_root_path = location.join(create_space_dto.name.clone());
-    let mut saved_spaces = store::get_saved_spaces(app_handle.clone(), stores.clone());
+    let mut space_references = store::get_space_references(app_handle.clone(), stores.clone());
 
-    if saved_spaces
+    if space_references
         .iter()
         .any(|space_reference| space_reference.path == space_root_path.to_string_lossy())
     {
@@ -72,8 +72,8 @@ pub fn create_space(
     };
 
     store::set_active_space(space_reference.clone(), app_handle.clone(), stores.clone());
-    saved_spaces.push(space_reference.clone());
-    store::set_saved_spaces(saved_spaces, app_handle, stores);
+    space_references.push(space_reference.clone());
+    store::set_space_references(space_references, app_handle, stores);
 
     return Ok(space_reference);
 }
@@ -88,17 +88,20 @@ pub fn get_active_space(
     if let Some(active_space_reference) = active_space_reference {
         match space::parse_space(&PathBuf::from(&active_space_reference.path)) {
             Ok(active_space) => return Some(active_space),
-            Err(_) => match space::find_first_valid_space(app_handle.clone(), stores.clone()) {
-                Some(valid_space_reference) => {
-                    store::set_active_space(valid_space_reference.clone(), app_handle, stores);
+            Err(_) => {
+                match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
+                    Some(valid_space_reference) => {
+                        store::set_active_space(valid_space_reference.clone(), app_handle, stores);
 
-                    return space::parse_space(&PathBuf::from(&valid_space_reference.path)).ok();
+                        return space::parse_space(&PathBuf::from(&valid_space_reference.path))
+                            .ok();
+                    }
+                    None => return None,
                 }
-                None => return None,
-            },
+            }
         };
     } else {
-        match space::find_first_valid_space(app_handle.clone(), stores.clone()) {
+        match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
             Some(valid_space_reference) => {
                 store::set_active_space(valid_space_reference.clone(), app_handle, stores);
 
@@ -126,20 +129,21 @@ pub fn set_active_space(
     match space::parse_space_config(&space_root_path) {
         Ok(_) => {
             store::set_active_space(space_reference.clone(), app_handle.clone(), stores.clone());
-            let mut saved_spaces = store::get_saved_spaces(app_handle.clone(), stores.clone());
-            let exists_in_saved_spaces = saved_spaces
+            let mut space_references =
+                store::get_space_references(app_handle.clone(), stores.clone());
+            let exists_in_space_references = space_references
                 .iter()
                 .any(|space_reference| space_reference.path == space_root_path.to_str().unwrap());
 
-            if !exists_in_saved_spaces {
+            if !exists_in_space_references {
                 println!("not inside store, pushing now {:?}", space_reference);
 
-                saved_spaces.push(SpaceReference {
+                space_references.push(SpaceReference {
                     path: space_root_path.to_str().unwrap().to_string(),
                     name: space_reference.name.clone(),
                 });
 
-                store::set_saved_spaces(saved_spaces, app_handle, stores);
+                store::set_space_references(space_references, app_handle, stores);
             }
 
             return Ok(());
@@ -157,7 +161,7 @@ pub fn delete_space(
     stores: State<'_, StoreCollection<Wry>>,
 ) -> () {
     let active_space = store::get_active_space(app_handle.clone(), stores.clone());
-    let mut saved_spaces = store::get_saved_spaces(app_handle.clone(), stores.clone());
+    let mut saved_spaces = store::get_space_references(app_handle.clone(), stores.clone());
     saved_spaces.retain(|space| space.path != space_reference.path);
 
     if let Some(active_space) = active_space {
@@ -166,7 +170,7 @@ pub fn delete_space(
         }
     }
 
-    store::set_saved_spaces(saved_spaces, app_handle, stores);
+    store::set_space_references(saved_spaces, app_handle, stores);
 
     return ();
 }
@@ -201,5 +205,5 @@ pub fn get_saved_spaces(
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
 ) -> Vec<SpaceReference> {
-    return store::get_saved_spaces(app_handle, stores);
+    return store::get_space_references(app_handle, stores);
 }

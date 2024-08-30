@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ZakuState {
+    pub active_space: Option<Space>,
+    pub space_references: Vec<SpaceReference>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateSpaceDto {
     pub name: String,
     pub location: String,

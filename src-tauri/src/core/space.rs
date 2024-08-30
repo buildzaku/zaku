@@ -119,11 +119,11 @@ pub fn parse_space_config(space_root_path: &Path) -> Result<SpaceConfig, Error> 
         });
 }
 
-pub fn find_first_valid_space(
+pub fn find_first_valid_space_reference(
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
 ) -> Option<SpaceReference> {
-    return store::get_saved_spaces(app_handle, stores)
+    return store::get_space_references(app_handle, stores)
         .into_iter()
         .find_map(|space_reference| {
             let space_root_path = PathBuf::from(&space_reference.path);

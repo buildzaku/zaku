@@ -61,7 +61,7 @@ pub fn delete_active_space(app_handle: AppHandle, stores: State<'_, StoreCollect
     .unwrap();
 }
 
-pub fn get_saved_spaces(
+pub fn get_space_references(
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
 ) -> Vec<SpaceReference> {
@@ -89,7 +89,7 @@ pub fn get_saved_spaces(
     .unwrap_or_else(|_| Vec::new());
 }
 
-pub fn set_saved_spaces(
+pub fn set_space_references(
     space_references: Vec<SpaceReference>,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
