@@ -31,7 +31,7 @@ fn main() {
             commands::space::set_active_space,
             commands::space::delete_space,
             commands::space::get_space_reference,
-            commands::space::get_saved_spaces,
+            commands::space::get_space_references,
             commands::window::show_main_window,
             commands::dialog::open_directory_dialog,
             commands::notification::is_notification_permission_granted,

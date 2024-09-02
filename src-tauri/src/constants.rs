@@ -2,15 +2,16 @@ use std::fmt;
 
 pub enum ZakuStoreKey {
     ActiveSpace,
-    SavedSpaces,
+    SpaceReferences,
 }
 
 impl fmt::Display for ZakuStoreKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match self {
             ZakuStoreKey::ActiveSpace => "active_space",
-            ZakuStoreKey::SavedSpaces => "saved_spaces",
+            ZakuStoreKey::SpaceReferences => "space_references",
         };
-        write!(f, "{}", value)
+
+        return write!(formatter, "{}", value);
     }
 }

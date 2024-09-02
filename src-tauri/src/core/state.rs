@@ -14,14 +14,14 @@ pub fn initialize(app: &mut App) {
         .or_else(|| space::find_first_valid_space_reference(app_handle.clone(), stores.clone()));
     let space_references = store::get_space_references(app_handle.clone(), stores.clone());
     let state = app.app_handle().state::<Mutex<ZakuState>>();
-    let mut app_state = state.lock().unwrap();
+    let mut zaku_state = state.lock().unwrap();
 
     if let Some(active_space_reference) = active_space_reference {
         let active_space_path = PathBuf::from(active_space_reference.path);
 
         match space::parse_space(&active_space_path) {
             Ok(active_space) => {
-                app_state.active_space = Some(active_space);
+                zaku_state.active_space = Some(active_space);
             }
             Err(_) => {
                 match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
@@ -34,7 +34,7 @@ pub fn initialize(app: &mut App) {
 
                         let valid_space_path = PathBuf::from(valid_space_reference.path);
                         let valid_space = space::parse_space(&valid_space_path).unwrap();
-                        app_state.active_space = Some(valid_space);
+                        zaku_state.active_space = Some(valid_space);
                     }
                     None => {}
                 }
@@ -42,7 +42,7 @@ pub fn initialize(app: &mut App) {
         };
     }
 
-    app_state.space_references = space_references;
+    zaku_state.space_references = space_references;
 
     return ();
 }

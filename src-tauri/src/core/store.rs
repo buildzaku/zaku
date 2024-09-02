@@ -71,7 +71,7 @@ pub fn get_space_references(
         let empty_array = serde_json::json!([]);
 
         return Ok(store
-            .get(ZakuStoreKey::SavedSpaces.to_string())
+            .get(ZakuStoreKey::SpaceReferences.to_string())
             .unwrap_or_else(|| &empty_array)
             .as_array()
             .unwrap()
@@ -99,7 +99,7 @@ pub fn set_space_references(
     return tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
         store
             .insert(
-                ZakuStoreKey::SavedSpaces.to_string(),
+                ZakuStoreKey::SpaceReferences.to_string(),
                 serde_json::json!(space_references),
             )
             .unwrap();

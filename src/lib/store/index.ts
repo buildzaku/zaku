@@ -153,7 +153,7 @@ function createSpaceReferencesStore() {
     const { set, subscribe } = writable<SpaceReference[]>([]);
 
     async function synchronize() {
-        const spaceReferences: SpaceReference[] = await invoke("get_saved_spaces");
+        const spaceReferences: SpaceReference[] = await invoke("get_space_references");
         set(spaceReferences);
         await tick();
 

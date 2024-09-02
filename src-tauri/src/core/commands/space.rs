@@ -167,7 +167,7 @@ pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
 }
 
 #[tauri::command]
-pub fn get_saved_spaces(
+pub fn get_space_references(
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
 ) -> Vec<SpaceReference> {
