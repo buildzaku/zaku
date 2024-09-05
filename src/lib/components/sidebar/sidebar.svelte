@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
-    import { activeSpace } from "$lib/store";
+    import { zakuState } from "$lib/store";
     import { Button } from "$lib/components/primitives/button";
     import {
         DropdownMenu,
@@ -24,7 +24,7 @@
 
             if (selectedPath !== null) {
                 const spaceReference = await getSpaceReference(selectedPath);
-                await activeSpace.set(spaceReference);
+                await zakuState.set(spaceReference);
                 await goto("/space");
             }
         } catch (err) {
@@ -37,12 +37,14 @@
     }
 
     async function handleDelete() {
-        await activeSpace.delete();
-        await goto("/");
+        if ($zakuState.active_space) {
+            await zakuState.delete($zakuState.active_space.path);
+            await goto("/");
+        }
     }
 </script>
 
-{#if $activeSpace}
+{#if $zakuState.active_space}
     <div class="flex size-full flex-col justify-between">
         <div class="flex w-full items-center justify-center border-b p-1.5">
             <SpaceSwitcher {isCollapsed} />

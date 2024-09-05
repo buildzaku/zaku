@@ -6,28 +6,14 @@
     import { invoke } from "@tauri-apps/api/core";
     import { ModeWatcher } from "mode-watcher";
 
+    import { Toaster } from "$lib/components/primitives/sonner";
     import "../app.css";
     import { TitleBar } from "$lib/components/title-bar";
-    import { activeSpace, spaceReferences } from "$lib/store";
+    import { zakuState } from "$lib/store";
     import { emit, listen } from "@tauri-apps/api/event";
 
     const disableContextMenu = (event: MouseEvent) => {
         event.preventDefault();
-    };
-
-    const initialize = async () => {
-        // console.log(await invoke("get_zaku_state"));
-
-        await activeSpace.synchronize().catch(e => console.log(e));
-        await spaceReferences.synchronize().catch(e => console.log(e));
-
-        if ($activeSpace !== null) {
-            await goto("/space");
-        } else if ($page.url.pathname !== "/") {
-            await goto("/");
-        }
-
-        await invoke("show_main_window");
     };
 
     onMount(async () => {
@@ -35,7 +21,15 @@
             document.addEventListener("contextmenu", disableContextMenu);
         }
 
-        await initialize();
+        await zakuState.initialize();
+
+        if ($zakuState.active_space !== null) {
+            await goto("/space");
+        } else if ($page.url.pathname !== "/") {
+            await goto("/");
+        }
+
+        await invoke("show_main_window");
     });
 
     onDestroy(() => {
@@ -44,12 +38,13 @@
         }
     });
 
-    $: if ($activeSpace === null) {
+    $: if ($zakuState.active_space === null) {
         goto("/");
     }
 </script>
 
 <ModeWatcher defaultMode="dark" track={false} />
+<Toaster />
 <main class="bg-background">
     <TitleBar class="h-8" />
     <div class="h-[calc(100dvh-2rem-1px)]">

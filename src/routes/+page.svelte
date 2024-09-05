@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/primitives/button";
     import { goto } from "$app/navigation";
-    import { activeSpace } from "$lib/store";
+    import { zakuState } from "$lib/store";
     import { dispatchNotification, getSpaceReference, openDirectoryDialog } from "$lib/commands";
     import { SpaceCreateDialog } from "$lib/components/space";
 
@@ -13,8 +13,8 @@
 
             if (selectedPath !== null) {
                 const spaceReference = await getSpaceReference(selectedPath);
-                console.log({ spaceReference });
-                await activeSpace.set(spaceReference);
+
+                await zakuState.set(spaceReference);
                 await goto("/space");
             }
         } catch (err) {

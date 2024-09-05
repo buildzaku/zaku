@@ -5,6 +5,9 @@ import { Struct, type InferInput, type ValueOf } from "$lib/utils/struct";
 
 import { tick } from "svelte";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "svelte-sonner";
+import { ValiError } from "valibot";
+import { getSpaceReference } from "$lib/commands";
 
 export type RequestConfig = HttpRequestConfig;
 
@@ -90,8 +93,8 @@ export const spaceReferenceStruct = Struct.strictObject({
 export type SpaceReference = InferInput<typeof spaceReferenceStruct>;
 
 const zakuStateStruct = Struct.strictObject({
-    activeSpace: Struct.nullable(spaceStruct),
-    spaceReferences: Struct.array(spaceReferenceStruct),
+    active_space: Struct.nullable(spaceStruct),
+    space_references: Struct.array(spaceReferenceStruct),
 });
 
 export type ZakuState = InferInput<typeof zakuStateStruct>;
@@ -107,36 +110,60 @@ const zakuErrorStruct = Struct.strictObject({
     error: Struct.string(),
 });
 
-function createSpaceStore() {
-    const { set, subscribe } = writable<Space | null>(null);
+function createZakuState() {
+    const { set, subscribe } = writable<ZakuState>({ active_space: null, space_references: [] });
 
     async function synchronize() {
-        const activeSpace: Space | null = await invoke("get_active_space");
-        set(activeSpace);
-        await tick();
+        try {
+            const zakuStateRaw = await invoke("get_zaku_state");
+            console.log({ zakuStateRaw });
+            const zakuState = Struct.parse(zakuStateStruct, zakuStateRaw);
+            set(zakuState);
+            await tick();
 
-        return;
+            return;
+        } catch (err) {
+            if (err instanceof ValiError) {
+                console.log("yes");
+                console.log(err.message);
+            }
+            console.error(err);
+            toast(JSON.stringify(err));
+        }
     }
 
     return {
-        synchronize,
+        initialize: synchronize,
         set: async (spaceReference: SpaceReference) => {
-            await invoke("set_active_space", { spaceReference: spaceReference });
-            await synchronize();
+            try {
+                await invoke("set_active_space", {
+                    spaceReference: spaceReference,
+                });
+                await synchronize();
 
-            return;
+                return;
+            } catch (err) {
+                console.error(err);
+            }
         },
-        delete: async () => {
-            await invoke("delete_active_space");
-            await synchronize();
+        delete: async (path: string) => {
+            try {
+                const spaceReference = await getSpaceReference(path);
+                await invoke("delete_space", {
+                    spaceReference: spaceReference,
+                });
+                await synchronize();
 
-            return;
+                return;
+            } catch (err) {
+                console.error(err);
+            }
         },
         subscribe,
     };
 }
 
-export const activeSpace = createSpaceStore();
+export const zakuState = createZakuState();
 
 export async function createSpace(dto: CreateSpaceDto) {
     const createSpaceRawResult = await invoke("create_space", {
@@ -144,38 +171,7 @@ export async function createSpace(dto: CreateSpaceDto) {
     });
     const spaceReference = Struct.parse(spaceReferenceStruct, createSpaceRawResult);
 
-    await activeSpace.set(spaceReference);
+    // await active_space.set(spaceReference);
 
     return;
 }
-
-function createSpaceReferencesStore() {
-    const { set, subscribe } = writable<SpaceReference[]>([]);
-
-    async function synchronize() {
-        const spaceReferences: SpaceReference[] = await invoke("get_space_references");
-        set(spaceReferences);
-        await tick();
-
-        return;
-    }
-
-    return {
-        synchronize,
-        // set: async (spaceReference: SpaceReference) => {
-        //     await invoke("set_active_space", { spaceReference: spaceReference });
-        //     await synchronize();
-
-        //     return;
-        // },
-        // delete: async () => {
-        //     await invoke("delete_active_space");
-        //     await synchronize();
-
-        //     return;
-        // },
-        subscribe,
-    };
-}
-
-export const spaceReferences = createSpaceReferencesStore();

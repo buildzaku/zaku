@@ -9,16 +9,19 @@
         SelectTrigger,
     } from "$lib/components/primitives/select";
     import { FolderIcon } from "lucide-svelte";
-    import { activeSpace, spaceReferences } from "$lib/store";
+    import { zakuState } from "$lib/store";
 
     export let isCollapsed: boolean;
 </script>
 
-{#if $activeSpace}
+{#if $zakuState.active_space}
     <div class="h-6 w-full">
         <Select
             portal={null}
-            selected={{ value: $activeSpace.path, label: $activeSpace.config.meta.name }}
+            selected={{
+                value: $zakuState.active_space.path,
+                label: $zakuState.active_space.config.meta.name,
+            }}
         >
             <SelectTrigger
                 class={cn(
@@ -33,17 +36,17 @@
                         <FolderIcon size={14} />
                     </div>
                     {#if !isCollapsed}
-                        <span class="truncate">{$activeSpace.config.meta.name}</span>
+                        <span class="truncate">{$zakuState.active_space.config.meta.name}</span>
                     {/if}
                 </div>
             </SelectTrigger>
             <SelectContent sameWidth={!isCollapsed} align={isCollapsed ? "start" : undefined}>
-                {#each $spaceReferences as spaceReference}
+                {#each $zakuState.space_references as spaceReference}
                     <SelectItem
                         value={spaceReference.path}
                         label={spaceReference.name}
                         on:click={async () => {
-                            await activeSpace.set(spaceReference);
+                            await zakuState.set(spaceReference);
                         }}
                     >
                         <div class="flex items-center gap-2 overflow-hidden">
