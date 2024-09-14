@@ -27,7 +27,9 @@ pub async fn open_directory_dialog<R: tauri::Runtime>(
 
     match directory_path {
         Some(path) => {
-            return Ok(Some(path.to_string_lossy().to_string()));
+            return Ok(Some(
+                path.into_path().unwrap().to_string_lossy().to_string(),
+            ));
         }
         None => {
             return Ok(None);
