@@ -1,6 +1,6 @@
 {
     "name": "zaku",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Fast, open-source API client with fangs",
     "license": "MIT",
     "author": "Mayank Verma <errmayank@gmail.com>",
