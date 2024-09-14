@@ -116,7 +116,6 @@ function createZakuState() {
     async function synchronize() {
         try {
             const zakuStateRaw = await invoke("get_zaku_state");
-            console.log({ zakuStateRaw });
             const zakuState = Struct.parse(zakuStateStruct, zakuStateRaw);
             set(zakuState);
             await tick();

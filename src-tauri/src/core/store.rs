@@ -152,11 +152,6 @@ pub fn insert_into_space_references_if_needed(
     });
 
     if !exists_in_space_references {
-        println!(
-            "not inside space references, pushing now {:?}",
-            space_reference
-        );
-
         space_references.push(SpaceReference {
             path: space_reference.path.clone(),
             name: space_reference.name.clone(),
