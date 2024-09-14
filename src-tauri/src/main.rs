@@ -7,11 +7,14 @@ pub mod core;
 pub mod types;
 
 use core::{commands, shortcuts, state};
-use types::AppState;
+use types::ZakuState;
 
 fn main() {
     let app = tauri::Builder::default()
-        .manage(Mutex::new(AppState { active_space: None }))
+        .manage(Mutex::new(ZakuState {
+            active_space: None,
+            space_references: Vec::new(),
+        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
@@ -23,10 +26,11 @@ fn main() {
             return Ok(());
         })
         .invoke_handler(tauri::generate_handler![
+            commands::state::get_zaku_state,
             commands::space::create_space,
-            commands::space::get_active_space,
             commands::space::set_active_space,
-            commands::space::delete_active_space,
+            commands::space::delete_space,
+            commands::space::get_space_reference,
             commands::window::show_main_window,
             commands::dialog::open_directory_dialog,
             commands::notification::is_notification_permission_granted,

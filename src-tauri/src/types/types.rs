@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ZakuState {
+    pub active_space: Option<Space>,
+    pub space_references: Vec<SpaceReference>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateSpaceDto {
     pub name: String,
-    pub path: String,
+    pub location: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -27,10 +33,6 @@ pub struct Request {
     pub name: String,
 }
 
-pub struct AppState {
-    pub active_space: Option<Space>,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Space {
     pub path: String,
@@ -40,11 +42,13 @@ pub struct Space {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CreateSpaceResult {
-    pub path: String,
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct ZakuError {
     pub error: String,
+    // pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SpaceReference {
+    pub path: String,
+    pub name: String,
 }
