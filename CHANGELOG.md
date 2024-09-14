@@ -1,5 +1,11 @@
 # zaku
 
+## 0.3.0
+
+### Minor Changes
+
+-   Ability to handle multiple spaces - [`b82b68e`](https://github.com/buildzaku/zaku/commit/b82b68e82a70bbb747eab66513d074a7875cec1e) [#14](https://github.com/buildzaku/zaku/pull/14)
+
 ## 0.2.3
 
 ### Patch Changes
