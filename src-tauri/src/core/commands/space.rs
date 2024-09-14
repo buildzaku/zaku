@@ -2,33 +2,48 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager, State, Wry};
+
+use tauri::{AppHandle, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
-use crate::constants::ZakuStoreKey;
-use crate::core::space;
-use crate::types::{
-    AppState, CreateSpaceDto, CreateSpaceResult, Space, SpaceConfig, SpaceMeta, ZakuError,
-};
+use crate::core::{space, store};
+use crate::types::{CreateSpaceDto, SpaceConfig, SpaceMeta, SpaceReference, ZakuError, ZakuState};
 
 #[tauri::command]
 pub fn create_space(
     create_space_dto: CreateSpaceDto,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
-    state: State<Mutex<AppState>>,
-) -> Result<CreateSpaceResult, ZakuError> {
-    let location = PathBuf::from(create_space_dto.path.as_str());
+    state: State<Mutex<ZakuState>>,
+) -> Result<SpaceReference, ZakuError> {
+    let location = PathBuf::from(create_space_dto.location.as_str());
     if !location.exists() {
         return Err(ZakuError {
-            error: format!("Path does not exist: {}", create_space_dto.path),
+            error: format!("Location does not exist: `{}`", create_space_dto.location),
         });
     }
 
     let space_root_path = location.join(create_space_dto.name.clone());
+    let mut space_references = store::get_space_references(app_handle.clone(), stores.clone());
+    let mut zaku_state = state.lock().unwrap();
+
+    if space_references
+        .iter()
+        .any(|space_reference| space_reference.path == space_root_path.to_string_lossy())
+    {
+        return Err(ZakuError {
+            error: format!(
+                "Space already exists in saved spaces store with path `{}`",
+                space_root_path.display()
+            ),
+        });
+    }
     if space_root_path.exists() {
         return Err(ZakuError {
-            error: format!("Directory already exists at {}", space_root_path.display()),
+            error: format!(
+                "Directory with the same name exists at `{}`",
+                space_root_path.display()
+            ),
         });
     }
 
@@ -42,7 +57,7 @@ pub fn create_space(
 
     let space_config = SpaceConfig {
         meta: SpaceMeta {
-            name: create_space_dto.name,
+            name: create_space_dto.name.clone(),
         },
     };
 
@@ -54,35 +69,120 @@ pub fn create_space(
         )
         .expect("Failed to write to config file");
 
-    match space::parse_space(&space_root_path) {
+    let space_reference = SpaceReference {
+        path: space_root_path.to_string_lossy().to_string(),
+        name: create_space_dto.name,
+    };
+
+    store::set_active_space_reference(space_reference.clone(), app_handle.clone(), stores.clone());
+    space_references.push(space_reference.clone());
+    store::set_space_references(space_references.clone(), app_handle, stores);
+
+    match space::parse_space(&PathBuf::from(space_reference.clone().path)) {
         Ok(active_space) => {
-            let app_data_dir = app_handle.path().app_data_dir().unwrap();
+            zaku_state.active_space = Some(active_space);
+            zaku_state.space_references = space_references;
+        }
+        Err(_) => {
+            // TODO - handle
+        }
+    }
 
-            tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
-                store
-                    .insert(
-                        ZakuStoreKey::ActiveSpacePath.to_string(),
-                        serde_json::json!(space_root_path.to_str()),
-                    )
-                    .map_err(|err| err.to_string())
-                    .unwrap();
+    return Ok(space_reference);
+}
 
-                store.save().unwrap();
+#[tauri::command]
+pub fn set_active_space(
+    space_reference: SpaceReference,
+    app_handle: AppHandle,
+    stores: State<'_, StoreCollection<Wry>>,
+    state: State<Mutex<ZakuState>>,
+) -> Result<(), ZakuError> {
+    let mut zaku_state = state.lock().unwrap();
+    let space_root_path = PathBuf::from(space_reference.path.as_str());
 
-                return Ok(());
-            })
-            .unwrap();
+    if !space_root_path.exists() {
+        return Err(ZakuError {
+            error: format!("Directory does not exist at {}", space_root_path.display()),
+        });
+    }
 
-            *state.lock().unwrap() = AppState {
-                active_space: Some(active_space),
+    match space::parse_space(&space_root_path) {
+        Ok(space) => {
+            store::set_active_space_reference(
+                space_reference.clone(),
+                app_handle.clone(),
+                stores.clone(),
+            );
+            store::insert_into_space_references_if_needed(
+                space_reference.clone(),
+                app_handle.clone(),
+                stores.clone(),
+            );
+
+            zaku_state.active_space = Some(space);
+            zaku_state.space_references =
+                store::get_space_references(app_handle.clone(), stores.clone());
+
+            return Ok(());
+        }
+        Err(err) => Err(ZakuError {
+            error: format!("Unable to parse space: {}", err),
+        }),
+    }
+}
+
+#[tauri::command]
+pub fn delete_space(
+    space_reference: SpaceReference,
+    app_handle: AppHandle,
+    stores: State<'_, StoreCollection<Wry>>,
+    state: State<Mutex<ZakuState>>,
+) -> () {
+    let mut zaku_state = state.lock().unwrap();
+    store::delete_space_reference(space_reference, app_handle.clone(), stores.clone());
+
+    let active_space = store::get_active_space_reference(app_handle.clone(), stores.clone());
+
+    if let None = active_space {
+        zaku_state.active_space = None;
+
+        match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
+            Some(valid_space_reference) => {
+                store::set_active_space_reference(
+                    valid_space_reference.clone(),
+                    app_handle.clone(),
+                    stores.clone(),
+                );
+
+                match space::parse_space(&PathBuf::from(valid_space_reference.clone().path)) {
+                    Ok(active_space) => {
+                        zaku_state.active_space = Some(active_space);
+                    }
+                    Err(_) => {}
+                }
+            }
+            None => {}
+        }
+    }
+
+    zaku_state.space_references = store::get_space_references(app_handle, stores);
+
+    return ();
+}
+
+#[tauri::command]
+pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
+    let space_root_path = PathBuf::from(path.as_str());
+
+    match space::parse_space_config(&space_root_path) {
+        Ok(space_config) => {
+            let space_reference = SpaceReference {
+                path: space_root_path.to_string_lossy().to_string(),
+                name: space_config.meta.name,
             };
 
-            return Ok(CreateSpaceResult {
-                path: space_root_path
-                    .to_str()
-                    .expect("Failed to convert space path to string")
-                    .to_string(),
-            });
+            return Ok(space_reference);
         }
         Err(err) => {
             return Err(ZakuError {
@@ -94,83 +194,4 @@ pub fn create_space(
             });
         }
     }
-}
-
-#[tauri::command]
-pub fn get_active_space(state: State<Mutex<AppState>>) -> Option<Space> {
-    let state = state.lock().unwrap();
-
-    return state.active_space.clone();
-}
-
-#[tauri::command]
-pub fn set_active_space(
-    space_root_path: String,
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
-    state: State<Mutex<AppState>>,
-) -> Result<(), ZakuError> {
-    let space_root_path = PathBuf::from(space_root_path.as_str());
-
-    if !space_root_path.exists() {
-        return Err(ZakuError {
-            error: format!("Directory does not exist at {}", space_root_path.display()),
-        });
-    }
-
-    match space::parse_space(&space_root_path) {
-        Ok(active_space) => {
-            let app_data_dir = app_handle.path().app_data_dir().unwrap();
-
-            tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
-                store
-                    .insert(
-                        ZakuStoreKey::ActiveSpacePath.to_string(),
-                        serde_json::json!(space_root_path.to_str()),
-                    )
-                    .map_err(|err| err.to_string())
-                    .unwrap();
-                store.save().unwrap();
-
-                return Ok(());
-            })
-            .unwrap();
-
-            *state.lock().unwrap() = AppState {
-                active_space: Some(active_space),
-            };
-
-            return Ok(());
-        }
-        Err(err) => {
-            return Err(ZakuError {
-                error: format!("Unable to parse space: {}", err),
-            });
-        }
-    }
-}
-
-#[tauri::command]
-pub fn delete_active_space(
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
-    state: State<Mutex<AppState>>,
-) -> () {
-    let app_data_dir = app_handle.path().app_data_dir().unwrap();
-
-    tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
-        store
-            .delete(ZakuStoreKey::ActiveSpacePath.to_string())
-            .map_err(|err| err.to_string())
-            .unwrap();
-
-        store.save().unwrap();
-
-        return Ok(());
-    })
-    .unwrap();
-
-    *state.lock().unwrap() = AppState { active_space: None };
-
-    return ();
 }

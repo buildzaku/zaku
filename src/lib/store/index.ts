@@ -1,10 +1,12 @@
 import { writable } from "svelte/store";
 
 import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
-import { Struct, type ValueOf } from "$lib/utils/struct";
+import { Struct, type InferInput, type ValueOf } from "$lib/utils/struct";
 
 import { tick } from "svelte";
 import { invoke } from "@tauri-apps/api/core";
+import { toast } from "svelte-sonner";
+import { getSpaceReference } from "$lib/commands";
 
 export type RequestConfig = HttpRequestConfig;
 
@@ -56,102 +58,114 @@ export const StoreKey = {
     CurrentSpacePath: "active_space_path",
     SpacePaths: "space_paths",
 };
+const spaceMetaStruct = Struct.strictObject({
+    name: Struct.string(),
+});
 
-export type SpaceStoreDto = {
-    path: string;
-    name: string;
-};
+const spaceConfigStruct = Struct.strictObject({
+    meta: spaceMetaStruct,
+});
 
-export type SpaceMeta = {
-    name: string;
-};
+const requestStruct = Struct.strictObject({
+    name: Struct.string(),
+});
 
-export type SpaceConfig = {
-    meta: SpaceMeta;
-};
+const collectionStruct = Struct.strictObject({
+    name: Struct.string(),
+    requests: Struct.array(requestStruct),
+});
 
-export type Request = {
-    name: string;
-};
+const spaceStruct = Struct.strictObject({
+    path: Struct.string(),
+    config: spaceConfigStruct,
+    collections: Struct.array(collectionStruct),
+    requests: Struct.array(requestStruct),
+});
 
-export type Collection = {
-    name: string;
-    requests: Request[];
-};
+export type Space = InferInput<typeof spaceStruct>;
 
-export type Space = {
-    path: string;
-    config: SpaceConfig;
-    collections: Collection[];
-    requests: Request[];
-};
+export const spaceReferenceStruct = Struct.strictObject({
+    path: Struct.string(),
+    name: Struct.string(),
+});
 
-type CreateSpaceDto = {
-    path: string;
-    name: string;
-};
+export type SpaceReference = InferInput<typeof spaceReferenceStruct>;
 
-function createSpaceStore() {
-    const { set, subscribe } = writable<Space | null>(null);
+const zakuStateStruct = Struct.strictObject({
+    active_space: Struct.nullable(spaceStruct),
+    space_references: Struct.array(spaceReferenceStruct),
+});
+
+export type ZakuState = InferInput<typeof zakuStateStruct>;
+
+const createSpaceDtoStruct = Struct.strictObject({
+    name: Struct.string(),
+    location: Struct.string(),
+});
+
+export type CreateSpaceDto = InferInput<typeof createSpaceDtoStruct>;
+
+export const zakuErrorStruct = Struct.strictObject({
+    error: Struct.string(),
+});
+
+function createZakuState() {
+    const { set, subscribe } = writable<ZakuState>({ active_space: null, space_references: [] });
 
     async function synchronize() {
-        const activeSpace: Space | null = await invoke("get_active_space");
-        set(activeSpace);
-        await tick();
+        try {
+            const zakuStateRaw = await invoke("get_zaku_state");
+            const zakuState = Struct.parse(zakuStateStruct, zakuStateRaw);
+            set(zakuState);
+            await tick();
 
-        return;
+            return;
+        } catch (err) {
+            console.error(err);
+            toast("Unable to synchronize");
+        }
     }
 
     return {
-        synchronize,
-        set: async (path: string) => {
-            await invoke("set_active_space", { spaceRootPath: path });
-            await synchronize();
+        initialize: synchronize,
+        set: async (spaceReference: SpaceReference) => {
+            try {
+                await invoke("set_active_space", {
+                    spaceReference: spaceReference,
+                });
+                await synchronize();
 
-            return;
+                return;
+            } catch (err) {
+                console.error(err);
+            }
         },
-        delete: async () => {
-            await invoke("delete_active_space");
-            await synchronize();
+        delete: async (path: string) => {
+            try {
+                const spaceReference = await getSpaceReference(path);
+                await invoke("delete_space", {
+                    spaceReference: spaceReference,
+                });
+                await synchronize();
 
-            return;
+                return;
+            } catch (err) {
+                console.error(err);
+            }
         },
         subscribe,
     };
 }
 
-export const activeSpace = createSpaceStore();
+export const zakuState = createZakuState();
 
-export async function createSpace(dto: CreateSpaceDto) {
-    const createSpaceResultSchema = Struct.strictObject({
-        path: Struct.string(),
-    });
+export async function createSpace(createSpaceDto: CreateSpaceDto) {
     const createSpaceRawResult = await invoke("create_space", {
-        createSpaceDto: dto,
+        createSpaceDto,
     });
+    const spaceReference = Struct.parse(spaceReferenceStruct, createSpaceRawResult);
 
-    const createSpaceResult = Struct.parse(createSpaceResultSchema, createSpaceRawResult);
-
-    await activeSpace.set(createSpaceResult.path);
+    await zakuState.set(spaceReference);
 
     return;
 }
-
-// function createSpacesStore() {
-//     const { set, subscribe } = writable<Space[]>([]);
-
-//     return {
-//         set,
-//         subscribe,
-//         delete: async (space: SpaceConfig) => {
-//             const persistedStore = await getPersistedStore();
-//             await persistedStore.set(StoreKey.CurrentSpace, space);
-//             await persistedStore.save();
-//             set(space);
-
-//             return;
-//         },
-//     };
-// }
-
-// export const spaces = createSpacesStore();

@@ -1,3 +1,5 @@
+import { spaceReferenceStruct, type SpaceReference } from "$lib/store";
+import { Struct } from "$lib/utils/struct";
 import { invoke } from "@tauri-apps/api/core";
 
 export type OpenDirectoryDialogOptions = {
@@ -31,4 +33,10 @@ export async function dispatchNotification(options: DispatchNotificationOptions)
             await invoke("dispatch_notification", { options });
         }
     }
+}
+
+export async function getSpaceReference(path: string): Promise<SpaceReference> {
+    const spaceReferenceRawResult: boolean = await invoke("get_space_reference", { path });
+
+    return Struct.parse(spaceReferenceStruct, spaceReferenceRawResult);
 }
