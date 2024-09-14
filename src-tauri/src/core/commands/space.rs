@@ -135,11 +135,14 @@ pub fn delete_space(
     stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<ZakuState>>,
 ) -> () {
+    let mut zaku_state = state.lock().unwrap();
     store::delete_space_reference(space_reference, app_handle.clone(), stores.clone());
 
     let active_space = store::get_active_space(app_handle.clone(), stores.clone());
 
     if let None = active_space {
+        zaku_state.active_space = None;
+
         match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
             Some(valid_space_reference) => {
                 store::set_active_space(
@@ -150,11 +153,7 @@ pub fn delete_space(
 
                 match space::parse_space(&PathBuf::from(valid_space_reference.clone().path)) {
                     Ok(active_space) => {
-                        let mut zaku_state = state.lock().unwrap();
-
                         zaku_state.active_space = Some(active_space);
-                        zaku_state.space_references =
-                            store::get_space_references(app_handle, stores);
                     }
                     Err(_) => {}
                 }
@@ -162,6 +161,8 @@ pub fn delete_space(
             None => {}
         }
     }
+
+    zaku_state.space_references = store::get_space_references(app_handle, stores);
 
     return ();
 }
@@ -190,11 +191,3 @@ pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
         }
     }
 }
-
-// #[tauri::command]
-// pub fn get_space_references(
-//     app_handle: AppHandle,
-//     stores: State<'_, StoreCollection<Wry>>,
-// ) -> Vec<SpaceReference> {
-//     return store::get_space_references(app_handle, stores);
-// }

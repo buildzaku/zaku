@@ -161,13 +161,13 @@ function createZakuState() {
 
 export const zakuState = createZakuState();
 
-export async function createSpace(dto: CreateSpaceDto) {
+export async function createSpace(createSpaceDto: CreateSpaceDto) {
     const createSpaceRawResult = await invoke("create_space", {
-        createSpaceDto: dto,
+        createSpaceDto,
     });
     const spaceReference = Struct.parse(spaceReferenceStruct, createSpaceRawResult);
 
-    // await active_space.set(spaceReference);
+    await zakuState.set(spaceReference);
 
     return;
 }

@@ -39,7 +39,6 @@
     async function handleDelete() {
         if ($zakuState.active_space) {
             await zakuState.delete($zakuState.active_space.path);
-            await goto("/");
         }
     }
 </script>
