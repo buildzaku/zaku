@@ -98,7 +98,7 @@ const zakuStateStruct = Struct.strictObject({
 
 export type ZakuState = InferInput<typeof zakuStateStruct>;
 
-const createSpaceDtoStruct = Struct.strictObject({
+export const createSpaceDtoStruct = Struct.strictObject({
     name: Struct.string(),
     location: Struct.string(),
 });

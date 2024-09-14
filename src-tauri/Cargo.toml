@@ -9,15 +9,15 @@ homepage = "https://zaku.app"
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "=2.0.0-rc.3", features = [] }
+tauri-build = { version = "=2.0.0-rc.10", features = [] }
 
 [dependencies]
-serde = { version = "=1.0.203", features = ["derive"] }
-serde_json = { version = "=1.0.117" }
-tauri = { version = "=2.0.0-rc.3", features = ["devtools"] }
-tauri-plugin-dialog = { version = "=2.0.0-rc.1" }
-tauri-plugin-global-shortcut = { version = "=2.0.0-rc.1" }
-tauri-plugin-http = { version = "=2.0.0-rc.0" }
-tauri-plugin-notification = { version = "=2.0.0-rc.1" }
-tauri-plugin-store = { version = "=2.0.0-rc.1" }
-toml = { version = "=0.8.17" }
+serde = { version = "=1.0.210", features = ["derive"] }
+serde_json = { version = "=1.0.128" }
+tauri = { version = "=2.0.0-rc.11", features = ["devtools"] }
+tauri-plugin-dialog = { version = "=2.0.0-rc.6" }
+tauri-plugin-global-shortcut = { version = "=2.0.0-rc.2" }
+tauri-plugin-http = { version = "=2.0.0-rc.4" }
+tauri-plugin-notification = { version = "=2.0.0-rc.4" }
+tauri-plugin-store = { version = "=2.0.0-rc.3" }
+toml = { version = "=0.8.19" }
