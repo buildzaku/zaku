@@ -1,7 +1,12 @@
+use std::sync::Mutex;
+
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
-use crate::{constants::ZakuStoreKey, types::SpaceReference};
+use crate::{
+    constants::ZakuStoreKey,
+    types::{SpaceReference, ZakuState},
+};
 
 pub fn get_active_space(
     app_handle: AppHandle,
@@ -30,8 +35,10 @@ pub fn set_active_space(
     stores: State<'_, StoreCollection<Wry>>,
 ) {
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
+    let state = app_handle.state::<Mutex<ZakuState>>();
+    let mut zaku_state = state.lock().unwrap();
 
-    tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
+    tauri_plugin_store::with_store(app_handle.clone(), stores, app_data_dir, |store| {
         store
             .insert(
                 ZakuStoreKey::ActiveSpace.to_string(),

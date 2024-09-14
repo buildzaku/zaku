@@ -10,7 +10,6 @@
     import "../app.css";
     import { TitleBar } from "$lib/components/title-bar";
     import { zakuState } from "$lib/store";
-    import { emit, listen } from "@tauri-apps/api/event";
 
     const disableContextMenu = (event: MouseEvent) => {
         event.preventDefault();

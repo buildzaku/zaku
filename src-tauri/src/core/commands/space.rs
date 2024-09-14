@@ -1,18 +1,20 @@
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use tauri::{AppHandle, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
 use crate::core::{space, store};
-use crate::types::{CreateSpaceDto, SpaceConfig, SpaceMeta, SpaceReference, ZakuError};
+use crate::types::{CreateSpaceDto, SpaceConfig, SpaceMeta, SpaceReference, ZakuError, ZakuState};
 
 #[tauri::command]
 pub fn create_space(
     create_space_dto: CreateSpaceDto,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
+    state: State<Mutex<ZakuState>>,
 ) -> Result<SpaceReference, ZakuError> {
     let location = PathBuf::from(create_space_dto.location.as_str());
     if !location.exists() {
@@ -23,6 +25,7 @@ pub fn create_space(
 
     let space_root_path = location.join(create_space_dto.name.clone());
     let mut space_references = store::get_space_references(app_handle.clone(), stores.clone());
+    let mut zaku_state = state.lock().unwrap();
 
     if space_references
         .iter()
@@ -73,7 +76,18 @@ pub fn create_space(
 
     store::set_active_space(space_reference.clone(), app_handle.clone(), stores.clone());
     space_references.push(space_reference.clone());
-    store::set_space_references(space_references, app_handle, stores);
+    store::set_space_references(space_references.clone(), app_handle, stores);
+
+    let active_space_path = PathBuf::from(space_reference.clone().path);
+    match space::parse_space(&active_space_path) {
+        Ok(active_space) => {
+            zaku_state.active_space = Some(active_space);
+            zaku_state.space_references = space_references;
+        }
+        Err(_) => {
+            // TODO - handle
+        }
+    }
 
     return Ok(space_reference);
 }
@@ -166,10 +180,10 @@ pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
     }
 }
 
-#[tauri::command]
-pub fn get_space_references(
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
-) -> Vec<SpaceReference> {
-    return store::get_space_references(app_handle, stores);
-}
+// #[tauri::command]
+// pub fn get_space_references(
+//     app_handle: AppHandle,
+//     stores: State<'_, StoreCollection<Wry>>,
+// ) -> Vec<SpaceReference> {
+//     return store::get_space_references(app_handle, stores);
+// }

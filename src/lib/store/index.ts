@@ -106,7 +106,7 @@ const createSpaceDtoStruct = Struct.strictObject({
 
 export type CreateSpaceDto = InferInput<typeof createSpaceDtoStruct>;
 
-const zakuErrorStruct = Struct.strictObject({
+export const zakuErrorStruct = Struct.strictObject({
     error: Struct.string(),
 });
 
@@ -123,12 +123,8 @@ function createZakuState() {
 
             return;
         } catch (err) {
-            if (err instanceof ValiError) {
-                console.log("yes");
-                console.log(err.message);
-            }
             console.error(err);
-            toast(JSON.stringify(err));
+            toast("Unable to synchronize");
         }
     }
 
