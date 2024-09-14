@@ -3,7 +3,7 @@ use tauri_plugin_store::StoreCollection;
 
 use crate::{constants::ZakuStoreKey, types::SpaceReference};
 
-pub fn get_active_space(
+pub fn get_active_space_reference(
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
 ) -> Option<SpaceReference> {
@@ -11,7 +11,7 @@ pub fn get_active_space(
 
     return tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
         return Ok(store
-            .get(ZakuStoreKey::ActiveSpace.to_string())
+            .get(ZakuStoreKey::ActiveSpaceReference.to_string())
             .and_then(|value| {
                 value.as_object().and_then(|object| {
                     let path = object.get("path").unwrap().as_str().unwrap().to_string();
@@ -24,7 +24,7 @@ pub fn get_active_space(
     .unwrap_or(None);
 }
 
-pub fn set_active_space(
+pub fn set_active_space_reference(
     space_reference: SpaceReference,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
@@ -34,7 +34,7 @@ pub fn set_active_space(
     tauri_plugin_store::with_store(app_handle.clone(), stores.clone(), app_data_dir, |store| {
         store
             .insert(
-                ZakuStoreKey::ActiveSpace.to_string(),
+                ZakuStoreKey::ActiveSpaceReference.to_string(),
                 serde_json::json!({
                     "path": space_reference.path,
                     "name": space_reference.name,
@@ -56,14 +56,18 @@ pub fn delete_space_reference(
 ) {
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
-    if let Some(active_space_reference) = get_active_space(app_handle.clone(), stores.clone()) {
+    if let Some(active_space_reference) =
+        get_active_space_reference(app_handle.clone(), stores.clone())
+    {
         if active_space_reference.path == space_reference.path {
             tauri_plugin_store::with_store(
                 app_handle.clone(),
                 stores.clone(),
                 app_data_dir,
                 |store| {
-                    store.delete(ZakuStoreKey::ActiveSpace.to_string()).unwrap();
+                    store
+                        .delete(ZakuStoreKey::ActiveSpaceReference.to_string())
+                        .unwrap();
                     store.save().unwrap();
 
                     return Ok(());
@@ -137,7 +141,7 @@ pub fn set_space_references(
     .unwrap();
 }
 
-pub fn update_space_references_if_needed(
+pub fn insert_into_space_references_if_needed(
     space_reference: SpaceReference,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,

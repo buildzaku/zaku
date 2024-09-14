@@ -10,8 +10,10 @@ pub fn initialize(app: &mut App) {
     let app_handle = app.handle();
     let stores = app.state::<StoreCollection<tauri::Wry>>();
 
-    let active_space_reference = store::get_active_space(app_handle.clone(), stores.clone())
-        .or_else(|| space::find_first_valid_space_reference(app_handle.clone(), stores.clone()));
+    let active_space_reference =
+        store::get_active_space_reference(app_handle.clone(), stores.clone()).or_else(|| {
+            space::find_first_valid_space_reference(app_handle.clone(), stores.clone())
+        });
     let space_references = store::get_space_references(app_handle.clone(), stores.clone());
     let state = app.app_handle().state::<Mutex<ZakuState>>();
     let mut zaku_state = state.lock().unwrap();
@@ -26,7 +28,7 @@ pub fn initialize(app: &mut App) {
             Err(_) => {
                 match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
                     Some(valid_space_reference) => {
-                        store::set_active_space(
+                        store::set_active_space_reference(
                             valid_space_reference.clone(),
                             app_handle.clone(),
                             stores,

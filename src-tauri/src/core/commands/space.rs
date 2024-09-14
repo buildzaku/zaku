@@ -74,7 +74,7 @@ pub fn create_space(
         name: create_space_dto.name,
     };
 
-    store::set_active_space(space_reference.clone(), app_handle.clone(), stores.clone());
+    store::set_active_space_reference(space_reference.clone(), app_handle.clone(), stores.clone());
     space_references.push(space_reference.clone());
     store::set_space_references(space_references.clone(), app_handle, stores);
 
@@ -109,8 +109,12 @@ pub fn set_active_space(
 
     match space::parse_space(&space_root_path) {
         Ok(space) => {
-            store::set_active_space(space_reference.clone(), app_handle.clone(), stores.clone());
-            store::update_space_references_if_needed(
+            store::set_active_space_reference(
+                space_reference.clone(),
+                app_handle.clone(),
+                stores.clone(),
+            );
+            store::insert_into_space_references_if_needed(
                 space_reference.clone(),
                 app_handle.clone(),
                 stores.clone(),
@@ -138,14 +142,14 @@ pub fn delete_space(
     let mut zaku_state = state.lock().unwrap();
     store::delete_space_reference(space_reference, app_handle.clone(), stores.clone());
 
-    let active_space = store::get_active_space(app_handle.clone(), stores.clone());
+    let active_space = store::get_active_space_reference(app_handle.clone(), stores.clone());
 
     if let None = active_space {
         zaku_state.active_space = None;
 
         match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
             Some(valid_space_reference) => {
-                store::set_active_space(
+                store::set_active_space_reference(
                     valid_space_reference.clone(),
                     app_handle.clone(),
                     stores.clone(),

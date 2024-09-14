@@ -1,12 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::Mutex;
+
 pub mod constants;
 pub mod core;
 pub mod types;
 
 use core::{commands, shortcuts, state};
-use std::sync::Mutex;
-
 use types::ZakuState;
 
 fn main() {
@@ -31,7 +31,6 @@ fn main() {
             commands::space::set_active_space,
             commands::space::delete_space,
             commands::space::get_space_reference,
-            // commands::space::get_space_references,
             commands::window::show_main_window,
             commands::dialog::open_directory_dialog,
             commands::notification::is_notification_permission_granted,
