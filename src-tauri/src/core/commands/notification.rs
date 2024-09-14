@@ -10,7 +10,8 @@ pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool,
         .notification()
         .permission_state()
         .map_err(|err| ZakuError {
-            error: format!("Failed to get permission state: {}", err),
+            error: err.to_string(),
+            message: "Failed to get current permissions state.".to_string(),
         })?;
 
     return Ok(permission_state == PermissionState::Granted);
@@ -22,7 +23,8 @@ pub fn request_notification_permission(app_handle: AppHandle) -> Result<bool, Za
         .notification()
         .request_permission()
         .map_err(|err| ZakuError {
-            error: format!("Failed to request permission: {}", err),
+            error: err.to_string(),
+            message: "Failed to request for permissions.".to_string(),
         })?;
 
     return Ok(permission_state == PermissionState::Granted);
@@ -46,7 +48,8 @@ pub fn dispatch_notification(
         .body(&options.body)
         .show()
         .map_err(|err| ZakuError {
-            error: format!("Failed to dispatch notification: {}", err),
+            error: err.to_string(),
+            message: "Failed to dispatch notification.".to_string(),
         })?;
 
     return Ok(());

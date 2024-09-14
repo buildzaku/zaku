@@ -19,7 +19,8 @@ pub fn create_space(
     let location = PathBuf::from(create_space_dto.location.as_str());
     if !location.exists() {
         return Err(ZakuError {
-            error: format!("Location does not exist: `{}`", create_space_dto.location),
+            error: create_space_dto.location,
+            message: "Location does not exist.".to_string(),
         });
     }
 
@@ -32,18 +33,14 @@ pub fn create_space(
         .any(|space_reference| space_reference.path == space_root_path.to_string_lossy())
     {
         return Err(ZakuError {
-            error: format!(
-                "Space already exists in saved spaces store with path `{}`",
-                space_root_path.display()
-            ),
+            error: space_root_path.to_string_lossy().to_string(),
+            message: "Space already exists in saved spaces.".to_string(),
         });
     }
     if space_root_path.exists() {
         return Err(ZakuError {
-            error: format!(
-                "Directory with the same name exists at `{}`",
-                space_root_path.display()
-            ),
+            error: space_root_path.to_string_lossy().to_string(),
+            message: "Directory with this name already exists.".to_string(),
         });
     }
 
@@ -103,7 +100,8 @@ pub fn set_active_space(
 
     if !space_root_path.exists() {
         return Err(ZakuError {
-            error: format!("Directory does not exist at {}", space_root_path.display()),
+            error: space_root_path.to_string_lossy().to_string(),
+            message: "Directory does not exist.".to_string(),
         });
     }
 
@@ -127,7 +125,8 @@ pub fn set_active_space(
             return Ok(());
         }
         Err(err) => Err(ZakuError {
-            error: format!("Unable to parse space: {}", err),
+            error: err.to_string(),
+            message: "Unable to parse space.".to_string(),
         }),
     }
 }
@@ -186,11 +185,8 @@ pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
         }
         Err(err) => {
             return Err(ZakuError {
-                error: format!(
-                    "Failed to parse the space {}: {}",
-                    space_root_path.display(),
-                    err
-                ),
+                error: err.to_string(),
+                message: "Unable to parse space.".to_string(),
             });
         }
     }
