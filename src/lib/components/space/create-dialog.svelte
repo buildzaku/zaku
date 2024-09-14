@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Button, buttonVariants } from "$lib/components/primitives/button";
+    import { Button } from "$lib/components/primitives/button";
     import {
         Dialog,
         DialogContent,
@@ -7,7 +7,6 @@
         DialogFooter,
         DialogHeader,
         DialogTitle,
-        DialogTrigger,
     } from "$lib/components/primitives/dialog";
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";

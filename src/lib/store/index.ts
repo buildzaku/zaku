@@ -6,7 +6,6 @@ import { Struct, type InferInput, type ValueOf } from "$lib/utils/struct";
 import { tick } from "svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
-import { ValiError } from "valibot";
 import { getSpaceReference } from "$lib/commands";
 
 export type RequestConfig = HttpRequestConfig;

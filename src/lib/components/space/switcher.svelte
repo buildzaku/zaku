@@ -3,7 +3,6 @@
     import {
         Select,
         SelectContent,
-        SelectGroup,
         SelectInput,
         SelectItem,
         SelectTrigger,
