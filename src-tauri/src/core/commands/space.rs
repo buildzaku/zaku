@@ -78,8 +78,7 @@ pub fn create_space(
     space_references.push(space_reference.clone());
     store::set_space_references(space_references.clone(), app_handle, stores);
 
-    let active_space_path = PathBuf::from(space_reference.clone().path);
-    match space::parse_space(&active_space_path) {
+    match space::parse_space(&PathBuf::from(space_reference.clone().path)) {
         Ok(active_space) => {
             zaku_state.active_space = Some(active_space);
             zaku_state.space_references = space_references;
@@ -97,7 +96,9 @@ pub fn set_active_space(
     space_reference: SpaceReference,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
+    state: State<Mutex<ZakuState>>,
 ) -> Result<(), ZakuError> {
+    let mut zaku_state = state.lock().unwrap();
     let space_root_path = PathBuf::from(space_reference.path.as_str());
 
     if !space_root_path.exists() {
@@ -106,25 +107,18 @@ pub fn set_active_space(
         });
     }
 
-    match space::parse_space_config(&space_root_path) {
-        Ok(_) => {
+    match space::parse_space(&space_root_path) {
+        Ok(space) => {
             store::set_active_space(space_reference.clone(), app_handle.clone(), stores.clone());
-            let mut space_references =
+            store::update_space_references_if_needed(
+                space_reference.clone(),
+                app_handle.clone(),
+                stores.clone(),
+            );
+
+            zaku_state.active_space = Some(space);
+            zaku_state.space_references =
                 store::get_space_references(app_handle.clone(), stores.clone());
-            let exists_in_space_references = space_references
-                .iter()
-                .any(|space_reference| space_reference.path == space_root_path.to_str().unwrap());
-
-            if !exists_in_space_references {
-                println!("not inside store, pushing now {:?}", space_reference);
-
-                space_references.push(SpaceReference {
-                    path: space_root_path.to_str().unwrap().to_string(),
-                    name: space_reference.name.clone(),
-                });
-
-                store::set_space_references(space_references, app_handle, stores);
-            }
 
             return Ok(());
         }
@@ -139,18 +133,35 @@ pub fn delete_space(
     space_reference: SpaceReference,
     app_handle: AppHandle,
     stores: State<'_, StoreCollection<Wry>>,
+    state: State<Mutex<ZakuState>>,
 ) -> () {
-    let active_space = store::get_active_space(app_handle.clone(), stores.clone());
-    let mut saved_spaces = store::get_space_references(app_handle.clone(), stores.clone());
-    saved_spaces.retain(|space| space.path != space_reference.path);
+    store::delete_space_reference(space_reference, app_handle.clone(), stores.clone());
 
-    if let Some(active_space) = active_space {
-        if active_space.path == space_reference.path {
-            store::delete_active_space(app_handle.clone(), stores.clone());
+    let active_space = store::get_active_space(app_handle.clone(), stores.clone());
+
+    if let None = active_space {
+        match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
+            Some(valid_space_reference) => {
+                store::set_active_space(
+                    valid_space_reference.clone(),
+                    app_handle.clone(),
+                    stores.clone(),
+                );
+
+                match space::parse_space(&PathBuf::from(valid_space_reference.clone().path)) {
+                    Ok(active_space) => {
+                        let mut zaku_state = state.lock().unwrap();
+
+                        zaku_state.active_space = Some(active_space);
+                        zaku_state.space_references =
+                            store::get_space_references(app_handle, stores);
+                    }
+                    Err(_) => {}
+                }
+            }
+            None => {}
         }
     }
-
-    store::set_space_references(saved_spaces, app_handle, stores);
 
     return ();
 }

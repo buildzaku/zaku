@@ -44,6 +44,7 @@ pub struct Space {
 #[derive(Serialize, Deserialize)]
 pub struct ZakuError {
     pub error: String,
+    // pub message: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

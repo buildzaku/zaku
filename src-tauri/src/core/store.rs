@@ -1,12 +1,7 @@
-use std::sync::Mutex;
-
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
-use crate::{
-    constants::ZakuStoreKey,
-    types::{SpaceReference, ZakuState},
-};
+use crate::{constants::ZakuStoreKey, types::SpaceReference};
 
 pub fn get_active_space(
     app_handle: AppHandle,
@@ -35,10 +30,8 @@ pub fn set_active_space(
     stores: State<'_, StoreCollection<Wry>>,
 ) {
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
-    let state = app_handle.state::<Mutex<ZakuState>>();
-    let mut zaku_state = state.lock().unwrap();
 
-    tauri_plugin_store::with_store(app_handle.clone(), stores, app_data_dir, |store| {
+    tauri_plugin_store::with_store(app_handle.clone(), stores.clone(), app_data_dir, |store| {
         store
             .insert(
                 ZakuStoreKey::ActiveSpace.to_string(),
@@ -56,16 +49,42 @@ pub fn set_active_space(
     .unwrap();
 }
 
-pub fn delete_active_space(app_handle: AppHandle, stores: State<'_, StoreCollection<Wry>>) {
+pub fn delete_space_reference(
+    space_reference: SpaceReference,
+    app_handle: AppHandle,
+    stores: State<'_, StoreCollection<Wry>>,
+) {
     let app_data_dir = app_handle.path().app_data_dir().unwrap();
 
-    return tauri_plugin_store::with_store(app_handle, stores, app_data_dir, |store| {
-        store.delete(ZakuStoreKey::ActiveSpace.to_string()).unwrap();
-        store.save().unwrap();
+    if let Some(active_space_reference) = get_active_space(app_handle.clone(), stores.clone()) {
+        if active_space_reference.path == space_reference.path {
+            tauri_plugin_store::with_store(
+                app_handle.clone(),
+                stores.clone(),
+                app_data_dir,
+                |store| {
+                    store.delete(ZakuStoreKey::ActiveSpace.to_string()).unwrap();
+                    store.save().unwrap();
 
-        return Ok(());
-    })
-    .unwrap();
+                    return Ok(());
+                },
+            )
+            .unwrap()
+        }
+    }
+
+    let updated_space_references = {
+        let mut space_references = get_space_references(app_handle.clone(), stores.clone());
+        space_references.retain(|existing_space_reference| {
+            existing_space_reference.path != space_reference.path
+        });
+
+        space_references
+    };
+
+    set_space_references(updated_space_references, app_handle.clone(), stores.clone());
+
+    return ();
 }
 
 pub fn get_space_references(
@@ -116,4 +135,31 @@ pub fn set_space_references(
         return Ok(());
     })
     .unwrap();
+}
+
+pub fn update_space_references_if_needed(
+    space_reference: SpaceReference,
+    app_handle: AppHandle,
+    stores: State<'_, StoreCollection<Wry>>,
+) {
+    let mut space_references = get_space_references(app_handle.clone(), stores.clone());
+    let exists_in_space_references = space_references.iter().any(|existing_space_reference| {
+        existing_space_reference.path == space_reference.path.clone()
+    });
+
+    if !exists_in_space_references {
+        println!(
+            "not inside space references, pushing now {:?}",
+            space_reference
+        );
+
+        space_references.push(SpaceReference {
+            path: space_reference.path.clone(),
+            name: space_reference.name.clone(),
+        });
+
+        set_space_references(space_references, app_handle, stores);
+    }
+
+    return ();
 }
