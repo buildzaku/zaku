@@ -16,6 +16,7 @@
     import { RequestConfigPane } from "$lib/components/request-config-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
+    import type { PaneAPI } from "paneforge";
 
     let requestStatus: RequestStatus = "idle";
     let currentUrl = "";
@@ -24,6 +25,7 @@
     let method = METHODS.GET;
     let iframeSrcDoc = "";
 
+    let leftPane: PaneAPI;
     let isLeftPaneCollapsed = false;
 
     let currentRequestParams: KeyValuePair[] = [];
@@ -91,16 +93,17 @@
 <div class="flex size-full flex-col items-center justify-center gap-4">
     <ResizablePaneGroup direction="horizontal" class="w-full">
         <ResizablePane
+            bind:pane={leftPane}
             defaultSize={15}
             minSize={15}
-            maxSize={33}
+            maxSize={45}
             collapsedSize={5}
             collapsible={true}
             onCollapse={() => (isLeftPaneCollapsed = true)}
             onExpand={() => (isLeftPaneCollapsed = false)}
             class={cn(isLeftPaneCollapsed && "w-9 max-w-9")}
         >
-            <Sidebar bind:isCollapsed={isLeftPaneCollapsed} />
+            <Sidebar pane={leftPane} bind:isCollapsed={isLeftPaneCollapsed} />
         </ResizablePane>
         <ResizablePane
             defaultSize={50}
