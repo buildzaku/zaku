@@ -17,7 +17,7 @@
         "format": "prettier --write \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
         "format-check": "prettier --check \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
         "sync-pnpm-lock": "pnpm install --lockfile-only",
-        "sync-cargo-lock": "cd ./src-tauri && cargo update",
+        "sync-cargo-lock": "cd ./src-tauri && cargo check",
         "sync-metadata": "cd ./scripts/sync-metadata && cargo run && pnpm run sync-pnpm-lock && pnpm run sync-cargo-lock",
         "changeset-add": "changeset add",
         "changeset-status": "changeset status --verbose",
