@@ -1,5 +1,13 @@
 # zaku
 
+## 0.3.1
+
+### Patch Changes
+
+-   Separate `error` and `message` in `ZakuError` struct - [`9b6315f`](https://github.com/buildzaku/zaku/commit/9b6315f30ccbee053df4125a12dc3cdfa33c1118)
+
+-   Display toast if space is invalid on switch - [`0b6a48f`](https://github.com/buildzaku/zaku/commit/0b6a48fe7abd9bf4ef0cc77a7b06eaa3f56ad178) [#17](https://github.com/buildzaku/zaku/pull/17)
+
 ## 0.3.0
 
 ### Minor Changes
