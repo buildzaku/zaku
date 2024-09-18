@@ -15,7 +15,7 @@
     <div class="flex h-full items-center">
         <Button
             on:click={toggleMode}
-            variant="ghost-hover"
+            variant="ghost"
             size="icon"
             class="size-6 min-h-6 min-w-6 p-1"
         >
