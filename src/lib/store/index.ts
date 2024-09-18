@@ -1,12 +1,15 @@
 import { writable } from "svelte/store";
+import { null as vNull } from "valibot";
+import type { InferInput } from "valibot";
 
 import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
-import { Struct, type InferInput, type ValueOf } from "$lib/utils/struct";
+import { Ok, Struct } from "$lib/utils/struct";
+import type { ValueOf } from "$lib/utils/struct";
 
 import { tick } from "svelte";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
-import { getSpaceReference } from "$lib/commands";
+import { getSpaceReference, safeInvoke } from "$lib/commands";
 
 export type RequestConfig = HttpRequestConfig;
 
@@ -107,40 +110,49 @@ export type CreateSpaceDto = InferInput<typeof createSpaceDtoStruct>;
 
 export const zakuErrorStruct = Struct.strictObject({
     error: Struct.string(),
+    message: Struct.string(),
 });
+
+export type ZakuError = InferInput<typeof zakuErrorStruct>;
 
 function createZakuState() {
     const { set, subscribe } = writable<ZakuState>({ active_space: null, space_references: [] });
 
     async function synchronize() {
-        try {
-            const zakuStateRaw = await invoke("get_zaku_state");
-            const zakuState = Struct.parse(zakuStateStruct, zakuStateRaw);
-            set(zakuState);
-            await tick();
+        const getZakuStateResult = await safeInvoke(zakuStateStruct, "get_zaku_state");
 
-            return;
-        } catch (err) {
-            console.error(err);
-            toast("Unable to synchronize");
+        if (getZakuStateResult.ok) {
+            set(getZakuStateResult.value);
+            await tick();
+        } else {
+            const { error, message } = getZakuStateResult.err;
+
+            console.error(error);
+            toast(message);
         }
+
+        return Ok();
     }
 
     return {
         initialize: synchronize,
-        set: async (spaceReference: SpaceReference) => {
-            try {
-                await invoke("set_active_space", {
-                    spaceReference: spaceReference,
-                });
-                await synchronize();
+        setActiveSpace: async (spaceReference: SpaceReference) => {
+            const setActiveSpaceResult = await safeInvoke(vNull(), "set_active_space", {
+                spaceReference: spaceReference,
+            });
 
-                return;
-            } catch (err) {
-                console.error(err);
+            if (setActiveSpaceResult.ok) {
+                await synchronize();
+            } else {
+                const { error, message } = setActiveSpaceResult.err;
+
+                console.error(error);
+                toast(message);
             }
+
+            return;
         },
-        delete: async (path: string) => {
+        deleteSpace: async (path: string) => {
             try {
                 const spaceReference = await getSpaceReference(path);
                 await invoke("delete_space", {
@@ -165,7 +177,7 @@ export async function createSpace(createSpaceDto: CreateSpaceDto) {
     });
     const spaceReference = Struct.parse(spaceReferenceStruct, createSpaceRawResult);
 
-    await zakuState.set(spaceReference);
+    await zakuState.setActiveSpace(spaceReference);
 
     return;
 }

@@ -14,7 +14,7 @@
             if (selectedPath !== null) {
                 const spaceReference = await getSpaceReference(selectedPath);
 
-                await zakuState.set(spaceReference);
+                await zakuState.setActiveSpace(spaceReference);
                 await goto("/space");
             }
         } catch (err) {
