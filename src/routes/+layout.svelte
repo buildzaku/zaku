@@ -6,8 +6,8 @@
     import { invoke } from "@tauri-apps/api/core";
     import { ModeWatcher } from "mode-watcher";
 
-    import { Toaster } from "$lib/components/primitives/sonner";
     import "../app.css";
+    import { Toaster } from "$lib/components/primitives/sonner";
     import { TitleBar } from "$lib/components/title-bar";
     import { zakuState } from "$lib/store";
 
@@ -19,7 +19,6 @@
         if (!dev) {
             document.addEventListener("contextmenu", disableContextMenu);
         }
-
         await zakuState.initialize();
 
         if ($zakuState.active_space !== null) {

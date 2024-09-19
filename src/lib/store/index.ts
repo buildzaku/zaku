@@ -1,15 +1,13 @@
-import { writable } from "svelte/store";
-import { null as vNull } from "valibot";
-import type { InferInput } from "valibot";
-
-import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
-import { Ok, Struct } from "$lib/utils/struct";
-import type { ValueOf } from "$lib/utils/struct";
-
 import { tick } from "svelte";
+import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
+
+import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
+import { Ok } from "$lib/utils";
+import type { ValueOf } from "$lib/utils";
 import { getSpaceReference, safeInvoke } from "$lib/commands";
+import type { DragPayload, CreateSpaceDto, SpaceReference, ZakuState } from "$lib/models";
 
 export type RequestConfig = HttpRequestConfig;
 
@@ -57,69 +55,14 @@ export type HttpRequestConfig = {
     };
 };
 
-export const StoreKey = {
-    CurrentSpacePath: "active_space_path",
-    SpacePaths: "space_paths",
-};
-const spaceMetaStruct = Struct.strictObject({
-    name: Struct.string(),
-});
-
-const spaceConfigStruct = Struct.strictObject({
-    meta: spaceMetaStruct,
-});
-
-const requestStruct = Struct.strictObject({
-    name: Struct.string(),
-});
-
-const collectionStruct = Struct.strictObject({
-    name: Struct.string(),
-    requests: Struct.array(requestStruct),
-});
-
-const spaceStruct = Struct.strictObject({
-    path: Struct.string(),
-    config: spaceConfigStruct,
-    collections: Struct.array(collectionStruct),
-    requests: Struct.array(requestStruct),
-});
-
-export type Space = InferInput<typeof spaceStruct>;
-
-export const spaceReferenceStruct = Struct.strictObject({
-    path: Struct.string(),
-    name: Struct.string(),
-});
-
-export type SpaceReference = InferInput<typeof spaceReferenceStruct>;
-
-const zakuStateStruct = Struct.strictObject({
-    active_space: Struct.nullable(spaceStruct),
-    space_references: Struct.array(spaceReferenceStruct),
-});
-
-export type ZakuState = InferInput<typeof zakuStateStruct>;
-
-export const createSpaceDtoStruct = Struct.strictObject({
-    name: Struct.string(),
-    location: Struct.string(),
-});
-
-export type CreateSpaceDto = InferInput<typeof createSpaceDtoStruct>;
-
-export const zakuErrorStruct = Struct.strictObject({
-    error: Struct.string(),
-    message: Struct.string(),
-});
-
-export type ZakuError = InferInput<typeof zakuErrorStruct>;
-
 function createZakuState() {
-    const { set, subscribe } = writable<ZakuState>({ active_space: null, space_references: [] });
+    const { set, subscribe, update } = writable<ZakuState>({
+        active_space: null,
+        space_references: [],
+    });
 
     async function synchronize() {
-        const getZakuStateResult = await safeInvoke(zakuStateStruct, "get_zaku_state");
+        const getZakuStateResult = await safeInvoke<ZakuState>("get_zaku_state");
 
         if (getZakuStateResult.ok) {
             set(getZakuStateResult.value);
@@ -137,8 +80,8 @@ function createZakuState() {
     return {
         initialize: synchronize,
         setActiveSpace: async (spaceReference: SpaceReference) => {
-            const setActiveSpaceResult = await safeInvoke(vNull(), "set_active_space", {
-                spaceReference: spaceReference,
+            const setActiveSpaceResult = await safeInvoke<null>("set_active_space", {
+                space_reference: spaceReference,
             });
 
             if (setActiveSpaceResult.ok) {
@@ -166,18 +109,23 @@ function createZakuState() {
             }
         },
         subscribe,
+        update,
+        set,
     };
 }
 
 export const zakuState = createZakuState();
 
 export async function createSpace(createSpaceDto: CreateSpaceDto) {
-    const createSpaceRawResult = await invoke("create_space", {
+    const spaceReference = await invoke<SpaceReference>("create_space", {
         createSpaceDto,
     });
-    const spaceReference = Struct.parse(spaceReferenceStruct, createSpaceRawResult);
 
     await zakuState.setActiveSpace(spaceReference);
 
     return;
 }
+
+export const currentDragPayload = writable<DragPayload | null>(null);
+
+export const currentDropTargetPath = writable<string | null>(null);

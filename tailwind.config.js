@@ -83,27 +83,6 @@ const config = {
                     DEFAULT: "hsl(var(--card) / <alpha-value>)",
                     foreground: "hsl(var(--card-foreground) / <alpha-value>)",
                 },
-                "method-get": {
-                    DEFAULT: "hsl(var(--method-get) / <alpha-value>)",
-                },
-                "method-post": {
-                    DEFAULT: "hsl(var(--method-post) / <alpha-value>)",
-                },
-                "method-put": {
-                    DEFAULT: "hsl(var(--method-put) / <alpha-value>)",
-                },
-                "method-patch": {
-                    DEFAULT: "hsl(var(--method-patch) / <alpha-value>)",
-                },
-                "method-delete": {
-                    DEFAULT: "hsl(var(--method-delete) / <alpha-value>)",
-                },
-                "method-head": {
-                    DEFAULT: "hsl(var(--method-head) / <alpha-value>)",
-                },
-                "method-options": {
-                    DEFAULT: "hsl(var(--method-options) / <alpha-value>)",
-                },
             },
             borderRadius: {
                 lg: "var(--radius)",

@@ -1,22 +1,22 @@
 <script lang="ts">
+    import { goto } from "$app/navigation";
+    import { ChevronDownIcon, CheckIcon, PyramidIcon } from "lucide-svelte";
+
+    import { zakuState } from "$lib/store";
+    import { Button } from "$lib/components/primitives/button";
     import {
         DropdownMenu,
         DropdownMenuContent,
         DropdownMenuItem,
         DropdownMenuSub,
         DropdownMenuTrigger,
+        DropdownMenuSubTrigger,
+        DropdownMenuSubContent,
+        DropdownMenuSeparator,
     } from "$lib/components/primitives/dropdown-menu";
-    import { ChevronDownIcon, CheckIcon, PyramidIcon } from "lucide-svelte";
-
-    import { zakuState } from "$lib/store";
-    import { Button } from "../primitives/button";
-    import DropdownMenuSeparator from "../primitives/dropdown-menu/dropdown-menu-separator.svelte";
-    import DropdownMenuSubTrigger from "../primitives/dropdown-menu/dropdown-menu-sub-trigger.svelte";
-    import DropdownMenuSubContent from "../primitives/dropdown-menu/dropdown-menu-sub-content.svelte";
-    import { goto } from "$app/navigation";
     import { openDirectoryDialog, getSpaceReference, dispatchNotification } from "$lib/commands";
-    import { SpaceCreateDialog } from ".";
     import { cn } from "$lib/utils/style";
+    import { SpaceCreateDialog } from ".";
 
     export let isSidebarCollapsed: boolean;
 
@@ -42,7 +42,7 @@
 
     async function handleDelete() {
         if ($zakuState.active_space) {
-            await zakuState.deleteSpace($zakuState.active_space.path);
+            await zakuState.deleteSpace($zakuState.active_space.absolute_path);
         }
     }
 </script>
@@ -62,9 +62,7 @@
                 <PyramidIcon size={14} class="min-h-[14px] min-w-[14px]" />
                 {#if !isSidebarCollapsed}
                     <div class="flex grow items-center justify-between overflow-hidden">
-                        <span class="truncate pr-0.5"
-                            >{$zakuState.active_space.config.meta.name}</span
-                        >
+                        <span class="truncate pr-0.5">{$zakuState.active_space.meta.name}</span>
                         <ChevronDownIcon size={14} class="min-h-[14px] min-w-[14px]" />
                     </div>
                 {/if}
@@ -80,7 +78,7 @@
                     <p>Switch Space</p>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent class="w-[185px]" sideOffset={4}>
-                    {#each $zakuState.space_references as spaceReference}
+                    {#each $zakuState.space_references as spaceReference (spaceReference.path)}
                         <DropdownMenuItem
                             class="flex h-8 justify-between rounded-md px-2 text-small"
                             on:click={async () => {
@@ -90,7 +88,7 @@
                             <div class="flex items-center overflow-hidden">
                                 <span class="truncate">{spaceReference.name}</span>
                             </div>
-                            {#if spaceReference.path === $zakuState.active_space.path}
+                            {#if spaceReference.path === $zakuState.active_space.absolute_path}
                                 <CheckIcon size={14} class="min-h-[14px] min-w-[14px]" />
                             {/if}
                         </DropdownMenuItem>

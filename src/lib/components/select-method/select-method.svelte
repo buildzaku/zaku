@@ -8,7 +8,7 @@
         SelectGroup,
         SelectItem,
         SelectInput,
-    } from "../primitives/select";
+    } from "$lib/components/primitives/select";
 
     export let selected: (typeof METHODS)[keyof typeof METHODS];
 </script>
