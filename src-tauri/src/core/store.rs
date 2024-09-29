@@ -1,7 +1,7 @@
 use tauri::{AppHandle, Manager, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
-use crate::{constants::ZakuStoreKey, types::SpaceReference};
+use crate::{constants::ZakuStoreKey, models::space::SpaceReference};
 
 pub fn get_active_space_reference(
     app_handle: AppHandle,

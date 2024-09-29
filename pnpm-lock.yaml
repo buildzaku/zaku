@@ -71,9 +71,6 @@ importers:
       tailwind-variants:
         specifier: 0.2.1
         version: 0.2.1(tailwindcss@3.4.11)
-      valibot:
-        specifier: 0.41.0
-        version: 0.41.0(typescript@5.6.2)
     devDependencies:
       '@changesets/cli':
         specifier: 2.27.8
@@ -1963,14 +1960,6 @@ packages:
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
-
-  valibot@0.41.0:
-    resolution: {integrity: sha512-igDBb8CTYr8YTQlOKgaN9nSS0Be7z+WRuaeYqGf3Cjz3aKmSnqEmYnkfVjzIuumGqfHpa3fLIvMEAfhrpqN8ng==}
-    peerDependencies:
-      typescript: '>=5'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
 
   vite@5.4.5:
     resolution: {integrity: sha512-pXqR0qtb2bTwLkev4SE3r4abCNioP3GkjvIDLlzziPpXtHgiJIjuKl+1GN6ESOT3wMjG3JTeARopj2SwYaHTOA==}
@@ -3888,10 +3877,6 @@ snapshots:
       punycode: 2.3.1
 
   util-deprecate@1.0.2: {}
-
-  valibot@0.41.0(typescript@5.6.2):
-    optionalDependencies:
-      typescript: 5.6.2
 
   vite@5.4.5:
     dependencies:
