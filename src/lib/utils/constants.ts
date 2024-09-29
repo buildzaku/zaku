@@ -8,16 +8,6 @@ export const METHODS = {
     OPTIONS: { value: "OPTIONS", label: "OPTIONS" },
 } as const;
 
-export const METHOD_CLASS = {
-    GET: "text-method-get data-[highlighted]:text-method-get",
-    POST: "text-method-post data-[highlighted]:text-method-post",
-    PUT: "text-method-put data-[highlighted]:text-method-put",
-    PATCH: "text-method-patch data-[highlighted]:text-method-patch",
-    DELETE: "text-method-delete data-[highlighted]:text-method-delete",
-    HEAD: "text-method-head data-[highlighted]:text-method-head",
-    OPTIONS: "text-method-options data-[highlighted]:text-method-options",
-} as const;
-
 export const REQUEST_BODY_TYPES = {
     None: "None",
     Json: "application/json",

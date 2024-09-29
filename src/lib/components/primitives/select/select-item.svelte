@@ -1,6 +1,7 @@
 <script lang="ts">
     import { Select as SelectPrimitive } from "bits-ui";
-    import DotFilled from "svelte-radix/DotFilled.svelte";
+    import { CheckIcon } from "lucide-svelte";
+
     import { cn } from "$lib/utils/style.js";
 
     type $$Props = SelectPrimitive.ItemProps;
@@ -28,7 +29,7 @@
 >
     <span class="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-            <DotFilled class="h-4 w-4" />
+            <CheckIcon size={12} />
         </SelectPrimitive.ItemIndicator>
     </span>
     <slot>
