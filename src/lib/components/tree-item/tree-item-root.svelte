@@ -24,7 +24,7 @@
 
 <div
     data-current-path={currentPath}
-    class={cn("min-w-full", shouldHighlight ? "bg-muted/50" : "", propsClass)}
+    class={cn("min-w-full", shouldHighlight ? "bg-accent/60" : "", propsClass)}
 >
     <div
         tabindex={0}
