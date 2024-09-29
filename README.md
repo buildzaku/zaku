@@ -24,8 +24,6 @@
 
 > [!WARNING]
 > Zaku is in early stages of development, expect breaking changes.
-> Also, we're not ready for contributions just yet.
-> Thanks for checking it out and stay tuned for updates!
 
 ## Test it out
 
@@ -45,6 +43,10 @@ To work around this you need to remove the quarantine attribute flagged by Apple
 xattr -c /Applications/Zaku.app
 ```
 
+## Contributing
+
+Checkout the [contributing guide](./.github/CONTRIBUTING.md).
+
 ## License
 
-Zaku is licensed under the [MIT license](https://github.com/buildzaku/zaku/blob/main/LICENSE.md).
+Zaku is licensed under the [MIT license](./LICENSE.md).
