@@ -28,8 +28,7 @@
         : { type: "request", parentRelativePath: parentPath };
 
     $: {
-        $currentDropTargetPath;
-        $currentDragPayload;
+        let $external = [$currentDropTargetPath, $currentDragPayload];
 
         shouldHighlight = isDropAllowed(currentPath);
     }

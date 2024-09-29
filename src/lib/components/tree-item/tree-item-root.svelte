@@ -16,8 +16,7 @@
     let shouldHighlight = isDropAllowed(currentPath);
 
     $: {
-        $currentDropTargetPath;
-        $currentDragPayload;
+        let $external = [$currentDropTargetPath, $currentDragPayload];
 
         shouldHighlight = isDropAllowed(currentPath);
     }
