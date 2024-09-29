@@ -7,9 +7,10 @@ use tauri::{AppHandle, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
 use crate::core::{space, store};
-use crate::types::{CreateSpaceDto, SpaceConfig, SpaceMeta, SpaceReference, ZakuError, ZakuState};
+use crate::models::space::{CreateSpaceDto, SpaceMeta, SpaceReference};
+use crate::models::zaku::{ZakuError, ZakuState};
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_space(
     create_space_dto: CreateSpaceDto,
     app_handle: AppHandle,
@@ -52,15 +53,13 @@ pub fn create_space(
     let mut space_config_file =
         File::create(&space_meta_path.join("config.toml")).expect("Failed to create `config.toml`");
 
-    let space_config = SpaceConfig {
-        meta: SpaceMeta {
-            name: create_space_dto.name.clone(),
-        },
+    let space_meta = SpaceMeta {
+        name: create_space_dto.name.clone(),
     };
 
     space_config_file
         .write_all(
-            toml::to_string_pretty(&space_config)
+            toml::to_string_pretty(&space_meta)
                 .expect("Failed to serialize space config")
                 .as_bytes(),
         )
@@ -88,7 +87,7 @@ pub fn create_space(
     return Ok(space_reference);
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn set_active_space(
     space_reference: SpaceReference,
     app_handle: AppHandle,
@@ -131,7 +130,7 @@ pub fn set_active_space(
     }
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_space(
     space_reference: SpaceReference,
     app_handle: AppHandle,
@@ -170,15 +169,15 @@ pub fn delete_space(
     return ();
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
     let space_root_path = PathBuf::from(path.as_str());
 
     match space::parse_space_config(&space_root_path) {
-        Ok(space_config) => {
+        Ok(space_config_file) => {
             let space_reference = SpaceReference {
                 path: space_root_path.to_string_lossy().to_string(),
-                name: space_config.meta.name,
+                name: space_config_file.meta.name,
             };
 
             return Ok(space_reference);

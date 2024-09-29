@@ -29,10 +29,7 @@ export default [
     },
     {
         rules: {
-            "@typescript-eslint/no-unused-vars": [
-                "warn",
-                { varsIgnorePattern: "^\\$\\$(Props|Events|Slots)$" },
-            ],
+            "@typescript-eslint/no-unused-vars": ["warn", { varsIgnorePattern: "^(\\$|_)" }],
             "@typescript-eslint/no-explicit-any": "off",
         },
     },

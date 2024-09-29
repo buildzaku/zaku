@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
-use crate::types::ZakuError;
+use crate::models::zaku::ZakuError;
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool, ZakuError> {
     let permission_state = app_handle
         .notification()
@@ -17,7 +17,7 @@ pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool,
     return Ok(permission_state == PermissionState::Granted);
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn request_notification_permission(app_handle: AppHandle) -> Result<bool, ZakuError> {
     let permission_state = app_handle
         .notification()
@@ -36,7 +36,7 @@ pub struct DispatchNotificationOptions {
     pub body: String,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn dispatch_notification(
     options: DispatchNotificationOptions,
     app_handle: AppHandle,

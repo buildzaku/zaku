@@ -28,3 +28,5 @@ export const REQUEST_BODY_TYPES = {
     Html: "text/html",
     PlainText: "text/plain",
 } as const;
+
+export const RELATIVE_SPACE_ROOT = "/";

@@ -96,12 +96,12 @@
             bind:pane={leftPane}
             defaultSize={15}
             minSize={15}
-            maxSize={45}
+            maxSize={50}
             collapsedSize={5}
             collapsible={true}
             onCollapse={() => (isLeftPaneCollapsed = true)}
             onExpand={() => (isLeftPaneCollapsed = false)}
-            class={cn(isLeftPaneCollapsed && "w-9 max-w-9")}
+            class={cn(isLeftPaneCollapsed && "w-9 min-w-9 max-w-9")}
         >
             <Sidebar pane={leftPane} bind:isCollapsed={isLeftPaneCollapsed} />
         </ResizablePane>

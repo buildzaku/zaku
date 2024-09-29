@@ -4,7 +4,7 @@ use tauri::{App, Manager};
 use tauri_plugin_store::StoreCollection;
 
 use super::{space, store};
-use crate::types::ZakuState;
+use crate::models::zaku::ZakuState;
 
 pub fn initialize(app: &mut App) {
     let app_handle = app.handle();
@@ -35,8 +35,15 @@ pub fn initialize(app: &mut App) {
                         );
 
                         let valid_space_path = PathBuf::from(valid_space_reference.path);
-                        let valid_space = space::parse_space(&valid_space_path).unwrap();
-                        zaku_state.active_space = Some(valid_space);
+
+                        match space::parse_space(&valid_space_path) {
+                            Ok(valid_space) => {
+                                zaku_state.active_space = Some(valid_space);
+                            }
+                            Err(err) => {
+                                eprintln!("Error parsing space: {}", err);
+                            }
+                        }
                     }
                     None => {}
                 }

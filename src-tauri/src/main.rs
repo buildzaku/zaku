@@ -4,10 +4,10 @@ use std::sync::Mutex;
 
 pub mod constants;
 pub mod core;
-pub mod types;
+pub mod models;
 
 use core::{commands, shortcuts, state};
-use types::ZakuState;
+use models::zaku::ZakuState;
 
 fn main() {
     let app = tauri::Builder::default()
