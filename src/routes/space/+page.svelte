@@ -13,7 +13,7 @@
     import { SelectMethod } from "$lib/components/select-method";
     import { METHODS } from "$lib/utils/constants";
     import { Sidebar } from "$lib/components/sidebar";
-    import { RequestConfigPane } from "$lib/components/request-config-pane";
+    import { ConfigurationPane } from "$lib/components/configuration-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import type { PaneAPI } from "paneforge";
@@ -135,7 +135,7 @@
                     onExpand={() => (isRequestPaneCollapsed = false)}
                     class={cn(isRequestPaneCollapsed && "h-8 max-h-8 min-h-8")}
                 >
-                    <RequestConfigPane
+                    <ConfigurationPane
                         pane={requestPane}
                         bind:isCollapsed={isRequestPaneCollapsed}
                         bind:parameters={currentRequestParams}

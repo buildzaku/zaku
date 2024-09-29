@@ -19,28 +19,35 @@
 
 <div class="size-full bg-card">
     {#if status === "idle"}
-        <div class="flex h-8 w-full items-center justify-between border-b bg-accent/25">
-            <span class="px-3 text-xs font-medium">Response</span>
-            <Button
-                variant="ghost"
-                on:click={() => {
-                    if (isCollapsed) {
-                        pane.expand();
-                        pane.resize(60);
-                    } else {
-                        pane.collapse();
-                    }
-                }}
-            >
-                {#if isCollapsed}
-                    <ChevronUpIcon size={14} />
-                {:else}
-                    <ChevronDownIcon size={14} />
-                {/if}
-            </Button>
-        </div>
-
-        {#if !isCollapsed}
+        {#if isCollapsed}
+            <div class="flex h-8 w-full items-center justify-between border-b bg-accent/25">
+                <div class="flex size-full items-center justify-end">
+                    <Button
+                        variant="ghost"
+                        on:click={() => {
+                            pane.expand();
+                            pane.resize(60);
+                        }}
+                    >
+                        <span class="pr-1.5 text-xs font-medium">Response</span>
+                        <ChevronUpIcon size={14} />
+                    </Button>
+                </div>
+            </div>
+        {:else}
+            <div class="flex h-8 w-full items-center justify-between border-b bg-accent/25">
+                <div class="flex size-full items-center justify-end">
+                    <Button
+                        variant="ghost"
+                        on:click={() => {
+                            pane.collapse();
+                        }}
+                    >
+                        <span class="pr-1.5 text-xs font-medium">Response</span>
+                        <ChevronDownIcon size={14} />
+                    </Button>
+                </div>
+            </div>
             <div class="flex size-full items-center justify-center gap-2 pb-8">
                 <Rocket size={20} />
                 <span>
@@ -53,32 +60,45 @@
             <div
                 class="flex h-8 w-full items-center justify-between border-y border-t-transparent bg-accent/25"
             >
-                <div class="px-1.5">
-                    <TabsList
-                        class="grid auto-cols-min grid-flow-col justify-start gap-2 p-0 [&>*]:text-xs"
-                    >
-                        <TabsTrigger value="body">Body</TabsTrigger>
-                        <TabsTrigger value="cookies">Cookies</TabsTrigger>
-                        <TabsTrigger value="headers">Headers</TabsTrigger>
-                    </TabsList>
-                </div>
-                <Button
-                    variant="ghost"
-                    on:click={() => {
-                        if (isCollapsed) {
-                            pane.expand();
-                            pane.resize(40);
-                        } else {
-                            pane.collapse();
-                        }
-                    }}
-                >
-                    {#if isCollapsed}
-                        <ChevronUpIcon size={14} />
-                    {:else}
-                        <ChevronDownIcon size={14} />
-                    {/if}
-                </Button>
+                {#if isCollapsed}
+                    <div class="flex h-8 w-full items-center justify-between border-b">
+                        <div class="flex size-full items-center justify-end">
+                            <Button
+                                variant="ghost"
+                                on:click={() => {
+                                    pane.expand();
+                                    pane.resize(60);
+                                }}
+                            >
+                                <span class="pr-1.5 text-xs font-medium">Response</span>
+                                <ChevronUpIcon size={14} />
+                            </Button>
+                        </div>
+                    </div>
+                {:else}
+                    <div class="px-1.5">
+                        <TabsList
+                            class="grid auto-cols-min grid-flow-col justify-start gap-2 p-0 [&>*]:text-xs"
+                        >
+                            <TabsTrigger value="body">Body</TabsTrigger>
+                            <TabsTrigger value="cookies">Cookies</TabsTrigger>
+                            <TabsTrigger value="headers">Headers</TabsTrigger>
+                        </TabsList>
+                    </div>
+                    <div class="flex h-8 w-full items-center justify-between border-b">
+                        <div class="flex size-full items-center justify-end">
+                            <Button
+                                variant="ghost"
+                                on:click={() => {
+                                    pane.collapse();
+                                }}
+                            >
+                                <span class="pr-1.5 text-xs font-medium">Response</span>
+                                <ChevronDownIcon size={14} />
+                            </Button>
+                        </div>
+                    </div>
+                {/if}
             </div>
             {#if !isCollapsed}
                 <div class="flex h-[calc(100%-2.25rem)] w-full items-center justify-center">
