@@ -9,6 +9,7 @@
         "core:window:allow-minimize",
         "core:window:allow-is-fullscreen",
         "core:window:allow-set-fullscreen",
+        "core:window:allow-internal-toggle-maximize",
         "core:path:allow-resolve-directory",
         {
             "identifier": "http:default",

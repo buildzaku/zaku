@@ -7,7 +7,7 @@ pub struct OpenDirectoryDialogOptions {
     pub title: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn open_directory_dialog<R: tauri::Runtime>(
     options: Option<OpenDirectoryDialogOptions>,
     app_handle: AppHandle<R>,

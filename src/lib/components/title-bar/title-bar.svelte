@@ -3,7 +3,7 @@
     import { toggleMode } from "mode-watcher";
 
     import { cn } from "$lib/utils/style";
-    import { ZakuVector } from "$lib/components/vectors";
+    import { ZakuIcon } from "$lib/components/icons";
     import { Button } from "$lib/components/primitives/button";
 </script>
 
@@ -24,7 +24,7 @@
             <span class="sr-only">Toggle theme</span>
         </Button>
         <div class="px-3">
-            <ZakuVector size={11} />
+            <ZakuIcon size={11} />
         </div>
     </div>
 </div>
