@@ -27,6 +27,10 @@
 
     let leftPane: PaneAPI;
     let isLeftPaneCollapsed = false;
+    let requestPane: PaneAPI;
+    let isRequestPaneCollapsed = false;
+    let responsePane: PaneAPI;
+    let isResponsePaneCollapsed = false;
 
     let currentRequestParams: KeyValuePair[] = [];
     let currentRequestHeaders: KeyValuePair[] = [
@@ -121,15 +125,37 @@
                         </form>
                     </div>
                 </div>
-                <ResizablePane defaultSize={25} minSize={20} collapsedSize={5.5} collapsible={true}>
+                <ResizablePane
+                    bind:pane={requestPane}
+                    defaultSize={25}
+                    minSize={20}
+                    collapsedSize={5.5}
+                    collapsible={true}
+                    onCollapse={() => (isRequestPaneCollapsed = true)}
+                    onExpand={() => (isRequestPaneCollapsed = false)}
+                    class={cn(isRequestPaneCollapsed && "h-8 max-h-8 min-h-8")}
+                >
                     <RequestConfigPane
+                        pane={requestPane}
+                        bind:isCollapsed={isRequestPaneCollapsed}
                         bind:parameters={currentRequestParams}
                         bind:headers={currentRequestHeaders}
                     />
                 </ResizablePane>
                 <ResizableHandle withHandle />
-                <ResizablePane defaultSize={75} minSize={20} collapsedSize={5} collapsible={true}>
+                <ResizablePane
+                    bind:pane={responsePane}
+                    defaultSize={75}
+                    minSize={20}
+                    collapsedSize={5}
+                    collapsible={true}
+                    onCollapse={() => (isResponsePaneCollapsed = true)}
+                    onExpand={() => (isResponsePaneCollapsed = false)}
+                    class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8")}
+                >
                     <ResponsePane
+                        pane={responsePane}
+                        bind:isCollapsed={isResponsePaneCollapsed}
                         bind:status={requestStatus}
                         bind:raw={json}
                         bind:preview={iframeSrcDoc}

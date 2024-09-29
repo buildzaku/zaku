@@ -37,7 +37,7 @@
 <div
     data-parent-path={parentPath}
     data-current-path={currentPath}
-    class={cn("relative min-w-full", shouldHighlight ? "bg-muted/50" : "", propsClass)}
+    class={cn("relative min-w-full", shouldHighlight ? "bg-accent/60" : "", propsClass)}
 >
     {#if level > 1}
         <div
@@ -65,7 +65,7 @@
             }
         }}
         style="padding-left: {level * 8}px"
-        class="flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        class="flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         on:click={() => {
             if (isCollection(treeItem)) {
                 treeItem.meta.is_open = !treeItem.meta.is_open;
