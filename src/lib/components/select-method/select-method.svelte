@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { METHOD_CLASS, METHODS } from "$lib/utils/constants";
+    import { METHODS } from "$lib/utils/constants";
     import {
         Select,
         SelectTrigger,
@@ -9,12 +9,13 @@
         SelectItem,
         SelectInput,
     } from "$lib/components/primitives/select";
+    import { cn, getMethodColorClass } from "$lib/utils/style";
 
     export let selected: (typeof METHODS)[keyof typeof METHODS];
 </script>
 
 <Select bind:selected>
-    <SelectTrigger class={`w-32 ${METHOD_CLASS[selected.value]}`}>
+    <SelectTrigger class={cn("w-32", getMethodColorClass(selected.value))}>
         <SelectValue placeholder="HTTP method" />
     </SelectTrigger>
     <SelectContent>
@@ -23,12 +24,12 @@
                 <SelectItem
                     value={METHOD.value}
                     label={METHOD.label}
-                    class={METHOD_CLASS[METHOD.value]}
+                    class={getMethodColorClass(METHOD.value)}
                 >
                     {METHOD.label}
                 </SelectItem>
             {/each}
         </SelectGroup>
     </SelectContent>
-    <SelectInput name="http-method" class={METHOD_CLASS[selected.value]} />
+    <SelectInput name="http-method" class={getMethodColorClass(selected.value)} />
 </Select>
