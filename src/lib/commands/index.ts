@@ -3,7 +3,7 @@ import type { InvokeArgs, InvokeOptions } from "@tauri-apps/api/core";
 
 import { Err, isObject, Ok } from "$lib/utils";
 import type { Result } from "$lib/utils";
-import type { SpaceReference, ZakuError } from "$lib/models";
+import type { SpaceReference, ZakuError } from "$lib/bindings";
 
 export type OpenDirectoryDialogOptions = {
     title?: string;
