@@ -2,7 +2,7 @@
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
     import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed } from ".";
-    import type { Collection } from "$lib/models";
+    import type { Collection } from "$lib/bindings";
     import { currentDragPayload, currentDropTargetPath } from "$lib/store";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";

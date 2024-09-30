@@ -7,7 +7,8 @@ import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
 import { Ok } from "$lib/utils";
 import type { ValueOf } from "$lib/utils";
 import { getSpaceReference, safeInvoke } from "$lib/commands";
-import type { DragPayload, CreateSpaceDto, SpaceReference, ZakuState } from "$lib/models";
+import type { DragPayload } from "$lib/models";
+import type { ZakuState, SpaceReference, CreateSpaceDto } from "$lib/bindings";
 
 export type RequestConfig = HttpRequestConfig;
 
