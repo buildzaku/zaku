@@ -1,11 +1,7 @@
-use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OpenDirectoryDialogOptions {
-    pub title: Option<String>,
-}
+use crate::models::OpenDirectoryDialogOptions;
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn open_directory_dialog<R: tauri::Runtime>(

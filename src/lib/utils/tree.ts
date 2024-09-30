@@ -1,9 +1,10 @@
 import { toast } from "svelte-sonner";
 
-import type { Collection, Request, TreeItem, RemoveTreeItemDto } from "$lib/models";
+import type { TreeItem, RemoveTreeItemDto } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { Ok, Err } from "$lib/utils";
 import type { Result } from "$lib/utils";
+import type { Collection, Request } from "$lib/bindings";
 
 export function isCollection(treeItem: TreeItem): treeItem is Collection {
     return Object.hasOwn(treeItem.meta, "folder_name");

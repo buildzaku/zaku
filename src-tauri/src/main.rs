@@ -10,6 +10,9 @@ use core::{commands, shortcuts, state};
 use models::zaku::ZakuState;
 
 fn main() {
+    #[cfg(debug_assertions)]
+    models::generate_bindings().expect("Failed to generate TypeScript bindings");
+
     let app = tauri::Builder::default()
         .manage(Mutex::new(ZakuState {
             active_space: None,
