@@ -5965,9 +5965,12 @@ checksum = "af4e2e2f7cba5a093896c1e150fbfe177d1883e7448200efb81d40b9d339ef26"
 name = "zaku"
 version = "0.3.1"
 dependencies = [
+ "cocoa",
  "dirs",
+ "objc",
  "once_cell",
  "postcard",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "tauri",
