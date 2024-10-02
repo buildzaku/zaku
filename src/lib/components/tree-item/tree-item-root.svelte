@@ -3,11 +3,17 @@
 
     import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed } from ".";
     import type { Collection } from "$lib/bindings";
-    import { currentDragPayload, currentDropTargetPath } from "$lib/store";
+    import {
+        createNewTreeItem,
+        currentDragPayload,
+        currentDropTargetPath,
+        focussedTreeItem,
+    } from "$lib/store";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
     import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/primitives/tooltip";
+    import { TREE_ITEM_TYPE } from "$lib/models";
 
     export let currentPath: string;
     export let root: Collection;
@@ -20,6 +26,8 @@
 
         shouldHighlight = isDropAllowed(currentPath);
     }
+
+    $: console.log($focussedTreeItem);
 </script>
 
 <div
@@ -67,6 +75,7 @@
                         size="icon"
                         on:click={event => {
                             event.stopImmediatePropagation();
+                            createNewTreeItem.set(TREE_ITEM_TYPE.Request);
                         }}
                         class="flex size-5 max-h-5 min-h-5 min-w-5 max-w-5 flex-shrink-0 items-center justify-center"
                     >
@@ -86,6 +95,7 @@
                         size="icon"
                         on:click={event => {
                             event.stopImmediatePropagation();
+                            createNewTreeItem.set(TREE_ITEM_TYPE.Collection);
                         }}
                         class="flex size-5 max-h-5 min-h-5 min-w-5 max-w-5 flex-shrink-0 items-center justify-center"
                     >

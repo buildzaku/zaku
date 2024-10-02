@@ -8,6 +8,12 @@ export type Collection = {
 
 export type CollectionMeta = { folder_name: string; display_name: string | null; is_open: boolean };
 
+export type CreateCollectionDto = {
+    relative_location: string;
+    folder_name: string;
+    display_name: string | null;
+};
+
 export type CreateSpaceDto = { name: string; location: string };
 
 export type DispatchNotificationOptions = { title: string; body: string };

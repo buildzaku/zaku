@@ -18,3 +18,11 @@ pub struct Collection {
     pub requests: Vec<Request>,
     pub collections: Vec<Collection>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings.ts")]
+pub struct CreateCollectionDto {
+    pub relative_location: String,
+    pub folder_name: String,
+    pub display_name: Option<String>,
+}

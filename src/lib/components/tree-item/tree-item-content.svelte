@@ -9,11 +9,18 @@
         handleDrop,
         isDropAllowed,
     } from ".";
-    import type { TreeItem, DragOverDto } from "$lib/models";
-    import { currentDragPayload, currentDropTargetPath } from "$lib/store";
+    import { type TreeItem, type DragOverDto, TREE_ITEM_TYPE } from "$lib/models";
+    import {
+        createNewTreeItem,
+        currentDragPayload,
+        currentDropTargetPath,
+        focussedTreeItem,
+    } from "$lib/store";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { isCollection } from "$lib/utils/tree";
+    import TreeItemCreate from "./tree-item-create.svelte";
+    import Collection from "../icons/collection.svelte";
 
     export let parentPath: string;
     export let currentPath: string;
@@ -22,6 +29,7 @@
 
     let propsClass = $$props["class"];
     let shouldHighlight = isDropAllowed(currentPath);
+    let treeItemCreateName = "";
 
     const dragOverDto: DragOverDto = isCollection(treeItem)
         ? { type: "collection", relativePath: currentPath }
@@ -65,10 +73,26 @@
             }
         }}
         style="padding-left: {level * 8}px"
-        class="flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        class={cn(
+            "flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            $focussedTreeItem.relativePath === currentPath ? "bg-accent" : "hover:bg-accent/60",
+        )}
         on:click={() => {
+            createNewTreeItem.set(null);
+
             if (isCollection(treeItem)) {
                 treeItem.meta.is_open = !treeItem.meta.is_open;
+                focussedTreeItem.set({
+                    type: TREE_ITEM_TYPE.Collection,
+                    parentRelativePath: parentPath,
+                    relativePath: currentPath,
+                });
+            } else {
+                focussedTreeItem.set({
+                    type: TREE_ITEM_TYPE.Request,
+                    parentRelativePath: parentPath,
+                    relativePath: currentPath,
+                });
             }
         }}
     >
@@ -99,22 +123,57 @@
         </div>
     </div>
 
-    {#if isCollection(treeItem) && treeItem.meta.is_open}
-        {#each treeItem.requests as request (`${currentPath}/${request.meta.file_name}`)}
-            <TreeItemContent
-                parentPath={currentPath}
-                currentPath={`${currentPath}/${request.meta.file_name}`}
-                treeItem={request}
+    {#if isCollection(treeItem)}
+        {#if $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
+            {#if $focussedTreeItem.relativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Request}
+                <TreeItemCreate
+                    type={TREE_ITEM_TYPE.Request}
+                    level={level + 1}
+                    bind:name={treeItemCreateName}
+                />
+            {/if}
+        {:else if $focussedTreeItem.parentRelativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Request}
+            <TreeItemCreate
+                type={TREE_ITEM_TYPE.Request}
                 level={level + 1}
+                bind:name={treeItemCreateName}
             />
-        {/each}
-        {#each treeItem.collections as collection (`${currentPath}/${collection.meta.folder_name}`)}
-            <TreeItemContent
-                parentPath={currentPath}
-                currentPath={`${currentPath}/${collection.meta.folder_name}`}
-                treeItem={collection}
+        {/if}
+        {#if treeItem.meta.is_open}
+            {#each treeItem.requests as request (`${currentPath}/${request.meta.file_name}`)}
+                <TreeItemContent
+                    parentPath={currentPath}
+                    currentPath={`${currentPath}/${request.meta.file_name}`}
+                    treeItem={request}
+                    level={level + 1}
+                />
+            {/each}
+        {/if}
+
+        {#if $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
+            {#if $focussedTreeItem.relativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Collection}
+                <TreeItemCreate
+                    type={TREE_ITEM_TYPE.Collection}
+                    level={level + 1}
+                    bind:name={treeItemCreateName}
+                />
+            {/if}
+        {:else if $focussedTreeItem.parentRelativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Collection}
+            <TreeItemCreate
+                type={TREE_ITEM_TYPE.Collection}
                 level={level + 1}
+                bind:name={treeItemCreateName}
             />
-        {/each}
+        {/if}
+        {#if treeItem.meta.is_open}
+            {#each treeItem.collections as collection (`${currentPath}/${collection.meta.folder_name}`)}
+                <TreeItemContent
+                    parentPath={currentPath}
+                    currentPath={`${currentPath}/${collection.meta.folder_name}`}
+                    treeItem={collection}
+                    level={level + 1}
+                />
+            {/each}
+        {/if}
     {/if}
 </div>

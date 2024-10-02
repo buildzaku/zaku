@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::{ExportError, TS};
 
-use collection::{Collection, CollectionMeta};
+use collection::{Collection, CollectionMeta, CreateCollectionDto};
 use request::{Request, RequestConfig, RequestMeta};
 use space::{CreateSpaceDto, Space, SpaceMeta, SpaceReference};
 use zaku::{ZakuError, ZakuState};
@@ -27,6 +27,7 @@ pub struct DispatchNotificationOptions {
 pub fn generate_bindings() -> Result<(), ExportError> {
     CollectionMeta::export_all()?;
     Collection::export_all()?;
+    CreateCollectionDto::export_all()?;
 
     OpenDirectoryDialogOptions::export_all()?;
     DispatchNotificationOptions::export_all()?;

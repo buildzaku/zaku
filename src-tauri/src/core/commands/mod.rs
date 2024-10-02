@@ -1,3 +1,4 @@
+pub mod collection;
 pub mod dialog;
 pub mod notification;
 pub mod space;

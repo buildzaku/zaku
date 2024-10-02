@@ -38,7 +38,8 @@ fn main() {
             commands::dialog::open_directory_dialog,
             commands::notification::is_notification_permission_granted,
             commands::notification::request_notification_permission,
-            commands::notification::dispatch_notification
+            commands::notification::dispatch_notification,
+            commands::collection::create_collection
         ]);
 
     app.run(tauri::generate_context!())

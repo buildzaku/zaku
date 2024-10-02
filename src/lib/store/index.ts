@@ -3,11 +3,11 @@ import { writable } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 
-import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
+import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
 import { Ok } from "$lib/utils";
 import type { ValueOf } from "$lib/utils";
 import { getSpaceReference, safeInvoke } from "$lib/commands";
-import type { DragPayload } from "$lib/models";
+import { TREE_ITEM_TYPE, type DragPayload, type FocussedTreeItem } from "$lib/models";
 import type { ZakuState, SpaceReference, CreateSpaceDto } from "$lib/bindings";
 
 export type RequestConfig = HttpRequestConfig;
@@ -79,7 +79,7 @@ function createZakuState() {
     }
 
     return {
-        initialize: synchronize,
+        synchronize,
         setActiveSpace: async (spaceReference: SpaceReference) => {
             const setActiveSpaceResult = await safeInvoke<null>("set_active_space", {
                 space_reference: spaceReference,
@@ -130,3 +130,11 @@ export async function createSpace(createSpaceDto: CreateSpaceDto) {
 export const currentDragPayload = writable<DragPayload | null>(null);
 
 export const currentDropTargetPath = writable<string | null>(null);
+
+export const focussedTreeItem = writable<FocussedTreeItem>({
+    type: TREE_ITEM_TYPE.Collection,
+    relativePath: RELATIVE_SPACE_ROOT,
+    parentRelativePath: RELATIVE_SPACE_ROOT,
+});
+
+export const createNewTreeItem = writable<ValueOf<typeof TREE_ITEM_TYPE> | null>(null);
