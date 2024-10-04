@@ -21,18 +21,47 @@
     import { isCollection } from "$lib/utils/tree";
     import TreeItemCreate from "./tree-item-create.svelte";
     import type { ValueOf } from "$lib/utils";
+    import { onDestroy, onMount, tick } from "svelte";
+    import { listen, TauriEvent, type UnlistenFn } from "@tauri-apps/api/event";
+    import { createCollection } from "$lib/commands/collection";
 
-    export let name: string;
+    export let parentRelativePath: string;
+    export let inputName: string;
     export let type: ValueOf<typeof TREE_ITEM_TYPE>;
     export let level: number;
 
     let propsClass = $$props["class"];
+    let inputElement: HTMLElement | null = null;
+    let unlistenWindowBlurEvent: UnlistenFn | null = null;
 
-    function init(element: HTMLElement) {
+    function initialize(element: HTMLElement) {
         element.focus();
     }
 
-    $: console.log({ name });
+    function isRelatedElementExcludedFromFocusOutTarget(event: FocusEvent) {
+        if (event.relatedTarget && event.relatedTarget instanceof HTMLElement) {
+            return (
+                event.relatedTarget.hasAttribute("data-create-tree-item-input") ||
+                event.relatedTarget.hasAttribute("data-create-tree-item-button")
+            );
+        }
+
+        return false;
+    }
+
+    onMount(async () => {
+        unlistenWindowBlurEvent = await listen(TauriEvent.WINDOW_BLUR, () => {
+            if (inputElement) {
+                inputElement.blur();
+            }
+        });
+    });
+
+    onDestroy(() => {
+        if (unlistenWindowBlurEvent) {
+            unlistenWindowBlurEvent();
+        }
+    });
 </script>
 
 <div class={cn("relative min-w-full", propsClass)}>
@@ -54,26 +83,40 @@
                 <span class={cn("pl-3 text-[9px] font-bold", getMethodColorClass("GET"))}>GET</span>
             {/if}
             <input
-                use:init
-                on:focusout={() => {
-                    createNewTreeItem.set(null);
-                    name = "";
+                use:initialize
+                bind:this={inputElement}
+                data-create-tree-item-input
+                type="text"
+                on:focusout={async event => {
+                    if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
+                        createNewTreeItem.set(null);
+                        inputName = "";
+                    } else {
+                        inputName = "";
+                        await tick();
+
+                        if (inputElement) {
+                            inputElement.focus();
+                        }
+                    }
+                }}
+                on:keydown={async keyboardEvent => {
+                    if (keyboardEvent.key === "Enter") {
+                        keyboardEvent.preventDefault();
+
+                        console.log(`create a thing with ${inputName}`);
+                        const isSuccess = await createCollection({
+                            relative_location: parentRelativePath,
+                            display_name: inputName,
+                            folder_name: inputName.split(" ").join("-"),
+                        });
+
+                        console.log({ isSuccess });
+                    }
                 }}
                 class="w-full whitespace-nowrap text-sm ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                bind:value={name}
+                bind:value={inputName}
             />
-
-            <!-- <span
-                    class={cn(
-                        "pl-3 text-[9px] font-bold",
-                        getMethodColorClass(treeItem.config.method),
-                    )}
-                >
-                    {treeItem.config.method}
-                </span>
-                <span class="truncate text-sm">
-                    {treeItem.meta.display_name ?? treeItem.meta.file_name}
-                </span> -->
         </div>
     </div>
 </div>

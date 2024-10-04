@@ -29,7 +29,7 @@
 
     let propsClass = $$props["class"];
     let shouldHighlight = isDropAllowed(currentPath);
-    let treeItemCreateName = "";
+    let treeItemInputName = "";
 
     const dragOverDto: DragOverDto = isCollection(treeItem)
         ? { type: "collection", relativePath: currentPath }
@@ -124,21 +124,26 @@
     </div>
 
     {#if isCollection(treeItem)}
-        {#if $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
-            {#if $focussedTreeItem.relativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Request}
+        {#if $createNewTreeItem === TREE_ITEM_TYPE.Request && $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
+            {#if $focussedTreeItem.relativePath === currentPath}
                 <TreeItemCreate
                     type={TREE_ITEM_TYPE.Request}
+                    parentRelativePath={currentPath}
                     level={level + 1}
-                    bind:name={treeItemCreateName}
+                    bind:inputName={treeItemInputName}
                 />
             {/if}
-        {:else if $focussedTreeItem.parentRelativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Request}
-            <TreeItemCreate
-                type={TREE_ITEM_TYPE.Request}
-                level={level + 1}
-                bind:name={treeItemCreateName}
-            />
+        {:else if $createNewTreeItem === TREE_ITEM_TYPE.Request && $focussedTreeItem.type === TREE_ITEM_TYPE.Request}
+            {#if $focussedTreeItem.parentRelativePath === currentPath}
+                <TreeItemCreate
+                    type={TREE_ITEM_TYPE.Request}
+                    parentRelativePath={currentPath}
+                    level={level + 1}
+                    bind:inputName={treeItemInputName}
+                />
+            {/if}
         {/if}
+
         {#if treeItem.meta.is_open}
             {#each treeItem.requests as request (`${currentPath}/${request.meta.file_name}`)}
                 <TreeItemContent
@@ -150,20 +155,24 @@
             {/each}
         {/if}
 
-        {#if $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
-            {#if $focussedTreeItem.relativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Collection}
+        {#if $createNewTreeItem === TREE_ITEM_TYPE.Collection && $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
+            {#if $focussedTreeItem.relativePath === currentPath}
                 <TreeItemCreate
                     type={TREE_ITEM_TYPE.Collection}
+                    parentRelativePath={currentPath}
                     level={level + 1}
-                    bind:name={treeItemCreateName}
+                    bind:inputName={treeItemInputName}
                 />
             {/if}
-        {:else if $focussedTreeItem.parentRelativePath === currentPath && $createNewTreeItem === TREE_ITEM_TYPE.Collection}
-            <TreeItemCreate
-                type={TREE_ITEM_TYPE.Collection}
-                level={level + 1}
-                bind:name={treeItemCreateName}
-            />
+        {:else if $createNewTreeItem === TREE_ITEM_TYPE.Collection && $focussedTreeItem.type === TREE_ITEM_TYPE.Request}
+            {#if $focussedTreeItem.parentRelativePath === currentPath}
+                <TreeItemCreate
+                    type={TREE_ITEM_TYPE.Collection}
+                    parentRelativePath={currentPath}
+                    level={level + 1}
+                    bind:inputName={treeItemInputName}
+                />
+            {/if}
         {/if}
         {#if treeItem.meta.is_open}
             {#each treeItem.collections as collection (`${currentPath}/${collection.meta.folder_name}`)}

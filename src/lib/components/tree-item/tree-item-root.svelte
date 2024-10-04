@@ -1,7 +1,7 @@
 <script lang="ts">
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
-    import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed } from ".";
+    import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed, TreeItemCreate } from ".";
     import type { Collection } from "$lib/bindings";
     import {
         createNewTreeItem,
@@ -20,6 +20,8 @@
 
     let propsClass = $$props["class"];
     let shouldHighlight = isDropAllowed(currentPath);
+
+    let treeItemInputName = "";
 
     $: {
         let $external = [$currentDropTargetPath, $currentDragPayload];
@@ -66,48 +68,64 @@
                 {root.meta.display_name ?? root.meta.folder_name}
             </span>
         </div>
-        <div class="mr-1.5 hidden items-center gap-1 group-hover/explorer:flex">
-            <Tooltip group openDelay={500} closeDelay={0}>
-                <TooltipTrigger asChild let:builder>
-                    <Button
-                        builders={[builder]}
-                        variant="ghost-hover"
-                        size="icon"
-                        on:click={event => {
-                            event.stopImmediatePropagation();
-                            createNewTreeItem.set(TREE_ITEM_TYPE.Request);
-                        }}
-                        class="flex size-5 max-h-5 min-h-5 min-w-5 max-w-5 flex-shrink-0 items-center justify-center"
-                    >
-                        <FilePlusIcon size={14} />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                    <p>New Request</p>
-                </TooltipContent>
-            </Tooltip>
 
-            <Tooltip group openDelay={500} closeDelay={0}>
-                <TooltipTrigger asChild let:builder>
-                    <Button
-                        builders={[builder]}
-                        variant="ghost-hover"
-                        size="icon"
-                        on:click={event => {
-                            event.stopImmediatePropagation();
-                            createNewTreeItem.set(TREE_ITEM_TYPE.Collection);
-                        }}
-                        class="flex size-5 max-h-5 min-h-5 min-w-5 max-w-5 flex-shrink-0 items-center justify-center"
-                    >
-                        <FolderPlusIcon size={14} />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                    <p>New Collection</p>
-                </TooltipContent>
-            </Tooltip>
-        </div>
+        {#if root.meta.is_open}
+            <div
+                role="button"
+                tabindex={-1}
+                on:click={event => {
+                    event.stopImmediatePropagation();
+                }}
+                on:keydown={keyboardEvent => {
+                    keyboardEvent.stopImmediatePropagation();
+                }}
+                class="hidden h-full items-center gap-1 px-1.5 group-hover/explorer:flex"
+            >
+                <Tooltip group openDelay={500} closeDelay={0}>
+                    <TooltipTrigger asChild let:builder>
+                        <Button
+                            builders={[builder]}
+                            data-create-tree-item-button
+                            variant="ghost-hover"
+                            size="icon"
+                            on:click={event => {
+                                event.stopImmediatePropagation();
+                                createNewTreeItem.set(TREE_ITEM_TYPE.Request);
+                            }}
+                            class="flex size-5 max-h-5 min-h-5 min-w-5 max-w-5 flex-shrink-0 items-center justify-center"
+                        >
+                            <FilePlusIcon size={14} />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>New Request</p>
+                    </TooltipContent>
+                </Tooltip>
+
+                <Tooltip group openDelay={500} closeDelay={0}>
+                    <TooltipTrigger asChild let:builder>
+                        <Button
+                            builders={[builder]}
+                            data-create-tree-item-button
+                            variant="ghost-hover"
+                            size="icon"
+                            on:click={event => {
+                                event.stopImmediatePropagation();
+                                createNewTreeItem.set(TREE_ITEM_TYPE.Collection);
+                            }}
+                            class="flex size-5 max-h-5 min-h-5 min-w-5 max-w-5 flex-shrink-0 items-center justify-center"
+                        >
+                            <FolderPlusIcon size={14} />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>New Collection</p>
+                    </TooltipContent>
+                </Tooltip>
+            </div>
+        {/if}
     </div>
+
     {#if root.meta.is_open}
         <div
             class="flex h-[calc(100vh-32px-47px-36px-22px-38px)] max-h-[calc(100vh-32px-47px-36px-22px-38px)] w-full flex-1 flex-col overflow-y-auto"

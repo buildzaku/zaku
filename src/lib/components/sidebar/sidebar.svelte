@@ -1,17 +1,20 @@
 <script lang="ts">
-    import { zakuState } from "$lib/store";
+    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/store";
     import { Button } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import { TreeItemContent, TreeItemRoot } from "$lib/components/tree-item";
+    import { TreeItemContent, TreeItemCreate, TreeItemRoot } from "$lib/components/tree-item";
     import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
+    import { TREE_ITEM_TYPE } from "$lib/models";
 
     export let pane: PaneAPI;
     export let isCollapsed: boolean;
+
+    let treeItemInputName = "";
 </script>
 
 {#if $zakuState.active_space}
@@ -70,6 +73,14 @@
                         currentPath={RELATIVE_SPACE_ROOT}
                         root={$zakuState.active_space.root}
                     >
+                        {#if $createNewTreeItem === TREE_ITEM_TYPE.Request && ($focussedTreeItem.relativePath === RELATIVE_SPACE_ROOT || $focussedTreeItem.parentRelativePath === RELATIVE_SPACE_ROOT)}
+                            <TreeItemCreate
+                                type={TREE_ITEM_TYPE.Request}
+                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                level={1}
+                                bind:inputName={treeItemInputName}
+                            />
+                        {/if}
                         {#each $zakuState.active_space.root.requests as request (`/${request.meta.file_name}`)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
@@ -78,6 +89,15 @@
                                 level={1}
                             />
                         {/each}
+
+                        {#if $createNewTreeItem === TREE_ITEM_TYPE.Collection && ($focussedTreeItem.relativePath === RELATIVE_SPACE_ROOT || $focussedTreeItem.parentRelativePath === RELATIVE_SPACE_ROOT)}
+                            <TreeItemCreate
+                                type={TREE_ITEM_TYPE.Collection}
+                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                level={1}
+                                bind:inputName={treeItemInputName}
+                            />
+                        {/if}
                         {#each $zakuState.active_space.root.collections as collection (`/${collection.meta.folder_name}`)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
