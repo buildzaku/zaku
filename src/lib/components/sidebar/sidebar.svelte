@@ -6,7 +6,12 @@
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import { TreeItemContent, TreeItemCreate, TreeItemRoot } from "$lib/components/tree-item";
+    import {
+        isCurrentCollectionOrAnyOfItsChildFocussed,
+        TreeItemContent,
+        TreeItemCreate,
+        TreeItemRoot,
+    } from "$lib/components/tree-item";
     import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import { TREE_ITEM_TYPE } from "$lib/models";
@@ -14,7 +19,25 @@
     export let pane: PaneAPI;
     export let isCollapsed: boolean;
 
+    let shouldRenderCreateNewRequestInput = false;
+    let shouldRenderCreateNewCollectionInput = false;
     let treeItemInputName = "";
+
+    $: {
+        let $external = [$focussedTreeItem];
+
+        shouldRenderCreateNewRequestInput =
+            $createNewTreeItem === TREE_ITEM_TYPE.Request &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
+    }
+
+    $: {
+        let $external = [$focussedTreeItem];
+
+        shouldRenderCreateNewCollectionInput =
+            $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
+    }
 </script>
 
 {#if $zakuState.active_space}
@@ -73,7 +96,7 @@
                         currentPath={RELATIVE_SPACE_ROOT}
                         root={$zakuState.active_space.root}
                     >
-                        {#if $createNewTreeItem === TREE_ITEM_TYPE.Request && ($focussedTreeItem.relativePath === RELATIVE_SPACE_ROOT || $focussedTreeItem.parentRelativePath === RELATIVE_SPACE_ROOT)}
+                        {#if shouldRenderCreateNewRequestInput}
                             <TreeItemCreate
                                 type={TREE_ITEM_TYPE.Request}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
@@ -90,7 +113,7 @@
                             />
                         {/each}
 
-                        {#if $createNewTreeItem === TREE_ITEM_TYPE.Collection && ($focussedTreeItem.relativePath === RELATIVE_SPACE_ROOT || $focussedTreeItem.parentRelativePath === RELATIVE_SPACE_ROOT)}
+                        {#if shouldRenderCreateNewCollectionInput}
                             <TreeItemCreate
                                 type={TREE_ITEM_TYPE.Collection}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}

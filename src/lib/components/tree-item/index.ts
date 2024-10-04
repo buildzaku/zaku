@@ -1,7 +1,8 @@
 import { get } from "svelte/store";
 
 import TreeItemPreview from "./tree-item-preview.svelte";
-import { currentDragPayload, currentDropTargetPath, zakuState } from "$lib/store";
+import { currentDragPayload, currentDropTargetPath, focussedTreeItem, zakuState } from "$lib/store";
+import { TREE_ITEM_TYPE } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import {
@@ -164,6 +165,18 @@ export function handleDragEnd(event: DragEvent) {
     }
 
     currentDropTargetPath.set(null);
+}
+
+export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string): boolean {
+    const staticFocussedTreeItem = get(focussedTreeItem);
+    const isCurrentCollectionFocussed =
+        staticFocussedTreeItem.type === TREE_ITEM_TYPE.Collection &&
+        staticFocussedTreeItem.relativePath === currentPath;
+    const isCurrentCollectionChildFocussed =
+        staticFocussedTreeItem.type === TREE_ITEM_TYPE.Request &&
+        staticFocussedTreeItem.parentRelativePath === currentPath;
+
+    return isCurrentCollectionFocussed || isCurrentCollectionChildFocussed;
 }
 
 export { default as TreeItemContent } from "./tree-item-content.svelte";

@@ -7,6 +7,7 @@
         handleDragOver,
         handleDragStart,
         handleDrop,
+        isCurrentCollectionOrAnyOfItsChildFocussed,
         isDropAllowed,
     } from ".";
     import { type TreeItem, type DragOverDto, TREE_ITEM_TYPE } from "$lib/models";
@@ -28,6 +29,8 @@
     export let level: number;
 
     let propsClass = $$props["class"];
+    let shouldRenderCreateNewRequestInput = false;
+    let shouldRenderCreateNewCollectionInput = false;
     let shouldHighlight = isDropAllowed(currentPath);
     let treeItemInputName = "";
 
@@ -39,6 +42,22 @@
         let $external = [$currentDropTargetPath, $currentDragPayload];
 
         shouldHighlight = isDropAllowed(currentPath);
+    }
+
+    $: {
+        let $external = [$focussedTreeItem];
+
+        shouldRenderCreateNewRequestInput =
+            $createNewTreeItem === TREE_ITEM_TYPE.Request &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(currentPath);
+    }
+
+    $: {
+        let $external = [$focussedTreeItem];
+
+        shouldRenderCreateNewCollectionInput =
+            $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(currentPath);
     }
 </script>
 
@@ -124,24 +143,13 @@
     </div>
 
     {#if isCollection(treeItem)}
-        {#if $createNewTreeItem === TREE_ITEM_TYPE.Request && $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
-            {#if $focussedTreeItem.relativePath === currentPath}
-                <TreeItemCreate
-                    type={TREE_ITEM_TYPE.Request}
-                    parentRelativePath={currentPath}
-                    level={level + 1}
-                    bind:inputName={treeItemInputName}
-                />
-            {/if}
-        {:else if $createNewTreeItem === TREE_ITEM_TYPE.Request && $focussedTreeItem.type === TREE_ITEM_TYPE.Request}
-            {#if $focussedTreeItem.parentRelativePath === currentPath}
-                <TreeItemCreate
-                    type={TREE_ITEM_TYPE.Request}
-                    parentRelativePath={currentPath}
-                    level={level + 1}
-                    bind:inputName={treeItemInputName}
-                />
-            {/if}
+        {#if shouldRenderCreateNewRequestInput}
+            <TreeItemCreate
+                type={TREE_ITEM_TYPE.Request}
+                parentRelativePath={currentPath}
+                level={level + 1}
+                bind:inputName={treeItemInputName}
+            />
         {/if}
 
         {#if treeItem.meta.is_open}
@@ -155,24 +163,13 @@
             {/each}
         {/if}
 
-        {#if $createNewTreeItem === TREE_ITEM_TYPE.Collection && $focussedTreeItem.type === TREE_ITEM_TYPE.Collection}
-            {#if $focussedTreeItem.relativePath === currentPath}
-                <TreeItemCreate
-                    type={TREE_ITEM_TYPE.Collection}
-                    parentRelativePath={currentPath}
-                    level={level + 1}
-                    bind:inputName={treeItemInputName}
-                />
-            {/if}
-        {:else if $createNewTreeItem === TREE_ITEM_TYPE.Collection && $focussedTreeItem.type === TREE_ITEM_TYPE.Request}
-            {#if $focussedTreeItem.parentRelativePath === currentPath}
-                <TreeItemCreate
-                    type={TREE_ITEM_TYPE.Collection}
-                    parentRelativePath={currentPath}
-                    level={level + 1}
-                    bind:inputName={treeItemInputName}
-                />
-            {/if}
+        {#if shouldRenderCreateNewCollectionInput}
+            <TreeItemCreate
+                type={TREE_ITEM_TYPE.Collection}
+                parentRelativePath={currentPath}
+                level={level + 1}
+                bind:inputName={treeItemInputName}
+            />
         {/if}
         {#if treeItem.meta.is_open}
             {#each treeItem.collections as collection (`${currentPath}/${collection.meta.folder_name}`)}
