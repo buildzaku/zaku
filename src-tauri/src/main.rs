@@ -2,11 +2,12 @@
 
 use std::sync::Mutex;
 
+pub mod commands;
 pub mod constants;
 pub mod core;
 pub mod models;
 
-use core::{commands, shortcuts, state};
+use core::{shortcuts, state};
 use models::zaku::ZakuState;
 
 fn main() {
