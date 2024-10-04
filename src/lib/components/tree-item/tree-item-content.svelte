@@ -3,6 +3,7 @@
 
     import {
         TreeItemContent,
+        buildPath,
         handleDragEnd,
         handleDragOver,
         handleDragStart,
@@ -21,7 +22,7 @@
     import { CollectionIcon } from "$lib/components/icons";
     import { isCollection } from "$lib/utils/tree";
     import TreeItemCreate from "./tree-item-create.svelte";
-    import Collection from "../icons/collection.svelte";
+    import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 
     export let parentPath: string;
     export let currentPath: string;
@@ -153,10 +154,10 @@
         {/if}
 
         {#if treeItem.meta.is_open}
-            {#each treeItem.requests as request (`${currentPath}/${request.meta.file_name}`)}
+            {#each treeItem.requests as request (buildPath(currentPath, request.meta.file_name))}
                 <TreeItemContent
                     parentPath={currentPath}
-                    currentPath={`${currentPath}/${request.meta.file_name}`}
+                    currentPath={buildPath(currentPath, request.meta.file_name)}
                     treeItem={request}
                     level={level + 1}
                 />
@@ -172,10 +173,10 @@
             />
         {/if}
         {#if treeItem.meta.is_open}
-            {#each treeItem.collections as collection (`${currentPath}/${collection.meta.folder_name}`)}
+            {#each treeItem.collections as collection (buildPath(currentPath, collection.meta.folder_name))}
                 <TreeItemContent
                     parentPath={currentPath}
-                    currentPath={`${currentPath}/${collection.meta.folder_name}`}
+                    currentPath={buildPath(currentPath, collection.meta.folder_name)}
                     treeItem={collection}
                     level={level + 1}
                 />

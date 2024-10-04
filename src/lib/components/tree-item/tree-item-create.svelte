@@ -15,6 +15,7 @@
         currentDragPayload,
         currentDropTargetPath,
         focussedTreeItem,
+        zakuState,
     } from "$lib/store";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
@@ -23,7 +24,8 @@
     import type { ValueOf } from "$lib/utils";
     import { onDestroy, onMount, tick } from "svelte";
     import { listen, TauriEvent, type UnlistenFn } from "@tauri-apps/api/event";
-    import { createCollection } from "$lib/commands/collection";
+
+    import { safeInvoke } from "$lib/commands";
 
     export let parentRelativePath: string;
     export let inputName: string;
@@ -104,14 +106,19 @@
                     if (keyboardEvent.key === "Enter") {
                         keyboardEvent.preventDefault();
 
-                        console.log(`create a thing with ${inputName}`);
-                        const isSuccess = await createCollection({
-                            relative_location: parentRelativePath,
-                            display_name: inputName,
-                            folder_name: inputName.split(" ").join("-"),
+                        const createCollectionResult = await safeInvoke("create_collection", {
+                            create_collection_dto: {
+                                relative_location: parentRelativePath,
+                                display_name: inputName,
+                                folder_name: inputName.split(" ").join("-"),
+                            },
                         });
 
-                        console.log({ isSuccess });
+                        if (!createCollectionResult.ok) {
+                            console.log(createCollectionResult.err);
+                        }
+
+                        await zakuState.synchronize();
                     }
                 }}
                 class="w-full whitespace-nowrap text-sm ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

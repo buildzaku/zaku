@@ -104,10 +104,10 @@
                                 bind:inputName={treeItemInputName}
                             />
                         {/if}
-                        {#each $zakuState.active_space.root.requests as request (`/${request.meta.file_name}`)}
+                        {#each $zakuState.active_space.root.requests as request (request.meta.file_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
-                                currentPath={`/${request.meta.file_name}`}
+                                currentPath={request.meta.file_name}
                                 treeItem={request}
                                 level={1}
                             />
@@ -121,10 +121,10 @@
                                 bind:inputName={treeItemInputName}
                             />
                         {/if}
-                        {#each $zakuState.active_space.root.collections as collection (`/${collection.meta.folder_name}`)}
+                        {#each $zakuState.active_space.root.collections as collection (collection.meta.folder_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
-                                currentPath={`/${collection.meta.folder_name}`}
+                                currentPath={collection.meta.folder_name}
                                 treeItem={collection}
                                 level={1}
                             />

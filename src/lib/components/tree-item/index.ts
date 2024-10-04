@@ -167,6 +167,10 @@ export function handleDragEnd(event: DragEvent) {
     currentDropTargetPath.set(null);
 }
 
+export function buildPath(currentPath: string, treeItemName: string) {
+    return currentPath === RELATIVE_SPACE_ROOT ? treeItemName : `${currentPath}/${treeItemName}`;
+}
+
 export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string): boolean {
     const staticFocussedTreeItem = get(focussedTreeItem);
     const isCurrentCollectionFocussed =
