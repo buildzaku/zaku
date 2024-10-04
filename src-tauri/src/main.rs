@@ -44,5 +44,5 @@ fn main() {
         ]);
 
     app.run(tauri::generate_context!())
-        .expect("error while running the application");
+        .expect("Error while running the application");
 }
