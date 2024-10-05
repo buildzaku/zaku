@@ -4,9 +4,9 @@ export type Collection = { meta: CollectionMeta, requests: Array<Request>, colle
 
 export type CollectionMeta = { folder_name: string, display_name: string | null, is_open: boolean, };
 
-export type CreateCollectionDto = { relative_location: string, folder_relative_path: string, display_name: string, };
+export type CreateCollectionDto = { parent_relative_path: string, relative_path: string, };
 
-export type CreateRequestDto = { relative_location: string, file_relative_path: string, display_name: string, };
+export type CreateRequestDto = { parent_relative_path: string, relative_path: string, };
 
 export type CreateSpaceDto = { name: string, location: string, };
 

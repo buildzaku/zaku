@@ -56,9 +56,8 @@
     async function handleCreateRequestOrCollection() {
         if (type === TREE_ITEM_TYPE.Collection) {
             const create_collection_dto: CreateCollectionDto = {
-                relative_location: parentRelativePath,
-                folder_relative_path: inputName,
-                display_name: inputName.split("/").at(-1) ?? "Unknown",
+                parent_relative_path: parentRelativePath,
+                relative_path: inputName,
             };
             const createCollectionResult = await safeInvoke("create_collection", {
                 create_collection_dto,
@@ -69,9 +68,8 @@
             }
         } else {
             const create_request_dto: CreateRequestDto = {
-                relative_location: parentRelativePath,
-                file_relative_path: inputName,
-                display_name: inputName.split("/").at(-1) ?? "Unknown",
+                parent_relative_path: parentRelativePath,
+                relative_path: inputName,
             };
             const createRequestResult = await safeInvoke("create_request", { create_request_dto });
 

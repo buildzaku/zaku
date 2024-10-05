@@ -52,7 +52,7 @@
             }
         }}
         class={cn(
-            "flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap bg-background ring-inset focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap bg-background ring-inset focus:outline-none focus:ring-1 focus:ring-ring",
         )}
         on:click={() => {
             root.meta.is_open = !root.meta.is_open;

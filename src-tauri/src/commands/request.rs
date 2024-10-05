@@ -1,10 +1,11 @@
-use std::{fs, path::PathBuf, sync::Mutex};
+use std::{path::PathBuf, sync::Mutex};
 
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    core::{self, space},
+    core::{self, collection, space},
     models::{
+        collection::CreateCollectionDto,
         request::CreateRequestDto,
         zaku::{ZakuError, ZakuState},
     },
@@ -15,42 +16,96 @@ pub fn create_request(
     create_request_dto: CreateRequestDto,
     app_handle: AppHandle,
 ) -> Result<(), ZakuError> {
-    if create_request_dto.file_relative_path.is_empty() {
+    if create_request_dto.relative_path.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a request without name".to_string(),
             message: "Cannot create a request without name".to_string(),
         });
     };
 
+    println!("DTO\n{:#?}", create_request_dto.clone());
+
     let state = app_handle.state::<Mutex<ZakuState>>();
     let mut zaku_state = state.lock().unwrap();
     let active_space = zaku_state.active_space.clone().unwrap();
-
     let active_space_absolute_path = PathBuf::from(&active_space.absolute_path);
-    let file_relative_path = create_request_dto
-        .file_relative_path
+
+    let (parsed_parent_relative_path, file_display_name) =
+        match create_request_dto.relative_path.rfind('/') {
+            Some(last_slash) => {
+                let start_to_second_last = &create_request_dto.relative_path[..last_slash];
+                let last_part = &create_request_dto.relative_path[last_slash + 1..];
+
+                (
+                    Some(start_to_second_last.to_string()),
+                    last_part.to_string(),
+                )
+            }
+            None => (None, create_request_dto.relative_path.to_string()),
+        };
+
+    // if let Some(ref parsed_parent_relative_path) = parsed_parent_relative_path {
+    //     let create_collection_dto = CreateCollectionDto {
+    //         parent_relative_path: create_request_dto.parent_relative_path,
+    //         relative_path: parsed_parent_relative_path.to_string(),
+    //     };
+
+    //     let collections_relative_path =
+    //         collection::create_collections_all(&active_space_absolute_path, create_collection_dto)
+    //             .map_err(|err| ZakuError {
+    //                 error: err.to_string(),
+    //                 message: "Failed to create request's parent directories".to_string(),
+    //             })?;
+    // };
+
+    let file_display_name = file_display_name.trim();
+    let file_sanitized_name = file_display_name
+        .to_lowercase()
         .split_whitespace()
         .collect::<Vec<&str>>()
         .join("-");
-    let file_absolute_path = active_space_absolute_path
-        .join(create_request_dto.relative_location.clone())
-        .join(file_relative_path);
+    let file_absolute_path = match parsed_parent_relative_path {
+        Some(ref parsed_parent_relative_path) => {
+            let create_collection_dto = CreateCollectionDto {
+                parent_relative_path: create_request_dto.parent_relative_path.clone(),
+                relative_path: parsed_parent_relative_path.to_string(),
+            };
 
-    if let Some(parent) = file_absolute_path.parent() {
-        fs::create_dir_all(parent).map_err(|err| ZakuError {
-            error: err.to_string(),
-            message: "Failed to create request's collection directory or it's parent directories"
-                .to_string(),
-        })?;
-    }
+            let collections_relative_path = collection::create_collections_all(
+                &active_space_absolute_path,
+                create_collection_dto,
+            )
+            .map_err(|err| ZakuError {
+                error: err.to_string(),
+                message: "Failed to create request's parent directories".to_string(),
+            })?;
 
-    println!("creating with {:#?}", &file_absolute_path);
+            println!(
+                "collections_relative_path, {}",
+                collections_relative_path.clone()
+            );
 
-    core::request::create_request_file(&file_absolute_path, &create_request_dto.display_name)
-        .map_err(|err| ZakuError {
+            active_space_absolute_path
+                .join(create_request_dto.parent_relative_path)
+                .join(collections_relative_path)
+                .join(file_sanitized_name)
+        }
+        None => active_space_absolute_path
+            .join(create_request_dto.parent_relative_path)
+            .join(file_sanitized_name),
+    };
+
+    println!(
+        "file_absolute_path {}",
+        file_absolute_path.to_string_lossy().to_owned()
+    );
+
+    core::request::create_request_file(&file_absolute_path, &file_display_name).map_err(|err| {
+        ZakuError {
             error: err.to_string(),
             message: "Failed to create request file".to_string(),
-        })?;
+        }
+    })?;
 
     let active_space =
         space::parse_space(&active_space_absolute_path).map_err(|err| ZakuError {

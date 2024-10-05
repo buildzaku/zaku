@@ -38,7 +38,6 @@ pub struct RequestFile {
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
 pub struct CreateRequestDto {
-    pub relative_location: String,
-    pub file_relative_path: String,
-    pub display_name: String,
+    pub parent_relative_path: String,
+    pub relative_path: String,
 }
