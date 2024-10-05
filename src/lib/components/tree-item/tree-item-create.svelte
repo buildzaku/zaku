@@ -26,6 +26,8 @@
     import { listen, TauriEvent, type UnlistenFn } from "@tauri-apps/api/event";
 
     import { safeInvoke } from "$lib/commands";
+    import Collection from "../icons/collection.svelte";
+    import type { CreateCollectionDto, CreateRequestDto } from "$lib/bindings";
 
     export let parentRelativePath: string;
     export let inputName: string;
@@ -49,6 +51,36 @@
         }
 
         return false;
+    }
+
+    async function handleCreateRequestOrCollection() {
+        if (type === TREE_ITEM_TYPE.Collection) {
+            const create_collection_dto: CreateCollectionDto = {
+                relative_location: parentRelativePath,
+                folder_relative_path: inputName,
+                display_name: inputName.split("/").at(-1) ?? "Unknown",
+            };
+            const createCollectionResult = await safeInvoke("create_collection", {
+                create_collection_dto,
+            });
+
+            if (!createCollectionResult.ok) {
+                console.log(createCollectionResult.err);
+            }
+        } else {
+            const create_request_dto: CreateRequestDto = {
+                relative_location: parentRelativePath,
+                file_relative_path: inputName,
+                display_name: inputName.split("/").at(-1) ?? "Unknown",
+            };
+            const createRequestResult = await safeInvoke("create_request", { create_request_dto });
+
+            if (!createRequestResult.ok) {
+                console.log(createRequestResult.err);
+            }
+        }
+
+        await zakuState.synchronize();
     }
 
     onMount(async () => {
@@ -106,19 +138,7 @@
                     if (keyboardEvent.key === "Enter") {
                         keyboardEvent.preventDefault();
 
-                        const createCollectionResult = await safeInvoke("create_collection", {
-                            create_collection_dto: {
-                                relative_location: parentRelativePath,
-                                display_name: inputName,
-                                folder_name: inputName.split(" ").join("-"),
-                            },
-                        });
-
-                        if (!createCollectionResult.ok) {
-                            console.log(createCollectionResult.err);
-                        }
-
-                        await zakuState.synchronize();
+                        await handleCreateRequestOrCollection();
                     }
                 }}
                 class="w-full whitespace-nowrap text-sm ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"

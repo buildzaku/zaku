@@ -23,6 +23,6 @@ pub struct Collection {
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
 pub struct CreateCollectionDto {
     pub relative_location: String,
-    pub folder_name: String,
-    pub display_name: Option<String>,
+    pub folder_relative_path: String,
+    pub display_name: String,
 }

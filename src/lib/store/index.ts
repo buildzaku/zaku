@@ -67,6 +67,9 @@ function createZakuState() {
 
         if (getZakuStateResult.ok) {
             set(getZakuStateResult.value);
+            currentDragPayload.reset();
+            currentDropTargetPath.reset();
+            focussedTreeItem.reset();
             await tick();
         } else {
             const { error, message } = getZakuStateResult.err;
@@ -127,14 +130,48 @@ export async function createSpace(createSpaceDto: CreateSpaceDto) {
     return;
 }
 
-export const currentDragPayload = writable<DragPayload | null>(null);
+function createDragPayloadState() {
+    const { set, subscribe, update } = writable<DragPayload | null>(null);
 
-export const currentDropTargetPath = writable<string | null>(null);
+    return {
+        reset: () => set(null),
+        set,
+        subscribe,
+        update,
+    };
+}
 
-export const focussedTreeItem = writable<FocussedTreeItem>({
-    type: TREE_ITEM_TYPE.Collection,
-    relativePath: RELATIVE_SPACE_ROOT,
-    parentRelativePath: RELATIVE_SPACE_ROOT,
-});
+export const currentDragPayload = createDragPayloadState();
+
+function currentDropTargetPathState() {
+    const { set, subscribe, update } = writable<string | null>(null);
+
+    return {
+        reset: () => set(null),
+        set,
+        subscribe,
+        update,
+    };
+}
+
+export const currentDropTargetPath = currentDropTargetPathState();
+
+function focussedTreeItemState() {
+    const initialState: FocussedTreeItem = {
+        type: TREE_ITEM_TYPE.Collection,
+        relativePath: RELATIVE_SPACE_ROOT,
+        parentRelativePath: RELATIVE_SPACE_ROOT,
+    };
+    const { set, subscribe, update } = writable<FocussedTreeItem>(initialState);
+
+    return {
+        reset: () => set(initialState),
+        set,
+        subscribe,
+        update,
+    };
+}
+
+export const focussedTreeItem = focussedTreeItemState();
 
 export const createNewTreeItem = writable<ValueOf<typeof TREE_ITEM_TYPE> | null>(null);

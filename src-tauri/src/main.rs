@@ -40,7 +40,8 @@ fn main() {
             commands::notification::is_notification_permission_granted,
             commands::notification::request_notification_permission,
             commands::notification::dispatch_notification,
-            commands::collection::create_collection
+            commands::collection::create_collection,
+            commands::request::create_request
         ]);
 
     app.run(tauri::generate_context!())

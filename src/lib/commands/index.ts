@@ -44,7 +44,11 @@ export async function getSpaceReference(path: string): Promise<SpaceReference> {
     return spaceReference;
 }
 
-export type InvokeCommand = "get_zaku_state" | "set_active_space" | "create_collection";
+export type InvokeCommand =
+    | "get_zaku_state"
+    | "set_active_space"
+    | "create_collection"
+    | "create_request";
 
 export async function safeInvoke<T>(
     command: InvokeCommand,
@@ -56,6 +60,8 @@ export async function safeInvoke<T>(
 
         return Ok(result);
     } catch (err) {
+        console.error(err);
+
         const zakuError: ZakuError = {
             error: isObject(err) && "error" in err ? String(err.error) : "Unknown",
             message:
