@@ -70,6 +70,7 @@ function createZakuState() {
             currentDragPayload.reset();
             currentDropTargetPath.reset();
             focussedTreeItem.reset();
+            createNewTreeItem.set(null);
             await tick();
         } else {
             const { error, message } = getZakuStateResult.err;

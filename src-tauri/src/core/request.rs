@@ -48,7 +48,7 @@ pub fn create_request_file(file_absolute_path: &Path, display_name: &str) -> Res
             )
         })?;
 
-    Ok(())
+    return Ok(());
 }
 
 pub fn parse_request_file(path: PathBuf) -> Result<RequestFile, Error> {

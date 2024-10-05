@@ -8,6 +8,7 @@ use crate::{
         collection::CreateCollectionDto,
         request::CreateRequestDto,
         zaku::{ZakuError, ZakuState},
+        CreateNewCollectionOrRequest,
     },
 };
 
@@ -15,7 +16,7 @@ use crate::{
 pub fn create_request(
     create_request_dto: CreateRequestDto,
     app_handle: AppHandle,
-) -> Result<(), ZakuError> {
+) -> Result<CreateNewCollectionOrRequest, ZakuError> {
     if create_request_dto.relative_path.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a request without name".to_string(),
@@ -44,34 +45,20 @@ pub fn create_request(
             None => (None, create_request_dto.relative_path.to_string()),
         };
 
-    // if let Some(ref parsed_parent_relative_path) = parsed_parent_relative_path {
-    //     let create_collection_dto = CreateCollectionDto {
-    //         parent_relative_path: create_request_dto.parent_relative_path,
-    //         relative_path: parsed_parent_relative_path.to_string(),
-    //     };
-
-    //     let collections_relative_path =
-    //         collection::create_collections_all(&active_space_absolute_path, create_collection_dto)
-    //             .map_err(|err| ZakuError {
-    //                 error: err.to_string(),
-    //                 message: "Failed to create request's parent directories".to_string(),
-    //             })?;
-    // };
-
     let file_display_name = file_display_name.trim();
     let file_sanitized_name = file_display_name
         .to_lowercase()
         .split_whitespace()
         .collect::<Vec<&str>>()
         .join("-");
-    let file_absolute_path = match parsed_parent_relative_path {
+    let (file_parent_relative_path, file_sanitized_name) = match parsed_parent_relative_path {
         Some(ref parsed_parent_relative_path) => {
             let create_collection_dto = CreateCollectionDto {
                 parent_relative_path: create_request_dto.parent_relative_path.clone(),
                 relative_path: parsed_parent_relative_path.to_string(),
             };
 
-            let collections_relative_path = collection::create_collections_all(
+            let collections_sanitized_relative_path = collection::create_collections_all(
                 &active_space_absolute_path,
                 create_collection_dto,
             )
@@ -80,25 +67,29 @@ pub fn create_request(
                 message: "Failed to create request's parent directories".to_string(),
             })?;
 
-            println!(
-                "collections_relative_path, {}",
-                collections_relative_path.clone()
-            );
+            let file_parent_relative_path = vec![
+                create_request_dto.parent_relative_path,
+                collections_sanitized_relative_path,
+            ]
+            .iter()
+            .filter(|&path| !path.is_empty())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("/");
 
-            active_space_absolute_path
-                .join(create_request_dto.parent_relative_path)
-                .join(collections_relative_path)
-                .join(file_sanitized_name)
+            (file_parent_relative_path, file_sanitized_name)
         }
-        None => active_space_absolute_path
-            .join(create_request_dto.parent_relative_path)
-            .join(file_sanitized_name),
+        None => (create_request_dto.parent_relative_path, file_sanitized_name),
     };
 
     println!(
-        "file_absolute_path {}",
-        file_absolute_path.to_string_lossy().to_owned()
+        "file_parent_relative_path, {}",
+        file_parent_relative_path.clone()
     );
+    println!("file_sanitized_name, {}", file_sanitized_name.clone());
+    let file_absolute_path = active_space_absolute_path
+        .join(file_parent_relative_path.clone())
+        .join(file_sanitized_name.clone());
 
     core::request::create_request_file(&file_absolute_path, &file_display_name).map_err(|err| {
         ZakuError {
@@ -115,5 +106,16 @@ pub fn create_request(
 
     zaku_state.active_space = Some(active_space);
 
-    return Ok(());
+    return Ok(CreateNewCollectionOrRequest {
+        parent_relative_path: file_parent_relative_path.clone(),
+        relative_path: vec![
+            file_parent_relative_path,
+            format!("{}.toml", file_sanitized_name),
+        ]
+        .iter()
+        .filter(|&path| !path.is_empty())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("/"),
+    });
 }

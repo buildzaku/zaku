@@ -6,6 +6,8 @@ export type CollectionMeta = { folder_name: string, display_name: string | null,
 
 export type CreateCollectionDto = { parent_relative_path: string, relative_path: string, };
 
+export type CreateNewCollectionOrRequest = { parent_relative_path: string, relative_path: string, };
+
 export type CreateRequestDto = { parent_relative_path: string, relative_path: string, };
 
 export type CreateSpaceDto = { name: string, location: string, };

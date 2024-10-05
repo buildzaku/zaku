@@ -117,10 +117,23 @@ pub fn create_collections_all(
         }
         current_collection_relative_path.push_str(dir_sanitized_name);
 
+        // TODO - fix panic on existing file
         fs::create_dir(
             &collection_parent_absolute_path.join(current_collection_relative_path.clone()),
         )
-        .expect("Failed to create collection directory");
+        .unwrap_or_else(|err| {
+            if err.kind() != ErrorKind::AlreadyExists {
+                panic!("Failed to create collection directory: {:?}", err);
+            }
+        });
+
+        // match fs::create_dir(
+        //     &collection_parent_absolute_path.join(current_collection_relative_path.clone()),
+        // ) {
+        //     Ok(_) => {}
+        //     Err(ref err) if err.kind() == ErrorKind::AlreadyExists => {}
+        //     Err(err) => panic!("Failed to create collection directory: {:?}", err),
+        // }
 
         let current_collection_relative_path_from_root = vec![
             create_collection_dto.parent_relative_path.as_str(),

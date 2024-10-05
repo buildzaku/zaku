@@ -27,7 +27,11 @@
 
     import { safeInvoke } from "$lib/commands";
     import Collection from "../icons/collection.svelte";
-    import type { CreateCollectionDto, CreateRequestDto } from "$lib/bindings";
+    import type {
+        CreateCollectionDto,
+        CreateNewCollectionOrRequest,
+        CreateRequestDto,
+    } from "$lib/bindings";
 
     export let parentRelativePath: string;
     export let inputName: string;
@@ -66,19 +70,39 @@
             if (!createCollectionResult.ok) {
                 console.log(createCollectionResult.err);
             }
+
+            await zakuState.synchronize();
         } else {
             const create_request_dto: CreateRequestDto = {
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
             };
-            const createRequestResult = await safeInvoke("create_request", { create_request_dto });
+            const createRequestResult = await safeInvoke<CreateNewCollectionOrRequest>(
+                "create_request",
+                { create_request_dto },
+            );
 
             if (!createRequestResult.ok) {
                 console.log(createRequestResult.err);
+
+                return;
+            }
+
+            await zakuState.synchronize();
+
+            focussedTreeItem.set({
+                type: TREE_ITEM_TYPE.Request,
+                parentRelativePath: createRequestResult.value.parent_relative_path,
+                relativePath: createRequestResult.value.relative_path,
+            });
+
+            const createdRequest = document.querySelector(
+                `[data-current-path="${createRequestResult.value.relative_path}"]`,
+            );
+            if (createdRequest) {
+                createdRequest.scrollIntoView({ behavior: "instant", block: "center" });
             }
         }
-
-        await zakuState.synchronize();
     }
 
     onMount(async () => {

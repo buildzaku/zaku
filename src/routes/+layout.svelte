@@ -39,6 +39,10 @@
     $: if ($zakuState.active_space === null) {
         goto("/");
     }
+
+    $: {
+        console.log($focussedTreeItem);
+    }
 </script>
 
 <ModeWatcher defaultMode="dark" track={false} />
