@@ -25,7 +25,10 @@ pub fn create_collection(
 
     let state = app_handle.state::<Mutex<ZakuState>>();
     let mut zaku_state = state.lock().unwrap();
-    let active_space = zaku_state.active_space.clone().unwrap();
+    let active_space = zaku_state
+        .active_space
+        .clone()
+        .expect("Active space not found");
     let active_space_absolute_path = PathBuf::from(&active_space.absolute_path);
 
     let (parsed_parent_relative_path, dir_display_name) =
