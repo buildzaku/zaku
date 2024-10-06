@@ -1,17 +1,43 @@
 <script lang="ts">
-    import { zakuState } from "$lib/store";
+    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/store";
     import { Button } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import { TreeItemContent, TreeItemRoot } from "$lib/components/tree-item";
+    import {
+        isCurrentCollectionOrAnyOfItsChildFocussed,
+        TreeItemContent,
+        TreeItemCreate,
+        TreeItemRoot,
+    } from "$lib/components/tree-item";
     import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
+    import { TREE_ITEM_TYPE } from "$lib/models";
 
     export let pane: PaneAPI;
     export let isCollapsed: boolean;
+
+    let shouldRenderCreateNewRequestInput = false;
+    let shouldRenderCreateNewCollectionInput = false;
+    let treeItemInputName = "";
+
+    $: {
+        let $external = [$focussedTreeItem];
+
+        shouldRenderCreateNewRequestInput =
+            $createNewTreeItem === TREE_ITEM_TYPE.Request &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
+    }
+
+    $: {
+        let $external = [$focussedTreeItem];
+
+        shouldRenderCreateNewCollectionInput =
+            $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
+    }
 </script>
 
 {#if $zakuState.active_space}
@@ -70,18 +96,35 @@
                         currentPath={RELATIVE_SPACE_ROOT}
                         root={$zakuState.active_space.root}
                     >
-                        {#each $zakuState.active_space.root.requests as request (`/${request.meta.file_name}`)}
+                        {#if shouldRenderCreateNewRequestInput}
+                            <TreeItemCreate
+                                type={TREE_ITEM_TYPE.Request}
+                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                level={1}
+                                bind:inputName={treeItemInputName}
+                            />
+                        {/if}
+                        {#each $zakuState.active_space.root.requests as request (request.meta.file_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
-                                currentPath={`/${request.meta.file_name}`}
+                                currentPath={request.meta.file_name}
                                 treeItem={request}
                                 level={1}
                             />
                         {/each}
-                        {#each $zakuState.active_space.root.collections as collection (`/${collection.meta.folder_name}`)}
+
+                        {#if shouldRenderCreateNewCollectionInput}
+                            <TreeItemCreate
+                                type={TREE_ITEM_TYPE.Collection}
+                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                level={1}
+                                bind:inputName={treeItemInputName}
+                            />
+                        {/if}
+                        {#each $zakuState.active_space.root.collections as collection (collection.meta.folder_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
-                                currentPath={`/${collection.meta.folder_name}`}
+                                currentPath={collection.meta.folder_name}
                                 treeItem={collection}
                                 level={1}
                             />

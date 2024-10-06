@@ -1,9 +1,47 @@
-use std::fs;
-use std::io::{Error, ErrorKind};
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::io::{Error, ErrorKind, Write};
+use std::path::{Path, PathBuf};
 use toml;
 
-use crate::models::request::RequestFile;
+use crate::models::request::{RequestConfig, RequestFile, RequestFileMeta};
+
+pub fn create_request_file(file_absolute_path: &Path, display_name: &str) -> Result<(), Error> {
+    let mut request_file =
+        File::create_new(&file_absolute_path.with_extension("toml")).map_err(|err| {
+            Error::new(
+                ErrorKind::Other,
+                format!("Failed to create request file: {}", err),
+            )
+        })?;
+
+    let request = RequestFile {
+        meta: RequestFileMeta {
+            name: display_name.to_string(),
+        },
+        config: RequestConfig {
+            method: "GET".to_string(),
+            url: None,
+        },
+    };
+
+    let toml_string = toml::to_string_pretty(&request).map_err(|err| {
+        Error::new(
+            ErrorKind::Other,
+            format!("Failed to serialize request file: {}", err),
+        )
+    })?;
+
+    request_file
+        .write_all(toml_string.as_bytes())
+        .map_err(|err| {
+            Error::new(
+                ErrorKind::Other,
+                format!("Failed to write to request file: {}", err),
+            )
+        })?;
+
+    return Ok(());
+}
 
 pub fn parse_request_file(path: PathBuf) -> Result<RequestFile, Error> {
     let content = match fs::read_to_string(&path) {
