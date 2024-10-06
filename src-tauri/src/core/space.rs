@@ -28,8 +28,9 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
-    let collection_name_by_path =
-        collection::display_name(absolute_space_root).unwrap_or_else(|_| HashMap::new());
+    let collection_name_by_relative_path =
+        collection::display_name_by_relative_path(absolute_space_root)
+            .unwrap_or_else(|_| HashMap::new());
     let space_config = match parse_space_config(&absolute_space_root) {
         Ok(space_config) => Some(space_config),
         Err(_) => None,
@@ -83,7 +84,9 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             folder_name: name,
-                            display_name: collection_name_by_path.get(&relative_path).cloned(),
+                            display_name: collection_name_by_relative_path
+                                .get(&relative_path)
+                                .cloned(),
                             is_open: true,
                         },
                         requests: Vec::new(),

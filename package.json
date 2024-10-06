@@ -13,7 +13,7 @@
         "preview": "vite preview",
         "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
         "check-watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-        "lint": "eslint .",
+        "lint": "eslint . --max-warnings=0",
         "format": "prettier --write \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
         "format-check": "prettier --check \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
         "sync-pnpm-lock": "pnpm install --lockfile-only",

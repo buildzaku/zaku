@@ -19,7 +19,7 @@
         if (!dev) {
             document.addEventListener("contextmenu", disableContextMenu);
         }
-        await zakuState.initialize();
+        await zakuState.synchronize();
 
         if ($zakuState.active_space !== null) {
             await goto("/space");

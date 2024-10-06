@@ -1,7 +1,8 @@
 import { get } from "svelte/store";
 
 import TreeItemPreview from "./tree-item-preview.svelte";
-import { currentDragPayload, currentDropTargetPath, zakuState } from "$lib/store";
+import { currentDragPayload, currentDropTargetPath, focussedTreeItem, zakuState } from "$lib/store";
+import { TREE_ITEM_TYPE } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import {
@@ -15,7 +16,7 @@ export function isDropAllowed(path: string): boolean {
     const staticCurrentDropTargetPath = get(currentDropTargetPath);
     const staticCurrentDragPayload = get(currentDragPayload);
 
-    if (staticCurrentDropTargetPath && staticCurrentDragPayload) {
+    if (staticCurrentDropTargetPath !== null && staticCurrentDragPayload !== null) {
         if (staticCurrentDropTargetPath === staticCurrentDragPayload.parentRelativePath) {
             return false;
         }
@@ -90,15 +91,15 @@ export function handleDrop(event: DragEvent) {
     const staticCurrentDragPayload = get(currentDragPayload);
     const staticCurrentDropTargetPath = get(currentDropTargetPath);
 
-    if (!staticZakuState.active_space) {
+    if (staticZakuState.active_space === null) {
         console.warn("Active space not found");
         return;
     }
-    if (!staticCurrentDragPayload) {
+    if (staticCurrentDragPayload === null) {
         console.warn("Drag payload not found");
         return;
     }
-    if (!staticCurrentDropTargetPath) {
+    if (staticCurrentDropTargetPath === null) {
         console.warn("Drop target path not found");
         return;
     }
@@ -129,7 +130,7 @@ export function handleDrop(event: DragEvent) {
     }
 
     zakuState.update(state => {
-        if (!state.active_space) {
+        if (state.active_space === null) {
             return state;
         }
 
@@ -166,6 +167,23 @@ export function handleDragEnd(event: DragEvent) {
     currentDropTargetPath.set(null);
 }
 
+export function buildPath(currentPath: string, treeItemName: string) {
+    return currentPath === RELATIVE_SPACE_ROOT ? treeItemName : `${currentPath}/${treeItemName}`;
+}
+
+export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string): boolean {
+    const staticFocussedTreeItem = get(focussedTreeItem);
+    const isCurrentCollectionFocussed =
+        staticFocussedTreeItem.type === TREE_ITEM_TYPE.Collection &&
+        staticFocussedTreeItem.relativePath === currentPath;
+    const isCurrentCollectionChildFocussed =
+        staticFocussedTreeItem.type === TREE_ITEM_TYPE.Request &&
+        staticFocussedTreeItem.parentRelativePath === currentPath;
+
+    return isCurrentCollectionFocussed || isCurrentCollectionChildFocussed;
+}
+
 export { default as TreeItemContent } from "./tree-item-content.svelte";
+export { default as TreeItemCreate } from "./tree-item-create.svelte";
 export { default as TreeItemPreview } from "./tree-item-preview.svelte";
 export { default as TreeItemRoot } from "./tree-item-root.svelte";
