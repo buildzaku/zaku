@@ -3,12 +3,18 @@
 
     import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed } from ".";
     import type { Collection } from "$lib/bindings";
-    import { createNewTreeItem, currentDragPayload, currentDropTargetPath } from "$lib/store";
+    import {
+        createNewTreeItem,
+        currentDragPayload,
+        currentDropTargetPath,
+        focussedTreeItem,
+    } from "$lib/store";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
     import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/primitives/tooltip";
     import { TREE_ITEM_TYPE } from "$lib/models";
+    import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 
     export let currentPath: string;
     export let root: Collection;
@@ -40,6 +46,11 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 root.meta.is_open = !root.meta.is_open;
+                focussedTreeItem.set({
+                    type: TREE_ITEM_TYPE.Collection,
+                    relativePath: RELATIVE_SPACE_ROOT,
+                    parentRelativePath: RELATIVE_SPACE_ROOT,
+                });
             }
         }}
         class={cn(
@@ -47,6 +58,11 @@
         )}
         on:click={() => {
             root.meta.is_open = !root.meta.is_open;
+            focussedTreeItem.set({
+                type: TREE_ITEM_TYPE.Collection,
+                relativePath: RELATIVE_SPACE_ROOT,
+                parentRelativePath: RELATIVE_SPACE_ROOT,
+            });
         }}
     >
         <div class="flex h-full items-center gap-1 pl-1.5">
