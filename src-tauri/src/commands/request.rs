@@ -1,5 +1,4 @@
 use std::{path::PathBuf, sync::Mutex};
-
 use tauri::{AppHandle, Manager};
 
 use crate::{
@@ -10,6 +9,7 @@ use crate::{
         zaku::{ZakuError, ZakuState},
         CreateNewCollectionOrRequest,
     },
+    utils,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -34,16 +34,17 @@ pub fn create_request(
 
     let (parsed_parent_relative_path, file_display_name) =
         match create_request_dto.relative_path.rfind('/') {
-            Some(last_slash) => {
-                let start_to_second_last = &create_request_dto.relative_path[..last_slash];
-                let last_part = &create_request_dto.relative_path[last_slash + 1..];
+            Some(last_slash_index) => {
+                let parsed_parent_relative_path =
+                    &create_request_dto.relative_path[..last_slash_index];
+                let file_display_name = &create_request_dto.relative_path[last_slash_index + 1..];
 
                 (
-                    Some(start_to_second_last.to_string()),
-                    last_part.to_string(),
+                    Some(parsed_parent_relative_path.to_string()),
+                    file_display_name.to_string(),
                 )
             }
-            None => (None, create_request_dto.relative_path.to_string()),
+            None => (None, create_request_dto.relative_path),
         };
 
     let file_display_name = file_display_name.trim();
@@ -59,7 +60,7 @@ pub fn create_request(
                 relative_path: parsed_parent_relative_path.to_string(),
             };
 
-            let collections_sanitized_relative_path = collection::create_collections_all(
+            let dirs_sanitized_relative_path = collection::create_collections_all(
                 &active_space_absolute_path,
                 &create_collection_dto,
             )
@@ -68,15 +69,10 @@ pub fn create_request(
                 message: "Failed to create request's parent directories".to_string(),
             })?;
 
-            let file_parent_relative_path = vec![
-                create_request_dto.parent_relative_path,
-                collections_sanitized_relative_path,
-            ]
-            .iter()
-            .filter(|&path| !path.is_empty())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("/");
+            let file_parent_relative_path = utils::join_str_paths(vec![
+                create_request_dto.parent_relative_path.as_str(),
+                dirs_sanitized_relative_path.as_str(),
+            ]);
 
             (file_parent_relative_path, file_sanitized_name)
         }
@@ -86,15 +82,10 @@ pub fn create_request(
     let file_absolute_path = active_space_absolute_path
         .join(file_parent_relative_path.clone())
         .join(file_sanitized_name.clone());
-    let file_relative_path = vec![
-        file_parent_relative_path.clone(),
-        format!("{}.toml", file_sanitized_name),
-    ]
-    .iter()
-    .filter(|&path| !path.is_empty())
-    .cloned()
-    .collect::<Vec<_>>()
-    .join("/");
+    let file_relative_path = utils::join_str_paths(vec![
+        file_parent_relative_path.clone().as_str(),
+        format!("{}.toml", file_sanitized_name).as_str(),
+    ]);
 
     core::request::create_request_file(&file_absolute_path, &file_display_name).map_err(|err| {
         ZakuError {

@@ -6,6 +6,7 @@ pub mod commands;
 pub mod constants;
 pub mod core;
 pub mod models;
+pub mod utils;
 
 use core::{shortcuts, state};
 use models::zaku::ZakuState;

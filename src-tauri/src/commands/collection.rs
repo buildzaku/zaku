@@ -1,5 +1,4 @@
 use std::{fs, path::PathBuf, sync::Mutex};
-
 use tauri::{AppHandle, Manager};
 
 use crate::{
@@ -9,6 +8,7 @@ use crate::{
         zaku::{ZakuError, ZakuState},
         CreateNewCollectionOrRequest,
     },
+    utils,
 };
 
 #[tauri::command(rename_all = "snake_case")]
@@ -33,16 +33,17 @@ pub fn create_collection(
 
     let (parsed_parent_relative_path, dir_display_name) =
         match create_collection_dto.relative_path.rfind('/') {
-            Some(last_slash) => {
-                let start_to_second_last = &create_collection_dto.relative_path[..last_slash];
-                let last_part = &create_collection_dto.relative_path[last_slash + 1..];
+            Some(last_slash_index) => {
+                let parsed_parent_relative_path =
+                    &create_collection_dto.relative_path[..last_slash_index];
+                let dir_display_name = &create_collection_dto.relative_path[last_slash_index + 1..];
 
                 (
-                    Some(start_to_second_last.to_string()),
-                    last_part.to_string(),
+                    Some(parsed_parent_relative_path.to_string()),
+                    dir_display_name.to_string(),
                 )
             }
-            None => (None, create_collection_dto.relative_path.to_string()),
+            None => (None, create_collection_dto.relative_path),
         };
 
     let dir_display_name = dir_display_name.trim();
@@ -67,15 +68,10 @@ pub fn create_collection(
                 message: "Failed to create collection's parent directories".to_string(),
             })?;
 
-            let dir_parent_relative_path = vec![
-                create_collection_dto.parent_relative_path,
-                dirs_sanitized_relative_path,
-            ]
-            .iter()
-            .filter(|&path| !path.is_empty())
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("/");
+            let dir_parent_relative_path = utils::join_str_paths(vec![
+                create_collection_dto.parent_relative_path.as_str(),
+                dirs_sanitized_relative_path.as_str(),
+            ]);
 
             (dir_parent_relative_path, dir_sanitized_name)
         }
@@ -88,12 +84,10 @@ pub fn create_collection(
     let dir_absolute_path = active_space_absolute_path
         .join(dir_parent_relative_path.clone())
         .join(dir_sanitized_name.clone());
-    let dir_relative_path = vec![dir_parent_relative_path.clone(), dir_sanitized_name]
-        .iter()
-        .filter(|&path| !path.is_empty())
-        .cloned()
-        .collect::<Vec<_>>()
-        .join("/");
+    let dir_relative_path = utils::join_str_paths(vec![
+        dir_parent_relative_path.clone().as_str(),
+        dir_sanitized_name.as_str(),
+    ]);
 
     fs::create_dir(&dir_absolute_path).map_err(|err| ZakuError {
         error: err.to_string(),
