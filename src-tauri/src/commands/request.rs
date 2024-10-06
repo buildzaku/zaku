@@ -60,7 +60,7 @@ pub fn create_request(
 
             let collections_sanitized_relative_path = collection::create_collections_all(
                 &active_space_absolute_path,
-                create_collection_dto,
+                &create_collection_dto,
             )
             .map_err(|err| ZakuError {
                 error: err.to_string(),
@@ -90,20 +90,6 @@ pub fn create_request(
     let file_absolute_path = active_space_absolute_path
         .join(file_parent_relative_path.clone())
         .join(file_sanitized_name.clone());
-
-    core::request::create_request_file(&file_absolute_path, &file_display_name).map_err(|err| {
-        ZakuError {
-            error: err.to_string(),
-            message: "Failed to create request file".to_string(),
-        }
-    })?;
-
-    let active_space =
-        space::parse_space(&active_space_absolute_path).map_err(|err| ZakuError {
-            error: err.to_string(),
-            message: "Failed to parse space after creating the request".to_string(),
-        })?;
-
     let file_relative_path = vec![
         file_parent_relative_path.clone(),
         format!("{}.toml", file_sanitized_name),
@@ -114,12 +100,27 @@ pub fn create_request(
     .collect::<Vec<_>>()
     .join("/");
 
+    core::request::create_request_file(&file_absolute_path, &file_display_name).map_err(|err| {
+        ZakuError {
+            error: err.to_string(),
+            message: "Failed to create request file".to_string(),
+        }
+    })?;
+
     let create_new_result = CreateNewCollectionOrRequest {
         parent_relative_path: file_parent_relative_path,
         relative_path: file_relative_path,
     };
 
-    zaku_state.active_space = Some(active_space);
+    match space::parse_space(&active_space_absolute_path) {
+        Ok(active_space) => zaku_state.active_space = Some(active_space),
+        Err(err) => {
+            return Err(ZakuError {
+                error: err.to_string(),
+                message: "Failed to parse space after creating the request".to_string(),
+            })
+        }
+    }
 
     return Ok(create_new_result);
 }

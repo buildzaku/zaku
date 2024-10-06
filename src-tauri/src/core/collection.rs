@@ -60,7 +60,7 @@ pub fn display_name_by_relative_path(
     return Ok(parsed_content);
 }
 
-pub fn save_display_name(
+pub fn save_display_name_if_not_exists(
     space_absolute_path: &Path,
     collection_relative_path_from_root: &str,
     collection_display_name: &str,
@@ -71,10 +71,9 @@ pub fn save_display_name(
     let mut collection_name_by_relative_path = display_name_by_relative_path(&space_absolute_path)
         .expect("Failed to get display names by relative path");
 
-    collection_name_by_relative_path.insert(
-        collection_relative_path_from_root.to_string(),
-        collection_display_name.to_string(),
-    );
+    collection_name_by_relative_path
+        .entry(collection_relative_path_from_root.to_string())
+        .or_insert(collection_display_name.to_string());
 
     let toml_content = toml::to_string_pretty(&collection_name_by_relative_path)
         .expect("Failed to serialize TOML");
@@ -87,7 +86,7 @@ pub fn save_display_name(
 
 pub fn create_collections_all(
     space_absolute_path: &Path,
-    create_collection_dto: CreateCollectionDto,
+    create_collection_dto: &CreateCollectionDto,
 ) -> Result<String, Error> {
     let mut collection_information = Vec::new();
     for display_name in create_collection_dto.relative_path.split('/') {
@@ -117,7 +116,6 @@ pub fn create_collections_all(
         }
         current_collection_relative_path.push_str(dir_sanitized_name);
 
-        // TODO - fix panic on existing file
         fs::create_dir(
             &collection_parent_absolute_path.join(current_collection_relative_path.clone()),
         )
@@ -126,14 +124,6 @@ pub fn create_collections_all(
                 panic!("Failed to create collection directory: {:?}", err);
             }
         });
-
-        // match fs::create_dir(
-        //     &collection_parent_absolute_path.join(current_collection_relative_path.clone()),
-        // ) {
-        //     Ok(_) => {}
-        //     Err(ref err) if err.kind() == ErrorKind::AlreadyExists => {}
-        //     Err(err) => panic!("Failed to create collection directory: {:?}", err),
-        // }
 
         let current_collection_relative_path_from_root = vec![
             create_collection_dto.parent_relative_path.as_str(),
@@ -150,7 +140,7 @@ pub fn create_collections_all(
             dir_display_name.clone()
         );
 
-        save_display_name(
+        save_display_name_if_not_exists(
             &space_absolute_path,
             &current_collection_relative_path_from_root,
             &dir_display_name,

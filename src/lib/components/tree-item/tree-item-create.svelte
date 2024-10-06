@@ -34,11 +34,11 @@
     } from "$lib/bindings";
 
     export let parentRelativePath: string;
-    export let inputName: string;
     export let type: ValueOf<typeof TREE_ITEM_TYPE>;
     export let level: number;
 
     let propsClass = $$props["class"];
+    let inputName: string;
     let inputElement: HTMLElement | null = null;
     let unlistenWindowBlurEvent: UnlistenFn | null = null;
 
@@ -74,6 +74,7 @@
                 return;
             }
 
+            inputName = "";
             await zakuState.synchronize();
 
             focussedTreeItem.set({
@@ -104,6 +105,7 @@
                 return;
             }
 
+            inputName = "";
             await zakuState.synchronize();
 
             focussedTreeItem.set({

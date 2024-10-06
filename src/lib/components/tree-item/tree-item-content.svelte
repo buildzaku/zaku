@@ -33,7 +33,6 @@
     let shouldRenderCreateNewRequestInput = false;
     let shouldRenderCreateNewCollectionInput = false;
     let shouldHighlight = isDropAllowed(currentPath);
-    let treeItemInputName = "";
 
     const dragOverDto: DragOverDto = isCollection(treeItem)
         ? { type: "collection", relativePath: currentPath }
@@ -149,7 +148,6 @@
                 type={TREE_ITEM_TYPE.Request}
                 parentRelativePath={currentPath}
                 level={level + 1}
-                bind:inputName={treeItemInputName}
             />
         {/if}
 
@@ -169,7 +167,6 @@
                 type={TREE_ITEM_TYPE.Collection}
                 parentRelativePath={currentPath}
                 level={level + 1}
-                bind:inputName={treeItemInputName}
             />
         {/if}
         {#if treeItem.meta.is_open}
