@@ -24,8 +24,6 @@ pub fn create_request(
         });
     };
 
-    println!("DTO\n{:#?}", create_request_dto.clone());
-
     let state = app_handle.state::<Mutex<ZakuState>>();
     let mut zaku_state = state.lock().unwrap();
     let active_space = zaku_state.active_space.clone().unwrap();
@@ -82,11 +80,6 @@ pub fn create_request(
         None => (create_request_dto.parent_relative_path, file_sanitized_name),
     };
 
-    println!(
-        "file_parent_relative_path, {}",
-        file_parent_relative_path.clone()
-    );
-    println!("file_sanitized_name, {}", file_sanitized_name.clone());
     let file_absolute_path = active_space_absolute_path
         .join(file_parent_relative_path.clone())
         .join(file_sanitized_name.clone());

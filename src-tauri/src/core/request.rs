@@ -6,14 +6,6 @@ use toml;
 use crate::models::request::{RequestConfig, RequestFile, RequestFileMeta};
 
 pub fn create_request_file(file_absolute_path: &Path, display_name: &str) -> Result<(), Error> {
-    println!(
-        "CREATING NEW FILE WITH PATH `{}`",
-        file_absolute_path
-            .with_extension("toml")
-            .clone()
-            .to_string_lossy()
-            .into_owned()
-    );
     let mut request_file =
         File::create_new(&file_absolute_path.with_extension("toml")).map_err(|err| {
             Error::new(

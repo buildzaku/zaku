@@ -134,12 +134,6 @@ pub fn create_collections_all(
         .collect::<Vec<&str>>()
         .join("/");
 
-        println!(
-            "DISPLAY NAME {} -> {}",
-            current_collection_relative_path_from_root.clone(),
-            dir_display_name.clone()
-        );
-
         save_display_name_if_not_exists(
             &space_absolute_path,
             &current_collection_relative_path_from_root,

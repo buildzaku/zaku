@@ -23,8 +23,6 @@ pub fn create_collection(
         });
     };
 
-    println!("DTO\n{:#?}", create_collection_dto.clone());
-
     let state = app_handle.state::<Mutex<ZakuState>>();
     let mut zaku_state = state.lock().unwrap();
     let active_space = zaku_state.active_space.clone().unwrap();
@@ -83,12 +81,6 @@ pub fn create_collection(
             dir_sanitized_name,
         ),
     };
-
-    println!(
-        "dir_parent_relative_path, {}",
-        dir_parent_relative_path.clone()
-    );
-    println!("dir_sanitized_name, {}", dir_sanitized_name.clone());
 
     let dir_absolute_path = active_space_absolute_path
         .join(dir_parent_relative_path.clone())
