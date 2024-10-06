@@ -16,7 +16,7 @@ export function isDropAllowed(path: string): boolean {
     const staticCurrentDropTargetPath = get(currentDropTargetPath);
     const staticCurrentDragPayload = get(currentDragPayload);
 
-    if (staticCurrentDropTargetPath && staticCurrentDragPayload) {
+    if (staticCurrentDropTargetPath !== null && staticCurrentDragPayload !== null) {
         if (staticCurrentDropTargetPath === staticCurrentDragPayload.parentRelativePath) {
             return false;
         }
@@ -91,15 +91,15 @@ export function handleDrop(event: DragEvent) {
     const staticCurrentDragPayload = get(currentDragPayload);
     const staticCurrentDropTargetPath = get(currentDropTargetPath);
 
-    if (!staticZakuState.active_space) {
+    if (staticZakuState.active_space === null) {
         console.warn("Active space not found");
         return;
     }
-    if (!staticCurrentDragPayload) {
+    if (staticCurrentDragPayload === null) {
         console.warn("Drag payload not found");
         return;
     }
-    if (!staticCurrentDropTargetPath) {
+    if (staticCurrentDropTargetPath === null) {
         console.warn("Drop target path not found");
         return;
     }
@@ -130,7 +130,7 @@ export function handleDrop(event: DragEvent) {
     }
 
     zakuState.update(state => {
-        if (!state.active_space) {
+        if (state.active_space === null) {
             return state;
         }
 
