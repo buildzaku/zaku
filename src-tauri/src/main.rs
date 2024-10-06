@@ -2,11 +2,13 @@
 
 use std::sync::Mutex;
 
+pub mod commands;
 pub mod constants;
 pub mod core;
 pub mod models;
+pub mod utils;
 
-use core::{commands, shortcuts, state};
+use core::{shortcuts, state};
 use models::zaku::ZakuState;
 
 fn main() {
@@ -38,9 +40,11 @@ fn main() {
             commands::dialog::open_directory_dialog,
             commands::notification::is_notification_permission_granted,
             commands::notification::request_notification_permission,
-            commands::notification::dispatch_notification
+            commands::notification::dispatch_notification,
+            commands::collection::create_collection,
+            commands::request::create_request
         ]);
 
     app.run(tauri::generate_context!())
-        .expect("error while running the application");
+        .expect("Error while running the application");
 }

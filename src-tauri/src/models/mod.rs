@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::{ExportError, TS};
 
-use collection::{Collection, CollectionMeta};
-use request::{Request, RequestConfig, RequestMeta};
+use collection::{Collection, CollectionMeta, CreateCollectionDto};
+use request::{CreateRequestDto, Request, RequestConfig, RequestMeta};
 use space::{CreateSpaceDto, Space, SpaceMeta, SpaceReference};
 use zaku::{ZakuError, ZakuState};
 
@@ -24,16 +24,26 @@ pub struct DispatchNotificationOptions {
     pub body: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings.ts")]
+pub struct CreateNewCollectionOrRequest {
+    pub parent_relative_path: String,
+    pub relative_path: String,
+}
+
 pub fn generate_bindings() -> Result<(), ExportError> {
     CollectionMeta::export_all()?;
     Collection::export_all()?;
+    CreateCollectionDto::export_all()?;
 
     OpenDirectoryDialogOptions::export_all()?;
     DispatchNotificationOptions::export_all()?;
+    CreateNewCollectionOrRequest::export_all()?;
 
     RequestMeta::export_all()?;
     RequestConfig::export_all()?;
     Request::export_all()?;
+    CreateRequestDto::export_all()?;
 
     CreateSpaceDto::export_all()?;
     SpaceMeta::export_all()?;
