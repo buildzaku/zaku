@@ -1,32 +1,14 @@
 <script lang="ts">
-    import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
+    import { onDestroy, onMount, tick } from "svelte";
+    import { listen, TauriEvent } from "@tauri-apps/api/event";
+    import type { UnlistenFn } from "@tauri-apps/api/event";
 
-    import {
-        TreeItemContent,
-        handleDragEnd,
-        handleDragOver,
-        handleDragStart,
-        handleDrop,
-        isDropAllowed,
-    } from ".";
-    import { type TreeItem, type DragOverDto, TREE_ITEM_TYPE } from "$lib/models";
-    import {
-        createNewTreeItem,
-        currentDragPayload,
-        currentDropTargetPath,
-        focussedTreeItem,
-        zakuState,
-    } from "$lib/store";
+    import { TREE_ITEM_TYPE } from "$lib/models";
+    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/store";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
-    import { isCollection } from "$lib/utils/tree";
-    import TreeItemCreate from "./tree-item-create.svelte";
     import type { ValueOf } from "$lib/utils";
-    import { onDestroy, onMount, tick } from "svelte";
-    import { listen, TauriEvent, type UnlistenFn } from "@tauri-apps/api/event";
-
     import { safeInvoke } from "$lib/commands";
-    import Collection from "../icons/collection.svelte";
     import type {
         CreateCollectionDto,
         CreateNewCollectionOrRequest,
@@ -69,7 +51,7 @@
             );
 
             if (!createCollectionResult.ok) {
-                console.log(createCollectionResult.err);
+                console.error(createCollectionResult.err);
 
                 return;
             }
@@ -100,7 +82,7 @@
             );
 
             if (!createRequestResult.ok) {
-                console.log(createRequestResult.err);
+                console.error(createRequestResult.err);
 
                 return;
             }

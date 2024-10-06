@@ -1,14 +1,9 @@
 <script lang="ts">
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
-    import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed, TreeItemCreate } from ".";
+    import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed } from ".";
     import type { Collection } from "$lib/bindings";
-    import {
-        createNewTreeItem,
-        currentDragPayload,
-        currentDropTargetPath,
-        focussedTreeItem,
-    } from "$lib/store";
+    import { createNewTreeItem, currentDragPayload, currentDropTargetPath } from "$lib/store";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
@@ -21,15 +16,11 @@
     let propsClass = $$props["class"];
     let shouldHighlight = isDropAllowed(currentPath);
 
-    let treeItemInputName = "";
-
     $: {
         let $external = [$currentDropTargetPath, $currentDragPayload];
 
         shouldHighlight = isDropAllowed(currentPath);
     }
-
-    $: console.log($focussedTreeItem);
 </script>
 
 <div

@@ -9,7 +9,7 @@
     import "../app.css";
     import { Toaster } from "$lib/components/primitives/sonner";
     import { TitleBar } from "$lib/components/title-bar";
-    import { focussedTreeItem, createNewTreeItem, zakuState } from "$lib/store";
+    import { zakuState } from "$lib/store";
 
     const disableContextMenu = (event: MouseEvent) => {
         event.preventDefault();
@@ -38,10 +38,6 @@
 
     $: if ($zakuState.active_space === null) {
         goto("/");
-    }
-
-    $: {
-        console.log($focussedTreeItem);
     }
 </script>
 

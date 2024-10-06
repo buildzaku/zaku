@@ -3,6 +3,7 @@
 
     import {
         TreeItemContent,
+        TreeItemCreate,
         buildPath,
         handleDragEnd,
         handleDragOver,
@@ -21,8 +22,6 @@
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { isCollection } from "$lib/utils/tree";
-    import TreeItemCreate from "./tree-item-create.svelte";
-    import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 
     export let parentPath: string;
     export let currentPath: string;
