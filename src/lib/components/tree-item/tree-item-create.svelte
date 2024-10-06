@@ -63,15 +63,31 @@
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
             };
-            const createCollectionResult = await safeInvoke("create_collection", {
-                create_collection_dto,
-            });
+            const createCollectionResult = await safeInvoke<CreateNewCollectionOrRequest>(
+                "create_collection",
+                { create_collection_dto },
+            );
 
             if (!createCollectionResult.ok) {
                 console.log(createCollectionResult.err);
+
+                return;
             }
 
             await zakuState.synchronize();
+
+            focussedTreeItem.set({
+                type: TREE_ITEM_TYPE.Collection,
+                parentRelativePath: createCollectionResult.value.parent_relative_path,
+                relativePath: createCollectionResult.value.relative_path,
+            });
+
+            const createdCollection = document.querySelector(
+                `[data-current-path="${createCollectionResult.value.relative_path}"]`,
+            );
+            if (createdCollection) {
+                createdCollection.scrollIntoView({ behavior: "instant", block: "center" });
+            }
         } else {
             const create_request_dto: CreateRequestDto = {
                 parent_relative_path: parentRelativePath,

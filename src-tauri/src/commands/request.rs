@@ -104,18 +104,22 @@ pub fn create_request(
             message: "Failed to parse space after creating the request".to_string(),
         })?;
 
+    let file_relative_path = vec![
+        file_parent_relative_path.clone(),
+        format!("{}.toml", file_sanitized_name),
+    ]
+    .iter()
+    .filter(|&path| !path.is_empty())
+    .cloned()
+    .collect::<Vec<_>>()
+    .join("/");
+
+    let create_new_result = CreateNewCollectionOrRequest {
+        parent_relative_path: file_parent_relative_path,
+        relative_path: file_relative_path,
+    };
+
     zaku_state.active_space = Some(active_space);
 
-    return Ok(CreateNewCollectionOrRequest {
-        parent_relative_path: file_parent_relative_path.clone(),
-        relative_path: vec![
-            file_parent_relative_path,
-            format!("{}.toml", file_sanitized_name),
-        ]
-        .iter()
-        .filter(|&path| !path.is_empty())
-        .cloned()
-        .collect::<Vec<_>>()
-        .join("/"),
-    });
+    return Ok(create_new_result);
 }
