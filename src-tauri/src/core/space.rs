@@ -22,7 +22,7 @@ pub struct CollectionRcRefCell {
 }
 
 fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error> {
-    let space_folder_name = absolute_space_root
+    let space_dir_name = absolute_space_root
         .file_name()
         .unwrap_or_else(|| absolute_space_root.as_os_str())
         .to_string_lossy()
@@ -38,7 +38,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
 
     let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
         meta: CollectionMeta {
-            folder_name: space_folder_name,
+            dir_name: space_dir_name,
             display_name: space_config.map(|config| config.meta.name),
             is_open: true,
         },
@@ -83,7 +83,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
 
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
-                            folder_name: name,
+                            dir_name: name,
                             display_name: collection_name_by_relative_path
                                 .get(&relative_path)
                                 .cloned(),

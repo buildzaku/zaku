@@ -72,7 +72,7 @@
                 <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {/if}
             <span class="truncate">
-                {root.meta.display_name ?? root.meta.folder_name}
+                {root.meta.display_name ?? root.meta.dir_name}
             </span>
         </div>
 

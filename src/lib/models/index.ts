@@ -21,7 +21,7 @@ export type DragOverDto =
 export type RemoveTreeItemDto =
     | {
           type: "collection";
-          folder_name: string;
+          dir_name: string;
       }
     | {
           type: "request";

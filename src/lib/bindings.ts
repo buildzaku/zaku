@@ -6,7 +6,7 @@ export type Collection = {
     collections: Array<Collection>;
 };
 
-export type CollectionMeta = { folder_name: string; display_name: string | null; is_open: boolean };
+export type CollectionMeta = { dir_name: string; display_name: string | null; is_open: boolean };
 
 export type CreateCollectionDto = { parent_relative_path: string; relative_path: string };
 

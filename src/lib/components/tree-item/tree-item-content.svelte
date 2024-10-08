@@ -123,7 +123,7 @@
                 {/if}
                 <CollectionIcon size={12} />
                 <span class="truncate text-sm">
-                    {treeItem.meta.display_name ?? treeItem.meta.folder_name}
+                    {treeItem.meta.display_name ?? treeItem.meta.dir_name}
                 </span>
             {:else}
                 <span
@@ -169,10 +169,10 @@
             />
         {/if}
         {#if treeItem.meta.is_open}
-            {#each treeItem.collections as collection (buildPath(currentPath, collection.meta.folder_name))}
+            {#each treeItem.collections as collection (buildPath(currentPath, collection.meta.dir_name))}
                 <TreeItemContent
                     parentPath={currentPath}
-                    currentPath={buildPath(currentPath, collection.meta.folder_name)}
+                    currentPath={buildPath(currentPath, collection.meta.dir_name)}
                     treeItem={collection}
                     level={level + 1}
                 />

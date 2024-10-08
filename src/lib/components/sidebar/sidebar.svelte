@@ -121,10 +121,10 @@
                                 bind:inputName={treeItemInputName}
                             />
                         {/if}
-                        {#each $zakuState.active_space.root.collections as collection (collection.meta.folder_name)}
+                        {#each $zakuState.active_space.root.collections as collection (collection.meta.dir_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
-                                currentPath={collection.meta.folder_name}
+                                currentPath={collection.meta.dir_name}
                                 treeItem={collection}
                                 level={1}
                             />
