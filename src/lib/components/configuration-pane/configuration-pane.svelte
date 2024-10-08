@@ -32,11 +32,11 @@
                         variant="ghost"
                         on:click={() => {
                             pane.expand();
-                            pane.resize(60);
+                            pane.resize(40);
                         }}
                     >
                         <span class="pr-1.5 text-xs font-medium">Configuration</span>
-                        <ChevronUpIcon size={14} />
+                        <ChevronDownIcon size={14} />
                     </Button>
                 </div>
             {:else}
@@ -57,7 +57,7 @@
                         }}
                     >
                         <span class="pr-1.5 text-xs font-medium">Configuration</span>
-                        <ChevronDownIcon size={14} />
+                        <ChevronUpIcon size={14} />
                     </Button>
                 </div>
             {/if}
