@@ -7,7 +7,7 @@ import type { Result } from "$lib/utils";
 import type { Collection, Request } from "$lib/bindings";
 
 export function isCollection(treeItem: TreeItem): treeItem is Collection {
-    return Object.hasOwn(treeItem.meta, "folder_name");
+    return Object.hasOwn(treeItem.meta, "dir_name");
 }
 
 export function isSubPath(currentPath: string, targetPath: string): boolean {
@@ -47,7 +47,7 @@ export function addTreeItemToCollection({
 
     for (const segment of pathSegments(targetPath)) {
         const nextCollection = current.collections.find(
-            collection => collection.meta.folder_name === segment,
+            collection => collection.meta.dir_name === segment,
         );
         if (!nextCollection) {
             console.warn(`Target collection \`${segment}\` not found in \`${traversedPath}\``);
@@ -64,8 +64,8 @@ export function addTreeItemToCollection({
     if (isCollection(treeItem)) {
         const relativePath =
             parentRelativePath === RELATIVE_SPACE_ROOT
-                ? parentRelativePath.concat(treeItem.meta.folder_name)
-                : parentRelativePath.concat("/").concat(treeItem.meta.folder_name);
+                ? parentRelativePath.concat(treeItem.meta.dir_name)
+                : parentRelativePath.concat("/").concat(treeItem.meta.dir_name);
 
         if (isSubPath(relativePath, targetPath)) {
             console.warn(
@@ -81,19 +81,19 @@ export function addTreeItemToCollection({
     }
 
     if (isCollection(treeItem)) {
-        const collectionFolderNameAlreadyExists = current.collections.some(
-            collection => collection.meta.folder_name === treeItem.meta.folder_name,
+        const collectionDirNameAlreadyExists = current.collections.some(
+            collection => collection.meta.dir_name === treeItem.meta.dir_name,
         );
-        if (collectionFolderNameAlreadyExists) {
+        if (collectionDirNameAlreadyExists) {
             toast(
-                `Collection with folder name ${treeItem.meta.folder_name} already exists in the ${current.meta.folder_name} collection`,
+                `Collection with directory name ${treeItem.meta.dir_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
             return Err();
         }
         current.collections.push(treeItem);
         current.collections.sort((a, b) =>
-            a.meta.folder_name.toLocaleLowerCase().localeCompare(b.meta.folder_name),
+            a.meta.dir_name.toLocaleLowerCase().localeCompare(b.meta.dir_name),
         );
 
         return Ok();
@@ -103,7 +103,7 @@ export function addTreeItemToCollection({
         );
         if (requestFileNameAlreadyExists) {
             toast(
-                `Request with file name ${treeItem.meta.file_name} already exists in the ${current.meta.folder_name} collection`,
+                `Request with file name ${treeItem.meta.file_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
             return Err();
@@ -131,7 +131,7 @@ export function removeTreeItemFromCollection({
 
     for (const segment of segments) {
         const nextCollection = current.collections.find(
-            collection => collection.meta.folder_name === segment,
+            collection => collection.meta.dir_name === segment,
         );
         if (!nextCollection) {
             console.warn(`Collection not found for segment: ${segment}`);
@@ -144,7 +144,7 @@ export function removeTreeItemFromCollection({
 
     if (removeTreeItemDto.type === "collection") {
         current.collections = current.collections.filter(
-            collection => collection.meta.folder_name !== removeTreeItemDto.folder_name,
+            collection => collection.meta.dir_name !== removeTreeItemDto.dir_name,
         );
 
         return Ok();

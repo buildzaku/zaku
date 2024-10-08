@@ -22,11 +22,11 @@ export function isDropAllowed(path: string): boolean {
         }
 
         if (isCollection(staticCurrentDragPayload.treeItem)) {
-            const folderName = staticCurrentDragPayload.treeItem.meta.folder_name;
+            const dirName = staticCurrentDragPayload.treeItem.meta.dir_name;
             const relativePath =
                 staticCurrentDragPayload.parentRelativePath === RELATIVE_SPACE_ROOT
-                    ? staticCurrentDragPayload.parentRelativePath.concat(folderName)
-                    : staticCurrentDragPayload.parentRelativePath.concat("/").concat(folderName);
+                    ? staticCurrentDragPayload.parentRelativePath.concat(dirName)
+                    : staticCurrentDragPayload.parentRelativePath.concat("/").concat(dirName);
 
             if (isSubPath(relativePath, staticCurrentDropTargetPath)) {
                 return false;
@@ -58,7 +58,7 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
         document.body.appendChild(previewContainer);
 
         const previewTitle = isCollection(payload.treeItem)
-            ? (payload.treeItem.meta.display_name ?? payload.treeItem.meta.folder_name)
+            ? (payload.treeItem.meta.display_name ?? payload.treeItem.meta.dir_name)
             : (payload.treeItem.meta.display_name ?? payload.treeItem.meta.file_name);
 
         const previewInstance = new TreeItemPreview({
@@ -117,7 +117,7 @@ export function handleDrop(event: DragEvent) {
     }
 
     const removeTreeItemDto: RemoveTreeItemDto = isCollection(staticCurrentDragPayload.treeItem)
-        ? { type: "collection", folder_name: staticCurrentDragPayload.treeItem.meta.folder_name }
+        ? { type: "collection", dir_name: staticCurrentDragPayload.treeItem.meta.dir_name }
         : { type: "request", file_name: staticCurrentDragPayload.treeItem.meta.file_name };
     const removeTreeItemFromCollectionResult = removeTreeItemFromCollection({
         parentRelativePath: staticCurrentDragPayload.parentRelativePath,
