@@ -1,5 +1,22 @@
 # zaku
 
+## 0.4.0
+
+### Minor Changes
+
+-   Tree view for collections and requests - [`4229470`](https://github.com/buildzaku/zaku/commit/42294706ac7bfd74d361ebb58b75a525f9f1f70d) [#18](https://github.com/buildzaku/zaku/pull/18)
+
+-   Ability to create new requests and collections - [`d1317c7`](https://github.com/buildzaku/zaku/commit/d1317c7f9b4215cb2986791e4c9af98218c5203a) [#22](https://github.com/buildzaku/zaku/pull/22)
+
+    -   With support for nested input
+
+### Patch Changes
+
+-   Handlers for request and response panes - [`874de99`](https://github.com/buildzaku/zaku/commit/874de99f5f31b60f1bd01f0cef49fc6523cdb8af) [#20](https://github.com/buildzaku/zaku/pull/20)
+
+    -   Improve colors for dark theme
+    -   Fix request method colors
+
 ## 0.3.1
 
 ### Patch Changes
