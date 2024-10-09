@@ -7,7 +7,7 @@ use tauri::{AppHandle, State, Wry};
 use tauri_plugin_store::StoreCollection;
 
 use crate::core::{space, store};
-use crate::models::space::{CreateSpaceDto, SpaceMeta, SpaceReference};
+use crate::models::space::{CreateSpaceDto, SpaceConfigFile, SpaceMeta, SpaceReference};
 use crate::models::zaku::{ZakuError, ZakuState};
 
 #[tauri::command(rename_all = "snake_case")]
@@ -47,19 +47,22 @@ pub fn create_space(
 
     fs::create_dir(&space_root_path).expect("Failed to create space directory");
 
-    let space_meta_path = space_root_path.join(".zaku");
-    fs::create_dir(&space_meta_path).expect("Failed to create `.zaku` directory");
+    let space_config_dir = space_root_path.join(".zaku");
+    fs::create_dir(&space_config_dir).expect("Failed to create `.zaku` directory");
 
     let mut space_config_file =
-        File::create(&space_meta_path.join("config.toml")).expect("Failed to create `config.toml`");
+        File::create(&space_config_dir.join("config").with_extension("toml"))
+            .expect("Failed to create `config.toml`");
 
-    let space_meta = SpaceMeta {
-        name: create_space_dto.name.clone(),
+    let space_config = SpaceConfigFile {
+        meta: SpaceMeta {
+            name: create_space_dto.name.clone(),
+        },
     };
 
     space_config_file
         .write_all(
-            toml::to_string_pretty(&space_meta)
+            toml::to_string_pretty(&space_config)
                 .expect("Failed to serialize space config")
                 .as_bytes(),
         )
