@@ -11,8 +11,9 @@
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";
     import { tick } from "svelte";
-    import { createSpace } from "$lib/store";
-    import { dispatchNotification, openDirectoryDialog } from "$lib/commands";
+    import { zakuState } from "$lib/store";
+    import { dispatchNotification, openDirectoryDialog, safeInvoke } from "$lib/commands";
+    import type { SpaceReference } from "$lib/bindings";
 
     type $$Props = {
         isOpen: boolean;
@@ -26,13 +27,12 @@
     let createSpaceLocation: string = "";
 
     async function handleCreateSpaceBrowse() {
-        const selected = await openDirectoryDialog({ title: "Create a new Space" });
+        const selectedDir = await openDirectoryDialog({ title: "Create a new Space" });
 
-        if (selected !== null) {
-            createSpaceLocation = selected;
+        if (selectedDir !== null) {
+            createSpaceLocation = selectedDir;
 
             const spacePathContainerElement = document.getElementById("space-path-container");
-
             if (spacePathContainerElement) {
                 await tick();
                 const rightMostPosition = spacePathContainerElement.scrollWidth;
@@ -42,18 +42,24 @@
     }
 
     async function handleCreateSpace() {
-        try {
-            await createSpace({ name: createSpaceName, location: createSpaceLocation });
+        const spaceReference = await safeInvoke<SpaceReference>("create_space", {
+            create_space_dto: { name: createSpaceName, location: createSpaceLocation },
+        });
 
-            if (onCreate) {
-                await onCreate();
-            }
-        } catch (err) {
-            console.error(err);
+        if (!spaceReference.ok) {
             await dispatchNotification({
                 title: "Something went wrong.",
                 body: `Unable to create space "${createSpaceName}", make sure the directory exists and try again.`,
             });
+
+            return;
+        }
+
+        await zakuState.setActiveSpace(spaceReference.value);
+        isOpen = false;
+
+        if (onCreate) {
+            await onCreate();
         }
     }
 </script>

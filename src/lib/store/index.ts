@@ -1,14 +1,13 @@
 import { tick } from "svelte";
 import { writable } from "svelte/store";
-import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
 
 import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
 import { Ok } from "$lib/utils";
 import type { ValueOf } from "$lib/utils";
-import { getSpaceReference, safeInvoke } from "$lib/commands";
+import { safeInvoke } from "$lib/commands";
 import { TREE_ITEM_TYPE, type DragPayload, type FocussedTreeItem } from "$lib/models";
-import type { ZakuState, SpaceReference, CreateSpaceDto } from "$lib/bindings";
+import type { ZakuState, SpaceReference } from "$lib/bindings";
 
 export type RequestConfig = HttpRequestConfig;
 
@@ -100,19 +99,6 @@ function createZakuState() {
 
             return;
         },
-        deleteSpace: async (path: string) => {
-            try {
-                const spaceReference = await getSpaceReference(path);
-                await invoke("delete_space", {
-                    spaceReference: spaceReference,
-                });
-                await synchronize();
-
-                return;
-            } catch (err) {
-                console.error(err);
-            }
-        },
         subscribe,
         update,
         set,
@@ -120,16 +106,6 @@ function createZakuState() {
 }
 
 export const zakuState = createZakuState();
-
-export async function createSpace(createSpaceDto: CreateSpaceDto) {
-    const spaceReference = await invoke<SpaceReference>("create_space", {
-        createSpaceDto,
-    });
-
-    await zakuState.setActiveSpace(spaceReference);
-
-    return;
-}
 
 function createDragPayloadState() {
     const { set, subscribe, update } = writable<DragPayload | null>(null);
