@@ -14,7 +14,12 @@
         DropdownMenuSubContent,
         DropdownMenuSeparator,
     } from "$lib/components/primitives/dropdown-menu";
-    import { openDirectoryDialog, getSpaceReference, dispatchNotification } from "$lib/commands";
+    import {
+        openDirectoryDialog,
+        getSpaceReference,
+        dispatchNotification,
+        safeInvoke,
+    } from "$lib/commands";
     import { cn } from "$lib/utils/style";
     import { SpaceCreateDialog } from ".";
 
@@ -40,9 +45,21 @@
         }
     }
 
-    async function handleDelete() {
+    async function handleDeleteSpace() {
         if ($zakuState.active_space) {
-            await zakuState.deleteSpace($zakuState.active_space.absolute_path);
+            try {
+                const spaceReference = await getSpaceReference(
+                    $zakuState.active_space.absolute_path,
+                );
+                await safeInvoke("delete_space", {
+                    space_reference: spaceReference,
+                });
+                await zakuState.synchronize();
+
+                return;
+            } catch (err) {
+                console.error(err);
+            }
         }
     }
 </script>
@@ -110,15 +127,10 @@
             >
                 <span>Open an existing Space</span>
             </DropdownMenuItem>
-            <DropdownMenuItem class="h-7 rounded-md px-2 text-small" on:click={handleDelete}>
+            <DropdownMenuItem class="h-7 rounded-md px-2 text-small" on:click={handleDeleteSpace}>
                 <span class="text-destructive">Delete space</span>
             </DropdownMenuItem>
         </DropdownMenuContent>
     </DropdownMenu>
-    <SpaceCreateDialog
-        bind:isOpen={isCreateSpaceDialogOpen}
-        onCreate={async () => {
-            isCreateSpaceDialogOpen = false;
-        }}
-    />
+    <SpaceCreateDialog bind:isOpen={isCreateSpaceDialogOpen} />
 {/if}

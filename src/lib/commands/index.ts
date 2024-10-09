@@ -47,6 +47,8 @@ export async function getSpaceReference(path: string): Promise<SpaceReference> {
 export type InvokeCommand =
     | "get_zaku_state"
     | "set_active_space"
+    | "create_space"
+    | "delete_space"
     | "create_collection"
     | "create_request";
 
