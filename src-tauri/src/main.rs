@@ -6,6 +6,7 @@ pub mod commands;
 pub mod constants;
 pub mod core;
 pub mod models;
+pub mod platform;
 pub mod utils;
 
 use core::{shortcuts, state};
@@ -27,6 +28,9 @@ fn main() {
         .setup(|app| {
             state::initialize(app);
             shortcuts::initialize(app);
+
+            #[cfg(target_os = "linux")]
+            platform::linux::initialize();
 
             return Ok(());
         })
