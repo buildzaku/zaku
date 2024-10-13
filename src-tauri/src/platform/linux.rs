@@ -1,5 +1,11 @@
 #[cfg(target_os = "linux")]
-use std::env;
+use {
+    std::env,
+    wgpu::{
+        Backends, DeviceType, Dx12Compiler, Gles3MinorVersion, Instance, InstanceDescriptor,
+        InstanceFlags,
+    },
+};
 
 #[cfg(target_os = "linux")]
 pub fn initialize() {
@@ -12,11 +18,6 @@ pub fn initialize() {
 fn has_nvidia_gpu() -> bool {
     const NVIDIA_VENDOR_ID: u32 = 0x10DE;
 
-    use wgpu::{
-        Backends, DeviceType, Dx12Compiler, Gles3MinorVersion, Instance, InstanceDescriptor,
-        InstanceFlags,
-    };
-
     let instance = Instance::new(InstanceDescriptor {
         flags: InstanceFlags::empty(),
         backends: Backends::VULKAN | Backends::GL,
@@ -26,6 +27,7 @@ fn has_nvidia_gpu() -> bool {
 
     for adapter in instance.enumerate_adapters(Backends::VULKAN | Backends::GL) {
         let info = adapter.get_info();
+
         match info.device_type {
             DeviceType::DiscreteGpu | DeviceType::IntegratedGpu | DeviceType::VirtualGpu => {
                 if info.vendor == NVIDIA_VENDOR_ID {
@@ -36,5 +38,5 @@ fn has_nvidia_gpu() -> bool {
         }
     }
 
-    false
+    return false;
 }

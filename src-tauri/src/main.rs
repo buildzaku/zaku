@@ -13,6 +13,9 @@ use core::{shortcuts, state};
 use models::zaku::ZakuState;
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    platform::linux::initialize();
+
     #[cfg(debug_assertions)]
     models::generate_bindings().expect("Failed to generate TypeScript bindings");
 
@@ -28,9 +31,6 @@ fn main() {
         .setup(|app| {
             state::initialize(app);
             shortcuts::initialize(app);
-
-            #[cfg(target_os = "linux")]
-            platform::linux::initialize();
 
             return Ok(());
         })
