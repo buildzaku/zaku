@@ -6,12 +6,16 @@ pub mod commands;
 pub mod constants;
 pub mod core;
 pub mod models;
+pub mod platform;
 pub mod utils;
 
 use core::{shortcuts, state};
 use models::zaku::ZakuState;
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    platform::linux::initialize();
+
     #[cfg(debug_assertions)]
     models::generate_bindings().expect("Failed to generate TypeScript bindings");
 

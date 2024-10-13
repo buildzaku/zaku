@@ -22,3 +22,6 @@ tauri-plugin-notification = { version = "=2.0.0-rc.5" }
 tauri-plugin-store = { version = "=2.0.0-rc.3" }
 toml = { version = "=0.8.19" }
 ts-rs = { version = "=10.0.0" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+wgpu = { version = "=22.1.0", default-features = false }
