@@ -2,4 +2,4 @@
 "zaku": patch
 ---
 
-Fix blank window on linux with nvidia gpu
+Fix blank window on Linux with Nvidia GPU
