@@ -5,8 +5,6 @@ use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
-use tauri::{AppHandle, State, Wry};
-use tauri_plugin_store::StoreCollection;
 
 use crate::models::collection::{Collection, CollectionMeta};
 use crate::models::request::{Request, RequestMeta};
@@ -233,11 +231,8 @@ pub fn parse_space_config(absolute_space_root: &Path) -> Result<SpaceConfigFile,
         });
 }
 
-pub fn find_first_valid_space_reference(
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
-) -> Option<SpaceReference> {
-    return store::get_space_references(app_handle, stores)
+pub fn find_first_valid_space_reference() -> Option<SpaceReference> {
+    return store::get_space_references()
         .into_iter()
         .find_map(|space_reference| {
             let absolute_space_root = PathBuf::from(&space_reference.path);

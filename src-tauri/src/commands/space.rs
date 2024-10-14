@@ -2,9 +2,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
-
-use tauri::{AppHandle, State, Wry};
-use tauri_plugin_store::StoreCollection;
+use tauri::State;
 
 use crate::core::{space, store};
 use crate::models::space::{CreateSpaceDto, SpaceConfigFile, SpaceMeta, SpaceReference};
@@ -13,8 +11,6 @@ use crate::models::zaku::{ZakuError, ZakuState};
 #[tauri::command(rename_all = "snake_case")]
 pub fn create_space(
     create_space_dto: CreateSpaceDto,
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<ZakuState>>,
 ) -> Result<SpaceReference, ZakuError> {
     let location = PathBuf::from(create_space_dto.location.as_str());
@@ -26,7 +22,7 @@ pub fn create_space(
     }
 
     let space_root_path = location.join(create_space_dto.name.clone());
-    let mut space_references = store::get_space_references(app_handle.clone(), stores.clone());
+    let mut space_references = store::get_space_references();
     let mut zaku_state = state.lock().unwrap();
 
     if space_references
@@ -73,9 +69,9 @@ pub fn create_space(
         name: create_space_dto.name,
     };
 
-    store::set_active_space_reference(space_reference.clone(), app_handle.clone(), stores.clone());
+    store::set_active_space_reference(space_reference.clone());
     space_references.push(space_reference.clone());
-    store::set_space_references(space_references.clone(), app_handle, stores);
+    store::set_space_references(space_references.clone());
 
     match space::parse_space(&PathBuf::from(space_reference.clone().path)) {
         Ok(active_space) => {
@@ -93,8 +89,6 @@ pub fn create_space(
 #[tauri::command(rename_all = "snake_case")]
 pub fn set_active_space(
     space_reference: SpaceReference,
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
     state: State<Mutex<ZakuState>>,
 ) -> Result<(), ZakuError> {
     let mut zaku_state = state.lock().unwrap();
@@ -109,20 +103,11 @@ pub fn set_active_space(
 
     match space::parse_space(&space_root_path) {
         Ok(space) => {
-            store::set_active_space_reference(
-                space_reference.clone(),
-                app_handle.clone(),
-                stores.clone(),
-            );
-            store::insert_into_space_references_if_needed(
-                space_reference.clone(),
-                app_handle.clone(),
-                stores.clone(),
-            );
+            store::set_active_space_reference(space_reference.clone());
+            store::insert_into_space_references_if_needed(space_reference.clone());
 
             zaku_state.active_space = Some(space);
-            zaku_state.space_references =
-                store::get_space_references(app_handle.clone(), stores.clone());
+            zaku_state.space_references = store::get_space_references();
 
             return Ok(());
         }
@@ -134,27 +119,18 @@ pub fn set_active_space(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn delete_space(
-    space_reference: SpaceReference,
-    app_handle: AppHandle,
-    stores: State<'_, StoreCollection<Wry>>,
-    state: State<Mutex<ZakuState>>,
-) -> () {
+pub fn delete_space(space_reference: SpaceReference, state: State<Mutex<ZakuState>>) -> () {
     let mut zaku_state = state.lock().unwrap();
-    store::delete_space_reference(space_reference, app_handle.clone(), stores.clone());
+    store::delete_space_reference(space_reference);
 
-    let active_space = store::get_active_space_reference(app_handle.clone(), stores.clone());
+    let active_space = store::get_active_space_reference();
 
     if let None = active_space {
         zaku_state.active_space = None;
 
-        match space::find_first_valid_space_reference(app_handle.clone(), stores.clone()) {
+        match space::find_first_valid_space_reference() {
             Some(valid_space_reference) => {
-                store::set_active_space_reference(
-                    valid_space_reference.clone(),
-                    app_handle.clone(),
-                    stores.clone(),
-                );
+                store::set_active_space_reference(valid_space_reference.clone());
 
                 match space::parse_space(&PathBuf::from(valid_space_reference.clone().path)) {
                     Ok(active_space) => {
@@ -167,7 +143,7 @@ pub fn delete_space(
         }
     }
 
-    zaku_state.space_references = store::get_space_references(app_handle, stores);
+    zaku_state.space_references = store::get_space_references();
 
     return ();
 }
