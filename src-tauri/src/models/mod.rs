@@ -31,6 +31,13 @@ pub struct CreateNewCollectionOrRequest {
     pub relative_path: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings.ts")]
+pub struct MoveTreeItemDto {
+    pub source_relative_path: String,
+    pub destination_relative_path: String,
+}
+
 pub fn generate_bindings() -> Result<(), ExportError> {
     CollectionMeta::export_all()?;
     Collection::export_all()?;
@@ -39,6 +46,7 @@ pub fn generate_bindings() -> Result<(), ExportError> {
     OpenDirectoryDialogOptions::export_all()?;
     DispatchNotificationOptions::export_all()?;
     CreateNewCollectionOrRequest::export_all()?;
+    MoveTreeItemDto::export_all()?;
 
     RequestMeta::export_all()?;
     RequestConfig::export_all()?;
