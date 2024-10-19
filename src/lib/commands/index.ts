@@ -50,7 +50,8 @@ export type InvokeCommand =
     | "create_space"
     | "delete_space"
     | "create_collection"
-    | "create_request";
+    | "create_request"
+    | "move_tree_item";
 
 export async function safeInvoke<T>(
     command: InvokeCommand,

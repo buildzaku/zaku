@@ -1,4 +1,5 @@
 import { get } from "svelte/store";
+import { toast } from "svelte-sonner";
 
 import TreeItemPreview from "./tree-item-preview.svelte";
 import { currentDragPayload, currentDropTargetPath, focussedTreeItem, zakuState } from "$lib/store";
@@ -11,6 +12,8 @@ import {
     isSubPath,
     removeTreeItemFromCollection,
 } from "$lib/utils/tree";
+import { safeInvoke } from "$lib/commands";
+import type { MoveTreeItemDto } from "$lib/bindings";
 
 export function isDropAllowed(path: string): boolean {
     const staticCurrentDropTargetPath = get(currentDropTargetPath);
@@ -83,7 +86,7 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
     }
 }
 
-export function handleDrop(event: DragEvent) {
+export async function handleDrop(event: DragEvent) {
     event.preventDefault();
     event.stopImmediatePropagation();
 
@@ -129,6 +132,25 @@ export function handleDrop(event: DragEvent) {
         return;
     }
 
+    const fileOrDirName = isCollection(staticCurrentDragPayload.treeItem)
+        ? staticCurrentDragPayload.treeItem.meta.dir_name
+        : staticCurrentDragPayload.treeItem.meta.file_name;
+    const moveTreeItemDto: MoveTreeItemDto = {
+        source_relative_path: buildPath(staticCurrentDragPayload.parentRelativePath, fileOrDirName),
+        destination_relative_path: buildPath(staticCurrentDropTargetPath, fileOrDirName),
+    };
+    const moveTreeItemResult = await safeInvoke("move_tree_item", {
+        move_tree_item_dto: moveTreeItemDto,
+    });
+    if (!moveTreeItemResult.ok) {
+        console.error(moveTreeItemResult.err);
+        toast(
+            `Something went wrong. Unable to move \`${staticCurrentDragPayload.treeItem.meta.display_name}\``,
+        );
+
+        return;
+    }
+
     zakuState.update(state => {
         if (state.active_space === null) {
             return state;
@@ -142,6 +164,7 @@ export function handleDrop(event: DragEvent) {
             },
         };
     });
+
     currentDragPayload.set(null);
     currentDropTargetPath.set(null);
 }

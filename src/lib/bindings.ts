@@ -18,6 +18,8 @@ export type CreateSpaceDto = { name: string; location: string };
 
 export type DispatchNotificationOptions = { title: string; body: string };
 
+export type MoveTreeItemDto = { source_relative_path: string; destination_relative_path: string };
+
 export type OpenDirectoryDialogOptions = { title: string | null };
 
 export type Request = { meta: RequestMeta; config: RequestConfig };
