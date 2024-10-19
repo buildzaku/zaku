@@ -1,5 +1,28 @@
 # zaku
 
+## 0.4.0
+
+### Minor Changes
+
+-   Tree view for collections and requests - [`4229470`](https://github.com/buildzaku/zaku/commit/42294706ac7bfd74d361ebb58b75a525f9f1f70d) [#18](https://github.com/buildzaku/zaku/pull/18)
+
+-   Ability to create new requests and collections - [`d1317c7`](https://github.com/buildzaku/zaku/commit/d1317c7f9b4215cb2986791e4c9af98218c5203a) [#22](https://github.com/buildzaku/zaku/pull/22)
+
+    -   With support for nested input
+
+-   Custom store for persistence - [`6c8423b`](https://github.com/buildzaku/zaku/commit/6c8423bbe11bd91eec076370d7c2ac1758dfe309) [#24](https://github.com/buildzaku/zaku/pull/24)
+
+### Patch Changes
+
+-   Preserve moved tree item on drag and drop - [`af5f535`](https://github.com/buildzaku/zaku/commit/af5f5350ab7203976dfc17282c271b1f03b940a2) [#25](https://github.com/buildzaku/zaku/pull/25)
+
+-   Fix blank window on Linux with Nvidia GPU - [`c0203dc`](https://github.com/buildzaku/zaku/commit/c0203dc13c7a703e448af78a8f5060676212588a) [#23](https://github.com/buildzaku/zaku/pull/23)
+
+-   Handlers for request and response panes - [`874de99`](https://github.com/buildzaku/zaku/commit/874de99f5f31b60f1bd01f0cef49fc6523cdb8af) [#20](https://github.com/buildzaku/zaku/pull/20)
+
+    -   Improve colors for dark theme
+    -   Fix request method colors
+
 ## 0.3.1
 
 ### Patch Changes
