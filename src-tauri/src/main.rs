@@ -45,7 +45,8 @@ fn main() {
             commands::notification::request_notification_permission,
             commands::notification::dispatch_notification,
             commands::collection::create_collection,
-            commands::request::create_request
+            commands::request::create_request,
+            commands::move_tree_item,
         ]);
 
     app.run(tauri::generate_context!())
