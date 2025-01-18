@@ -11,7 +11,6 @@ pub mod utils;
 
 use core::{shortcuts, state};
 use models::zaku::ZakuState;
-use tauri::Manager;
 
 fn main() {
     #[cfg(target_os = "linux")]
@@ -34,6 +33,8 @@ fn main() {
 
             #[cfg(target_os = "macos")]
             {
+                use tauri::Manager;
+
                 let webview_window = app.get_webview_window("main").unwrap();
                 platform::macos::initialize(&webview_window);
             }
