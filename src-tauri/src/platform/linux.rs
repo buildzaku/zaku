@@ -3,8 +3,8 @@
 use {
     std::env,
     wgpu::{
-        Backends, DeviceType, Dx12Compiler, Gles3MinorVersion, Instance, InstanceDescriptor,
-        InstanceFlags,
+        BackendOptions, Backends, DeviceType, Dx12BackendOptions, Dx12Compiler, GlBackendOptions,
+        Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags,
     },
 };
 
@@ -17,12 +17,19 @@ pub fn initialize() {
 fn has_nvidia_gpu() -> bool {
     const NVIDIA_VENDOR_ID: u32 = 0x10DE;
 
-    let instance = Instance::new(InstanceDescriptor {
+    let instance_descriptor = InstanceDescriptor {
         flags: InstanceFlags::empty(),
         backends: Backends::VULKAN | Backends::GL,
-        gles_minor_version: Gles3MinorVersion::Automatic,
-        dx12_shader_compiler: Dx12Compiler::default(),
-    });
+        backend_options: BackendOptions {
+            gl: GlBackendOptions {
+                gles_minor_version: Gles3MinorVersion::Automatic,
+            },
+            dx12: Dx12BackendOptions {
+                shader_compiler: Dx12Compiler::default(),
+            },
+        },
+    };
+    let instance = Instance::new(&instance_descriptor);
 
     for adapter in instance.enumerate_adapters(Backends::VULKAN | Backends::GL) {
         let info = adapter.get_info();
