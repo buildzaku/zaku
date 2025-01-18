@@ -31,6 +31,14 @@ fn main() {
             state::initialize(app);
             shortcuts::initialize(app);
 
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+
+                let webview_window = app.get_webview_window("main").unwrap();
+                platform::macos::initialize(&webview_window);
+            }
+
             return Ok(());
         })
         .invoke_handler(tauri::generate_handler![

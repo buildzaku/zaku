@@ -42,7 +42,7 @@
 
 {#if $zakuState.active_space}
     <div class="flex size-full flex-col justify-between">
-        <div class="mt-1.5 flex w-full items-center justify-center border-b p-1.5">
+        <div class="flex w-full items-center justify-center border-b p-1.5 pt-0">
             <div class={cn("flex w-full items-center justify-between gap-1.5")}>
                 <div class="flex-grow overflow-hidden text-ellipsis whitespace-nowrap">
                     <SpaceSwitcher isSidebarCollapsed={isCollapsed} />
@@ -87,9 +87,7 @@
                 </Tooltip>
             {:else}
                 <div class="size-full">
-                    <p
-                        class="flex h-[36px] items-center bg-background px-[22px] text-muted-foreground"
-                    >
+                    <p class="flex h-[36px] items-center px-[22px] text-muted-foreground">
                         Explorer
                     </p>
                     <TreeItemRoot

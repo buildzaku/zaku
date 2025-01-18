@@ -12,7 +12,7 @@
     class={cn("flex w-full cursor-default items-center justify-between", $$props["class"])}
 >
     <div />
-    <div class="flex h-full items-center">
+    <div class="flex h-full items-center gap-3 px-4">
         <Button
             on:click={toggleMode}
             variant="ghost"
@@ -23,8 +23,8 @@
             <Moon size={14} class="hidden dark:block" ariaLabel="dark" />
             <span class="sr-only">Toggle theme</span>
         </Button>
-        <div class="px-3">
-            <ZakuIcon size={11} />
+        <div>
+            <ZakuIcon size={10} />
         </div>
     </div>
 </div>

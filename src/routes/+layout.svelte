@@ -44,8 +44,8 @@
 <ModeWatcher defaultMode="dark" track={false} />
 <Toaster />
 <main class="bg-background">
-    <TitleBar class="h-8" />
-    <div class="h-[calc(100dvh-2rem-1px)]">
+    <TitleBar class="h-[36px]" />
+    <div class="h-[calc(100dvh-36px)]">
         <slot />
     </div>
 </main>
