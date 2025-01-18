@@ -17,3 +17,6 @@ target
 *.spec.ts
 *.e2e-spec.ts
 coverage
+
+# generated
+/src/lib/bindings.ts
