@@ -49,7 +49,7 @@
                 </div>
             </div>
             <div class="flex size-full items-center justify-center gap-2 pb-8">
-                <Rocket size={20} />
+                <Rocket size="20" />
                 <span>
                     Hit <b class="font-semibold">Send</b> to make a request
                 </span>
@@ -129,7 +129,7 @@
                                             class="size-full"
                                             loading="lazy"
                                             sandbox=""
-                                        />
+                                        ></iframe>
                                     </TabsContent>
                                 </div>
                             </Tabs>
