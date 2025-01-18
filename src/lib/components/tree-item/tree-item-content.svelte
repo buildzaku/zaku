@@ -69,7 +69,7 @@
         <div
             style="left: {level * 8 + 3.5}px;"
             class="pointer-events-none absolute z-10 h-full w-px bg-transparent group-hover/explorer:bg-border/80"
-        />
+        ></div>
     {/if}
     <div
         tabindex={0}

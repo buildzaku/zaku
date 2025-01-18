@@ -21,7 +21,7 @@
 >
     {#if withHandle}
         <div class="z-10">
-            <div class="h-10 w-[2px] rounded bg-foreground/70" />
+            <div class="h-10 w-[2px] rounded bg-foreground/70"></div>
         </div>
     {/if}
 </ResizablePrimitive.PaneResizer>
