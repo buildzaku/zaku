@@ -54,7 +54,7 @@
             }
         }}
         class={cn(
-            "flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap bg-background ring-inset focus:outline-none focus:ring-1 focus:ring-ring",
+            "flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:outline-none focus:ring-1 focus:ring-ring",
         )}
         on:click={() => {
             root.meta.is_open = !root.meta.is_open;
@@ -135,7 +135,7 @@
 
     {#if root.meta.is_open}
         <div
-            class="flex h-[calc(100vh-32px-47px-36px-22px-38px)] max-h-[calc(100vh-32px-47px-36px-22px-38px)] w-full flex-1 flex-col overflow-y-auto"
+            class="flex h-[calc(100dvh-36px-35px-36px-22px-37px)] max-h-[calc(100dvh-36px-35px-36px-22px-37px)] w-full flex-1 flex-col overflow-y-auto"
         >
             <slot />
             <div

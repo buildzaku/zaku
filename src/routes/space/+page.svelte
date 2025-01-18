@@ -111,7 +111,7 @@
         </ResizablePane>
         <ResizablePane
             defaultSize={50}
-            class="relative my-1.5 mr-1.5 rounded-md border border-l-0 bg-card"
+            class="relative mb-1.5 mr-1.5 rounded-md border border-l-0 bg-card"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
             <ResizablePaneGroup direction="vertical" class="size-full">

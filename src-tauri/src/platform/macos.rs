@@ -13,8 +13,8 @@ use std::ffi;
 use tauri::{Listener, Runtime, WebviewWindow, WindowEvent};
 
 const WINDOW_THEME_CHANGED: &str = "tauri://theme-changed";
-const TRAFFIC_LIGHTS_PADDING_X: f64 = 11.0;
-const TRAFFIC_LIGHTS_PADDING_Y: f64 = 15.0;
+const TRAFFIC_LIGHTS_PADDING_X: f64 = 14.0;
+const TRAFFIC_LIGHTS_PADDING_Y: f64 = 16.0;
 
 struct UnsafeNSWindowHandle(*mut ffi::c_void);
 
