@@ -1,3 +1,5 @@
+#![cfg(target_os = "macos")]
+
 use cocoa::{
     appkit::{NSView, NSWindow, NSWindowButton},
     base::id,

@@ -1,4 +1,5 @@
-#[cfg(target_os = "linux")]
+#![cfg(target_os = "linux")]
+
 use {
     std::env,
     wgpu::{
@@ -7,14 +8,12 @@ use {
     },
 };
 
-#[cfg(target_os = "linux")]
 pub fn initialize() {
     if has_nvidia_gpu() {
         env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); // https://github.com/tauri-apps/tauri/issues/9304
     }
 }
 
-#[cfg(target_os = "linux")]
 fn has_nvidia_gpu() -> bool {
     const NVIDIA_VENDOR_ID: u32 = 0x10DE;
 
