@@ -125,7 +125,7 @@
         <div
             style="left: {level * 8 + 3.5}px;"
             class="pointer-events-none absolute z-10 h-full w-px bg-transparent group-hover/explorer:bg-border/80"
-        />
+        ></div>
     {/if}
     <div
         style="padding-left: {level * 8}px"
@@ -133,7 +133,7 @@
     >
         <div class="flex h-full w-full items-center gap-1 pl-1.5">
             {#if type === TREE_ITEM_TYPE.Collection}
-                <div class="w-[12px] min-w-[12px]" />
+                <div class="w-[12px] min-w-[12px]"></div>
                 <CollectionIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {:else}
                 <span class={cn("pl-3 text-[9px] font-bold", getMethodColorClass("GET"))}>GET</span>

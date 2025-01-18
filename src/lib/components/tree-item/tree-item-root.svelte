@@ -148,7 +148,7 @@
                     handleDragOver(event, { type: "collection", relativePath: currentPath })}
                 on:drop={handleDrop}
                 on:dragend={handleDragEnd}
-            />
+            ></div>
         </div>
     {/if}
 </div>
