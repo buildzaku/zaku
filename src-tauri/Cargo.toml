@@ -9,24 +9,24 @@ homepage = "https://zaku.app"
 edition = "2021"
 
 [build-dependencies]
-tauri-build = { version = "=2.0.1", features = [] }
+tauri-build = { version = "=2.0.5", features = [] }
 
 [dependencies]
 cocoa = { version = "=0.26.0" }
-dirs = { version = "=5.0.1" }
+dirs = { version = "=6.0.0" }
 objc = { version = "=0.2.7" }
 once_cell = { version = "=1.20.2" }
-postcard = { version = "=1.0.10", features = ["use-std"] }
-rand = { version = "=0.8.5" }
-serde = { version = "=1.0.210", features = ["derive"] }
-serde_json = { version = "=1.0.128" }
-tauri = { version = "=2.0.3", features = ["devtools"] }
-tauri-plugin-dialog = { version = "=2.0.1" }
-tauri-plugin-global-shortcut = { version = "=2.0.1" }
-tauri-plugin-http = { version = "=2.0.1" }
-tauri-plugin-notification = { version = "=2.0.1" }
+postcard = { version = "=1.1.1", features = ["use-std"] }
+rand = { version = "=0.9.0-beta.3" }
+serde = { version = "=1.0.217", features = ["derive"] }
+serde_json = { version = "=1.0.135" }
+tauri = { version = "=2.2.3", features = ["devtools"] }
+tauri-plugin-dialog = { version = "=2.2.0" }
+tauri-plugin-global-shortcut = { version = "=2.2.0" }
+tauri-plugin-http = { version = "=2.2.0" }
+tauri-plugin-notification = { version = "=2.2.1" }
 toml = { version = "=0.8.19", features = ["preserve_order"] }
-ts-rs = { version = "=10.0.0" }
+ts-rs = { version = "=10.1.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-wgpu = { version = "=22.1.0", default-features = false }
+wgpu = { version = "=24.0.0", default-features = false }

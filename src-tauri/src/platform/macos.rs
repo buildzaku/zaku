@@ -8,7 +8,7 @@ use objc::{
     runtime::{Object, Sel},
     sel, sel_impl,
 };
-use rand::{distributions::Alphanumeric, Rng};
+use rand::{distr::Alphanumeric, Rng};
 use std::ffi;
 use tauri::{Listener, Runtime, WebviewWindow, WindowEvent};
 
@@ -143,7 +143,7 @@ fn initialize_window_delegate<R: Runtime>(webview_window: &WebviewWindow<R>) {
         let window_label = webview_window.label().to_string();
         let app_state = WindowState { ns_window };
         let app_box = Box::into_raw(Box::new(app_state)) as *mut ffi::c_void;
-        let random_str: String = rand::thread_rng()
+        let random_str: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(20)
             .map(char::from)
