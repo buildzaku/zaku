@@ -12,12 +12,9 @@ edition = "2021"
 tauri-build = { version = "=2.0.5", features = [] }
 
 [dependencies]
-cocoa = { version = "=0.26.0" }
 dirs = { version = "=6.0.0" }
-objc = { version = "=0.2.7" }
 once_cell = { version = "=1.20.2" }
 postcard = { version = "=1.1.1", features = ["use-std"] }
-rand = { version = "=0.9.0-beta.3" }
 serde = { version = "=1.0.217", features = ["derive"] }
 serde_json = { version = "=1.0.135" }
 tauri = { version = "=2.2.3", features = ["devtools"] }
@@ -30,3 +27,8 @@ ts-rs = { version = "=10.1.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 wgpu = { version = "=24.0.0", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = { version = "=0.26.0" }
+objc = { version = "=0.2.7" }
+rand = { version = "=0.9.0-beta.3" }
