@@ -11,7 +11,7 @@
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";
     import { tick } from "svelte";
-    import { zakuState } from "$lib/store";
+    import { zakuState } from "$lib/state.svelte";
     import { dispatchNotification, openDirectoryDialog, safeInvoke } from "$lib/commands";
     import type { SpaceReference } from "$lib/bindings";
 

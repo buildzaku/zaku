@@ -4,7 +4,7 @@
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
     import { TREE_ITEM_TYPE } from "$lib/models";
-    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/store";
+    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import type { ValueOf } from "$lib/utils";

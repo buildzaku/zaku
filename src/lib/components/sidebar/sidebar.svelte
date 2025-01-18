@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/store";
+    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/state.svelte";
     import { Button } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
@@ -40,7 +40,7 @@
     }
 </script>
 
-{#if $zakuState.active_space}
+{#if zakuState.activeSpace}
     <div class="flex size-full flex-col justify-between">
         <div class="flex w-full items-center justify-center border-b p-1.5 pt-0">
             <div class={cn("flex w-full items-center justify-between gap-1.5")}>
@@ -92,7 +92,7 @@
                     </p>
                     <TreeItemRoot
                         currentPath={RELATIVE_SPACE_ROOT}
-                        root={$zakuState.active_space.root}
+                        root={zakuState.activeSpace.root}
                     >
                         {#if shouldRenderCreateNewRequestInput}
                             <TreeItemCreate
@@ -102,7 +102,7 @@
                                 bind:inputName={treeItemInputName}
                             />
                         {/if}
-                        {#each $zakuState.active_space.root.requests as request (request.meta.file_name)}
+                        {#each zakuState.activeSpace.root.requests as request (request.meta.file_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={request.meta.file_name}
@@ -119,7 +119,7 @@
                                 bind:inputName={treeItemInputName}
                             />
                         {/if}
-                        {#each $zakuState.active_space.root.collections as collection (collection.meta.dir_name)}
+                        {#each zakuState.activeSpace.root.collections as collection (collection.meta.dir_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={collection.meta.dir_name}

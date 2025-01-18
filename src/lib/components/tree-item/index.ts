@@ -2,7 +2,12 @@ import { get } from "svelte/store";
 import { toast } from "svelte-sonner";
 
 import TreeItemPreview from "./tree-item-preview.svelte";
-import { currentDragPayload, currentDropTargetPath, focussedTreeItem, zakuState } from "$lib/store";
+import {
+    currentDragPayload,
+    currentDropTargetPath,
+    focussedTreeItem,
+    zakuState,
+} from "$lib/state.svelte";
 import { TREE_ITEM_TYPE } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
@@ -90,11 +95,11 @@ export async function handleDrop(event: DragEvent) {
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    const staticZakuState = get(zakuState);
+    const staticZakuState = { ...zakuState };
     const staticCurrentDragPayload = get(currentDragPayload);
     const staticCurrentDropTargetPath = get(currentDropTargetPath);
 
-    if (staticZakuState.active_space === null) {
+    if (staticZakuState.activeSpace === null) {
         console.warn("Active space not found");
         return;
     }
@@ -107,7 +112,7 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const mutRootCollection = staticZakuState.active_space.root;
+    const mutRootCollection = staticZakuState.activeSpace.root;
     const addTreeItemToCollectionResult = addTreeItemToCollection({
         parentRelativePath: staticCurrentDragPayload.parentRelativePath,
         treeItem: staticCurrentDragPayload.treeItem,
@@ -151,19 +156,26 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    zakuState.update(state => {
-        if (state.active_space === null) {
-            return state;
-        }
-
-        return {
-            ...state,
-            active_space: {
-                ...state.active_space,
-                root: mutRootCollection,
-            },
+    if (zakuState.activeSpace !== null) {
+        zakuState.activeSpace = {
+            ...zakuState.activeSpace,
+            root: mutRootCollection,
         };
-    });
+    }
+
+    // zakuState.update(state => {
+    //     if (state.active_space === null) {
+    //         return state;
+    //     }
+
+    //     return {
+    //         ...state,
+    //         active_space: {
+    //             ...state.active_space,
+    //             root: mutRootCollection,
+    //         },
+    //     };
+    // });
 
     currentDragPayload.set(null);
     currentDropTargetPath.set(null);

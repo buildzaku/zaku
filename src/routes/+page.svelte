@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/primitives/button";
     import { goto } from "$app/navigation";
-    import { zakuState } from "$lib/store";
+    import { zakuState } from "$lib/state.svelte";
     import { dispatchNotification, getSpaceReference, openDirectoryDialog } from "$lib/commands";
     import { SpaceCreateDialog } from "$lib/components/space";
 

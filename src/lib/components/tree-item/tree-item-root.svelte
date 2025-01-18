@@ -8,7 +8,7 @@
         currentDragPayload,
         currentDropTargetPath,
         focussedTreeItem,
-    } from "$lib/store";
+    } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";

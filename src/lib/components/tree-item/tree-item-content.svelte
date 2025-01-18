@@ -18,7 +18,7 @@
         currentDragPayload,
         currentDropTargetPath,
         focussedTreeItem,
-    } from "$lib/store";
+    } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { isCollection } from "$lib/utils/tree";

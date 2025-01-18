@@ -3,11 +3,11 @@ import { writable } from "svelte/store";
 import { toast } from "svelte-sonner";
 
 import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
-import { Ok } from "$lib/utils";
+import { Err, Ok } from "$lib/utils";
 import type { ValueOf } from "$lib/utils";
 import { safeInvoke } from "$lib/commands";
 import { TREE_ITEM_TYPE, type DragPayload, type FocussedTreeItem } from "$lib/models";
-import type { ZakuState, SpaceReference } from "$lib/bindings";
+import type { ZakuState as TZakuState, SpaceReference, Space } from "$lib/bindings";
 
 export type RequestConfig = HttpRequestConfig;
 
@@ -55,57 +55,53 @@ export type HttpRequestConfig = {
     };
 };
 
-function createZakuState() {
-    const { set, subscribe, update } = writable<ZakuState>({
-        active_space: null,
-        space_references: [],
-    });
+class ZakuState {
+    public activeSpace: Space | null = $state(null);
+    public spaceReferences: SpaceReference[] = $state([]);
 
-    async function synchronize() {
-        const getZakuStateResult = await safeInvoke<ZakuState>("get_zaku_state");
+    public async synchronize() {
+        const getZakuStateResult = await safeInvoke<TZakuState>("get_zaku_state");
 
         if (getZakuStateResult.ok) {
-            set(getZakuStateResult.value);
+            this.activeSpace = getZakuStateResult.value.active_space;
+            this.spaceReferences = getZakuStateResult.value.space_references;
+
             currentDragPayload.reset();
             currentDropTargetPath.reset();
             focussedTreeItem.reset();
             createNewTreeItem.set(null);
             await tick();
+
+            return Ok();
         } else {
             const { error, message } = getZakuStateResult.err;
 
             console.error(error);
             toast(message);
-        }
 
-        return Ok();
+            return Err();
+        }
     }
 
-    return {
-        synchronize,
-        setActiveSpace: async (spaceReference: SpaceReference) => {
-            const setActiveSpaceResult = await safeInvoke<null>("set_active_space", {
-                space_reference: spaceReference,
-            });
+    public async setActiveSpace(spaceReference: SpaceReference) {
+        const setActiveSpaceResult = await safeInvoke<null>("set_active_space", {
+            space_reference: spaceReference,
+        });
 
-            if (setActiveSpaceResult.ok) {
-                await synchronize();
-            } else {
-                const { error, message } = setActiveSpaceResult.err;
+        if (setActiveSpaceResult.ok) {
+            await this.synchronize();
+        } else {
+            const { error, message } = setActiveSpaceResult.err;
 
-                console.error(error);
-                toast(message);
-            }
+            console.error(error);
+            toast(message);
+        }
 
-            return;
-        },
-        subscribe,
-        update,
-        set,
-    };
+        return;
+    }
 }
 
-export const zakuState = createZakuState();
+export const zakuState = new ZakuState();
 
 function createDragPayloadState() {
     const { set, subscribe, update } = writable<DragPayload | null>(null);

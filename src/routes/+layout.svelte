@@ -9,7 +9,7 @@
     import "../app.css";
     import { Toaster } from "$lib/components/primitives/sonner";
     import { TitleBar } from "$lib/components/title-bar";
-    import { zakuState } from "$lib/store";
+    import { zakuState } from "$lib/state.svelte";
 
     const disableContextMenu = (event: MouseEvent) => {
         event.preventDefault();
@@ -21,7 +21,7 @@
         }
         await zakuState.synchronize();
 
-        if ($zakuState.active_space !== null) {
+        if (zakuState.activeSpace !== null) {
             await goto("/space");
         } else if ($page.url.pathname !== "/") {
             await goto("/");
@@ -36,7 +36,7 @@
         }
     });
 
-    $: if ($zakuState.active_space === null) {
+    $: if (zakuState.activeSpace === null) {
         goto("/");
     }
 </script>
