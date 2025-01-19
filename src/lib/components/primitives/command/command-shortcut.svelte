@@ -1,16 +1,20 @@
 <script lang="ts">
+    import type { WithElementRef } from "bits-ui";
     import type { HTMLAttributes } from "svelte/elements";
     import { cn } from "$lib/utils/style.js";
 
-    type $$Props = HTMLAttributes<HTMLSpanElement>;
-
-    let className: string | undefined | null = undefined;
-    export { className as class };
+    let {
+        ref = $bindable(null),
+        class: className,
+        children,
+        ...restProps
+    }: WithElementRef<HTMLAttributes<HTMLSpanElement>> = $props();
 </script>
 
 <span
     class={cn("ml-auto text-xs tracking-widest text-muted-foreground", className)}
-    {...$$restProps}
+    {...restProps}
+    bind:this={ref}
 >
-    <slot />
+    {@render children?.()}
 </span>

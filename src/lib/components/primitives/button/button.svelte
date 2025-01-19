@@ -1,25 +1,76 @@
-<script lang="ts">
-    import { Button as ButtonPrimitive } from "bits-ui";
-    import { type Events, type Props, buttonVariants } from "./index.js";
-    import { cn } from "$lib/utils/style.js";
+<script lang="ts" module>
+    import type { WithElementRef } from "bits-ui";
+    import type { HTMLAnchorAttributes, HTMLButtonAttributes } from "svelte/elements";
+    import { type VariantProps, tv } from "tailwind-variants";
 
-    type $$Props = Props;
-    type $$Events = Events;
+    export const buttonVariants = tv({
+        base: "focus-visible:ring-ring inline-flex items-center justify-center whitespace-nowrap rounded-md text-small font-medium focus-visible:outline-none focus-visible:ring-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        variants: {
+            variant: {
+                default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow",
+                destructive:
+                    "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
+                outline:
+                    "border-input bg-background hover:bg-accent hover:text-accent-foreground border shadow-sm",
+                secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-sm",
+                ghost: "hover:bg-accent hover:text-accent-foreground",
+                "ghost-hover": "hover:bg-accent hover:text-accent-foreground",
+                link: "text-primary underline-offset-4 hover:underline",
+            },
+            size: {
+                default: "h-6 px-3 py-2",
+                sm: "h-5 rounded-md px-3 text-xs",
+                lg: "h-9 rounded-md px-8",
+                icon: "size-6 min-h-6 min-w-6 max-h-6 max-w-6",
+            },
+        },
+        defaultVariants: {
+            variant: "default",
+            size: "default",
+        },
+    });
 
-    let className: $$Props["class"] = undefined;
-    export let variant: $$Props["variant"] = "default";
-    export let size: $$Props["size"] = "default";
-    export let builders: $$Props["builders"] = [];
-    export { className as class };
+    export type ButtonVariant = VariantProps<typeof buttonVariants>["variant"];
+    export type ButtonSize = VariantProps<typeof buttonVariants>["size"];
+
+    export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
+        WithElementRef<HTMLAnchorAttributes> & {
+            variant?: ButtonVariant;
+            size?: ButtonSize;
+        };
 </script>
 
-<ButtonPrimitive.Root
-    {builders}
-    class={cn(buttonVariants({ variant, size, className }))}
-    type="button"
-    {...$$restProps}
-    on:click
-    on:keydown
->
-    <slot />
-</ButtonPrimitive.Root>
+<script lang="ts">
+    import { cn } from "$lib/utils/style.js";
+
+    let {
+        class: className,
+        variant = "default",
+        size = "default",
+        ref = $bindable(null),
+        href = undefined,
+        type = "button",
+        children,
+        ...restProps
+    }: ButtonProps = $props();
+</script>
+
+{#if href}
+    <a
+        bind:this={ref}
+        class={cn(buttonVariants({ variant, size }), className)}
+        {href}
+        {...restProps}
+    >
+        {@render children?.()}
+    </a>
+{:else}
+    <button
+        bind:this={ref}
+        class={cn(buttonVariants({ variant, size }), className)}
+        {type}
+        {...restProps}
+    >
+        {@render children?.()}
+    </button>
+{/if}
