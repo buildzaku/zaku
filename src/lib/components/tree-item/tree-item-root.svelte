@@ -1,14 +1,8 @@
 <script lang="ts">
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
-    import { handleDragOver, handleDrop, handleDragEnd, isDropAllowed } from ".";
     import type { Collection } from "$lib/bindings";
-    import {
-        createNewTreeItem,
-        currentDragPayload,
-        currentDropTargetPath,
-        focussedTreeItem,
-    } from "$lib/state.svelte";
+    import { treeActionsState } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
@@ -20,18 +14,18 @@
     } from "$lib/components/primitives/tooltip";
     import { TREE_ITEM_TYPE } from "$lib/models";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
+    import {
+        handleDragEnd,
+        handleDragOver,
+        handleDrop,
+        isDropAllowed,
+    } from "$lib/components/tree-item/utils.svelte";
 
     type Props = { currentPath: string; root: Collection; class?: string };
 
     let { currentPath, root, class: className }: Props = $props();
 
     let shouldHighlight = $derived(isDropAllowed(currentPath));
-
-    // $: {
-    //     let $external = [$currentDropTargetPath, $currentDragPayload];
-
-    //     shouldHighlight = isDropAllowed(currentPath);
-    // }
 </script>
 
 <div
@@ -51,11 +45,11 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 root.meta.is_open = !root.meta.is_open;
-                focussedTreeItem.set({
+                treeActionsState.focussedItem = {
                     type: TREE_ITEM_TYPE.Collection,
                     relativePath: RELATIVE_SPACE_ROOT,
                     parentRelativePath: RELATIVE_SPACE_ROOT,
-                });
+                };
             }
         }}
         class={cn(
@@ -63,11 +57,11 @@
         )}
         onclick={() => {
             root.meta.is_open = !root.meta.is_open;
-            focussedTreeItem.set({
+            treeActionsState.focussedItem = {
                 type: TREE_ITEM_TYPE.Collection,
                 relativePath: RELATIVE_SPACE_ROOT,
                 parentRelativePath: RELATIVE_SPACE_ROOT,
-            });
+            };
         }}
     >
         <div class="flex h-full items-center gap-1 pl-1.5">
@@ -102,7 +96,7 @@
                                 size="icon"
                                 onclick={event => {
                                     event.stopImmediatePropagation();
-                                    createNewTreeItem.set(TREE_ITEM_TYPE.Request);
+                                    treeActionsState.createNewItem = TREE_ITEM_TYPE.Request;
                                 }}
                                 class="flex items-center justify-center"
                             >
@@ -126,7 +120,7 @@
                                 size="icon"
                                 onclick={event => {
                                     event.stopImmediatePropagation();
-                                    createNewTreeItem.set(TREE_ITEM_TYPE.Collection);
+                                    treeActionsState.createNewItem = TREE_ITEM_TYPE.Collection;
                                 }}
                                 class="flex items-center justify-center"
                             >

@@ -2,7 +2,7 @@
     import { onDestroy, onMount } from "svelte";
     import { dev } from "$app/environment";
     import { goto } from "$app/navigation";
-    import { page } from "$app/stores";
+    import { page } from "$app/state";
     import { invoke } from "@tauri-apps/api/core";
     import { ModeWatcher } from "mode-watcher";
 
@@ -23,7 +23,7 @@
 
         if (zakuState.activeSpace !== null) {
             await goto("/space");
-        } else if ($page.url.pathname !== "/") {
+        } else if (page.url.pathname !== "/") {
             await goto("/");
         }
 

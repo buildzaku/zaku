@@ -1,5 +1,4 @@
 import { tick } from "svelte";
-import { writable } from "svelte/store";
 import { toast } from "svelte-sonner";
 
 import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
@@ -66,10 +65,7 @@ class ZakuState {
             this.activeSpace = getZakuStateResult.value.active_space;
             this.spaceReferences = getZakuStateResult.value.space_references;
 
-            currentDragPayload.reset();
-            currentDropTargetPath.reset();
-            focussedTreeItem.reset();
-            createNewTreeItem.set(null);
+            treeActionsState.reset();
             await tick();
 
             return Ok();
@@ -103,48 +99,24 @@ class ZakuState {
 
 export const zakuState = new ZakuState();
 
-function createDragPayloadState() {
-    const { set, subscribe, update } = writable<DragPayload | null>(null);
-
-    return {
-        reset: () => set(null),
-        set,
-        subscribe,
-        update,
-    };
-}
-
-export const currentDragPayload = createDragPayloadState();
-
-function currentDropTargetPathState() {
-    const { set, subscribe, update } = writable<string | null>(null);
-
-    return {
-        reset: () => set(null),
-        set,
-        subscribe,
-        update,
-    };
-}
-
-export const currentDropTargetPath = currentDropTargetPathState();
-
-function focussedTreeItemState() {
-    const initialState: FocussedTreeItem = {
+class TreeActionsState {
+    #rootItem: FocussedTreeItem = {
         type: TREE_ITEM_TYPE.Collection,
         relativePath: RELATIVE_SPACE_ROOT,
         parentRelativePath: RELATIVE_SPACE_ROOT,
     };
-    const { set, subscribe, update } = writable<FocussedTreeItem>(initialState);
 
-    return {
-        reset: () => set(initialState),
-        set,
-        subscribe,
-        update,
-    };
+    public dragPayload: DragPayload | null = $state(null);
+    public dropTargetPath: string | null = $state(null);
+    public focussedItem: FocussedTreeItem = $state(this.#rootItem);
+    public createNewItem: ValueOf<typeof TREE_ITEM_TYPE> | null = $state(null);
+
+    public reset() {
+        this.dragPayload = null;
+        this.dropTargetPath = null;
+        this.focussedItem = this.#rootItem;
+        this.createNewItem = null;
+    }
 }
 
-export const focussedTreeItem = focussedTreeItemState();
-
-export const createNewTreeItem = writable<ValueOf<typeof TREE_ITEM_TYPE> | null>(null);
+export const treeActionsState = new TreeActionsState();

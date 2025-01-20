@@ -1,17 +1,12 @@
 <script lang="ts">
-    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/state.svelte";
+    import { zakuState, treeActionsState } from "$lib/state.svelte";
     import { Button } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import {
-        isCurrentCollectionOrAnyOfItsChildFocussed,
-        TreeItemContent,
-        TreeItemCreate,
-        TreeItemRoot,
-    } from "$lib/components/tree-item";
+    import { TreeItemContent, TreeItemCreate, TreeItemRoot } from "$lib/components/tree-item";
     import {
         Tooltip,
         TooltipTrigger,
@@ -20,6 +15,7 @@
     } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import { TREE_ITEM_TYPE } from "$lib/models";
+    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
 
     type Props = {
         pane: PaneAPI;
@@ -29,30 +25,14 @@
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
-        $createNewTreeItem === TREE_ITEM_TYPE.Request &&
+        treeActionsState.createNewItem === TREE_ITEM_TYPE.Request &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
+        treeActionsState.createNewItem === TREE_ITEM_TYPE.Collection &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
     let treeItemInputName = $state("");
-
-    // $: {
-    //     let $external = [$focussedTreeItem];
-
-    //     shouldRenderCreateNewRequestInput =
-    //         $createNewTreeItem === TREE_ITEM_TYPE.Request &&
-    //         isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
-    // }
-
-    // $: {
-    //     let $external = [$focussedTreeItem];
-
-    //     shouldRenderCreateNewCollectionInput =
-    //         $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
-    //         isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
-    // }
 </script>
 
 {#if zakuState.activeSpace}

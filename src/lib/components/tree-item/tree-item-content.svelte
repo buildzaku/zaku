@@ -1,27 +1,21 @@
 <script lang="ts">
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
-    import {
-        TreeItemContent,
-        TreeItemCreate,
-        buildPath,
-        handleDragEnd,
-        handleDragOver,
-        handleDragStart,
-        handleDrop,
-        isCurrentCollectionOrAnyOfItsChildFocussed,
-        isDropAllowed,
-    } from ".";
+    import { TreeItemContent, TreeItemCreate } from ".";
     import { type TreeItem, type DragOverDto, TREE_ITEM_TYPE } from "$lib/models";
-    import {
-        createNewTreeItem,
-        currentDragPayload,
-        currentDropTargetPath,
-        focussedTreeItem,
-    } from "$lib/state.svelte";
+    import { treeActionsState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
-    import { isCollection } from "$lib/utils/tree";
+    import {
+        isCurrentCollectionOrAnyOfItsChildFocussed,
+        isDropAllowed,
+        handleDragStart,
+        handleDragOver,
+        handleDrop,
+        handleDragEnd,
+        buildPath,
+        isCollection,
+    } from "$lib/components/tree-item/utils.svelte";
 
     type Props = {
         parentPath: string;
@@ -34,40 +28,18 @@
     let { parentPath, currentPath, treeItem, level, class: className }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
-        $createNewTreeItem === TREE_ITEM_TYPE.Request &&
+        treeActionsState.createNewItem === TREE_ITEM_TYPE.Request &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
+        treeActionsState.createNewItem === TREE_ITEM_TYPE.Collection &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
-    let shouldHighlight = isDropAllowed(currentPath);
+    let shouldHighlight = $derived(isDropAllowed(currentPath));
 
     const dragOverDto: DragOverDto = isCollection(treeItem)
         ? { type: "collection", relativePath: currentPath }
         : { type: "request", parentRelativePath: parentPath };
-
-    // $: {
-    //     let $external = [$currentDropTargetPath, $currentDragPayload];
-
-    //     shouldHighlight = isDropAllowed(currentPath);
-    // }
-
-    // $: {
-    //     let $external = [$focussedTreeItem];
-
-    //     shouldRenderCreateNewRequestInput =
-    //         $createNewTreeItem === TREE_ITEM_TYPE.Request &&
-    //         isCurrentCollectionOrAnyOfItsChildFocussed(currentPath);
-    // }
-
-    // $: {
-    //     let $external = [$focussedTreeItem];
-
-    //     shouldRenderCreateNewCollectionInput =
-    //         $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
-    //         isCurrentCollectionOrAnyOfItsChildFocussed(currentPath);
-    // }
 </script>
 
 <div
@@ -103,24 +75,26 @@
         style="padding-left: {level * 8}px"
         class={cn(
             "flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            $focussedTreeItem.relativePath === currentPath ? "bg-accent" : "hover:bg-accent/60",
+            treeActionsState.focussedItem.relativePath === currentPath
+                ? "bg-accent"
+                : "hover:bg-accent/60",
         )}
         onclick={() => {
-            createNewTreeItem.set(null);
+            treeActionsState.createNewItem = null;
 
             if (isCollection(treeItem)) {
                 treeItem.meta.is_open = !treeItem.meta.is_open;
-                focussedTreeItem.set({
+                treeActionsState.focussedItem = {
                     type: TREE_ITEM_TYPE.Collection,
                     parentRelativePath: parentPath,
                     relativePath: currentPath,
-                });
+                };
             } else {
-                focussedTreeItem.set({
+                treeActionsState.focussedItem = {
                     type: TREE_ITEM_TYPE.Request,
                     parentRelativePath: parentPath,
                     relativePath: currentPath,
-                });
+                };
             }
         }}
     >
