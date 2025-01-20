@@ -70,7 +70,6 @@
         }
 
         const currentTheme = $mode ? theme[$mode] : theme.dark;
-
         const state = EditorState.create({
             doc: value,
             extensions: [...extensions, themeCompartment.of(currentTheme)],
@@ -84,18 +83,6 @@
 
     onMount(() => {
         createEditor();
-    });
-
-    $effect(() => {
-        if (editorView) {
-            const currentValue = editorView.state.doc.toString();
-            if (currentValue !== value) {
-                const transaction = editorView.state.update({
-                    changes: { from: 0, to: currentValue.length, insert: value },
-                });
-                editorView.dispatch(transaction);
-            }
-        }
     });
 
     $effect(() => {
