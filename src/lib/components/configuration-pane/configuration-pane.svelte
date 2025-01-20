@@ -10,12 +10,21 @@
     import { Button } from "$lib/components/primitives/button";
     import { cn } from "$lib/utils/style";
 
-    export let pane: PaneAPI;
-    export let isCollapsed: boolean;
-    export let parameters: KeyValuePair[];
-    export let headers: KeyValuePair[];
+    type Props = {
+        pane: PaneAPI;
+        isCollapsed: boolean;
+        parameters: KeyValuePair[];
+        headers: KeyValuePair[];
+    };
 
-    let body = REQUEST_BODY_TYPES.None;
+    let {
+        pane,
+        isCollapsed = $bindable(),
+        parameters = $bindable(),
+        headers = $bindable(),
+    }: Props = $props();
+
+    let body = $state(REQUEST_BODY_TYPES.None);
 </script>
 
 <div class="size-full bg-card">
@@ -30,7 +39,7 @@
                 <div class="flex size-full items-center justify-end">
                     <Button
                         variant="ghost"
-                        on:click={() => {
+                        onclick={() => {
                             pane.expand();
                             pane.resize(40);
                         }}
@@ -52,7 +61,7 @@
                 <div class="flex size-full items-center justify-end">
                     <Button
                         variant="ghost"
-                        on:click={() => {
+                        onclick={() => {
                             pane.collapse();
                         }}
                     >

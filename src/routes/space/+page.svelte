@@ -18,22 +18,22 @@
     import { cn } from "$lib/utils/style";
     import type { PaneAPI } from "paneforge";
 
-    let requestStatus: RequestStatus = "idle";
-    let currentUrl = "";
-    let json = "";
-    let error = "";
-    let method = METHODS.GET;
-    let iframeSrcDoc = "";
+    let requestStatus: RequestStatus = $state("idle");
+    let currentUrl = $state("");
+    let json = $state("");
+    let error = $state("");
+    let method: (typeof METHODS)[keyof typeof METHODS] = $state(METHODS.Get);
+    let iframeSrcDoc = $state("");
 
-    let leftPane: PaneAPI;
-    let isLeftPaneCollapsed = false;
-    let requestPane: PaneAPI;
-    let isRequestPaneCollapsed = false;
-    let responsePane: PaneAPI;
-    let isResponsePaneCollapsed = false;
+    let leftPane: PaneAPI | undefined = $state();
+    let isLeftPaneCollapsed = $state(false);
+    let requestPane: PaneAPI | undefined = $state();
+    let isRequestPaneCollapsed = $state(false);
+    let responsePane: PaneAPI | undefined = $state();
+    let isResponsePaneCollapsed = $state(false);
 
-    let currentRequestParams: KeyValuePair[] = [];
-    let currentRequestHeaders: KeyValuePair[] = [
+    let currentRequestParams: KeyValuePair[] = $state([]);
+    let currentRequestHeaders: KeyValuePair[] = $state([
         {
             key: "Cache-Control",
             value: "no-cache",
@@ -44,7 +44,7 @@
             value: `Zaku/${version}`,
             include: true,
         },
-    ];
+    ]);
 
     async function handleSend() {
         try {
@@ -66,7 +66,7 @@
             }, []);
 
             const response = await fetch(url, {
-                method: method.value,
+                method: method,
                 headers: currentRequestHeaders.reduceRight((acc: Record<string, string>, cur) => {
                     if (cur.include && !(cur.key in acc)) {
                         acc[cur.key] = cur.value;
@@ -97,7 +97,7 @@
 <div class="flex size-full flex-col items-center justify-center gap-4">
     <ResizablePaneGroup direction="horizontal" class="w-full">
         <ResizablePane
-            bind:pane={leftPane}
+            bind:this={leftPane}
             defaultSize={15}
             minSize={15}
             maxSize={50}
@@ -121,12 +121,12 @@
                         <form class="flex gap-2">
                             <SelectMethod bind:selected={method} />
                             <Input bind:value={currentUrl} type="text" class="font-mono text-xs" />
-                            <Button type="submit" on:click={handleSend}>Send</Button>
+                            <Button type="submit" onclick={handleSend}>Send</Button>
                         </form>
                     </div>
                 </div>
                 <ResizablePane
-                    bind:pane={requestPane}
+                    bind:this={requestPane}
                     defaultSize={25}
                     minSize={20}
                     collapsedSize={5.5}
@@ -144,7 +144,7 @@
                 </ResizablePane>
                 <ResizableHandle withHandle />
                 <ResizablePane
-                    bind:pane={responsePane}
+                    bind:this={responsePane}
                     defaultSize={75}
                     minSize={20}
                     collapsedSize={5}

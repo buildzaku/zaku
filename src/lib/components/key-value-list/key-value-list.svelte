@@ -5,10 +5,17 @@
     import { Button } from "$lib/components/primitives/button";
     import { Checkbox } from "$lib/components/primitives/checkbox";
     import type { KeyValuePair } from "$lib/utils/api";
+    import { cn } from "$lib/utils/style";
 
-    export let type: "parameter" | "header";
-    export let pairs: KeyValuePair[] = [];
+    type Props = {
+        type: "parameter" | "header";
+        pairs: KeyValuePair[];
+        class?: string;
+    };
 
+    let { type, pairs = $bindable(), class: className }: Props = $props();
+
+    // TODO - can just push with runes deep reactivity?
     function addPair() {
         pairs = [...pairs, { key: "", value: "", include: true }];
     }
@@ -18,7 +25,7 @@
     }
 </script>
 
-<div class={`flex flex-col gap-2 ${$$props["class"]}`}>
+<div class={cn("flex flex-col gap-2", className)}>
     {#each pairs as pair, index}
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">
@@ -46,14 +53,14 @@
             <Button
                 variant="outline"
                 class="bg-transparent p-[7px] hover:bg-muted/40 hover:text-destructive"
-                on:click={() => deletePairAt(index)}
+                onclick={() => deletePairAt(index)}
             >
                 <Trash2 size={14} />
             </Button>
         </div>
     {/each}
     <div>
-        <Button variant="ghost" on:click={addPair} class="h-6 gap-1 border px-2">
+        <Button variant="ghost" onclick={addPair} class="h-6 gap-1 border px-2">
             <Plus size={14} />
             <span class="text-small">
                 Add {type.replace(/^(.)/, match => match.toUpperCase())}

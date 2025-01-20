@@ -15,14 +15,18 @@
         CreateRequestDto,
     } from "$lib/bindings";
 
-    export let parentRelativePath: string;
-    export let type: ValueOf<typeof TREE_ITEM_TYPE>;
-    export let level: number;
+    type Props = {
+        parentRelativePath: string;
+        type: ValueOf<typeof TREE_ITEM_TYPE>;
+        level: number;
+        class?: string;
+    };
 
-    let propsClass = $$props["class"];
-    let inputName: string;
-    let inputElement: HTMLElement | null = null;
-    let unlistenWindowBlurEvent: UnlistenFn | null = null;
+    let { parentRelativePath, type, level, class: className }: Props = $props();
+
+    let inputName: string = $state("");
+    let inputElement: HTMLElement | null = $state(null);
+    let unlistenWindowBlurEvent: UnlistenFn | null = $state(null);
 
     function initialize(element: HTMLElement) {
         element.focus();
@@ -120,7 +124,7 @@
     });
 </script>
 
-<div class={cn("relative min-w-full", propsClass)}>
+<div class={cn("relative min-w-full", className)}>
     {#if level > 1}
         <div
             style="left: {level * 8 + 3.5}px;"
@@ -143,7 +147,7 @@
                 bind:this={inputElement}
                 data-create-tree-item-input
                 type="text"
-                on:focusout={async event => {
+                onfocusout={async event => {
                     if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
                         createNewTreeItem.set(null);
                         inputName = "";
@@ -156,7 +160,7 @@
                         }
                     }
                 }}
-                on:keydown={async keyboardEvent => {
+                onkeydown={async keyboardEvent => {
                     if (keyboardEvent.key === "Enter") {
                         keyboardEvent.preventDefault();
 

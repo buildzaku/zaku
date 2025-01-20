@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Rocket } from "svelte-radix";
+    import { RocketIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
     import { ChevronDownIcon, ChevronUpIcon } from "lucide-svelte";
 
@@ -9,12 +9,23 @@
     import { CodeBlock } from "$lib/components/code-block";
     import { Button } from "$lib/components/primitives/button";
 
-    export let pane: PaneAPI;
-    export let isCollapsed: boolean;
-    export let status: RequestStatus;
-    export let raw: string;
-    export let preview: string;
-    export let error: string;
+    type Props = {
+        pane: PaneAPI;
+        isCollapsed: boolean;
+        status: RequestStatus;
+        raw: string;
+        preview: string;
+        error: string;
+    };
+
+    let {
+        pane,
+        isCollapsed = $bindable(),
+        status = $bindable(),
+        raw = $bindable(),
+        preview = $bindable(),
+        error = $bindable(),
+    }: Props = $props();
 </script>
 
 <div class="size-full bg-card">
@@ -24,7 +35,7 @@
                 <div class="flex size-full items-center justify-end">
                     <Button
                         variant="ghost"
-                        on:click={() => {
+                        onclick={() => {
                             pane.expand();
                             pane.resize(60);
                         }}
@@ -39,7 +50,7 @@
                 <div class="flex size-full items-center justify-end">
                     <Button
                         variant="ghost"
-                        on:click={() => {
+                        onclick={() => {
                             pane.collapse();
                         }}
                     >
@@ -49,7 +60,7 @@
                 </div>
             </div>
             <div class="flex size-full items-center justify-center gap-2 pb-8">
-                <Rocket size="20" />
+                <RocketIcon size="20" />
                 <span>
                     Hit <b class="font-semibold">Send</b> to make a request
                 </span>
@@ -65,7 +76,7 @@
                         <div class="flex size-full items-center justify-end">
                             <Button
                                 variant="ghost"
-                                on:click={() => {
+                                onclick={() => {
                                     pane.expand();
                                     pane.resize(60);
                                 }}
@@ -89,7 +100,7 @@
                         <div class="flex size-full items-center justify-end">
                             <Button
                                 variant="ghost"
-                                on:click={() => {
+                                onclick={() => {
                                     pane.collapse();
                                 }}
                             >

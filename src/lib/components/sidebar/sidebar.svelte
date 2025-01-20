@@ -12,32 +12,47 @@
         TreeItemCreate,
         TreeItemRoot,
     } from "$lib/components/tree-item";
-    import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/primitives/tooltip";
+    import {
+        Tooltip,
+        TooltipTrigger,
+        TooltipContent,
+        TooltipProvider,
+    } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import { TREE_ITEM_TYPE } from "$lib/models";
 
-    export let pane: PaneAPI;
-    export let isCollapsed: boolean;
+    type Props = {
+        pane: PaneAPI;
+        isCollapsed: boolean;
+    };
 
-    let shouldRenderCreateNewRequestInput = false;
-    let shouldRenderCreateNewCollectionInput = false;
-    let treeItemInputName = "";
+    let { pane, isCollapsed = $bindable() }: Props = $props();
 
-    $: {
-        let $external = [$focussedTreeItem];
+    let shouldRenderCreateNewRequestInput = $derived(
+        $createNewTreeItem === TREE_ITEM_TYPE.Request &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
+    );
+    let shouldRenderCreateNewCollectionInput = $derived(
+        $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
+    );
+    let treeItemInputName = $state("");
 
-        shouldRenderCreateNewRequestInput =
-            $createNewTreeItem === TREE_ITEM_TYPE.Request &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
-    }
+    // $: {
+    //     let $external = [$focussedTreeItem];
 
-    $: {
-        let $external = [$focussedTreeItem];
+    //     shouldRenderCreateNewRequestInput =
+    //         $createNewTreeItem === TREE_ITEM_TYPE.Request &&
+    //         isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
+    // }
 
-        shouldRenderCreateNewCollectionInput =
-            $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
-    }
+    // $: {
+    //     let $external = [$focussedTreeItem];
+
+    //     shouldRenderCreateNewCollectionInput =
+    //         $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
+    //         isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
+    // }
 </script>
 
 {#if zakuState.activeSpace}
@@ -51,7 +66,7 @@
                     <Button
                         variant="ghost"
                         size="icon"
-                        on:click={() => {
+                        onclick={() => {
                             if (isCollapsed) {
                                 pane.expand();
                                 pane.resize(24);
@@ -66,25 +81,26 @@
                 {/if}
             </div>
         </div>
-        <div class="group/explorer flex w-full grow justify-center overflow-y-auto">
+        <div class="group/explorer flex w-full grow items-start justify-center overflow-y-auto">
             {#if isCollapsed}
-                <Tooltip group openDelay={500} closeDelay={0}>
-                    <TooltipTrigger asChild let:builder>
-                        <Button
-                            builders={[builder]}
-                            variant="ghost"
-                            size="icon"
-                            on:click={() => {
-                                pane.expand();
-                                pane.resize(24);
-                            }}
-                            class="my-1.5 flex-shrink-0"
-                        >
-                            <CompassIcon size={14} class="min-h-[14px] min-w-[14px]" />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">Explorer</TooltipContent>
-                </Tooltip>
+                <TooltipProvider>
+                    <Tooltip delayDuration={500}>
+                        <TooltipTrigger>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onclick={() => {
+                                    pane.expand();
+                                    pane.resize(24);
+                                }}
+                                class="my-1.5 flex-shrink-0"
+                            >
+                                <CompassIcon size={14} class="min-h-[14px] min-w-[14px]" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">Explorer</TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
             {:else}
                 <div class="size-full">
                     <p class="flex h-[36px] items-center px-[22px] text-muted-foreground">
@@ -99,7 +115,6 @@
                                 type={TREE_ITEM_TYPE.Request}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
-                                bind:inputName={treeItemInputName}
                             />
                         {/if}
                         {#each zakuState.activeSpace.root.requests as request (request.meta.file_name)}
@@ -116,7 +131,6 @@
                                 type={TREE_ITEM_TYPE.Collection}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
-                                bind:inputName={treeItemInputName}
                             />
                         {/if}
                         {#each zakuState.activeSpace.root.collections as collection (collection.meta.dir_name)}

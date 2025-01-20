@@ -5,7 +5,7 @@
     import { dispatchNotification, getSpaceReference, openDirectoryDialog } from "$lib/commands";
     import { SpaceCreateDialog } from "$lib/components/space";
 
-    let isCreateSpaceDialogOpen = false;
+    let isCreateSpaceDialogOpen = $state(false);
 
     async function handleOpenExistingSpace() {
         try {
@@ -31,7 +31,7 @@
     <h1 class="my-2 text-2xl font-medium">Welcome to Zaku</h1>
     <Button
         variant="outline"
-        on:click={() => {
+        onclick={() => {
             isCreateSpaceDialogOpen = true;
         }}
     >
@@ -40,7 +40,7 @@
     <Button
         variant="link"
         class="text-foreground hover:no-underline"
-        on:click={handleOpenExistingSpace}
+        onclick={handleOpenExistingSpace}
     >
         + Open Existing Space
     </Button>
