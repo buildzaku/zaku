@@ -27,7 +27,7 @@
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
-    let requestPane: PaneAPI | undefined = $state();
+    let configurationPane: PaneAPI | undefined = $state();
     let isRequestPaneCollapsed = $state(false);
     let responsePane: PaneAPI | undefined = $state();
     let isResponsePaneCollapsed = $state(false);
@@ -126,17 +126,21 @@
                     </div>
                 </div>
                 <ResizablePane
-                    bind:this={requestPane}
+                    bind:this={configurationPane}
                     defaultSize={25}
                     minSize={20}
                     collapsedSize={5.5}
                     collapsible={true}
-                    onCollapse={() => (isRequestPaneCollapsed = true)}
-                    onExpand={() => (isRequestPaneCollapsed = false)}
+                    onCollapse={() => {
+                        isRequestPaneCollapsed = true;
+                    }}
+                    onExpand={() => {
+                        isRequestPaneCollapsed = false;
+                    }}
                     class={cn(isRequestPaneCollapsed && "h-8 max-h-8 min-h-8")}
                 >
                     <ConfigurationPane
-                        pane={requestPane}
+                        pane={configurationPane}
                         bind:isCollapsed={isRequestPaneCollapsed}
                         bind:parameters={currentRequestParams}
                         bind:headers={currentRequestHeaders}
@@ -149,8 +153,12 @@
                     minSize={20}
                     collapsedSize={5}
                     collapsible={true}
-                    onCollapse={() => (isResponsePaneCollapsed = true)}
-                    onExpand={() => (isResponsePaneCollapsed = false)}
+                    onCollapse={() => {
+                        isResponsePaneCollapsed = true;
+                    }}
+                    onExpand={() => {
+                        isResponsePaneCollapsed = false;
+                    }}
                     class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8")}
                 >
                     <ResponsePane

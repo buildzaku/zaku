@@ -39,6 +39,7 @@
                             pane.expand();
                             pane.resize(60);
                         }}
+                        class="hover:bg-transparent"
                     >
                         <span class="pr-1.5 text-xs font-medium">Response</span>
                         <ChevronUpIcon size={14} />
@@ -53,6 +54,7 @@
                         onclick={() => {
                             pane.collapse();
                         }}
+                        class="hover:bg-transparent"
                     >
                         <span class="pr-1.5 text-xs font-medium">Response</span>
                         <ChevronDownIcon size={14} />
@@ -80,6 +82,7 @@
                                     pane.expand();
                                     pane.resize(60);
                                 }}
+                                class="hover:bg-transparent"
                             >
                                 <span class="pr-1.5 text-xs font-medium">Response</span>
                                 <ChevronUpIcon size={14} />
@@ -103,6 +106,7 @@
                                 onclick={() => {
                                     pane.collapse();
                                 }}
+                                class="hover:bg-transparent"
                             >
                                 <span class="pr-1.5 text-xs font-medium">Response</span>
                                 <ChevronDownIcon size={14} />
