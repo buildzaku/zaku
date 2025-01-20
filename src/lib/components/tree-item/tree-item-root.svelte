@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { Snippet } from "svelte";
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
     import type { Collection } from "$lib/bindings";
@@ -21,9 +22,9 @@
         isDropAllowed,
     } from "$lib/components/tree-item/utils.svelte";
 
-    type Props = { currentPath: string; root: Collection; class?: string };
+    type Props = { currentPath: string; root: Collection; children: Snippet; class?: string };
 
-    let { currentPath, root, class: className }: Props = $props();
+    let { currentPath, root, children, class: className }: Props = $props();
 
     let shouldHighlight = $derived(isDropAllowed(currentPath));
 </script>
@@ -143,7 +144,7 @@
         <div
             class="flex h-[calc(100dvh-36px-35px-36px-22px-37px)] max-h-[calc(100dvh-36px-35px-36px-22px-37px)] w-full flex-1 flex-col overflow-y-auto"
         >
-            <slot />
+            {@render children()}
             <div
                 class="min-h-8 w-full flex-grow cursor-default"
                 tabindex={0}
