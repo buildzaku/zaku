@@ -88,7 +88,7 @@
                 class="hidden h-full items-center gap-1 px-1.5 group-hover/explorer:flex"
             >
                 <TooltipProvider>
-                    <Tooltip delayDuration={500}>
+                    <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger>
                             <Button
                                 data-create-tree-item-button
@@ -112,7 +112,7 @@
                     </Tooltip>
                 </TooltipProvider>
                 <TooltipProvider>
-                    <Tooltip delayDuration={500}>
+                    <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger>
                             <Button
                                 data-create-tree-item-button

@@ -64,7 +64,7 @@
         <div class="group/explorer flex w-full grow items-start justify-center overflow-y-auto">
             {#if isCollapsed}
                 <TooltipProvider>
-                    <Tooltip delayDuration={500}>
+                    <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger>
                             <Button
                                 variant="ghost"
