@@ -1,5 +1,38 @@
 # zaku
 
+## 0.4.0
+
+### Minor Changes
+
+- Tree view for collections and requests - [`4229470`](https://github.com/buildzaku/zaku/commit/42294706ac7bfd74d361ebb58b75a525f9f1f70d) [#18](https://github.com/buildzaku/zaku/pull/18)
+
+- Refactor to svelte 5 runes - [`fe87a84`](https://github.com/buildzaku/zaku/commit/fe87a84a38aa0ef9b4ca7604b117140a0d93411f) [#27](https://github.com/buildzaku/zaku/pull/27)
+
+- Ability to create new requests and collections - [`d1317c7`](https://github.com/buildzaku/zaku/commit/d1317c7f9b4215cb2986791e4c9af98218c5203a) [#22](https://github.com/buildzaku/zaku/pull/22)
+
+    - With support for nested input
+
+- Custom store for persistence - [`6c8423b`](https://github.com/buildzaku/zaku/commit/6c8423bbe11bd91eec076370d7c2ac1758dfe309) [#24](https://github.com/buildzaku/zaku/pull/24)
+
+### Patch Changes
+
+- Fix lint warnings and incorrect formatting after version bump - [`4b3cdf5`](https://github.com/buildzaku/zaku/commit/4b3cdf54b94e56871a7cb7df4fd7d497f042c372)
+
+- Preserve moved tree item on drag and drop - [`af5f535`](https://github.com/buildzaku/zaku/commit/af5f5350ab7203976dfc17282c271b1f03b940a2) [#25](https://github.com/buildzaku/zaku/pull/25)
+
+- Fix blank window on Linux with Nvidia GPU - [`c0203dc`](https://github.com/buildzaku/zaku/commit/c0203dc13c7a703e448af78a8f5060676212588a) [#23](https://github.com/buildzaku/zaku/pull/23)
+
+- Handlers for request and response panes - [`874de99`](https://github.com/buildzaku/zaku/commit/874de99f5f31b60f1bd01f0cef49fc6523cdb8af) [#20](https://github.com/buildzaku/zaku/pull/20)
+
+    - Improve colors for dark theme
+    - Fix request method colors
+
+- Add generated `bindings.ts` file to `.prettierignore` to prevent formatting discrepancies - [`067b4f9`](https://github.com/buildzaku/zaku/commit/067b4f9769dbf21024e7cc5fec7997ca79b35513)
+
+- Remove strict pinning of cargo dependencies to avoid version mismatches - [`e3e980c`](https://github.com/buildzaku/zaku/commit/e3e980c588b0ed589be8bb947354e07dc0f43dd0)
+
+- Traffic lights inset for macOS - [`b8480ff`](https://github.com/buildzaku/zaku/commit/b8480ff52a7c9b5064e28f70e5e64a4e1b5d0133) [#26](https://github.com/buildzaku/zaku/pull/26)
+
 ## 0.3.1
 
 ### Patch Changes
