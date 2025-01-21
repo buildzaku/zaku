@@ -1,15 +1,15 @@
 <script lang="ts">
-    import { Checkbox as CheckboxPrimitive } from "bits-ui";
-    import Check from "svelte-radix/Check.svelte";
-    import Minus from "svelte-radix/Minus.svelte";
+    import { Checkbox as CheckboxPrimitive, type WithoutChildrenOrChild } from "bits-ui";
+    import { CheckIcon, MinusIcon } from "lucide-svelte";
     import { cn } from "$lib/utils/style.js";
 
-    type $$Props = CheckboxPrimitive.Props;
-    type $$Events = CheckboxPrimitive.Events;
-
-    let className: $$Props["class"] = undefined;
-    export let checked: $$Props["checked"] = false;
-    export { className as class };
+    let {
+        ref = $bindable(null),
+        class: className,
+        checked = $bindable(false),
+        indeterminate = $bindable(false),
+        ...restProps
+    }: WithoutChildrenOrChild<CheckboxPrimitive.RootProps> = $props();
 </script>
 
 <CheckboxPrimitive.Root
@@ -18,18 +18,17 @@
         className,
     )}
     bind:checked
-    on:click
-    {...$$restProps}
+    bind:ref
+    bind:indeterminate
+    {...restProps}
 >
-    <CheckboxPrimitive.Indicator
-        class={cn("flex size-3.5 items-center justify-center text-current")}
-        let:isChecked
-        let:isIndeterminate
-    >
-        {#if isIndeterminate}
-            <Minus class="h-3.5 w-3.5" />
-        {:else}
-            <Check class={cn("h-3.5 w-3.5", !isChecked && "text-transparent")} />
-        {/if}
-    </CheckboxPrimitive.Indicator>
+    {#snippet children({ checked, indeterminate })}
+        <span class="flex size-3.5 items-center justify-center text-current">
+            {#if indeterminate}
+                <MinusIcon class="size-3" />
+            {:else}
+                <CheckIcon class={cn("size-3", !checked && "text-transparent")} />
+            {/if}
+        </span>
+    {/snippet}
 </CheckboxPrimitive.Root>

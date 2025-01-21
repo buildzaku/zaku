@@ -1,46 +1,40 @@
 <script lang="ts">
-    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/store";
+    import { zakuState, treeActionsState } from "$lib/state.svelte";
     import { Button } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
+    import { TreeItemContent, TreeItemCreate, TreeItemRoot } from "$lib/components/tree-item";
     import {
-        isCurrentCollectionOrAnyOfItsChildFocussed,
-        TreeItemContent,
-        TreeItemCreate,
-        TreeItemRoot,
-    } from "$lib/components/tree-item";
-    import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/primitives/tooltip";
+        Tooltip,
+        TooltipTrigger,
+        TooltipContent,
+        TooltipProvider,
+    } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import { TREE_ITEM_TYPE } from "$lib/models";
+    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
 
-    export let pane: PaneAPI;
-    export let isCollapsed: boolean;
+    type Props = {
+        pane: PaneAPI;
+        isCollapsed: boolean;
+    };
 
-    let shouldRenderCreateNewRequestInput = false;
-    let shouldRenderCreateNewCollectionInput = false;
-    let treeItemInputName = "";
+    let { pane, isCollapsed = $bindable() }: Props = $props();
 
-    $: {
-        let $external = [$focussedTreeItem];
-
-        shouldRenderCreateNewRequestInput =
-            $createNewTreeItem === TREE_ITEM_TYPE.Request &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
-    }
-
-    $: {
-        let $external = [$focussedTreeItem];
-
-        shouldRenderCreateNewCollectionInput =
-            $createNewTreeItem === TREE_ITEM_TYPE.Collection &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT);
-    }
+    let shouldRenderCreateNewRequestInput = $derived(
+        treeActionsState.createNewItem === TREE_ITEM_TYPE.Request &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
+    );
+    let shouldRenderCreateNewCollectionInput = $derived(
+        treeActionsState.createNewItem === TREE_ITEM_TYPE.Collection &&
+            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
+    );
 </script>
 
-{#if $zakuState.active_space}
+{#if zakuState.activeSpace}
     <div class="flex size-full flex-col justify-between">
         <div class="flex w-full items-center justify-center border-b p-1.5 pt-0">
             <div class={cn("flex w-full items-center justify-between gap-1.5")}>
@@ -51,7 +45,7 @@
                     <Button
                         variant="ghost"
                         size="icon"
-                        on:click={() => {
+                        onclick={() => {
                             if (isCollapsed) {
                                 pane.expand();
                                 pane.resize(24);
@@ -66,25 +60,26 @@
                 {/if}
             </div>
         </div>
-        <div class="group/explorer flex w-full grow justify-center overflow-y-auto">
+        <div class="group/explorer flex w-full grow items-start justify-center overflow-y-auto">
             {#if isCollapsed}
-                <Tooltip group openDelay={500} closeDelay={0}>
-                    <TooltipTrigger asChild let:builder>
-                        <Button
-                            builders={[builder]}
-                            variant="ghost"
-                            size="icon"
-                            on:click={() => {
-                                pane.expand();
-                                pane.resize(24);
-                            }}
-                            class="my-1.5 flex-shrink-0"
-                        >
-                            <CompassIcon size={14} class="min-h-[14px] min-w-[14px]" />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">Explorer</TooltipContent>
-                </Tooltip>
+                <TooltipProvider>
+                    <Tooltip delayDuration={500} disableHoverableContent>
+                        <TooltipTrigger>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onclick={() => {
+                                    pane.expand();
+                                    pane.resize(24);
+                                }}
+                                class="my-1.5 flex-shrink-0"
+                            >
+                                <CompassIcon size={14} class="min-h-[14px] min-w-[14px]" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">Explorer</TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
             {:else}
                 <div class="size-full">
                     <p class="flex h-[36px] items-center px-[22px] text-muted-foreground">
@@ -92,17 +87,16 @@
                     </p>
                     <TreeItemRoot
                         currentPath={RELATIVE_SPACE_ROOT}
-                        root={$zakuState.active_space.root}
+                        root={zakuState.activeSpace.root}
                     >
                         {#if shouldRenderCreateNewRequestInput}
                             <TreeItemCreate
                                 type={TREE_ITEM_TYPE.Request}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
-                                bind:inputName={treeItemInputName}
                             />
                         {/if}
-                        {#each $zakuState.active_space.root.requests as request (request.meta.file_name)}
+                        {#each zakuState.activeSpace.root.requests as request (request.meta.file_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={request.meta.file_name}
@@ -116,10 +110,9 @@
                                 type={TREE_ITEM_TYPE.Collection}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
-                                bind:inputName={treeItemInputName}
                             />
                         {/if}
-                        {#each $zakuState.active_space.root.collections as collection (collection.meta.dir_name)}
+                        {#each zakuState.activeSpace.root.collections as collection (collection.meta.dir_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={collection.meta.dir_name}
