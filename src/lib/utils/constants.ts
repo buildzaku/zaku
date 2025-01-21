@@ -1,11 +1,11 @@
 export const METHODS = {
-    GET: { value: "GET", label: "GET" },
-    POST: { value: "POST", label: "POST" },
-    PUT: { value: "PUT", label: "PUT" },
-    PATCH: { value: "PATCH", label: "PATCH" },
-    DELETE: { value: "DELETE", label: "DELETE" },
-    HEAD: { value: "HEAD", label: "HEAD" },
-    OPTIONS: { value: "OPTIONS", label: "OPTIONS" },
+    Get: "GET",
+    Post: "POST",
+    Put: "PUT",
+    Patch: "PATCH",
+    Delete: "DELETE",
+    Head: "HEAD",
+    Options: "OPTIONS",
 } as const;
 
 export const REQUEST_BODY_TYPES = {

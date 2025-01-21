@@ -1,13 +1,14 @@
 <script lang="ts">
-    export let size: number;
-    export let fill = "currentColor";
+    import type { IconProps } from ".";
+
+    let { size, fill = "currentColor", class: className }: IconProps = $props();
 </script>
 
 <svg
     width={`${size * 3}px`}
     height={`${size}px`}
     {fill}
-    class={$$props["class"]}
+    class={className}
     viewBox="0 0 603 213"
     xmlns="http://www.w3.org/2000/svg"
 >
