@@ -8,35 +8,13 @@ import { safeInvoke } from "$lib/commands";
 import { TREE_ITEM_TYPE, type DragPayload, type FocussedTreeItem } from "$lib/models";
 import type { ZakuState as TZakuState, SpaceReference, Space } from "$lib/bindings";
 
-export type RequestConfig = HttpRequestConfig;
-
-export type Method =
-    | "get"
-    | "GET"
-    | "delete"
-    | "DELETE"
-    | "head"
-    | "HEAD"
-    | "options"
-    | "OPTIONS"
-    | "post"
-    | "POST"
-    | "put"
-    | "PUT"
-    | "patch"
-    | "PATCH"
-    | "purge"
-    | "PURGE"
-    | "link"
-    | "LINK"
-    | "unlink"
-    | "UNLINK";
+export type RequestConfig = ZakuRequestConfig;
 
 export type MaybeKey<T extends string = string> = T | `_${T}`;
 
 export type SerializedValue = string | number | boolean | null;
 
-export type HttpRequestConfig = {
+export type ZakuRequestConfig = {
     name: string;
     type: "http";
     method: string;
