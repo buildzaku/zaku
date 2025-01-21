@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Sun, Moon } from "svelte-radix";
+    import { SunIcon, MoonIcon } from "lucide-svelte";
     import { toggleMode } from "mode-watcher";
 
     import { cn } from "$lib/utils/style";
@@ -13,14 +13,9 @@
 >
     <div></div>
     <div class="flex h-full items-center gap-3 px-4">
-        <Button
-            on:click={toggleMode}
-            variant="ghost"
-            size="icon"
-            class="size-6 min-h-6 min-w-6 p-1"
-        >
-            <Sun size="14" class="block dark:hidden" ariaLabel="light" />
-            <Moon size="14" class="hidden dark:block" ariaLabel="dark" />
+        <Button onclick={toggleMode} variant="ghost" size="icon" class="size-6 min-h-6 min-w-6 p-1">
+            <SunIcon size={14} class="block dark:hidden" aria-label="light" />
+            <MoonIcon size={14} class="hidden dark:block" aria-label="dark" />
             <span class="sr-only">Toggle theme</span>
         </Button>
         <div>

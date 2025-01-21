@@ -11,20 +11,19 @@
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";
     import { tick } from "svelte";
-    import { zakuState } from "$lib/store";
+    import { zakuState } from "$lib/state.svelte";
     import { dispatchNotification, openDirectoryDialog, safeInvoke } from "$lib/commands";
     import type { SpaceReference } from "$lib/bindings";
 
-    type $$Props = {
+    type Props = {
         isOpen: boolean;
         onCreate?: () => Promise<void>;
     };
 
-    export let onCreate: $$Props["onCreate"] = undefined;
-    export let isOpen: $$Props["isOpen"] = false;
+    let { isOpen = $bindable(), onCreate = async () => {} }: Props = $props();
 
-    let createSpaceName: string = "";
-    let createSpaceLocation: string = "";
+    let createSpaceName: string = $state("");
+    let createSpaceLocation: string = $state("");
 
     async function handleCreateSpaceBrowse() {
         const selectedDir = await openDirectoryDialog({ title: "Create a new Space" });
@@ -58,20 +57,15 @@
         await zakuState.setActiveSpace(spaceReference.value);
         isOpen = false;
 
-        if (onCreate) {
-            await onCreate();
-        }
+        await onCreate();
     }
 </script>
 
 <Dialog
-    open={isOpen}
+    bind:open={isOpen}
     onOpenChange={() => {
         createSpaceName = "";
         createSpaceLocation = "";
-    }}
-    onOutsideClick={() => {
-        isOpen = false;
     }}
 >
     <DialogContent class="w-[424px] max-w-[424px]">
@@ -92,12 +86,12 @@
                     <button
                         id="space-path-container"
                         class="scrollbar-hidden flex h-6 w-full select-text items-center overflow-y-hidden overflow-x-scroll whitespace-nowrap text-nowrap rounded-md rounded-r-none border border-r-0 border-input bg-transparent px-3 py-1 text-small shadow-sm"
-                        on:click={handleCreateSpaceBrowse}
+                        onclick={handleCreateSpaceBrowse}
                     >
                         {createSpaceLocation}
                     </button>
                     <Button
-                        on:click={handleCreateSpaceBrowse}
+                        onclick={handleCreateSpaceBrowse}
                         class="col-span-1 h-6 w-[80px] rounded-l-none"
                         variant="outline"
                     >
@@ -107,7 +101,7 @@
             </div>
         </div>
         <DialogFooter>
-            <Button type="submit" on:click={handleCreateSpace}>Create</Button>
+            <Button type="submit" onclick={handleCreateSpace}>Create</Button>
         </DialogFooter>
     </DialogContent>
 </Dialog>

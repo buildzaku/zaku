@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy, afterUpdate } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { Compartment, EditorState } from "@codemirror/state";
     import type { Extension } from "@codemirror/state";
     import {
@@ -26,12 +26,13 @@
     import { mode } from "mode-watcher";
     import { darkTheme, lightTheme } from "$lib/components/code-block/themes";
 
-    export let value: string = "";
-    export let lang: string;
+    type Props = { value: string; lang: string; class?: string };
 
-    let editorView: EditorView;
-    let editorElement: HTMLDivElement;
-    let editorTheme = $mode;
+    let { value = $bindable(), lang, class: className }: Props = $props();
+
+    let editorView: EditorView | undefined = $state(undefined);
+    let editorElement: HTMLDivElement | undefined = $state(undefined);
+    let editorTheme = $state($mode);
 
     const theme = {
         dark: darkTheme,
@@ -69,7 +70,6 @@
         }
 
         const currentTheme = $mode ? theme[$mode] : theme.dark;
-
         const state = EditorState.create({
             doc: value,
             extensions: [...extensions, themeCompartment.of(currentTheme)],
@@ -85,15 +85,12 @@
         createEditor();
     });
 
-    afterUpdate(() => {
-        if (editorView) {
-            const currentValue = editorView.state.doc.toString();
-            if (currentValue !== value) {
-                const transaction = editorView.state.update({
-                    changes: { from: 0, to: currentValue.length, insert: value },
-                });
-                editorView.dispatch(transaction);
-            }
+    $effect(() => {
+        if (editorView && $mode && $mode !== editorTheme) {
+            editorView.dispatch({
+                effects: themeCompartment.reconfigure(theme[$mode]),
+            });
+            editorTheme = $mode;
         }
     });
 
@@ -102,13 +99,6 @@
             editorView.destroy();
         }
     });
-
-    $: if ($mode && $mode !== editorTheme) {
-        editorView.dispatch({
-            effects: themeCompartment.reconfigure(theme[$mode]),
-        });
-        editorTheme = $mode;
-    }
 </script>
 
-<div bind:this={editorElement} class={$$props["class"]}></div>
+<div bind:this={editorElement} class={className}></div>

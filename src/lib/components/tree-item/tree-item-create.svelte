@@ -4,7 +4,7 @@
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
     import { TREE_ITEM_TYPE } from "$lib/models";
-    import { createNewTreeItem, focussedTreeItem, zakuState } from "$lib/store";
+    import { zakuState, treeActionsState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import type { ValueOf } from "$lib/utils";
@@ -15,14 +15,18 @@
         CreateRequestDto,
     } from "$lib/bindings";
 
-    export let parentRelativePath: string;
-    export let type: ValueOf<typeof TREE_ITEM_TYPE>;
-    export let level: number;
+    type Props = {
+        parentRelativePath: string;
+        type: ValueOf<typeof TREE_ITEM_TYPE>;
+        level: number;
+        class?: string;
+    };
 
-    let propsClass = $$props["class"];
-    let inputName: string;
-    let inputElement: HTMLElement | null = null;
-    let unlistenWindowBlurEvent: UnlistenFn | null = null;
+    let { parentRelativePath, type, level, class: className }: Props = $props();
+
+    let inputName: string = $state("");
+    let inputElement: HTMLElement | null = $state(null);
+    let unlistenWindowBlurEvent: UnlistenFn | null = $state(null);
 
     function initialize(element: HTMLElement) {
         element.focus();
@@ -59,11 +63,11 @@
             inputName = "";
             await zakuState.synchronize();
 
-            focussedTreeItem.set({
+            treeActionsState.focussedItem = {
                 type: TREE_ITEM_TYPE.Collection,
                 parentRelativePath: createCollectionResult.value.parent_relative_path,
                 relativePath: createCollectionResult.value.relative_path,
-            });
+            };
 
             const createdCollection = document.querySelector(
                 `[data-current-path="${createCollectionResult.value.relative_path}"]`,
@@ -90,11 +94,11 @@
             inputName = "";
             await zakuState.synchronize();
 
-            focussedTreeItem.set({
+            treeActionsState.focussedItem = {
                 type: TREE_ITEM_TYPE.Request,
                 parentRelativePath: createRequestResult.value.parent_relative_path,
                 relativePath: createRequestResult.value.relative_path,
-            });
+            };
 
             const createdRequest = document.querySelector(
                 `[data-current-path="${createRequestResult.value.relative_path}"]`,
@@ -120,7 +124,7 @@
     });
 </script>
 
-<div class={cn("relative min-w-full", propsClass)}>
+<div class={cn("relative min-w-full", className)}>
     {#if level > 1}
         <div
             style="left: {level * 8 + 3.5}px;"
@@ -143,9 +147,9 @@
                 bind:this={inputElement}
                 data-create-tree-item-input
                 type="text"
-                on:focusout={async event => {
+                onfocusout={async event => {
                     if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
-                        createNewTreeItem.set(null);
+                        treeActionsState.createNewItem = null;
                         inputName = "";
                     } else {
                         inputName = "";
@@ -156,7 +160,7 @@
                         }
                     }
                 }}
-                on:keydown={async keyboardEvent => {
+                onkeydown={async keyboardEvent => {
                     if (keyboardEvent.key === "Enter") {
                         keyboardEvent.preventDefault();
 

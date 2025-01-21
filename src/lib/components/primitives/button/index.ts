@@ -1,51 +1,17 @@
-import type { Button as ButtonPrimitive } from "bits-ui";
-import { type VariantProps, tv } from "tailwind-variants";
-import Root from "./button.svelte";
-
-const buttonVariants = tv({
-    base: "inline-flex items-center justify-center whitespace-nowrap rounded-md text-small font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-    variants: {
-        variant: {
-            default: "bg-primary text-primary-foreground shadow hover:bg-primary/90",
-            destructive:
-                "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-            outline:
-                "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
-            secondary: "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
-            ghost: "hover:text-accent-foreground",
-            "ghost-hover": "hover:bg-accent hover:text-accent-foreground",
-            link: "text-primary underline-offset-4 hover:underline",
-        },
-        size: {
-            default: "h-6 px-3 py-2",
-            sm: "h-5 rounded-md px-3 text-xs",
-            lg: "h-9 rounded-md px-8",
-            icon: "size-6 min-h-6 min-w-6 max-h-6 max-w-6",
-        },
-    },
-    defaultVariants: {
-        variant: "default",
-        size: "default",
-    },
-});
-
-type Variant = VariantProps<typeof buttonVariants>["variant"];
-type Size = VariantProps<typeof buttonVariants>["size"];
-
-type Props = ButtonPrimitive.Props & {
-    variant?: Variant;
-    size?: Size;
-};
-
-type Events = ButtonPrimitive.Events;
+import Root, {
+    type ButtonProps,
+    type ButtonSize,
+    type ButtonVariant,
+    buttonVariants,
+} from "./button.svelte";
 
 export {
     Root,
-    type Props,
-    type Events,
+    type ButtonProps as Props,
     //
     Root as Button,
-    type Props as ButtonProps,
-    type Events as ButtonEvents,
     buttonVariants,
+    type ButtonProps,
+    type ButtonSize,
+    type ButtonVariant,
 };

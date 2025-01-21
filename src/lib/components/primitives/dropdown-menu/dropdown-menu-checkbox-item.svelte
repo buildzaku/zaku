@@ -1,35 +1,39 @@
 <script lang="ts">
-    import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
-    import Check from "svelte-radix/Check.svelte";
+    import { DropdownMenu as DropdownMenuPrimitive, type WithoutChildrenOrChild } from "bits-ui";
+    import { CheckIcon, MinusIcon } from "lucide-svelte";
     import { cn } from "$lib/utils/style.js";
+    import type { Snippet } from "svelte";
 
-    type $$Props = DropdownMenuPrimitive.CheckboxItemProps;
-    type $$Events = DropdownMenuPrimitive.CheckboxItemEvents;
-
-    let className: $$Props["class"] = undefined;
-    export let checked: $$Props["checked"] = undefined;
-    export { className as class };
+    let {
+        ref = $bindable(null),
+        class: className,
+        children: childrenProp,
+        checked = $bindable(false),
+        indeterminate = $bindable(false),
+        ...restProps
+    }: WithoutChildrenOrChild<DropdownMenuPrimitive.CheckboxItemProps> & {
+        children?: Snippet;
+    } = $props();
 </script>
 
 <DropdownMenuPrimitive.CheckboxItem
+    bind:ref
     bind:checked
+    bind:indeterminate
     class={cn(
         "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[disabled]:pointer-events-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:opacity-50",
         className,
     )}
-    {...$$restProps}
-    on:click
-    on:keydown
-    on:focusin
-    on:focusout
-    on:pointerdown
-    on:pointerleave
-    on:pointermove
+    {...restProps}
 >
-    <span class="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-        <DropdownMenuPrimitive.CheckboxIndicator>
-            <Check class="h-4 w-4" />
-        </DropdownMenuPrimitive.CheckboxIndicator>
-    </span>
-    <slot />
+    {#snippet children({ checked, indeterminate })}
+        <span class="absolute left-2 flex size-3.5 items-center justify-center">
+            {#if indeterminate}
+                <MinusIcon class="size-4" />
+            {:else}
+                <CheckIcon class={cn("size-4", !checked && "text-transparent")} />
+            {/if}
+        </span>
+        {@render childrenProp?.()}
+    {/snippet}
 </DropdownMenuPrimitive.CheckboxItem>
