@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Plus, Trash2 } from "lucide-svelte";
+    import { PlusIcon, Trash2Icon } from "lucide-svelte";
 
     import { Input } from "$lib/components/primitives/input";
     import { Button } from "$lib/components/primitives/button";
@@ -55,13 +55,13 @@
                 class="bg-transparent p-[7px] hover:bg-muted/40 hover:text-destructive"
                 onclick={() => deletePairAt(index)}
             >
-                <Trash2 size={14} />
+                <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
             </Button>
         </div>
     {/each}
     <div>
         <Button variant="ghost" onclick={addPair} class="h-6 gap-1 border px-2">
-            <Plus size={14} />
+            <PlusIcon size={14} class="max-h-[14px] max-w-[14px]" />
             <span class="text-small">
                 Add {type.replace(/^(.)/, match => match.toUpperCase())}
             </span>

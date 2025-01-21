@@ -32,7 +32,6 @@
         treeActionsState.createNewItem === TREE_ITEM_TYPE.Collection &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
-    let treeItemInputName = $state("");
 </script>
 
 {#if zakuState.activeSpace}
