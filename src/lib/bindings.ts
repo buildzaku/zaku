@@ -22,7 +22,7 @@ export type Request = { meta: RequestMeta, config: RequestConfig, };
 
 export type RequestConfig = { method: string, url: string | null, };
 
-export type RequestMeta = { file_name: string, display_name: string, };
+export type RequestMeta = { file_name: string, display_name: string, has_unsaved_changes: boolean, };
 
 export type Space = { absolute_path: string, meta: SpaceMeta, root: Collection, };
 

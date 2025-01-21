@@ -8,7 +8,7 @@
     } from "$lib/components/primitives/select";
     import { getMethodColorClass } from "$lib/utils/style";
 
-    let { selected = $bindable() }: { selected: (typeof METHODS)[keyof typeof METHODS] } = $props();
+    let { selected = $bindable() }: { selected: string } = $props();
 </script>
 
 <Select type="single" bind:value={selected}>

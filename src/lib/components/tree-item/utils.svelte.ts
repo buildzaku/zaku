@@ -2,8 +2,8 @@ import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { TreeItemPreview } from "$lib/components/tree-item";
-import { zakuState, treeActionsState } from "$lib/state.svelte";
-import { TREE_ITEM_TYPE } from "$lib/models";
+import { zakuState, treeActionsState, treeItemsState } from "$lib/state.svelte";
+import { TreeItemType } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto, TreeItem } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { safeInvoke } from "$lib/commands";
@@ -129,8 +129,14 @@ export async function handleDrop(event: DragEvent) {
     }
 
     const removeTreeItemDto: RemoveTreeItemDto = isCollection(treeActionsState.dragPayload.treeItem)
-        ? { type: "collection", dir_name: treeActionsState.dragPayload.treeItem.meta.dir_name }
-        : { type: "request", file_name: treeActionsState.dragPayload.treeItem.meta.file_name };
+        ? {
+              type: TreeItemType.Collection,
+              dir_name: treeActionsState.dragPayload.treeItem.meta.dir_name,
+          }
+        : {
+              type: TreeItemType.Request,
+              file_name: treeActionsState.dragPayload.treeItem.meta.file_name,
+          };
     const removeTreeItemFromCollectionResult = removeTreeItemFromCollection({
         parentRelativePath: treeActionsState.dragPayload.parentRelativePath,
         removeTreeItemDto,
@@ -194,11 +200,11 @@ export function buildPath(currentPath: string, treeItemName: string) {
 
 export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string): boolean {
     const isCurrentCollectionFocussed =
-        treeActionsState.focussedItem.type === TREE_ITEM_TYPE.Collection &&
-        treeActionsState.focussedItem.relativePath === currentPath;
+        treeItemsState.focussedItem.type === "collection" &&
+        treeItemsState.focussedItem.relativePath === currentPath;
     const isCurrentCollectionChildFocussed =
-        treeActionsState.focussedItem.type === TREE_ITEM_TYPE.Request &&
-        treeActionsState.focussedItem.parentRelativePath === currentPath;
+        treeItemsState.focussedItem.type === "request" &&
+        treeItemsState.focussedItem.parentRelativePath === currentPath;
 
     return isCurrentCollectionFocussed || isCurrentCollectionChildFocussed;
 }

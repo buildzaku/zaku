@@ -6,6 +6,7 @@ use ts_rs::TS;
 pub struct RequestMeta {
     pub file_name: String,
     pub display_name: String,
+    pub has_unsaved_changes: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

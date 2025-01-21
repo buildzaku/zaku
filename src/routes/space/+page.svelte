@@ -17,12 +17,11 @@
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import type { PaneAPI } from "paneforge";
+    import { treeItemsState } from "$lib/state.svelte";
 
     let requestStatus: RequestStatus = $state("idle");
-    let currentUrl = $state("");
     let json = $state("");
     let error = $state("");
-    let method: (typeof METHODS)[keyof typeof METHODS] = $state(METHODS.Get);
     let iframeSrcDoc = $state("");
 
     let leftPane: PaneAPI | undefined = $state();
@@ -48,14 +47,16 @@
 
     async function handleSend() {
         try {
+            if (!treeItemsState.activeRequest) return;
+
             requestStatus = "loading";
 
             const validProtocol = new RegExp(/^(https?:\/\/)/i);
-            if (!validProtocol.test(currentUrl)) {
+            if (!validProtocol.test(treeItemsState.activeRequest.config.url ?? "")) {
                 throw new Error("Invalid or missing Protocol");
             }
 
-            const url = new URL(currentUrl);
+            const url = new URL(treeItemsState.activeRequest.config.url ?? "");
 
             currentRequestParams.reduceRight((acc, cur) => {
                 if (cur.include && !url.searchParams.has(cur.key)) {
@@ -66,7 +67,7 @@
             }, []);
 
             const response = await fetch(url, {
-                method: method,
+                method: treeItemsState.activeRequest.config.method,
                 headers: currentRequestHeaders.reduceRight((acc: Record<string, string>, cur) => {
                     if (cur.include && !(cur.key in acc)) {
                         acc[cur.key] = cur.value;
@@ -114,63 +115,71 @@
             class="relative mb-1.5 mr-1.5 rounded-md border border-l-0 bg-card"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
-            <ResizablePaneGroup direction="vertical" class="size-full">
-                <div class="p-3">
-                    <div class="mb-3 flex">New HTTP request</div>
-                    <div>
-                        <form class="flex gap-2">
-                            <SelectMethod bind:selected={method} />
-                            <Input bind:value={currentUrl} type="text" class="font-mono text-xs" />
-                            <Button type="submit" onclick={handleSend}>Send</Button>
-                        </form>
+            {#if treeItemsState.activeRequest !== null}
+                <ResizablePaneGroup direction="vertical" class="size-full">
+                    <div class="p-3">
+                        <div class="mb-3 flex">New HTTP request</div>
+                        <div>
+                            <form class="flex gap-2">
+                                <SelectMethod
+                                    bind:selected={treeItemsState.activeRequest.config.method}
+                                />
+                                <Input
+                                    bind:value={treeItemsState.activeRequest.config.url}
+                                    type="text"
+                                    class="font-mono text-xs"
+                                />
+                                <Button type="submit" onclick={handleSend}>Send</Button>
+                            </form>
+                        </div>
                     </div>
-                </div>
-                <ResizablePane
-                    bind:this={configurationPane}
-                    defaultSize={25}
-                    minSize={20}
-                    collapsedSize={5.5}
-                    collapsible={true}
-                    onCollapse={() => {
-                        isRequestPaneCollapsed = true;
-                    }}
-                    onExpand={() => {
-                        isRequestPaneCollapsed = false;
-                    }}
-                    class={cn(isRequestPaneCollapsed && "h-8 max-h-8 min-h-8")}
-                >
-                    <ConfigurationPane
-                        pane={configurationPane}
-                        bind:isCollapsed={isRequestPaneCollapsed}
-                        bind:parameters={currentRequestParams}
-                        bind:headers={currentRequestHeaders}
-                    />
-                </ResizablePane>
-                <ResizableHandle withHandle />
-                <ResizablePane
-                    bind:this={responsePane}
-                    defaultSize={75}
-                    minSize={20}
-                    collapsedSize={5}
-                    collapsible={true}
-                    onCollapse={() => {
-                        isResponsePaneCollapsed = true;
-                    }}
-                    onExpand={() => {
-                        isResponsePaneCollapsed = false;
-                    }}
-                    class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8")}
-                >
-                    <ResponsePane
-                        pane={responsePane}
-                        bind:isCollapsed={isResponsePaneCollapsed}
-                        bind:status={requestStatus}
-                        bind:raw={json}
-                        bind:preview={iframeSrcDoc}
-                        bind:error
-                    />
-                </ResizablePane>
-            </ResizablePaneGroup>
+                    <ResizablePane
+                        bind:this={configurationPane}
+                        defaultSize={25}
+                        minSize={20}
+                        collapsedSize={5.5}
+                        collapsible={true}
+                        onCollapse={() => {
+                            isRequestPaneCollapsed = true;
+                        }}
+                        onExpand={() => {
+                            isRequestPaneCollapsed = false;
+                        }}
+                        class={cn(isRequestPaneCollapsed && "h-8 max-h-8 min-h-8")}
+                    >
+                        <ConfigurationPane
+                            pane={configurationPane}
+                            bind:isCollapsed={isRequestPaneCollapsed}
+                            bind:parameters={currentRequestParams}
+                            bind:headers={currentRequestHeaders}
+                        />
+                    </ResizablePane>
+                    <ResizableHandle withHandle />
+                    <ResizablePane
+                        bind:this={responsePane}
+                        defaultSize={75}
+                        minSize={20}
+                        collapsedSize={5}
+                        collapsible={true}
+                        onCollapse={() => {
+                            isResponsePaneCollapsed = true;
+                        }}
+                        onExpand={() => {
+                            isResponsePaneCollapsed = false;
+                        }}
+                        class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8")}
+                    >
+                        <ResponsePane
+                            pane={responsePane}
+                            bind:isCollapsed={isResponsePaneCollapsed}
+                            bind:status={requestStatus}
+                            bind:raw={json}
+                            bind:preview={iframeSrcDoc}
+                            bind:error
+                        />
+                    </ResizablePane>
+                </ResizablePaneGroup>
+            {/if}
         </ResizablePane>
     </ResizablePaneGroup>
 </div>

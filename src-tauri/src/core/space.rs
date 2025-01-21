@@ -109,6 +109,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                                 meta: RequestMeta {
                                     file_name,
                                     display_name: request.meta.name,
+                                    has_unsaved_changes: false,
                                 },
                                 config: request.config,
                             });

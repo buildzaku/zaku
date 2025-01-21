@@ -3,7 +3,7 @@
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
     import type { Collection } from "$lib/bindings";
-    import { treeActionsState } from "$lib/state.svelte";
+    import { treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
@@ -13,7 +13,6 @@
         TooltipContent,
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
-    import { TREE_ITEM_TYPE } from "$lib/models";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import {
         handleDragEnd,
@@ -21,6 +20,7 @@
         handleDrop,
         isDropAllowed,
     } from "$lib/components/tree-item/utils.svelte";
+    import { TreeItemType } from "$lib/models";
 
     type Props = { currentPath: string; root: Collection; children: Snippet; class?: string };
 
@@ -39,15 +39,15 @@
         aria-grabbed="false"
         draggable="false"
         ondragover={event =>
-            handleDragOver(event, { type: "collection", relativePath: currentPath })}
+            handleDragOver(event, { type: TreeItemType.Collection, relativePath: currentPath })}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
         onkeydown={keyboardEvent => {
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 root.meta.is_open = !root.meta.is_open;
-                treeActionsState.focussedItem = {
-                    type: TREE_ITEM_TYPE.Collection,
+                treeItemsState.focussedItem = {
+                    type: TreeItemType.Collection,
                     relativePath: RELATIVE_SPACE_ROOT,
                     parentRelativePath: RELATIVE_SPACE_ROOT,
                 };
@@ -58,8 +58,8 @@
         )}
         onclick={() => {
             root.meta.is_open = !root.meta.is_open;
-            treeActionsState.focussedItem = {
-                type: TREE_ITEM_TYPE.Collection,
+            treeItemsState.focussedItem = {
+                type: TreeItemType.Collection,
                 relativePath: RELATIVE_SPACE_ROOT,
                 parentRelativePath: RELATIVE_SPACE_ROOT,
             };
@@ -97,7 +97,7 @@
                                 size="icon"
                                 onclick={event => {
                                     event.stopImmediatePropagation();
-                                    treeActionsState.createNewItem = TREE_ITEM_TYPE.Request;
+                                    treeActionsState.createNewItem = TreeItemType.Request;
                                 }}
                                 class="flex items-center justify-center"
                             >
@@ -121,7 +121,7 @@
                                 size="icon"
                                 onclick={event => {
                                     event.stopImmediatePropagation();
-                                    treeActionsState.createNewItem = TREE_ITEM_TYPE.Collection;
+                                    treeActionsState.createNewItem = TreeItemType.Collection;
                                 }}
                                 class="flex items-center justify-center"
                             >
@@ -152,7 +152,10 @@
                 aria-grabbed="false"
                 draggable="false"
                 ondragover={event =>
-                    handleDragOver(event, { type: "collection", relativePath: currentPath })}
+                    handleDragOver(event, {
+                        type: TreeItemType.Collection,
+                        relativePath: currentPath,
+                    })}
                 ondrop={handleDrop}
                 ondragend={handleDragEnd}
             ></div>
