@@ -17,7 +17,6 @@ export type SerializedValue = string | number | boolean | null;
 
 export type ZakuRequestConfig = {
     name: string;
-    type: "http";
     method: string;
     headers?: Record<MaybeKey, SerializedValue>;
     params?: Record<MaybeKey, SerializedValue>;
@@ -111,3 +110,44 @@ class TreeItemsState {
 }
 
 export const treeItemsState = new TreeItemsState();
+
+class Debounced {
+    private timers: Map<string, NodeJS.Timeout> = new Map();
+    private delay = 1500;
+
+    private saveRequestInZakuStore(request: Request) {
+        console.log("========== SOFT SAVE ==========");
+        console.log({
+            request: request.meta.display_name,
+            method: request.config.method,
+            url: request.config.url,
+        });
+    }
+
+    softSave(request: Request): void {
+        if (this.timers.has(request.meta.file_name)) {
+            clearTimeout(this.timers.get(request.meta.file_name));
+        }
+
+        const timer = setTimeout(() => {
+            this.saveRequestInZakuStore(request);
+            this.timers.delete(request.meta.file_name);
+        }, this.delay);
+
+        this.timers.set(request.meta.file_name, timer);
+    }
+
+    cancel(request: Request): void {
+        if (this.timers.has(request.meta.file_name)) {
+            clearTimeout(this.timers.get(request.meta.file_name));
+            this.timers.delete(request.meta.file_name);
+        }
+    }
+
+    cancelAll(): void {
+        this.timers.forEach(timer => clearTimeout(timer));
+        this.timers.clear();
+    }
+}
+
+export const debounced = new Debounced();

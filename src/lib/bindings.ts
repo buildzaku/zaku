@@ -2,11 +2,13 @@
 
 export type Collection = { meta: CollectionMeta, requests: Array<Request>, collections: Array<Collection>, };
 
-export type CollectionMeta = { dir_name: string, display_name: string | null, is_open: boolean, };
+export type CollectionMeta = { dir_name: string, display_name: string | null, is_expanded: boolean, };
 
 export type CreateCollectionDto = { parent_relative_path: string, relative_path: string, };
 
-export type CreateNewCollectionOrRequest = { parent_relative_path: string, relative_path: string, };
+export type CreateNewCollection = { parent_relative_path: string, relative_path: string, };
+
+export type CreateNewRequest = { parent_relative_path: string, relative_path: string, };
 
 export type CreateRequestDto = { parent_relative_path: string, relative_path: string, };
 

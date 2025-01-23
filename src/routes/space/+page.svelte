@@ -11,13 +11,12 @@
         ResizableHandle,
     } from "$lib/components/primitives/resizable";
     import { SelectMethod } from "$lib/components/select-method";
-    import { METHODS } from "$lib/utils/constants";
     import { Sidebar } from "$lib/components/sidebar";
     import { ConfigurationPane } from "$lib/components/configuration-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import type { PaneAPI } from "paneforge";
-    import { treeItemsState } from "$lib/state.svelte";
+    import { treeItemsState, debounced } from "$lib/state.svelte";
 
     let requestStatus: RequestStatus = $state("idle");
     let json = $state("");
@@ -48,7 +47,6 @@
     async function handleSend() {
         try {
             if (!treeItemsState.activeRequest) return;
-
             requestStatus = "loading";
 
             const validProtocol = new RegExp(/^(https?:\/\/)/i);
@@ -93,7 +91,25 @@
             }
         }
     }
+
+    function handleKeydown(event: KeyboardEvent) {
+        if (event.key === "s" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            console.log("PRESSED!!");
+        }
+    }
+
+    $effect(() => {
+        if (treeItemsState.activeRequest) {
+            // Important hack to keep the effect deeply reactive
+            JSON.stringify(treeItemsState.activeRequest);
+
+            debounced.softSave(treeItemsState.activeRequest);
+        }
+    });
 </script>
+
+<svelte:document onkeydown={handleKeydown} />
 
 <div class="flex size-full flex-col items-center justify-center gap-4">
     <ResizablePaneGroup direction="horizontal" class="w-full">
@@ -115,10 +131,12 @@
             class="relative mb-1.5 mr-1.5 rounded-md border border-l-0 bg-card"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
-            {#if treeItemsState.activeRequest !== null}
+            {#if treeItemsState.activeRequest}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
-                        <div class="mb-3 flex">New HTTP request</div>
+                        <div class="mb-3 flex">
+                            {treeItemsState.activeRequest.meta.display_name}
+                        </div>
                         <div>
                             <form class="flex gap-2">
                                 <SelectMethod

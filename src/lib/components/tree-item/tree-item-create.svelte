@@ -10,7 +10,8 @@
     import { safeInvoke } from "$lib/commands";
     import type {
         CreateCollectionDto,
-        CreateNewCollectionOrRequest,
+        CreateNewCollection,
+        CreateNewRequest,
         CreateRequestDto,
     } from "$lib/bindings";
 
@@ -48,7 +49,7 @@
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
             };
-            const createCollectionResult = await safeInvoke<CreateNewCollectionOrRequest>(
+            const createCollectionResult = await safeInvoke<CreateNewCollection>(
                 "create_collection",
                 { create_collection_dto },
             );
@@ -79,10 +80,9 @@
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
             };
-            const createRequestResult = await safeInvoke<CreateNewCollectionOrRequest>(
-                "create_request",
-                { create_request_dto },
-            );
+            const createRequestResult = await safeInvoke<CreateNewRequest>("create_request", {
+                create_request_dto,
+            });
 
             if (!createRequestResult.ok) {
                 console.error(createRequestResult.err);

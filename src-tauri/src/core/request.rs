@@ -5,9 +5,9 @@ use toml;
 
 use crate::models::request::{RequestConfig, RequestFile, RequestFileMeta};
 
-pub fn create_request_file(file_absolute_path: &Path, display_name: &str) -> Result<(), Error> {
+pub fn create_request_file(absolute_path: &Path, display_name: &str) -> Result<(), Error> {
     let mut request_file =
-        File::create_new(&file_absolute_path.with_extension("toml")).map_err(|err| {
+        File::create_new(&absolute_path.with_extension("toml")).map_err(|err| {
             Error::new(
                 ErrorKind::Other,
                 format!("Failed to create request file: {}", err),
@@ -43,13 +43,13 @@ pub fn create_request_file(file_absolute_path: &Path, display_name: &str) -> Res
     return Ok(());
 }
 
-pub fn parse_request_file(path: PathBuf) -> Result<RequestFile, Error> {
-    let content = match fs::read_to_string(&path) {
+pub fn parse_request_file(absolute_path: &PathBuf) -> Result<RequestFile, Error> {
+    let content = match fs::read_to_string(absolute_path) {
         Ok(content) => content,
         Err(err) => {
             return Err(Error::new(
                 ErrorKind::NotFound,
-                format!("Failed to load {}: {}", path.display(), err),
+                format!("Failed to load {}: {}", absolute_path.display(), err),
             ));
         }
     };
@@ -59,7 +59,7 @@ pub fn parse_request_file(path: PathBuf) -> Result<RequestFile, Error> {
         Err(err) => {
             return Err(Error::new(
                 ErrorKind::InvalidData,
-                format!("Failed to parse {}: {}", path.display(), err),
+                format!("Failed to parse {}: {}", absolute_path.display(), err),
             ));
         }
     };

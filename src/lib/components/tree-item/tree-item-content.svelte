@@ -68,7 +68,7 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 if (isCollection(treeItem)) {
-                    treeItem.meta.is_open = !treeItem.meta.is_open;
+                    treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
                 }
             }
         }}
@@ -83,7 +83,7 @@
             treeActionsState.createNewItem = null;
 
             if (isCollection(treeItem)) {
-                treeItem.meta.is_open = !treeItem.meta.is_open;
+                treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
                 treeItemsState.focussedItem = {
                     type: TreeItemType.Collection,
                     parentRelativePath: parentPath,
@@ -105,7 +105,7 @@
     >
         <div class="flex h-full items-center gap-1 pl-1.5">
             {#if isCollection(treeItem)}
-                {#if treeItem.meta.is_open}
+                {#if treeItem.meta.is_expanded}
                     <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
                 {:else}
                     <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
@@ -148,7 +148,7 @@
             />
         {/if}
 
-        {#if treeItem.meta.is_open}
+        {#if treeItem.meta.is_expanded}
             {#each treeItem.requests as request (buildPath(currentPath, request.meta.file_name))}
                 <TreeItemContent
                     parentPath={currentPath}
@@ -166,7 +166,7 @@
                 level={level + 1}
             />
         {/if}
-        {#if treeItem.meta.is_open}
+        {#if treeItem.meta.is_expanded}
             {#each treeItem.collections as collection (buildPath(currentPath, collection.meta.dir_name))}
                 <TreeItemContent
                     parentPath={currentPath}

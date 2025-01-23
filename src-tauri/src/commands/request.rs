@@ -7,7 +7,7 @@ use crate::{
         collection::CreateCollectionDto,
         request::CreateRequestDto,
         zaku::{ZakuError, ZakuState},
-        CreateNewCollectionOrRequest,
+        CreateNewRequest,
     },
     utils,
 };
@@ -16,7 +16,7 @@ use crate::{
 pub fn create_request(
     create_request_dto: CreateRequestDto,
     app_handle: AppHandle,
-) -> Result<CreateNewCollectionOrRequest, ZakuError> {
+) -> Result<CreateNewRequest, ZakuError> {
     if create_request_dto.relative_path.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a request without name".to_string(),
@@ -94,7 +94,7 @@ pub fn create_request(
         }
     })?;
 
-    let create_new_result = CreateNewCollectionOrRequest {
+    let create_new_result = CreateNewRequest {
         parent_relative_path: file_parent_relative_path,
         relative_path: file_relative_path,
     };

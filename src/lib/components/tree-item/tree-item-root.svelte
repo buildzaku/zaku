@@ -45,7 +45,7 @@
         onkeydown={keyboardEvent => {
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
-                root.meta.is_open = !root.meta.is_open;
+                root.meta.is_expanded = !root.meta.is_expanded;
                 treeItemsState.focussedItem = {
                     type: TreeItemType.Collection,
                     relativePath: RELATIVE_SPACE_ROOT,
@@ -57,7 +57,7 @@
             "flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:outline-none focus:ring-1 focus:ring-ring",
         )}
         onclick={() => {
-            root.meta.is_open = !root.meta.is_open;
+            root.meta.is_expanded = !root.meta.is_expanded;
             treeItemsState.focussedItem = {
                 type: TreeItemType.Collection,
                 relativePath: RELATIVE_SPACE_ROOT,
@@ -66,7 +66,7 @@
         }}
     >
         <div class="flex h-full items-center gap-1 pl-1.5">
-            {#if root.meta.is_open}
+            {#if root.meta.is_expanded}
                 <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {:else}
                 <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
@@ -76,7 +76,7 @@
             </span>
         </div>
 
-        {#if root.meta.is_open}
+        {#if root.meta.is_expanded}
             <div
                 role="button"
                 tabindex={-1}
@@ -140,7 +140,7 @@
         {/if}
     </div>
 
-    {#if root.meta.is_open}
+    {#if root.meta.is_expanded}
         <div
             class="flex h-[calc(100dvh-36px-35px-36px-22px-37px)] max-h-[calc(100dvh-36px-35px-36px-22px-37px)] w-full flex-1 flex-col overflow-y-auto"
         >

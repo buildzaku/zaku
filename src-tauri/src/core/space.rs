@@ -38,7 +38,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
         meta: CollectionMeta {
             dir_name: space_dir_name,
             display_name: space_config.map(|config| config.meta.name),
-            is_open: true,
+            is_expanded: true,
         },
         requests: Vec::new(),
         collections: Vec::new(),
@@ -61,10 +61,10 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                     continue;
                 }
 
-                let entry_path = entry.path();
+                let absolute_entry_path = entry.path();
 
-                if entry_path.is_dir() {
-                    let name = entry_path
+                if absolute_entry_path.is_dir() {
+                    let name = absolute_entry_path
                         .file_name()
                         .unwrap()
                         .to_string_lossy()
@@ -73,7 +73,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                         continue;
                     }
 
-                    let relative_path = entry_path
+                    let relative_path = absolute_entry_path
                         .strip_prefix(absolute_space_root)
                         .unwrap()
                         .to_string_lossy()
@@ -85,25 +85,25 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                             display_name: collection_name_by_relative_path
                                 .get(&relative_path)
                                 .cloned(),
-                            is_open: true,
+                            is_expanded: true,
                         },
                         requests: Vec::new(),
                         collections: Vec::new(),
                     }));
 
-                    stack.push((entry_path, Rc::clone(&sub_collection)));
+                    stack.push((absolute_entry_path, Rc::clone(&sub_collection)));
                     collection_rc_refcell
                         .borrow_mut()
                         .collections
                         .push(sub_collection);
-                } else if entry_path.is_file() {
-                    let file_name = entry_path
+                } else if absolute_entry_path.is_file() {
+                    let file_name = absolute_entry_path
                         .file_name()
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
 
-                    match request::parse_request_file(entry_path) {
+                    match request::parse_request_file(&absolute_entry_path) {
                         Ok(request) => {
                             collection_rc_refcell.borrow_mut().requests.push(Request {
                                 meta: RequestMeta {

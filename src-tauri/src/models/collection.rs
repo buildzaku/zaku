@@ -8,7 +8,7 @@ use super::request::Request;
 pub struct CollectionMeta {
     pub dir_name: String,
     pub display_name: Option<String>,
-    pub is_open: bool,
+    pub is_expanded: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

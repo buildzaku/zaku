@@ -32,8 +32,14 @@ export type RemoveTreeItemDto =
           file_name: string;
       };
 
-export type FocussedTreeItem = {
-    type: TreeItemType;
-    parentRelativePath: string;
-    relativePath: string;
-};
+export type FocussedTreeItem =
+    | {
+          type: TreeItemType.Collection;
+          parentRelativePath: string;
+          relativePath: string;
+      }
+    | {
+          type: TreeItemType.Request;
+          parentRelativePath: string;
+          relativePath: string;
+      };

@@ -26,7 +26,14 @@ pub struct DispatchNotificationOptions {
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
-pub struct CreateNewCollectionOrRequest {
+pub struct CreateNewCollection {
+    pub parent_relative_path: String,
+    pub relative_path: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings.ts")]
+pub struct CreateNewRequest {
     pub parent_relative_path: String,
     pub relative_path: String,
 }
@@ -45,7 +52,8 @@ pub fn generate_bindings() -> Result<(), ExportError> {
 
     OpenDirectoryDialogOptions::export_all()?;
     DispatchNotificationOptions::export_all()?;
-    CreateNewCollectionOrRequest::export_all()?;
+    CreateNewCollection::export_all()?;
+    CreateNewRequest::export_all()?;
     MoveTreeItemDto::export_all()?;
 
     RequestMeta::export_all()?;
