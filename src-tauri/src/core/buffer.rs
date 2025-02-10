@@ -20,21 +20,24 @@ const SPACE_BUFFER_DIR: &str = "buffer/spaces";
 
 impl SpaceBuffer {
     pub fn load(absolute_space_path: &Path) -> RwLock<Self> {
-        let space_data_dir = ZAKU_DATA_DIR
+        let space_buffer_file = ZAKU_DATA_DIR
             .join(SPACE_BUFFER_DIR)
             .join(&hashed_file_name(absolute_space_path))
             .with_extension("json");
 
-        if space_data_dir.exists() {
-            let content = fs::read_to_string(&space_data_dir).expect("Failed to read from store");
-            let store: SpaceBuffer =
-                serde_json::from_str(&content).expect("Failed to deserialize data");
+        if space_buffer_file.exists() {
+            let content =
+                fs::read_to_string(&space_buffer_file).expect("Failed to read from space buffer");
+            let space_buffer: Result<SpaceBuffer, _> = serde_json::from_str(&content);
 
-            return RwLock::new(store);
+            return RwLock::new(space_buffer.unwrap_or_else(|_| SpaceBuffer {
+                absolute_path: absolute_space_path.to_string_lossy().to_string(),
+                request_by_relative_path: HashMap::new(),
+            }));
         } else {
             return RwLock::new(SpaceBuffer {
                 absolute_path: absolute_space_path.to_string_lossy().to_string(),
-                requests_by_relative_path: HashMap::new(),
+                request_by_relative_path: HashMap::new(),
             });
         }
     }
@@ -80,7 +83,7 @@ pub fn save_request_to_space_buffer(
         .into_owned();
 
     space_buffer_wlock
-        .requests_by_relative_path
+        .request_by_relative_path
         .insert(request_relative_path, request);
 
     space_buffer_wlock.persist();
