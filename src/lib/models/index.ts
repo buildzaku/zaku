@@ -43,3 +43,5 @@ export type FocussedTreeItem =
           parentRelativePath: string;
           relativePath: string;
       };
+
+export type ActiveRequest = { parentRelativePath: string; self: Request };

@@ -95,7 +95,7 @@
                     parentRelativePath: parentPath,
                     relativePath: currentPath,
                 };
-                treeItemsState.activeRequest = treeItem;
+                treeItemsState.activeRequest = { parentRelativePath: parentPath, self: treeItem };
 
                 if (!treeItemsState.openRequests.includes(treeItem)) {
                     treeItemsState.openRequests.push(treeItem);

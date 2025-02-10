@@ -6,7 +6,7 @@ import { Err, Ok } from "$lib/utils";
 import type { ValueOf } from "$lib/utils";
 import { safeInvoke } from "$lib/commands";
 import { TreeItemType } from "$lib/models";
-import type { DragPayload, FocussedTreeItem } from "$lib/models";
+import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
 import type { ZakuState as TZakuState, SpaceReference, Space, Request } from "$lib/bindings";
 
 export type RequestConfig = ZakuRequestConfig;
@@ -99,7 +99,7 @@ class TreeItemsState {
     };
 
     public focussedItem: FocussedTreeItem = $state(this.#rootItem);
-    public activeRequest: Request | null = $state(null);
+    public activeRequest: ActiveRequest | null = $state(null);
     public openRequests: Request[] = $state([]);
 
     public reset() {
@@ -112,41 +112,43 @@ class TreeItemsState {
 export const treeItemsState = new TreeItemsState();
 
 class Debounced {
-    private timers: Map<string, NodeJS.Timeout> = new Map();
-    private delay = 1500;
+    #timers: Map<string, NodeJS.Timeout> = new Map();
+    #delay = 1500;
 
-    private saveRequestInZakuStore(request: Request) {
+    async #invokeSoftSave(absoluteSpacePath: string, activeRequest: ActiveRequest) {
         console.log("========== SOFT SAVE ==========");
-        console.log({
-            request: request.meta.display_name,
-            method: request.config.method,
-            url: request.config.url,
+        console.log(absoluteSpacePath, activeRequest);
+
+        await safeInvoke("save_request_to_buffer", {
+            absolute_space_path: absoluteSpacePath,
+            relative_path: activeRequest.parentRelativePath,
+            request: activeRequest.self,
         });
     }
-
-    softSave(request: Request): void {
-        if (this.timers.has(request.meta.file_name)) {
-            clearTimeout(this.timers.get(request.meta.file_name));
+    // soft_save_request(absolute_space_path: String, relative_path: String, request: Request)
+    public softSave(absoluteSpacePath: string, activeRequest: ActiveRequest): void {
+        if (this.#timers.has(activeRequest.self.meta.file_name)) {
+            clearTimeout(this.#timers.get(activeRequest.self.meta.file_name));
         }
 
         const timer = setTimeout(() => {
-            this.saveRequestInZakuStore(request);
-            this.timers.delete(request.meta.file_name);
-        }, this.delay);
+            this.#invokeSoftSave(absoluteSpacePath, activeRequest);
+            this.#timers.delete(activeRequest.self.meta.file_name);
+        }, this.#delay);
 
-        this.timers.set(request.meta.file_name, timer);
+        this.#timers.set(activeRequest.self.meta.file_name, timer);
     }
 
-    cancel(request: Request): void {
-        if (this.timers.has(request.meta.file_name)) {
-            clearTimeout(this.timers.get(request.meta.file_name));
-            this.timers.delete(request.meta.file_name);
+    public cancel(request: Request): void {
+        if (this.#timers.has(request.meta.file_name)) {
+            clearTimeout(this.#timers.get(request.meta.file_name));
+            this.#timers.delete(request.meta.file_name);
         }
     }
 
     cancelAll(): void {
-        this.timers.forEach(timer => clearTimeout(timer));
-        this.timers.clear();
+        this.#timers.forEach(timer => clearTimeout(timer));
+        this.#timers.clear();
     }
 }
 

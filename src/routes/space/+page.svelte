@@ -16,7 +16,7 @@
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import type { PaneAPI } from "paneforge";
-    import { treeItemsState, debounced } from "$lib/state.svelte";
+    import { treeItemsState, debounced, zakuState } from "$lib/state.svelte";
 
     let requestStatus: RequestStatus = $state("idle");
     let json = $state("");
@@ -50,11 +50,11 @@
             requestStatus = "loading";
 
             const validProtocol = new RegExp(/^(https?:\/\/)/i);
-            if (!validProtocol.test(treeItemsState.activeRequest.config.url ?? "")) {
+            if (!validProtocol.test(treeItemsState.activeRequest.self.config.url ?? "")) {
                 throw new Error("Invalid or missing Protocol");
             }
 
-            const url = new URL(treeItemsState.activeRequest.config.url ?? "");
+            const url = new URL(treeItemsState.activeRequest.self.config.url ?? "");
 
             currentRequestParams.reduceRight((acc, cur) => {
                 if (cur.include && !url.searchParams.has(cur.key)) {
@@ -65,7 +65,7 @@
             }, []);
 
             const response = await fetch(url, {
-                method: treeItemsState.activeRequest.config.method,
+                method: treeItemsState.activeRequest.self.config.method,
                 headers: currentRequestHeaders.reduceRight((acc: Record<string, string>, cur) => {
                     if (cur.include && !(cur.key in acc)) {
                         acc[cur.key] = cur.value;
@@ -100,11 +100,11 @@
     }
 
     $effect(() => {
-        if (treeItemsState.activeRequest) {
+        if (zakuState.activeSpace && treeItemsState.activeRequest) {
             // Important hack to keep the effect deeply reactive
             JSON.stringify(treeItemsState.activeRequest);
 
-            debounced.softSave(treeItemsState.activeRequest);
+            debounced.softSave(zakuState.activeSpace.absolute_path, treeItemsState.activeRequest);
         }
     });
 </script>
@@ -135,15 +135,15 @@
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
                         <div class="mb-3 flex">
-                            {treeItemsState.activeRequest.meta.display_name}
+                            {treeItemsState.activeRequest.self.meta.display_name}
                         </div>
                         <div>
                             <form class="flex gap-2">
                                 <SelectMethod
-                                    bind:selected={treeItemsState.activeRequest.config.method}
+                                    bind:selected={treeItemsState.activeRequest.self.config.method}
                                 />
                                 <Input
-                                    bind:value={treeItemsState.activeRequest.config.url}
+                                    bind:value={treeItemsState.activeRequest.self.config.url}
                                     type="text"
                                     class="font-mono text-xs"
                                 />

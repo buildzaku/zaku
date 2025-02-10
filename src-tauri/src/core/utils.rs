@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+
+use once_cell::sync::Lazy;
 use tauri::{AppHandle, Manager};
 
 pub fn toggle_devtools(app_handle: &AppHandle) {
@@ -9,3 +12,9 @@ pub fn toggle_devtools(app_handle: &AppHandle) {
         webview_window.open_devtools();
     }
 }
+
+pub static ZAKU_DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
+    dirs::data_dir()
+        .expect("Unable to get data directory")
+        .join("Zaku")
+});

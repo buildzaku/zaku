@@ -1,11 +1,14 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    core::{self, collection, space},
+    core::{self, buffer, collection, space},
     models::{
         collection::CreateCollectionDto,
-        request::CreateRequestDto,
+        request::{CreateRequestDto, Request},
         zaku::{ZakuError, ZakuState},
         CreateNewRequest,
     },
@@ -110,4 +113,9 @@ pub fn create_request(
     }
 
     return Ok(create_new_result);
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn save_request_to_buffer(absolute_space_path: &Path, relative_path: &Path, request: Request) {
+    buffer::save_request_to_space_buffer(absolute_space_path, relative_path, request);
 }
