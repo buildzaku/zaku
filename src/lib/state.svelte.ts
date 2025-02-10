@@ -115,7 +115,7 @@ class Debounced {
     #timers: Map<string, NodeJS.Timeout> = new Map();
     #delay = 1500;
 
-    async #invokeSoftSave(absoluteSpacePath: string, activeRequest: ActiveRequest) {
+    async #invokeSaveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest) {
         console.log("========== SOFT SAVE ==========");
         console.log(absoluteSpacePath, activeRequest);
 
@@ -125,14 +125,13 @@ class Debounced {
             request: activeRequest.self,
         });
     }
-    // soft_save_request(absolute_space_path: String, relative_path: String, request: Request)
-    public softSave(absoluteSpacePath: string, activeRequest: ActiveRequest): void {
+    public saveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest): void {
         if (this.#timers.has(activeRequest.self.meta.file_name)) {
             clearTimeout(this.#timers.get(activeRequest.self.meta.file_name));
         }
 
         const timer = setTimeout(() => {
-            this.#invokeSoftSave(absoluteSpacePath, activeRequest);
+            this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
             this.#timers.delete(activeRequest.self.meta.file_name);
         }, this.#delay);
 

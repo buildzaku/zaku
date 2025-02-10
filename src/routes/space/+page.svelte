@@ -99,12 +99,30 @@
         }
     }
 
-    $effect(() => {
-        if (zakuState.activeSpace && treeItemsState.activeRequest) {
-            // Important hack to keep the effect deeply reactive
-            JSON.stringify(treeItemsState.activeRequest);
+    let previousActiveRequestRelativePath = treeItemsState.activeRequest
+        ? `${treeItemsState.activeRequest.parentRelativePath}/${treeItemsState.activeRequest.self.meta.file_name}`
+        : null;
 
-            debounced.softSave(zakuState.activeSpace.absolute_path, treeItemsState.activeRequest);
+    $effect(() => {
+        // Important hack to keep the effect deeply reactive
+        JSON.stringify(treeItemsState.activeRequest);
+
+        const currentActiveRequestRelativePath = treeItemsState.activeRequest
+            ? `${treeItemsState.activeRequest.parentRelativePath}/${treeItemsState.activeRequest.self.meta.file_name}`
+            : null;
+
+        if (
+            zakuState.activeSpace &&
+            treeItemsState.activeRequest &&
+            previousActiveRequestRelativePath &&
+            previousActiveRequestRelativePath === currentActiveRequestRelativePath
+        ) {
+            debounced.saveRequestToBuffer(
+                zakuState.activeSpace.absolute_path,
+                treeItemsState.activeRequest,
+            );
+        } else {
+            previousActiveRequestRelativePath = currentActiveRequestRelativePath;
         }
     });
 </script>
