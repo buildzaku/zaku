@@ -1,11 +1,13 @@
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self};
+use std::io::Error;
 use std::path::{Path, PathBuf};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use super::request;
 use super::utils::ZAKU_DATA_DIR;
-use crate::models::request::Request;
+use crate::models::request::{Request, RequestMeta};
 use crate::models::space::SpaceBuffer;
 
 fn hashed_file_name(absolute_space_path: &Path) -> String {
@@ -32,12 +34,12 @@ impl SpaceBuffer {
 
             return RwLock::new(space_buffer.unwrap_or_else(|_| SpaceBuffer {
                 absolute_path: absolute_space_path.to_string_lossy().to_string(),
-                request_by_relative_path: HashMap::new(),
+                requests: HashMap::new(),
             }));
         } else {
             return RwLock::new(SpaceBuffer {
                 absolute_path: absolute_space_path.to_string_lossy().to_string(),
-                request_by_relative_path: HashMap::new(),
+                requests: HashMap::new(),
             });
         }
     }
@@ -52,11 +54,6 @@ impl SpaceBuffer {
             .join(SPACE_BUFFER_DIR)
             .join(&hashed_file_name(Path::new(&self.absolute_path)))
             .with_extension("json");
-
-        println!(
-            "BUFFER FILE PATH: {}",
-            buffer_file_path.to_string_lossy().to_string()
-        );
 
         if let Some(parent) = buffer_file_path.parent() {
             fs::create_dir_all(parent).expect("Failed to create parent directories");
@@ -80,11 +77,44 @@ pub fn save_request_to_space_buffer(
     let request_relative_path = PathBuf::from(parent_relative_path)
         .join(&request.meta.file_name)
         .to_string_lossy()
-        .into_owned();
+        .to_string();
 
-    space_buffer_wlock
-        .request_by_relative_path
-        .insert(request_relative_path, request);
+    space_buffer_wlock.requests.insert(
+        request_relative_path,
+        Request {
+            meta: RequestMeta {
+                has_unsaved_changes: true,
+                ..request.meta
+            },
+            ..request
+        },
+    );
 
     space_buffer_wlock.persist();
+}
+
+pub fn write_buffer_request_to_fs(
+    absolute_space_path: &Path,
+    request_relative_path: &Path,
+) -> Result<(), Error> {
+    let space_buffer = SpaceBuffer::load(absolute_space_path);
+    let mut space_buffer_wlock = SpaceBuffer::acquire_write_lock(&space_buffer);
+
+    let request_buffer = space_buffer_wlock
+        .requests
+        .get(&request_relative_path.to_string_lossy().to_string());
+
+    if let Some(request_buffer) = request_buffer {
+        request::save_to_request_file(
+            &absolute_space_path.join(request_relative_path),
+            request_buffer,
+        )?;
+    }
+
+    space_buffer_wlock
+        .requests
+        .remove(&request_relative_path.to_string_lossy().to_string());
+    space_buffer_wlock.persist();
+
+    return Ok(());
 }

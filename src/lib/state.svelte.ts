@@ -111,9 +111,17 @@ class TreeItemsState {
 
 export const treeItemsState = new TreeItemsState();
 
+type AbsoluteRequestPath = string;
+
+type DebouncedState = {
+    timer: NodeJS.Timeout;
+    absoluteSpacePath: string;
+    activeRequest: ActiveRequest;
+};
+
 class Debounced {
-    #timers: Map<string, NodeJS.Timeout> = new Map();
-    #delay = 1500;
+    #state: Map<AbsoluteRequestPath, DebouncedState> = new Map();
+    #DELAY = 1500;
 
     async #invokeSaveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest) {
         console.log("========== SOFT SAVE ==========");
@@ -126,28 +134,49 @@ class Debounced {
         });
     }
     public saveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest): void {
-        if (this.#timers.has(activeRequest.self.meta.file_name)) {
-            clearTimeout(this.#timers.get(activeRequest.self.meta.file_name));
+        const absoluteRequestPath = absoluteSpacePath
+            .concat("/")
+            .concat(activeRequest.parentRelativePath)
+            .concat("/")
+            .concat(activeRequest.self.meta.file_name);
+
+        console.warn("absoluteRequestPath", absoluteRequestPath);
+        const current = this.#state.get(absoluteRequestPath);
+        if (current) {
+            clearTimeout(current.timer);
         }
 
         const timer = setTimeout(() => {
             this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
-            this.#timers.delete(activeRequest.self.meta.file_name);
-        }, this.#delay);
+            this.#state.delete(absoluteRequestPath);
+        }, this.#DELAY);
 
-        this.#timers.set(activeRequest.self.meta.file_name, timer);
+        this.#state.set(absoluteRequestPath, {
+            timer,
+            absoluteSpacePath,
+            activeRequest,
+        });
     }
+    public isPending(absoluteRequestPath: string): boolean {
+        return this.#state.has(absoluteRequestPath);
+    }
+    public async flush(absoluteRequestPath: string): Promise<void> {
+        console.log("FLUSING absoluteRequestPath", absoluteRequestPath);
 
-    public cancel(request: Request): void {
-        if (this.#timers.has(request.meta.file_name)) {
-            clearTimeout(this.#timers.get(request.meta.file_name));
-            this.#timers.delete(request.meta.file_name);
+        const currentState = this.#state.get(absoluteRequestPath);
+        if (currentState) {
+            const { timer, absoluteSpacePath, activeRequest } = currentState;
+            await this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
+            this.#state.delete(absoluteRequestPath);
+            clearTimeout(timer);
         }
     }
-
-    cancelAll(): void {
-        this.#timers.forEach(timer => clearTimeout(timer));
-        this.#timers.clear();
+    public async flushAll(): Promise<void> {
+        console.log("FLUSING ALLL....");
+        for (const { timer, absoluteSpacePath, activeRequest } of this.#state.values()) {
+            await this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
+            clearTimeout(timer);
+        }
     }
 }
 

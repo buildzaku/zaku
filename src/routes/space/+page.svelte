@@ -17,6 +17,7 @@
     import { cn } from "$lib/utils/style";
     import type { PaneAPI } from "paneforge";
     import { treeItemsState, debounced, zakuState } from "$lib/state.svelte";
+    import { safeInvoke } from "$lib/commands";
 
     let requestStatus: RequestStatus = $state("idle");
     let json = $state("");
@@ -92,10 +93,30 @@
         }
     }
 
-    function handleKeydown(event: KeyboardEvent) {
-        if (event.key === "s" && (event.metaKey || event.ctrlKey)) {
+    async function handleSave(event: KeyboardEvent) {
+        if (!zakuState.activeSpace || !treeItemsState.activeRequest) {
+            return;
+        }
+        if ((event.metaKey || event.ctrlKey) && event.key === "s") {
             event.preventDefault();
-            console.log("PRESSED!!");
+
+            const absoluteRequestPath = zakuState.activeSpace.absolute_path
+                .concat("/")
+                .concat(treeItemsState.activeRequest.parentRelativePath)
+                .concat("/")
+                .concat(treeItemsState.activeRequest.self.meta.file_name);
+
+            console.log("PRESSED CMD+S!!");
+            await debounced.flush(absoluteRequestPath);
+            console.log("flushed!!");
+            console.log(treeItemsState.activeRequest);
+
+            await safeInvoke("write_buffer_request_to_fs", {
+                absolute_space_path: zakuState.activeSpace.absolute_path,
+                request_relative_path: treeItemsState.activeRequest.parentRelativePath
+                    .concat("/")
+                    .concat(treeItemsState.activeRequest.self.meta.file_name),
+            });
         }
     }
 
@@ -121,13 +142,14 @@
                 zakuState.activeSpace.absolute_path,
                 treeItemsState.activeRequest,
             );
+            treeItemsState.activeRequest.self.meta.has_unsaved_changes = true;
         } else {
             previousActiveRequestRelativePath = currentActiveRequestRelativePath;
         }
     });
 </script>
 
-<svelte:document onkeydown={handleKeydown} />
+<svelte:document onkeydown={handleSave} />
 
 <div class="flex size-full flex-col items-center justify-center gap-4">
     <ResizablePaneGroup direction="horizontal" class="w-full">

@@ -119,3 +119,8 @@ pub fn create_request(
 pub fn save_request_to_buffer(absolute_space_path: &Path, relative_path: &Path, request: Request) {
     buffer::save_request_to_space_buffer(absolute_space_path, relative_path, request);
 }
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn write_buffer_request_to_fs(absolute_space_path: &Path, request_relative_path: &Path) {
+    buffer::write_buffer_request_to_fs(absolute_space_path, request_relative_path).unwrap();
+}

@@ -42,5 +42,5 @@ pub struct SpaceReference {
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
 pub struct SpaceBuffer {
     pub absolute_path: String,
-    pub request_by_relative_path: HashMap<String, Request>,
+    pub requests: HashMap<String, Request>,
 }

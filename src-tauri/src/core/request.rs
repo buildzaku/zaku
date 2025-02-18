@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
-use crate::models::request::{RequestConfig, RequestFile, RequestFileMeta};
+use crate::models::request::{Request, RequestConfig, RequestFile, RequestFileMeta};
 
 pub fn create_request_file(absolute_path: &Path, display_name: &str) -> Result<(), Error> {
     let mut request_file =
@@ -65,4 +65,29 @@ pub fn parse_request_file(absolute_path: &PathBuf) -> Result<RequestFile, Error>
     };
 
     return Ok(parsed_request);
+}
+
+pub fn save_to_request_file(absolute_request_path: &Path, request: &Request) -> Result<(), Error> {
+    if !absolute_request_path.exists() {
+        return Err(Error::new(
+            ErrorKind::NotFound,
+            format!("Request file does not exist: {:?}", absolute_request_path),
+        ));
+    }
+
+    let toml_string = toml::to_string_pretty(request).map_err(|err| {
+        Error::new(
+            ErrorKind::Other,
+            format!("Failed to serialize request file: {}", err),
+        )
+    })?;
+
+    fs::write(absolute_request_path, toml_string).map_err(|err| {
+        Error::new(
+            ErrorKind::Other,
+            format!("Failed to write to request file: {}", err),
+        )
+    })?;
+
+    return Ok(());
 }

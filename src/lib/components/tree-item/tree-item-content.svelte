@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { ChevronDownIcon, ChevronRightIcon, DiamondIcon } from "lucide-svelte";
+    import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
     import { TreeItemContent, TreeItemCreate } from ".";
     import { type TreeItem, type DragOverDto, TreeItemType } from "$lib/models";
     import { treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
-    import { CollectionIcon } from "$lib/components/icons";
+    import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
         isCurrentCollectionOrAnyOfItsChildFocussed,
         isDropAllowed,
@@ -103,7 +103,7 @@
             }
         }}
     >
-        <div class="flex h-full items-center gap-1 pl-1.5">
+        <div class="flex size-full items-center gap-1 pl-1.5">
             {#if isCollection(treeItem)}
                 {#if treeItem.meta.is_expanded}
                     <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
@@ -130,9 +130,7 @@
                         </span>
                     </div>
                     {#if treeItem.meta.has_unsaved_changes}
-                        <div class="p-2">
-                            <DiamondIcon size={8} strokeWidth={0} fill="#f56565" />
-                        </div>
+                        <DotIcon size={6} class="mr-2.5 fill-primary/80" />
                     {/if}
                 </div>
             {/if}

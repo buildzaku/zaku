@@ -52,7 +52,8 @@ export type InvokeCommand =
     | "create_collection"
     | "create_request"
     | "move_tree_item"
-    | "save_request_to_buffer";
+    | "save_request_to_buffer"
+    | "write_buffer_request_to_fs";
 
 export async function safeInvoke<T>(
     command: InvokeCommand,

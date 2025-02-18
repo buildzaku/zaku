@@ -104,9 +104,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
-                    let request_in_buffer = active_space_buffer_rlock
-                        .request_by_relative_path
-                        .get(&relative_path);
+                    let request_in_buffer = active_space_buffer_rlock.requests.get(&relative_path);
 
                     if let Some(request_in_buffer) = request_in_buffer {
                         collection_rc_refcell
