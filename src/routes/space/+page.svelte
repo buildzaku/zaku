@@ -108,14 +108,23 @@
 
             console.log("PRESSED CMD+S!!");
             await debounced.flush(absoluteRequestPath);
-            console.log("flushed!!");
+            console.log("flushed!!", absoluteRequestPath);
             console.log(treeItemsState.activeRequest);
 
-            await safeInvoke("write_buffer_request_to_fs", {
-                absolute_space_path: zakuState.activeSpace.absolute_path,
-                request_relative_path: treeItemsState.activeRequest.parentRelativePath
+            console.log(
+                "INVOKING...",
+                treeItemsState.activeRequest.parentRelativePath
                     .concat("/")
                     .concat(treeItemsState.activeRequest.self.meta.file_name),
+            );
+            await safeInvoke("write_buffer_request_to_fs", {
+                absolute_space_path: zakuState.activeSpace.absolute_path,
+                request_relative_path:
+                    treeItemsState.activeRequest.parentRelativePath === ""
+                        ? treeItemsState.activeRequest.self.meta.file_name
+                        : treeItemsState.activeRequest.parentRelativePath
+                              .concat("/")
+                              .concat(treeItemsState.activeRequest.self.meta.file_name),
             });
         }
     }
@@ -208,8 +217,8 @@
                         <ConfigurationPane
                             pane={configurationPane}
                             bind:isCollapsed={isRequestPaneCollapsed}
-                            bind:parameters={currentRequestParams}
-                            bind:headers={currentRequestHeaders}
+                            bind:parameters={treeItemsState.activeRequest.self.config.parameters}
+                            bind:headers={treeItemsState.activeRequest.self.config.headers}
                         />
                     </ResizablePane>
                     <ResizableHandle withHandle />

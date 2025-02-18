@@ -108,7 +108,8 @@ pub fn write_buffer_request_to_fs(
         request::save_to_request_file(
             &absolute_space_path.join(request_relative_path),
             request_buffer,
-        )?;
+        )
+        .unwrap();
     }
 
     space_buffer_wlock

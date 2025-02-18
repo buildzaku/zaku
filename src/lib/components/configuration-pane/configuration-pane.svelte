@@ -13,8 +13,8 @@
     type Props = {
         pane: PaneAPI;
         isCollapsed: boolean;
-        parameters: KeyValuePair[];
-        headers: KeyValuePair[];
+        parameters: [boolean, string, string][];
+        headers: [boolean, string, string][];
     };
 
     let {

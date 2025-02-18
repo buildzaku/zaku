@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::vec::IntoIter;
 
 use crate::models::collection::{Collection, CollectionMeta};
-use crate::models::request::{Request, RequestMeta};
+use crate::models::request::{Request, RequestConfig, RequestMeta};
 use crate::models::space::{Space, SpaceBuffer, SpaceConfigFile, SpaceReference};
 
 use super::{collection, request, store};
@@ -126,7 +126,38 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                                         display_name: request.meta.name,
                                         has_unsaved_changes: false,
                                     },
-                                    config: request.config,
+                                    config: RequestConfig {
+                                        method: request.config.method,
+                                        url: request.config.url,
+                                        headers: request
+                                            .config
+                                            .headers
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .map(|(key, value)| {
+                                                let include = !key.starts_with("!");
+                                                let key = key
+                                                    .strip_prefix("!")
+                                                    .unwrap_or(&key)
+                                                    .to_string();
+                                                (include, key, value)
+                                            })
+                                            .collect(),
+                                        parameters: request
+                                            .config
+                                            .parameters
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .map(|(key, value)| {
+                                                let include = !key.starts_with("!");
+                                                let key = key
+                                                    .strip_prefix("!")
+                                                    .unwrap_or(&key)
+                                                    .to_string();
+                                                (include, key, value)
+                                            })
+                                            .collect(),
+                                    },
                                 });
                             }
                             Err(err) => {

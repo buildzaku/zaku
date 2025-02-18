@@ -9,15 +9,14 @@
 
     type Props = {
         type: "parameter" | "header";
-        pairs: KeyValuePair[];
+        pairs: [boolean, string, string][];
         class?: string;
     };
 
     let { type, pairs = $bindable(), class: className }: Props = $props();
 
-    // TODO - can just push with runes deep reactivity?
     function addPair() {
-        pairs = [...pairs, { key: "", value: "", include: true }];
+        pairs.push([true, "", ""]);
     }
 
     function deletePairAt(index: number) {
@@ -30,23 +29,23 @@
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">
                 <Checkbox
-                    checked={pair.include}
+                    checked={pair[0]}
                     onCheckedChange={() => {
-                        pair.include = !pair.include;
+                        pair[0] = !pair[0];
                     }}
                 />
             </div>
             <Input
                 type="text"
-                disabled={!pair.include}
-                bind:value={pair.key}
+                disabled={!pair[0]}
+                bind:value={pair[1]}
                 placeholder="Key"
                 class="font-mono text-xs"
             />
             <Input
                 type="text"
-                disabled={!pair.include}
-                bind:value={pair.value}
+                disabled={!pair[0]}
+                bind:value={pair[2]}
                 placeholder="Value"
                 class="font-mono text-xs"
             />
