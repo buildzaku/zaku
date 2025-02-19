@@ -17,6 +17,7 @@
     import type { PaneAPI } from "paneforge";
     import { treeItemsState, debounced, zakuState } from "$lib/state.svelte";
     import { safeInvoke } from "$lib/commands";
+    import { joinPaths } from "$lib/components/tree-item/utils.svelte";
 
     let requestStatus: RequestStatus = $state("idle");
     let json = $state("");
@@ -90,21 +91,19 @@
         if ((event.metaKey || event.ctrlKey) && event.key === "s") {
             event.preventDefault();
 
-            const absoluteRequestPath = zakuState.activeSpace.absolute_path
-                .concat("/")
-                .concat(treeItemsState.activeRequest.parentRelativePath)
-                .concat("/")
-                .concat(treeItemsState.activeRequest.self.meta.file_name);
+            const absoluteRequestPath = joinPaths([
+                zakuState.activeSpace.absolute_path,
+                treeItemsState.activeRequest.parentRelativePath,
+                treeItemsState.activeRequest.self.meta.file_name,
+            ]);
 
             await debounced.flush(absoluteRequestPath);
             await safeInvoke("write_buffer_request_to_fs", {
                 absolute_space_path: zakuState.activeSpace.absolute_path,
-                request_relative_path:
-                    treeItemsState.activeRequest.parentRelativePath === ""
-                        ? treeItemsState.activeRequest.self.meta.file_name
-                        : treeItemsState.activeRequest.parentRelativePath
-                              .concat("/")
-                              .concat(treeItemsState.activeRequest.self.meta.file_name),
+                request_relative_path: joinPaths([
+                    treeItemsState.activeRequest.parentRelativePath,
+                    treeItemsState.activeRequest.self.meta.file_name,
+                ]),
             });
 
             isActiveRequestSavedToFs = true;

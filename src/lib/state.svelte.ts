@@ -8,6 +8,7 @@ import { safeInvoke } from "$lib/commands";
 import { TreeItemType } from "$lib/models";
 import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
 import type { ZakuState as TZakuState, SpaceReference, Space, Request } from "$lib/bindings";
+import { joinPaths } from "./components/tree-item/utils.svelte";
 
 export type RequestConfig = ZakuRequestConfig;
 
@@ -131,11 +132,11 @@ class Debounced {
         });
     }
     public saveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest): void {
-        const absoluteRequestPath = absoluteSpacePath
-            .concat("/")
-            .concat(activeRequest.parentRelativePath)
-            .concat("/")
-            .concat(activeRequest.self.meta.file_name);
+        const absoluteRequestPath = joinPaths([
+            absoluteSpacePath,
+            activeRequest.parentRelativePath,
+            activeRequest.self.meta.file_name,
+        ]);
 
         const current = this.#state.get(absoluteRequestPath);
         if (current) {

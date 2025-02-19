@@ -29,6 +29,10 @@ export function pathSegments(path: string) {
     return path.split("/").filter(segment => segment !== "");
 }
 
+export function joinPaths(paths: string[]) {
+    return paths.filter(segment => segment !== "").join("/");
+}
+
 export function isDropAllowed(path: string): boolean {
     if (treeActionsState.dropTargetPath !== null && treeActionsState.dragPayload !== null) {
         if (treeActionsState.dropTargetPath === treeActionsState.dragPayload.parentRelativePath) {
