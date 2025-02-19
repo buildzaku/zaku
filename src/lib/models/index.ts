@@ -1,5 +1,4 @@
 import type { Collection, Request } from "$lib/bindings";
-import type { ValueOf } from "$lib/utils";
 
 export type TreeItem = Collection | Request;
 
@@ -8,33 +7,41 @@ export type DragPayload = {
     treeItem: TreeItem;
 };
 
+export enum TreeItemType {
+    Collection = "collection",
+    Request = "request",
+}
+
 export type DragOverDto =
     | {
-          type: "collection";
+          type: TreeItemType.Collection;
           relativePath: string;
       }
     | {
-          type: "request";
+          type: TreeItemType.Request;
           parentRelativePath: string;
       };
 
 export type RemoveTreeItemDto =
     | {
-          type: "collection";
+          type: TreeItemType.Collection;
           dir_name: string;
       }
     | {
-          type: "request";
+          type: TreeItemType.Request;
           file_name: string;
       };
 
-export const TREE_ITEM_TYPE = {
-    Collection: "collection",
-    Request: "request",
-} as const;
+export type FocussedTreeItem =
+    | {
+          type: TreeItemType.Collection;
+          parentRelativePath: string;
+          relativePath: string;
+      }
+    | {
+          type: TreeItemType.Request;
+          parentRelativePath: string;
+          relativePath: string;
+      };
 
-export type FocussedTreeItem = {
-    type: ValueOf<typeof TREE_ITEM_TYPE>;
-    parentRelativePath: string;
-    relativePath: string;
-};
+export type ActiveRequest = { parentRelativePath: string; self: Request };

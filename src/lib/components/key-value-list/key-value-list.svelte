@@ -4,20 +4,19 @@
     import { Input } from "$lib/components/primitives/input";
     import { Button } from "$lib/components/primitives/button";
     import { Checkbox } from "$lib/components/primitives/checkbox";
-    import type { KeyValuePair } from "$lib/utils/api";
     import { cn } from "$lib/utils/style";
+    import { BASE_REQUEST_HEADERS } from "$lib/utils/api";
 
     type Props = {
         type: "parameter" | "header";
-        pairs: KeyValuePair[];
+        pairs: [boolean, string, string][];
         class?: string;
     };
 
     let { type, pairs = $bindable(), class: className }: Props = $props();
 
-    // TODO - can just push with runes deep reactivity?
     function addPair() {
-        pairs = [...pairs, { key: "", value: "", include: true }];
+        pairs.push([true, "", ""]);
     }
 
     function deletePairAt(index: number) {
@@ -26,27 +25,55 @@
 </script>
 
 <div class={cn("flex flex-col gap-2", className)}>
-    {#each pairs as pair, index}
+    {#each BASE_REQUEST_HEADERS as baseHeader}
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">
-                <Checkbox
-                    checked={pair.include}
-                    onCheckedChange={() => {
-                        pair.include = !pair.include;
-                    }}
-                />
+                <Checkbox checked={true} disabled={true} />
             </div>
             <Input
                 type="text"
-                disabled={!pair.include}
-                bind:value={pair.key}
+                disabled={!baseHeader[0]}
+                bind:value={baseHeader[1]}
                 placeholder="Key"
                 class="font-mono text-xs"
             />
             <Input
                 type="text"
-                disabled={!pair.include}
-                bind:value={pair.value}
+                disabled={!baseHeader[0]}
+                bind:value={baseHeader[2]}
+                placeholder="Value"
+                class="font-mono text-xs"
+            />
+            <Button
+                disabled={true}
+                variant="outline"
+                class="bg-transparent p-[7px] hover:bg-muted/40 hover:text-destructive"
+            >
+                <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
+            </Button>
+        </div>
+    {/each}
+    {#each pairs as pair, index}
+        <div class="flex gap-2">
+            <div class="flex size-6 items-center justify-center">
+                <Checkbox
+                    checked={pair[0]}
+                    onCheckedChange={() => {
+                        pair[0] = !pair[0];
+                    }}
+                />
+            </div>
+            <Input
+                type="text"
+                disabled={!pair[0]}
+                bind:value={pair[1]}
+                placeholder="Key"
+                class="font-mono text-xs"
+            />
+            <Input
+                type="text"
+                disabled={!pair[0]}
+                bind:value={pair[2]}
                 placeholder="Value"
                 class="font-mono text-xs"
             />

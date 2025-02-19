@@ -14,7 +14,7 @@
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-    import { TREE_ITEM_TYPE } from "$lib/models";
+    import { TreeItemType } from "$lib/models";
     import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
 
     type Props = {
@@ -25,11 +25,11 @@
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
-        treeActionsState.createNewItem === TREE_ITEM_TYPE.Request &&
+        treeActionsState.createNewItem === "request" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        treeActionsState.createNewItem === TREE_ITEM_TYPE.Collection &&
+        treeActionsState.createNewItem === "collection" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
 </script>
@@ -91,7 +91,7 @@
                     >
                         {#if shouldRenderCreateNewRequestInput}
                             <TreeItemCreate
-                                type={TREE_ITEM_TYPE.Request}
+                                type={TreeItemType.Request}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
                             />
@@ -107,7 +107,7 @@
 
                         {#if shouldRenderCreateNewCollectionInput}
                             <TreeItemCreate
-                                type={TREE_ITEM_TYPE.Collection}
+                                type={TreeItemType.Collection}
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
                             />
