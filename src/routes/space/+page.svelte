@@ -96,7 +96,6 @@
                 .concat("/")
                 .concat(treeItemsState.activeRequest.self.meta.file_name);
 
-            console.log("PRESSED CMD+S!!");
             await debounced.flush(absoluteRequestPath);
             await safeInvoke("write_buffer_request_to_fs", {
                 absolute_space_path: zakuState.activeSpace.absolute_path,

@@ -124,9 +124,6 @@ class Debounced {
     #DELAY = 1500;
 
     async #invokeSaveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest) {
-        console.log("========== SOFT SAVE ==========");
-        console.log(absoluteSpacePath, activeRequest);
-
         await safeInvoke("save_request_to_buffer", {
             absolute_space_path: absoluteSpacePath,
             relative_path: activeRequest.parentRelativePath,
@@ -161,8 +158,6 @@ class Debounced {
         return this.#state.has(absoluteRequestPath);
     }
     public async flush(absoluteRequestPath: string): Promise<void> {
-        console.log("FLUSING absoluteRequestPath", absoluteRequestPath);
-
         const currentState = this.#state.get(absoluteRequestPath);
         if (currentState) {
             const { timer, absoluteSpacePath, activeRequest } = currentState;
@@ -172,7 +167,6 @@ class Debounced {
         }
     }
     public async flushAll(): Promise<void> {
-        console.log("FLUSING ALLL....");
         for (const { timer, absoluteSpacePath, activeRequest } of this.#state.values()) {
             await this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
             clearTimeout(timer);
