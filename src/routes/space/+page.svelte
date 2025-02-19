@@ -120,7 +120,6 @@
     $effect(() => {
         // Important hack to keep the effect deeply reactive
         JSON.stringify(treeItemsState.activeRequest);
-        console.warn("RUNNING EFFECT!!");
 
         if (isActiveRequestSavedToFs) {
             isActiveRequestSavedToFs = false;
