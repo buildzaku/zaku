@@ -4,8 +4,8 @@
     import { Input } from "$lib/components/primitives/input";
     import { Button } from "$lib/components/primitives/button";
     import { Checkbox } from "$lib/components/primitives/checkbox";
-    import type { KeyValuePair } from "$lib/utils/api";
     import { cn } from "$lib/utils/style";
+    import { BASE_REQUEST_HEADERS } from "$lib/utils/api";
 
     type Props = {
         type: "parameter" | "header";
@@ -25,6 +25,34 @@
 </script>
 
 <div class={cn("flex flex-col gap-2", className)}>
+    {#each BASE_REQUEST_HEADERS as baseHeader}
+        <div class="flex gap-2">
+            <div class="flex size-6 items-center justify-center">
+                <Checkbox checked={true} disabled={true} />
+            </div>
+            <Input
+                type="text"
+                disabled={!baseHeader[0]}
+                bind:value={baseHeader[1]}
+                placeholder="Key"
+                class="font-mono text-xs"
+            />
+            <Input
+                type="text"
+                disabled={!baseHeader[0]}
+                bind:value={baseHeader[2]}
+                placeholder="Value"
+                class="font-mono text-xs"
+            />
+            <Button
+                disabled={true}
+                variant="outline"
+                class="bg-transparent p-[7px] hover:bg-muted/40 hover:text-destructive"
+            >
+                <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
+            </Button>
+        </div>
+    {/each}
     {#each pairs as pair, index}
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">

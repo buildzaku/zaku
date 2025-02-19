@@ -1,10 +1,9 @@
 <script lang="ts">
     import { fetch } from "@tauri-apps/plugin-http";
 
-    import { version } from "$app/environment";
     import { Button } from "$lib/components/primitives/button";
     import { Input } from "$lib/components/primitives/input";
-    import type { KeyValuePair, RequestStatus } from "$lib/utils/api";
+    import { BASE_REQUEST_HEADERS, type RequestStatus } from "$lib/utils/api";
     import {
         ResizablePaneGroup,
         ResizablePane,
@@ -31,20 +30,6 @@
     let responsePane: PaneAPI | undefined = $state();
     let isResponsePaneCollapsed = $state(false);
 
-    let currentRequestParams: KeyValuePair[] = $state([]);
-    let currentRequestHeaders: KeyValuePair[] = $state([
-        {
-            key: "Cache-Control",
-            value: "no-cache",
-            include: true,
-        },
-        {
-            key: "User-Agent",
-            value: `Zaku/${version}`,
-            include: true,
-        },
-    ]);
-
     async function handleSend() {
         try {
             if (!treeItemsState.activeRequest) return;
@@ -57,9 +42,10 @@
 
             const url = new URL(treeItemsState.activeRequest.self.config.url ?? "");
 
-            currentRequestParams.reduceRight((acc, cur) => {
-                if (cur.include && !url.searchParams.has(cur.key)) {
-                    url.searchParams.set(cur.key, cur.value);
+            treeItemsState.activeRequest.self.config.parameters.reduceRight((acc, cur) => {
+                const [include, key, value] = cur;
+                if (include && !url.searchParams.has(key)) {
+                    url.searchParams.set(key, value);
                 }
 
                 return acc;
@@ -67,9 +53,13 @@
 
             const response = await fetch(url, {
                 method: treeItemsState.activeRequest.self.config.method,
-                headers: currentRequestHeaders.reduceRight((acc: Record<string, string>, cur) => {
-                    if (cur.include && !(cur.key in acc)) {
-                        acc[cur.key] = cur.value;
+                headers: [
+                    ...BASE_REQUEST_HEADERS,
+                    ...treeItemsState.activeRequest.self.config.headers,
+                ].reduceRight((acc: Record<string, string>, cur) => {
+                    const [include, key, value] = cur;
+                    if (include && !(key in acc)) {
+                        acc[key] = value;
                     }
                     return acc;
                 }, {}),
