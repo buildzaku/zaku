@@ -108,15 +108,6 @@
 
             console.log("PRESSED CMD+S!!");
             await debounced.flush(absoluteRequestPath);
-            console.log("flushed!!", absoluteRequestPath);
-            console.log(treeItemsState.activeRequest);
-
-            console.log(
-                "INVOKING...",
-                treeItemsState.activeRequest.parentRelativePath
-                    .concat("/")
-                    .concat(treeItemsState.activeRequest.self.meta.file_name),
-            );
             await safeInvoke("write_buffer_request_to_fs", {
                 absolute_space_path: zakuState.activeSpace.absolute_path,
                 request_relative_path:
@@ -126,9 +117,13 @@
                               .concat("/")
                               .concat(treeItemsState.activeRequest.self.meta.file_name),
             });
+
+            isActiveRequestSavedToFs = true;
+            treeItemsState.activeRequest.self.meta.has_unsaved_changes = false;
         }
     }
 
+    let isActiveRequestSavedToFs = false;
     let previousActiveRequestRelativePath = treeItemsState.activeRequest
         ? `${treeItemsState.activeRequest.parentRelativePath}/${treeItemsState.activeRequest.self.meta.file_name}`
         : null;
@@ -136,6 +131,12 @@
     $effect(() => {
         // Important hack to keep the effect deeply reactive
         JSON.stringify(treeItemsState.activeRequest);
+        console.warn("RUNNING EFFECT!!");
+
+        if (isActiveRequestSavedToFs) {
+            isActiveRequestSavedToFs = false;
+            return;
+        }
 
         const currentActiveRequestRelativePath = treeItemsState.activeRequest
             ? `${treeItemsState.activeRequest.parentRelativePath}/${treeItemsState.activeRequest.self.meta.file_name}`
