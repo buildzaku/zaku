@@ -54,6 +54,8 @@ fn main() {
             commands::notification::dispatch_notification,
             commands::collection::create_collection,
             commands::request::create_request,
+            commands::request::save_request_to_buffer,
+            commands::request::write_buffer_request_to_fs,
             commands::move_tree_item,
         ]);
 

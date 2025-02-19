@@ -1,13 +1,16 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 use tauri::{AppHandle, Manager};
 
 use crate::{
-    core::{self, collection, space},
+    core::{self, buffer, collection, space},
     models::{
         collection::CreateCollectionDto,
-        request::CreateRequestDto,
+        request::{CreateRequestDto, Request},
         zaku::{ZakuError, ZakuState},
-        CreateNewCollectionOrRequest,
+        CreateNewRequest,
     },
     utils,
 };
@@ -16,7 +19,7 @@ use crate::{
 pub fn create_request(
     create_request_dto: CreateRequestDto,
     app_handle: AppHandle,
-) -> Result<CreateNewCollectionOrRequest, ZakuError> {
+) -> Result<CreateNewRequest, ZakuError> {
     if create_request_dto.relative_path.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a request without name".to_string(),
@@ -94,7 +97,7 @@ pub fn create_request(
         }
     })?;
 
-    let create_new_result = CreateNewCollectionOrRequest {
+    let create_new_result = CreateNewRequest {
         parent_relative_path: file_parent_relative_path,
         relative_path: file_relative_path,
     };
@@ -110,4 +113,14 @@ pub fn create_request(
     }
 
     return Ok(create_new_result);
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn save_request_to_buffer(absolute_space_path: &Path, relative_path: &Path, request: Request) {
+    buffer::save_request_to_space_buffer(absolute_space_path, relative_path, request);
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn write_buffer_request_to_fs(absolute_space_path: &Path, request_relative_path: &Path) {
+    buffer::write_buffer_request_to_fs(absolute_space_path, request_relative_path).unwrap();
 }

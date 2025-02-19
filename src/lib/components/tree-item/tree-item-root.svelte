@@ -3,7 +3,7 @@
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
     import type { Collection } from "$lib/bindings";
-    import { treeActionsState } from "$lib/state.svelte";
+    import { treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
     import { Button } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
@@ -13,7 +13,6 @@
         TooltipContent,
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
-    import { TREE_ITEM_TYPE } from "$lib/models";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import {
         handleDragEnd,
@@ -21,6 +20,7 @@
         handleDrop,
         isDropAllowed,
     } from "$lib/components/tree-item/utils.svelte";
+    import { TreeItemType } from "$lib/models";
 
     type Props = { currentPath: string; root: Collection; children: Snippet; class?: string };
 
@@ -39,15 +39,15 @@
         aria-grabbed="false"
         draggable="false"
         ondragover={event =>
-            handleDragOver(event, { type: "collection", relativePath: currentPath })}
+            handleDragOver(event, { type: TreeItemType.Collection, relativePath: currentPath })}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
         onkeydown={keyboardEvent => {
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
-                root.meta.is_open = !root.meta.is_open;
-                treeActionsState.focussedItem = {
-                    type: TREE_ITEM_TYPE.Collection,
+                root.meta.is_expanded = !root.meta.is_expanded;
+                treeItemsState.focussedItem = {
+                    type: TreeItemType.Collection,
                     relativePath: RELATIVE_SPACE_ROOT,
                     parentRelativePath: RELATIVE_SPACE_ROOT,
                 };
@@ -57,16 +57,16 @@
             "flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:outline-none focus:ring-1 focus:ring-ring",
         )}
         onclick={() => {
-            root.meta.is_open = !root.meta.is_open;
-            treeActionsState.focussedItem = {
-                type: TREE_ITEM_TYPE.Collection,
+            root.meta.is_expanded = !root.meta.is_expanded;
+            treeItemsState.focussedItem = {
+                type: TreeItemType.Collection,
                 relativePath: RELATIVE_SPACE_ROOT,
                 parentRelativePath: RELATIVE_SPACE_ROOT,
             };
         }}
     >
         <div class="flex h-full items-center gap-1 pl-1.5">
-            {#if root.meta.is_open}
+            {#if root.meta.is_expanded}
                 <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {:else}
                 <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
@@ -76,7 +76,7 @@
             </span>
         </div>
 
-        {#if root.meta.is_open}
+        {#if root.meta.is_expanded}
             <div
                 role="button"
                 tabindex={-1}
@@ -97,7 +97,7 @@
                                 size="icon"
                                 onclick={event => {
                                     event.stopImmediatePropagation();
-                                    treeActionsState.createNewItem = TREE_ITEM_TYPE.Request;
+                                    treeActionsState.createNewItem = TreeItemType.Request;
                                 }}
                                 class="flex items-center justify-center"
                             >
@@ -121,7 +121,7 @@
                                 size="icon"
                                 onclick={event => {
                                     event.stopImmediatePropagation();
-                                    treeActionsState.createNewItem = TREE_ITEM_TYPE.Collection;
+                                    treeActionsState.createNewItem = TreeItemType.Collection;
                                 }}
                                 class="flex items-center justify-center"
                             >
@@ -140,7 +140,7 @@
         {/if}
     </div>
 
-    {#if root.meta.is_open}
+    {#if root.meta.is_expanded}
         <div
             class="flex h-[calc(100dvh-36px-35px-36px-22px-37px)] max-h-[calc(100dvh-36px-35px-36px-22px-37px)] w-full flex-1 flex-col overflow-y-auto"
         >
@@ -152,7 +152,10 @@
                 aria-grabbed="false"
                 draggable="false"
                 ondragover={event =>
-                    handleDragOver(event, { type: "collection", relativePath: currentPath })}
+                    handleDragOver(event, {
+                        type: TreeItemType.Collection,
+                        relativePath: currentPath,
+                    })}
                 ondrop={handleDrop}
                 ondragend={handleDragEnd}
             ></div>

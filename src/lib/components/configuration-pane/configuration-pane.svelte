@@ -4,7 +4,6 @@
 
     import { KeyValueList } from "$lib/components/key-value-list";
     import { Tabs, TabsList, TabsTrigger, TabsContent } from "$lib/components/primitives/tabs";
-    import type { KeyValuePair } from "$lib/utils/api";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { ConfigurationBody } from "$lib/components/configuration-pane";
     import { Button } from "$lib/components/primitives/button";
@@ -13,8 +12,8 @@
     type Props = {
         pane: PaneAPI;
         isCollapsed: boolean;
-        parameters: KeyValuePair[];
-        headers: KeyValuePair[];
+        parameters: [boolean, string, string][];
+        headers: [boolean, string, string][];
     };
 
     let {

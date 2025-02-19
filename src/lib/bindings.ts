@@ -2,11 +2,13 @@
 
 export type Collection = { meta: CollectionMeta, requests: Array<Request>, collections: Array<Collection>, };
 
-export type CollectionMeta = { dir_name: string, display_name: string | null, is_open: boolean, };
+export type CollectionMeta = { dir_name: string, display_name: string | null, is_expanded: boolean, };
 
 export type CreateCollectionDto = { parent_relative_path: string, relative_path: string, };
 
-export type CreateNewCollectionOrRequest = { parent_relative_path: string, relative_path: string, };
+export type CreateNewCollection = { parent_relative_path: string, relative_path: string, };
+
+export type CreateNewRequest = { parent_relative_path: string, relative_path: string, };
 
 export type CreateRequestDto = { parent_relative_path: string, relative_path: string, };
 
@@ -20,9 +22,9 @@ export type OpenDirectoryDialogOptions = { title: string | null, };
 
 export type Request = { meta: RequestMeta, config: RequestConfig, };
 
-export type RequestConfig = { method: string, url: string | null, };
+export type RequestConfig = { method: string, url: string | null, headers: Array<[boolean, string, string]>, parameters: Array<[boolean, string, string]>, };
 
-export type RequestMeta = { file_name: string, display_name: string, };
+export type RequestMeta = { file_name: string, display_name: string, has_unsaved_changes: boolean, };
 
 export type Space = { absolute_path: string, meta: SpaceMeta, root: Collection, };
 
