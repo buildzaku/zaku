@@ -71,14 +71,11 @@ pub fn parse_request_file(absolute_path: &PathBuf) -> Result<RequestFile, Error>
 
 pub fn save_to_request_file(absolute_request_path: &Path, request: &Request) -> Result<(), Error> {
     if !absolute_request_path.exists() {
-        println!("Request file does not exist");
         return Err(Error::new(
             ErrorKind::NotFound,
             format!("Request file does not exist: {:?}", absolute_request_path),
         ));
     }
-
-    println!("creating 1");
 
     let request_file = RequestFile {
         meta: RequestFileMeta {
@@ -123,10 +120,8 @@ pub fn save_to_request_file(absolute_request_path: &Path, request: &Request) -> 
             },
         },
     };
-    println!("creating 2");
-    let toml_string = toml::to_string_pretty(&request_file).unwrap();
 
-    println!("writing");
+    let toml_string = toml::to_string_pretty(&request_file).unwrap();
     fs::write(absolute_request_path, toml_string).unwrap();
 
     return Ok(());
