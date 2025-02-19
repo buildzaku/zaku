@@ -2,10 +2,10 @@
     import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
 
     import { TreeItemContent, TreeItemCreate } from ".";
-    import { type TreeItem, type DragOverDto, TREE_ITEM_TYPE } from "$lib/models";
-    import { treeActionsState } from "$lib/state.svelte";
+    import { type TreeItem, type DragOverDto, TreeItemType } from "$lib/models";
+    import { treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
-    import { CollectionIcon } from "$lib/components/icons";
+    import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
         isCurrentCollectionOrAnyOfItsChildFocussed,
         isDropAllowed,
@@ -28,18 +28,18 @@
     let { parentPath, currentPath, treeItem, level, class: className }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
-        treeActionsState.createNewItem === TREE_ITEM_TYPE.Request &&
+        treeActionsState.createNewItem === "request" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        treeActionsState.createNewItem === TREE_ITEM_TYPE.Collection &&
+        treeActionsState.createNewItem === "collection" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
     let shouldHighlight = $derived(isDropAllowed(currentPath));
 
     const dragOverDto: DragOverDto = isCollection(treeItem)
-        ? { type: "collection", relativePath: currentPath }
-        : { type: "request", parentRelativePath: parentPath };
+        ? { type: TreeItemType.Collection, relativePath: currentPath }
+        : { type: TreeItemType.Request, parentRelativePath: parentPath };
 </script>
 
 <div
@@ -68,14 +68,14 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 if (isCollection(treeItem)) {
-                    treeItem.meta.is_open = !treeItem.meta.is_open;
+                    treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
                 }
             }
         }}
         style="padding-left: {level * 8}px"
         class={cn(
             "flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-            treeActionsState.focussedItem.relativePath === currentPath
+            treeItemsState.focussedItem.relativePath === currentPath
                 ? "bg-accent"
                 : "hover:bg-accent/60",
         )}
@@ -83,24 +83,29 @@
             treeActionsState.createNewItem = null;
 
             if (isCollection(treeItem)) {
-                treeItem.meta.is_open = !treeItem.meta.is_open;
-                treeActionsState.focussedItem = {
-                    type: TREE_ITEM_TYPE.Collection,
+                treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
+                treeItemsState.focussedItem = {
+                    type: TreeItemType.Collection,
                     parentRelativePath: parentPath,
                     relativePath: currentPath,
                 };
             } else {
-                treeActionsState.focussedItem = {
-                    type: TREE_ITEM_TYPE.Request,
+                treeItemsState.focussedItem = {
+                    type: TreeItemType.Request,
                     parentRelativePath: parentPath,
                     relativePath: currentPath,
                 };
+                treeItemsState.activeRequest = { parentRelativePath: parentPath, self: treeItem };
+
+                if (!treeItemsState.openRequests.includes(treeItem)) {
+                    treeItemsState.openRequests.push(treeItem);
+                }
             }
         }}
     >
-        <div class="flex h-full items-center gap-1 pl-1.5">
+        <div class="flex size-full items-center gap-1 pl-1.5">
             {#if isCollection(treeItem)}
-                {#if treeItem.meta.is_open}
+                {#if treeItem.meta.is_expanded}
                     <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
                 {:else}
                     <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
@@ -110,17 +115,24 @@
                     {treeItem.meta.display_name ?? treeItem.meta.dir_name}
                 </span>
             {:else}
-                <span
-                    class={cn(
-                        "pl-3 text-[9px] font-bold",
-                        getMethodColorClass(treeItem.config.method),
-                    )}
-                >
-                    {treeItem.config.method}
-                </span>
-                <span class="truncate text-sm">
-                    {treeItem.meta.display_name ?? treeItem.meta.file_name}
-                </span>
+                <div class="flex w-full items-center justify-between">
+                    <div>
+                        <span
+                            class={cn(
+                                "pl-3 text-[9px] font-bold",
+                                getMethodColorClass(treeItem.config.method),
+                            )}
+                        >
+                            {treeItem.config.method}
+                        </span>
+                        <span class="truncate text-sm">
+                            {treeItem.meta.display_name ?? treeItem.meta.file_name}
+                        </span>
+                    </div>
+                    {#if treeItem.meta.has_unsaved_changes}
+                        <DotIcon size={6} class="mr-2.5 fill-primary/80" />
+                    {/if}
+                </div>
             {/if}
         </div>
     </div>
@@ -128,13 +140,13 @@
     {#if isCollection(treeItem)}
         {#if shouldRenderCreateNewRequestInput}
             <TreeItemCreate
-                type={TREE_ITEM_TYPE.Request}
+                type={TreeItemType.Request}
                 parentRelativePath={currentPath}
                 level={level + 1}
             />
         {/if}
 
-        {#if treeItem.meta.is_open}
+        {#if treeItem.meta.is_expanded}
             {#each treeItem.requests as request (buildPath(currentPath, request.meta.file_name))}
                 <TreeItemContent
                     parentPath={currentPath}
@@ -147,12 +159,12 @@
 
         {#if shouldRenderCreateNewCollectionInput}
             <TreeItemCreate
-                type={TREE_ITEM_TYPE.Collection}
+                type={TreeItemType.Collection}
                 parentRelativePath={currentPath}
                 level={level + 1}
             />
         {/if}
-        {#if treeItem.meta.is_open}
+        {#if treeItem.meta.is_expanded}
             {#each treeItem.collections as collection (buildPath(currentPath, collection.meta.dir_name))}
                 <TreeItemContent
                     parentPath={currentPath}

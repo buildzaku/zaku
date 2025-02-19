@@ -1,3 +1,4 @@
+pub mod buffer;
 pub mod collection;
 pub mod request;
 pub mod shortcuts;

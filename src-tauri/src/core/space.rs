@@ -7,8 +7,8 @@ use std::rc::Rc;
 use std::vec::IntoIter;
 
 use crate::models::collection::{Collection, CollectionMeta};
-use crate::models::request::{Request, RequestMeta};
-use crate::models::space::{Space, SpaceConfigFile, SpaceReference};
+use crate::models::request::{Request, RequestConfig, RequestMeta};
+use crate::models::space::{Space, SpaceBuffer, SpaceConfigFile, SpaceReference};
 
 use super::{collection, request, store};
 
@@ -29,6 +29,8 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
     let collection_name_by_relative_path =
         collection::display_name_by_relative_path(absolute_space_root)
             .unwrap_or_else(|_| HashMap::new());
+    let active_space_buffer = SpaceBuffer::load(absolute_space_root);
+    let active_space_buffer_rlock = SpaceBuffer::acquire_read_lock(&active_space_buffer);
     let space_config = match parse_space_config(&absolute_space_root) {
         Ok(space_config) => Some(space_config),
         Err(_) => None,
@@ -38,7 +40,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
         meta: CollectionMeta {
             dir_name: space_dir_name,
             display_name: space_config.map(|config| config.meta.name),
-            is_open: true,
+            is_expanded: true,
         },
         requests: Vec::new(),
         collections: Vec::new(),
@@ -61,10 +63,10 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                     continue;
                 }
 
-                let entry_path = entry.path();
+                let absolute_entry_path = entry.path();
 
-                if entry_path.is_dir() {
-                    let name = entry_path
+                if absolute_entry_path.is_dir() {
+                    let name = absolute_entry_path
                         .file_name()
                         .unwrap()
                         .to_string_lossy()
@@ -73,7 +75,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                         continue;
                     }
 
-                    let relative_path = entry_path
+                    let relative_path = absolute_entry_path
                         .strip_prefix(absolute_space_root)
                         .unwrap()
                         .to_string_lossy()
@@ -85,37 +87,83 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                             display_name: collection_name_by_relative_path
                                 .get(&relative_path)
                                 .cloned(),
-                            is_open: true,
+                            is_expanded: true,
                         },
                         requests: Vec::new(),
                         collections: Vec::new(),
                     }));
 
-                    stack.push((entry_path, Rc::clone(&sub_collection)));
+                    stack.push((PathBuf::from(&relative_path), Rc::clone(&sub_collection)));
                     collection_rc_refcell
                         .borrow_mut()
                         .collections
                         .push(sub_collection);
-                } else if entry_path.is_file() {
-                    let file_name = entry_path
-                        .file_name()
+                } else if absolute_entry_path.is_file() {
+                    let relative_path = absolute_entry_path
+                        .strip_prefix(absolute_space_root)
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
+                    let request_in_buffer = active_space_buffer_rlock.requests.get(&relative_path);
 
-                    match request::parse_request_file(entry_path) {
-                        Ok(request) => {
-                            collection_rc_refcell.borrow_mut().requests.push(Request {
-                                meta: RequestMeta {
-                                    file_name,
-                                    display_name: request.meta.name,
-                                },
-                                config: request.config,
-                            });
-                        }
-                        Err(err) => {
-                            eprintln!("{}", err);
-                            eprintln!("Unable to parse the request file")
+                    if let Some(request_in_buffer) = request_in_buffer {
+                        collection_rc_refcell
+                            .borrow_mut()
+                            .requests
+                            .push(request_in_buffer.clone());
+                    } else {
+                        let file_name = absolute_entry_path
+                            .file_name()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned();
+
+                        match request::parse_request_file(&absolute_entry_path) {
+                            Ok(request) => {
+                                collection_rc_refcell.borrow_mut().requests.push(Request {
+                                    meta: RequestMeta {
+                                        file_name,
+                                        display_name: request.meta.name,
+                                        has_unsaved_changes: false,
+                                    },
+                                    config: RequestConfig {
+                                        method: request.config.method,
+                                        url: request.config.url,
+                                        headers: request
+                                            .config
+                                            .headers
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .map(|(key, value)| {
+                                                let include = !key.starts_with("!");
+                                                let key = key
+                                                    .strip_prefix("!")
+                                                    .unwrap_or(&key)
+                                                    .to_string();
+                                                (include, key, value)
+                                            })
+                                            .collect(),
+                                        parameters: request
+                                            .config
+                                            .parameters
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .map(|(key, value)| {
+                                                let include = !key.starts_with("!");
+                                                let key = key
+                                                    .strip_prefix("!")
+                                                    .unwrap_or(&key)
+                                                    .to_string();
+                                                (include, key, value)
+                                            })
+                                            .collect(),
+                                    },
+                                });
+                            }
+                            Err(err) => {
+                                eprintln!("{}", err);
+                                eprintln!("Unable to parse the request file")
+                            }
                         }
                     }
                 }
@@ -127,12 +175,12 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
     let mut root_collection: Option<Collection> = None;
 
     {
-        let collection_ref_borrowed = root_collection_ref_cell.borrow();
-        let collection = Collection {
+        let root_collection_ref_cell = root_collection_ref_cell.borrow();
+        let root_collection = Collection {
             meta: CollectionMeta {
-                ..collection_ref_borrowed.meta.clone()
+                ..root_collection_ref_cell.meta.clone()
             },
-            requests: collection_ref_borrowed
+            requests: root_collection_ref_cell
                 .requests
                 .iter()
                 .map(|request| Request { ..request.clone() })
@@ -140,20 +188,20 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
             collections: Vec::new(),
         };
 
-        let sub_collections_iter = collection_ref_borrowed.collections.clone().into_iter();
-        stack.push((collection, sub_collections_iter));
+        let sub_collections_iter = root_collection_ref_cell.collections.clone().into_iter();
+        stack.push((root_collection, sub_collections_iter));
     }
 
     while let Some((current_collection, mut sub_collections_iter)) = stack.pop() {
-        if let Some(sub_collection_ref) = sub_collections_iter.next() {
+        if let Some(sub_collection_ref_cell) = sub_collections_iter.next() {
             stack.push((current_collection, sub_collections_iter));
 
-            let sub_collection_ref_borrowed = sub_collection_ref.borrow();
+            let sub_collection_ref_cell = sub_collection_ref_cell.borrow();
             let sub_collection = Collection {
                 meta: CollectionMeta {
-                    ..sub_collection_ref_borrowed.meta.clone()
+                    ..sub_collection_ref_cell.meta.clone()
                 },
-                requests: sub_collection_ref_borrowed
+                requests: sub_collection_ref_cell
                     .requests
                     .iter()
                     .map(|request| Request { ..request.clone() })
@@ -161,7 +209,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                 collections: Vec::new(),
             };
 
-            let sub_collections_iter = sub_collection_ref_borrowed.collections.clone().into_iter();
+            let sub_collections_iter = sub_collection_ref_cell.collections.clone().into_iter();
             stack.push((sub_collection, sub_collections_iter));
         } else {
             if let Some((mut parent_collection, parent_sub_collections_iter)) = stack.pop() {

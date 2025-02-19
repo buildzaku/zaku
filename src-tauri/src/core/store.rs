@@ -1,31 +1,26 @@
 use once_cell::sync::Lazy;
-use postcard;
-use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::{self};
 use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::models::space::SpaceReference;
 use crate::models::zaku::ZakuStore;
 
-static STORE_ABSOLUTE_PATH: Lazy<PathBuf> = Lazy::new(|| {
+pub static STORE_ABSOLUTE_PATH: Lazy<PathBuf> = Lazy::new(|| {
     dirs::data_dir()
         .expect("Unable to get data directory")
         .join("Zaku/store")
-        .with_extension("bin")
+        .with_extension("json")
 });
 
 static ZAKU_STORE: Lazy<RwLock<ZakuStore>> = Lazy::new(|| {
     if STORE_ABSOLUTE_PATH.exists() {
-        let mut file = fs::File::open(&*STORE_ABSOLUTE_PATH).expect("Failed to open Store file");
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)
-            .expect("Failed to read Store file contents");
-        let store_content: ZakuStore = postcard::from_bytes(&buffer).unwrap_or_default();
+        let content = fs::read_to_string(&*STORE_ABSOLUTE_PATH).expect("Failed to read from store");
+        let store: ZakuStore = serde_json::from_str(&content).expect("Failed to deserialize data");
 
-        RwLock::new(store_content)
+        return RwLock::new(store);
     } else {
-        RwLock::new(ZakuStore::default())
+        return RwLock::new(ZakuStore::default());
     }
 });
 
@@ -39,19 +34,15 @@ impl ZakuStore {
     }
 
     fn persist(&self) {
+        let serialized_store =
+            serde_json::to_string_pretty(self).expect("Failed to serialize store data");
+
         if let Some(parent) = STORE_ABSOLUTE_PATH.parent() {
             fs::create_dir_all(parent).expect("Failed to create parent directories");
         }
 
-        let store_content = postcard::to_stdvec(self).expect("Failed to serialize store data");
-
-        OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&*STORE_ABSOLUTE_PATH)
-            .and_then(|mut file| file.write_all(&store_content))
-            .expect("Failed to write data");
+        fs::write(&*STORE_ABSOLUTE_PATH, serialized_store)
+            .expect("Failed to write serialized store to disk");
     }
 }
 

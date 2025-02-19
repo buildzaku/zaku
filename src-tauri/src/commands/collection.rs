@@ -6,7 +6,7 @@ use crate::{
     models::{
         collection::CreateCollectionDto,
         zaku::{ZakuError, ZakuState},
-        CreateNewCollectionOrRequest,
+        CreateNewCollection,
     },
     utils,
 };
@@ -15,7 +15,7 @@ use crate::{
 pub fn create_collection(
     create_collection_dto: CreateCollectionDto,
     app_handle: AppHandle,
-) -> Result<CreateNewCollectionOrRequest, ZakuError> {
+) -> Result<CreateNewCollection, ZakuError> {
     if create_collection_dto.relative_path.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a collection without name".to_string(),
@@ -103,7 +103,7 @@ pub fn create_collection(
         eprintln!("Failed to save display name {}", err);
     });
 
-    let create_new_result = CreateNewCollectionOrRequest {
+    let create_new_result = CreateNewCollection {
         parent_relative_path: dir_parent_relative_path,
         relative_path: dir_relative_path,
     };

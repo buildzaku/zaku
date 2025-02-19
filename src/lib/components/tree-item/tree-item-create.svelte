@@ -3,21 +3,21 @@
     import { listen, TauriEvent } from "@tauri-apps/api/event";
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
-    import { TREE_ITEM_TYPE } from "$lib/models";
-    import { zakuState, treeActionsState } from "$lib/state.svelte";
+    import { TreeItemType } from "$lib/models";
+    import { zakuState, treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
-    import type { ValueOf } from "$lib/utils";
     import { safeInvoke } from "$lib/commands";
     import type {
         CreateCollectionDto,
-        CreateNewCollectionOrRequest,
+        CreateNewCollection,
+        CreateNewRequest,
         CreateRequestDto,
     } from "$lib/bindings";
 
     type Props = {
         parentRelativePath: string;
-        type: ValueOf<typeof TREE_ITEM_TYPE>;
+        type: TreeItemType;
         level: number;
         class?: string;
     };
@@ -44,12 +44,12 @@
     }
 
     async function handleCreateRequestOrCollection() {
-        if (type === TREE_ITEM_TYPE.Collection) {
+        if (type === "collection") {
             const create_collection_dto: CreateCollectionDto = {
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
             };
-            const createCollectionResult = await safeInvoke<CreateNewCollectionOrRequest>(
+            const createCollectionResult = await safeInvoke<CreateNewCollection>(
                 "create_collection",
                 { create_collection_dto },
             );
@@ -63,8 +63,8 @@
             inputName = "";
             await zakuState.synchronize();
 
-            treeActionsState.focussedItem = {
-                type: TREE_ITEM_TYPE.Collection,
+            treeItemsState.focussedItem = {
+                type: TreeItemType.Collection,
                 parentRelativePath: createCollectionResult.value.parent_relative_path,
                 relativePath: createCollectionResult.value.relative_path,
             };
@@ -80,10 +80,9 @@
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
             };
-            const createRequestResult = await safeInvoke<CreateNewCollectionOrRequest>(
-                "create_request",
-                { create_request_dto },
-            );
+            const createRequestResult = await safeInvoke<CreateNewRequest>("create_request", {
+                create_request_dto,
+            });
 
             if (!createRequestResult.ok) {
                 console.error(createRequestResult.err);
@@ -94,8 +93,8 @@
             inputName = "";
             await zakuState.synchronize();
 
-            treeActionsState.focussedItem = {
-                type: TREE_ITEM_TYPE.Request,
+            treeItemsState.focussedItem = {
+                type: TreeItemType.Request,
                 parentRelativePath: createRequestResult.value.parent_relative_path,
                 relativePath: createRequestResult.value.relative_path,
             };
@@ -136,7 +135,7 @@
         class="flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
         <div class="flex h-full w-full items-center gap-1 pl-1.5">
-            {#if type === TREE_ITEM_TYPE.Collection}
+            {#if type === "collection"}
                 <div class="w-[12px] min-w-[12px]"></div>
                 <CollectionIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {:else}
