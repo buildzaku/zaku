@@ -1,20 +1,69 @@
 name: zaku
-base: core18
+base: core22
 version: 0.4.0
 summary: Fast, open-source API client with fangs
 description: |
     Fast, open-source API client with fangs
+
 grade: stable
 confinement: strict
+
 architectures:
-    - amd64
-parts:
-    zaku-amd64:
-        plugin: dump
-        source: https://github.com/buildzaku/zaku/releases/download/v$SNAPCRAFT_PROJECT_VERSION/Zaku_$SNAPCRAFT_PROJECT_VERSION_amd64.deb
-        source-type: deb
-        organize:
-            usr/bin/zaku: usr/bin/zaku-amd64
+    - build-on: [amd64]
+      build-for: [amd64]
+    - build-on: [arm64]
+      build-for: [arm64]
+
+package-repositories:
+    - type: apt
+      components: [main]
+      suites: [jammy]
+      key-id: 78E1918602959B9C59103100F1831DDAFC42E99D
+      url: http://ppa.launchpad.net/snappy-dev/snapcraft-daily/ubuntu
+
+layout:
+    /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1:
+        bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1
+
 apps:
-    zaku-amd64:
-        command: zaku-amd64
+    zaku:
+        command: usr/bin/zaku
+        desktop: usr/share/applications/Zaku.desktop
+        extensions: [gnome]
+        plugs:
+            - network
+
+parts:
+    build-app:
+        plugin: dump
+        build-snaps:
+            - node/22/stable
+            - rustup/latest/stable
+        build-packages:
+            - libwebkit2gtk-4.1-dev
+            - build-essential
+            - curl
+            - wget
+            - file
+            - libxdo-dev
+            - libssl-dev
+            - libayatana-appindicator3-dev
+            - librsvg2-dev
+            - dpkg
+        stage-packages:
+            - libwebkit2gtk-4.1-0
+            - libayatana-appindicator3-1
+        source: .
+        override-build: |
+            set -eu
+
+            rustup default stable
+
+            npm install -g pnpm@10.4.1
+            export PATH="$HOME/.npm-global/bin:$PATH"
+
+            pnpm install
+            pnpm tauri build --bundles deb
+
+            dpkg -x src-tauri/target/release/bundle/deb/*.deb $SNAPCRAFT_PART_INSTALL/
+            sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" $SNAPCRAFT_PART_INSTALL/usr/share/applications/Zaku.desktop
