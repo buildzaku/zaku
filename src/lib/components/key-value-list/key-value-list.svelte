@@ -25,7 +25,7 @@
 </script>
 
 <div class={cn("flex flex-col gap-2", className)}>
-    {#each BASE_REQUEST_HEADERS as baseHeader}
+    {#each BASE_REQUEST_HEADERS as baseHeader (baseHeader[1])}
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">
                 <Checkbox checked={true} disabled={true} />
@@ -47,13 +47,13 @@
             <Button
                 disabled={true}
                 variant="outline"
-                class="bg-transparent p-[7px] hover:bg-muted/40 hover:text-destructive"
+                class="hover:bg-muted/40 hover:text-destructive bg-transparent p-[7px]"
             >
                 <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
             </Button>
         </div>
     {/each}
-    {#each pairs as pair, index}
+    {#each pairs as pair, index (pair[1])}
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">
                 <Checkbox
@@ -79,7 +79,7 @@
             />
             <Button
                 variant="outline"
-                class="bg-transparent p-[7px] hover:bg-muted/40 hover:text-destructive"
+                class="hover:bg-muted/40 hover:text-destructive bg-transparent p-[7px]"
                 onclick={() => deletePairAt(index)}
             >
                 <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />

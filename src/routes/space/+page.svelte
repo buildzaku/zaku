@@ -159,13 +159,13 @@
             collapsible={true}
             onCollapse={() => (isLeftPaneCollapsed = true)}
             onExpand={() => (isLeftPaneCollapsed = false)}
-            class={cn(isLeftPaneCollapsed && "w-9 min-w-9 max-w-9")}
+            class={cn(isLeftPaneCollapsed && "w-9 max-w-9 min-w-9")}
         >
             <Sidebar pane={leftPane} bind:isCollapsed={isLeftPaneCollapsed} />
         </ResizablePane>
         <ResizablePane
             defaultSize={50}
-            class="relative mb-1.5 mr-1.5 rounded-md border border-l-0 bg-card"
+            class="bg-card relative mr-1.5 mb-1.5 rounded-md border border-l-0"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
             {#if treeItemsState.activeRequest}

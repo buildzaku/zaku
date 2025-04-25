@@ -14,7 +14,7 @@
     bind:ref
     {sideOffset}
     class={cn(
-        "z-50 overflow-hidden rounded-md border border-ring bg-background px-2 py-0.5 text-[10px] text-foreground",
+        "border-ring bg-background text-foreground z-50 overflow-hidden rounded-md border px-2 py-0.5 text-[10px]",
         className,
     )}
     {...restProps}

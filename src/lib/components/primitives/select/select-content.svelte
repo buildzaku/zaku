@@ -20,7 +20,7 @@
         bind:ref
         {sideOffset}
         class={cn(
-            "relative z-50 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md focus:outline-none",
+            "bg-popover text-popover-foreground relative z-50 overflow-hidden rounded-md border shadow-md focus:outline-none",
             className,
         )}
         {...restProps}

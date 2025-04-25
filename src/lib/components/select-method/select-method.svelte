@@ -16,7 +16,7 @@
         <span class={getMethodColorClass(selected)}>{selected}</span>
     </SelectTrigger>
     <SelectContent class="w-[105px]">
-        {#each Object.values(METHODS) as METHOD}
+        {#each Object.values(METHODS) as METHOD (METHOD)}
             <SelectItem value={METHOD} class={getMethodColorClass(METHOD)}>
                 {METHOD}
             </SelectItem>

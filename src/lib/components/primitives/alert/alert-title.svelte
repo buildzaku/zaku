@@ -17,7 +17,7 @@
 <div
     bind:this={ref}
     aria-level={level}
-    class={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    class={cn("mb-1 leading-none font-medium tracking-tight", className)}
     {...restProps}
 >
     {@render children?.()}
