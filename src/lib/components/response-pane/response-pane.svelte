@@ -28,10 +28,10 @@
     }: Props = $props();
 </script>
 
-<div class="size-full bg-card">
+<div class="bg-card size-full">
     {#if status === "idle"}
         {#if isCollapsed}
-            <div class="flex h-8 w-full items-center justify-between border-b bg-accent/25">
+            <div class="bg-accent/25 flex h-8 w-full items-center justify-between border-b">
                 <div class="flex size-full items-center justify-end">
                     <Button
                         variant="ghost"
@@ -47,7 +47,7 @@
                 </div>
             </div>
         {:else}
-            <div class="flex h-8 w-full items-center justify-between border-b bg-accent/25">
+            <div class="bg-accent/25 flex h-8 w-full items-center justify-between border-b">
                 <div class="flex size-full items-center justify-end">
                     <Button
                         variant="ghost"
@@ -71,7 +71,7 @@
     {:else}
         <Tabs value="body" class="size-full">
             <div
-                class="flex h-8 w-full items-center justify-between border-y border-t-transparent bg-accent/25"
+                class="bg-accent/25 flex h-8 w-full items-center justify-between border-y border-t-transparent"
             >
                 {#if isCollapsed}
                     <div class="flex h-8 w-full items-center justify-between border-b">

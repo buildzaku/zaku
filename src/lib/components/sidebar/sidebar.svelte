@@ -82,7 +82,7 @@
                 </TooltipProvider>
             {:else}
                 <div class="size-full">
-                    <p class="flex h-[36px] items-center px-[22px] text-muted-foreground">
+                    <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
                     <TreeItemRoot

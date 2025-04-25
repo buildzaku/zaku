@@ -23,7 +23,7 @@
             </span>
         </SelectTrigger>
         <SelectContent align="start">
-            {#each Object.values(REQUEST_BODY_TYPES) as BODY_TYPE}
+            {#each Object.values(REQUEST_BODY_TYPES) as BODY_TYPE (BODY_TYPE)}
                 <SelectItem value={BODY_TYPE}>
                     {BODY_TYPE}
                 </SelectItem>

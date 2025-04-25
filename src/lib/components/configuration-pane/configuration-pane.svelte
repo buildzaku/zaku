@@ -26,11 +26,11 @@
     let body = $state(REQUEST_BODY_TYPES.None);
 </script>
 
-<div class="size-full bg-card">
+<div class="bg-card size-full">
     <Tabs value="parameters">
         <div
             class={cn(
-                "flex h-8 w-full items-center justify-between border-y bg-accent/25",
+                "bg-accent/25 flex h-8 w-full items-center justify-between border-y",
                 isCollapsed ? "border-b-transparent" : "",
             )}
         >

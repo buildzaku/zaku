@@ -54,7 +54,7 @@
             }
         }}
         class={cn(
-            "flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:outline-none focus:ring-1 focus:ring-ring",
+            "focus:ring-ring flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:ring-1 focus:outline-none",
         )}
         onclick={() => {
             root.meta.is_expanded = !root.meta.is_expanded;

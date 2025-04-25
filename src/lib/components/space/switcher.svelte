@@ -85,18 +85,18 @@
             {/if}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" side="right" class="w-[224px]">
-            <DropdownMenuItem class="h-7 rounded-md px-2 text-small" disabled>
+            <DropdownMenuItem class="text-small h-7 rounded-md px-2" disabled>
                 Space settings
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuSub>
-                <DropdownMenuSubTrigger class="h-7 rounded-md px-2 text-small">
+                <DropdownMenuSubTrigger class="text-small h-7 rounded-md px-2">
                     <p>Switch Space</p>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent class="w-[185px]" sideOffset={4}>
                     {#each zakuState.spaceReferences as spaceReference (spaceReference.path)}
                         <DropdownMenuItem
-                            class="flex h-7 justify-between rounded-md px-2 text-small"
+                            class="text-small flex h-7 justify-between rounded-md px-2"
                             onclick={async () => {
                                 await zakuState.setActiveSpace(spaceReference);
                             }}
@@ -113,7 +113,7 @@
             </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-                class="h-7 rounded-md px-2 text-small"
+                class="text-small h-7 rounded-md px-2"
                 onclick={() => {
                     isCreateSpaceDialogOpen = true;
                 }}
@@ -121,12 +121,12 @@
                 <span>Create a new Space</span>
             </DropdownMenuItem>
             <DropdownMenuItem
-                class="h-7 rounded-md px-2 text-small"
+                class="text-small h-7 rounded-md px-2"
                 onclick={handleOpenExistingSpace}
             >
                 <span>Open an existing Space</span>
             </DropdownMenuItem>
-            <DropdownMenuItem class="h-7 rounded-md px-2 text-small" onclick={handleDeleteSpace}>
+            <DropdownMenuItem class="text-small h-7 rounded-md px-2" onclick={handleDeleteSpace}>
                 <span class="text-destructive">Delete space</span>
             </DropdownMenuItem>
         </DropdownMenuContent>
