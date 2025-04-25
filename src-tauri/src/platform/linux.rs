@@ -4,7 +4,8 @@ use {
     std::env,
     wgpu::{
         BackendOptions, Backends, DeviceType, Dx12BackendOptions, Dx12Compiler, GlBackendOptions,
-        Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags,
+        GlFenceBehavior, Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags,
+        NoopBackendOptions,
     },
 };
 
@@ -23,10 +24,12 @@ fn has_nvidia_gpu() -> bool {
         backend_options: BackendOptions {
             gl: GlBackendOptions {
                 gles_minor_version: Gles3MinorVersion::Automatic,
+                fence_behavior: GlFenceBehavior::Normal,
             },
             dx12: Dx12BackendOptions {
                 shader_compiler: Dx12Compiler::default(),
             },
+            noop: NoopBackendOptions::default(),
         },
     };
     let instance = Instance::new(&instance_descriptor);

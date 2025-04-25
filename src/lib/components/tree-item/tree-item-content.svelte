@@ -50,7 +50,7 @@
     {#if level > 1}
         <div
             style="left: {level * 8 + 3.5}px;"
-            class="pointer-events-none absolute z-10 h-full w-px bg-transparent group-hover/explorer:bg-border/80"
+            class="group-hover/explorer:bg-border/80 pointer-events-none absolute z-10 h-full w-px bg-transparent"
         ></div>
     {/if}
     <div
@@ -74,7 +74,7 @@
         }}
         style="padding-left: {level * 8}px"
         class={cn(
-            "flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "focus-visible:ring-ring flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none",
             treeItemsState.focussedItem.relativePath === currentPath
                 ? "bg-accent"
                 : "hover:bg-accent/60",
@@ -130,7 +130,7 @@
                         </span>
                     </div>
                     {#if treeItem.meta.has_unsaved_changes}
-                        <DotIcon size={6} class="mr-2.5 fill-primary/80" />
+                        <DotIcon size={6} class="fill-primary/80 mr-2.5" />
                     {/if}
                 </div>
             {/if}

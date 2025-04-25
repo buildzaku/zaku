@@ -127,12 +127,12 @@
     {#if level > 1}
         <div
             style="left: {level * 8 + 3.5}px;"
-            class="pointer-events-none absolute z-10 h-full w-px bg-transparent group-hover/explorer:bg-border/80"
+            class="group-hover/explorer:bg-border/80 pointer-events-none absolute z-10 h-full w-px bg-transparent"
         ></div>
     {/if}
     <div
         style="padding-left: {level * 8}px"
-        class="flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        class="hover:bg-accent/60 focus-visible:ring-ring flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none"
     >
         <div class="flex h-full w-full items-center gap-1 pl-1.5">
             {#if type === "collection"}
@@ -166,7 +166,7 @@
                         await handleCreateRequestOrCollection();
                     }
                 }}
-                class="w-full whitespace-nowrap text-sm ring-inset hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                class="hover:bg-accent/60 focus-visible:ring-ring w-full text-sm whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none"
                 bind:value={inputName}
             />
         </div>

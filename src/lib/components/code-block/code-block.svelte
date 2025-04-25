@@ -32,7 +32,7 @@
 
     let editorView: EditorView | undefined = $state(undefined);
     let editorElement: HTMLDivElement | undefined = $state(undefined);
-    let editorTheme = $state($mode);
+    let editorTheme = $state(mode);
 
     const theme = {
         dark: darkTheme,
@@ -69,7 +69,7 @@
             extensions.push(html());
         }
 
-        const currentTheme = $mode ? theme[$mode] : theme.dark;
+        const currentTheme = mode.current ? theme[mode.current] : theme.dark;
         const state = EditorState.create({
             doc: value,
             extensions: [...extensions, themeCompartment.of(currentTheme)],
@@ -86,11 +86,11 @@
     });
 
     $effect(() => {
-        if (editorView && $mode && $mode !== editorTheme) {
+        if (editorView && mode.current && mode.current !== editorTheme.current) {
             editorView.dispatch({
-                effects: themeCompartment.reconfigure(theme[$mode]),
+                effects: themeCompartment.reconfigure(theme[mode.current]),
             });
-            editorTheme = $mode;
+            editorTheme = mode;
         }
     });
 
