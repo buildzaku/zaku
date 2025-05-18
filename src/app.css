@@ -110,3 +110,7 @@
         @apply text-small text-foreground bg-transparent;
     }
 }
+
+.cm-editor {
+    height: 100%;
+}

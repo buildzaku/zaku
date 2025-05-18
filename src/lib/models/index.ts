@@ -44,4 +44,4 @@ export type FocussedTreeItem =
           relativePath: string;
       };
 
-export type ActiveRequest = { parentRelativePath: string; self: Request };
+export type ActiveRequest = { parentRelativePath: string; self: Request; response: string | null };

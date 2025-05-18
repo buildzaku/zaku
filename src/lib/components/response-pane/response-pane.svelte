@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { RocketIcon } from "lucide-svelte";
+    import { RefreshCwIcon, RocketIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
     import { ChevronDownIcon, ChevronUpIcon } from "lucide-svelte";
 
@@ -8,12 +8,14 @@
     import { Alert } from "$lib/components/primitives/alert";
     import { CodeBlock } from "$lib/components/code-block";
     import { Button } from "$lib/components/primitives/button";
+    import { json } from "@codemirror/lang-json";
 
     type Props = {
         pane: PaneAPI;
         isCollapsed: boolean;
-        status: RequestStatus;
-        raw: string;
+        requestStatus: RequestStatus;
+        response: Response | null;
+        responseData: string;
         preview: string;
         error: string;
     };
@@ -21,15 +23,18 @@
     let {
         pane,
         isCollapsed = $bindable(),
-        status = $bindable(),
-        raw = $bindable(),
+        requestStatus = $bindable(),
+        response = $bindable(),
+        responseData = $bindable(),
         preview = $bindable(),
         error = $bindable(),
     }: Props = $props();
+
+    let jsonPretty = $derived(JSON.stringify(JSON.parse(responseData), null, 2));
 </script>
 
 <div class="bg-card size-full">
-    {#if status === "idle"}
+    {#if requestStatus === "idle"}
         {#if isCollapsed}
             <div class="bg-accent/25 flex h-8 w-full items-center justify-between border-b">
                 <div class="flex size-full items-center justify-end">
@@ -68,27 +73,36 @@
                 </span>
             </div>
         {/if}
+    {:else if requestStatus === "loading"}
+        <div class="flex size-full items-center justify-center">
+            <RefreshCwIcon
+                strokeWidth={1.5}
+                absoluteStrokeWidth
+                size={20}
+                class="mr-3 animate-spin"
+            />
+        </div>
     {:else}
         <Tabs value="body" class="size-full">
             <div
                 class="bg-accent/25 flex h-8 w-full items-center justify-between border-y border-t-transparent"
             >
                 {#if isCollapsed}
-                    <div class="flex h-8 w-full items-center justify-between border-b">
-                        <div class="flex size-full items-center justify-end">
-                            <Button
-                                variant="ghost"
-                                onclick={() => {
-                                    pane.expand();
-                                    pane.resize(60);
-                                }}
-                                class="hover:bg-transparent"
-                            >
-                                <span class="pr-1.5 text-xs font-medium">Response</span>
-                                <ChevronUpIcon size={14} />
-                            </Button>
+                    <button
+                        class="flex h-8 w-full cursor-pointer items-center justify-end gap-1.5 border-b px-3"
+                        onclick={() => {
+                            pane.expand();
+                            pane.resize(60);
+                        }}
+                    >
+                        <div>
+                            {#if response}
+                                {response.status}
+                            {/if}
                         </div>
-                    </div>
+                        <span class="pr-1.5 text-xs font-medium">Response</span>
+                        <ChevronUpIcon size={14} />
+                    </button>
                 {:else}
                     <div class="px-1.5">
                         <TabsList
@@ -101,12 +115,15 @@
                     </div>
                     <div class="flex h-8 w-full items-center justify-between border-b">
                         <div class="flex size-full items-center justify-end">
+                            {#if response}
+                                {response.status}
+                            {/if}
                             <Button
                                 variant="ghost"
                                 onclick={() => {
                                     pane.collapse();
                                 }}
-                                class="hover:bg-transparent"
+                                class="cursor-pointer hover:bg-transparent"
                             >
                                 <span class="pr-1.5 text-xs font-medium">Response</span>
                                 <ChevronDownIcon size={14} />
@@ -118,7 +135,7 @@
             {#if !isCollapsed}
                 <div class="flex h-[calc(100%-2.25rem)] w-full items-center justify-center">
                     <TabsContent value="body" class="m-0 size-full">
-                        {#if status === "success"}
+                        {#if requestStatus === "success"}
                             <Tabs value="pretty" class="size-full">
                                 <div class="flex items-center justify-end border-b px-3">
                                     <TabsList class="my-1 auto-cols-min grid-flow-col gap-2 p-0">
@@ -130,11 +147,21 @@
                                 <div
                                     class="h-[calc(100%-2.25rem)] w-full overflow-scroll [&>*]:m-0"
                                 >
-                                    <TabsContent value="pretty">
-                                        <CodeBlock lang="json" bind:value={raw} class="w-full" />
+                                    <TabsContent value="pretty" class="size-full">
+                                        <CodeBlock
+                                            language={json()}
+                                            readOnly={true}
+                                            bind:value={jsonPretty}
+                                            class="size-full"
+                                        />
                                     </TabsContent>
-                                    <TabsContent value="raw">
-                                        <CodeBlock lang="json" bind:value={raw} class="size-fit" />
+                                    <TabsContent value="raw" class="size-full">
+                                        <CodeBlock
+                                            language={null}
+                                            readOnly={true}
+                                            bind:value={responseData}
+                                            class="size-full"
+                                        />
                                     </TabsContent>
                                     <TabsContent value="preview" class="size-full">
                                         <iframe
@@ -148,7 +175,7 @@
                                     </TabsContent>
                                 </div>
                             </Tabs>
-                        {:else if status === "error"}
+                        {:else if requestStatus === "error"}
                             <div class="flex size-full items-center justify-center gap-2">
                                 <Alert
                                     variant="destructive"
