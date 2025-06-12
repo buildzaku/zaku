@@ -12,23 +12,32 @@
         keymap,
         lineNumbers,
     } from "@codemirror/view";
-    import { json } from "@codemirror/lang-json";
-    import { html } from "@codemirror/lang-html";
     import { search, searchKeymap } from "@codemirror/search";
     import {
         bracketMatching,
         defaultHighlightStyle,
         foldGutter,
         foldKeymap,
+        LanguageSupport,
         syntaxHighlighting,
     } from "@codemirror/language";
     import { defaultKeymap } from "@codemirror/commands";
     import { mode } from "mode-watcher";
     import { darkTheme, lightTheme } from "$lib/components/code-block/themes";
 
-    type Props = { value: string; lang: string; class?: string };
+    type Props = {
+        value: string | null;
+        language: LanguageSupport | null;
+        readOnly?: boolean;
+        class?: string;
+    };
 
-    let { value = $bindable(), lang, class: className }: Props = $props();
+    let {
+        value = $bindable(),
+        language = $bindable(),
+        readOnly = false,
+        class: className,
+    }: Props = $props();
 
     let editorView: EditorView | undefined = $state(undefined);
     let editorElement: HTMLDivElement | undefined = $state(undefined);
@@ -40,6 +49,7 @@
     };
 
     const themeCompartment = new Compartment();
+    const languageCompartment = new Compartment();
 
     const extensions: Extension[] = [
         EditorView.updateListener.of(update => {
@@ -47,7 +57,7 @@
                 value = update.state.doc.toString();
             }
         }),
-        EditorState.readOnly.of(true),
+        EditorState.readOnly.of(readOnly),
         EditorView.lineWrapping,
         highlightActiveLine(),
         search({ top: true }),
@@ -63,15 +73,13 @@
     ];
 
     const createEditor = () => {
-        if (lang === "json") {
-            extensions.push(json());
-        } else if (lang === "html") {
-            extensions.push(html());
+        if (language) {
+            extensions.push(languageCompartment.of(language));
         }
 
         const currentTheme = mode.current ? theme[mode.current] : theme.dark;
         const state = EditorState.create({
-            doc: value,
+            doc: value ?? "",
             extensions: [...extensions, themeCompartment.of(currentTheme)],
         });
 
@@ -86,11 +94,23 @@
     });
 
     $effect(() => {
-        if (editorView && mode.current && mode.current !== editorTheme.current) {
-            editorView.dispatch({
-                effects: themeCompartment.reconfigure(theme[mode.current]),
-            });
-            editorTheme = mode;
+        if (editorView) {
+            if (language) {
+                editorView.dispatch({
+                    effects: languageCompartment.reconfigure(language),
+                });
+            } else {
+                editorView.dispatch({
+                    effects: languageCompartment.reconfigure([]),
+                });
+            }
+
+            if (mode.current && mode.current !== editorTheme.current) {
+                editorView.dispatch({
+                    effects: themeCompartment.reconfigure(theme[mode.current]),
+                });
+                editorTheme = mode;
+            }
         }
     });
 

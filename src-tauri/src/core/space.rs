@@ -157,7 +157,10 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                                                 (include, key, value)
                                             })
                                             .collect(),
+                                        content_type: request.config.content_type,
+                                        body: request.config.body,
                                     },
+                                    response: None,
                                 });
                             }
                             Err(err) => {
