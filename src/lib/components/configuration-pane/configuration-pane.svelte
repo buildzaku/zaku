@@ -6,7 +6,6 @@
     import { xml } from "@codemirror/lang-xml";
 
     import { KeyValueList } from "$lib/components/key-value-list";
-    import { Tabs, TabsList, TabsTrigger, TabsContent } from "$lib/components/primitives/tabs";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { Button } from "$lib/components/primitives/button";
     import { cn } from "$lib/utils/style";
@@ -18,17 +17,11 @@
 
     type Props = {
         pane: PaneAPI;
-        class?: string;
         isCollapsed: boolean;
         config: RequestConfig;
     };
 
-    let {
-        pane,
-        isCollapsed = $bindable(),
-        config = $bindable(),
-        class: className,
-    }: Props = $props();
+    let { pane, isCollapsed = $bindable(), config = $bindable() }: Props = $props();
 
     let currentTab: "parameters" | "headers" | "body" = $state("parameters");
     let contentType = $derived(config.content_type ? config.content_type : "None");
