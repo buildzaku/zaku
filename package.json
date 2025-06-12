@@ -63,6 +63,7 @@
         "@codemirror/commands": "6.8.1",
         "@codemirror/lang-html": "6.4.9",
         "@codemirror/lang-json": "6.0.1",
+        "@codemirror/lang-xml": "6.1.0",
         "@codemirror/language": "6.11.0",
         "@codemirror/search": "6.5.10",
         "@codemirror/state": "6.5.2",
