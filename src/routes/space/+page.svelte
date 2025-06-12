@@ -21,8 +21,6 @@
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
 
     let requestStatus: RequestStatus = $state("idle");
-    let response: Response | null = $state(null);
-    let responseData = $state("");
     let error = $state("");
     let iframeSrcDoc = $state("");
 
@@ -76,14 +74,17 @@
             }
 
             const fetchResponse = await fetch(url, requestConfig);
-            response = fetchResponse;
+            treeItemsState.activeRequest.self.response = {
+                status: fetchResponse.status,
+                data: String(),
+            };
 
             if (!fetchResponse.ok) {
                 throw new Error(`${fetchResponse.status}`);
             }
 
-            responseData = await fetchResponse.text();
-            iframeSrcDoc = responseData;
+            treeItemsState.activeRequest.self.response.data = await fetchResponse.text();
+            iframeSrcDoc = treeItemsState.activeRequest.self.response.data; // TODO - ?
 
             requestStatus = "success";
         } catch (err) {
@@ -239,8 +240,6 @@
                             pane={responsePane}
                             bind:isCollapsed={isResponsePaneCollapsed}
                             bind:requestStatus
-                            bind:response
-                            bind:responseData
                             bind:preview={iframeSrcDoc}
                             bind:error
                         />

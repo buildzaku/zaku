@@ -1,5 +1,10 @@
 import type { Collection, Request } from "$lib/bindings";
 
+export type ZkResponse = {
+    status: number;
+    data: string;
+};
+
 export type TreeItem = Collection | Request;
 
 export type DragPayload = {
@@ -44,4 +49,7 @@ export type FocussedTreeItem =
           relativePath: string;
       };
 
-export type ActiveRequest = { parentRelativePath: string; self: Request; response: string | null };
+export type ActiveRequest = {
+    parentRelativePath: string;
+    self: Request;
+};
