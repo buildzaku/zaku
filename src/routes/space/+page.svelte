@@ -18,9 +18,9 @@
     import { treeItemsState, debounced, zakuState } from "$lib/state.svelte";
     import { safeInvoke } from "$lib/commands";
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
+    import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
 
     let requestStatus: RequestStatus = $state("idle");
-    let json = $state("");
     let error = $state("");
     let iframeSrcDoc = $state("");
 
@@ -52,7 +52,7 @@
                 return acc;
             }, []);
 
-            const response = await fetch(url, {
+            const requestConfig: RequestInit = {
                 method: treeItemsState.activeRequest.self.config.method,
                 headers: [
                     ...BASE_REQUEST_HEADERS,
@@ -64,14 +64,27 @@
                     }
                     return acc;
                 }, {}),
-            });
+            };
 
-            if (!response.ok) {
-                throw new Error(`${response.status}`);
+            if (
+                treeItemsState.activeRequest.self.config.content_type &&
+                treeItemsState.activeRequest.self.config.content_type !== REQUEST_BODY_TYPES.None
+            ) {
+                requestConfig["body"] = treeItemsState.activeRequest.self.config.body;
             }
 
-            json = await response.text();
-            iframeSrcDoc = json;
+            const fetchResponse = await fetch(url, requestConfig);
+            treeItemsState.activeRequest.self.response = {
+                status: fetchResponse.status,
+                data: String(),
+            };
+
+            if (!fetchResponse.ok) {
+                throw new Error(`${fetchResponse.status}`);
+            }
+
+            treeItemsState.activeRequest.self.response.data = await fetchResponse.text();
+            iframeSrcDoc = treeItemsState.activeRequest.self.response.data; // TODO - ?
 
             requestStatus = "success";
         } catch (err) {
@@ -205,8 +218,7 @@
                         <ConfigurationPane
                             pane={configurationPane}
                             bind:isCollapsed={isRequestPaneCollapsed}
-                            bind:parameters={treeItemsState.activeRequest.self.config.parameters}
-                            bind:headers={treeItemsState.activeRequest.self.config.headers}
+                            bind:config={treeItemsState.activeRequest.self.config}
                         />
                     </ResizablePane>
                     <ResizableHandle withHandle />
@@ -222,13 +234,12 @@
                         onExpand={() => {
                             isResponsePaneCollapsed = false;
                         }}
-                        class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8")}
+                        class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8 ")}
                     >
                         <ResponsePane
                             pane={responsePane}
                             bind:isCollapsed={isResponsePaneCollapsed}
-                            bind:status={requestStatus}
-                            bind:raw={json}
+                            bind:requestStatus
                             bind:preview={iframeSrcDoc}
                             bind:error
                         />

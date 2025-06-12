@@ -17,6 +17,8 @@ pub struct RequestConfig {
     pub url: Option<String>,
     pub headers: Vec<(bool, String, String)>,
     pub parameters: Vec<(bool, String, String)>,
+    pub content_type: Option<String>,
+    pub body: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
@@ -24,6 +26,7 @@ pub struct RequestConfig {
 pub struct Request {
     pub meta: RequestMeta,
     pub config: RequestConfig,
+    pub response: Option<Response>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -38,6 +41,8 @@ pub struct RequestFileConfig {
     pub url: Option<String>,
     pub headers: Option<IndexMap<String, String>>,
     pub parameters: Option<IndexMap<String, String>>,
+    pub content_type: Option<String>,
+    pub body: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,4 +56,11 @@ pub struct RequestFile {
 pub struct CreateRequestDto {
     pub parent_relative_path: String,
     pub relative_path: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings.ts")]
+pub struct Response {
+    pub status: u16,
+    pub data: String,
 }

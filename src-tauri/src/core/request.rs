@@ -23,6 +23,8 @@ pub fn create_request_file(absolute_path: &Path, display_name: &str) -> Result<(
             url: None,
             headers: None,
             parameters: None,
+            content_type: None,
+            body: None,
         },
     };
 
@@ -118,6 +120,8 @@ pub fn save_to_request_file(absolute_request_path: &Path, request: &Request) -> 
                         .collect(),
                 ),
             },
+            content_type: request.config.content_type.clone(),
+            body: request.config.body.clone(),
         },
     };
 
