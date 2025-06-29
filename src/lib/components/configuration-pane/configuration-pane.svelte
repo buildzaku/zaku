@@ -125,7 +125,7 @@
         <Select type="single" bind:value={config.content_type}>
             <SelectTrigger class="w-fit">
                 <span class="pr-3">
-                    {config.content_type}
+                    {!!config.content_type ? config.content_type : REQUEST_BODY_TYPES.None}
                 </span>
             </SelectTrigger>
             <SelectContent align="start">
@@ -138,7 +138,7 @@
         </Select>
     </div>
 
-    {#if config.content_type !== "None"}
+    {#if config.content_type && config.content_type !== "None"}
         <CodeBlock
             bind:language
             bind:value={config.body}
