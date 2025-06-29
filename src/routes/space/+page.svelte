@@ -3,7 +3,7 @@
 
     import { Button } from "$lib/components/primitives/button";
     import { Input } from "$lib/components/primitives/input";
-    import { BASE_REQUEST_HEADERS, type RequestStatus } from "$lib/utils/api";
+    import { type RequestStatus } from "$lib/utils/api";
     import {
         ResizablePaneGroup,
         ResizablePane,
@@ -15,7 +15,7 @@
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import type { PaneAPI } from "paneforge";
-    import { treeItemsState, debounced, zakuState } from "$lib/state.svelte";
+    import { treeItemsState, debounced, zakuState, baseRequestHeaders } from "$lib/state.svelte";
     import { safeInvoke } from "$lib/commands";
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
@@ -53,7 +53,7 @@
             }, []);
 
             const requestHeaders = [
-                ...BASE_REQUEST_HEADERS,
+                ...baseRequestHeaders,
                 ...treeItemsState.activeRequest.self.config.headers,
             ].reduceRight((acc: Record<string, string>, cur) => {
                 const [include, key, value] = cur;

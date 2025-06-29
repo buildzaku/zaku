@@ -5,15 +5,15 @@
     import { Button } from "$lib/components/primitives/button";
     import { Checkbox } from "$lib/components/primitives/checkbox";
     import { cn } from "$lib/utils/style";
-    import { BASE_REQUEST_HEADERS } from "$lib/utils/api";
+    import { baseRequestHeaders } from "$lib/state.svelte";
 
     type Props = {
-        type: "parameter" | "header";
+        kvType: "parameter" | "header";
         pairs: [boolean, string, string][];
         class?: string;
     };
 
-    let { type, pairs = $bindable(), class: className }: Props = $props();
+    let { kvType, pairs = $bindable(), class: className }: Props = $props();
 
     function addPair() {
         pairs.push([true, "", ""]);
@@ -25,35 +25,37 @@
 </script>
 
 <div class={cn("flex flex-col gap-2", className)}>
-    {#each BASE_REQUEST_HEADERS as baseHeader (baseHeader[1])}
-        <div class="flex gap-2">
-            <div class="flex size-6 items-center justify-center">
-                <Checkbox checked={true} disabled={true} />
+    {#if kvType === "header"}
+        {#each baseRequestHeaders as baseHeader, idx (idx)}
+            <div class="flex gap-2">
+                <div class="flex size-6 items-center justify-center">
+                    <Checkbox checked={true} disabled={true} />
+                </div>
+                <Input
+                    type="text"
+                    disabled={!baseHeader[0]}
+                    bind:value={baseHeader[1]}
+                    placeholder="Key"
+                    class="font-mono text-xs"
+                />
+                <Input
+                    type="text"
+                    disabled={!baseHeader[0]}
+                    bind:value={baseHeader[2]}
+                    placeholder="Value"
+                    class="font-mono text-xs"
+                />
+                <Button
+                    disabled={true}
+                    variant="outline"
+                    class="hover:bg-muted/40 hover:text-destructive bg-transparent p-[7px]"
+                >
+                    <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
+                </Button>
             </div>
-            <Input
-                type="text"
-                disabled={!baseHeader[0]}
-                bind:value={baseHeader[1]}
-                placeholder="Key"
-                class="font-mono text-xs"
-            />
-            <Input
-                type="text"
-                disabled={!baseHeader[0]}
-                bind:value={baseHeader[2]}
-                placeholder="Value"
-                class="font-mono text-xs"
-            />
-            <Button
-                disabled={true}
-                variant="outline"
-                class="hover:bg-muted/40 hover:text-destructive bg-transparent p-[7px]"
-            >
-                <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
-            </Button>
-        </div>
-    {/each}
-    {#each pairs as pair, index (pair[1])}
+        {/each}
+    {/if}
+    {#each pairs as pair, idx (idx)}
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">
                 <Checkbox
@@ -80,7 +82,7 @@
             <Button
                 variant="outline"
                 class="hover:bg-muted/40 hover:text-destructive bg-transparent p-[7px]"
-                onclick={() => deletePairAt(index)}
+                onclick={() => deletePairAt(idx)}
             >
                 <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
             </Button>
@@ -90,7 +92,7 @@
         <Button variant="ghost" onclick={addPair} class="h-6 gap-1 border px-2">
             <PlusIcon size={14} class="max-h-[14px] max-w-[14px]" />
             <span class="text-small">
-                Add {type.replace(/^(.)/, match => match.toUpperCase())}
+                Add {kvType.replace(/^(.)/, match => match.toUpperCase())}
             </span>
         </Button>
     </div>
