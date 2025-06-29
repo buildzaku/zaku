@@ -26,7 +26,7 @@
     import { darkTheme, lightTheme } from "$lib/components/code-block/themes";
 
     type Props = {
-        value: string | null;
+        value?: string;
         language: LanguageSupport | null;
         readOnly?: boolean;
         class?: string;
@@ -53,7 +53,7 @@
 
     const extensions: Extension[] = [
         EditorView.updateListener.of(update => {
-            if (update.changes) {
+            if (update.docChanged) {
                 value = update.state.doc.toString();
             }
         }),
@@ -79,7 +79,7 @@
 
         const currentTheme = mode.current ? theme[mode.current] : theme.dark;
         const state = EditorState.create({
-            doc: value ?? "",
+            doc: value,
             extensions: [...extensions, themeCompartment.of(currentTheme)],
         });
 
@@ -95,6 +95,16 @@
 
     $effect(() => {
         if (editorView) {
+            if (value !== editorView.state.doc.toString()) {
+                editorView.dispatch({
+                    changes: {
+                        from: 0,
+                        to: editorView.state.doc.length,
+                        insert: value,
+                    },
+                });
+            }
+
             if (language) {
                 editorView.dispatch({
                     effects: languageCompartment.reconfigure(language),

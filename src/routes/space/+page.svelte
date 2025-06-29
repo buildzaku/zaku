@@ -43,7 +43,7 @@
 
             const url = new URL(treeItemsState.activeRequest.self.config.url ?? "");
 
-            treeItemsState.activeRequest.self.config.parameters.reduceRight((acc, cur) => {
+            treeItemsState.activeRequest.self.config.parameters?.reduceRight((acc, cur) => {
                 const [include, key, value] = cur;
                 if (include && !url.searchParams.has(key)) {
                     url.searchParams.set(key, value);
@@ -54,7 +54,7 @@
 
             const requestHeaders = [
                 ...baseRequestHeaders,
-                ...treeItemsState.activeRequest.self.config.headers,
+                ...(treeItemsState.activeRequest?.self.config.headers ?? []),
             ].reduceRight((acc: Record<string, string>, cur) => {
                 const [include, key, value] = cur;
                 if (include && !(key in acc)) {
