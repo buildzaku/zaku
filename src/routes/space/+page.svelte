@@ -52,24 +52,34 @@
                 return acc;
             }, []);
 
+            const requestHeaders = [
+                ...BASE_REQUEST_HEADERS,
+                ...treeItemsState.activeRequest.self.config.headers,
+            ].reduceRight((acc: Record<string, string>, cur) => {
+                const [include, key, value] = cur;
+                if (include && !(key in acc)) {
+                    acc[key] = value;
+                }
+                return acc;
+            }, {});
+
             const requestConfig: RequestInit = {
                 method: treeItemsState.activeRequest.self.config.method,
-                headers: [
-                    ...BASE_REQUEST_HEADERS,
-                    ...treeItemsState.activeRequest.self.config.headers,
-                ].reduceRight((acc: Record<string, string>, cur) => {
-                    const [include, key, value] = cur;
-                    if (include && !(key in acc)) {
-                        acc[key] = value;
-                    }
-                    return acc;
-                }, {}),
+                headers: requestHeaders,
             };
 
             if (
                 treeItemsState.activeRequest.self.config.content_type &&
                 treeItemsState.activeRequest.self.config.content_type !== REQUEST_BODY_TYPES.None
             ) {
+                const hasContentType = Object.keys(requestHeaders).some(
+                    key => key.toLowerCase() === "content-type",
+                );
+                if (!hasContentType) {
+                    requestHeaders["Content-Type"] =
+                        treeItemsState.activeRequest.self.config.content_type;
+                }
+
                 requestConfig["body"] = treeItemsState.activeRequest.self.config.body;
             }
 
