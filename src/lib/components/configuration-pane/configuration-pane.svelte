@@ -5,7 +5,7 @@
     import { html } from "@codemirror/lang-html";
     import { xml } from "@codemirror/lang-xml";
 
-    import { KeyValueList } from "$lib/components/key-value-list";
+    import { KvList } from "$lib/components/kv-list";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { Button } from "$lib/components/primitives/button";
     import { cn } from "$lib/utils/style";
@@ -114,12 +114,12 @@
 {#if currentTab === "parameters"}
     <div class="bg-card h-[calc(100%-2rem)] overflow-auto px-4 py-3">
         <p class="mb-3">Query Parameters</p>
-        <KeyValueList type="parameter" bind:pairs={config.parameters} />
+        <KvList kvType="parameter" bind:pairs={config.parameters} />
     </div>
 {:else if currentTab === "headers"}
     <div class="bg-card h-[calc(100%-2rem)] overflow-auto px-4 py-3">
         <p class="mb-3">Headers</p>
-        <KeyValueList type="header" bind:pairs={config.headers} />
+        <KvList kvType="header" bind:pairs={config.headers} />
     </div>
 {:else if currentTab === "body"}
     <div class="flex h-9 items-center justify-start gap-3 border-b px-3">

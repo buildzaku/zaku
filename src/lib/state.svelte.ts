@@ -1,6 +1,7 @@
 import { tick } from "svelte";
 import { toast } from "svelte-sonner";
 
+import { version } from "$app/environment";
 import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
 import { Err, Ok } from "$lib/utils";
 import type { ValueOf } from "$lib/utils";
@@ -175,3 +176,8 @@ class Debounced {
 }
 
 export const debounced = new Debounced();
+
+export const baseRequestHeaders: [boolean, string, string][] = $state([
+    [true, "Cache-Control", "no-cache"],
+    [true, "User-Agent", `Zaku/${version}`],
+]);
