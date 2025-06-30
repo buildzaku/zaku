@@ -22,7 +22,7 @@ export type OpenDirectoryDialogOptions = { title: string | null, };
 
 export type Request = { meta: RequestMeta, config: RequestConfig, response: Response | null, };
 
-export type RequestConfig = { method: string, url: string | null, headers: Array<[boolean, string, string]>, parameters: Array<[boolean, string, string]>, content_type: string | null, body: string | null, };
+export type RequestConfig = { method: string, url?: string, headers?: Array<[boolean, string, string]>, parameters?: Array<[boolean, string, string]>, content_type?: string, body?: string, };
 
 export type RequestMeta = { file_name: string, display_name: string, has_unsaved_changes: boolean, };
 
