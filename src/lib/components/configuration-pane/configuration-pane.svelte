@@ -4,16 +4,21 @@
     import { json } from "@codemirror/lang-json";
     import { html } from "@codemirror/lang-html";
     import { xml } from "@codemirror/lang-xml";
+    import type { LanguageSupport } from "@codemirror/language";
 
-    import { KvList } from "$lib/components/kv-list";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { Button } from "$lib/components/primitives/button";
     import { cn } from "$lib/utils/style";
-    import { Select, SelectContent, SelectItem, SelectTrigger } from "../primitives/select";
-    import { CodeBlock } from "../code-block";
+    import {
+        Select,
+        SelectContent,
+        SelectItem,
+        SelectTrigger,
+    } from "$lib/components/primitives/select";
+    import { CodeBlock } from "$lib/components/code-block";
     import type { ValueOf } from "$lib/utils";
-    import type { LanguageSupport } from "@codemirror/language";
     import type { RequestConfig } from "$lib/bindings";
+    import { Headers, Parameters } from ".";
 
     type Props = {
         pane: PaneAPI;
@@ -24,7 +29,6 @@
     let { pane, isCollapsed = $bindable(), config = $bindable() }: Props = $props();
 
     let currentTab: "parameters" | "headers" | "body" = $state("parameters");
-    let contentType = $derived(config.content_type ? config.content_type : "None");
     let language: LanguageSupport | null = $derived.by(() => {
         switch (config.content_type) {
             case REQUEST_BODY_TYPES.Json: {
@@ -48,12 +52,6 @@
             bodyType === "multipart/form-data"
         );
     }
-
-    $effect(() => {
-        if (contentType) {
-            config.content_type = contentType;
-        }
-    });
 </script>
 
 <div
@@ -114,20 +112,20 @@
 {#if currentTab === "parameters"}
     <div class="bg-card h-[calc(100%-2rem)] overflow-auto px-4 py-3">
         <p class="mb-3">Query Parameters</p>
-        <KvList kvType="parameter" bind:pairs={config.parameters} />
+        <Parameters bind:config />
     </div>
 {:else if currentTab === "headers"}
     <div class="bg-card h-[calc(100%-2rem)] overflow-auto px-4 py-3">
         <p class="mb-3">Headers</p>
-        <KvList kvType="header" bind:pairs={config.headers} />
+        <Headers bind:config />
     </div>
 {:else if currentTab === "body"}
     <div class="flex h-9 items-center justify-start gap-3 border-b px-3">
         <span>Content Type</span>
-        <Select type="single" bind:value={contentType}>
+        <Select type="single" bind:value={config.content_type}>
             <SelectTrigger class="w-fit">
                 <span class="pr-3">
-                    {contentType}
+                    {!config.content_type ? REQUEST_BODY_TYPES.None : config.content_type}
                 </span>
             </SelectTrigger>
             <SelectContent align="start">
@@ -140,7 +138,7 @@
         </Select>
     </div>
 
-    {#if contentType && contentType !== "None"}
+    {#if config.content_type && config.content_type !== "None"}
         <CodeBlock
             bind:language
             bind:value={config.body}
