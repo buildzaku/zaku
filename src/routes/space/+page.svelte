@@ -3,7 +3,6 @@
 
     import { Button } from "$lib/components/primitives/button";
     import { Input } from "$lib/components/primitives/input";
-    import { type RequestStatus } from "$lib/utils/api";
     import {
         ResizablePaneGroup,
         ResizablePane,
@@ -20,10 +19,6 @@
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
 
-    let requestStatus: RequestStatus = $state("idle");
-    let error = $state("");
-    let iframeSrcDoc = $state("");
-
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
     let configurationPane: PaneAPI | undefined = $state();
@@ -32,18 +27,20 @@
     let isResponsePaneCollapsed = $state(false);
 
     async function handleSend() {
+        const activeReqRef = treeItemsState.activeRequest;
+        if (!activeReqRef) return;
+
         try {
-            if (!treeItemsState.activeRequest) return;
-            requestStatus = "loading";
+            activeReqRef.self.status = "Pending";
 
             const validProtocol = new RegExp(/^(https?:\/\/)/i);
-            if (!validProtocol.test(treeItemsState.activeRequest.self.config.url ?? "")) {
+            if (!validProtocol.test(activeReqRef.self.config.url ?? "")) {
                 throw new Error("Invalid or missing Protocol");
             }
 
-            const url = new URL(treeItemsState.activeRequest.self.config.url ?? "");
+            const url = new URL(activeReqRef.self.config.url ?? "");
 
-            treeItemsState.activeRequest.self.config.parameters?.reduceRight((acc, cur) => {
+            activeReqRef.self.config.parameters?.reduceRight((acc, cur) => {
                 const [include, key, value] = cur;
                 if (include && !url.searchParams.has(key)) {
                     url.searchParams.set(key, value);
@@ -54,7 +51,7 @@
 
             const requestHeaders = [
                 ...baseRequestHeaders,
-                ...(treeItemsState.activeRequest?.self.config.headers ?? []),
+                ...(activeReqRef?.self.config.headers ?? []),
             ].reduceRight((acc: Record<string, string>, cur) => {
                 const [include, key, value] = cur;
                 if (include && !(key in acc)) {
@@ -64,73 +61,75 @@
             }, {});
 
             const requestConfig: RequestInit = {
-                method: treeItemsState.activeRequest.self.config.method,
+                method: activeReqRef.self.config.method,
                 headers: requestHeaders,
             };
 
             if (
-                treeItemsState.activeRequest.self.config.content_type &&
-                treeItemsState.activeRequest.self.config.content_type !== REQUEST_BODY_TYPES.None
+                activeReqRef.self.config.content_type &&
+                activeReqRef.self.config.content_type !== REQUEST_BODY_TYPES.None
             ) {
                 const hasContentType = Object.keys(requestHeaders).some(
                     key => key.toLowerCase() === "content-type",
                 );
                 if (!hasContentType) {
-                    requestHeaders["Content-Type"] =
-                        treeItemsState.activeRequest.self.config.content_type;
+                    requestHeaders["Content-Type"] = activeReqRef.self.config.content_type;
                 }
 
-                requestConfig["body"] = treeItemsState.activeRequest.self.config.body;
+                requestConfig["body"] = activeReqRef.self.config.body;
             }
 
             const fetchResponse = await fetch(url, requestConfig);
-            treeItemsState.activeRequest.self.response = {
+            activeReqRef.self.response = {
                 status: fetchResponse.status,
                 data: String(),
             };
 
-            if (!fetchResponse.ok) {
-                throw new Error(`${fetchResponse.status}`);
-            }
-
-            treeItemsState.activeRequest.self.response.data = await fetchResponse.text();
-            iframeSrcDoc = treeItemsState.activeRequest.self.response.data; // TODO - ?
-
-            requestStatus = "success";
-        } catch (err) {
-            requestStatus = "error";
-            if (err instanceof Error) {
-                error = err.message;
+            if (fetchResponse.ok) {
+                activeReqRef.self.response.data = await fetchResponse.text();
+                activeReqRef.self.status = "Success";
             } else {
-                error = "Not found";
+                activeReqRef.self.status = "Error";
             }
+        } catch (err) {
+            const errStr = String(err);
+            const url = new URL(activeReqRef.self.config.url ?? "");
+            activeReqRef.self.status = "Error";
+            activeReqRef.self.response = {
+                data: errStr.startsWith("error sending request for url")
+                    ? `Error: connect ECONNREFUSED ${url.host}`
+                    : errStr,
+            };
         }
     }
 
     async function handleSave(event: KeyboardEvent) {
-        if (!zakuState.activeSpace || !treeItemsState.activeRequest) {
+        const activeSpaceRef = zakuState.activeSpace;
+        const activeReqRef = treeItemsState.activeRequest;
+        if (!activeSpaceRef || !activeReqRef) {
             return;
         }
+
         if ((event.metaKey || event.ctrlKey) && event.key === "s") {
             event.preventDefault();
 
             const absoluteRequestPath = joinPaths([
-                zakuState.activeSpace.absolute_path,
-                treeItemsState.activeRequest.parentRelativePath,
-                treeItemsState.activeRequest.self.meta.file_name,
+                activeSpaceRef.absolute_path,
+                activeReqRef.parentRelativePath,
+                activeReqRef.self.meta.file_name,
             ]);
 
             await debounced.flush(absoluteRequestPath);
             await safeInvoke("write_buffer_request_to_fs", {
-                absolute_space_path: zakuState.activeSpace.absolute_path,
+                absolute_space_path: activeSpaceRef.absolute_path,
                 request_relative_path: joinPaths([
-                    treeItemsState.activeRequest.parentRelativePath,
-                    treeItemsState.activeRequest.self.meta.file_name,
+                    activeReqRef.parentRelativePath,
+                    activeReqRef.self.meta.file_name,
                 ]),
             });
 
             isActiveRequestSavedToFs = true;
-            treeItemsState.activeRequest.self.meta.has_unsaved_changes = false;
+            activeReqRef.self.meta.has_unsaved_changes = false;
         }
     }
 
@@ -246,12 +245,11 @@
                         }}
                         class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8 ")}
                     >
+                        {@const activeSpaceRef = treeItemsState.activeRequest}
                         <ResponsePane
                             pane={responsePane}
-                            bind:isCollapsed={isResponsePaneCollapsed}
-                            bind:requestStatus
-                            bind:preview={iframeSrcDoc}
-                            bind:error
+                            isCollapsed={isResponsePaneCollapsed}
+                            {activeSpaceRef}
                         />
                     </ResizablePane>
                 </ResizablePaneGroup>

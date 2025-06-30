@@ -8,16 +8,16 @@ import type { ValueOf } from "$lib/utils";
 import { safeInvoke } from "$lib/commands";
 import { TreeItemType } from "$lib/models";
 import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
-import type { ZakuState as TZakuState, SpaceReference, Space, Request } from "$lib/bindings";
+import type { ZakuState as TZakuState, SpaceReference, Space, Req } from "$lib/bindings";
 import { joinPaths } from "./components/tree-item/utils.svelte";
 
-export type RequestConfig = ZakuRequestConfig;
+export type ReqCfg = ZakuReqCfg;
 
 export type MaybeKey<T extends string = string> = T | `_${T}`;
 
 export type SerializedValue = string | number | boolean | null;
 
-export type ZakuRequestConfig = {
+export type ZakuReqCfg = {
     name: string;
     method: string;
     headers?: Record<MaybeKey, SerializedValue>;
@@ -102,7 +102,7 @@ class TreeItemsState {
 
     public focussedItem: FocussedTreeItem = $state(this.#rootItem);
     public activeRequest: ActiveRequest | null = $state(null);
-    public openRequests: Request[] = $state([]);
+    public openRequests: Req[] = $state([]);
 
     public reset() {
         this.focussedItem = this.#rootItem;

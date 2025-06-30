@@ -287,10 +287,10 @@ export function addTreeItemToCollection({
 
         return Ok();
     } else {
-        const requestFileNameAlreadyExists = current.requests.some(
+        const reqFileNameAlreadyExists = current.requests.some(
             request => request.meta.file_name === treeItem.meta.file_name,
         );
-        if (requestFileNameAlreadyExists) {
+        if (reqFileNameAlreadyExists) {
             toast(
                 `Request with file name ${treeItem.meta.file_name} already exists in the ${current.meta.dir_name} collection`,
             );

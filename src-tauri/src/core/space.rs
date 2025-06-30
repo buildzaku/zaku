@@ -6,16 +6,17 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
 
+use crate::models::buffer::SpaceBuf;
 use crate::models::collection::{Collection, CollectionMeta};
-use crate::models::request::{Request, RequestConfig, RequestMeta};
-use crate::models::space::{Space, SpaceBuffer, SpaceConfigFile, SpaceReference};
+use crate::models::request::{Req, ReqCfg, ReqMeta, ReqStatus};
+use crate::models::space::{Space, SpaceConfigFile, SpaceReference};
 
 use super::{collection, request, store};
 
 #[derive(Clone, Debug)]
 pub struct CollectionRcRefCell {
     pub meta: CollectionMeta,
-    pub requests: Vec<Request>,
+    pub requests: Vec<Req>,
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }
 
@@ -29,8 +30,8 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
     let collection_name_by_relative_path =
         collection::display_name_by_relative_path(absolute_space_root)
             .unwrap_or_else(|_| HashMap::new());
-    let active_space_buffer = SpaceBuffer::load(absolute_space_root);
-    let active_space_buffer_rlock = SpaceBuffer::acquire_read_lock(&active_space_buffer);
+    let active_space_buffer = SpaceBuf::load(absolute_space_root);
+    let active_space_buffer_rlock = SpaceBuf::acquire_read_lock(&active_space_buffer);
     let space_config = match parse_space_config(&absolute_space_root) {
         Ok(space_config) => Some(space_config),
         Err(_) => None,
@@ -104,13 +105,13 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
-                    let request_in_buffer = active_space_buffer_rlock.requests.get(&relative_path);
+                    let req_buf = active_space_buffer_rlock.requests.get(&relative_path);
 
-                    if let Some(request_in_buffer) = request_in_buffer {
+                    if let Some(req_buf) = req_buf {
                         collection_rc_refcell
                             .borrow_mut()
                             .requests
-                            .push(request_in_buffer.clone());
+                            .push(Req::from(req_buf));
                     } else {
                         let file_name = absolute_entry_path
                             .file_name()
@@ -120,13 +121,13 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
 
                         match request::parse_request_file(&absolute_entry_path) {
                             Ok(request) => {
-                                collection_rc_refcell.borrow_mut().requests.push(Request {
-                                    meta: RequestMeta {
+                                collection_rc_refcell.borrow_mut().requests.push(Req {
+                                    meta: ReqMeta {
                                         file_name,
                                         display_name: request.meta.name,
                                         has_unsaved_changes: false,
                                     },
-                                    config: RequestConfig {
+                                    config: ReqCfg {
                                         method: request.config.method,
                                         url: request.config.url,
                                         headers: request
@@ -160,6 +161,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                                         content_type: request.config.content_type,
                                         body: request.config.body,
                                     },
+                                    status: ReqStatus::Idle,
                                     response: None,
                                 });
                             }
@@ -186,7 +188,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
             requests: root_collection_ref_cell
                 .requests
                 .iter()
-                .map(|request| Request { ..request.clone() })
+                .map(|req| Req { ..req.clone() })
                 .collect(),
             collections: Vec::new(),
         };
@@ -207,7 +209,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                 requests: sub_collection_ref_cell
                     .requests
                     .iter()
-                    .map(|request| Request { ..request.clone() })
+                    .map(|req| Req { ..req.clone() })
                     .collect(),
                 collections: Vec::new(),
             };
