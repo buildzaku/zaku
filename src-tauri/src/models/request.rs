@@ -14,10 +14,27 @@ pub struct RequestMeta {
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
 pub struct RequestConfig {
     pub method: String,
+
+    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+
+    #[ts(optional, as = "Option<_>")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(bool, String, String)>,
+
+    #[ts(optional, as = "Option<_>")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<(bool, String, String)>,
+
+    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
+
+    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
 }
 

@@ -44,11 +44,7 @@
             ? prettyJson(treeItemsState.activeRequest.self.response.data)
             : "",
     );
-    let plainTextResponse = $derived(
-        treeItemsState.activeRequest &&
-            treeItemsState.activeRequest.self.response &&
-            treeItemsState.activeRequest.self.response.data,
-    );
+    let plainTextResponse = $derived(treeItemsState.activeRequest?.self.response?.data);
 </script>
 
 {#snippet statusBadge(status: number)}
