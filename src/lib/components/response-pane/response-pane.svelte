@@ -15,10 +15,10 @@
     type Props = {
         pane: PaneAPI;
         isCollapsed: boolean;
-        activeSpaceRef: ActiveRequest;
+        activeReqRef: ActiveRequest;
     };
 
-    let { pane, isCollapsed, activeSpaceRef }: Props = $props();
+    let { pane, isCollapsed, activeReqRef }: Props = $props();
 
     function prettyJson(data: string | undefined) {
         if (!data) return String();
@@ -29,11 +29,6 @@
             return data;
         }
     }
-
-    let jsonPrettyResponse = $derived(
-        activeSpaceRef.self.response ? prettyJson(activeSpaceRef.self.response.data) : "",
-    );
-    let plainTextResponse = $derived(activeSpaceRef.self.response?.data);
 </script>
 
 {#snippet statusBadge(status: number)}
@@ -53,7 +48,7 @@
 {/snippet}
 
 <div class="bg-card size-full">
-    {#if activeSpaceRef.self.status === "Idle"}
+    {#if activeReqRef.self.status === "Idle"}
         {#if isCollapsed}
             <div class="bg-accent/25 flex h-8 w-full items-center justify-between border-b">
                 <div class="flex size-full items-center justify-end">
@@ -92,7 +87,7 @@
                 </span>
             </div>
         {/if}
-    {:else if activeSpaceRef.self.status === "Pending"}
+    {:else if activeReqRef.self.status === "Pending"}
         <div class="flex size-full items-center justify-center">
             <RefreshCwIcon
                 strokeWidth={1.5}
@@ -114,8 +109,8 @@
                             pane.resize(60);
                         }}
                     >
-                        {#if activeSpaceRef.self.response && activeSpaceRef.self.response.status}
-                            {@render statusBadge(activeSpaceRef.self.response.status)}
+                        {#if activeReqRef.self.response && activeReqRef.self.response.status}
+                            {@render statusBadge(activeReqRef.self.response.status)}
                         {/if}
                         <span class="pr-1.5 text-xs font-medium">Response</span>
                         <ChevronUpIcon size={14} />
@@ -131,8 +126,8 @@
                         </TabsList>
                     </div>
                     <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b px-3">
-                        {#if activeSpaceRef.self.response && activeSpaceRef.self.response.status}
-                            {@render statusBadge(activeSpaceRef.self.response.status)}
+                        {#if activeReqRef.self.response && activeReqRef.self.response.status}
+                            {@render statusBadge(activeReqRef.self.response.status)}
                         {/if}
                         <button
                             onclick={() => {
@@ -149,7 +144,7 @@
             {#if !isCollapsed}
                 <div class="flex h-[calc(100%-2.25rem)] w-full items-center justify-center">
                     <TabsContent value="body" class="m-0 size-full">
-                        {#if activeSpaceRef.self.status === "Success"}
+                        {#if activeReqRef.self.status === "Success"}
                             <Tabs value="pretty" class="size-full">
                                 <div class="flex items-center justify-end border-b px-3">
                                     <TabsList class="my-1 auto-cols-min grid-flow-col gap-2 p-0">
@@ -165,7 +160,7 @@
                                         <CodeBlock
                                             language={json()}
                                             readOnly={true}
-                                            bind:value={jsonPrettyResponse}
+                                            value={prettyJson(activeReqRef.self.response?.data)}
                                             class="size-full"
                                         />
                                     </TabsContent>
@@ -173,7 +168,7 @@
                                         <CodeBlock
                                             language={null}
                                             readOnly={true}
-                                            bind:value={plainTextResponse}
+                                            value={activeReqRef.self.response?.data}
                                             class="size-full"
                                         />
                                     </TabsContent>
@@ -181,8 +176,8 @@
                                         <iframe
                                             title=""
                                             src="about:blank"
-                                            srcdoc={activeSpaceRef.self.response
-                                                ? activeSpaceRef.self.response.data
+                                            srcdoc={activeReqRef.self.response
+                                                ? activeReqRef.self.response.data
                                                 : ""}
                                             class="size-full"
                                             loading="lazy"
@@ -191,14 +186,14 @@
                                     </TabsContent>
                                 </div>
                             </Tabs>
-                        {:else if activeSpaceRef.self.status === "Error"}
-                            {#if activeSpaceRef.self.response && activeSpaceRef.self.response.data}
+                        {:else if activeReqRef.self.status === "Error"}
+                            {#if activeReqRef.self.response && activeReqRef.self.response.data}
                                 <div class="flex size-full items-center justify-center gap-2">
                                     <Alert
                                         variant="destructive"
                                         class="w-fit max-w-[50%] py-1 [&>*]:select-text"
                                     >
-                                        <span>{activeSpaceRef.self.response.data}</span>
+                                        <span>{activeReqRef.self.response.data}</span>
                                     </Alert>
                                 </div>
                             {:else}
@@ -208,10 +203,10 @@
                                     <CodeBlock
                                         language={json()}
                                         readOnly={true}
-                                        value={activeSpaceRef.self.response &&
-                                        activeSpaceRef.self.response.status
+                                        value={activeReqRef.self.response &&
+                                        activeReqRef.self.response.status
                                             ? HTTP_STATUS_DESCRIPTION[
-                                                  activeSpaceRef.self.response.status
+                                                  activeReqRef.self.response.status
                                               ]
                                             : "Something went wrong."}
                                         class="size-full"

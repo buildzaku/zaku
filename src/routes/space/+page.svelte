@@ -245,11 +245,11 @@
                         }}
                         class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8 ")}
                     >
-                        {@const activeSpaceRef = treeItemsState.activeRequest}
+                        {@const activeReqRef = treeItemsState.activeRequest}
                         <ResponsePane
                             pane={responsePane}
                             isCollapsed={isResponsePaneCollapsed}
-                            {activeSpaceRef}
+                            {activeReqRef}
                         />
                     </ResizablePane>
                 </ResizablePaneGroup>
