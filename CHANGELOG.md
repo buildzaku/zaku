@@ -1,5 +1,26 @@
 # zaku
 
+## 0.5.0
+
+### Minor Changes
+
+- Add support for basic request body - [`d34b5c4`](https://github.com/buildzaku/zaku/commit/d34b5c4827cc7f83e4193e5310d93f24fe8203c5) [#29](https://github.com/buildzaku/zaku/pull/29)
+
+    - json, xml, html and plaintext
+
+### Patch Changes
+
+- Fix input focus loss when editing param/header key - [`77df425`](https://github.com/buildzaku/zaku/commit/77df425243fa05a323252f3450b9607bf746bbe5) [#32](https://github.com/buildzaku/zaku/pull/32)
+
+- Automatically set `Content-Type` header based on the selected body type, unless it has been manually set - [`2239234`](https://github.com/buildzaku/zaku/commit/22392348443d74a5ea0450c671a6407d72d2bb80) [#31](https://github.com/buildzaku/zaku/pull/31)
+
+- Fix broken editor state on switching requests - [`d56bfab`](https://github.com/buildzaku/zaku/commit/d56bfabfd1fbfb861547db7540294cae67b4afb9) [#33](https://github.com/buildzaku/zaku/pull/33)
+
+    - make request config props optional to prevent unnecessary serialization
+    - reset active request on switching space
+
+- Use refs to avoid broken updates to active request caused by debounced state changes - [`9478142`](https://github.com/buildzaku/zaku/commit/94781424793095d2aae5f776b3435a340eb2cac1) [#34](https://github.com/buildzaku/zaku/pull/34)
+
 ## 0.4.0
 
 ### Minor Changes
