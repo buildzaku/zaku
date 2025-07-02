@@ -2,13 +2,15 @@ use serde::{Deserialize, Serialize};
 use ts_rs::{ExportError, TS};
 
 use collection::{Collection, CollectionMeta, CreateCollectionDto};
-use request::{CreateRequestDto, Request, RequestConfig, RequestMeta};
+use request::{CreateRequestDto, Req, ReqCfg, ReqMeta};
 use space::{CreateSpaceDto, Space, SpaceMeta, SpaceReference};
 use zaku::{ZakuError, ZakuState};
 
+pub mod buffer;
 pub mod collection;
 pub mod request;
 pub mod space;
+pub mod toml;
 pub mod zaku;
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
@@ -56,9 +58,9 @@ pub fn generate_bindings() -> Result<(), ExportError> {
     CreateNewRequest::export_all()?;
     MoveTreeItemDto::export_all()?;
 
-    RequestMeta::export_all()?;
-    RequestConfig::export_all()?;
-    Request::export_all()?;
+    ReqMeta::export_all()?;
+    ReqCfg::export_all()?;
+    Req::export_all()?;
     CreateRequestDto::export_all()?;
 
     CreateSpaceDto::export_all()?;

@@ -8,7 +8,7 @@ use crate::{
     core::{self, buffer, collection, space},
     models::{
         collection::CreateCollectionDto,
-        request::{CreateRequestDto, Request},
+        request::{CreateRequestDto, Req},
         zaku::{ZakuError, ZakuState},
         CreateNewRequest,
     },
@@ -116,7 +116,7 @@ pub fn create_request(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn save_request_to_buffer(absolute_space_path: &Path, relative_path: &Path, request: Request) {
+pub fn save_request_to_buffer(absolute_space_path: &Path, relative_path: &Path, request: Req) {
     buffer::save_request_to_space_buffer(absolute_space_path, relative_path, request);
 }
 

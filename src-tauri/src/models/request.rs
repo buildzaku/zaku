@@ -1,10 +1,11 @@
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::models::buffer::ReqBuf;
+
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
-pub struct RequestMeta {
+pub struct ReqMeta {
     pub file_name: String,
     pub display_name: String,
     pub has_unsaved_changes: bool,
@@ -12,7 +13,7 @@ pub struct RequestMeta {
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
-pub struct RequestConfig {
+pub struct ReqCfg {
     pub method: String,
 
     #[ts(optional)]
@@ -40,32 +41,35 @@ pub struct RequestConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
-pub struct Request {
-    pub meta: RequestMeta,
-    pub config: RequestConfig,
-    pub response: Option<Response>,
+pub enum ReqStatus {
+    Idle,
+    Pending,
+    Success,
+    Error,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-
-pub struct RequestFileMeta {
-    pub name: String,
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/lib/bindings.ts")]
+pub struct Req {
+    pub meta: ReqMeta,
+    pub config: ReqCfg,
+    pub response: Option<Res>,
+    pub status: ReqStatus,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RequestFileConfig {
-    pub method: String,
-    pub url: Option<String>,
-    pub headers: Option<IndexMap<String, String>>,
-    pub parameters: Option<IndexMap<String, String>>,
-    pub content_type: Option<String>,
-    pub body: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RequestFile {
-    pub meta: RequestFileMeta,
-    pub config: RequestFileConfig,
+impl From<&ReqBuf> for Req {
+    fn from(req_buf: &ReqBuf) -> Self {
+        Self {
+            meta: ReqMeta {
+                file_name: req_buf.meta.file_name.clone(),
+                display_name: req_buf.meta.display_name.clone(),
+                has_unsaved_changes: true,
+            },
+            config: req_buf.config.clone(),
+            response: None,
+            status: ReqStatus::Idle,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
@@ -77,7 +81,9 @@ pub struct CreateRequestDto {
 
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/lib/bindings.ts")]
-pub struct Response {
-    pub status: u16,
+pub struct Res {
+    #[ts(optional)]
+    pub status: Option<u16>,
+
     pub data: String,
 }

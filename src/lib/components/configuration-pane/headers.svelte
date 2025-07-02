@@ -5,15 +5,15 @@
     import { Button } from "$lib/components/primitives/button";
     import { Checkbox } from "$lib/components/primitives/checkbox";
     import { baseRequestHeaders } from "$lib/state.svelte";
-    import type { RequestConfig } from "$lib/bindings";
+    import type { ReqCfg } from "$lib/bindings";
 
     type Props = {
-        config: RequestConfig;
+        config: ReqCfg;
     };
 
     let { config = $bindable() }: Props = $props();
 
-    function addHeader(config: RequestConfig) {
+    function addHeader(config: ReqCfg) {
         if (!config.headers) {
             config.headers = [];
         }
@@ -21,7 +21,7 @@
         config.headers.push([true, "", ""]);
     }
 
-    function deleteHeader(config: RequestConfig, index: number) {
+    function deleteHeader(config: ReqCfg, index: number) {
         if (!config.headers) return;
         config.headers = config.headers.filter((_, idx) => idx !== index);
     }
