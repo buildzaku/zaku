@@ -2,13 +2,13 @@
     import { RefreshCwIcon, RocketIcon } from "lucide-svelte";
     import type { PaneAPI } from "paneforge";
     import { ChevronDownIcon, ChevronUpIcon } from "lucide-svelte";
+    import { json } from "@codemirror/lang-json";
 
     import { Tabs, TabsList, TabsTrigger, TabsContent } from "$lib/components/primitives/tabs";
     import { Alert } from "$lib/components/primitives/alert";
     import { CodeBlock } from "$lib/components/code-block";
     import { Button } from "$lib/components/primitives/button";
-    import { json } from "@codemirror/lang-json";
-    import { Badge } from "../primitives/badge";
+    import { Badge } from "$lib/components/primitives/badge";
     import { HTTP_STATUS_DESCRIPTION } from "$lib/utils/constants";
     import type { ActiveRequest } from "$lib/models";
 

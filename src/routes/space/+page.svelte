@@ -1,5 +1,6 @@
 <script lang="ts">
     import { fetch } from "@tauri-apps/plugin-http";
+    import type { PaneAPI } from "paneforge";
 
     import { Button } from "$lib/components/primitives/button";
     import { Input } from "$lib/components/primitives/input";
@@ -13,7 +14,6 @@
     import { ConfigurationPane } from "$lib/components/configuration-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
-    import type { PaneAPI } from "paneforge";
     import { treeItemsState, debounced, zakuState, baseRequestHeaders } from "$lib/state.svelte";
     import { safeInvoke } from "$lib/commands";
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
@@ -21,10 +21,10 @@
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
-    let configurationPane: PaneAPI | undefined = $state();
-    let isRequestPaneCollapsed = $state(false);
-    let responsePane: PaneAPI | undefined = $state();
-    let isResponsePaneCollapsed = $state(false);
+    let cfgPane: PaneAPI | undefined = $state();
+    let isReqPaneCollapsed = $state(false);
+    let resPane: PaneAPI | undefined = $state();
+    let isResPaneCollapsed = $state(false);
 
     async function handleSend() {
         const activeReqRef = treeItemsState.activeRequest;
@@ -113,13 +113,13 @@
         if ((event.metaKey || event.ctrlKey) && event.key === "s") {
             event.preventDefault();
 
-            const absoluteRequestPath = joinPaths([
+            const absoluteReqPath = joinPaths([
                 activeSpaceRef.absolute_path,
                 activeReqRef.parentRelativePath,
                 activeReqRef.self.meta.file_name,
             ]);
 
-            await debounced.flush(absoluteRequestPath);
+            await debounced.flush(absoluteReqPath);
             await safeInvoke("write_buffer_request_to_fs", {
                 absolute_space_path: activeSpaceRef.absolute_path,
                 request_relative_path: joinPaths([
@@ -128,42 +128,43 @@
                 ]),
             });
 
-            isActiveRequestSavedToFs = true;
+            isActiveReqSavedToFs = true;
             activeReqRef.self.meta.has_unsaved_changes = false;
         }
     }
 
-    let isActiveRequestSavedToFs = false;
-    let previousActiveRequestRelativePath = treeItemsState.activeRequest
-        ? `${treeItemsState.activeRequest.parentRelativePath}/${treeItemsState.activeRequest.self.meta.file_name}`
+    const activeSpaceRef = treeItemsState.activeRequest;
+    let isActiveReqSavedToFs = false;
+    let prevActiveReqRelPath = activeSpaceRef
+        ? `${activeSpaceRef.parentRelativePath}/${activeSpaceRef.self.meta.file_name}`
         : null;
 
     $effect(() => {
         // Important hack to keep the effect deeply reactive
         JSON.stringify(treeItemsState.activeRequest);
 
-        if (isActiveRequestSavedToFs) {
-            isActiveRequestSavedToFs = false;
+        const activeSpaceRef = zakuState.activeSpace;
+        const activeReqRef = treeItemsState.activeRequest;
+
+        if (isActiveReqSavedToFs) {
+            isActiveReqSavedToFs = false;
             return;
         }
 
-        const currentActiveRequestRelativePath = treeItemsState.activeRequest
-            ? `${treeItemsState.activeRequest.parentRelativePath}/${treeItemsState.activeRequest.self.meta.file_name}`
+        const activeReqRelPath = activeReqRef
+            ? `${activeReqRef.parentRelativePath}/${activeReqRef.self.meta.file_name}`
             : null;
 
         if (
-            zakuState.activeSpace &&
-            treeItemsState.activeRequest &&
-            previousActiveRequestRelativePath &&
-            previousActiveRequestRelativePath === currentActiveRequestRelativePath
+            activeSpaceRef &&
+            activeReqRef &&
+            prevActiveReqRelPath &&
+            prevActiveReqRelPath === activeReqRelPath
         ) {
-            debounced.saveRequestToBuffer(
-                zakuState.activeSpace.absolute_path,
-                treeItemsState.activeRequest,
-            );
-            treeItemsState.activeRequest.self.meta.has_unsaved_changes = true;
+            debounced.saveRequestToBuffer(activeSpaceRef.absolute_path, activeReqRef);
+            activeReqRef.self.meta.has_unsaved_changes = true;
         } else {
-            previousActiveRequestRelativePath = currentActiveRequestRelativePath;
+            prevActiveReqRelPath = activeReqRelPath;
         }
     });
 </script>
@@ -190,19 +191,18 @@
             class="bg-card relative mr-1.5 mb-1.5 rounded-md border border-l-0"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
-            {#if treeItemsState.activeRequest}
+            {@const activeReqRef = treeItemsState.activeRequest}
+            {#if activeReqRef}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
                         <div class="mb-3 flex">
-                            {treeItemsState.activeRequest.self.meta.display_name}
+                            {activeReqRef.self.meta.display_name}
                         </div>
                         <div>
                             <form class="flex gap-2">
-                                <SelectMethod
-                                    bind:selected={treeItemsState.activeRequest.self.config.method}
-                                />
+                                <SelectMethod bind:selected={activeReqRef.self.config.method} />
                                 <Input
-                                    bind:value={treeItemsState.activeRequest.self.config.url}
+                                    bind:value={activeReqRef.self.config.url}
                                     type="text"
                                     class="font-mono text-xs"
                                 />
@@ -211,44 +211,43 @@
                         </div>
                     </div>
                     <ResizablePane
-                        bind:this={configurationPane}
+                        bind:this={cfgPane}
                         defaultSize={25}
                         minSize={20}
                         collapsedSize={5.5}
                         collapsible={true}
                         onCollapse={() => {
-                            isRequestPaneCollapsed = true;
+                            isReqPaneCollapsed = true;
                         }}
                         onExpand={() => {
-                            isRequestPaneCollapsed = false;
+                            isReqPaneCollapsed = false;
                         }}
-                        class={cn(isRequestPaneCollapsed && "h-8 max-h-8 min-h-8")}
+                        class={cn(isReqPaneCollapsed && "h-8 max-h-8 min-h-8")}
                     >
                         <ConfigurationPane
-                            pane={configurationPane}
-                            bind:isCollapsed={isRequestPaneCollapsed}
-                            bind:config={treeItemsState.activeRequest.self.config}
+                            pane={cfgPane}
+                            bind:isCollapsed={isReqPaneCollapsed}
+                            bind:config={activeReqRef.self.config}
                         />
                     </ResizablePane>
                     <ResizableHandle withHandle />
                     <ResizablePane
-                        bind:this={responsePane}
+                        bind:this={resPane}
                         defaultSize={75}
                         minSize={20}
                         collapsedSize={5}
                         collapsible={true}
                         onCollapse={() => {
-                            isResponsePaneCollapsed = true;
+                            isResPaneCollapsed = true;
                         }}
                         onExpand={() => {
-                            isResponsePaneCollapsed = false;
+                            isResPaneCollapsed = false;
                         }}
-                        class={cn(isResponsePaneCollapsed && "h-8 max-h-8 min-h-8 ")}
+                        class={cn(isResPaneCollapsed && "h-8 max-h-8 min-h-8 ")}
                     >
-                        {@const activeReqRef = treeItemsState.activeRequest}
                         <ResponsePane
-                            pane={responsePane}
-                            isCollapsed={isResponsePaneCollapsed}
+                            pane={resPane}
+                            isCollapsed={isResPaneCollapsed}
                             {activeReqRef}
                         />
                     </ResizablePane>
