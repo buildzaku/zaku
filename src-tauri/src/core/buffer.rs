@@ -7,8 +7,9 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::request;
 use super::utils::ZAKU_DATA_DIR;
-use crate::models::request::{Request, RequestMeta};
-use crate::models::space::SpaceBuffer;
+use crate::models::buffer::{ReqBuf, SpaceBuf};
+use crate::models::request::Req;
+use crate::models::toml::ReqToml;
 
 fn hashed_file_name(absolute_space_path: &Path) -> String {
     let mut hasher = Sha256::new();
@@ -20,7 +21,7 @@ fn hashed_file_name(absolute_space_path: &Path) -> String {
 
 const SPACE_BUFFER_DIR: &str = "buffer/spaces";
 
-impl SpaceBuffer {
+impl SpaceBuf {
     pub fn load(absolute_space_path: &Path) -> RwLock<Self> {
         let space_buffer_file = ZAKU_DATA_DIR
             .join(SPACE_BUFFER_DIR)
@@ -30,14 +31,14 @@ impl SpaceBuffer {
         if space_buffer_file.exists() {
             let content =
                 fs::read_to_string(&space_buffer_file).expect("Failed to read from space buffer");
-            let space_buffer: Result<SpaceBuffer, _> = serde_json::from_str(&content);
+            let space_buffer: Result<SpaceBuf, _> = serde_json::from_str(&content);
 
-            return RwLock::new(space_buffer.unwrap_or_else(|_| SpaceBuffer {
+            return RwLock::new(space_buffer.unwrap_or_else(|_| SpaceBuf {
                 absolute_path: absolute_space_path.to_string_lossy().to_string(),
                 requests: HashMap::new(),
             }));
         } else {
-            return RwLock::new(SpaceBuffer {
+            return RwLock::new(SpaceBuf {
                 absolute_path: absolute_space_path.to_string_lossy().to_string(),
                 requests: HashMap::new(),
             });
@@ -70,25 +71,19 @@ impl SpaceBuffer {
 pub fn save_request_to_space_buffer(
     absolute_space_path: &Path,
     parent_relative_path: &Path,
-    request: Request,
+    request: Req,
 ) {
-    let space_buffer = SpaceBuffer::load(absolute_space_path);
-    let mut space_buffer_wlock = SpaceBuffer::acquire_write_lock(&space_buffer);
+    let space_buffer = SpaceBuf::load(absolute_space_path);
+    let mut space_buffer_wlock = SpaceBuf::acquire_write_lock(&space_buffer);
     let request_relative_path = PathBuf::from(parent_relative_path)
         .join(&request.meta.file_name)
         .to_string_lossy()
         .to_string();
+    let req_buf = ReqBuf::from(&request);
 
-    space_buffer_wlock.requests.insert(
-        request_relative_path,
-        Request {
-            meta: RequestMeta {
-                has_unsaved_changes: true,
-                ..request.meta
-            },
-            ..request
-        },
-    );
+    space_buffer_wlock
+        .requests
+        .insert(request_relative_path, req_buf);
 
     space_buffer_wlock.persist();
 }
@@ -97,25 +92,23 @@ pub fn write_buffer_request_to_fs(
     absolute_space_path: &Path,
     request_relative_path: &Path,
 ) -> Result<(), Error> {
-    let space_buffer = SpaceBuffer::load(absolute_space_path);
-    let mut space_buffer_wlock = SpaceBuffer::acquire_write_lock(&space_buffer);
+    let space_buf = SpaceBuf::load(absolute_space_path);
+    let mut space_buf_wlock = SpaceBuf::acquire_write_lock(&space_buf);
 
-    let request_buffer = space_buffer_wlock
+    let req_buf = space_buf_wlock
         .requests
         .get(&request_relative_path.to_string_lossy().to_string());
 
-    if let Some(request_buffer) = request_buffer {
-        request::save_to_request_file(
-            &absolute_space_path.join(request_relative_path),
-            request_buffer,
-        )
-        .unwrap();
+    if let Some(req_buf) = req_buf {
+        let req_toml = ReqToml::from(req_buf);
+        request::save_to_request_file(&absolute_space_path.join(request_relative_path), &req_toml)
+            .unwrap();
     }
 
-    space_buffer_wlock
+    space_buf_wlock
         .requests
         .remove(&request_relative_path.to_string_lossy().to_string());
-    space_buffer_wlock.persist();
+    space_buf_wlock.persist();
 
     return Ok(());
 }
