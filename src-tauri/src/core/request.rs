@@ -3,7 +3,7 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
-use crate::models::request::{Request, RequestFile, RequestFileConfig, RequestFileMeta};
+use crate::models::toml::{ReqToml, ReqTomlConfig, ReqTomlMeta};
 
 pub fn create_request_file(absolute_path: &Path, display_name: &str) -> Result<(), Error> {
     let mut request_file =
@@ -14,11 +14,11 @@ pub fn create_request_file(absolute_path: &Path, display_name: &str) -> Result<(
             )
         })?;
 
-    let request = RequestFile {
-        meta: RequestFileMeta {
+    let request = ReqToml {
+        meta: ReqTomlMeta {
             name: display_name.to_string(),
         },
-        config: RequestFileConfig {
+        config: ReqTomlConfig {
             method: "GET".to_string(),
             url: None,
             headers: None,
@@ -47,7 +47,7 @@ pub fn create_request_file(absolute_path: &Path, display_name: &str) -> Result<(
     return Ok(());
 }
 
-pub fn parse_request_file(absolute_path: &PathBuf) -> Result<RequestFile, Error> {
+pub fn parse_request_file(absolute_path: &PathBuf) -> Result<ReqToml, Error> {
     let content = match fs::read_to_string(absolute_path) {
         Ok(content) => content,
         Err(err) => {
@@ -71,7 +71,7 @@ pub fn parse_request_file(absolute_path: &PathBuf) -> Result<RequestFile, Error>
     return Ok(parsed_request);
 }
 
-pub fn save_to_request_file(absolute_request_path: &Path, request: &Request) -> Result<(), Error> {
+pub fn save_to_request_file(absolute_request_path: &Path, req_toml: &ReqToml) -> Result<(), Error> {
     if !absolute_request_path.exists() {
         return Err(Error::new(
             ErrorKind::NotFound,
@@ -79,53 +79,7 @@ pub fn save_to_request_file(absolute_request_path: &Path, request: &Request) -> 
         ));
     }
 
-    let request_file = RequestFile {
-        meta: RequestFileMeta {
-            name: request.meta.display_name.clone(),
-        },
-        config: RequestFileConfig {
-            method: request.config.method.clone(),
-            url: request.config.url.clone(),
-            headers: match request.config.headers.is_empty() {
-                true => None,
-                false => Some(
-                    request
-                        .config
-                        .headers
-                        .iter()
-                        .map(|(included, key, value)| {
-                            let key = match included {
-                                true => key.clone(),
-                                false => format!("!{}", key),
-                            };
-                            (key, value.clone())
-                        })
-                        .collect(),
-                ),
-            },
-            parameters: match request.config.parameters.is_empty() {
-                true => None,
-                false => Some(
-                    request
-                        .config
-                        .parameters
-                        .iter()
-                        .map(|(included, key, value)| {
-                            let key = match included {
-                                true => key.clone(),
-                                false => format!("!{}", key),
-                            };
-                            (key, value.clone())
-                        })
-                        .collect(),
-                ),
-            },
-            content_type: request.config.content_type.clone(),
-            body: request.config.body.clone(),
-        },
-    };
-
-    let toml_string = toml::to_string_pretty(&request_file).unwrap();
+    let toml_string = toml::to_string_pretty(&req_toml).unwrap();
     fs::write(absolute_request_path, toml_string).unwrap();
 
     return Ok(());

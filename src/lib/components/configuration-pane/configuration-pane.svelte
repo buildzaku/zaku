@@ -17,13 +17,13 @@
     } from "$lib/components/primitives/select";
     import { CodeBlock } from "$lib/components/code-block";
     import type { ValueOf } from "$lib/utils";
-    import type { RequestConfig } from "$lib/bindings";
+    import type { ReqCfg } from "$lib/bindings";
     import { Headers, Parameters } from ".";
 
     type Props = {
         pane: PaneAPI;
         isCollapsed: boolean;
-        config: RequestConfig;
+        config: ReqCfg;
     };
 
     let { pane, isCollapsed = $bindable(), config = $bindable() }: Props = $props();

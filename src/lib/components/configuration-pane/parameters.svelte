@@ -4,15 +4,15 @@
     import { Input } from "$lib/components/primitives/input";
     import { Button } from "$lib/components/primitives/button";
     import { Checkbox } from "$lib/components/primitives/checkbox";
-    import type { RequestConfig } from "$lib/bindings";
+    import type { ReqCfg } from "$lib/bindings";
 
     type Props = {
-        config: RequestConfig;
+        config: ReqCfg;
     };
 
     let { config = $bindable() }: Props = $props();
 
-    function addParam(config: RequestConfig) {
+    function addParam(config: ReqCfg) {
         if (!config.parameters) {
             config.parameters = [];
         }
@@ -20,7 +20,7 @@
         config.parameters.push([true, "", ""]);
     }
 
-    function deleteParam(config: RequestConfig, index: number) {
+    function deleteParam(config: ReqCfg, index: number) {
         if (!config.parameters) return;
         config.parameters = config.parameters.filter((_, idx) => idx !== index);
     }
