@@ -4,4 +4,4 @@
 
 Implement http handler command using `reqwest`
 
-- Captures response status, headers, cookies, response size, and elapsed time
+- Captures response status, headers, cookies, size & elapsed time
