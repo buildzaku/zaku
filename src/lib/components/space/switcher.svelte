@@ -14,14 +14,9 @@
         DropdownMenuSubContent,
         DropdownMenuSeparator,
     } from "$lib/components/primitives/dropdown-menu";
-    import {
-        openDirectoryDialog,
-        getSpaceReference,
-        dispatchNotification,
-        safeInvoke,
-    } from "$lib/commands";
     import { cn } from "$lib/utils/style";
     import { SpaceCreateDialog } from ".";
+    import { commands } from "$lib/bindings";
 
     type Props = { isSidebarCollapsed: boolean };
 
@@ -31,16 +26,24 @@
 
     async function handleOpenExistingSpace() {
         try {
-            const selectedPath = await openDirectoryDialog({ title: "Open an existing Space" });
-
-            if (selectedPath !== null) {
-                const spaceReference = await getSpaceReference(selectedPath);
-                await zakuState.setActiveSpace(spaceReference);
-                await goto("/space");
+            const cmdResult = await commands.openDirDialog({ title: "Open an existing Space" });
+            if (cmdResult.status === "error") {
+                throw new Error("Unable to open existing space");
             }
+            if (!cmdResult.data) {
+                return;
+            }
+
+            const spaceRefCmdResult = await commands.getSpaceReference(cmdResult.data);
+            if (spaceRefCmdResult.status === "error") {
+                throw new Error(`Cannot get space reference for ${cmdResult.data}`);
+            }
+
+            await zakuState.setActiveSpace(spaceRefCmdResult.data);
+            await goto("/space");
         } catch (err) {
             console.error(err);
-            await dispatchNotification({
+            await commands.dispatchNotification({
                 title: "Doesn't look like a valid space.",
                 body: "Unable to parse the directory, make sure it is a valid space and try again.",
             });
@@ -50,10 +53,16 @@
     async function handleDeleteSpace() {
         if (zakuState.activeSpace) {
             try {
-                const spaceReference = await getSpaceReference(zakuState.activeSpace.absolute_path);
-                await safeInvoke("delete_space", {
-                    space_reference: spaceReference,
-                });
+                const spaceRefCmdResult = await commands.getSpaceReference(
+                    zakuState.activeSpace.absolute_path,
+                );
+                if (spaceRefCmdResult.status === "error") {
+                    throw new Error(
+                        `Cannot get space reference for ${zakuState.activeSpace.absolute_path}`,
+                    );
+                }
+
+                await commands.deleteSpace(spaceRefCmdResult.data);
                 await zakuState.synchronize();
 
                 return;

@@ -1,17 +1,15 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::Type;
 
 use super::space::{Space, SpaceReference};
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ZakuState {
     pub active_space: Option<Space>,
     pub space_references: Vec<SpaceReference>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ZakuError {
     pub error: String,
     pub message: String,

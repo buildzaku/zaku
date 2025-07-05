@@ -6,8 +6,7 @@ import { zakuState, treeActionsState, treeItemsState } from "$lib/state.svelte";
 import { TreeItemType } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto, TreeItem } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-import { safeInvoke } from "$lib/commands";
-import type { Collection, MoveTreeItemDto } from "$lib/bindings";
+import { commands, type Collection, type MoveTreeItemDto } from "$lib/bindings";
 import { Err, Ok } from "$lib/utils";
 import type { Result } from "$lib/utils";
 
@@ -161,11 +160,9 @@ export async function handleDrop(event: DragEvent) {
         ),
         destination_relative_path: buildPath(treeActionsState.dropTargetPath, fileOrDirName),
     };
-    const moveTreeItemResult = await safeInvoke("move_tree_item", {
-        move_tree_item_dto: moveTreeItemDto,
-    });
-    if (!moveTreeItemResult.ok) {
-        console.error(moveTreeItemResult.err);
+    const moveTreeItemResult = await commands.moveTreeItem(moveTreeItemDto);
+    if (moveTreeItemResult.status === "error") {
+        console.error(moveTreeItemResult.error);
         toast(
             `Something went wrong. Unable to move \`${treeActionsState.dragPayload.treeItem.meta.display_name}\``,
         );

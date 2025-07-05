@@ -38,7 +38,7 @@ export default eslintTs.config(
         },
     },
     {
-        ignores: ["src-tauri/"],
+        ignores: ["src-tauri/", "src/lib/bindings.ts"],
     },
     {
         rules: {
