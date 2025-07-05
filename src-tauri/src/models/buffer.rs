@@ -11,23 +11,24 @@ pub struct ReqBuf {
     pub config: ReqCfg,
 }
 
-impl From<&Req> for ReqBuf {
-    fn from(req: &Req) -> Self {
-        Self {
-            meta: ReqMeta {
-                file_name: req.meta.file_name.clone(),
-                display_name: req.meta.display_name.clone(),
-                has_unsaved_changes: true,
-            },
-            config: ReqCfg {
-                method: req.config.method.clone(),
-                url: req.config.url.clone(),
-                headers: req.config.headers.clone(),
-                parameters: req.config.parameters.clone(),
-                content_type: req.config.content_type.clone(),
-                body: req.config.body.clone(),
-            },
-        }
+impl ReqBuf {
+    pub fn from_req(req: &Req) -> Self {
+        let meta = ReqMeta {
+            file_name: req.meta.file_name.clone(),
+            display_name: req.meta.display_name.clone(),
+            has_unsaved_changes: true,
+        };
+
+        let config = ReqCfg {
+            method: req.config.method.clone(),
+            url: req.config.url.clone(),
+            headers: req.config.headers.clone(),
+            parameters: req.config.parameters.clone(),
+            content_type: req.config.content_type.clone(),
+            body: req.config.body.clone(),
+        };
+
+        Self { meta, config }
     }
 }
 

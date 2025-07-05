@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::models::buffer::ReqBuf;
+use crate::{
+    core::utils::from_indexmap,
+    models::{buffer::ReqBuf, toml::ReqToml},
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqMeta {
@@ -17,12 +20,10 @@ pub struct ReqCfg {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(bool, String, String)>,
 
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<(bool, String, String)>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,17 +49,48 @@ pub struct Req {
     pub status: ReqStatus,
 }
 
-impl From<&ReqBuf> for Req {
-    fn from(req_buf: &ReqBuf) -> Self {
+impl Req {
+    pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
+        let meta = ReqMeta {
+            file_name: req_buf.meta.file_name.clone(),
+            display_name: req_buf.meta.display_name.clone(),
+            has_unsaved_changes: true,
+        };
+
         Self {
-            meta: ReqMeta {
-                file_name: req_buf.meta.file_name.clone(),
-                display_name: req_buf.meta.display_name.clone(),
-                has_unsaved_changes: true,
-            },
+            meta,
             config: req_buf.config.clone(),
-            response: None,
             status: ReqStatus::Idle,
+            response: None,
+        }
+    }
+
+    pub fn from_reqtoml(req_toml: &ReqToml, file_name: String) -> Self {
+        let meta = ReqMeta {
+            file_name,
+            display_name: req_toml.meta.name.clone(),
+            has_unsaved_changes: false,
+        };
+
+        let cfg = &req_toml.config;
+        let config = ReqCfg {
+            method: cfg.method.clone(),
+            url: cfg.url.clone(),
+            headers: cfg.headers.as_ref().map(from_indexmap).unwrap_or_default(),
+            parameters: cfg
+                .parameters
+                .as_ref()
+                .map(from_indexmap)
+                .unwrap_or_default(),
+            content_type: cfg.content_type.clone(),
+            body: cfg.body.clone(),
+        };
+
+        Self {
+            meta,
+            config,
+            status: ReqStatus::Idle,
+            response: None,
         }
     }
 }
