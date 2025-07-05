@@ -1,6 +1,6 @@
 name: zaku
 base: core22
-version: 0.5.0
+version: 0.5.1
 summary: Fast, open-source API client with fangs
 description: |
     Fast, open-source API client with fangs

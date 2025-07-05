@@ -1,5 +1,11 @@
 # zaku
 
+## 0.5.1
+
+### Patch Changes
+
+- Replace ts-rs with specta for generating typescript bindings - [`8b11c0b`](https://github.com/buildzaku/zaku/commit/8b11c0b781c1a906caaf656deed756e795bee2f8) [#35](https://github.com/buildzaku/zaku/pull/35)
+
 ## 0.5.0
 
 ### Minor Changes
