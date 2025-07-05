@@ -3,12 +3,10 @@ import { toast } from "svelte-sonner";
 
 import { version } from "$app/environment";
 import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
-import { Err, Ok } from "$lib/utils";
 import type { ValueOf } from "$lib/utils";
-import { safeInvoke } from "$lib/commands";
 import { TreeItemType } from "$lib/models";
 import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
-import type { ZakuState as TZakuState, SpaceReference, Space, Req } from "$lib/bindings";
+import { type SpaceReference, type Space, type Req, commands } from "$lib/bindings";
 import { joinPaths } from "./components/tree-item/utils.svelte";
 
 export type ReqCfg = ZakuReqCfg;
@@ -39,38 +37,28 @@ class ZakuState {
     public spaceReferences: SpaceReference[] = $state([]);
 
     public async synchronize() {
-        const getZakuStateResult = await safeInvoke<TZakuState>("get_zaku_state");
+        const getZakuStateResult = await commands.getZakuState();
 
-        if (getZakuStateResult.ok) {
-            this.activeSpace = getZakuStateResult.value.active_space;
-            this.spaceReferences = getZakuStateResult.value.space_references;
+        if (getZakuStateResult.status === "ok") {
+            this.activeSpace = getZakuStateResult.data.active_space;
+            this.spaceReferences = getZakuStateResult.data.space_references;
 
             treeActionsState.reset();
             await tick();
-
-            return Ok();
         } else {
-            const { error, message } = getZakuStateResult.err;
-
-            console.error(error);
-            toast(message);
-
-            return Err();
+            console.error(getZakuStateResult.error);
+            toast("Something went wrong while synchronizing state");
         }
     }
 
     public async setActiveSpace(spaceReference: SpaceReference) {
-        const setActiveSpaceResult = await safeInvoke<null>("set_active_space", {
-            space_reference: spaceReference,
-        });
+        const setActiveSpaceResult = await commands.setActiveSpace(spaceReference);
 
-        if (setActiveSpaceResult.ok) {
+        if (setActiveSpaceResult.status === "ok") {
             await this.synchronize();
         } else {
-            const { error, message } = setActiveSpaceResult.err;
-
-            console.error(error);
-            toast(message);
+            console.error(setActiveSpaceResult.error);
+            toast("Something went wrong while setting space");
         }
 
         return;
@@ -125,12 +113,12 @@ class Debounced {
     #state: Map<AbsoluteRequestPath, DebouncedState> = new Map();
     #DELAY = 1500;
 
-    async #invokeSaveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest) {
-        await safeInvoke("save_request_to_buffer", {
-            absolute_space_path: absoluteSpacePath,
-            relative_path: activeRequest.parentRelativePath,
-            request: activeRequest.self,
-        });
+    async #invokeSaveReqToBuf(absoluteSpacePath: string, activeRequest: ActiveRequest) {
+        await commands.saveRequestToBuffer(
+            absoluteSpacePath,
+            activeRequest.parentRelativePath,
+            activeRequest.self,
+        );
     }
     public saveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest): void {
         const absoluteRequestPath = joinPaths([
@@ -145,7 +133,7 @@ class Debounced {
         }
 
         const timer = setTimeout(() => {
-            this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
+            this.#invokeSaveReqToBuf(absoluteSpacePath, activeRequest);
             this.#state.delete(absoluteRequestPath);
         }, this.#DELAY);
 
@@ -162,14 +150,14 @@ class Debounced {
         const currentState = this.#state.get(absoluteRequestPath);
         if (currentState) {
             const { timer, absoluteSpacePath, activeRequest } = currentState;
-            await this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
+            await this.#invokeSaveReqToBuf(absoluteSpacePath, activeRequest);
             this.#state.delete(absoluteRequestPath);
             clearTimeout(timer);
         }
     }
     public async flushAll(): Promise<void> {
         for (const { timer, absoluteSpacePath, activeRequest } of this.#state.values()) {
-            await this.#invokeSaveRequestToBuffer(absoluteSpacePath, activeRequest);
+            await this.#invokeSaveReqToBuf(absoluteSpacePath, activeRequest);
             clearTimeout(timer);
         }
     }

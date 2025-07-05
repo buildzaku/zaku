@@ -8,7 +8,7 @@ use std::vec::IntoIter;
 
 use crate::models::buffer::SpaceBuf;
 use crate::models::collection::{Collection, CollectionMeta};
-use crate::models::request::{Req, ReqCfg, ReqMeta, ReqStatus};
+use crate::models::request::Req;
 use crate::models::space::{Space, SpaceConfigFile, SpaceReference};
 
 use super::{collection, request, store};
@@ -111,7 +111,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                         collection_rc_refcell
                             .borrow_mut()
                             .requests
-                            .push(Req::from(req_buf));
+                            .push(Req::from_reqbuf(req_buf));
                     } else {
                         let file_name = absolute_entry_path
                             .file_name()
@@ -120,50 +120,11 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                             .into_owned();
 
                         match request::parse_request_file(&absolute_entry_path) {
-                            Ok(request) => {
-                                collection_rc_refcell.borrow_mut().requests.push(Req {
-                                    meta: ReqMeta {
-                                        file_name,
-                                        display_name: request.meta.name,
-                                        has_unsaved_changes: false,
-                                    },
-                                    config: ReqCfg {
-                                        method: request.config.method,
-                                        url: request.config.url,
-                                        headers: request
-                                            .config
-                                            .headers
-                                            .unwrap_or_default()
-                                            .into_iter()
-                                            .map(|(key, value)| {
-                                                let include = !key.starts_with("!");
-                                                let key = key
-                                                    .strip_prefix("!")
-                                                    .unwrap_or(&key)
-                                                    .to_string();
-                                                (include, key, value)
-                                            })
-                                            .collect(),
-                                        parameters: request
-                                            .config
-                                            .parameters
-                                            .unwrap_or_default()
-                                            .into_iter()
-                                            .map(|(key, value)| {
-                                                let include = !key.starts_with("!");
-                                                let key = key
-                                                    .strip_prefix("!")
-                                                    .unwrap_or(&key)
-                                                    .to_string();
-                                                (include, key, value)
-                                            })
-                                            .collect(),
-                                        content_type: request.config.content_type,
-                                        body: request.config.body,
-                                    },
-                                    status: ReqStatus::Idle,
-                                    response: None,
-                                });
+                            Ok(req_toml) => {
+                                collection_rc_refcell
+                                    .borrow_mut()
+                                    .requests
+                                    .push(Req::from_reqtoml(&req_toml, file_name));
                             }
                             Err(err) => {
                                 eprintln!("{}", err);

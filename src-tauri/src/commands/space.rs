@@ -8,7 +8,8 @@ use crate::core::{space, store};
 use crate::models::space::{CreateSpaceDto, SpaceConfigFile, SpaceMeta, SpaceReference};
 use crate::models::zaku::{ZakuError, ZakuState};
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn create_space(
     create_space_dto: CreateSpaceDto,
     state: State<Mutex<ZakuState>>,
@@ -86,7 +87,8 @@ pub fn create_space(
     return Ok(space_reference);
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn set_active_space(
     space_reference: SpaceReference,
     state: State<Mutex<ZakuState>>,
@@ -118,7 +120,8 @@ pub fn set_active_space(
     }
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn delete_space(space_reference: SpaceReference, state: State<Mutex<ZakuState>>) -> () {
     let mut zaku_state = state.lock().unwrap();
     store::delete_space_reference(space_reference);
@@ -148,7 +151,8 @@ pub fn delete_space(space_reference: SpaceReference, state: State<Mutex<ZakuStat
     return ();
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
     let space_root_path = PathBuf::from(path.as_str());
 

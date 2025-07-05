@@ -15,9 +15,9 @@
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import { treeItemsState, debounced, zakuState, baseRequestHeaders } from "$lib/state.svelte";
-    import { safeInvoke } from "$lib/commands";
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
+    import { commands } from "$lib/bindings";
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
@@ -120,13 +120,10 @@
             ]);
 
             await debounced.flush(absoluteReqPath);
-            await safeInvoke("write_buffer_request_to_fs", {
-                absolute_space_path: activeSpaceRef.absolute_path,
-                request_relative_path: joinPaths([
-                    activeReqRef.parentRelativePath,
-                    activeReqRef.self.meta.file_name,
-                ]),
-            });
+            await commands.writeBufferRequestToFs(
+                activeSpaceRef.absolute_path,
+                joinPaths([activeReqRef.parentRelativePath, activeReqRef.self.meta.file_name]),
+            );
 
             isActiveReqSavedToFs = true;
             activeReqRef.self.meta.has_unsaved_changes = false;

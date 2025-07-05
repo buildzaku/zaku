@@ -7,13 +7,7 @@
     import { zakuState, treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
-    import { safeInvoke } from "$lib/commands";
-    import type {
-        CreateCollectionDto,
-        CreateNewCollection,
-        CreateNewRequest,
-        CreateRequestDto,
-    } from "$lib/bindings";
+    import { commands } from "$lib/bindings";
 
     type Props = {
         parentRelativePath: string;
@@ -45,17 +39,13 @@
 
     async function handleCreateRequestOrCollection() {
         if (type === "collection") {
-            const create_collection_dto: CreateCollectionDto = {
+            const createCollectionResult = await commands.createCollection({
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
-            };
-            const createCollectionResult = await safeInvoke<CreateNewCollection>(
-                "create_collection",
-                { create_collection_dto },
-            );
+            });
 
-            if (!createCollectionResult.ok) {
-                console.error(createCollectionResult.err);
+            if (createCollectionResult.status === "error") {
+                console.error(createCollectionResult.error);
 
                 return;
             }
@@ -65,27 +55,24 @@
 
             treeItemsState.focussedItem = {
                 type: TreeItemType.Collection,
-                parentRelativePath: createCollectionResult.value.parent_relative_path,
-                relativePath: createCollectionResult.value.relative_path,
+                parentRelativePath: createCollectionResult.data.parent_relative_path,
+                relativePath: createCollectionResult.data.relative_path,
             };
 
             const createdCollection = document.querySelector(
-                `[data-current-path="${createCollectionResult.value.relative_path}"]`,
+                `[data-current-path="${createCollectionResult.data.relative_path}"]`,
             );
             if (createdCollection) {
                 createdCollection.scrollIntoView({ behavior: "instant", block: "center" });
             }
         } else {
-            const create_request_dto: CreateRequestDto = {
+            const createRequestResult = await commands.createRequest({
                 parent_relative_path: parentRelativePath,
                 relative_path: inputName,
-            };
-            const createRequestResult = await safeInvoke<CreateNewRequest>("create_request", {
-                create_request_dto,
             });
 
-            if (!createRequestResult.ok) {
-                console.error(createRequestResult.err);
+            if (createRequestResult.status === "error") {
+                console.error(createRequestResult.error);
 
                 return;
             }
@@ -95,12 +82,12 @@
 
             treeItemsState.focussedItem = {
                 type: TreeItemType.Request,
-                parentRelativePath: createRequestResult.value.parent_relative_path,
-                relativePath: createRequestResult.value.relative_path,
+                parentRelativePath: createRequestResult.data.parent_relative_path,
+                relativePath: createRequestResult.data.relative_path,
             };
 
             const createdRequest = document.querySelector(
-                `[data-current-path="${createRequestResult.value.relative_path}"]`,
+                `[data-current-path="${createRequestResult.data.relative_path}"]`,
             );
             if (createdRequest) {
                 createdRequest.scrollIntoView({ behavior: "instant", block: "center" });
