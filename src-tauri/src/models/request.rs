@@ -1,46 +1,38 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::Type;
 
 use crate::models::buffer::ReqBuf;
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqMeta {
     pub file_name: String,
     pub display_name: String,
     pub has_unsaved_changes: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqCfg {
     pub method: String,
 
-    #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 
-    #[ts(optional, as = "Option<_>")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(bool, String, String)>,
 
-    #[ts(optional, as = "Option<_>")]
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<(bool, String, String)>,
 
-    #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
 
-    #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub enum ReqStatus {
     Idle,
     Pending,
@@ -48,8 +40,7 @@ pub enum ReqStatus {
     Error,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Req {
     pub meta: ReqMeta,
     pub config: ReqCfg,
@@ -72,17 +63,15 @@ impl From<&ReqBuf> for Req {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateRequestDto {
     pub parent_relative_path: String,
     pub relative_path: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Res {
-    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<u16>,
 
     pub data: String,

@@ -3,9 +3,11 @@ use tauri::State;
 
 use crate::models::zaku::ZakuState;
 
-#[tauri::command(rename_all = "snake_case")]
-pub fn get_zaku_state(state: State<Mutex<ZakuState>>) -> ZakuState {
-    let zaku_state = state.lock().unwrap();
-
-    return zaku_state.clone();
+#[specta::specta]
+#[tauri::command]
+pub fn get_zaku_state(state: State<Mutex<ZakuState>>) -> Result<ZakuState, String> {
+    match state.lock() {
+        Ok(zaku_state) => Ok(zaku_state.clone()),
+        Err(e) => Err(format!("State lock error: {}", e)),
+    }
 }

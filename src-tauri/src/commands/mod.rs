@@ -15,7 +15,8 @@ pub mod space;
 pub mod state;
 pub mod window;
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn move_tree_item(
     move_tree_item_dto: MoveTreeItemDto,
     app_handle: AppHandle,

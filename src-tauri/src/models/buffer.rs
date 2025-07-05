@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::Type;
 
 use crate::models::request::{Req, ReqCfg, ReqMeta};
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqBuf {
     pub meta: ReqMeta,
     pub config: ReqCfg,
@@ -32,8 +31,7 @@ impl From<&Req> for ReqBuf {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS, Default)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct SpaceBuf {
     pub absolute_path: String,
     pub requests: HashMap<String, ReqBuf>,

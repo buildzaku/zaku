@@ -3,7 +3,8 @@ use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::models::{zaku::ZakuError, DispatchNotificationOptions};
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool, ZakuError> {
     let permission_state = app_handle
         .notification()
@@ -16,7 +17,8 @@ pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool,
     return Ok(permission_state == PermissionState::Granted);
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn request_notification_permission(app_handle: AppHandle) -> Result<bool, ZakuError> {
     let permission_state = app_handle
         .notification()
@@ -29,7 +31,8 @@ pub fn request_notification_permission(app_handle: AppHandle) -> Result<bool, Za
     return Ok(permission_state == PermissionState::Granted);
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn dispatch_notification(
     options: DispatchNotificationOptions,
     app_handle: AppHandle,

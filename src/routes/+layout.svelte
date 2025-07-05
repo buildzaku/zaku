@@ -4,13 +4,13 @@
     import { dev } from "$app/environment";
     import { goto } from "$app/navigation";
     import { page } from "$app/state";
-    import { invoke } from "@tauri-apps/api/core";
     import { ModeWatcher } from "mode-watcher";
 
     import "../app.css";
     import { Toaster } from "$lib/components/primitives/sonner";
     import { TitleBar } from "$lib/components/title-bar";
     import { zakuState } from "$lib/state.svelte";
+    import { commands } from "$lib/bindings";
 
     let { children }: { children: Snippet } = $props();
 
@@ -30,7 +30,7 @@
             await goto("/");
         }
 
-        await invoke("show_main_window");
+        await commands.showMainWindow();
     });
 
     $effect(() => {
