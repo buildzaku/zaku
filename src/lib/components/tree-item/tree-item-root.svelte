@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
-    import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
+    import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
 
     import type { Collection } from "$lib/bindings";
     import { treeActionsState, treeItemsState } from "$lib/state.svelte";

@@ -15,6 +15,7 @@ tauri-build = { version = "2.2.0", features = [] }
 dirs = { version = "6.0.0" }
 indexmap = { version = "2.9.0", features = ["serde"] }
 once_cell = { version = "1.21.3" }
+reqwest = { version = "0.12.22", features = ["json", "multipart"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140" }
 sha2 = { version = "0.10.8" }
@@ -27,6 +28,7 @@ tauri-plugin-http = { version = "2.4.3" }
 tauri-plugin-notification = { version = "2.2.2" }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 toml = { version = "0.8.20", features = ["preserve_order"] }
+url = { version = "2.5.4" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 wgpu = { version = "25.0.0", default-features = false }

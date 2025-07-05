@@ -33,7 +33,7 @@ impl ReqToml {
         let cfg = &req_buf.config;
         let config = ReqTomlConfig {
             method: cfg.method.clone(),
-            url: cfg.url.clone(),
+            url: cfg.url.raw.clone(),
             headers: to_indexmap(&cfg.headers),
             parameters: to_indexmap(&cfg.parameters),
             content_type: cfg.content_type.clone(),
