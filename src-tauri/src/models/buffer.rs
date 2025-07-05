@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::models::request::{Req, ReqCfg, ReqMeta};
+use crate::models::request::{HttpReq, ReqCfg, ReqMeta};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqBuf {
@@ -12,7 +12,7 @@ pub struct ReqBuf {
 }
 
 impl ReqBuf {
-    pub fn from_req(req: &Req) -> Self {
+    pub fn from_req(req: &HttpReq) -> Self {
         let meta = ReqMeta {
             file_name: req.meta.file_name.clone(),
             display_name: req.meta.display_name.clone(),

@@ -1,14 +1,17 @@
+use reqwest::Client;
+use std::time::Instant;
 use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
 use tauri::{AppHandle, Manager};
 
+use crate::models::request::HttpErr;
 use crate::{
     core::{self, buffer, collection, space},
     models::{
         collection::CreateCollectionDto,
-        request::{CreateRequestDto, Req},
+        request::{CreateRequestDto, HttpReq, HttpRes},
         zaku::{ZakuError, ZakuState},
         CreateNewRequest,
     },
@@ -118,7 +121,7 @@ pub fn create_request(
 
 #[specta::specta]
 #[tauri::command]
-pub fn save_request_to_buffer(absolute_space_path: &str, relative_path: &str, request: Req) {
+pub fn save_request_to_buffer(absolute_space_path: &str, relative_path: &str, request: HttpReq) {
     let absolute = Path::new(absolute_space_path);
     let relative = Path::new(relative_path);
     buffer::save_request_to_space_buffer(absolute, relative, request);
@@ -130,4 +133,97 @@ pub fn write_buffer_request_to_fs(absolute_space_path: &str, request_relative_pa
     let absolute = Path::new(absolute_space_path);
     let relative = Path::new(request_relative_path);
     buffer::write_buffer_request_to_fs(absolute, relative).unwrap();
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
+    let client = Client::new();
+    let cfg = &req.config;
+
+    let url = cfg.url.raw.clone().ok_or(HttpErr {
+        message: "missing URL".into(),
+        code: None,
+    })?;
+
+    let method = reqwest::Method::from_bytes(cfg.method.as_bytes()).map_err(|e| HttpErr {
+        message: e.to_string(),
+        code: None,
+    })?;
+
+    let mut builder = client.request(method, &url);
+
+    for (enabled, key, value) in &cfg.headers {
+        if *enabled {
+            builder = builder.header(key, value);
+        }
+    }
+
+    let query: Vec<_> = cfg
+        .parameters
+        .iter()
+        .filter(|(enabled, _, _)| *enabled)
+        .map(|(_, k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    if !query.is_empty() {
+        builder = builder.query(&query);
+    }
+
+    if let Some(ct) = &cfg.content_type {
+        builder = builder.header("Content-Type", ct);
+    }
+    if let Some(body) = &cfg.body {
+        builder = builder.body(body.clone());
+    }
+
+    let start = Instant::now();
+    let resp = builder.send().await.map_err(|e| HttpErr {
+        message: e.to_string(),
+        code: None,
+    })?;
+    let elapsed_ms = start.elapsed().as_millis() as u32;
+
+    let status = resp.status().as_u16();
+
+    let headers: Vec<(String, String)> = resp
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+
+    let cookies = resp
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .map(|v| {
+            let parts: Vec<&str> = v.split(';').collect();
+            let kv: Vec<&str> = parts[0].splitn(2, '=').collect();
+            if kv.len() == 2 {
+                (kv[0].trim().to_string(), kv[1].trim().to_string())
+            } else {
+                (kv[0].trim().to_string(), "".to_string())
+            }
+        })
+        .collect::<Vec<(String, String)>>();
+
+    let data = resp.text().await.map_err(|e| HttpErr {
+        message: e.to_string(),
+        code: Some(status),
+    })?;
+
+    let size_bytes = Some(data.len() as u32);
+
+    return Ok(HttpRes {
+        status: Some(status),
+        data,
+        headers: Some(headers),
+        cookies: if cookies.is_empty() {
+            None
+        } else {
+            Some(cookies)
+        },
+        size_bytes,
+        elapsed_ms: Some(elapsed_ms),
+    });
 }

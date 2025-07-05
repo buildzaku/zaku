@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { fetch } from "@tauri-apps/plugin-http";
     import type { PaneAPI } from "paneforge";
 
     import { Button } from "$lib/components/primitives/button";
@@ -30,77 +29,85 @@
         const activeReqRef = treeItemsState.activeRequest;
         if (!activeReqRef) return;
 
-        try {
-            activeReqRef.self.status = "Pending";
+        activeReqRef.self.status = "Pending";
 
-            const validProtocol = new RegExp(/^(https?:\/\/)/i);
-            if (!validProtocol.test(activeReqRef.self.config.url ?? "")) {
-                throw new Error("Invalid or missing Protocol");
-            }
+        const validProtocol = /^(https?:\/\/)/i;
 
-            const url = new URL(activeReqRef.self.config.url ?? "");
-
-            activeReqRef.self.config.parameters?.reduceRight((acc, cur) => {
-                const [include, key, value] = cur;
-                if (include && !url.searchParams.has(key)) {
-                    url.searchParams.set(key, value);
-                }
-
-                return acc;
-            }, []);
-
-            const requestHeaders = [
-                ...baseRequestHeaders,
-                ...(activeReqRef?.self.config.headers ?? []),
-            ].reduceRight((acc: Record<string, string>, cur) => {
-                const [include, key, value] = cur;
-                if (include && !(key in acc)) {
-                    acc[key] = value;
-                }
-                return acc;
-            }, {});
-
-            const requestConfig: RequestInit = {
-                method: activeReqRef.self.config.method,
-                headers: requestHeaders,
-            };
-
-            if (
-                activeReqRef.self.config.content_type &&
-                activeReqRef.self.config.content_type !== REQUEST_BODY_TYPES.None
-            ) {
-                const hasContentType = Object.keys(requestHeaders).some(
-                    key => key.toLowerCase() === "content-type",
-                );
-                if (!hasContentType) {
-                    requestHeaders["Content-Type"] = activeReqRef.self.config.content_type;
-                }
-
-                requestConfig["body"] = activeReqRef.self.config.body;
-            }
-
-            const fetchResponse = await fetch(url, requestConfig);
-            activeReqRef.self.response = {
-                status: fetchResponse.status,
-                data: String(),
-            };
-
-            if (fetchResponse.ok) {
-                activeReqRef.self.response.data = await fetchResponse.text();
-                activeReqRef.self.status = "Success";
-            } else {
-                activeReqRef.self.status = "Error";
-            }
-        } catch (err) {
-            const errStr = String(err);
-            const url = new URL(activeReqRef.self.config.url ?? "");
+        if (!validProtocol.test(activeReqRef.self.config.url.raw ?? "")) {
             activeReqRef.self.status = "Error";
             activeReqRef.self.response = {
-                data: errStr.startsWith("error sending request for url")
-                    ? `Error: connect ECONNREFUSED ${url.host}`
-                    : errStr,
+                status: undefined,
+                data: "Invalid or missing protocol",
+                headers: [],
+                elapsed_ms: undefined,
             };
+            return;
         }
+
+        const url = new URL(activeReqRef.self.config.url.raw ?? "");
+        activeReqRef.self.config.parameters?.forEach(([include, key, value]) => {
+            if (include && !url.searchParams.has(key)) {
+                url.searchParams.set(key, value);
+            }
+        });
+
+        const requestHeaders = [
+            ...baseRequestHeaders,
+            ...(activeReqRef.self.config.headers ?? []),
+        ].reduce((acc: Record<string, string>, [include, key, value]) => {
+            if (include && !(key in acc)) {
+                acc[key] = value;
+            }
+            return acc;
+        }, {});
+
+        if (
+            activeReqRef.self.config.content_type &&
+            activeReqRef.self.config.content_type !== REQUEST_BODY_TYPES.None
+        ) {
+            const hasContentType = Object.keys(requestHeaders).some(
+                k => k.toLowerCase() === "content-type",
+            );
+            if (!hasContentType) {
+                requestHeaders["Content-Type"] = activeReqRef.self.config.content_type;
+            }
+        }
+
+        const reqUrl = {
+            raw: url.href,
+            protocol: url.protocol.replace(":", ""),
+            host: url.hostname,
+            path: url.pathname,
+        };
+
+        const reqPayload = {
+            meta: activeReqRef.self.meta,
+            config: {
+                ...activeReqRef.self.config,
+                url: reqUrl,
+            },
+            status: activeReqRef.self.status,
+            response: null,
+        };
+
+        const httpRes = await commands.httpReq(reqPayload);
+
+        if (httpRes.status === "error") {
+            activeReqRef.self.status = "Error";
+            activeReqRef.self.response = {
+                status: undefined,
+                data: httpRes.error.message,
+                headers: [],
+                elapsed_ms: undefined,
+            };
+            return;
+        }
+
+        activeReqRef.self.response = httpRes.data;
+        activeReqRef.self.status =
+            httpRes.data.status && httpRes.data.status >= 200 && httpRes.data.status < 300
+                ? "Success"
+                : "Error";
     }
 
     async function handleSave(event: KeyboardEvent) {
@@ -199,7 +206,7 @@
                             <form class="flex gap-2">
                                 <SelectMethod bind:selected={activeReqRef.self.config.method} />
                                 <Input
-                                    bind:value={activeReqRef.self.config.url}
+                                    bind:value={activeReqRef.self.config.url.raw}
                                     type="text"
                                     class="font-mono text-xs"
                                 />

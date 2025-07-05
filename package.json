@@ -70,7 +70,6 @@
         "@codemirror/view": "6.36.6",
         "@lezer/highlight": "1.2.1",
         "@tauri-apps/api": "2.5.0",
-        "@tauri-apps/plugin-http": "2.4.3",
         "codemirror": "6.0.1"
     }
 }

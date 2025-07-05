@@ -1,11 +1,11 @@
-import type { Collection, Req } from "$lib/bindings";
+import type { Collection, HttpReq } from "$lib/bindings";
 
 export type ZkResponse = {
     status: number;
     data: string;
 };
 
-export type TreeItem = Collection | Req;
+export type TreeItem = Collection | HttpReq;
 
 export type DragPayload = {
     parentRelativePath: string;
@@ -51,5 +51,5 @@ export type FocussedTreeItem =
 
 export type ActiveRequest = {
     parentRelativePath: string;
-    self: Req;
+    self: HttpReq;
 };

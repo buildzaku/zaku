@@ -38,9 +38,6 @@ importers:
       '@tauri-apps/api':
         specifier: 2.5.0
         version: 2.5.0
-      '@tauri-apps/plugin-http':
-        specifier: 2.4.3
-        version: 2.4.3
       codemirror:
         specifier: 6.0.1
         version: 6.0.1
@@ -841,9 +838,6 @@ packages:
     resolution: {integrity: sha512-rAtHqG0Gh/IWLjN2zTf3nZqYqbo81oMbqop56rGTjrlWk9pTTAjkqOjSL9XQLIMZ3RbeVjveCqqCA0s8RnLdMg==}
     engines: {node: '>= 10'}
     hasBin: true
-
-  '@tauri-apps/plugin-http@2.4.3':
-    resolution: {integrity: sha512-Us8X+FikzpaZRNr4kH4HLwyXascHbM42p6LxAqRTQnHPrrqp1usaH4vxWAZalPvTbHJ3gBEMJPHusFJgtjGJjA==}
 
   '@types/cookie@0.6.0':
     resolution: {integrity: sha512-4Kh9a6B2bQciAhf7FSuMRRkUWecJgJu9nPnx3yzpsfXX/c50REIqpHY4C82bXP90qrLtXtkDxTZosYO3UpOwlA==}
@@ -2686,10 +2680,6 @@ snapshots:
       '@tauri-apps/cli-win32-arm64-msvc': 2.5.0
       '@tauri-apps/cli-win32-ia32-msvc': 2.5.0
       '@tauri-apps/cli-win32-x64-msvc': 2.5.0
-
-  '@tauri-apps/plugin-http@2.4.3':
-    dependencies:
-      '@tauri-apps/api': 2.5.0
 
   '@types/cookie@0.6.0': {}
 
