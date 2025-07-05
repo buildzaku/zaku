@@ -47,7 +47,7 @@
     </div>
 {/snippet}
 
-{#snippet keyValueList(pairs: [string, string][])}
+{#snippet keyValueTable(pairs: [string, string][])}
     <div class="m-3 h-[calc(100%-1.5rem)]">
         <div class="bg-card flex h-full flex-col overflow-hidden rounded border">
             <div class="bg-accent/25 flex border-b font-semibold">
@@ -55,7 +55,7 @@
                 <div class="flex-1 p-2">Value</div>
             </div>
             <div class="flex-1 overflow-y-auto">
-                {#each pairs as [key, value]}
+                {#each pairs as [key, value], idx (idx)}
                     <div class="flex border-b last:border-b-0">
                         <div class="w-[35%] border-r p-2 break-words">
                             {key}
@@ -250,7 +250,7 @@
                     </TabsContent>
                     <TabsContent value="cookies" class="m-0 size-full">
                         {#if activeReqRef.self.response?.cookies}
-                            {@render keyValueList(activeReqRef.self.response.cookies)}
+                            {@render keyValueTable(activeReqRef.self.response.cookies)}
                         {:else}
                             <div class="flex size-full items-center justify-center">
                                 No cookies for you :(
@@ -259,7 +259,11 @@
                     </TabsContent>
                     <TabsContent value="headers" class="m-0 size-full">
                         {#if activeReqRef.self.response?.headers}
-                            {@render keyValueList(activeReqRef.self.response.headers)}
+                            {@render keyValueTable(activeReqRef.self.response.headers)}
+                        {:else}
+                            <div class="flex size-full items-center justify-center">
+                                No headers received
+                            </div>
                         {/if}
                     </TabsContent>
                 </div>
