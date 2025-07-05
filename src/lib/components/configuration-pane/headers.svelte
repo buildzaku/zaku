@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { PlusIcon, Trash2Icon } from "lucide-svelte";
+    import { PlusIcon, Trash2Icon } from "@lucide/svelte";
 
     import { Input } from "$lib/components/primitives/input";
     import { Button } from "$lib/components/primitives/button";

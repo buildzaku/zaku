@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { SunIcon, MoonIcon } from "lucide-svelte";
+    import { SunIcon, MoonIcon } from "@lucide/svelte";
     import { toggleMode } from "mode-watcher";
 
     import { cn } from "$lib/utils/style";

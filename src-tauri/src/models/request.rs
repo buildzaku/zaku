@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use url::Url;
 
 use crate::{
     core::utils::from_indexmap,
@@ -14,11 +15,24 @@ pub struct ReqMeta {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct ReqCfg {
-    pub method: String,
+pub struct ReqUrl {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
+    pub protocol: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct ReqCfg {
+    pub method: String,
+    pub url: ReqUrl,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(bool, String, String)>,
@@ -42,14 +56,14 @@ pub enum ReqStatus {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct Req {
+pub struct HttpReq {
     pub meta: ReqMeta,
     pub config: ReqCfg,
-    pub response: Option<Res>,
     pub status: ReqStatus,
+    pub response: Option<HttpRes>,
 }
 
-impl Req {
+impl HttpReq {
     pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
         let meta = ReqMeta {
             file_name: req_buf.meta.file_name.clone(),
@@ -75,7 +89,23 @@ impl Req {
         let cfg = &req_toml.config;
         let config = ReqCfg {
             method: cfg.method.clone(),
-            url: cfg.url.clone(),
+            url: {
+                let raw = cfg.url.clone().unwrap_or_default();
+                match Url::parse(&raw) {
+                    Ok(parsed) => ReqUrl {
+                        raw: Some(raw),
+                        protocol: Some(parsed.scheme().to_string()),
+                        host: parsed.host_str().map(|h| h.to_string()),
+                        path: Some(parsed.path().to_string()),
+                    },
+                    Err(_) => ReqUrl {
+                        raw: Some(raw),
+                        protocol: None,
+                        host: None,
+                        path: None,
+                    },
+                }
+            },
             headers: cfg.headers.as_ref().map(from_indexmap).unwrap_or_default(),
             parameters: cfg
                 .parameters
@@ -102,9 +132,27 @@ pub struct CreateRequestDto {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct Res {
+pub struct HttpErr {
+    pub message: String,
+    pub code: Option<u16>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct HttpRes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<u16>,
 
     pub data: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<Vec<(String, String)>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cookies: Option<Vec<(String, String)>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elapsed_ms: Option<u32>,
 }
