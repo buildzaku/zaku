@@ -48,19 +48,21 @@
 {/snippet}
 
 {#snippet keyValueTable(pairs: [string, string][])}
-    <div class="m-3 h-[calc(100%-1.5rem)]">
+    <div class="m-3 h-full max-h-[calc(100%-1.5rem)]">
         <div class="bg-card flex h-full flex-col overflow-hidden rounded border">
             <div class="bg-accent/25 flex border-b font-semibold">
-                <div class="w-[35%] border-r p-2">Key</div>
+                <div class="w-[35%] max-w-[35%] border-r p-2">Key</div>
                 <div class="flex-1 p-2">Value</div>
             </div>
-            <div class="flex-1 overflow-y-auto">
+            <div class="overflow-y-auto">
                 {#each pairs as [key, value], idx (idx)}
                     <div class="flex border-b last:border-b-0">
-                        <div class="w-[35%] border-r p-2 break-words">
-                            {key}
+                        <div class="w-[35%] max-w-[35%] border-r p-2 break-all whitespace-normal">
+                            <span class="select-text">{key}</span>
                         </div>
-                        <div class="flex-1 p-2 break-words">{value}</div>
+                        <div class="flex-1 p-2 break-all whitespace-normal">
+                            <span class="select-text">{value}</span>
+                        </div>
                     </div>
                 {/each}
             </div>
