@@ -163,8 +163,8 @@ export type HttpErr = { message: string; code: number | null };
 export type HttpReq = {
     meta: ReqMeta;
     config: ReqCfg;
-    response: HttpRes | null;
     status: ReqStatus;
+    response: HttpRes | null;
 };
 export type HttpRes = {
     status?: number;

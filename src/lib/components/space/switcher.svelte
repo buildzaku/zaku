@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
-    import { ChevronDownIcon, CheckIcon, PyramidIcon } from "lucide-svelte";
+    import { ChevronDownIcon, CheckIcon, PyramidIcon } from "@lucide/svelte";
 
     import { treeActionsState, treeItemsState, zakuState } from "$lib/state.svelte";
     import { buttonVariants } from "$lib/components/primitives/button";

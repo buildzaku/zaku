@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { ChevronDownIcon, ChevronRightIcon } from "lucide-svelte";
+    import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
 
     import { TreeItemContent, TreeItemCreate } from ".";
     import { type TreeItem, type DragOverDto, TreeItemType } from "$lib/models";

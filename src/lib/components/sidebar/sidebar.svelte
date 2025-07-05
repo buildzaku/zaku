@@ -1,7 +1,7 @@
 <script lang="ts">
     import { zakuState, treeActionsState } from "$lib/state.svelte";
     import { Button } from "$lib/components/primitives/button";
-    import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "lucide-svelte";
+    import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "@lucide/svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
