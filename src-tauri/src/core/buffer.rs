@@ -8,7 +8,7 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use super::request;
 use super::utils::ZAKU_DATA_DIR;
 use crate::models::buffer::{ReqBuf, SpaceBuf};
-use crate::models::request::Req;
+use crate::models::request::HttpReq;
 use crate::models::toml::ReqToml;
 
 fn hashed_file_name(absolute_space_path: &Path) -> String {
@@ -71,7 +71,7 @@ impl SpaceBuf {
 pub fn save_request_to_space_buffer(
     absolute_space_path: &Path,
     parent_relative_path: &Path,
-    request: Req,
+    request: HttpReq,
 ) {
     let space_buffer = SpaceBuf::load(absolute_space_path);
     let mut space_buffer_wlock = SpaceBuf::acquire_write_lock(&space_buffer);

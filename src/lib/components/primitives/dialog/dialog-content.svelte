@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import { Dialog as DialogPrimitive, type WithoutChildrenOrChild } from "bits-ui";
-    import { XIcon } from "lucide-svelte";
+    import { XIcon } from "@lucide/svelte";
 
     import * as Dialog from "./index.js";
     import { cn } from "$lib/utils/style.js";

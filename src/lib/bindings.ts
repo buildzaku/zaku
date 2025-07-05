@@ -107,7 +107,7 @@ export const commands = {
     async saveRequestToBuffer(
         absoluteSpacePath: string,
         relativePath: string,
-        request: Req,
+        request: HttpReq,
     ): Promise<void> {
         await TAURI_INVOKE("save_request_to_buffer", { absoluteSpacePath, relativePath, request });
     },
@@ -119,6 +119,14 @@ export const commands = {
             absoluteSpacePath,
             requestRelativePath,
         });
+    },
+    async httpReq(req: HttpReq): Promise<Result<HttpRes, HttpErr>> {
+        try {
+            return { status: "ok", data: await TAURI_INVOKE("http_req", { req }) };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
     },
     async moveTreeItem(moveTreeItemDto: MoveTreeItemDto): Promise<Result<null, ZakuError>> {
         try {
@@ -139,7 +147,7 @@ export const commands = {
 
 /** user-defined types **/
 
-export type Collection = { meta: CollectionMeta; requests: Req[]; collections: Collection[] };
+export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
     dir_name: string;
     display_name: string | null;
@@ -151,12 +159,26 @@ export type CreateNewRequest = { parent_relative_path: string; relative_path: st
 export type CreateRequestDto = { parent_relative_path: string; relative_path: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
+export type HttpErr = { message: string; code: number | null };
+export type HttpReq = {
+    meta: ReqMeta;
+    config: ReqCfg;
+    status: ReqStatus;
+    response: HttpRes | null;
+};
+export type HttpRes = {
+    status?: number;
+    data: string;
+    headers?: [string, string][];
+    cookies?: [string, string][];
+    size_bytes?: number;
+    elapsed_ms?: number;
+};
 export type MoveTreeItemDto = { source_relative_path: string; destination_relative_path: string };
 export type OpenDirDialogOpt = { title: string | null };
-export type Req = { meta: ReqMeta; config: ReqCfg; response: Res | null; status: ReqStatus };
 export type ReqCfg = {
     method: string;
-    url?: string;
+    url: ReqUrl;
     headers: [boolean, string, string][];
     parameters: [boolean, string, string][];
     content_type?: string;
@@ -164,7 +186,12 @@ export type ReqCfg = {
 };
 export type ReqMeta = { file_name: string; display_name: string; has_unsaved_changes: boolean };
 export type ReqStatus = "Idle" | "Pending" | "Success" | "Error";
-export type Res = { status?: number; data: string };
+export type ReqUrl = {
+    raw?: string;
+    protocol?: string;
+    host?: string;
+    path?: string;
+};
 export type Space = { absolute_path: string; meta: SpaceMeta; root: Collection };
 export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };

@@ -8,7 +8,7 @@ use std::vec::IntoIter;
 
 use crate::models::buffer::SpaceBuf;
 use crate::models::collection::{Collection, CollectionMeta};
-use crate::models::request::Req;
+use crate::models::request::HttpReq;
 use crate::models::space::{Space, SpaceConfigFile, SpaceReference};
 
 use super::{collection, request, store};
@@ -16,7 +16,7 @@ use super::{collection, request, store};
 #[derive(Clone, Debug)]
 pub struct CollectionRcRefCell {
     pub meta: CollectionMeta,
-    pub requests: Vec<Req>,
+    pub requests: Vec<HttpReq>,
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }
 
@@ -111,7 +111,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                         collection_rc_refcell
                             .borrow_mut()
                             .requests
-                            .push(Req::from_reqbuf(req_buf));
+                            .push(HttpReq::from_reqbuf(req_buf));
                     } else {
                         let file_name = absolute_entry_path
                             .file_name()
@@ -124,7 +124,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                                 collection_rc_refcell
                                     .borrow_mut()
                                     .requests
-                                    .push(Req::from_reqtoml(&req_toml, file_name));
+                                    .push(HttpReq::from_reqtoml(&req_toml, file_name));
                             }
                             Err(err) => {
                                 eprintln!("{}", err);
@@ -149,7 +149,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
             requests: root_collection_ref_cell
                 .requests
                 .iter()
-                .map(|req| Req { ..req.clone() })
+                .map(|req| HttpReq { ..req.clone() })
                 .collect(),
             collections: Vec::new(),
         };
@@ -170,7 +170,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                 requests: sub_collection_ref_cell
                     .requests
                     .iter()
-                    .map(|req| Req { ..req.clone() })
+                    .map(|req| HttpReq { ..req.clone() })
                     .collect(),
                 collections: Vec::new(),
             };

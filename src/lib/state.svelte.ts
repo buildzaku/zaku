@@ -6,7 +6,8 @@ import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
 import type { ValueOf } from "$lib/utils";
 import { TreeItemType } from "$lib/models";
 import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
-import { type SpaceReference, type Space, type Req, commands } from "$lib/bindings";
+import { commands } from "$lib/bindings";
+import type { SpaceReference, Space, HttpReq } from "$lib/bindings";
 import { joinPaths } from "./components/tree-item/utils.svelte";
 
 export type ReqCfg = ZakuReqCfg;
@@ -90,7 +91,7 @@ class TreeItemsState {
 
     public focussedItem: FocussedTreeItem = $state(this.#rootItem);
     public activeRequest: ActiveRequest | null = $state(null);
-    public openRequests: Req[] = $state([]);
+    public openRequests: HttpReq[] = $state([]);
 
     public reset() {
         this.focussedItem = this.#rootItem;

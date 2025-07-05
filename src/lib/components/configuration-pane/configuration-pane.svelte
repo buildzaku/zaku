@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { PaneAPI } from "paneforge";
-    import { ChevronDownIcon, ChevronUpIcon } from "lucide-svelte";
+    import { ChevronDownIcon, ChevronUpIcon } from "@lucide/svelte";
     import { json } from "@codemirror/lang-json";
     import { html } from "@codemirror/lang-html";
     import { xml } from "@codemirror/lang-xml";

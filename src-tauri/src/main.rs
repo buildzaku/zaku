@@ -32,6 +32,7 @@ fn main() {
         commands::request::create_request,
         commands::request::save_request_to_buffer,
         commands::request::write_buffer_request_to_fs,
+        commands::request::http_req,
         commands::move_tree_item,
     ]);
 
