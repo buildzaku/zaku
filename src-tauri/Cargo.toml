@@ -27,7 +27,6 @@ tauri-plugin-http = { version = "2.4.3" }
 tauri-plugin-notification = { version = "2.2.2" }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 toml = { version = "0.8.20", features = ["preserve_order"] }
-ts-rs = { version = "10.1.0" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 wgpu = { version = "25.0.0", default-features = false }
