@@ -11,6 +11,7 @@
     import { Badge } from "$lib/components/primitives/badge";
     import { HTTP_STATUS_DESCRIPTION } from "$lib/utils/constants";
     import type { ActiveRequest } from "$lib/models";
+    import type { HttpRes } from "$lib/bindings";
 
     type Props = {
         pane: PaneAPI;
@@ -29,20 +30,84 @@
             return data;
         }
     }
+
+    function formatElapsed(ms: number): string {
+        if (ms < 1000) return `${ms} ms`;
+
+        const seconds = ms / 1000;
+        if (seconds < 60) {
+            return seconds % 1 === 0
+                ? `${seconds}s`
+                : `${seconds.toFixed(2).replace(/\.?0+$/, "")} s`;
+        }
+
+        const minutes = Math.floor(seconds / 60);
+        const secRemainder = Math.floor(seconds % 60);
+        if (minutes < 60) {
+            return `${minutes} m ${secRemainder} s`;
+        }
+
+        const hours = Math.floor(minutes / 60);
+        const minRemainder = minutes % 60;
+
+        return `${hours} h ${minRemainder} m`;
+    }
+
+    function formatSize(bytes: number): string {
+        if (bytes < 1024) return `${bytes} B`;
+
+        const kb = bytes / 1024;
+        if (kb < 1024) {
+            return kb % 1 === 0 ? `${kb} KB` : `${kb.toFixed(2).replace(/\.?0+$/, "")} KB`;
+        }
+
+        const mb = kb / 1024;
+        if (mb < 1024) {
+            return mb % 1 === 0 ? `${mb} MB` : `${mb.toFixed(2).replace(/\.?0+$/, "")} MB`;
+        }
+
+        const gb = mb / 1024;
+
+        return gb % 1 === 0 ? `${gb} GB` : `${gb.toFixed(2).replace(/\.?0+$/, "")} GB`;
+    }
 </script>
 
-{#snippet statusBadge(status: number)}
-    <div class="mr-3 flex items-center font-mono">
-        {#if status >= 200 && status < 300}
-            <Badge variant="success">
-                {status}
-                {HTTP_STATUS_DESCRIPTION[status] ?? ""}
-            </Badge>
-        {:else}
-            <Badge variant="failure">
-                {status}
-                {HTTP_STATUS_DESCRIPTION[status] ?? ""}
-            </Badge>
+{#snippet httpResMeta(httpRes: HttpRes)}
+    <div class="mr-4.5 flex gap-1.5">
+        {#if httpRes.status}
+            <div class="flex items-center font-mono">
+                {#if httpRes.status >= 200 && httpRes.status < 300}
+                    <Badge variant="success">
+                        <span class="cursor-default whitespace-nowrap select-text">
+                            {httpRes.status}
+                            {HTTP_STATUS_DESCRIPTION[httpRes.status] ?? ""}
+                        </span>
+                    </Badge>
+                {:else}
+                    <Badge variant="failure">
+                        <span class="cursor-default whitespace-nowrap select-text">
+                            {httpRes.status}
+                            {HTTP_STATUS_DESCRIPTION[httpRes.status] ?? ""}
+                        </span>
+                    </Badge>
+                {/if}
+            </div>
+        {/if}
+        {#if httpRes.elapsed_ms}
+            <div class="flex items-center gap-1.5 font-mono">
+                <span class="text-foreground/35 text-[11px]">•</span>
+                <span class="cursor-default text-[11px] whitespace-nowrap select-text">
+                    {formatElapsed(httpRes.elapsed_ms)}
+                </span>
+            </div>
+        {/if}
+        {#if httpRes.size_bytes}
+            <div class="flex items-center gap-1.5 font-mono">
+                <span class="text-foreground/35 text-[11px]">•</span>
+                <span class="cursor-default text-[11px] whitespace-nowrap select-text">
+                    {formatSize(httpRes.size_bytes)}
+                </span>
+            </div>
         {/if}
     </div>
 {/snippet}
@@ -132,8 +197,8 @@
                             pane.resize(60);
                         }}
                     >
-                        {#if activeReqRef.self.response && activeReqRef.self.response.status}
-                            {@render statusBadge(activeReqRef.self.response.status)}
+                        {#if activeReqRef.self.response}
+                            {@render httpResMeta(activeReqRef.self.response)}
                         {/if}
                         <span class="pr-1.5 text-xs font-medium">Response</span>
                         <ChevronUpIcon size={14} />
@@ -161,8 +226,8 @@
                         </TabsList>
                     </div>
                     <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b px-3">
-                        {#if activeReqRef.self.response && activeReqRef.self.response.status}
-                            {@render statusBadge(activeReqRef.self.response.status)}
+                        {#if activeReqRef.self.response}
+                            {@render httpResMeta(activeReqRef.self.response)}
                         {/if}
                         <button
                             onclick={() => {
