@@ -11,7 +11,8 @@ use crate::{
     utils,
 };
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn create_collection(
     create_collection_dto: CreateCollectionDto,
     app_handle: AppHandle,

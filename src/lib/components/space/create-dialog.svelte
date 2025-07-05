@@ -12,8 +12,7 @@
     import { Input } from "$lib/components/primitives/input";
     import { tick } from "svelte";
     import { zakuState } from "$lib/state.svelte";
-    import { dispatchNotification, openDirectoryDialog, safeInvoke } from "$lib/commands";
-    import type { SpaceReference } from "$lib/bindings";
+    import { commands } from "$lib/bindings";
 
     type Props = {
         isOpen: boolean;
@@ -26,27 +25,32 @@
     let createSpaceLocation: string = $state("");
 
     async function handleCreateSpaceBrowse() {
-        const selectedDir = await openDirectoryDialog({ title: "Create a new Space" });
+        const cmdResult = await commands.openDirDialog({ title: "Create a new Space" });
+        if (cmdResult.status === "error") {
+            throw new Error("Unable to open selected directory");
+        }
+        if (!cmdResult.data) {
+            return;
+        }
 
-        if (selectedDir !== null) {
-            createSpaceLocation = selectedDir;
+        createSpaceLocation = cmdResult.data;
 
-            const spacePathContainerElement = document.getElementById("space-path-container");
-            if (spacePathContainerElement) {
-                await tick();
-                const rightMostPosition = spacePathContainerElement.scrollWidth;
-                spacePathContainerElement.scrollLeft = rightMostPosition;
-            }
+        const spacePathContainerElement = document.getElementById("space-path-container");
+        if (spacePathContainerElement) {
+            await tick();
+            const rightMostPosition = spacePathContainerElement.scrollWidth;
+            spacePathContainerElement.scrollLeft = rightMostPosition;
         }
     }
 
     async function handleCreateSpace() {
-        const spaceReference = await safeInvoke<SpaceReference>("create_space", {
-            create_space_dto: { name: createSpaceName, location: createSpaceLocation },
+        const spaceReference = await commands.createSpace({
+            name: createSpaceName,
+            location: createSpaceLocation,
         });
 
-        if (!spaceReference.ok) {
-            await dispatchNotification({
+        if (spaceReference.status === "error") {
+            await commands.dispatchNotification({
                 title: "Something went wrong.",
                 body: `Unable to create space "${createSpaceName}", make sure the directory exists and try again.`,
             });
@@ -54,7 +58,7 @@
             return;
         }
 
-        await zakuState.setActiveSpace(spaceReference.value);
+        await zakuState.setActiveSpace(spaceReference.data);
         isOpen = false;
 
         await onCreate();

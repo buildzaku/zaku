@@ -1,46 +1,39 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
+use specta::Type;
 
-use crate::models::buffer::ReqBuf;
+use crate::{
+    core::utils::from_indexmap,
+    models::{buffer::ReqBuf, toml::ReqToml},
+};
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqMeta {
     pub file_name: String,
     pub display_name: String,
     pub has_unsaved_changes: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqCfg {
     pub method: String,
 
-    #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
 
-    #[ts(optional, as = "Option<_>")]
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(bool, String, String)>,
 
-    #[ts(optional, as = "Option<_>")]
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<(bool, String, String)>,
 
-    #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
 
-    #[ts(optional)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub enum ReqStatus {
     Idle,
     Pending,
@@ -48,8 +41,7 @@ pub enum ReqStatus {
     Error,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Req {
     pub meta: ReqMeta,
     pub config: ReqCfg,
@@ -57,32 +49,61 @@ pub struct Req {
     pub status: ReqStatus,
 }
 
-impl From<&ReqBuf> for Req {
-    fn from(req_buf: &ReqBuf) -> Self {
+impl Req {
+    pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
+        let meta = ReqMeta {
+            file_name: req_buf.meta.file_name.clone(),
+            display_name: req_buf.meta.display_name.clone(),
+            has_unsaved_changes: true,
+        };
+
         Self {
-            meta: ReqMeta {
-                file_name: req_buf.meta.file_name.clone(),
-                display_name: req_buf.meta.display_name.clone(),
-                has_unsaved_changes: true,
-            },
+            meta,
             config: req_buf.config.clone(),
-            response: None,
             status: ReqStatus::Idle,
+            response: None,
+        }
+    }
+
+    pub fn from_reqtoml(req_toml: &ReqToml, file_name: String) -> Self {
+        let meta = ReqMeta {
+            file_name,
+            display_name: req_toml.meta.name.clone(),
+            has_unsaved_changes: false,
+        };
+
+        let cfg = &req_toml.config;
+        let config = ReqCfg {
+            method: cfg.method.clone(),
+            url: cfg.url.clone(),
+            headers: cfg.headers.as_ref().map(from_indexmap).unwrap_or_default(),
+            parameters: cfg
+                .parameters
+                .as_ref()
+                .map(from_indexmap)
+                .unwrap_or_default(),
+            content_type: cfg.content_type.clone(),
+            body: cfg.body.clone(),
+        };
+
+        Self {
+            meta,
+            config,
+            status: ReqStatus::Idle,
+            response: None,
         }
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateRequestDto {
     pub parent_relative_path: String,
     pub relative_path: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../src/lib/bindings.ts")]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Res {
-    #[ts(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<u16>,
 
     pub data: String,

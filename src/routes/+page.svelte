@@ -2,24 +2,31 @@
     import { Button } from "$lib/components/primitives/button";
     import { goto } from "$app/navigation";
     import { zakuState } from "$lib/state.svelte";
-    import { dispatchNotification, getSpaceReference, openDirectoryDialog } from "$lib/commands";
     import { SpaceCreateDialog } from "$lib/components/space";
+    import { commands } from "$lib/bindings";
 
     let isCreateSpaceDialogOpen = $state(false);
 
     async function handleOpenExistingSpace() {
         try {
-            const selectedPath = await openDirectoryDialog({ title: "Open an existing Space" });
-
-            if (selectedPath !== null) {
-                const spaceReference = await getSpaceReference(selectedPath);
-
-                await zakuState.setActiveSpace(spaceReference);
-                await goto("/space");
+            const cmdResult = await commands.openDirDialog({ title: "Open an existing Space" });
+            if (cmdResult.status === "error") {
+                throw new Error("Unable to open existing space");
             }
+            if (!cmdResult.data) {
+                return;
+            }
+
+            const spaceRefCmdResult = await commands.getSpaceReference(cmdResult.data);
+            if (spaceRefCmdResult.status === "error") {
+                throw new Error(`Cannot get space reference for ${cmdResult.data}`);
+            }
+
+            await zakuState.setActiveSpace(spaceRefCmdResult.data);
+            await goto("/space");
         } catch (err) {
             console.error(err);
-            await dispatchNotification({
+            await commands.dispatchNotification({
                 title: "Doesn't look like a valid space.",
                 body: "Unable to parse the directory, make sure it is a valid space and try again.",
             });

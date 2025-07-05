@@ -79,7 +79,7 @@ pub fn save_request_to_space_buffer(
         .join(&request.meta.file_name)
         .to_string_lossy()
         .to_string();
-    let req_buf = ReqBuf::from(&request);
+    let req_buf = ReqBuf::from_req(&request);
 
     space_buffer_wlock
         .requests
@@ -100,7 +100,7 @@ pub fn write_buffer_request_to_fs(
         .get(&request_relative_path.to_string_lossy().to_string());
 
     if let Some(req_buf) = req_buf {
-        let req_toml = ReqToml::from(req_buf);
+        let req_toml = ReqToml::from_reqbuf(req_buf);
         request::save_to_request_file(&absolute_space_path.join(request_relative_path), &req_toml)
             .unwrap();
     }

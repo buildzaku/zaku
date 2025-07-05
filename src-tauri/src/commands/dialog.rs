@@ -1,34 +1,29 @@
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
-use crate::models::OpenDirectoryDialogOptions;
+use crate::models::OpenDirDialogOpt;
 
-#[tauri::command(rename_all = "snake_case")]
-pub async fn open_directory_dialog<R: tauri::Runtime>(
-    options: Option<OpenDirectoryDialogOptions>,
-    app_handle: AppHandle<R>,
+#[specta::specta]
+#[tauri::command]
+pub async fn open_dir_dialog(
+    options: Option<OpenDirDialogOpt>,
+    app_handle: AppHandle<tauri::Wry>,
 ) -> Result<Option<String>, String> {
     let mut dialog_builder = app_handle.dialog().file();
 
-    match options {
-        Some(OpenDirectoryDialogOptions {
-            title: Some(ref title),
-        }) => {
-            dialog_builder = dialog_builder.set_title(title);
-        }
-        _ => {}
+    if let Some(OpenDirDialogOpt {
+        title: Some(ref title),
+    }) = options
+    {
+        dialog_builder = dialog_builder.set_title(title);
     }
 
     let directory_path = dialog_builder.blocking_pick_folder();
 
     match directory_path {
-        Some(path) => {
-            return Ok(Some(
-                path.into_path().unwrap().to_string_lossy().to_string(),
-            ));
-        }
-        None => {
-            return Ok(None);
-        }
+        Some(path) => Ok(Some(
+            path.into_path().unwrap().to_string_lossy().to_string(),
+        )),
+        None => Ok(None),
     }
 }

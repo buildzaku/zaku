@@ -15,7 +15,8 @@ use crate::{
     utils,
 };
 
-#[tauri::command(rename_all = "snake_case")]
+#[specta::specta]
+#[tauri::command]
 pub fn create_request(
     create_request_dto: CreateRequestDto,
     app_handle: AppHandle,
@@ -115,12 +116,18 @@ pub fn create_request(
     return Ok(create_new_result);
 }
 
-#[tauri::command(rename_all = "snake_case")]
-pub fn save_request_to_buffer(absolute_space_path: &Path, relative_path: &Path, request: Req) {
-    buffer::save_request_to_space_buffer(absolute_space_path, relative_path, request);
+#[specta::specta]
+#[tauri::command]
+pub fn save_request_to_buffer(absolute_space_path: &str, relative_path: &str, request: Req) {
+    let absolute = Path::new(absolute_space_path);
+    let relative = Path::new(relative_path);
+    buffer::save_request_to_space_buffer(absolute, relative, request);
 }
 
-#[tauri::command(rename_all = "snake_case")]
-pub fn write_buffer_request_to_fs(absolute_space_path: &Path, request_relative_path: &Path) {
-    buffer::write_buffer_request_to_fs(absolute_space_path, request_relative_path).unwrap();
+#[specta::specta]
+#[tauri::command]
+pub fn write_buffer_request_to_fs(absolute_space_path: &str, request_relative_path: &str) {
+    let absolute = Path::new(absolute_space_path);
+    let relative = Path::new(request_relative_path);
+    buffer::write_buffer_request_to_fs(absolute, relative).unwrap();
 }
