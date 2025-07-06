@@ -12,6 +12,8 @@ edition = "2021"
 tauri-build = { version = "2.2.0", features = [] }
 
 [dependencies]
+cookie = { version = "0.18.1" }
+cookie_store = { version = "0.21.1" }
 dirs = { version = "6.0.0" }
 indexmap = { version = "2.9.0", features = ["serde"] }
 once_cell = { version = "1.21.3" }

@@ -4,8 +4,8 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::Path;
 use toml;
 
+use crate::core::utils;
 use crate::models::collection::CreateCollectionDto;
-use crate::utils;
 
 pub fn display_name_by_relative_path(
     space_absolute_path: &Path,

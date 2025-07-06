@@ -1,5 +1,6 @@
 pub mod buffer;
 pub mod collection;
+pub mod cookie;
 pub mod request;
 pub mod shortcuts;
 pub mod space;

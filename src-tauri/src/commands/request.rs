@@ -1,3 +1,4 @@
+use cookie::Cookie as RawCookie;
 use reqwest::Client;
 use std::time::Instant;
 use std::{
@@ -7,7 +8,9 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 use crate::models::request::HttpErr;
+use crate::models::space::SpaceCookie;
 use crate::{
+    core::utils,
     core::{self, buffer, collection, space},
     models::{
         collection::CreateCollectionDto,
@@ -15,7 +18,6 @@ use crate::{
         zaku::{ZakuError, ZakuState},
         CreateNewRequest,
     },
-    utils,
 };
 
 #[specta::specta]
@@ -196,16 +198,18 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         .get_all("set-cookie")
         .iter()
         .filter_map(|v| v.to_str().ok())
-        .map(|v| {
-            let parts: Vec<&str> = v.split(';').collect();
-            let kv: Vec<&str> = parts[0].splitn(2, '=').collect();
-            if kv.len() == 2 {
-                (kv[0].trim().to_string(), kv[1].trim().to_string())
-            } else {
-                (kv[0].trim().to_string(), "".to_string())
-            }
+        .filter_map(|v| RawCookie::parse(v).ok())
+        .map(|ck| SpaceCookie {
+            name: ck.name().to_string(),
+            value: ck.value().to_string(),
+            domain: ck.domain().map(|dm| dm.to_string()).unwrap_or_default(),
+            path: ck.path().map(|pt| pt.to_string()).unwrap_or_default(),
+            secure: ck.secure().unwrap_or(false),
+            http_only: ck.http_only().unwrap_or(false),
+            same_site: ck.same_site().map(|ss| format!("{:?}", ss)),
+            expires: ck.expires().map(|ex| format!("{:?}", ex)),
         })
-        .collect::<Vec<(String, String)>>();
+        .collect::<Vec<SpaceCookie>>();
 
     let data = resp.text().await.map_err(|e| HttpErr {
         message: e.to_string(),
@@ -217,12 +221,8 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
     return Ok(HttpRes {
         status: Some(status),
         data,
-        headers: Some(headers),
-        cookies: if cookies.is_empty() {
-            None
-        } else {
-            Some(cookies)
-        },
+        headers,
+        cookies,
         size_bytes,
         elapsed_ms: Some(elapsed_ms),
     });

@@ -6,10 +6,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
 
+use crate::core::cookie::SpaceCookies;
 use crate::models::buffer::SpaceBuf;
 use crate::models::collection::{Collection, CollectionMeta};
 use crate::models::request::HttpReq;
-use crate::models::space::{Space, SpaceConfigFile, SpaceReference};
+use crate::models::space::{Space, SpaceConfigFile, SpaceCookie, SpaceReference};
 
 use super::{collection, request, store};
 
@@ -203,25 +204,39 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
 
 pub fn parse_space(absolute_space_root: &Path) -> Result<Space, Error> {
     match parse_root_collection(absolute_space_root) {
-        Ok(root_collection) => {
-            match parse_space_config(&absolute_space_root) {
-                Ok(space_config_file) => {
-                    return Ok(Space {
-                        absolute_path: absolute_space_root.to_string_lossy().into_owned(),
-                        meta: space_config_file.meta,
-                        root: root_collection,
-                    });
-                }
-                Err(err) => {
-                    eprintln!("{}", err);
+        Ok(root_collection) => match parse_space_config(&absolute_space_root) {
+            Ok(space_config_file) => {
+                let cookie_store =
+                    SpaceCookies::load(absolute_space_root.to_string_lossy().as_ref());
+                let store = cookie_store.lock().unwrap();
+                let cookies: Vec<SpaceCookie> = store
+                    .iter_any()
+                    .map(|ck| SpaceCookie {
+                        name: ck.name().to_string(),
+                        value: ck.value().to_string(),
+                        domain: ck.domain().map(|dm| dm.to_string()).unwrap_or_default(),
+                        path: ck.path().map(|pt| pt.to_string()).unwrap_or_default(),
+                        secure: ck.secure().unwrap_or(false),
+                        http_only: ck.http_only().unwrap_or(false),
+                        same_site: ck.same_site().map(|ss| format!("{:?}", ss)),
+                        expires: ck.expires().map(|ex| format!("{:?}", ex)),
+                    })
+                    .collect();
 
-                    return Err(err);
-                }
-            };
-        }
+                return Ok(Space {
+                    absolute_path: absolute_space_root.to_string_lossy().into_owned(),
+                    meta: space_config_file.meta,
+                    root: root_collection,
+                    cookies,
+                });
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+                return Err(err);
+            }
+        },
         Err(err) => {
             eprintln!("{}", err);
-
             return Err(err);
         }
     }

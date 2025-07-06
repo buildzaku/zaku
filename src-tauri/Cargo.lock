@@ -6086,6 +6086,8 @@ name = "zaku"
 version = "0.5.0"
 dependencies = [
  "cocoa",
+ "cookie",
+ "cookie_store",
  "dirs",
  "indexmap 2.9.0",
  "objc",

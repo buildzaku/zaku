@@ -2,13 +2,13 @@ use std::{fs, path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Manager};
 
 use crate::{
+    core::utils,
     core::{collection, space},
     models::{
         collection::CreateCollectionDto,
         zaku::{ZakuError, ZakuState},
         CreateNewCollection,
     },
-    utils,
 };
 
 #[specta::specta]
