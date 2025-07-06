@@ -46,33 +46,33 @@ impl ZakuStore {
     }
 }
 
-pub fn get_active_space_reference() -> Option<SpaceReference> {
+pub fn get_active_spaceref() -> Option<SpaceReference> {
     let zaku_store = ZakuStore::acq_rlock();
 
     return zaku_store.active_space_reference.clone();
 }
 
-pub fn set_active_space_reference(space_reference: SpaceReference) {
+pub fn set_active_spaceref(space_reference: SpaceReference) {
     let mut zaku_store = ZakuStore::acq_wlock();
     zaku_store.active_space_reference = Some(space_reference);
 
     ZakuStore::persist(&zaku_store);
 }
 
-pub fn get_space_references() -> Vec<SpaceReference> {
+pub fn get_spacerefs() -> Vec<SpaceReference> {
     let zaku_store = ZakuStore::acq_rlock();
 
     return zaku_store.space_references.clone();
 }
 
-pub fn set_space_references(space_references: Vec<SpaceReference>) {
+pub fn set_spacerefs(space_references: Vec<SpaceReference>) {
     let mut zaku_store = ZakuStore::acq_wlock();
     zaku_store.space_references = space_references;
 
     ZakuStore::persist(&zaku_store);
 }
 
-pub fn insert_into_space_references_if_needed(space_reference: SpaceReference) {
+pub fn insert_spaceref_if_missing(space_reference: SpaceReference) {
     let mut zaku_store = ZakuStore::acq_wlock();
 
     let reference_exists = zaku_store
@@ -87,7 +87,7 @@ pub fn insert_into_space_references_if_needed(space_reference: SpaceReference) {
     }
 }
 
-pub fn delete_space_reference(space_reference: SpaceReference) {
+pub fn delete_spaceref(space_reference: SpaceReference) {
     let mut zaku_store = ZakuStore::acq_wlock();
 
     zaku_store

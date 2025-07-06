@@ -20,7 +20,7 @@ pub struct SpaceCookies;
 
 impl SpaceCookies {
     pub fn load(space_abspath: &str) -> Arc<CookieStoreMutex> {
-        let hashed_space_abspath = hashed_filename(space_abspath);
+        let hsh_space_abspath = hashed_filename(space_abspath);
 
         let mut cache = COOKIES_CACHE.lock().expect("Failed to lock cookie cache");
         if let Some(space_cookies) = cache.get(space_abspath) {
@@ -29,10 +29,9 @@ impl SpaceCookies {
 
         let cookie_file = ZAKU_DATA_DIR
             .join(SPACES_DIR)
-            .join(&hashed_space_abspath)
+            .join(&hsh_space_abspath)
             .join("cookies.json");
-
-        let space_cookies_data = if cookie_file.exists() {
+        let space_cookiestore = if cookie_file.exists() {
             let file = fs::File::open(&cookie_file)
                 .map(BufReader::new)
                 .expect("Failed to open cookie file");
@@ -41,20 +40,20 @@ impl SpaceCookies {
             CookieStore::default()
         };
 
-        let space_cookies = Arc::new(CookieStoreMutex::new(space_cookies_data));
+        let space_cookies = Arc::new(CookieStoreMutex::new(space_cookiestore));
         cache.insert(space_abspath.to_string(), Arc::clone(&space_cookies));
 
         return space_cookies;
     }
 
     pub fn persist(space_abspath: &str) {
-        let hashed_space_abspath = hashed_filename(space_abspath);
+        let hsh_space_abspath = hashed_filename(space_abspath);
 
         let cache = COOKIES_CACHE.lock().expect("Failed to lock cookie cache");
         if let Some(space_cookies) = cache.get(space_abspath) {
             let cookie_file = ZAKU_DATA_DIR
                 .join(SPACES_DIR)
-                .join(&hashed_space_abspath)
+                .join(&hsh_space_abspath)
                 .join("cookies.json");
 
             if let Some(parent) = cookie_file.parent() {

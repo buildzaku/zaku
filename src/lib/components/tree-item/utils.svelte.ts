@@ -157,7 +157,7 @@ export async function handleDrop(event: DragEvent) {
         src_relpath: buildPath(treeActionsState.dragPayload.parentRelativePath, fileOrDirName),
         dest_relpath: buildPath(treeActionsState.dropTargetPath, fileOrDirName),
     };
-    const moveTreeItemResult = await commands.moveTreeItem(moveTreeItemDto);
+    const moveTreeItemResult = await commands.moveTreeitem(moveTreeItemDto);
     if (moveTreeItemResult.status === "error") {
         console.error(moveTreeItemResult.error);
         toast(

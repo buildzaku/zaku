@@ -5,7 +5,7 @@ use crate::models::{zaku::ZakuError, DispatchNotificationOptions};
 
 #[specta::specta]
 #[tauri::command]
-pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool, ZakuError> {
+pub fn is_notif_enabled(app_handle: AppHandle) -> Result<bool, ZakuError> {
     let permission_state = app_handle
         .notification()
         .permission_state()
@@ -19,7 +19,7 @@ pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool,
 
 #[specta::specta]
 #[tauri::command]
-pub fn req_notification_permission(app_handle: AppHandle) -> Result<bool, ZakuError> {
+pub fn request_notif_access(app_handle: AppHandle) -> Result<bool, ZakuError> {
     let permission_state = app_handle
         .notification()
         .request_permission()
@@ -33,7 +33,7 @@ pub fn req_notification_permission(app_handle: AppHandle) -> Result<bool, ZakuEr
 
 #[specta::specta]
 #[tauri::command]
-pub fn dispatch_notification(
+pub fn dispatch_notif(
     options: DispatchNotificationOptions,
     app_handle: AppHandle,
 ) -> Result<(), ZakuError> {

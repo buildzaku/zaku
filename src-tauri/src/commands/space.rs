@@ -23,12 +23,12 @@ pub fn create_space(
     }
 
     let space_abspath = location.join(create_space_dto.name.clone());
-    let mut space_references = store::get_space_references();
+    let mut spacerefs = store::get_spacerefs();
     let mut zaku_state = state.lock().unwrap();
 
-    if space_references
+    if spacerefs
         .iter()
-        .any(|space_reference| space_reference.path == space_abspath.to_string_lossy())
+        .any(|sr| sr.path == space_abspath.to_string_lossy())
     {
         return Err(ZakuError {
             error: space_abspath.to_string_lossy().to_string(),
@@ -65,26 +65,26 @@ pub fn create_space(
         )
         .expect("Failed to write to config file");
 
-    let space_reference = SpaceReference {
+    let spaceref = SpaceReference {
         path: space_abspath.to_string_lossy().to_string(),
         name: create_space_dto.name,
     };
 
-    store::set_active_space_reference(space_reference.clone());
-    space_references.push(space_reference.clone());
-    store::set_space_references(space_references.clone());
+    store::set_active_spaceref(spaceref.clone());
+    spacerefs.push(spaceref.clone());
+    store::set_spacerefs(spacerefs.clone());
 
-    match space::parse_space(&PathBuf::from(space_reference.clone().path)) {
+    match space::parse_space(&PathBuf::from(spaceref.clone().path)) {
         Ok(active_space) => {
             zaku_state.active_space = Some(active_space);
-            zaku_state.space_references = space_references;
+            zaku_state.space_references = spacerefs;
         }
         Err(_) => {
             // TODO - handle
         }
     }
 
-    return Ok(space_reference);
+    return Ok(spaceref);
 }
 
 #[specta::specta]
@@ -105,11 +105,11 @@ pub fn set_active_space(
 
     match space::parse_space(&space_abspath) {
         Ok(space) => {
-            store::set_active_space_reference(space_reference.clone());
-            store::insert_into_space_references_if_needed(space_reference.clone());
+            store::set_active_spaceref(space_reference.clone());
+            store::insert_spaceref_if_missing(space_reference.clone());
 
             zaku_state.active_space = Some(space);
-            zaku_state.space_references = store::get_space_references();
+            zaku_state.space_references = store::get_spacerefs();
 
             return Ok(());
         }
@@ -124,16 +124,16 @@ pub fn set_active_space(
 #[tauri::command]
 pub fn delete_space(space_reference: SpaceReference, state: State<Mutex<ZakuState>>) -> () {
     let mut zaku_state = state.lock().unwrap();
-    store::delete_space_reference(space_reference);
+    store::delete_spaceref(space_reference);
 
-    let active_space = store::get_active_space_reference();
+    let active_space = store::get_active_spaceref();
 
     if let None = active_space {
         zaku_state.active_space = None;
 
-        match space::find_first_valid_space_reference() {
+        match space::first_valid_spaceref() {
             Some(valid_space_reference) => {
-                store::set_active_space_reference(valid_space_reference.clone());
+                store::set_active_spaceref(valid_space_reference.clone());
 
                 match space::parse_space(&PathBuf::from(valid_space_reference.clone().path)) {
                     Ok(active_space) => {
@@ -146,17 +146,17 @@ pub fn delete_space(space_reference: SpaceReference, state: State<Mutex<ZakuStat
         }
     }
 
-    zaku_state.space_references = store::get_space_references();
+    zaku_state.space_references = store::get_spacerefs();
 
     return ();
 }
 
 #[specta::specta]
 #[tauri::command]
-pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
+pub fn get_spaceref(path: String) -> Result<SpaceReference, ZakuError> {
     let space_abspath = PathBuf::from(path.as_str());
 
-    match space::parse_space_config(&space_abspath) {
+    match space::parse_spacecfg(&space_abspath) {
         Ok(space_config_file) => {
             let space_reference = SpaceReference {
                 path: space_abspath.to_string_lossy().to_string(),

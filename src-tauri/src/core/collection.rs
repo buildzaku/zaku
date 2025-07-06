@@ -7,21 +7,21 @@ use toml;
 use crate::core::utils;
 use crate::models::collection::CreateCollectionDto;
 
-pub fn display_name_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>, Error> {
-    let display_name_file_abspath = space_abspath.join(".zaku/collections/display_name");
+pub fn displayname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>, Error> {
+    let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name");
 
-    let content = match fs::read_to_string(&display_name_file_abspath.with_extension("toml")) {
+    let content = match fs::read_to_string(&displayname_file_abspath.with_extension("toml")) {
         Ok(content) => content,
         Err(err) if err.kind() == ErrorKind::NotFound => {
             let initialized_hash_map: HashMap<String, String> = HashMap::new();
 
-            if let Some(parent) = display_name_file_abspath.parent() {
+            if let Some(parent) = displayname_file_abspath.parent() {
                 fs::create_dir_all(parent)
                     .expect("Failed to create display name's parent directories");
             }
 
             let mut display_name_file =
-                File::create(&display_name_file_abspath.with_extension("toml"))
+                File::create(&displayname_file_abspath.with_extension("toml"))
                     .expect("Failed to create `display_name.toml`");
             display_name_file
                 .write_all(
@@ -38,15 +38,15 @@ pub fn display_name_by_relpath(space_abspath: &Path) -> Result<HashMap<String, S
                 ErrorKind::Other,
                 format!(
                     "Failed to load {}: {}",
-                    display_name_file_abspath.display(),
+                    displayname_file_abspath.display(),
                     err
                 ),
             ));
         }
     };
 
-    let parsed_content: HashMap<String, String> = match toml::from_str(&content) {
-        Ok(parsed_content) => parsed_content,
+    let display_names: HashMap<String, String> = match toml::from_str(&content) {
+        Ok(display_names) => display_names,
         Err(err) => {
             return Err(Error::new(
                 ErrorKind::InvalidData,
@@ -55,28 +55,28 @@ pub fn display_name_by_relpath(space_abspath: &Path) -> Result<HashMap<String, S
         }
     };
 
-    return Ok(parsed_content);
+    return Ok(display_names);
 }
 
-pub fn save_display_name_if_not_exists(
+pub fn save_displayname_if_missing(
     space_abspath: &Path,
-    collection_relpath_from_root: &str,
+    collection_relpath: &str,
     collection_display_name: &str,
 ) -> Result<(), Error> {
-    let display_name_file_abspath = space_abspath.join(".zaku/collections/display_name");
+    let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name");
 
-    let mut collection_name_by_relpath = display_name_by_relpath(&space_abspath)
+    let mut collection_name_by_relpath = displayname_by_relpath(&space_abspath)
         .expect("Failed to get display names by relative path");
 
     collection_name_by_relpath
-        .entry(collection_relpath_from_root.to_string())
+        .entry(collection_relpath.to_string())
         .or_insert(collection_display_name.to_string());
 
     let toml_content =
         toml::to_string_pretty(&collection_name_by_relpath).expect("Failed to serialize TOML");
 
     fs::write(
-        &display_name_file_abspath.with_extension("toml"),
+        &displayname_file_abspath.with_extension("toml"),
         toml_content,
     )
     .expect("Failed to write display names to file");
@@ -123,19 +123,15 @@ pub fn create_collections_all(
                 }
             });
 
-        let cur_collection_relpath_from_root = utils::join_str_paths(vec![
+        let cur_collection_relpath = utils::join_str_paths(vec![
             create_collection_dto.parent_relpath.as_str(),
             cur_collection_relpath.as_str(),
         ]);
 
-        save_display_name_if_not_exists(
-            &space_abspath,
-            &cur_collection_relpath_from_root,
-            &dir_display_name,
-        )
-        .unwrap_or_else(|err| {
-            eprintln!("Failed to save display name {}", err);
-        });
+        save_displayname_if_missing(&space_abspath, &cur_collection_relpath, &dir_display_name)
+            .unwrap_or_else(|err| {
+                eprintln!("Failed to save display name {}", err);
+            });
 
         if !collections_relpath.is_empty() {
             collections_relpath.push_str("/");

@@ -17,8 +17,8 @@ pub mod window;
 
 #[specta::specta]
 #[tauri::command]
-pub fn move_tree_item(
-    move_tree_item_dto: MoveTreeItemDto,
+pub fn move_treeitem(
+    move_treeitem_dto: MoveTreeItemDto,
     app_handle: AppHandle,
 ) -> Result<(), ZakuError> {
     let state = app_handle.state::<Mutex<ZakuState>>();
@@ -31,7 +31,7 @@ pub fn move_tree_item(
     let MoveTreeItemDto {
         src_relpath,
         dest_relpath,
-    } = move_tree_item_dto;
+    } = move_treeitem_dto;
     let src_abspath = active_space_abspath.join(src_relpath);
     let dest_abspath = active_space_abspath.join(dest_relpath);
 

@@ -33,9 +33,9 @@ export const commands = {
     async deleteSpace(spaceReference: SpaceReference): Promise<null> {
         return await TAURI_INVOKE("delete_space", { spaceReference });
     },
-    async getSpaceReference(path: string): Promise<Result<SpaceReference, ZakuError>> {
+    async getSpaceref(path: string): Promise<Result<SpaceReference, ZakuError>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("get_space_reference", { path }) };
+            return { status: "ok", data: await TAURI_INVOKE("get_spaceref", { path }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -52,27 +52,25 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async isNotificationPermissionGranted(): Promise<Result<boolean, ZakuError>> {
+    async isNotifEnabled(): Promise<Result<boolean, ZakuError>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("is_notification_permission_granted") };
+            return { status: "ok", data: await TAURI_INVOKE("is_notif_enabled") };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
         }
     },
-    async reqNotificationPermission(): Promise<Result<boolean, ZakuError>> {
+    async requestNotifAccess(): Promise<Result<boolean, ZakuError>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("req_notification_permission") };
+            return { status: "ok", data: await TAURI_INVOKE("request_notif_access") };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
         }
     },
-    async dispatchNotification(
-        options: DispatchNotificationOptions,
-    ): Promise<Result<null, ZakuError>> {
+    async dispatchNotif(options: DispatchNotificationOptions): Promise<Result<null, ZakuError>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("dispatch_notification", { options }) };
+            return { status: "ok", data: await TAURI_INVOKE("dispatch_notif", { options }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -91,21 +89,19 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async createRequest(
-        createReqDto: CreateRequestDto,
-    ): Promise<Result<CreateNewRequest, ZakuError>> {
+    async createReq(createReqDto: CreateRequestDto): Promise<Result<CreateNewRequest, ZakuError>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("create_request", { createReqDto }) };
+            return { status: "ok", data: await TAURI_INVOKE("create_req", { createReqDto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
         }
     },
-    async saveReqToBuffer(spaceAbspath: string, relpath: string, request: HttpReq): Promise<void> {
-        await TAURI_INVOKE("save_req_to_buffer", { spaceAbspath, relpath, request });
+    async persistToReqbuf(spaceAbspath: string, relpath: string, request: HttpReq): Promise<void> {
+        await TAURI_INVOKE("persist_to_reqbuf", { spaceAbspath, relpath, request });
     },
-    async writeBufferReqToFs(spaceAbspath: string, reqRelpath: string): Promise<void> {
-        await TAURI_INVOKE("write_buffer_req_to_fs", { spaceAbspath, reqRelpath });
+    async writeReqbufToReqtoml(spaceAbspath: string, reqRelpath: string): Promise<void> {
+        await TAURI_INVOKE("write_reqbuf_to_reqtoml", { spaceAbspath, reqRelpath });
     },
     async httpReq(req: HttpReq): Promise<Result<HttpRes, HttpErr>> {
         try {
@@ -115,12 +111,9 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async moveTreeItem(moveTreeItemDto: MoveTreeItemDto): Promise<Result<null, ZakuError>> {
+    async moveTreeitem(moveTreeitemDto: MoveTreeItemDto): Promise<Result<null, ZakuError>> {
         try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("move_tree_item", { moveTreeItemDto }),
-            };
+            return { status: "ok", data: await TAURI_INVOKE("move_treeitem", { moveTreeitemDto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };

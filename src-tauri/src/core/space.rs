@@ -29,10 +29,10 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
         .into_owned();
     let relative_space_root = "".to_string();
     let collection_name_by_relpath =
-        collection::display_name_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
+        collection::displayname_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
     let active_space_buffer = SpaceBuf::load(space_abspath);
-    let active_space_buffer_rlock = SpaceBuf::acq_rlock(&active_space_buffer);
-    let space_config = match parse_space_config(&space_abspath) {
+    let active_spacebuf_rlock = SpaceBuf::acq_rlock(&active_space_buffer);
+    let space_config = match parse_spacecfg(&space_abspath) {
         Ok(space_config) => Some(space_config),
         Err(_) => None,
     };
@@ -103,7 +103,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
-                    let req_buf = active_space_buffer_rlock.requests.get(&relpath);
+                    let req_buf = active_spacebuf_rlock.requests.get(&relpath);
 
                     if let Some(req_buf) = req_buf {
                         collection_rc_refcell
@@ -117,7 +117,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
                             .to_string_lossy()
                             .into_owned();
 
-                        match request::parse_req_toml(&entry_abspath) {
+                        match request::parse_reqtoml(&entry_abspath) {
                             Ok(req_toml) => {
                                 collection_rc_refcell
                                     .borrow_mut()
@@ -201,7 +201,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
 
 pub fn parse_space(space_abspath: &Path) -> Result<Space, Error> {
     match parse_root_collection(space_abspath) {
-        Ok(root_collection) => match parse_space_config(&space_abspath) {
+        Ok(root_collection) => match parse_spacecfg(&space_abspath) {
             Ok(space_config_file) => {
                 let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref());
                 let store = cookie_store.lock().unwrap();
@@ -229,7 +229,7 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space, Error> {
     }
 }
 
-pub fn parse_space_config(space_abspath: &Path) -> Result<SpaceConfigFile, Error> {
+pub fn parse_spacecfg(space_abspath: &Path) -> Result<SpaceConfigFile, Error> {
     return fs::read_to_string(space_abspath.join(".zaku/config.toml"))
         .map_err(|err| {
             Error::new(
@@ -247,13 +247,13 @@ pub fn parse_space_config(space_abspath: &Path) -> Result<SpaceConfigFile, Error
         });
 }
 
-pub fn find_first_valid_space_reference() -> Option<SpaceReference> {
-    return store::get_space_references()
+pub fn first_valid_spaceref() -> Option<SpaceReference> {
+    return store::get_spacerefs()
         .into_iter()
         .find_map(|space_reference| {
             let space_abspath = PathBuf::from(&space_reference.path);
 
-            match parse_space_config(&space_abspath) {
+            match parse_spacecfg(&space_abspath) {
                 Ok(_) => Some(space_reference),
                 Err(_) => None,
             }

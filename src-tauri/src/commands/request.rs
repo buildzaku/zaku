@@ -24,7 +24,7 @@ use crate::{
 
 #[specta::specta]
 #[tauri::command]
-pub fn create_request(
+pub fn create_req(
     create_req_dto: CreateRequestDto,
     app_handle: AppHandle,
 ) -> Result<CreateNewRequest, ZakuError> {
@@ -94,7 +94,7 @@ pub fn create_request(
         format!("{}.toml", file_sanitized_name).as_str(),
     ]);
 
-    core::request::create_req_toml(&file_abspath, &file_display_name).map_err(|err| ZakuError {
+    core::request::create_reqtoml(&file_abspath, &file_display_name).map_err(|err| ZakuError {
         error: err.to_string(),
         message: "Failed to create request file".to_string(),
     })?;
@@ -119,24 +119,24 @@ pub fn create_request(
 
 #[specta::specta]
 #[tauri::command]
-pub fn save_req_to_buffer(space_abspath: &str, relpath: &str, request: HttpReq) {
+pub fn persist_to_reqbuf(space_abspath: &str, relpath: &str, request: HttpReq) {
     let abs = Path::new(space_abspath);
     let rel = Path::new(relpath);
-    buffer::save_req_to_space_buffer(abs, rel, request);
+    buffer::persist_req_to_spacebuf(abs, rel, request);
 }
 
 #[specta::specta]
 #[tauri::command]
-pub fn write_buffer_req_to_fs(space_abspath: &str, req_relpath: &str) {
+pub fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) {
     let abs = Path::new(space_abspath);
     let rel = Path::new(req_relpath);
-    buffer::write_buffer_req_to_fs(abs, rel).unwrap();
+    buffer::write_reqbuf_to_reqtoml(abs, rel).unwrap();
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
-    let active_space = store::get_active_space_reference().ok_or(HttpErr {
+    let active_space = store::get_active_spaceref().ok_or(HttpErr {
         message: "no active space".into(),
         code: None,
     })?;
@@ -149,21 +149,16 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
             message: e.to_string(),
             code: None,
         })?;
-
     let cfg = &req.config;
-
     let url = cfg.url.raw.clone().ok_or(HttpErr {
         message: "missing URL".into(),
         code: None,
     })?;
-
     let method = reqwest::Method::from_bytes(cfg.method.as_bytes()).map_err(|e| HttpErr {
         message: e.to_string(),
         code: None,
     })?;
-
     let mut builder = client.request(method, &url);
-
     for (enabled, key, value) in &cfg.headers {
         if *enabled {
             builder = builder.header(key, value);
@@ -183,6 +178,7 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
     if let Some(ct) = &cfg.content_type {
         builder = builder.header("Content-Type", ct);
     }
+
     if let Some(body) = &cfg.body {
         builder = builder.body(body.clone());
     }
@@ -192,16 +188,14 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         message: e.to_string(),
         code: None,
     })?;
+
     let elapsed_ms = start.elapsed().as_millis() as u32;
-
     let status = resp.status().as_u16();
-
     let headers: Vec<(String, String)> = resp
         .headers()
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect();
-
     let cookies = resp
         .headers()
         .get_all("set-cookie")
@@ -210,14 +204,11 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         .filter_map(|v| RawCookie::parse(v).ok())
         .map(|ck| SpaceCookie::from_raw_cookie(&ck))
         .collect::<Vec<SpaceCookie>>();
-
     let data = resp.text().await.map_err(|e| HttpErr {
         message: e.to_string(),
         code: Some(status),
     })?;
-
     let size_bytes = Some(data.len() as u32);
-
     SpaceCookies::persist(space_abspath);
 
     return Ok(HttpRes {

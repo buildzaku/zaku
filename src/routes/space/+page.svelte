@@ -117,7 +117,7 @@
             ]);
 
             await debounced.flush(absoluteReqPath);
-            await commands.writeBufferReqToFs(
+            await commands.writeReqbufToReqtoml(
                 activeSpaceRef.abspath,
                 joinPaths([activeReqRef.parentRelativePath, activeReqRef.self.meta.file_name]),
             );

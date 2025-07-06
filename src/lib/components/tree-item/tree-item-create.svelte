@@ -66,13 +66,13 @@
                 createdCollection.scrollIntoView({ behavior: "instant", block: "center" });
             }
         } else {
-            const createRequestResult = await commands.createRequest({
+            const createReqResult = await commands.createReq({
                 parent_relpath: parentRelativePath,
                 relpath: inputName,
             });
 
-            if (createRequestResult.status === "error") {
-                console.error(createRequestResult.error);
+            if (createReqResult.status === "error") {
+                console.error(createReqResult.error);
 
                 return;
             }
@@ -82,12 +82,12 @@
 
             treeItemsState.focussedItem = {
                 type: TreeItemType.Request,
-                parentRelativePath: createRequestResult.data.parent_relpath,
-                relativePath: createRequestResult.data.relpath,
+                parentRelativePath: createReqResult.data.parent_relpath,
+                relativePath: createReqResult.data.relpath,
             };
 
             const createdRequest = document.querySelector(
-                `[data-current-path="${createRequestResult.data.relpath}"]`,
+                `[data-current-path="${createReqResult.data.relpath}"]`,
             );
             if (createdRequest) {
                 createdRequest.scrollIntoView({ behavior: "instant", block: "center" });

@@ -61,9 +61,9 @@ pub fn create_collection(
             let dirs_sanitized_relpath =
                 collection::create_collections_all(&active_space_abspath, &create_collection_dto)
                     .map_err(|err| ZakuError {
-                        error: err.to_string(),
-                        message: "Failed to create collection's parent directories".to_string(),
-                    })?;
+                    error: err.to_string(),
+                    message: "Failed to create collection's parent directories".to_string(),
+                })?;
 
             let dir_parent_relpath = utils::join_str_paths(vec![
                 create_collection_dto.parent_relpath.as_str(),
@@ -88,16 +88,12 @@ pub fn create_collection(
         message: "Failed to create collection".to_string(),
     })?;
 
-    collection::save_display_name_if_not_exists(
-        &active_space_abspath,
-        &dir_relpath,
-        &dir_display_name,
-    )
-    .unwrap_or_else(|err| {
-        eprintln!("Failed to save display name {}", err);
-    });
+    collection::save_displayname_if_missing(&active_space_abspath, &dir_relpath, &dir_display_name)
+        .unwrap_or_else(|err| {
+            eprintln!("Failed to save display name {}", err);
+        });
 
-    let create_new_result = CreateNewCollection {
+    let create_new_collection = CreateNewCollection {
         parent_relpath: dir_parent_relpath,
         relpath: dir_relpath,
     };
@@ -112,5 +108,5 @@ pub fn create_collection(
         }
     }
 
-    return Ok(create_new_result);
+    return Ok(create_new_collection);
 }

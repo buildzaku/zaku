@@ -34,7 +34,7 @@
                 return;
             }
 
-            const spaceRefCmdResult = await commands.getSpaceReference(cmdResult.data);
+            const spaceRefCmdResult = await commands.getSpaceref(cmdResult.data);
             if (spaceRefCmdResult.status === "error") {
                 throw new Error(`Cannot get space reference for ${cmdResult.data}`);
             }
@@ -43,7 +43,7 @@
             await goto("/space");
         } catch (err) {
             console.error(err);
-            await commands.dispatchNotification({
+            await commands.dispatchNotif({
                 title: "Doesn't look like a valid space.",
                 body: "Unable to parse the directory, make sure it is a valid space and try again.",
             });
@@ -53,9 +53,7 @@
     async function handleDeleteSpace() {
         if (zakuState.activeSpace) {
             try {
-                const spaceRefCmdResult = await commands.getSpaceReference(
-                    zakuState.activeSpace.abspath,
-                );
+                const spaceRefCmdResult = await commands.getSpaceref(zakuState.activeSpace.abspath);
                 if (spaceRefCmdResult.status === "error") {
                     throw new Error(
                         `Cannot get space reference for ${zakuState.activeSpace.abspath}`,
