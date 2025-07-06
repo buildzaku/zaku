@@ -54,11 +54,11 @@
         if (zakuState.activeSpace) {
             try {
                 const spaceRefCmdResult = await commands.getSpaceReference(
-                    zakuState.activeSpace.absolute_path,
+                    zakuState.activeSpace.abspath,
                 );
                 if (spaceRefCmdResult.status === "error") {
                     throw new Error(
-                        `Cannot get space reference for ${zakuState.activeSpace.absolute_path}`,
+                        `Cannot get space reference for ${zakuState.activeSpace.abspath}`,
                     );
                 }
 
@@ -115,7 +115,7 @@
                             <div class="flex items-center overflow-hidden">
                                 <span class="truncate">{spaceReference.name}</span>
                             </div>
-                            {#if spaceReference.path === zakuState.activeSpace.absolute_path}
+                            {#if spaceReference.path === zakuState.activeSpace.abspath}
                                 <CheckIcon size={14} class="max-h-[14px] max-w-[14px]" />
                             {/if}
                         </DropdownMenuItem>

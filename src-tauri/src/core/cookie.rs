@@ -19,17 +19,17 @@ static COOKIES_CACHE: Lazy<CookiesCache> = Lazy::new(|| Mutex::new(HashMap::new(
 pub struct SpaceCookies;
 
 impl SpaceCookies {
-    pub fn load(abs_spacepath: &str) -> Arc<CookieStoreMutex> {
-        let hashed_abs_spacepath = hashed_filename(abs_spacepath);
+    pub fn load(space_abspath: &str) -> Arc<CookieStoreMutex> {
+        let hashed_space_abspath = hashed_filename(space_abspath);
 
         let mut cache = COOKIES_CACHE.lock().expect("Failed to lock cookie cache");
-        if let Some(space_cookies) = cache.get(abs_spacepath) {
+        if let Some(space_cookies) = cache.get(space_abspath) {
             return Arc::clone(space_cookies);
         }
 
         let cookie_file = ZAKU_DATA_DIR
             .join(SPACES_DIR)
-            .join(&hashed_abs_spacepath)
+            .join(&hashed_space_abspath)
             .join("cookies.json");
 
         let space_cookies_data = if cookie_file.exists() {
@@ -42,19 +42,19 @@ impl SpaceCookies {
         };
 
         let space_cookies = Arc::new(CookieStoreMutex::new(space_cookies_data));
-        cache.insert(abs_spacepath.to_string(), Arc::clone(&space_cookies));
+        cache.insert(space_abspath.to_string(), Arc::clone(&space_cookies));
 
         return space_cookies;
     }
 
-    pub fn persist(abs_spacepath: &str) {
-        let hashed_abs_spacepath = hashed_filename(abs_spacepath);
+    pub fn persist(space_abspath: &str) {
+        let hashed_space_abspath = hashed_filename(space_abspath);
 
         let cache = COOKIES_CACHE.lock().expect("Failed to lock cookie cache");
-        if let Some(space_cookies) = cache.get(abs_spacepath) {
+        if let Some(space_cookies) = cache.get(space_abspath) {
             let cookie_file = ZAKU_DATA_DIR
                 .join(SPACES_DIR)
-                .join(&hashed_abs_spacepath)
+                .join(&hashed_space_abspath)
                 .join("cookies.json");
 
             if let Some(parent) = cookie_file.parent() {
@@ -70,21 +70,21 @@ impl SpaceCookies {
         }
     }
 
-    pub fn clear(abs_spacepath: &str) {
-        let space_cookies = SpaceCookies::load(abs_spacepath);
+    pub fn clear(space_abspath: &str) {
+        let space_cookies = SpaceCookies::load(space_abspath);
         {
             let mut locked = space_cookies.lock().unwrap();
             locked.clear();
         }
-        SpaceCookies::persist(abs_spacepath);
+        SpaceCookies::persist(space_abspath);
     }
 
-    pub fn remove(abs_spacepath: &str, name: &str, domain: &str, path: &str) {
-        let space_cookies = SpaceCookies::load(abs_spacepath);
+    pub fn remove(space_abspath: &str, name: &str, domain: &str, path: &str) {
+        let space_cookies = SpaceCookies::load(space_abspath);
         {
             let mut locked = space_cookies.lock().unwrap();
             locked.remove(name, domain, path);
         }
-        SpaceCookies::persist(abs_spacepath);
+        SpaceCookies::persist(space_abspath);
     }
 }

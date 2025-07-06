@@ -27,17 +27,17 @@ pub fn move_tree_item(
         .active_space
         .clone()
         .expect("Active space not found");
-    let active_space_absolute_path = PathBuf::from(&active_space.absolute_path);
+    let active_space_abspath = PathBuf::from(&active_space.abspath);
     let MoveTreeItemDto {
-        source_relative_path,
-        destination_relative_path,
+        src_relpath,
+        dest_relpath,
     } = move_tree_item_dto;
-    let source_absolute_path = active_space_absolute_path.join(source_relative_path);
-    let destination_absolute_path = active_space_absolute_path.join(destination_relative_path);
+    let src_abspath = active_space_abspath.join(src_relpath);
+    let dest_abspath = active_space_abspath.join(dest_relpath);
 
-    fs::rename(source_absolute_path, destination_absolute_path).expect("Unable to move tree item");
+    fs::rename(src_abspath, dest_abspath).expect("Unable to move tree item");
 
-    match core::space::parse_space(&active_space_absolute_path) {
+    match core::space::parse_space(&active_space_abspath) {
         Ok(active_space) => zaku_state.active_space = Some(active_space),
         Err(err) => {
             return Err(ZakuError {

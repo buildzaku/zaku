@@ -13,10 +13,10 @@ use crate::models::toml::ReqToml;
 const SPACE_BUFFER_DIR: &str = "buffer/spaces";
 
 impl SpaceBuf {
-    pub fn load(abs_spacepath: &Path) -> RwLock<Self> {
+    pub fn load(space_abspath: &Path) -> RwLock<Self> {
         let space_buffer_file = ZAKU_DATA_DIR
             .join(SPACE_BUFFER_DIR)
-            .join(&hashed_filename(&abs_spacepath.to_string_lossy()))
+            .join(&hashed_filename(&space_abspath.to_string_lossy()))
             .with_extension("json");
 
         if space_buffer_file.exists() {
@@ -25,26 +25,26 @@ impl SpaceBuf {
             let space_buffer: Result<SpaceBuf, _> = serde_json::from_str(&content);
 
             return RwLock::new(space_buffer.unwrap_or_else(|_| SpaceBuf {
-                absolute_path: abs_spacepath.to_string_lossy().to_string(),
+                abspath: space_abspath.to_string_lossy().to_string(),
                 requests: HashMap::new(),
             }));
         } else {
             return RwLock::new(SpaceBuf {
-                absolute_path: abs_spacepath.to_string_lossy().to_string(),
+                abspath: space_abspath.to_string_lossy().to_string(),
                 requests: HashMap::new(),
             });
         }
     }
-    pub fn acquire_read_lock(space_buffer: &RwLock<Self>) -> RwLockReadGuard<Self> {
+    pub fn acq_rlock(space_buffer: &RwLock<Self>) -> RwLockReadGuard<Self> {
         return space_buffer.read().expect("Failed to acquire read lock");
     }
-    pub fn acquire_write_lock(space_buffer: &RwLock<Self>) -> RwLockWriteGuard<Self> {
+    pub fn acq_wlock(space_buffer: &RwLock<Self>) -> RwLockWriteGuard<Self> {
         return space_buffer.write().expect("Failed to acquire write lock");
     }
     pub fn persist(&self) {
         let buffer_file_path = ZAKU_DATA_DIR
             .join(SPACE_BUFFER_DIR)
-            .join(&hashed_filename(&self.absolute_path))
+            .join(&hashed_filename(&self.abspath))
             .with_extension("json");
 
         if let Some(parent) = buffer_file_path.parent() {
@@ -59,46 +59,36 @@ impl SpaceBuf {
     }
 }
 
-pub fn save_request_to_space_buffer(
-    abs_spacepath: &Path,
-    parent_relative_path: &Path,
-    request: HttpReq,
-) {
-    let space_buffer = SpaceBuf::load(abs_spacepath);
-    let mut space_buffer_wlock = SpaceBuf::acquire_write_lock(&space_buffer);
-    let request_relative_path = PathBuf::from(parent_relative_path)
+pub fn save_req_to_space_buffer(space_abspath: &Path, parent_relpath: &Path, request: HttpReq) {
+    let space_buffer = SpaceBuf::load(space_abspath);
+    let mut space_buffer_wlock = SpaceBuf::acq_wlock(&space_buffer);
+    let req_relpath = PathBuf::from(parent_relpath)
         .join(&request.meta.file_name)
         .to_string_lossy()
         .to_string();
     let req_buf = ReqBuf::from_req(&request);
 
-    space_buffer_wlock
-        .requests
-        .insert(request_relative_path, req_buf);
+    space_buffer_wlock.requests.insert(req_relpath, req_buf);
 
     space_buffer_wlock.persist();
 }
 
-pub fn write_buffer_request_to_fs(
-    abs_spacepath: &Path,
-    request_relative_path: &Path,
-) -> Result<(), Error> {
-    let space_buf = SpaceBuf::load(abs_spacepath);
-    let mut space_buf_wlock = SpaceBuf::acquire_write_lock(&space_buf);
+pub fn write_buffer_req_to_fs(space_abspath: &Path, req_relpath: &Path) -> Result<(), Error> {
+    let space_buf = SpaceBuf::load(space_abspath);
+    let mut space_buf_wlock = SpaceBuf::acq_wlock(&space_buf);
 
     let req_buf = space_buf_wlock
         .requests
-        .get(&request_relative_path.to_string_lossy().to_string());
+        .get(&req_relpath.to_string_lossy().to_string());
 
     if let Some(req_buf) = req_buf {
         let req_toml = ReqToml::from_reqbuf(req_buf);
-        request::save_to_request_file(&abs_spacepath.join(request_relative_path), &req_toml)
-            .unwrap();
+        request::save_to_req_toml(&space_abspath.join(req_relpath), &req_toml).unwrap();
     }
 
     space_buf_wlock
         .requests
-        .remove(&request_relative_path.to_string_lossy().to_string());
+        .remove(&req_relpath.to_string_lossy().to_string());
     space_buf_wlock.persist();
 
     return Ok(());

@@ -25,10 +25,10 @@ use crate::{
 #[specta::specta]
 #[tauri::command]
 pub fn create_request(
-    create_request_dto: CreateRequestDto,
+    create_req_dto: CreateRequestDto,
     app_handle: AppHandle,
 ) -> Result<CreateNewRequest, ZakuError> {
-    if create_request_dto.relative_path.is_empty() {
+    if create_req_dto.relpath.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a request without name".to_string(),
             message: "Cannot create a request without name".to_string(),
@@ -41,22 +41,20 @@ pub fn create_request(
         .active_space
         .clone()
         .expect("Active space not found");
-    let active_space_absolute_path = PathBuf::from(&active_space.absolute_path);
+    let active_space_abspath = PathBuf::from(&active_space.abspath);
 
-    let (parsed_parent_relative_path, file_display_name) =
-        match create_request_dto.relative_path.rfind('/') {
-            Some(last_slash_index) => {
-                let parsed_parent_relative_path =
-                    &create_request_dto.relative_path[..last_slash_index];
-                let file_display_name = &create_request_dto.relative_path[last_slash_index + 1..];
+    let (parsed_parent_relpath, file_display_name) = match create_req_dto.relpath.rfind('/') {
+        Some(last_slash_index) => {
+            let parsed_parent_relpath = &create_req_dto.relpath[..last_slash_index];
+            let file_display_name = &create_req_dto.relpath[last_slash_index + 1..];
 
-                (
-                    Some(parsed_parent_relative_path.to_string()),
-                    file_display_name.to_string(),
-                )
-            }
-            None => (None, create_request_dto.relative_path),
-        };
+            (
+                Some(parsed_parent_relpath.to_string()),
+                file_display_name.to_string(),
+            )
+        }
+        None => (None, create_req_dto.relpath),
+    };
 
     let file_display_name = file_display_name.trim();
     let file_sanitized_name = file_display_name
@@ -64,53 +62,49 @@ pub fn create_request(
         .split_whitespace()
         .collect::<Vec<&str>>()
         .join("-");
-    let (file_parent_relative_path, file_sanitized_name) = match parsed_parent_relative_path {
-        Some(ref parsed_parent_relative_path) => {
+    let (file_parent_relpath, file_sanitized_name) = match parsed_parent_relpath {
+        Some(ref parsed_parent_relpath) => {
             let create_collection_dto = CreateCollectionDto {
-                parent_relative_path: create_request_dto.parent_relative_path.clone(),
-                relative_path: parsed_parent_relative_path.to_string(),
+                parent_relpath: create_req_dto.parent_relpath.clone(),
+                relpath: parsed_parent_relpath.to_string(),
             };
 
-            let dirs_sanitized_relative_path = collection::create_collections_all(
-                &active_space_absolute_path,
-                &create_collection_dto,
-            )
-            .map_err(|err| ZakuError {
-                error: err.to_string(),
-                message: "Failed to create request's parent directories".to_string(),
-            })?;
+            let dirs_sanitized_relpath =
+                collection::create_collections_all(&active_space_abspath, &create_collection_dto)
+                    .map_err(|err| ZakuError {
+                    error: err.to_string(),
+                    message: "Failed to create request's parent directories".to_string(),
+                })?;
 
-            let file_parent_relative_path = utils::join_str_paths(vec![
-                create_request_dto.parent_relative_path.as_str(),
-                dirs_sanitized_relative_path.as_str(),
+            let file_parent_relpath = utils::join_str_paths(vec![
+                create_req_dto.parent_relpath.as_str(),
+                dirs_sanitized_relpath.as_str(),
             ]);
 
-            (file_parent_relative_path, file_sanitized_name)
+            (file_parent_relpath, file_sanitized_name)
         }
-        None => (create_request_dto.parent_relative_path, file_sanitized_name),
+        None => (create_req_dto.parent_relpath, file_sanitized_name),
     };
 
-    let file_absolute_path = active_space_absolute_path
-        .join(file_parent_relative_path.clone())
+    let file_abspath = active_space_abspath
+        .join(file_parent_relpath.clone())
         .join(file_sanitized_name.clone());
-    let file_relative_path = utils::join_str_paths(vec![
-        file_parent_relative_path.clone().as_str(),
+    let file_relpath = utils::join_str_paths(vec![
+        file_parent_relpath.clone().as_str(),
         format!("{}.toml", file_sanitized_name).as_str(),
     ]);
 
-    core::request::create_request_file(&file_absolute_path, &file_display_name).map_err(|err| {
-        ZakuError {
-            error: err.to_string(),
-            message: "Failed to create request file".to_string(),
-        }
+    core::request::create_req_toml(&file_abspath, &file_display_name).map_err(|err| ZakuError {
+        error: err.to_string(),
+        message: "Failed to create request file".to_string(),
     })?;
 
     let create_new_result = CreateNewRequest {
-        parent_relative_path: file_parent_relative_path,
-        relative_path: file_relative_path,
+        parent_relpath: file_parent_relpath,
+        relpath: file_relpath,
     };
 
-    match space::parse_space(&active_space_absolute_path) {
+    match space::parse_space(&active_space_abspath) {
         Ok(active_space) => zaku_state.active_space = Some(active_space),
         Err(err) => {
             return Err(ZakuError {
@@ -125,18 +119,18 @@ pub fn create_request(
 
 #[specta::specta]
 #[tauri::command]
-pub fn save_request_to_buffer(absolute_space_path: &str, relative_path: &str, request: HttpReq) {
-    let absolute = Path::new(absolute_space_path);
-    let relative = Path::new(relative_path);
-    buffer::save_request_to_space_buffer(absolute, relative, request);
+pub fn save_req_to_buffer(space_abspath: &str, relpath: &str, request: HttpReq) {
+    let abs = Path::new(space_abspath);
+    let rel = Path::new(relpath);
+    buffer::save_req_to_space_buffer(abs, rel, request);
 }
 
 #[specta::specta]
 #[tauri::command]
-pub fn write_buffer_request_to_fs(absolute_space_path: &str, request_relative_path: &str) {
-    let absolute = Path::new(absolute_space_path);
-    let relative = Path::new(request_relative_path);
-    buffer::write_buffer_request_to_fs(absolute, relative).unwrap();
+pub fn write_buffer_req_to_fs(space_abspath: &str, req_relpath: &str) {
+    let abs = Path::new(space_abspath);
+    let rel = Path::new(req_relpath);
+    buffer::write_buffer_req_to_fs(abs, rel).unwrap();
 }
 
 #[specta::specta]
@@ -146,8 +140,8 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         message: "no active space".into(),
         code: None,
     })?;
-    let abs_spacepath = active_space.path.as_str();
-    let cookie_store = SpaceCookies::load(abs_spacepath);
+    let space_abspath = active_space.path.as_str();
+    let cookie_store = SpaceCookies::load(space_abspath);
     let client = reqwest::Client::builder()
         .cookie_provider(Arc::clone(&cookie_store))
         .build()
@@ -224,7 +218,7 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
 
     let size_bytes = Some(data.len() as u32);
 
-    SpaceCookies::persist(abs_spacepath);
+    SpaceCookies::persist(space_abspath);
 
     return Ok(HttpRes {
         status: Some(status),

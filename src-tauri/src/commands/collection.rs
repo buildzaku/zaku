@@ -17,7 +17,7 @@ pub fn create_collection(
     create_collection_dto: CreateCollectionDto,
     app_handle: AppHandle,
 ) -> Result<CreateNewCollection, ZakuError> {
-    if create_collection_dto.relative_path.is_empty() {
+    if create_collection_dto.relpath.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a collection without name".to_string(),
             message: "Cannot create a collection without name".to_string(),
@@ -30,22 +30,20 @@ pub fn create_collection(
         .active_space
         .clone()
         .expect("Active space not found");
-    let active_space_absolute_path = PathBuf::from(&active_space.absolute_path);
+    let active_space_abspath = PathBuf::from(&active_space.abspath);
 
-    let (parsed_parent_relative_path, dir_display_name) =
-        match create_collection_dto.relative_path.rfind('/') {
-            Some(last_slash_index) => {
-                let parsed_parent_relative_path =
-                    &create_collection_dto.relative_path[..last_slash_index];
-                let dir_display_name = &create_collection_dto.relative_path[last_slash_index + 1..];
+    let (parsed_parent_relpath, dir_display_name) = match create_collection_dto.relpath.rfind('/') {
+        Some(last_slash_index) => {
+            let parsed_parent_relpath = &create_collection_dto.relpath[..last_slash_index];
+            let dir_display_name = &create_collection_dto.relpath[last_slash_index + 1..];
 
-                (
-                    Some(parsed_parent_relative_path.to_string()),
-                    dir_display_name.to_string(),
-                )
-            }
-            None => (None, create_collection_dto.relative_path),
-        };
+            (
+                Some(parsed_parent_relpath.to_string()),
+                dir_display_name.to_string(),
+            )
+        }
+        None => (None, create_collection_dto.relpath),
+    };
 
     let dir_display_name = dir_display_name.trim();
     let dir_sanitized_name = dir_display_name
@@ -53,51 +51,46 @@ pub fn create_collection(
         .split_whitespace()
         .collect::<Vec<&str>>()
         .join("-");
-    let (dir_parent_relative_path, dir_sanitized_name) = match parsed_parent_relative_path {
-        Some(ref parsed_parent_relative_path) => {
+    let (dir_parent_relpath, dir_sanitized_name) = match parsed_parent_relpath {
+        Some(ref parsed_parent_relpath) => {
             let create_collection_dto = CreateCollectionDto {
-                parent_relative_path: create_collection_dto.parent_relative_path.clone(),
-                relative_path: parsed_parent_relative_path.to_string(),
+                parent_relpath: create_collection_dto.parent_relpath.clone(),
+                relpath: parsed_parent_relpath.to_string(),
             };
 
-            let dirs_sanitized_relative_path = collection::create_collections_all(
-                &active_space_absolute_path,
-                &create_collection_dto,
-            )
-            .map_err(|err| ZakuError {
-                error: err.to_string(),
-                message: "Failed to create collection's parent directories".to_string(),
-            })?;
+            let dirs_sanitized_relpath =
+                collection::create_collections_all(&active_space_abspath, &create_collection_dto)
+                    .map_err(|err| ZakuError {
+                        error: err.to_string(),
+                        message: "Failed to create collection's parent directories".to_string(),
+                    })?;
 
-            let dir_parent_relative_path = utils::join_str_paths(vec![
-                create_collection_dto.parent_relative_path.as_str(),
-                dirs_sanitized_relative_path.as_str(),
+            let dir_parent_relpath = utils::join_str_paths(vec![
+                create_collection_dto.parent_relpath.as_str(),
+                dirs_sanitized_relpath.as_str(),
             ]);
 
-            (dir_parent_relative_path, dir_sanitized_name)
+            (dir_parent_relpath, dir_sanitized_name)
         }
-        None => (
-            create_collection_dto.parent_relative_path,
-            dir_sanitized_name,
-        ),
+        None => (create_collection_dto.parent_relpath, dir_sanitized_name),
     };
 
-    let dir_absolute_path = active_space_absolute_path
-        .join(dir_parent_relative_path.clone())
+    let dir_abspath = active_space_abspath
+        .join(dir_parent_relpath.clone())
         .join(dir_sanitized_name.clone());
-    let dir_relative_path = utils::join_str_paths(vec![
-        dir_parent_relative_path.clone().as_str(),
+    let dir_relpath = utils::join_str_paths(vec![
+        dir_parent_relpath.clone().as_str(),
         dir_sanitized_name.as_str(),
     ]);
 
-    fs::create_dir(&dir_absolute_path).map_err(|err| ZakuError {
+    fs::create_dir(&dir_abspath).map_err(|err| ZakuError {
         error: err.to_string(),
         message: "Failed to create collection".to_string(),
     })?;
 
     collection::save_display_name_if_not_exists(
-        &active_space_absolute_path,
-        &dir_relative_path,
+        &active_space_abspath,
+        &dir_relpath,
         &dir_display_name,
     )
     .unwrap_or_else(|err| {
@@ -105,11 +98,11 @@ pub fn create_collection(
     });
 
     let create_new_result = CreateNewCollection {
-        parent_relative_path: dir_parent_relative_path,
-        relative_path: dir_relative_path,
+        parent_relpath: dir_parent_relpath,
+        relpath: dir_relpath,
     };
 
-    match space::parse_space(&active_space_absolute_path) {
+    match space::parse_space(&active_space_abspath) {
         Ok(active_space) => zaku_state.active_space = Some(active_space),
         Err(err) => {
             return Err(ZakuError {

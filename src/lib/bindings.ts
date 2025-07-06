@@ -60,9 +60,9 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async requestNotificationPermission(): Promise<Result<boolean, ZakuError>> {
+    async reqNotificationPermission(): Promise<Result<boolean, ZakuError>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("request_notification_permission") };
+            return { status: "ok", data: await TAURI_INVOKE("req_notification_permission") };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -92,33 +92,20 @@ export const commands = {
         }
     },
     async createRequest(
-        createRequestDto: CreateRequestDto,
+        createReqDto: CreateRequestDto,
     ): Promise<Result<CreateNewRequest, ZakuError>> {
         try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("create_request", { createRequestDto }),
-            };
+            return { status: "ok", data: await TAURI_INVOKE("create_request", { createReqDto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
         }
     },
-    async saveRequestToBuffer(
-        absoluteSpacePath: string,
-        relativePath: string,
-        request: HttpReq,
-    ): Promise<void> {
-        await TAURI_INVOKE("save_request_to_buffer", { absoluteSpacePath, relativePath, request });
+    async saveReqToBuffer(spaceAbspath: string, relpath: string, request: HttpReq): Promise<void> {
+        await TAURI_INVOKE("save_req_to_buffer", { spaceAbspath, relpath, request });
     },
-    async writeBufferRequestToFs(
-        absoluteSpacePath: string,
-        requestRelativePath: string,
-    ): Promise<void> {
-        await TAURI_INVOKE("write_buffer_request_to_fs", {
-            absoluteSpacePath,
-            requestRelativePath,
-        });
+    async writeBufferReqToFs(spaceAbspath: string, reqRelpath: string): Promise<void> {
+        await TAURI_INVOKE("write_buffer_req_to_fs", { spaceAbspath, reqRelpath });
     },
     async httpReq(req: HttpReq): Promise<Result<HttpRes, HttpErr>> {
         try {
@@ -153,10 +140,10 @@ export type CollectionMeta = {
     display_name: string | null;
     is_expanded: boolean;
 };
-export type CreateCollectionDto = { parent_relative_path: string; relative_path: string };
-export type CreateNewCollection = { parent_relative_path: string; relative_path: string };
-export type CreateNewRequest = { parent_relative_path: string; relative_path: string };
-export type CreateRequestDto = { parent_relative_path: string; relative_path: string };
+export type CreateCollectionDto = { parent_relpath: string; relpath: string };
+export type CreateNewCollection = { parent_relpath: string; relpath: string };
+export type CreateNewRequest = { parent_relpath: string; relpath: string };
+export type CreateRequestDto = { parent_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
 export type HttpErr = { message: string; code: number | null };
@@ -174,7 +161,7 @@ export type HttpRes = {
     size_bytes?: number;
     elapsed_ms?: number;
 };
-export type MoveTreeItemDto = { source_relative_path: string; destination_relative_path: string };
+export type MoveTreeItemDto = { src_relpath: string; dest_relpath: string };
 export type OpenDirDialogOpt = { title: string | null };
 export type ReqCfg = {
     method: string;
@@ -192,12 +179,7 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
-export type Space = {
-    absolute_path: string;
-    meta: SpaceMeta;
-    root: Collection;
-    cookies: SpaceCookie[];
-};
+export type Space = { abspath: string; meta: SpaceMeta; root: Collection; cookies: SpaceCookie[] };
 export type SpaceCookie = {
     name: string;
     value: string;

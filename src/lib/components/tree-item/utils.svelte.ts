@@ -154,11 +154,8 @@ export async function handleDrop(event: DragEvent) {
         ? treeActionsState.dragPayload.treeItem.meta.dir_name
         : treeActionsState.dragPayload.treeItem.meta.file_name;
     const moveTreeItemDto: MoveTreeItemDto = {
-        source_relative_path: buildPath(
-            treeActionsState.dragPayload.parentRelativePath,
-            fileOrDirName,
-        ),
-        destination_relative_path: buildPath(treeActionsState.dropTargetPath, fileOrDirName),
+        src_relpath: buildPath(treeActionsState.dragPayload.parentRelativePath, fileOrDirName),
+        dest_relpath: buildPath(treeActionsState.dropTargetPath, fileOrDirName),
     };
     const moveTreeItemResult = await commands.moveTreeItem(moveTreeItemDto);
     if (moveTreeItemResult.status === "error") {

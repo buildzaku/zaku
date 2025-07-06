@@ -115,7 +115,7 @@ class Debounced {
     #DELAY = 1500;
 
     async #invokeSaveReqToBuf(absoluteSpacePath: string, activeRequest: ActiveRequest) {
-        await commands.saveRequestToBuffer(
+        await commands.saveReqToBuffer(
             absoluteSpacePath,
             activeRequest.parentRelativePath,
             activeRequest.self,

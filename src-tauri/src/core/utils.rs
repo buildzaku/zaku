@@ -58,9 +58,9 @@ pub fn join_str_paths(paths: Vec<&str>) -> String {
         .join("/");
 }
 
-pub fn hashed_filename(abs_path: &str) -> String {
+pub fn hashed_filename(abspath: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(abs_path.as_bytes());
+    hasher.update(abspath.as_bytes());
 
     return format!("{:x}", hasher.finalize());
 }

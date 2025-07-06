@@ -127,8 +127,8 @@ impl HttpReq {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateRequestDto {
-    pub parent_relative_path: String,
-    pub relative_path: String,
+    pub parent_relpath: String,
+    pub relpath: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]

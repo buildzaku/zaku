@@ -21,26 +21,25 @@ pub struct CollectionRcRefCell {
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }
 
-fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error> {
-    let space_dir_name = absolute_space_root
+fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
+    let space_dirname = space_abspath
         .file_name()
-        .unwrap_or_else(|| absolute_space_root.as_os_str())
+        .unwrap_or_else(|| space_abspath.as_os_str())
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
-    let collection_name_by_relative_path =
-        collection::display_name_by_relative_path(absolute_space_root)
-            .unwrap_or_else(|_| HashMap::new());
-    let active_space_buffer = SpaceBuf::load(absolute_space_root);
-    let active_space_buffer_rlock = SpaceBuf::acquire_read_lock(&active_space_buffer);
-    let space_config = match parse_space_config(&absolute_space_root) {
+    let collection_name_by_relpath =
+        collection::display_name_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
+    let active_space_buffer = SpaceBuf::load(space_abspath);
+    let active_space_buffer_rlock = SpaceBuf::acq_rlock(&active_space_buffer);
+    let space_config = match parse_space_config(&space_abspath) {
         Ok(space_config) => Some(space_config),
         Err(_) => None,
     };
 
     let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
         meta: CollectionMeta {
-            dir_name: space_dir_name,
+            dir_name: space_dirname,
             display_name: space_config.map(|config| config.meta.name),
             is_expanded: true,
         },
@@ -55,7 +54,7 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
     ));
 
     while let Some((path, collection_rc_refcell)) = stack.pop() {
-        if let Ok(entries) = fs::read_dir(absolute_space_root.join(&path)) {
+        if let Ok(entries) = fs::read_dir(space_abspath.join(&path)) {
             for entry in entries.flatten() {
                 let is_symlink = entry
                     .file_type()
@@ -65,10 +64,10 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                     continue;
                 }
 
-                let absolute_entry_path = entry.path();
+                let entry_abspath = entry.path();
 
-                if absolute_entry_path.is_dir() {
-                    let name = absolute_entry_path
+                if entry_abspath.is_dir() {
+                    let name = entry_abspath
                         .file_name()
                         .unwrap()
                         .to_string_lossy()
@@ -77,8 +76,8 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                         continue;
                     }
 
-                    let relative_path = absolute_entry_path
-                        .strip_prefix(absolute_space_root)
+                    let relpath = entry_abspath
+                        .strip_prefix(space_abspath)
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
@@ -86,27 +85,25 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             dir_name: name,
-                            display_name: collection_name_by_relative_path
-                                .get(&relative_path)
-                                .cloned(),
+                            display_name: collection_name_by_relpath.get(&relpath).cloned(),
                             is_expanded: true,
                         },
                         requests: Vec::new(),
                         collections: Vec::new(),
                     }));
 
-                    stack.push((PathBuf::from(&relative_path), Rc::clone(&sub_collection)));
+                    stack.push((PathBuf::from(&relpath), Rc::clone(&sub_collection)));
                     collection_rc_refcell
                         .borrow_mut()
                         .collections
                         .push(sub_collection);
-                } else if absolute_entry_path.is_file() {
-                    let relative_path = absolute_entry_path
-                        .strip_prefix(absolute_space_root)
+                } else if entry_abspath.is_file() {
+                    let relpath = entry_abspath
+                        .strip_prefix(space_abspath)
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
-                    let req_buf = active_space_buffer_rlock.requests.get(&relative_path);
+                    let req_buf = active_space_buffer_rlock.requests.get(&relpath);
 
                     if let Some(req_buf) = req_buf {
                         collection_rc_refcell
@@ -114,13 +111,13 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
                             .requests
                             .push(HttpReq::from_reqbuf(req_buf));
                     } else {
-                        let file_name = absolute_entry_path
+                        let file_name = entry_abspath
                             .file_name()
                             .unwrap()
                             .to_string_lossy()
                             .into_owned();
 
-                        match request::parse_request_file(&absolute_entry_path) {
+                        match request::parse_req_toml(&entry_abspath) {
                             Ok(req_toml) => {
                                 collection_rc_refcell
                                     .borrow_mut()
@@ -159,9 +156,9 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
         stack.push((root_collection, sub_collections_iter));
     }
 
-    while let Some((current_collection, mut sub_collections_iter)) = stack.pop() {
+    while let Some((cur_collection, mut sub_collections_iter)) = stack.pop() {
         if let Some(sub_collection_ref_cell) = sub_collections_iter.next() {
-            stack.push((current_collection, sub_collections_iter));
+            stack.push((cur_collection, sub_collections_iter));
 
             let sub_collection_ref_cell = sub_collection_ref_cell.borrow();
             let sub_collection = Collection {
@@ -180,11 +177,11 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
             stack.push((sub_collection, sub_collections_iter));
         } else {
             if let Some((mut parent_collection, parent_sub_collections_iter)) = stack.pop() {
-                parent_collection.collections.push(current_collection);
+                parent_collection.collections.push(cur_collection);
 
                 stack.push((parent_collection, parent_sub_collections_iter));
             } else {
-                root_collection = Some(current_collection);
+                root_collection = Some(cur_collection);
             }
         }
     }
@@ -202,12 +199,11 @@ fn parse_root_collection(absolute_space_root: &Path) -> Result<Collection, Error
     }
 }
 
-pub fn parse_space(absolute_space_root: &Path) -> Result<Space, Error> {
-    match parse_root_collection(absolute_space_root) {
-        Ok(root_collection) => match parse_space_config(&absolute_space_root) {
+pub fn parse_space(space_abspath: &Path) -> Result<Space, Error> {
+    match parse_root_collection(space_abspath) {
+        Ok(root_collection) => match parse_space_config(&space_abspath) {
             Ok(space_config_file) => {
-                let cookie_store =
-                    SpaceCookies::load(absolute_space_root.to_string_lossy().as_ref());
+                let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref());
                 let store = cookie_store.lock().unwrap();
                 let cookies: Vec<SpaceCookie> = store
                     .iter_any()
@@ -215,7 +211,7 @@ pub fn parse_space(absolute_space_root: &Path) -> Result<Space, Error> {
                     .collect();
 
                 return Ok(Space {
-                    absolute_path: absolute_space_root.to_string_lossy().into_owned(),
+                    abspath: space_abspath.to_string_lossy().into_owned(),
                     meta: space_config_file.meta,
                     root: root_collection,
                     cookies,
@@ -233,19 +229,19 @@ pub fn parse_space(absolute_space_root: &Path) -> Result<Space, Error> {
     }
 }
 
-pub fn parse_space_config(absolute_space_root: &Path) -> Result<SpaceConfigFile, Error> {
-    return fs::read_to_string(absolute_space_root.join(".zaku/config.toml"))
+pub fn parse_space_config(space_abspath: &Path) -> Result<SpaceConfigFile, Error> {
+    return fs::read_to_string(space_abspath.join(".zaku/config.toml"))
         .map_err(|err| {
             Error::new(
                 ErrorKind::NotFound,
-                format!("Failed to load {}: {}", absolute_space_root.display(), err),
+                format!("Failed to load {}: {}", space_abspath.display(), err),
             )
         })
         .and_then(|content| {
             toml::from_str(&content).map_err(|err| {
                 Error::new(
                     ErrorKind::InvalidData,
-                    format!("Failed to parse {}: {}", absolute_space_root.display(), err),
+                    format!("Failed to parse {}: {}", space_abspath.display(), err),
                 )
             })
         });
@@ -255,9 +251,9 @@ pub fn find_first_valid_space_reference() -> Option<SpaceReference> {
     return store::get_space_references()
         .into_iter()
         .find_map(|space_reference| {
-            let absolute_space_root = PathBuf::from(&space_reference.path);
+            let space_abspath = PathBuf::from(&space_reference.path);
 
-            match parse_space_config(&absolute_space_root) {
+            match parse_space_config(&space_abspath) {
                 Ok(_) => Some(space_reference),
                 Err(_) => None,
             }

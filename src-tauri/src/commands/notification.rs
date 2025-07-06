@@ -19,7 +19,7 @@ pub fn is_notification_permission_granted(app_handle: AppHandle) -> Result<bool,
 
 #[specta::specta]
 #[tauri::command]
-pub fn request_notification_permission(app_handle: AppHandle) -> Result<bool, ZakuError> {
+pub fn req_notification_permission(app_handle: AppHandle) -> Result<bool, ZakuError> {
     let permission_state = app_handle
         .notification()
         .request_permission()

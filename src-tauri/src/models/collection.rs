@@ -19,6 +19,6 @@ pub struct Collection {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateCollectionDto {
-    pub parent_relative_path: String,
-    pub relative_path: String,
+    pub parent_relpath: String,
+    pub relpath: String,
 }

@@ -37,6 +37,7 @@
             activeReqRef.self.response = {
                 data: "Invalid or missing protocol",
                 headers: [],
+                cookies: [],
             };
             return;
         }
@@ -88,6 +89,7 @@
             activeReqRef.self.response = {
                 data: httpRes.error.message,
                 headers: [],
+                cookies: [],
             };
         } else {
             activeReqRef.self.response = httpRes.data;
@@ -109,14 +111,14 @@
             event.preventDefault();
 
             const absoluteReqPath = joinPaths([
-                activeSpaceRef.absolute_path,
+                activeSpaceRef.abspath,
                 activeReqRef.parentRelativePath,
                 activeReqRef.self.meta.file_name,
             ]);
 
             await debounced.flush(absoluteReqPath);
-            await commands.writeBufferRequestToFs(
-                activeSpaceRef.absolute_path,
+            await commands.writeBufferReqToFs(
+                activeSpaceRef.abspath,
                 joinPaths([activeReqRef.parentRelativePath, activeReqRef.self.meta.file_name]),
             );
 
@@ -153,7 +155,7 @@
             prevActiveReqRelPath &&
             prevActiveReqRelPath === activeReqRelPath
         ) {
-            debounced.saveRequestToBuffer(activeSpaceRef.absolute_path, activeReqRef);
+            debounced.saveRequestToBuffer(activeSpaceRef.abspath, activeReqRef);
             activeReqRef.self.meta.has_unsaved_changes = true;
         } else {
             prevActiveReqRelPath = activeReqRelPath;

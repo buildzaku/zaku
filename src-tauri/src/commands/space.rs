@@ -22,29 +22,29 @@ pub fn create_space(
         });
     }
 
-    let space_root_path = location.join(create_space_dto.name.clone());
+    let space_abspath = location.join(create_space_dto.name.clone());
     let mut space_references = store::get_space_references();
     let mut zaku_state = state.lock().unwrap();
 
     if space_references
         .iter()
-        .any(|space_reference| space_reference.path == space_root_path.to_string_lossy())
+        .any(|space_reference| space_reference.path == space_abspath.to_string_lossy())
     {
         return Err(ZakuError {
-            error: space_root_path.to_string_lossy().to_string(),
+            error: space_abspath.to_string_lossy().to_string(),
             message: "Space already exists in saved spaces.".to_string(),
         });
     }
-    if space_root_path.exists() {
+    if space_abspath.exists() {
         return Err(ZakuError {
-            error: space_root_path.to_string_lossy().to_string(),
+            error: space_abspath.to_string_lossy().to_string(),
             message: "Directory with this name already exists.".to_string(),
         });
     }
 
-    fs::create_dir(&space_root_path).expect("Failed to create space directory");
+    fs::create_dir(&space_abspath).expect("Failed to create space directory");
 
-    let space_config_dir = space_root_path.join(".zaku");
+    let space_config_dir = space_abspath.join(".zaku");
     fs::create_dir(&space_config_dir).expect("Failed to create `.zaku` directory");
 
     let mut space_config_file =
@@ -66,7 +66,7 @@ pub fn create_space(
         .expect("Failed to write to config file");
 
     let space_reference = SpaceReference {
-        path: space_root_path.to_string_lossy().to_string(),
+        path: space_abspath.to_string_lossy().to_string(),
         name: create_space_dto.name,
     };
 
@@ -94,16 +94,16 @@ pub fn set_active_space(
     state: State<Mutex<ZakuState>>,
 ) -> Result<(), ZakuError> {
     let mut zaku_state = state.lock().unwrap();
-    let space_root_path = PathBuf::from(space_reference.path.as_str());
+    let space_abspath = PathBuf::from(space_reference.path.as_str());
 
-    if !space_root_path.exists() {
+    if !space_abspath.exists() {
         return Err(ZakuError {
-            error: space_root_path.to_string_lossy().to_string(),
+            error: space_abspath.to_string_lossy().to_string(),
             message: "Directory does not exist.".to_string(),
         });
     }
 
-    match space::parse_space(&space_root_path) {
+    match space::parse_space(&space_abspath) {
         Ok(space) => {
             store::set_active_space_reference(space_reference.clone());
             store::insert_into_space_references_if_needed(space_reference.clone());
@@ -154,12 +154,12 @@ pub fn delete_space(space_reference: SpaceReference, state: State<Mutex<ZakuStat
 #[specta::specta]
 #[tauri::command]
 pub fn get_space_reference(path: String) -> Result<SpaceReference, ZakuError> {
-    let space_root_path = PathBuf::from(path.as_str());
+    let space_abspath = PathBuf::from(path.as_str());
 
-    match space::parse_space_config(&space_root_path) {
+    match space::parse_space_config(&space_abspath) {
         Ok(space_config_file) => {
             let space_reference = SpaceReference {
-                path: space_root_path.to_string_lossy().to_string(),
+                path: space_abspath.to_string_lossy().to_string(),
                 name: space_config_file.meta.name,
             };
 

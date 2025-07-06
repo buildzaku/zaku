@@ -21,7 +21,7 @@ pub struct SpaceConfigFile {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Space {
-    pub absolute_path: String,
+    pub abspath: String,
     pub meta: SpaceMeta,
     pub root: Collection,
     pub cookies: Vec<SpaceCookie>,
