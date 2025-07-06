@@ -10,14 +10,14 @@ use crate::models::buffer::{ReqBuf, SpaceBuf};
 use crate::models::request::HttpReq;
 use crate::models::toml::ReqToml;
 
-const SPACE_BUFFER_DIR: &str = "buffer/spaces";
+const SPACE_BUFFER_DIR: &str = "spaces";
 
 impl SpaceBuf {
     pub fn load(space_abspath: &Path) -> RwLock<Self> {
         let spacebuf_file = ZAKU_DATA_DIR
             .join(SPACE_BUFFER_DIR)
             .join(&hashed_filename(&space_abspath.to_string_lossy()))
-            .with_extension("json");
+            .join("buffer.json");
 
         if spacebuf_file.exists() {
             let content =
@@ -35,17 +35,20 @@ impl SpaceBuf {
             });
         }
     }
+
     pub fn acq_rlock(space_buffer: &RwLock<Self>) -> RwLockReadGuard<Self> {
         return space_buffer.read().expect("Failed to acquire read lock");
     }
+
     pub fn acq_wlock(space_buffer: &RwLock<Self>) -> RwLockWriteGuard<Self> {
         return space_buffer.write().expect("Failed to acquire write lock");
     }
+
     pub fn persist(&self) {
         let buf_filepath = ZAKU_DATA_DIR
             .join(SPACE_BUFFER_DIR)
             .join(&hashed_filename(&self.abspath))
-            .with_extension("json");
+            .join("buffer.json");
 
         if let Some(parent) = buf_filepath.parent() {
             fs::create_dir_all(parent).expect("Failed to create parent directories");
