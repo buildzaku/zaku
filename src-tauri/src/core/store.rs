@@ -49,12 +49,12 @@ impl ZakuStore {
 pub fn get_active_spaceref() -> Option<SpaceReference> {
     let zaku_store = ZakuStore::acq_rlock();
 
-    return zaku_store.active_space_reference.clone();
+    return zaku_store.active_spaceref.clone();
 }
 
 pub fn set_active_spaceref(space_reference: SpaceReference) {
     let mut zaku_store = ZakuStore::acq_wlock();
-    zaku_store.active_space_reference = Some(space_reference);
+    zaku_store.active_spaceref = Some(space_reference);
 
     ZakuStore::persist(&zaku_store);
 }
@@ -62,12 +62,12 @@ pub fn set_active_spaceref(space_reference: SpaceReference) {
 pub fn get_spacerefs() -> Vec<SpaceReference> {
     let zaku_store = ZakuStore::acq_rlock();
 
-    return zaku_store.space_references.clone();
+    return zaku_store.spacerefs.clone();
 }
 
-pub fn set_spacerefs(space_references: Vec<SpaceReference>) {
+pub fn set_spacerefs(spacerefs: Vec<SpaceReference>) {
     let mut zaku_store = ZakuStore::acq_wlock();
-    zaku_store.space_references = space_references;
+    zaku_store.spacerefs = spacerefs;
 
     ZakuStore::persist(&zaku_store);
 }
@@ -76,12 +76,12 @@ pub fn insert_spaceref_if_missing(space_reference: SpaceReference) {
     let mut zaku_store = ZakuStore::acq_wlock();
 
     let reference_exists = zaku_store
-        .space_references
+        .spacerefs
         .iter()
         .any(|reference| reference.path == space_reference.path);
 
     if !reference_exists {
-        zaku_store.space_references.push(space_reference);
+        zaku_store.spacerefs.push(space_reference);
 
         ZakuStore::persist(&zaku_store);
     }
@@ -91,12 +91,12 @@ pub fn delete_spaceref(space_reference: SpaceReference) {
     let mut zaku_store = ZakuStore::acq_wlock();
 
     zaku_store
-        .space_references
+        .spacerefs
         .retain(|reference| reference.path != space_reference.path);
 
-    if let Some(active_space) = &zaku_store.active_space_reference {
+    if let Some(active_space) = &zaku_store.active_spaceref {
         if active_space.path == space_reference.path {
-            zaku_store.active_space_reference = None;
+            zaku_store.active_spaceref = None;
         }
     }
 

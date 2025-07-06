@@ -3,7 +3,6 @@
 use std::sync::Mutex;
 
 pub mod commands;
-pub mod constants;
 pub mod core;
 pub mod models;
 pub mod platform;
@@ -53,7 +52,7 @@ fn main() {
     let app = tauri::Builder::default()
         .manage(Mutex::new(ZakuState {
             active_space: None,
-            space_references: Vec::new(),
+            spacerefs: Vec::new(),
         }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())

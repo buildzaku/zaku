@@ -77,7 +77,7 @@ pub fn create_space(
     match space::parse_space(&PathBuf::from(spaceref.clone().path)) {
         Ok(active_space) => {
             zaku_state.active_space = Some(active_space);
-            zaku_state.space_references = spacerefs;
+            zaku_state.spacerefs = spacerefs;
         }
         Err(_) => {
             // TODO - handle
@@ -109,7 +109,7 @@ pub fn set_active_space(
             store::insert_spaceref_if_missing(space_reference.clone());
 
             zaku_state.active_space = Some(space);
-            zaku_state.space_references = store::get_spacerefs();
+            zaku_state.spacerefs = store::get_spacerefs();
 
             return Ok(());
         }
@@ -146,7 +146,7 @@ pub fn delete_space(space_reference: SpaceReference, state: State<Mutex<ZakuStat
         }
     }
 
-    zaku_state.space_references = store::get_spacerefs();
+    zaku_state.spacerefs = store::get_spacerefs();
 
     return ();
 }

@@ -35,14 +35,14 @@ export type ZakuReqCfg = {
 
 class ZakuState {
     public activeSpace: Space | null = $state(null);
-    public spaceReferences: SpaceReference[] = $state([]);
+    public spaceRefs: SpaceReference[] = $state([]);
 
     public async synchronize() {
         const getZakuStateResult = await commands.getZakuState();
 
         if (getZakuStateResult.status === "ok") {
             this.activeSpace = getZakuStateResult.data.active_space;
-            this.spaceReferences = getZakuStateResult.data.space_references;
+            this.spaceRefs = getZakuStateResult.data.spacerefs;
 
             treeActionsState.reset();
             await tick();

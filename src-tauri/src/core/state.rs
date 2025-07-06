@@ -38,7 +38,7 @@ pub fn initialize(app: &mut App) {
         };
     }
 
-    zaku_state.space_references = spacerefs;
+    zaku_state.spacerefs = spacerefs;
 
     return ();
 }

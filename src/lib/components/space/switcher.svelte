@@ -101,19 +101,19 @@
                     <p>Switch Space</p>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent class="w-[185px]" sideOffset={4}>
-                    {#each zakuState.spaceReferences as spaceReference (spaceReference.path)}
+                    {#each zakuState.spaceRefs as spaceRef (spaceRef.path)}
                         <DropdownMenuItem
                             class="text-small flex h-7 justify-between rounded-md px-2"
                             onclick={async () => {
-                                await zakuState.setActiveSpace(spaceReference);
+                                await zakuState.setActiveSpace(spaceRef);
                                 treeActionsState.reset();
                                 treeItemsState.reset();
                             }}
                         >
                             <div class="flex items-center overflow-hidden">
-                                <span class="truncate">{spaceReference.name}</span>
+                                <span class="truncate">{spaceRef.name}</span>
                             </div>
-                            {#if spaceReference.path === zakuState.activeSpace.abspath}
+                            {#if spaceRef.path === zakuState.activeSpace.abspath}
                                 <CheckIcon size={14} class="max-h-[14px] max-w-[14px]" />
                             {/if}
                         </DropdownMenuItem>

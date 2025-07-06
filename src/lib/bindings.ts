@@ -186,7 +186,7 @@ export type SpaceCookie = {
 export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
 export type ZakuError = { error: string; message: string };
-export type ZakuState = { active_space: Space | null; space_references: SpaceReference[] };
+export type ZakuState = { active_space: Space | null; spacerefs: SpaceReference[] };
 
 /** tauri-specta globals **/
 
