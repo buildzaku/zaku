@@ -211,16 +211,7 @@ pub fn parse_space(absolute_space_root: &Path) -> Result<Space, Error> {
                 let store = cookie_store.lock().unwrap();
                 let cookies: Vec<SpaceCookie> = store
                     .iter_any()
-                    .map(|ck| SpaceCookie {
-                        name: ck.name().to_string(),
-                        value: ck.value().to_string(),
-                        domain: ck.domain().map(|dm| dm.to_string()).unwrap_or_default(),
-                        path: ck.path().map(|pt| pt.to_string()).unwrap_or_default(),
-                        secure: ck.secure().unwrap_or(false),
-                        http_only: ck.http_only().unwrap_or(false),
-                        same_site: ck.same_site().map(|ss| format!("{:?}", ss)),
-                        expires: ck.expires().map(|ex| format!("{:?}", ex)),
-                    })
+                    .map(|ck| SpaceCookie::from_cookie_store(ck))
                     .collect();
 
                 return Ok(Space {

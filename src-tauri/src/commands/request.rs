@@ -1,5 +1,5 @@
 use cookie::Cookie as RawCookie;
-use reqwest::Client;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{
     path::{Path, PathBuf},
@@ -7,6 +7,8 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
+use crate::core::cookie::SpaceCookies;
+use crate::core::store;
 use crate::models::request::HttpErr;
 use crate::models::space::SpaceCookie;
 use crate::{
@@ -140,7 +142,20 @@ pub fn write_buffer_request_to_fs(absolute_space_path: &str, request_relative_pa
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
-    let client = Client::new();
+    let active_space = store::get_active_space_reference().ok_or(HttpErr {
+        message: "no active space".into(),
+        code: None,
+    })?;
+    let abs_spacepath = active_space.path.as_str();
+    let cookie_store = SpaceCookies::load(abs_spacepath);
+    let client = reqwest::Client::builder()
+        .cookie_provider(Arc::clone(&cookie_store))
+        .build()
+        .map_err(|e| HttpErr {
+            message: e.to_string(),
+            code: None,
+        })?;
+
     let cfg = &req.config;
 
     let url = cfg.url.raw.clone().ok_or(HttpErr {
@@ -199,16 +214,7 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         .iter()
         .filter_map(|v| v.to_str().ok())
         .filter_map(|v| RawCookie::parse(v).ok())
-        .map(|ck| SpaceCookie {
-            name: ck.name().to_string(),
-            value: ck.value().to_string(),
-            domain: ck.domain().map(|dm| dm.to_string()).unwrap_or_default(),
-            path: ck.path().map(|pt| pt.to_string()).unwrap_or_default(),
-            secure: ck.secure().unwrap_or(false),
-            http_only: ck.http_only().unwrap_or(false),
-            same_site: ck.same_site().map(|ss| format!("{:?}", ss)),
-            expires: ck.expires().map(|ex| format!("{:?}", ex)),
-        })
+        .map(|ck| SpaceCookie::from_raw_cookie(&ck))
         .collect::<Vec<SpaceCookie>>();
 
     let data = resp.text().await.map_err(|e| HttpErr {
@@ -217,6 +223,8 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
     })?;
 
     let size_bytes = Some(data.len() as u32);
+
+    SpaceCookies::persist(abs_spacepath);
 
     return Ok(HttpRes {
         status: Some(status),

@@ -56,7 +56,6 @@ fn main() {
             space_references: Vec::new(),
         }))
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             state::initialize(app);

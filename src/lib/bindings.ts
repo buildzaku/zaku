@@ -169,8 +169,8 @@ export type HttpReq = {
 export type HttpRes = {
     status?: number;
     data: string;
-    headers?: [string, string][];
-    cookies?: [string, string][];
+    headers: [string, string][];
+    cookies: SpaceCookie[];
     size_bytes?: number;
     elapsed_ms?: number;
 };
@@ -192,7 +192,22 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
-export type Space = { absolute_path: string; meta: SpaceMeta; root: Collection };
+export type Space = {
+    absolute_path: string;
+    meta: SpaceMeta;
+    root: Collection;
+    cookies: SpaceCookie[];
+};
+export type SpaceCookie = {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    secure: boolean;
+    http_only: boolean;
+    same_site: string | null;
+    expires: string | null;
+};
 export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
 export type ZakuError = { error: string; message: string };
