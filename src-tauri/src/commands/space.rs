@@ -179,7 +179,7 @@ pub fn get_spaceref(path: String) -> Result<SpaceReference, ZakuError> {
 
 #[specta::specta]
 #[tauri::command]
-pub fn remove_cookie(rm_cookie_dto: RemoveCookieDto) -> Result<(bool), ZakuError> {
+pub fn remove_cookie(rm_cookie_dto: RemoveCookieDto) -> Result<bool, ZakuError> {
     let active_space = store::get_active_spaceref().ok_or(ZakuError {
         error: "No active space found.".into(),
         message: "No active space found.".into(),
