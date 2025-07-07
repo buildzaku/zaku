@@ -170,7 +170,7 @@
                                         <div class="w-[10%] p-2">SameSite</div>
                                     </div>
                                     <div class="overflow-y-auto">
-                                        {#each cookies as ck}
+                                        {#each cookies as ck, idx (idx)}
                                             <div class="flex border-b last:border-b-0">
                                                 <div class="w-[15%] p-2 break-all">{ck.name}</div>
                                                 <div class="w-[20%] p-2 break-all">{ck.value}</div>
