@@ -172,7 +172,12 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
-export type Space = { abspath: string; meta: SpaceMeta; root: Collection; cookies: SpaceCookie[] };
+export type Space = {
+    abspath: string;
+    meta: SpaceMeta;
+    root: Collection;
+    cookies: Partial<{ [key in string]: SpaceCookie[] }>;
+};
 export type SpaceCookie = {
     name: string;
     value: string;

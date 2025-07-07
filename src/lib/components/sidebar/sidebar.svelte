@@ -16,6 +16,14 @@
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import { TreeItemType } from "$lib/models";
     import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
+    import {
+        Dialog,
+        DialogContent,
+        DialogDescription,
+        DialogHeader,
+        DialogTitle,
+        DialogTrigger,
+    } from "$lib/components/primitives/dialog";
 
     type Props = {
         pane: PaneAPI;
@@ -134,9 +142,64 @@
                 <SettingsIcon strokeWidth={1.25} size={16} />
                 <span class="sr-only">Settings</span>
             </Button>
-            <Button size="icon" variant="ghost">
-                <CookieIcon size={14} />
-            </Button>
+            <Dialog>
+                <DialogTrigger>
+                    <Button size="icon" variant="ghost">
+                        <CookieIcon size={14} />
+                    </Button>
+                </DialogTrigger>
+                <DialogContent class="h-[80%] max-h-[80%] w-[80%] max-w-[80%]">
+                    <DialogHeader>
+                        <DialogTitle>Cookies</DialogTitle>
+                        <DialogDescription>Manage your space cookies</DialogDescription>
+                    </DialogHeader>
+                    <div class="h-full max-h-[calc(100%-1.5rem)]">
+                        <div class="bg-card flex h-full flex-col overflow-hidden rounded border">
+                            {#each Object.entries(zakuState.activeSpace.cookies) as [domain, cookies], idx (idx)}
+                                <div class="p-2 font-semibold">{domain}</div>
+                                {#if cookies}
+                                    <div class="bg-accent/25 flex border-b font-semibold">
+                                        <div class="w-[15%] border-r p-2">Name</div>
+                                        <div class="w-[20%] border-r p-2">Value</div>
+                                        <div class="w-[15%] border-r p-2">Domain</div>
+                                        <div class="w-[10%] border-r p-2">Path</div>
+                                        <div class="w-[15%] border-r p-2">Expires</div>
+                                        <div class="w-[5%] border-r p-2">Size</div>
+                                        <div class="w-[5%] border-r p-2">HTTP</div>
+                                        <div class="w-[5%] border-r p-2">Secure</div>
+                                        <div class="w-[10%] p-2">SameSite</div>
+                                    </div>
+                                    <div class="overflow-y-auto">
+                                        {#each cookies as ck}
+                                            <div class="flex border-b last:border-b-0">
+                                                <div class="w-[15%] p-2 break-all">{ck.name}</div>
+                                                <div class="w-[20%] p-2 break-all">{ck.value}</div>
+                                                <div class="w-[15%] p-2 break-all">{ck.domain}</div>
+                                                <div class="w-[10%] p-2 break-all">{ck.path}</div>
+                                                <div class="w-[15%] p-2 break-all select-text">
+                                                    {ck.expires}
+                                                </div>
+                                                <div class="w-[5%] p-2 break-all">
+                                                    {ck.name.length + ck.value.length}
+                                                </div>
+                                                <div class="w-[5%] p-2 break-all">
+                                                    {ck.http_only ? "Yes" : "No"}
+                                                </div>
+                                                <div class="w-[5%] p-2 break-all">
+                                                    {ck.secure ? "Yes" : "No"}
+                                                </div>
+                                                <div class="w-[10%] p-2 break-all">
+                                                    {ck.same_site ?? "None"}
+                                                </div>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                {/if}
+                            {/each}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     </div>
 {/if}

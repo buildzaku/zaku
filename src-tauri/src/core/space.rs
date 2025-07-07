@@ -207,14 +207,22 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space, Error> {
                 let store = cookie_store.lock().unwrap();
                 let cookies: Vec<SpaceCookie> = store
                     .iter_any()
-                    .map(|ck| SpaceCookie::from_cookie_store(ck))
+                    .map(SpaceCookie::from_cookie_store)
                     .collect();
+                let cookies_by_domain: HashMap<String, Vec<SpaceCookie>> =
+                    cookies.into_iter().fold(
+                        HashMap::new(),
+                        |mut acc: HashMap<String, Vec<SpaceCookie>>, ck| {
+                            acc.entry(ck.domain.clone()).or_default().push(ck);
+                            acc
+                        },
+                    );
 
                 return Ok(Space {
                     abspath: space_abspath.to_string_lossy().into_owned(),
                     meta: space_config_file.meta,
                     root: root_collection,
-                    cookies,
+                    cookies: cookies_by_domain,
                 });
             }
             Err(err) => {

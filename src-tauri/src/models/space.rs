@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use std::collections::HashMap;
+use time::format_description::well_known::Rfc3339;
 
 use super::collection::Collection;
 
@@ -24,7 +26,7 @@ pub struct Space {
     pub abspath: String,
     pub meta: SpaceMeta,
     pub root: Collection,
-    pub cookies: Vec<SpaceCookie>,
+    pub cookies: HashMap<String, Vec<SpaceCookie>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -55,7 +57,10 @@ impl SpaceCookie {
             secure: ck.secure().unwrap_or(false),
             http_only: ck.http_only().unwrap_or(false),
             same_site: ck.same_site().map(|ss| format!("{:?}", ss)),
-            expires: ck.expires().map(|ex| format!("{:?}", ex)),
+            expires: match ck.expires() {
+                Some(cookie::Expiration::DateTime(dt)) => Some(dt.format(&Rfc3339).unwrap()),
+                _ => None,
+            },
         }
     }
 
@@ -68,7 +73,10 @@ impl SpaceCookie {
             secure: rc.secure().unwrap_or(false),
             http_only: rc.http_only().unwrap_or(false),
             same_site: rc.same_site().map(|ss| format!("{:?}", ss)),
-            expires: rc.expires().map(|ex| format!("{:?}", ex)),
+            expires: match rc.expires() {
+                Some(cookie::Expiration::DateTime(dt)) => Some(dt.format(&Rfc3339).unwrap()),
+                _ => None,
+            },
         }
     }
 }

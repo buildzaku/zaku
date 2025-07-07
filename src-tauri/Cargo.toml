@@ -29,6 +29,7 @@ tauri-plugin-dialog = { version = "2.2.1" }
 tauri-plugin-global-shortcut = { version = "2.2.0" }
 tauri-plugin-notification = { version = "2.2.2" }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+time = { version = "0.3.41" }
 toml = { version = "0.8.20", features = ["preserve_order"] }
 url = { version = "2.5.4" }
 

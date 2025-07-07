@@ -5960,6 +5960,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tauri-specta",
+ "time",
  "toml",
  "url",
  "wgpu",
