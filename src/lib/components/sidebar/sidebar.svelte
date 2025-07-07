@@ -1,7 +1,7 @@
 <script lang="ts">
     import { zakuState, treeActionsState } from "$lib/state.svelte";
     import { Button } from "$lib/components/primitives/button";
-    import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "@lucide/svelte";
+    import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon, XIcon } from "@lucide/svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
@@ -16,6 +16,24 @@
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import { TreeItemType } from "$lib/models";
     import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
+    import {
+        Dialog,
+        DialogContent,
+        DialogDescription,
+        DialogHeader,
+        DialogTitle,
+        DialogTrigger,
+    } from "$lib/components/primitives/dialog";
+    import {
+        Accordion,
+        AccordionContent,
+        AccordionItem,
+        AccordionTrigger,
+    } from "$lib/components/primitives/accordion";
+    import { Badge } from "$lib/components/primitives/badge";
+    import { commands } from "$lib/bindings";
+    import type { RemoveCookieDto, Space } from "$lib/bindings";
+    import { toast } from "svelte-sonner";
 
     type Props = {
         pane: PaneAPI;
@@ -33,6 +51,69 @@
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
 </script>
+
+{#snippet cookies(activeSpaceRef: Space)}
+    <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
+        {#if Object.keys(activeSpaceRef.cookies).length > 0}
+            <Accordion type="multiple" class="bg-card/75 rounded-sm border">
+                {#each Object.entries(activeSpaceRef.cookies) as [domain, cookies] (domain)}
+                    <AccordionItem value={domain}>
+                        <AccordionTrigger class="cursor-pointer px-3 hover:decoration-0">
+                            {domain}
+                        </AccordionTrigger>
+                        <AccordionContent class="bg-background px-3 py-4">
+                            {#if cookies}
+                                <div class="flex gap-1.5">
+                                    {#each cookies as ck, idx (idx)}
+                                        <Badge variant="outline" class="p-1">
+                                            <span class="px-2 select-text">{ck.name}</span>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                class="size-4 max-h-4 min-h-4 max-w-4 min-w-4 cursor-pointer rounded-sm"
+                                                onclick={async () => {
+                                                    const removeCookieDto: RemoveCookieDto = {
+                                                        domain: ck.domain,
+                                                        path: ck.path,
+                                                        name: ck.name,
+                                                    };
+                                                    const isRemoved = await commands.removeCookie(
+                                                        activeSpaceRef.abspath,
+                                                        removeCookieDto,
+                                                    );
+
+                                                    if (isRemoved) {
+                                                        cookies.splice(idx, 1);
+
+                                                        const domainCookies =
+                                                            activeSpaceRef.cookies[domain];
+                                                        if (
+                                                            !domainCookies ||
+                                                            domainCookies.length === 0
+                                                        ) {
+                                                            delete activeSpaceRef.cookies[domain];
+                                                        }
+                                                    } else {
+                                                        toast(
+                                                            `Unable to remove '${ck.name}' cookie`,
+                                                        );
+                                                    }
+                                                }}
+                                            >
+                                                <XIcon class="size-1" size={4} />
+                                                <span class="sr-only">Close</span>
+                                            </Button>
+                                        </Badge>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </AccordionContent>
+                    </AccordionItem>
+                {/each}
+            </Accordion>
+        {/if}
+    </div>
+{/snippet}
 
 {#if zakuState.activeSpace}
     <div class="flex size-full flex-col justify-between">
@@ -134,9 +215,22 @@
                 <SettingsIcon strokeWidth={1.25} size={16} />
                 <span class="sr-only">Settings</span>
             </Button>
-            <Button size="icon" variant="ghost">
-                <CookieIcon size={14} />
-            </Button>
+            <Dialog>
+                <DialogTrigger>
+                    <Button size="icon" variant="ghost">
+                        <CookieIcon size={14} />
+                    </Button>
+                </DialogTrigger>
+                <DialogContent class="flex h-[80%] max-h-[80%] w-[80%] max-w-[80%] flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Cookies</DialogTitle>
+                        <DialogDescription>Manage space cookies</DialogDescription>
+                    </DialogHeader>
+                    <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
+                        {@render cookies(zakuState.activeSpace)}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     </div>
 {/if}

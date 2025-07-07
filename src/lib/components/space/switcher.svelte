@@ -34,7 +34,7 @@
                 return;
             }
 
-            const spaceRefCmdResult = await commands.getSpaceReference(cmdResult.data);
+            const spaceRefCmdResult = await commands.getSpaceref(cmdResult.data);
             if (spaceRefCmdResult.status === "error") {
                 throw new Error(`Cannot get space reference for ${cmdResult.data}`);
             }
@@ -43,7 +43,7 @@
             await goto("/space");
         } catch (err) {
             console.error(err);
-            await commands.dispatchNotification({
+            await commands.dispatchNotif({
                 title: "Doesn't look like a valid space.",
                 body: "Unable to parse the directory, make sure it is a valid space and try again.",
             });
@@ -53,12 +53,10 @@
     async function handleDeleteSpace() {
         if (zakuState.activeSpace) {
             try {
-                const spaceRefCmdResult = await commands.getSpaceReference(
-                    zakuState.activeSpace.absolute_path,
-                );
+                const spaceRefCmdResult = await commands.getSpaceref(zakuState.activeSpace.abspath);
                 if (spaceRefCmdResult.status === "error") {
                     throw new Error(
-                        `Cannot get space reference for ${zakuState.activeSpace.absolute_path}`,
+                        `Cannot get space reference for ${zakuState.activeSpace.abspath}`,
                     );
                 }
 
@@ -103,19 +101,19 @@
                     <p>Switch Space</p>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent class="w-[185px]" sideOffset={4}>
-                    {#each zakuState.spaceReferences as spaceReference (spaceReference.path)}
+                    {#each zakuState.spaceRefs as spaceRef (spaceRef.path)}
                         <DropdownMenuItem
                             class="text-small flex h-7 justify-between rounded-md px-2"
                             onclick={async () => {
-                                await zakuState.setActiveSpace(spaceReference);
+                                await zakuState.setActiveSpace(spaceRef);
                                 treeActionsState.reset();
                                 treeItemsState.reset();
                             }}
                         >
                             <div class="flex items-center overflow-hidden">
-                                <span class="truncate">{spaceReference.name}</span>
+                                <span class="truncate">{spaceRef.name}</span>
                             </div>
-                            {#if spaceReference.path === zakuState.activeSpace.absolute_path}
+                            {#if spaceRef.path === zakuState.activeSpace.abspath}
                                 <CheckIcon size={14} class="max-h-[14px] max-w-[14px]" />
                             {/if}
                         </DropdownMenuItem>

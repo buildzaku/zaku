@@ -34,6 +34,6 @@ impl ReqBuf {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct SpaceBuf {
-    pub absolute_path: String,
+    pub abspath: String,
     pub requests: HashMap<String, ReqBuf>,
 }
