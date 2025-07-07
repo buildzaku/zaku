@@ -6,7 +6,9 @@ use tauri::State;
 
 use crate::core::cookie::SpaceCookies;
 use crate::core::{space, store};
-use crate::models::space::{CreateSpaceDto, SpaceConfigFile, SpaceMeta, SpaceReference};
+use crate::models::space::{
+    CreateSpaceDto, RemoveCookieDto, SpaceConfigFile, SpaceMeta, SpaceReference,
+};
 use crate::models::zaku::{ZakuError, ZakuState};
 
 #[specta::specta]
@@ -177,13 +179,12 @@ pub fn get_spaceref(path: String) -> Result<SpaceReference, ZakuError> {
 
 #[specta::specta]
 #[tauri::command]
-pub fn delete_cookie(name: &str, domain: &str, path: &str) -> Result<(), ZakuError> {
+pub fn remove_cookie(rm_cookie_dto: RemoveCookieDto) -> Result<(bool), ZakuError> {
     let active_space = store::get_active_spaceref().ok_or(ZakuError {
         error: "No active space found.".into(),
         message: "No active space found.".into(),
     })?;
     let space_abspath = active_space.path.as_str();
-    SpaceCookies::remove(space_abspath, name, domain, path);
 
-    return Ok(());
+    return Ok(SpaceCookies::remove(space_abspath, rm_cookie_dto).is_some());
 }

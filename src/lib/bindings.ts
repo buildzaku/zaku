@@ -41,16 +41,9 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async deleteCookie(
-        name: string,
-        domain: string,
-        path: string,
-    ): Promise<Result<null, ZakuError>> {
+    async removeCookie(rmCookieDto: RemoveCookieDto): Promise<Result<boolean, ZakuError>> {
         try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("delete_cookie", { name, domain, path }),
-            };
+            return { status: "ok", data: await TAURI_INVOKE("remove_cookie", { rmCookieDto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -171,6 +164,7 @@ export type HttpRes = {
 };
 export type MoveTreeItemDto = { src_relpath: string; dest_relpath: string };
 export type OpenDirDialogOpt = { title: string | null };
+export type RemoveCookieDto = { domain: string; path: string; name: string };
 export type ReqCfg = {
     method: string;
     url: ReqUrl;

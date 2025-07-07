@@ -31,6 +31,9 @@
         AccordionTrigger,
     } from "$lib/components/primitives/accordion";
     import { Badge } from "$lib/components/primitives/badge";
+    import { commands } from "$lib/bindings";
+    import type { Space } from "$lib/bindings";
+    import { toast } from "svelte-sonner";
 
     type Props = {
         pane: PaneAPI;
@@ -48,6 +51,68 @@
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
 </script>
+
+{#snippet cookies(activeSpaceRef: Space)}
+    <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
+        {#if Object.keys(activeSpaceRef.cookies).length > 0}
+            <Accordion type="multiple" class="bg-card/75 rounded-sm border">
+                {#each Object.entries(activeSpaceRef.cookies) as [domain, cookies] (domain)}
+                    <AccordionItem value={domain}>
+                        <AccordionTrigger class="cursor-pointer px-3 hover:decoration-0">
+                            {domain}
+                        </AccordionTrigger>
+                        <AccordionContent class="bg-background px-3 py-4">
+                            {#if cookies}
+                                <div class="flex gap-1.5">
+                                    {#each cookies as ck, idx (idx)}
+                                        <Badge variant="outline" class="p-1">
+                                            <span class="px-2 select-text">{ck.name}</span>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                class="size-4 max-h-4 min-h-4 max-w-4 min-w-4 cursor-pointer rounded-sm"
+                                                onclick={async () => {
+                                                    const isRemoved = await commands.removeCookie({
+                                                        domain: ck.domain,
+                                                        path: ck.path,
+                                                        name: ck.name,
+                                                    });
+
+                                                    if (isRemoved) {
+                                                        cookies.splice(idx, 1);
+
+                                                        const domainCookies =
+                                                            activeSpaceRef &&
+                                                            activeSpaceRef.cookies[domain];
+                                                        if (
+                                                            !domainCookies ||
+                                                            domainCookies.length === 0
+                                                        ) {
+                                                            if (activeSpaceRef) {
+                                                                delete activeSpaceRef.cookies[
+                                                                    domain
+                                                                ];
+                                                            }
+                                                        }
+                                                    } else {
+                                                        toast(`Unable to remove '${ck.name}'`);
+                                                    }
+                                                }}
+                                            >
+                                                <XIcon class="size-1" size={4} />
+                                                <span class="sr-only">Close</span>
+                                            </Button>
+                                        </Badge>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </AccordionContent>
+                    </AccordionItem>
+                {/each}
+            </Accordion>
+        {/if}
+    </div>
+{/snippet}
 
 {#if zakuState.activeSpace}
     <div class="flex size-full flex-col justify-between">
@@ -149,7 +214,7 @@
                 <SettingsIcon strokeWidth={1.25} size={16} />
                 <span class="sr-only">Settings</span>
             </Button>
-            <Dialog open={true}>
+            <Dialog>
                 <DialogTrigger>
                     <Button size="icon" variant="ghost">
                         <CookieIcon size={14} />
@@ -161,40 +226,7 @@
                         <DialogDescription>Manage space cookies</DialogDescription>
                     </DialogHeader>
                     <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
-                        <Accordion type="multiple" class="bg-card/75 rounded-sm border">
-                            {#each Object.entries(zakuState.activeSpace.cookies) as [domain, cookies] (domain)}
-                                <AccordionItem value={domain}>
-                                    <AccordionTrigger
-                                        class="cursor-pointer px-3 hover:decoration-0"
-                                    >
-                                        {domain}
-                                    </AccordionTrigger>
-                                    <AccordionContent class="bg-background px-3 py-4">
-                                        {#if cookies}
-                                            <div class="overflow-y-auto">
-                                                {#each cookies as ck, idx (idx)}
-                                                    <div class="flex border-b last:border-b-0">
-                                                        <Badge variant="outline" class="p-1">
-                                                            <span class="px-2 select-text"
-                                                                >{ck.name}</span
-                                                            >
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                class="size-4 max-h-4 min-h-4 max-w-4 min-w-4 cursor-pointer rounded-sm"
-                                                            >
-                                                                <XIcon class="size-1" size={4} />
-                                                                <span class="sr-only">Close</span>
-                                                            </Button>
-                                                        </Badge>
-                                                    </div>
-                                                {/each}
-                                            </div>
-                                        {/if}
-                                    </AccordionContent>
-                                </AccordionItem>
-                            {/each}
-                        </Accordion>
+                        {@render cookies(zakuState.activeSpace)}
                     </div>
                 </DialogContent>
             </Dialog>

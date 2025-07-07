@@ -1,4 +1,7 @@
-use cookie_store::serde::json::{load as read_cookie_json, save as write_cookie_json};
+use cookie_store::{
+    serde::json::{load as read_cookie_json, save as write_cookie_json},
+    Cookie,
+};
 use once_cell::sync::Lazy;
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex};
 use std::{
@@ -8,7 +11,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::core::utils::{hashed_filename, ZAKU_DATA_DIR};
+use crate::{
+    core::utils::{hashed_filename, ZAKU_DATA_DIR},
+    models::space::RemoveCookieDto,
+};
 
 const SPACES_DIR: &str = "spaces";
 
@@ -78,12 +84,16 @@ impl SpaceCookies {
         SpaceCookies::persist(space_abspath);
     }
 
-    pub fn remove(space_abspath: &str, name: &str, domain: &str, path: &str) {
+    pub fn remove(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> Option<Cookie<'static>> {
+        let RemoveCookieDto { domain, path, name } = rm_cookie_dto;
         let space_cookies = SpaceCookies::load(space_abspath);
-        {
+        let removed = {
             let mut locked = space_cookies.lock().unwrap();
-            locked.remove(name, domain, path);
-        }
+
+            locked.remove(&domain, &path, &name)
+        };
         SpaceCookies::persist(space_abspath);
+
+        return removed;
     }
 }

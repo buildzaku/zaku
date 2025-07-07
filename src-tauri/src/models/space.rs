@@ -80,3 +80,10 @@ impl SpaceCookie {
         }
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct RemoveCookieDto {
+    pub domain: String,
+    pub path: String,
+    pub name: String,
+}
