@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::{
     core::utils::from_indexmap,
-    models::{buffer::ReqBuf, toml::ReqToml},
+    models::{buffer::ReqBuf, space::SpaceCookie, toml::ReqToml},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -127,8 +127,8 @@ impl HttpReq {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateRequestDto {
-    pub parent_relative_path: String,
-    pub relative_path: String,
+    pub parent_relpath: String,
+    pub relpath: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -144,11 +144,11 @@ pub struct HttpRes {
 
     pub data: String,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers: Option<Vec<(String, String)>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub headers: Vec<(String, String)>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cookies: Option<Vec<(String, String)>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cookies: Vec<SpaceCookie>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u32>,

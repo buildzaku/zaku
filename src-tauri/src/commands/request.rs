@@ -1,4 +1,5 @@
-use reqwest::Client;
+use cookie::Cookie as RawCookie;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{
     path::{Path, PathBuf},
@@ -6,8 +7,12 @@ use std::{
 };
 use tauri::{AppHandle, Manager};
 
+use crate::core::cookie::SpaceCookies;
+use crate::core::store;
 use crate::models::request::HttpErr;
+use crate::models::space::SpaceCookie;
 use crate::{
+    core::utils,
     core::{self, buffer, collection, space},
     models::{
         collection::CreateCollectionDto,
@@ -15,16 +20,15 @@ use crate::{
         zaku::{ZakuError, ZakuState},
         CreateNewRequest,
     },
-    utils,
 };
 
 #[specta::specta]
 #[tauri::command]
-pub fn create_request(
-    create_request_dto: CreateRequestDto,
+pub fn create_req(
+    create_req_dto: CreateRequestDto,
     app_handle: AppHandle,
 ) -> Result<CreateNewRequest, ZakuError> {
-    if create_request_dto.relative_path.is_empty() {
+    if create_req_dto.relpath.is_empty() {
         return Err(ZakuError {
             error: "Cannot create a request without name".to_string(),
             message: "Cannot create a request without name".to_string(),
@@ -37,22 +41,20 @@ pub fn create_request(
         .active_space
         .clone()
         .expect("Active space not found");
-    let active_space_absolute_path = PathBuf::from(&active_space.absolute_path);
+    let active_space_abspath = PathBuf::from(&active_space.abspath);
 
-    let (parsed_parent_relative_path, file_display_name) =
-        match create_request_dto.relative_path.rfind('/') {
-            Some(last_slash_index) => {
-                let parsed_parent_relative_path =
-                    &create_request_dto.relative_path[..last_slash_index];
-                let file_display_name = &create_request_dto.relative_path[last_slash_index + 1..];
+    let (parsed_parent_relpath, file_display_name) = match create_req_dto.relpath.rfind('/') {
+        Some(last_slash_index) => {
+            let parsed_parent_relpath = &create_req_dto.relpath[..last_slash_index];
+            let file_display_name = &create_req_dto.relpath[last_slash_index + 1..];
 
-                (
-                    Some(parsed_parent_relative_path.to_string()),
-                    file_display_name.to_string(),
-                )
-            }
-            None => (None, create_request_dto.relative_path),
-        };
+            (
+                Some(parsed_parent_relpath.to_string()),
+                file_display_name.to_string(),
+            )
+        }
+        None => (None, create_req_dto.relpath),
+    };
 
     let file_display_name = file_display_name.trim();
     let file_sanitized_name = file_display_name
@@ -60,53 +62,49 @@ pub fn create_request(
         .split_whitespace()
         .collect::<Vec<&str>>()
         .join("-");
-    let (file_parent_relative_path, file_sanitized_name) = match parsed_parent_relative_path {
-        Some(ref parsed_parent_relative_path) => {
+    let (file_parent_relpath, file_sanitized_name) = match parsed_parent_relpath {
+        Some(ref parsed_parent_relpath) => {
             let create_collection_dto = CreateCollectionDto {
-                parent_relative_path: create_request_dto.parent_relative_path.clone(),
-                relative_path: parsed_parent_relative_path.to_string(),
+                parent_relpath: create_req_dto.parent_relpath.clone(),
+                relpath: parsed_parent_relpath.to_string(),
             };
 
-            let dirs_sanitized_relative_path = collection::create_collections_all(
-                &active_space_absolute_path,
-                &create_collection_dto,
-            )
-            .map_err(|err| ZakuError {
-                error: err.to_string(),
-                message: "Failed to create request's parent directories".to_string(),
-            })?;
+            let dirs_sanitized_relpath =
+                collection::create_collections_all(&active_space_abspath, &create_collection_dto)
+                    .map_err(|err| ZakuError {
+                    error: err.to_string(),
+                    message: "Failed to create request's parent directories".to_string(),
+                })?;
 
-            let file_parent_relative_path = utils::join_str_paths(vec![
-                create_request_dto.parent_relative_path.as_str(),
-                dirs_sanitized_relative_path.as_str(),
+            let file_parent_relpath = utils::join_str_paths(vec![
+                create_req_dto.parent_relpath.as_str(),
+                dirs_sanitized_relpath.as_str(),
             ]);
 
-            (file_parent_relative_path, file_sanitized_name)
+            (file_parent_relpath, file_sanitized_name)
         }
-        None => (create_request_dto.parent_relative_path, file_sanitized_name),
+        None => (create_req_dto.parent_relpath, file_sanitized_name),
     };
 
-    let file_absolute_path = active_space_absolute_path
-        .join(file_parent_relative_path.clone())
+    let file_abspath = active_space_abspath
+        .join(file_parent_relpath.clone())
         .join(file_sanitized_name.clone());
-    let file_relative_path = utils::join_str_paths(vec![
-        file_parent_relative_path.clone().as_str(),
+    let file_relpath = utils::join_str_paths(vec![
+        file_parent_relpath.clone().as_str(),
         format!("{}.toml", file_sanitized_name).as_str(),
     ]);
 
-    core::request::create_request_file(&file_absolute_path, &file_display_name).map_err(|err| {
-        ZakuError {
-            error: err.to_string(),
-            message: "Failed to create request file".to_string(),
-        }
+    core::request::create_reqtoml(&file_abspath, &file_display_name).map_err(|err| ZakuError {
+        error: err.to_string(),
+        message: "Failed to create request file".to_string(),
     })?;
 
     let create_new_result = CreateNewRequest {
-        parent_relative_path: file_parent_relative_path,
-        relative_path: file_relative_path,
+        parent_relpath: file_parent_relpath,
+        relpath: file_relpath,
     };
 
-    match space::parse_space(&active_space_absolute_path) {
+    match space::parse_space(&active_space_abspath) {
         Ok(active_space) => zaku_state.active_space = Some(active_space),
         Err(err) => {
             return Err(ZakuError {
@@ -121,38 +119,46 @@ pub fn create_request(
 
 #[specta::specta]
 #[tauri::command]
-pub fn save_request_to_buffer(absolute_space_path: &str, relative_path: &str, request: HttpReq) {
-    let absolute = Path::new(absolute_space_path);
-    let relative = Path::new(relative_path);
-    buffer::save_request_to_space_buffer(absolute, relative, request);
+pub fn persist_to_reqbuf(space_abspath: &str, relpath: &str, request: HttpReq) {
+    let abs = Path::new(space_abspath);
+    let rel = Path::new(relpath);
+    buffer::persist_req_to_spacebuf(abs, rel, request);
 }
 
 #[specta::specta]
 #[tauri::command]
-pub fn write_buffer_request_to_fs(absolute_space_path: &str, request_relative_path: &str) {
-    let absolute = Path::new(absolute_space_path);
-    let relative = Path::new(request_relative_path);
-    buffer::write_buffer_request_to_fs(absolute, relative).unwrap();
+pub fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) {
+    let abs = Path::new(space_abspath);
+    let rel = Path::new(req_relpath);
+    buffer::write_reqbuf_to_reqtoml(abs, rel).unwrap();
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
-    let client = Client::new();
+    let active_space = store::get_active_spaceref().ok_or(HttpErr {
+        message: "no active space".into(),
+        code: None,
+    })?;
+    let space_abspath = active_space.path.as_str();
+    let cookie_store = SpaceCookies::load(space_abspath);
+    let client = reqwest::Client::builder()
+        .cookie_provider(Arc::clone(&cookie_store))
+        .build()
+        .map_err(|e| HttpErr {
+            message: e.to_string(),
+            code: None,
+        })?;
     let cfg = &req.config;
-
     let url = cfg.url.raw.clone().ok_or(HttpErr {
         message: "missing URL".into(),
         code: None,
     })?;
-
     let method = reqwest::Method::from_bytes(cfg.method.as_bytes()).map_err(|e| HttpErr {
         message: e.to_string(),
         code: None,
     })?;
-
     let mut builder = client.request(method, &url);
-
     for (enabled, key, value) in &cfg.headers {
         if *enabled {
             builder = builder.header(key, value);
@@ -172,6 +178,7 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
     if let Some(ct) = &cfg.content_type {
         builder = builder.header("Content-Type", ct);
     }
+
     if let Some(body) = &cfg.body {
         builder = builder.body(body.clone());
     }
@@ -181,48 +188,34 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         message: e.to_string(),
         code: None,
     })?;
+
     let elapsed_ms = start.elapsed().as_millis() as u32;
-
     let status = resp.status().as_u16();
-
     let headers: Vec<(String, String)> = resp
         .headers()
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
         .collect();
-
     let cookies = resp
         .headers()
         .get_all("set-cookie")
         .iter()
         .filter_map(|v| v.to_str().ok())
-        .map(|v| {
-            let parts: Vec<&str> = v.split(';').collect();
-            let kv: Vec<&str> = parts[0].splitn(2, '=').collect();
-            if kv.len() == 2 {
-                (kv[0].trim().to_string(), kv[1].trim().to_string())
-            } else {
-                (kv[0].trim().to_string(), "".to_string())
-            }
-        })
-        .collect::<Vec<(String, String)>>();
-
+        .filter_map(|v| RawCookie::parse(v).ok())
+        .map(|ck| SpaceCookie::from_raw_cookie(&ck))
+        .collect::<Vec<SpaceCookie>>();
     let data = resp.text().await.map_err(|e| HttpErr {
         message: e.to_string(),
         code: Some(status),
     })?;
-
     let size_bytes = Some(data.len() as u32);
+    SpaceCookies::persist(space_abspath);
 
     return Ok(HttpRes {
         status: Some(status),
         data,
-        headers: Some(headers),
-        cookies: if cookies.is_empty() {
-            None
-        } else {
-            Some(cookies)
-        },
+        headers,
+        cookies,
         size_bytes,
         elapsed_ms: Some(elapsed_ms),
     });

@@ -11,7 +11,7 @@
     import { Badge } from "$lib/components/primitives/badge";
     import { HTTP_STATUS_DESCRIPTION } from "$lib/utils/constants";
     import type { ActiveRequest } from "$lib/models";
-    import type { HttpRes } from "$lib/bindings";
+    import type { HttpRes, SpaceCookie } from "$lib/bindings";
 
     type Props = {
         pane: PaneAPI;
@@ -112,7 +112,7 @@
     </div>
 {/snippet}
 
-{#snippet keyValueTable(pairs: [string, string][])}
+{#snippet cookiesTable(cookies: SpaceCookie[])}
     <div class="m-3 h-full max-h-[calc(100%-1.5rem)]">
         <div class="bg-card flex h-full flex-col overflow-hidden rounded border">
             <div class="bg-accent/25 flex border-b font-semibold">
@@ -120,7 +120,30 @@
                 <div class="flex-1 p-2">Value</div>
             </div>
             <div class="overflow-y-auto">
-                {#each pairs as [key, value], idx (idx)}
+                {#each cookies as ck, idx (idx)}
+                    <div class="flex border-b last:border-b-0">
+                        <div class="w-[35%] max-w-[35%] border-r p-2 break-all whitespace-normal">
+                            <span class="select-text">{ck.name}</span>
+                        </div>
+                        <div class="flex-1 p-2 break-all whitespace-normal">
+                            <span class="select-text">{ck.value}</span>
+                        </div>
+                    </div>
+                {/each}
+            </div>
+        </div>
+    </div>
+{/snippet}
+
+{#snippet headersTable(headers: [string, string][])}
+    <div class="m-3 h-full max-h-[calc(100%-1.5rem)]">
+        <div class="bg-card flex h-full flex-col overflow-hidden rounded border">
+            <div class="bg-accent/25 flex border-b font-semibold">
+                <div class="w-[35%] max-w-[35%] border-r p-2">Key</div>
+                <div class="flex-1 p-2">Value</div>
+            </div>
+            <div class="overflow-y-auto">
+                {#each headers as [key, value], idx (idx)}
                     <div class="flex border-b last:border-b-0">
                         <div class="w-[35%] max-w-[35%] border-r p-2 break-all whitespace-normal">
                             <span class="select-text">{key}</span>
@@ -316,8 +339,8 @@
                         {/if}
                     </TabsContent>
                     <TabsContent value="cookies" class="m-0 size-full">
-                        {#if activeReqRef.self.response?.cookies}
-                            {@render keyValueTable(activeReqRef.self.response.cookies)}
+                        {#if activeReqRef.self.response}
+                            {@render cookiesTable(activeReqRef.self.response.cookies)}
                         {:else}
                             <div class="flex size-full items-center justify-center">
                                 No cookies for you :(
@@ -325,8 +348,8 @@
                         {/if}
                     </TabsContent>
                     <TabsContent value="headers" class="m-0 size-full">
-                        {#if activeReqRef.self.response?.headers}
-                            {@render keyValueTable(activeReqRef.self.response.headers)}
+                        {#if activeReqRef.self.response}
+                            {@render headersTable(activeReqRef.self.response.headers)}
                         {:else}
                             <div class="flex size-full items-center justify-center">
                                 No headers received

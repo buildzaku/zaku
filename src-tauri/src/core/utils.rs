@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
+use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 pub fn toggle_devtools(app_handle: &AppHandle) {
@@ -48,4 +48,19 @@ pub fn to_indexmap(fields: &[(bool, String, String)]) -> Option<IndexMap<String,
             })
             .collect(),
     )
+}
+
+pub fn join_str_paths(paths: Vec<&str>) -> String {
+    return paths
+        .into_iter()
+        .filter(|path| !path.is_empty())
+        .collect::<Vec<&str>>()
+        .join("/");
+}
+
+pub fn hashed_filename(abspath: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(abspath.as_bytes());
+
+    return format!("{:x}", hasher.finalize());
 }

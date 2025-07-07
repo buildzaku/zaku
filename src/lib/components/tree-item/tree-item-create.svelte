@@ -40,8 +40,8 @@
     async function handleCreateRequestOrCollection() {
         if (type === "collection") {
             const createCollectionResult = await commands.createCollection({
-                parent_relative_path: parentRelativePath,
-                relative_path: inputName,
+                parent_relpath: parentRelativePath,
+                relpath: inputName,
             });
 
             if (createCollectionResult.status === "error") {
@@ -55,24 +55,24 @@
 
             treeItemsState.focussedItem = {
                 type: TreeItemType.Collection,
-                parentRelativePath: createCollectionResult.data.parent_relative_path,
-                relativePath: createCollectionResult.data.relative_path,
+                parentRelativePath: createCollectionResult.data.parent_relpath,
+                relativePath: createCollectionResult.data.relpath,
             };
 
             const createdCollection = document.querySelector(
-                `[data-current-path="${createCollectionResult.data.relative_path}"]`,
+                `[data-current-path="${createCollectionResult.data.relpath}"]`,
             );
             if (createdCollection) {
                 createdCollection.scrollIntoView({ behavior: "instant", block: "center" });
             }
         } else {
-            const createRequestResult = await commands.createRequest({
-                parent_relative_path: parentRelativePath,
-                relative_path: inputName,
+            const createReqResult = await commands.createReq({
+                parent_relpath: parentRelativePath,
+                relpath: inputName,
             });
 
-            if (createRequestResult.status === "error") {
-                console.error(createRequestResult.error);
+            if (createReqResult.status === "error") {
+                console.error(createReqResult.error);
 
                 return;
             }
@@ -82,12 +82,12 @@
 
             treeItemsState.focussedItem = {
                 type: TreeItemType.Request,
-                parentRelativePath: createRequestResult.data.parent_relative_path,
-                relativePath: createRequestResult.data.relative_path,
+                parentRelativePath: createReqResult.data.parent_relpath,
+                relativePath: createReqResult.data.relpath,
             };
 
             const createdRequest = document.querySelector(
-                `[data-current-path="${createRequestResult.data.relative_path}"]`,
+                `[data-current-path="${createReqResult.data.relpath}"]`,
             );
             if (createdRequest) {
                 createdRequest.scrollIntoView({ behavior: "instant", block: "center" });

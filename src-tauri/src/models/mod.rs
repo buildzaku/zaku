@@ -21,18 +21,18 @@ pub struct DispatchNotificationOptions {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateNewCollection {
-    pub parent_relative_path: String,
-    pub relative_path: String,
+    pub parent_relpath: String,
+    pub relpath: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateNewRequest {
-    pub parent_relative_path: String,
-    pub relative_path: String,
+    pub parent_relpath: String,
+    pub relpath: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct MoveTreeItemDto {
-    pub source_relative_path: String,
-    pub destination_relative_path: String,
+    pub src_relpath: String,
+    pub dest_relpath: String,
 }

@@ -6,22 +6,21 @@ use super::{space, store};
 use crate::models::zaku::ZakuState;
 
 pub fn initialize(app: &mut App) {
-    let active_space_reference =
-        store::get_active_space_reference().or_else(|| space::find_first_valid_space_reference());
-    let space_references = store::get_space_references();
+    let active_spaceref = store::get_active_spaceref().or_else(|| space::first_valid_spaceref());
+    let spacerefs = store::get_spacerefs();
     let state = app.app_handle().state::<Mutex<ZakuState>>();
     let mut zaku_state = state.lock().unwrap();
 
-    if let Some(active_space_reference) = active_space_reference {
-        let active_space_path = PathBuf::from(active_space_reference.path);
+    if let Some(active_spaceref) = active_spaceref {
+        let active_spacepath = PathBuf::from(active_spaceref.path);
 
-        match space::parse_space(&active_space_path) {
+        match space::parse_space(&active_spacepath) {
             Ok(active_space) => {
                 zaku_state.active_space = Some(active_space);
             }
-            Err(_) => match space::find_first_valid_space_reference() {
+            Err(_) => match space::first_valid_spaceref() {
                 Some(valid_space_reference) => {
-                    store::set_active_space_reference(valid_space_reference.clone());
+                    store::set_active_spaceref(valid_space_reference.clone());
 
                     let valid_space_path = PathBuf::from(valid_space_reference.path);
 
@@ -39,7 +38,7 @@ pub fn initialize(app: &mut App) {
         };
     }
 
-    zaku_state.space_references = space_references;
+    zaku_state.spacerefs = spacerefs;
 
     return ();
 }

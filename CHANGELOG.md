@@ -5,7 +5,6 @@
 ### Minor Changes
 
 - Add support for basic request body - [`d34b5c4`](https://github.com/buildzaku/zaku/commit/d34b5c4827cc7f83e4193e5310d93f24fe8203c5) [#29](https://github.com/buildzaku/zaku/pull/29)
-
     - json, xml, html and plaintext
 
 ### Patch Changes
@@ -15,7 +14,6 @@
 - Automatically set `Content-Type` header based on the selected body type, unless it has been manually set - [`2239234`](https://github.com/buildzaku/zaku/commit/22392348443d74a5ea0450c671a6407d72d2bb80) [#31](https://github.com/buildzaku/zaku/pull/31)
 
 - Fix broken editor state on switching requests - [`d56bfab`](https://github.com/buildzaku/zaku/commit/d56bfabfd1fbfb861547db7540294cae67b4afb9) [#33](https://github.com/buildzaku/zaku/pull/33)
-
     - make request config props optional to prevent unnecessary serialization
     - reset active request on switching space
 
@@ -30,13 +28,11 @@
 - Refactor to svelte 5 runes - [`fe87a84`](https://github.com/buildzaku/zaku/commit/fe87a84a38aa0ef9b4ca7604b117140a0d93411f) [#27](https://github.com/buildzaku/zaku/pull/27)
 
 - Ability to create new requests and collections - [`d1317c7`](https://github.com/buildzaku/zaku/commit/d1317c7f9b4215cb2986791e4c9af98218c5203a) [#22](https://github.com/buildzaku/zaku/pull/22)
-
     - With support for nested input
 
 - Custom store for persistence - [`6c8423b`](https://github.com/buildzaku/zaku/commit/6c8423bbe11bd91eec076370d7c2ac1758dfe309) [#24](https://github.com/buildzaku/zaku/pull/24)
 
 - Persist changes to space buffer and filesystem - [`c597541`](https://github.com/buildzaku/zaku/commit/c59754178f22e9db28d472d2b40fc716982362c7) [#28](https://github.com/buildzaku/zaku/pull/28)
-
     - Use space buffer to preserve changes in case app is closed
     - Write changes to filesystem on `Cmd+s`/`Ctrl+s`
 
@@ -49,7 +45,6 @@
 - Fix blank window on Linux with Nvidia GPU - [`c0203dc`](https://github.com/buildzaku/zaku/commit/c0203dc13c7a703e448af78a8f5060676212588a) [#23](https://github.com/buildzaku/zaku/pull/23)
 
 - Handlers for request and response panes - [`874de99`](https://github.com/buildzaku/zaku/commit/874de99f5f31b60f1bd01f0cef49fc6523cdb8af) [#20](https://github.com/buildzaku/zaku/pull/20)
-
     - Improve colors for dark theme
     - Fix request method colors
 
@@ -100,7 +95,6 @@
 ### Minor Changes
 
 - Setup app state and ability to create space on launch - [`08e83ca`](https://github.com/buildzaku/zaku/commit/08e83ca9748c2960cbf97dcf7b89736d2bcfaaa6) [#7](https://github.com/buildzaku/zaku/pull/7)
-
     - Remove unused dependencies
     - Pin all crates
     - Implement get/set/delete active space invoke commands
@@ -123,7 +117,6 @@
 ### Minor Changes
 
 - Setup main layout and basic request functionality - [`2166dbe`](https://github.com/buildzaku/zaku/commit/2166dbeaa670aa99747bddf50ec1eaf243a46793)
-
     - Add UI primitives
     - Ability to pass query params and headers
     - Add code block to view raw and pretty response
