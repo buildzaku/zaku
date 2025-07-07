@@ -1,5 +1,20 @@
 # zaku
 
+## 0.6.0
+
+### Minor Changes
+
+- Implement http handler command using `reqwest` - [`089a0ee`](https://github.com/buildzaku/zaku/commit/089a0eeb76a69a35a5a7995b54c728accc086e1c) [#37](https://github.com/buildzaku/zaku/pull/37)
+    - Captures response status, headers, cookies, size & elapsed time
+
+- Add support for cookies with persistence (at space-level) - [`7840c89`](https://github.com/buildzaku/zaku/commit/7840c89e60fa116361171e453565a4e1e10603e9) [#38](https://github.com/buildzaku/zaku/pull/38)
+
+### Patch Changes
+
+- Replace ts-rs with specta for generating typescript bindings - [`8b11c0b`](https://github.com/buildzaku/zaku/commit/8b11c0b781c1a906caaf656deed756e795bee2f8) [#35](https://github.com/buildzaku/zaku/pull/35)
+
+- Remove duplicate query parameter values added to the request - [`dec4581`](https://github.com/buildzaku/zaku/commit/dec4581503d2643349e5d96dd49bee467ac508a6) [#39](https://github.com/buildzaku/zaku/pull/39)
+
 ## 0.5.0
 
 ### Minor Changes
