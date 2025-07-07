@@ -3,11 +3,9 @@
 use std::sync::Mutex;
 
 pub mod commands;
-pub mod constants;
 pub mod core;
 pub mod models;
 pub mod platform;
-pub mod utils;
 
 use core::{shortcuts, state};
 use models::zaku::ZakuState;
@@ -22,18 +20,20 @@ fn main() {
         commands::space::create_space,
         commands::space::set_active_space,
         commands::space::delete_space,
-        commands::space::get_space_reference,
+        commands::space::get_spaceref,
+        commands::space::remove_cookie,
+        commands::space::get_space_cookies,
         commands::window::show_main_window,
         commands::dialog::open_dir_dialog,
-        commands::notification::is_notification_permission_granted,
-        commands::notification::request_notification_permission,
-        commands::notification::dispatch_notification,
+        commands::notification::is_notif_enabled,
+        commands::notification::request_notif_access,
+        commands::notification::dispatch_notif,
         commands::collection::create_collection,
-        commands::request::create_request,
-        commands::request::save_request_to_buffer,
-        commands::request::write_buffer_request_to_fs,
+        commands::request::create_req,
+        commands::request::persist_to_reqbuf,
+        commands::request::write_reqbuf_to_reqtoml,
         commands::request::http_req,
-        commands::move_tree_item,
+        commands::move_treeitem,
     ]);
 
     if std::env::var("GEN_BINDINGS").is_ok() {
@@ -54,10 +54,9 @@ fn main() {
     let app = tauri::Builder::default()
         .manage(Mutex::new(ZakuState {
             active_space: None,
-            space_references: Vec::new(),
+            spacerefs: Vec::new(),
         }))
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             state::initialize(app);

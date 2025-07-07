@@ -6,7 +6,7 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::models::space::SpaceReference;
 use crate::models::zaku::ZakuStore;
 
-pub static STORE_ABSOLUTE_PATH: Lazy<PathBuf> = Lazy::new(|| {
+pub static STORE_ABSPATH: Lazy<PathBuf> = Lazy::new(|| {
     dirs::data_dir()
         .expect("Unable to get data directory")
         .join("Zaku/store")
@@ -14,8 +14,8 @@ pub static STORE_ABSOLUTE_PATH: Lazy<PathBuf> = Lazy::new(|| {
 });
 
 static ZAKU_STORE: Lazy<RwLock<ZakuStore>> = Lazy::new(|| {
-    if STORE_ABSOLUTE_PATH.exists() {
-        let content = fs::read_to_string(&*STORE_ABSOLUTE_PATH).expect("Failed to read from store");
+    if STORE_ABSPATH.exists() {
+        let content = fs::read_to_string(&*STORE_ABSPATH).expect("Failed to read from store");
         let store: ZakuStore = serde_json::from_str(&content).expect("Failed to deserialize data");
 
         return RwLock::new(store);
@@ -25,11 +25,11 @@ static ZAKU_STORE: Lazy<RwLock<ZakuStore>> = Lazy::new(|| {
 });
 
 impl ZakuStore {
-    fn acquire_read_lock() -> RwLockReadGuard<'static, Self> {
+    fn acq_rlock() -> RwLockReadGuard<'static, Self> {
         ZAKU_STORE.read().expect("Failed to acquire read lock")
     }
 
-    fn acquire_write_lock() -> RwLockWriteGuard<'static, Self> {
+    fn acq_wlock() -> RwLockWriteGuard<'static, Self> {
         ZAKU_STORE.write().expect("Failed to acquire write lock")
     }
 
@@ -37,66 +37,66 @@ impl ZakuStore {
         let serialized_store =
             serde_json::to_string_pretty(self).expect("Failed to serialize store data");
 
-        if let Some(parent) = STORE_ABSOLUTE_PATH.parent() {
+        if let Some(parent) = STORE_ABSPATH.parent() {
             fs::create_dir_all(parent).expect("Failed to create parent directories");
         }
 
-        fs::write(&*STORE_ABSOLUTE_PATH, serialized_store)
+        fs::write(&*STORE_ABSPATH, serialized_store)
             .expect("Failed to write serialized store to disk");
     }
 }
 
-pub fn get_active_space_reference() -> Option<SpaceReference> {
-    let zaku_store = ZakuStore::acquire_read_lock();
+pub fn get_active_spaceref() -> Option<SpaceReference> {
+    let zaku_store = ZakuStore::acq_rlock();
 
-    return zaku_store.active_space_reference.clone();
+    return zaku_store.active_spaceref.clone();
 }
 
-pub fn set_active_space_reference(space_reference: SpaceReference) {
-    let mut zaku_store = ZakuStore::acquire_write_lock();
-    zaku_store.active_space_reference = Some(space_reference);
+pub fn set_active_spaceref(space_reference: SpaceReference) {
+    let mut zaku_store = ZakuStore::acq_wlock();
+    zaku_store.active_spaceref = Some(space_reference);
 
     ZakuStore::persist(&zaku_store);
 }
 
-pub fn get_space_references() -> Vec<SpaceReference> {
-    let zaku_store = ZakuStore::acquire_read_lock();
+pub fn get_spacerefs() -> Vec<SpaceReference> {
+    let zaku_store = ZakuStore::acq_rlock();
 
-    return zaku_store.space_references.clone();
+    return zaku_store.spacerefs.clone();
 }
 
-pub fn set_space_references(space_references: Vec<SpaceReference>) {
-    let mut zaku_store = ZakuStore::acquire_write_lock();
-    zaku_store.space_references = space_references;
+pub fn set_spacerefs(spacerefs: Vec<SpaceReference>) {
+    let mut zaku_store = ZakuStore::acq_wlock();
+    zaku_store.spacerefs = spacerefs;
 
     ZakuStore::persist(&zaku_store);
 }
 
-pub fn insert_into_space_references_if_needed(space_reference: SpaceReference) {
-    let mut zaku_store = ZakuStore::acquire_write_lock();
+pub fn insert_spaceref_if_missing(space_reference: SpaceReference) {
+    let mut zaku_store = ZakuStore::acq_wlock();
 
     let reference_exists = zaku_store
-        .space_references
+        .spacerefs
         .iter()
         .any(|reference| reference.path == space_reference.path);
 
     if !reference_exists {
-        zaku_store.space_references.push(space_reference);
+        zaku_store.spacerefs.push(space_reference);
 
         ZakuStore::persist(&zaku_store);
     }
 }
 
-pub fn delete_space_reference(space_reference: SpaceReference) {
-    let mut zaku_store = ZakuStore::acquire_write_lock();
+pub fn delete_spaceref(space_reference: SpaceReference) {
+    let mut zaku_store = ZakuStore::acq_wlock();
 
     zaku_store
-        .space_references
+        .spacerefs
         .retain(|reference| reference.path != space_reference.path);
 
-    if let Some(active_space) = &zaku_store.active_space_reference {
+    if let Some(active_space) = &zaku_store.active_spaceref {
         if active_space.path == space_reference.path {
-            zaku_store.active_space_reference = None;
+            zaku_store.active_spaceref = None;
         }
     }
 

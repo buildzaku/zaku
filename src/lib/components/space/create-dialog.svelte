@@ -50,7 +50,7 @@
         });
 
         if (spaceReference.status === "error") {
-            await commands.dispatchNotification({
+            await commands.dispatchNotif({
                 title: "Something went wrong.",
                 body: `Unable to create space "${createSpaceName}", make sure the directory exists and try again.`,
             });

@@ -11,10 +11,6 @@
         "core:window:allow-set-fullscreen",
         "core:window:allow-internal-toggle-maximize",
         "core:path:allow-resolve-directory",
-        {
-            "identifier": "http:default",
-            "allow": [{ "url": "https://*:*" }, { "url": "http://*:*" }]
-        },
         "dialog:allow-open",
         "core:event:default",
         "dialog:default",

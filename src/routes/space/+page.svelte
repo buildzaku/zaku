@@ -37,6 +37,7 @@
             activeReqRef.self.response = {
                 data: "Invalid or missing protocol",
                 headers: [],
+                cookies: [],
             };
             return;
         }
@@ -83,11 +84,20 @@
 
         const httpRes = await commands.httpReq(req);
 
+        if (zakuState.activeSpace) {
+            const cookiesResult = await commands.getSpaceCookies(zakuState.activeSpace.abspath);
+
+            if (cookiesResult.status === "ok") {
+                zakuState.activeSpace.cookies = cookiesResult.data;
+            }
+        }
+
         if (httpRes.status === "error") {
             activeReqRef.self.status = "Error";
             activeReqRef.self.response = {
                 data: httpRes.error.message,
                 headers: [],
+                cookies: [],
             };
         } else {
             activeReqRef.self.response = httpRes.data;
@@ -109,14 +119,14 @@
             event.preventDefault();
 
             const absoluteReqPath = joinPaths([
-                activeSpaceRef.absolute_path,
+                activeSpaceRef.abspath,
                 activeReqRef.parentRelativePath,
                 activeReqRef.self.meta.file_name,
             ]);
 
             await debounced.flush(absoluteReqPath);
-            await commands.writeBufferRequestToFs(
-                activeSpaceRef.absolute_path,
+            await commands.writeReqbufToReqtoml(
+                activeSpaceRef.abspath,
                 joinPaths([activeReqRef.parentRelativePath, activeReqRef.self.meta.file_name]),
             );
 
@@ -153,7 +163,7 @@
             prevActiveReqRelPath &&
             prevActiveReqRelPath === activeReqRelPath
         ) {
-            debounced.saveRequestToBuffer(activeSpaceRef.absolute_path, activeReqRef);
+            debounced.saveRequestToBuffer(activeSpaceRef.abspath, activeReqRef);
             activeReqRef.self.meta.has_unsaved_changes = true;
         } else {
             prevActiveReqRelPath = activeReqRelPath;
