@@ -45,11 +45,6 @@
         }
 
         const url = new URL(activeReqRef.self.config.url.raw ?? "");
-        activeReqRef.self.config.parameters?.forEach(([include, key, value]) => {
-            if (include && !url.searchParams.has(key)) {
-                url.searchParams.set(key, value);
-            }
-        });
 
         const requestHeaders = [
             ...baseRequestHeaders,
