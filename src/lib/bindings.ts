@@ -41,9 +41,17 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async removeCookie(rmCookieDto: RemoveCookieDto): Promise<Result<boolean, ZakuError>> {
+    async removeCookie(spaceAbspath: string, rmCookieDto: RemoveCookieDto): Promise<boolean> {
+        return await TAURI_INVOKE("remove_cookie", { spaceAbspath, rmCookieDto });
+    },
+    async getSpaceCookies(
+        spaceAbspath: string,
+    ): Promise<Result<Partial<{ [key in string]: SpaceCookie[] }>, ZakuError>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("remove_cookie", { rmCookieDto }) };
+            return {
+                status: "ok",
+                data: await TAURI_INVOKE("get_space_cookies", { spaceAbspath }),
+            };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };

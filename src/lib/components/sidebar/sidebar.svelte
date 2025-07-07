@@ -32,7 +32,7 @@
     } from "$lib/components/primitives/accordion";
     import { Badge } from "$lib/components/primitives/badge";
     import { commands } from "$lib/bindings";
-    import type { Space } from "$lib/bindings";
+    import type { RemoveCookieDto, Space } from "$lib/bindings";
     import { toast } from "svelte-sonner";
 
     type Props = {
@@ -72,30 +72,31 @@
                                                 size="icon"
                                                 class="size-4 max-h-4 min-h-4 max-w-4 min-w-4 cursor-pointer rounded-sm"
                                                 onclick={async () => {
-                                                    const isRemoved = await commands.removeCookie({
+                                                    const removeCookieDto: RemoveCookieDto = {
                                                         domain: ck.domain,
                                                         path: ck.path,
                                                         name: ck.name,
-                                                    });
+                                                    };
+                                                    const isRemoved = await commands.removeCookie(
+                                                        activeSpaceRef.abspath,
+                                                        removeCookieDto,
+                                                    );
 
                                                     if (isRemoved) {
                                                         cookies.splice(idx, 1);
 
                                                         const domainCookies =
-                                                            activeSpaceRef &&
                                                             activeSpaceRef.cookies[domain];
                                                         if (
                                                             !domainCookies ||
                                                             domainCookies.length === 0
                                                         ) {
-                                                            if (activeSpaceRef) {
-                                                                delete activeSpaceRef.cookies[
-                                                                    domain
-                                                                ];
-                                                            }
+                                                            delete activeSpaceRef.cookies[domain];
                                                         }
                                                     } else {
-                                                        toast(`Unable to remove '${ck.name}'`);
+                                                        toast(
+                                                            `Unable to remove '${ck.name}' cookie`,
+                                                        );
                                                     }
                                                 }}
                                             >

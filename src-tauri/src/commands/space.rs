@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
@@ -7,7 +8,7 @@ use tauri::State;
 use crate::core::cookie::SpaceCookies;
 use crate::core::{space, store};
 use crate::models::space::{
-    CreateSpaceDto, RemoveCookieDto, SpaceConfigFile, SpaceMeta, SpaceReference,
+    CreateSpaceDto, RemoveCookieDto, SpaceConfigFile, SpaceCookie, SpaceMeta, SpaceReference,
 };
 use crate::models::zaku::{ZakuError, ZakuState};
 
@@ -179,12 +180,33 @@ pub fn get_spaceref(path: String) -> Result<SpaceReference, ZakuError> {
 
 #[specta::specta]
 #[tauri::command]
-pub fn remove_cookie(rm_cookie_dto: RemoveCookieDto) -> Result<bool, ZakuError> {
-    let active_space = store::get_active_spaceref().ok_or(ZakuError {
-        error: "No active space found.".into(),
-        message: "No active space found.".into(),
+pub fn get_space_cookies(
+    space_abspath: &str,
+) -> Result<HashMap<String, Vec<SpaceCookie>>, ZakuError> {
+    let cookie_store = SpaceCookies::load(space_abspath);
+    let store = cookie_store.lock().map_err(|_| ZakuError {
+        error: "CookieStoreLockFailed".into(),
+        message: "Failed to lock the cookie store".into(),
     })?;
-    let space_abspath = active_space.path.as_str();
 
-    return Ok(SpaceCookies::remove(space_abspath, rm_cookie_dto).is_some());
+    let cookies: Vec<SpaceCookie> = store
+        .iter_any()
+        .map(SpaceCookie::from_cookie_store)
+        .collect();
+
+    let cookies_by_domain: HashMap<String, Vec<SpaceCookie>> = cookies.into_iter().fold(
+        HashMap::new(),
+        |mut acc: HashMap<String, Vec<SpaceCookie>>, ck| {
+            acc.entry(ck.domain.clone()).or_default().push(ck);
+            acc
+        },
+    );
+
+    return Ok(cookies_by_domain);
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> bool {
+    return SpaceCookies::remove(space_abspath, rm_cookie_dto).is_some();
 }

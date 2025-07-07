@@ -84,6 +84,14 @@
 
         const httpRes = await commands.httpReq(req);
 
+        if (zakuState.activeSpace) {
+            const cookiesResult = await commands.getSpaceCookies(zakuState.activeSpace.abspath);
+
+            if (cookiesResult.status === "ok") {
+                zakuState.activeSpace.cookies = cookiesResult.data;
+            }
+        }
+
         if (httpRes.status === "error") {
             activeReqRef.self.status = "Error";
             activeReqRef.self.response = {
