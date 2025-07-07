@@ -17,6 +17,7 @@
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
+    import type { HttpReq, ReqUrl } from "$lib/bindings";
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
@@ -30,16 +31,12 @@
         if (!activeReqRef) return;
 
         activeReqRef.self.status = "Pending";
-
         const validProtocol = /^(https?:\/\/)/i;
-
         if (!validProtocol.test(activeReqRef.self.config.url.raw ?? "")) {
             activeReqRef.self.status = "Error";
             activeReqRef.self.response = {
-                status: undefined,
                 data: "Invalid or missing protocol",
                 headers: [],
-                elapsed_ms: undefined,
             };
             return;
         }
@@ -68,14 +65,13 @@
             }
         }
 
-        const reqUrl = {
+        const reqUrl: ReqUrl = {
             raw: url.href,
             protocol: url.protocol.replace(":", ""),
             host: url.hostname,
             path: url.pathname,
         };
-
-        const reqPayload = {
+        const req: HttpReq = {
             meta: activeReqRef.self.meta,
             config: {
                 ...activeReqRef.self.config,
@@ -85,24 +81,21 @@
             response: null,
         };
 
-        const httpRes = await commands.httpReq(reqPayload);
+        const httpRes = await commands.httpReq(req);
 
         if (httpRes.status === "error") {
             activeReqRef.self.status = "Error";
             activeReqRef.self.response = {
-                status: undefined,
                 data: httpRes.error.message,
                 headers: [],
-                elapsed_ms: undefined,
             };
-            return;
+        } else {
+            activeReqRef.self.response = httpRes.data;
+            activeReqRef.self.status =
+                httpRes.data.status && httpRes.data.status >= 200 && httpRes.data.status < 300
+                    ? "Success"
+                    : "Error";
         }
-
-        activeReqRef.self.response = httpRes.data;
-        activeReqRef.self.status =
-            httpRes.data.status && httpRes.data.status >= 200 && httpRes.data.status < 300
-                ? "Success"
-                : "Error";
     }
 
     async function handleSave(event: KeyboardEvent) {
