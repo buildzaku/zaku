@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::State;
 
+use crate::core::cookie::SpaceCookies;
 use crate::core::{space, store};
 use crate::models::space::{CreateSpaceDto, SpaceConfigFile, SpaceMeta, SpaceReference};
 use crate::models::zaku::{ZakuError, ZakuState};
@@ -172,4 +173,17 @@ pub fn get_spaceref(path: String) -> Result<SpaceReference, ZakuError> {
             });
         }
     }
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn delete_cookie(name: &str, domain: &str, path: &str) -> Result<(), ZakuError> {
+    let active_space = store::get_active_spaceref().ok_or(ZakuError {
+        error: "No active space found.".into(),
+        message: "No active space found.".into(),
+    })?;
+    let space_abspath = active_space.path.as_str();
+    SpaceCookies::remove(space_abspath, name, domain, path);
+
+    return Ok(());
 }

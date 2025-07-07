@@ -41,6 +41,21 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
+    async deleteCookie(
+        name: string,
+        domain: string,
+        path: string,
+    ): Promise<Result<null, ZakuError>> {
+        try {
+            return {
+                status: "ok",
+                data: await TAURI_INVOKE("delete_cookie", { name, domain, path }),
+            };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
+    },
     async showMainWindow(): Promise<void> {
         await TAURI_INVOKE("show_main_window");
     },

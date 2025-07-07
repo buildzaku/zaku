@@ -1,7 +1,7 @@
 <script lang="ts">
     import { zakuState, treeActionsState } from "$lib/state.svelte";
     import { Button } from "$lib/components/primitives/button";
-    import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon } from "@lucide/svelte";
+    import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon, XIcon } from "@lucide/svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
@@ -30,6 +30,7 @@
         AccordionItem,
         AccordionTrigger,
     } from "$lib/components/primitives/accordion";
+    import { Badge } from "$lib/components/primitives/badge";
 
     type Props = {
         pane: PaneAPI;
@@ -157,60 +158,35 @@
                 <DialogContent class="flex h-[80%] max-h-[80%] w-[80%] max-w-[80%] flex-col">
                     <DialogHeader>
                         <DialogTitle>Cookies</DialogTitle>
-                        <DialogDescription>Manage your space cookies</DialogDescription>
+                        <DialogDescription>Manage space cookies</DialogDescription>
                     </DialogHeader>
                     <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
-                        <Accordion type="multiple" class="bg-card rounded-md border">
+                        <Accordion type="multiple" class="bg-card/75 rounded-sm border">
                             {#each Object.entries(zakuState.activeSpace.cookies) as [domain, cookies] (domain)}
-                                <AccordionItem value={domain} class="px-4.5">
-                                    <AccordionTrigger class="cursor-pointer hover:decoration-0">
+                                <AccordionItem value={domain}>
+                                    <AccordionTrigger
+                                        class="cursor-pointer px-3 hover:decoration-0"
+                                    >
                                         {domain}
                                     </AccordionTrigger>
-                                    <AccordionContent>
+                                    <AccordionContent class="bg-background px-3 py-4">
                                         {#if cookies}
-                                            <div class="bg-accent/25 flex border-b font-semibold">
-                                                <div class="w-[15%] border-r p-2">Name</div>
-                                                <div class="w-[20%] border-r p-2">Value</div>
-                                                <div class="w-[15%] border-r p-2">Domain</div>
-                                                <div class="w-[10%] border-r p-2">Path</div>
-                                                <div class="w-[15%] border-r p-2">Expires</div>
-                                                <div class="w-[5%] border-r p-2">Size</div>
-                                                <div class="w-[5%] border-r p-2">HTTP</div>
-                                                <div class="w-[5%] border-r p-2">Secure</div>
-                                                <div class="w-[10%] p-2">SameSite</div>
-                                            </div>
                                             <div class="overflow-y-auto">
                                                 {#each cookies as ck, idx (idx)}
                                                     <div class="flex border-b last:border-b-0">
-                                                        <div class="w-[15%] p-2 break-all">
-                                                            {ck.name}
-                                                        </div>
-                                                        <div class="w-[20%] p-2 break-all">
-                                                            {ck.value}
-                                                        </div>
-                                                        <div class="w-[15%] p-2 break-all">
-                                                            {ck.domain}
-                                                        </div>
-                                                        <div class="w-[10%] p-2 break-all">
-                                                            {ck.path}
-                                                        </div>
-                                                        <div
-                                                            class="w-[15%] p-2 break-all select-text"
-                                                        >
-                                                            {ck.expires}
-                                                        </div>
-                                                        <div class="w-[5%] p-2 break-all">
-                                                            {ck.name.length + ck.value.length}
-                                                        </div>
-                                                        <div class="w-[5%] p-2 break-all">
-                                                            {ck.http_only ? "Yes" : "No"}
-                                                        </div>
-                                                        <div class="w-[5%] p-2 break-all">
-                                                            {ck.secure ? "Yes" : "No"}
-                                                        </div>
-                                                        <div class="w-[10%] p-2 break-all">
-                                                            {ck.same_site ?? "None"}
-                                                        </div>
+                                                        <Badge variant="outline" class="p-1">
+                                                            <span class="px-2 select-text"
+                                                                >{ck.name}</span
+                                                            >
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                class="size-4 max-h-4 min-h-4 max-w-4 min-w-4 cursor-pointer rounded-sm"
+                                                            >
+                                                                <XIcon class="size-1" size={4} />
+                                                                <span class="sr-only">Close</span>
+                                                            </Button>
+                                                        </Badge>
                                                     </div>
                                                 {/each}
                                             </div>
