@@ -46,9 +46,7 @@
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
     let spaceSettingsStr: string = $state(
-        zakuState.activeSpace
-            ? JSON.stringify($state.snapshot(zakuState.activeSpace.settings))
-            : String(),
+        zakuState.activeSpace ? JSON.stringify(zakuState.activeSpace.settings) : String(),
     );
 
     let shouldRenderCreateNewRequestInput = $derived(
@@ -231,6 +229,9 @@
                         <DialogDescription>Manage space settings</DialogDescription>
                     </DialogHeader>
                     <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
+                        <h3 class="text-medium mb-3 leading-none font-semibold tracking-tight">
+                            Notifications
+                        </h3>
                         <div class="flex items-center gap-1.5">
                             <Checkbox
                                 id="settings.notifications.audio.on_req_finish"
