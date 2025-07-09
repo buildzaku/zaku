@@ -3,6 +3,8 @@ use specta::Type;
 use std::collections::HashMap;
 use time::format_description::well_known::Rfc3339;
 
+use crate::core::store::spaces::settings::SpaceSettings;
+
 use super::collection::Collection;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -27,6 +29,7 @@ pub struct Space {
     pub meta: SpaceMeta,
     pub root: Collection,
     pub cookies: HashMap<String, Vec<SpaceCookie>>,
+    pub settings: SpaceSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
