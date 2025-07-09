@@ -193,7 +193,7 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
     })?;
     if space_settings.notifications.audio.on_req_finish {
         tokio::spawn(async {
-            let _ = notification::play_notif_sound().await; // TODO - handle failures, send toast to UI?
+            let _ = notification::play_notif_sound(); // TODO - handle failures, send toast to UI?
         });
     }
 

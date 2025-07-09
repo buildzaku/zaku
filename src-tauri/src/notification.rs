@@ -2,7 +2,7 @@ use rodio::{Decoder, OutputStream, Sink};
 use std::fs::File;
 use std::io::BufReader;
 
-pub async fn play_notif_sound() -> Result<(), std::io::Error> {
+pub fn play_notif_sound() -> Result<(), std::io::Error> {
     let (_stream, stream_handle) = OutputStream::try_default().map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::Other,
