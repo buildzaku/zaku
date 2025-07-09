@@ -237,7 +237,7 @@
                                 bind:checked={spaceRef.settings.notifications.audio.on_req_complete}
                             />
                             <Label for="settings.notifications.audio.on_req_complete">
-                                Play sound when request completes
+                                Play sound when a request completes
                             </Label>
                         </div>
                     </div>
