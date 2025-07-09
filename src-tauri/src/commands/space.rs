@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use tauri::State;
 
 use crate::core::cookie::SpaceCookies;
+use crate::core::store::spaces::settings::SpaceSettings;
 use crate::core::{space, store};
 use crate::models::space::{
     CreateSpaceDto, RemoveCookieDto, SpaceConfigFile, SpaceCookie, SpaceMeta, SpaceReference,
@@ -209,4 +210,15 @@ pub fn get_space_cookies(
 #[tauri::command]
 pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> bool {
     return SpaceCookies::remove(space_abspath, rm_cookie_dto).is_some();
+}
+
+#[specta::specta]
+#[tauri::command(async)]
+pub fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> Result<(), ZakuError> {
+    SpaceSettings::persist(space_abspath, &settings).map_err(|err| ZakuError {
+        error: err.to_string(),
+        message: "Failed to persist space settings.".into(),
+    })?;
+
+    return Ok(());
 }

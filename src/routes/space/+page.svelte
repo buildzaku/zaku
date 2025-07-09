@@ -208,7 +208,11 @@
                                     type="text"
                                     class="font-mono text-xs"
                                 />
-                                <Button type="submit" onclick={handleSend}>Send</Button>
+                                <Button
+                                    type="submit"
+                                    disabled={activeReqRef.self.status === "Pending"}
+                                    onclick={handleSend}>Send</Button
+                                >
                             </form>
                         </div>
                     </div>

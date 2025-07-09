@@ -7,6 +7,7 @@ use std::rc::Rc;
 use std::vec::IntoIter;
 
 use crate::core::cookie::SpaceCookies;
+use crate::core::store::spaces::settings::SpaceSettings;
 use crate::models::buffer::SpaceBuf;
 use crate::models::collection::{Collection, CollectionMeta};
 use crate::models::request::HttpReq;
@@ -217,12 +218,14 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space, Error> {
                             acc
                         },
                     );
+                let settings = SpaceSettings::load(space_abspath.to_string_lossy().as_ref());
 
                 return Ok(Space {
                     abspath: space_abspath.to_string_lossy().into_owned(),
                     meta: space_config_file.meta,
                     root: root_collection,
                     cookies: cookies_by_domain,
+                    settings,
                 });
             }
             Err(err) => {
