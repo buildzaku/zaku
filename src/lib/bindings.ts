@@ -57,6 +57,20 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
+    async saveSpaceSettings(
+        spaceAbspath: string,
+        settings: SpaceSettings,
+    ): Promise<Result<null, ZakuError>> {
+        try {
+            return {
+                status: "ok",
+                data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, settings }),
+            };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
+    },
     async showMainWindow(): Promise<void> {
         await TAURI_INVOKE("show_main_window");
     },
@@ -143,6 +157,7 @@ export const commands = {
 
 /** user-defined types **/
 
+export type AudioNotification = { on_req_finish: boolean };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
     dir_name: string;
@@ -171,6 +186,7 @@ export type HttpRes = {
     elapsed_ms?: number;
 };
 export type MoveTreeItemDto = { src_relpath: string; dest_relpath: string };
+export type NotificationSettings = { audio: AudioNotification };
 export type OpenDirDialogOpt = { title: string | null };
 export type RemoveCookieDto = { domain: string; path: string; name: string };
 export type ReqCfg = {
@@ -194,6 +210,7 @@ export type Space = {
     meta: SpaceMeta;
     root: Collection;
     cookies: Partial<{ [key in string]: SpaceCookie[] }>;
+    settings: SpaceSettings;
 };
 export type SpaceCookie = {
     name: string;
@@ -207,6 +224,8 @@ export type SpaceCookie = {
 };
 export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
+export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
+export type Theme = "System" | "Light" | "Dark";
 export type ZakuError = { error: string; message: string };
 export type ZakuState = { active_space: Space | null; spacerefs: SpaceReference[] };
 

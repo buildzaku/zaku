@@ -9,8 +9,10 @@ use tauri::{AppHandle, Manager};
 
 use crate::core::cookie::SpaceCookies;
 use crate::core::store;
+use crate::core::store::spaces::settings::SpaceSettings;
 use crate::models::request::HttpErr;
 use crate::models::space::SpaceCookie;
+use crate::notification;
 use crate::{
     core::utils,
     core::{self, buffer, collection, space},
@@ -142,6 +144,7 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
     })?;
     let space_abspath = active_space.path.as_str();
     let cookie_store = SpaceCookies::load(space_abspath);
+    let space_settings = SpaceSettings::load(space_abspath);
     let client = reqwest::Client::builder()
         .cookie_provider(Arc::clone(&cookie_store))
         .build()
@@ -188,6 +191,11 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         message: e.to_string(),
         code: None,
     })?;
+    if space_settings.notifications.audio.on_req_finish {
+        tokio::spawn(async {
+            let _ = notification::play_notif_sound(); // TODO - handle failures, send toast to UI?
+        });
+    }
 
     let elapsed_ms = start.elapsed().as_millis() as u32;
     let status = resp.status().as_u16();
