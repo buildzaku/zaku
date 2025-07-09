@@ -233,10 +233,10 @@
                     <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
                         <div class="flex items-center gap-1.5">
                             <Checkbox
-                                id="settings.notification.play_success_sound"
-                                bind:checked={spaceRef.settings.notification.play_success_sound}
+                                id="settings.notifications.audio.on_req_complete"
+                                bind:checked={spaceRef.settings.notifications.audio.on_req_complete}
                             />
-                            <Label for="settings.notification.play_success_sound">
+                            <Label for="settings.notifications.audio.on_req_complete">
                                 Play sound when request completes
                             </Label>
                         </div>

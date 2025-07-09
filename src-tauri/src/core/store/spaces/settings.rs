@@ -24,14 +24,19 @@ impl Default for Theme {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct SpaceNotifSettings {
-    pub play_success_sound: bool,
+pub struct AudioNotification {
+    pub on_req_complete: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
+pub struct NotificationSettings {
+    pub audio: AudioNotification,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct SpaceSettings {
     pub theme: Theme,
-    pub notification: SpaceNotifSettings,
+    pub notifications: NotificationSettings,
 }
 
 impl SpaceSettings {

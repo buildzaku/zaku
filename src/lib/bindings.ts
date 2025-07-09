@@ -157,6 +157,7 @@ export const commands = {
 
 /** user-defined types **/
 
+export type AudioNotification = { on_req_complete: boolean };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
     dir_name: string;
@@ -185,6 +186,7 @@ export type HttpRes = {
     elapsed_ms?: number;
 };
 export type MoveTreeItemDto = { src_relpath: string; dest_relpath: string };
+export type NotificationSettings = { audio: AudioNotification };
 export type OpenDirDialogOpt = { title: string | null };
 export type RemoveCookieDto = { domain: string; path: string; name: string };
 export type ReqCfg = {
@@ -221,9 +223,8 @@ export type SpaceCookie = {
     expires: string | null;
 };
 export type SpaceMeta = { name: string };
-export type SpaceNotifSettings = { play_success_sound: boolean };
 export type SpaceReference = { path: string; name: string };
-export type SpaceSettings = { theme: Theme; notification: SpaceNotifSettings };
+export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
 export type ZakuError = { error: string; message: string };
 export type ZakuState = { active_space: Space | null; spacerefs: SpaceReference[] };
