@@ -24,7 +24,7 @@ fn main() {
         commands::space::get_spaceref,
         commands::space::remove_cookie,
         commands::space::get_space_cookies,
-        commands::space::::update_space_settings,
+        commands::space::::save_space_settings,
         commands::window::show_main_window,
         commands::dialog::open_dir_dialog,
         commands::notification::is_notif_enabled,

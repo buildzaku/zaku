@@ -214,10 +214,7 @@ pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> boo
 
 #[specta::specta]
 #[tauri::command(async)]
-pub fn update_space_settings(
-    space_abspath: &str,
-    settings: SpaceSettings,
-) -> Result<(), ZakuError> {
+pub fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> Result<(), ZakuError> {
     SpaceSettings::persist(space_abspath, &settings).map_err(|err| ZakuError {
         error: err.to_string(),
         message: "Failed to persist space settings.".into(),

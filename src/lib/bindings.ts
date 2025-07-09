@@ -57,14 +57,14 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async updateSpaceSettings(
+    async saveSpaceSettings(
         spaceAbspath: string,
         settings: SpaceSettings,
     ): Promise<Result<null, ZakuError>> {
         try {
             return {
                 status: "ok",
-                data: await TAURI_INVOKE("update_space_settings", { spaceAbspath, settings }),
+                data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, settings }),
             };
         } catch (e) {
             if (e instanceof Error) throw e;
