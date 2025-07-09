@@ -6,6 +6,8 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::models::space::SpaceReference;
 use crate::models::zaku::ZakuStore;
 
+pub mod spaces;
+
 pub static STORE_ABSPATH: Lazy<PathBuf> = Lazy::new(|| {
     dirs::data_dir()
         .expect("Unable to get data directory")

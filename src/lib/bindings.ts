@@ -57,6 +57,20 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
+    async updateSpaceSettings(
+        spaceAbspath: string,
+        settings: SpaceSettings,
+    ): Promise<Result<null, ZakuError>> {
+        try {
+            return {
+                status: "ok",
+                data: await TAURI_INVOKE("update_space_settings", { spaceAbspath, settings }),
+            };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
+    },
     async showMainWindow(): Promise<void> {
         await TAURI_INVOKE("show_main_window");
     },
@@ -194,6 +208,7 @@ export type Space = {
     meta: SpaceMeta;
     root: Collection;
     cookies: Partial<{ [key in string]: SpaceCookie[] }>;
+    settings: SpaceSettings;
 };
 export type SpaceCookie = {
     name: string;
@@ -206,7 +221,10 @@ export type SpaceCookie = {
     expires: string | null;
 };
 export type SpaceMeta = { name: string };
+export type SpaceNotifSettings = { play_success_sound: boolean };
 export type SpaceReference = { path: string; name: string };
+export type SpaceSettings = { theme: Theme; notification: SpaceNotifSettings };
+export type Theme = "System" | "Light" | "Dark";
 export type ZakuError = { error: string; message: string };
 export type ZakuState = { active_space: Space | null; spacerefs: SpaceReference[] };
 
