@@ -25,7 +25,7 @@ impl Default for Theme {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct AudioNotification {
-    pub on_req_complete: bool,
+    pub on_req_finish: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]

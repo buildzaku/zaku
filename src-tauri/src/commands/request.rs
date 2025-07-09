@@ -191,7 +191,7 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         message: e.to_string(),
         code: None,
     })?;
-    if space_settings.notifications.audio.on_req_complete {
+    if space_settings.notifications.audio.on_req_finish {
         tokio::spawn(async {
             let _ = notification::play_notif_sound().await; // TODO - handle failures, send toast to UI?
         });

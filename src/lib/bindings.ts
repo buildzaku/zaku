@@ -157,7 +157,7 @@ export const commands = {
 
 /** user-defined types **/
 
-export type AudioNotification = { on_req_complete: boolean };
+export type AudioNotification = { on_req_finish: boolean };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
     dir_name: string;
