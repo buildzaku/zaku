@@ -18,11 +18,12 @@
     import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
     import {
         Dialog,
-        DialogContent,
-        DialogDescription,
+        DialogTrigger,
         DialogHeader,
         DialogTitle,
-        DialogTrigger,
+        DialogDescription,
+        DialogContent,
+        DialogFooter,
     } from "$lib/components/primitives/dialog";
     import {
         Accordion,
@@ -34,6 +35,8 @@
     import { commands } from "$lib/bindings";
     import type { RemoveCookieDto, Space } from "$lib/bindings";
     import { toast } from "svelte-sonner";
+    import { Checkbox } from "$lib/components/primitives/checkbox";
+    import { Label } from "$lib/components/primitives/label";
 
     type Props = {
         pane: PaneAPI;
@@ -41,6 +44,12 @@
     };
 
     let { pane, isCollapsed = $bindable() }: Props = $props();
+
+    let spaceSettingsStr: string = $state(
+        zakuState.activeSpace
+            ? JSON.stringify($state.snapshot(zakuState.activeSpace.settings))
+            : String(),
+    );
 
     let shouldRenderCreateNewRequestInput = $derived(
         treeActionsState.createNewItem === "request" &&
@@ -116,6 +125,7 @@
 {/snippet}
 
 {#if zakuState.activeSpace}
+    {@const spaceRef = zakuState.activeSpace}
     <div class="flex size-full flex-col justify-between">
         <div class="flex w-full items-center justify-center border-b p-1.5 pt-0">
             <div class={cn("flex w-full items-center justify-between gap-1.5")}>
@@ -166,10 +176,7 @@
                     <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
-                    <TreeItemRoot
-                        currentPath={RELATIVE_SPACE_ROOT}
-                        root={zakuState.activeSpace.root}
-                    >
+                    <TreeItemRoot currentPath={RELATIVE_SPACE_ROOT} root={spaceRef.root}>
                         {#if shouldRenderCreateNewRequestInput}
                             <TreeItemCreate
                                 type={TreeItemType.Request}
@@ -177,7 +184,7 @@
                                 level={1}
                             />
                         {/if}
-                        {#each zakuState.activeSpace.root.requests as request (request.meta.file_name)}
+                        {#each spaceRef.root.requests as request (request.meta.file_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={request.meta.file_name}
@@ -193,7 +200,7 @@
                                 level={1}
                             />
                         {/if}
-                        {#each zakuState.activeSpace.root.collections as collection (collection.meta.dir_name)}
+                        {#each spaceRef.root.collections as collection (collection.meta.dir_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={collection.meta.dir_name}
@@ -211,10 +218,47 @@
                 isCollapsed && "flex-col-reverse",
             )}
         >
-            <Button size="icon" variant="ghost">
-                <SettingsIcon strokeWidth={1.25} size={16} />
-                <span class="sr-only">Settings</span>
-            </Button>
+            <Dialog>
+                <DialogTrigger>
+                    <Button size="icon" variant="ghost">
+                        <SettingsIcon strokeWidth={1.25} size={16} />
+                        <span class="sr-only">Settings</span>
+                    </Button>
+                </DialogTrigger>
+                <DialogContent class="flex h-[80%] max-h-[80%] w-[80%] max-w-[80%] flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Settings</DialogTitle>
+                        <DialogDescription>Manage space settings</DialogDescription>
+                    </DialogHeader>
+                    <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
+                        <div class="flex items-center gap-1.5">
+                            <Checkbox
+                                id="settings.notification.play_success_sound"
+                                bind:checked={spaceRef.settings.notification.play_success_sound}
+                            />
+                            <Label for="settings.notification.play_success_sound">
+                                Play sound when request completes
+                            </Label>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            disabled={spaceSettingsStr === JSON.stringify(spaceRef.settings)}
+                            onclick={async () => {
+                                await commands.updateSpaceSettings(
+                                    spaceRef.abspath,
+                                    spaceRef.settings,
+                                );
+
+                                spaceSettingsStr = JSON.stringify(spaceRef.settings);
+                                toast.success(`Updated space settings`);
+                            }}
+                        >
+                            Save
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <Dialog>
                 <DialogTrigger>
                     <Button size="icon" variant="ghost">
@@ -227,7 +271,7 @@
                         <DialogDescription>Manage space cookies</DialogDescription>
                     </DialogHeader>
                     <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
-                        {@render cookies(zakuState.activeSpace)}
+                        {@render cookies(spaceRef)}
                     </div>
                 </DialogContent>
             </Dialog>
