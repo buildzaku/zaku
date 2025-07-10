@@ -2,41 +2,27 @@
 
 use std::sync::Mutex;
 
+pub mod collection;
 pub mod commands;
-pub mod core;
-pub mod models;
-pub mod notification;
+pub mod error;
+pub mod notifications;
 pub mod platform;
+pub mod request;
+pub mod shortcuts;
+pub mod space;
+pub mod state;
+pub mod store;
+pub mod utils;
 
-use core::{shortcuts, state};
-use models::zaku::ZakuState;
-use tauri_specta::{collect_commands, Builder};
+use tauri_specta::Builder;
+
+use crate::state::ZakuState;
 
 fn main() {
     #[cfg(target_os = "linux")]
     platform::linux::initialize();
 
-    let builder = Builder::<tauri::Wry>::new().commands(collect_commands![
-        commands::state::get_zaku_state,
-        commands::space::create_space,
-        commands::space::set_active_space,
-        commands::space::delete_space,
-        commands::space::get_spaceref,
-        commands::space::remove_cookie,
-        commands::space::get_space_cookies,
-        commands::space::::save_space_settings,
-        commands::window::show_main_window,
-        commands::dialog::open_dir_dialog,
-        commands::notification::is_notif_enabled,
-        commands::notification::request_notif_access,
-        commands::notification::dispatch_notif,
-        commands::collection::create_collection,
-        commands::request::create_req,
-        commands::request::persist_to_reqbuf,
-        commands::request::write_reqbuf_to_reqtoml,
-        commands::request::http_req,
-        commands::move_treeitem,
-    ]);
+    let builder = Builder::<tauri::Wry>::new().commands(commands::collect());
 
     if std::env::var("GEN_BINDINGS").is_ok() {
         use specta_typescript::Typescript;

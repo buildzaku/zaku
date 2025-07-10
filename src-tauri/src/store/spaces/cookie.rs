@@ -12,17 +12,14 @@ use std::{
 };
 
 use crate::{
-    core::utils::{hashed_filename, ZAKU_DATA_DIR},
-    models::space::RemoveCookieDto,
+    utils::{hashed_filename, ZAKU_DATA_DIR},
+    space::models::RemoveCookieDto,
+    store::models::SpaceCookies,
 };
-
-const SPACES_DIR: &str = "spaces";
 
 type CookiesCache = Mutex<HashMap<String, Arc<CookieStoreMutex>>>;
 
 static COOKIES_CACHE: Lazy<CookiesCache> = Lazy::new(|| Mutex::new(HashMap::new()));
-
-pub struct SpaceCookies;
 
 impl SpaceCookies {
     pub fn load(space_abspath: &str) -> Arc<CookieStoreMutex> {
@@ -34,7 +31,7 @@ impl SpaceCookies {
         }
 
         let cookie_file = ZAKU_DATA_DIR
-            .join(SPACES_DIR)
+            .join(super::SPACES_STORE_DIR)
             .join(&hsh_space_abspath)
             .join("cookies.json");
         let space_cookiestore = if cookie_file.exists() {
@@ -58,7 +55,7 @@ impl SpaceCookies {
         let cache = COOKIES_CACHE.lock().expect("Failed to lock cookie cache");
         if let Some(space_cookies) = cache.get(space_abspath) {
             let cookie_file = ZAKU_DATA_DIR
-                .join(SPACES_DIR)
+                .join(super::SPACES_STORE_DIR)
                 .join(&hsh_space_abspath)
                 .join("cookies.json");
 

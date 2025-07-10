@@ -3,7 +3,16 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::models::request::{HttpReq, ReqCfg, ReqMeta};
+use crate::{
+    request::models::{HttpReq, ReqCfg, ReqMeta},
+    space::models::SpaceReference,
+};
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct ZakuStore {
+    pub active_spaceref: Option<SpaceReference>,
+    pub spacerefs: Vec<SpaceReference>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqBuf {
@@ -36,4 +45,35 @@ impl ReqBuf {
 pub struct SpaceBuf {
     pub abspath: String,
     pub requests: HashMap<String, ReqBuf>,
+}
+
+pub struct SpaceCookies;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type)]
+pub enum Theme {
+    System,
+    Light,
+    Dark,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Theme::System
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
+pub struct AudioNotification {
+    pub on_req_finish: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
+pub struct NotificationSettings {
+    pub audio: AudioNotification,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
+pub struct SpaceSettings {
+    pub theme: Theme,
+    pub notifications: NotificationSettings,
 }

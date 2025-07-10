@@ -1,9 +1,9 @@
-use tauri::{App, Manager};
+use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, Modifiers};
 
-use crate::core::utils;
+use crate::utils;
 
-pub fn initialize(app: &mut App) {
+pub fn initialize(app: &mut tauri::App) {
     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     {
         use tauri_plugin_global_shortcut::ShortcutState;

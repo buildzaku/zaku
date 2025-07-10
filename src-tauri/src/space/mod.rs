@@ -6,14 +6,17 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
 
-use crate::core::cookie::SpaceCookies;
-use crate::core::store::spaces::settings::SpaceSettings;
-use crate::models::buffer::SpaceBuf;
-use crate::models::collection::{Collection, CollectionMeta};
-use crate::models::request::HttpReq;
-use crate::models::space::{Space, SpaceConfigFile, SpaceCookie, SpaceReference};
+use crate::{
+    collection,
+    collection::models::{Collection, CollectionMeta},
+    request,
+    request::models::HttpReq,
+    space::models::{Space, SpaceConfigFile, SpaceCookie, SpaceReference},
+    store,
+    store::models::{SpaceBuf, SpaceCookies, SpaceSettings},
+};
 
-use super::{collection, request, store};
+pub mod models;
 
 #[derive(Clone, Debug)]
 pub struct CollectionRcRefCell {

@@ -3,7 +3,9 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use toml;
 
-use crate::models::toml::{ReqToml, ReqTomlConfig, ReqTomlMeta};
+use crate::request::models::{ReqToml, ReqTomlConfig, ReqTomlMeta};
+
+pub mod models;
 
 pub fn create_reqtoml(abspath: &Path, display_name: &str) -> Result<(), Error> {
     let mut reqtoml_file = File::create_new(&abspath.with_extension("toml")).map_err(|err| {
