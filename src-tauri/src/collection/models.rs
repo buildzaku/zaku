@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use super::request::HttpReq;
+use crate::request::models::HttpReq;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CollectionMeta {

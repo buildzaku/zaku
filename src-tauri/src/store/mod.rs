@@ -3,9 +3,9 @@ use std::fs::{self};
 use std::path::PathBuf;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::models::space::SpaceReference;
-use crate::models::zaku::ZakuStore;
+use crate::{space::models::SpaceReference, store::models::ZakuStore};
 
+pub mod models;
 pub mod spaces;
 
 pub static STORE_ABSPATH: Lazy<PathBuf> = Lazy::new(|| {
