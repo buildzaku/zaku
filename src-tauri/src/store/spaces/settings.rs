@@ -2,8 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::{
-    utils::{hashed_filename, ZAKU_DATA_DIR},
     store::models::SpaceSettings,
+    utils::{hashed_filename, ZAKU_DATA_DIR},
 };
 
 const SETTINGS_FILENAME: &str = "settings.json";
