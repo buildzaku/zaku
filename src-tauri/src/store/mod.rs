@@ -89,7 +89,7 @@ pub fn insert_spaceref_if_missing(space_reference: SpaceReference) {
     }
 }
 
-pub fn delete_spaceref(space_reference: SpaceReference) {
+pub fn remove_spaceref(space_reference: SpaceReference) {
     let mut zaku_store = ZakuStore::acq_wlock();
 
     zaku_store

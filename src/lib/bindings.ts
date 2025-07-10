@@ -3,7 +3,7 @@
 /** user-defined commands **/
 
 export const commands = {
-    async getZakuState(): Promise<Result<ZakuState, string>> {
+    async getZakuState(): Promise<Result<ZakuState, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("get_zaku_state") };
         } catch (e) {
@@ -11,7 +11,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async createSpace(createSpaceDto: CreateSpaceDto): Promise<Result<SpaceReference, ZakuError>> {
+    async createSpace(createSpaceDto: CreateSpaceDto): Promise<Result<SpaceReference, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("create_space", { createSpaceDto }) };
         } catch (e) {
@@ -19,7 +19,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async setActiveSpace(spaceReference: SpaceReference): Promise<Result<null, ZakuError>> {
+    async setActiveSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
         try {
             return {
                 status: "ok",
@@ -30,10 +30,10 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async deleteSpace(spaceReference: SpaceReference): Promise<null> {
-        return await TAURI_INVOKE("delete_space", { spaceReference });
+    async removeSpace(spaceReference: SpaceReference): Promise<null> {
+        return await TAURI_INVOKE("remove_space", { spaceReference });
     },
-    async getSpaceref(path: string): Promise<Result<SpaceReference, ZakuError>> {
+    async getSpaceref(path: string): Promise<Result<SpaceReference, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("get_spaceref", { path }) };
         } catch (e) {
@@ -46,7 +46,7 @@ export const commands = {
     },
     async getSpaceCookies(
         spaceAbspath: string,
-    ): Promise<Result<Partial<{ [key in string]: SpaceCookie[] }>, ZakuError>> {
+    ): Promise<Result<Partial<{ [key in string]: SpaceCookie[] }>, CmdErr>> {
         try {
             return {
                 status: "ok",
@@ -60,7 +60,7 @@ export const commands = {
     async saveSpaceSettings(
         spaceAbspath: string,
         settings: SpaceSettings,
-    ): Promise<Result<null, ZakuError>> {
+    ): Promise<Result<null, CmdErr>> {
         try {
             return {
                 status: "ok",
@@ -74,7 +74,7 @@ export const commands = {
     async showMainWindow(): Promise<void> {
         await TAURI_INVOKE("show_main_window");
     },
-    async openDirDialog(options: OpenDirDialogOpt | null): Promise<Result<string | null, string>> {
+    async openDirDialog(options: OpenDirDialogOpt | null): Promise<Result<string | null, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("open_dir_dialog", { options }) };
         } catch (e) {
@@ -82,7 +82,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async isNotifEnabled(): Promise<Result<boolean, ZakuError>> {
+    async isNotifEnabled(): Promise<Result<boolean, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("is_notif_enabled") };
         } catch (e) {
@@ -90,7 +90,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async requestNotifAccess(): Promise<Result<boolean, ZakuError>> {
+    async requestNotifAccess(): Promise<Result<boolean, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("request_notif_access") };
         } catch (e) {
@@ -98,7 +98,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async dispatchNotif(options: DispatchNotificationOptions): Promise<Result<null, ZakuError>> {
+    async dispatchNotif(options: DispatchNotificationOptions): Promise<Result<null, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("dispatch_notif", { options }) };
         } catch (e) {
@@ -108,7 +108,7 @@ export const commands = {
     },
     async createCollection(
         createCollectionDto: CreateCollectionDto,
-    ): Promise<Result<CreateNewCollection, ZakuError>> {
+    ): Promise<Result<CreateNewCollection, CmdErr>> {
         try {
             return {
                 status: "ok",
@@ -119,7 +119,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async createReq(createReqDto: CreateRequestDto): Promise<Result<CreateNewRequest, ZakuError>> {
+    async createReq(createReqDto: CreateRequestDto): Promise<Result<CreateNewRequest, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("create_req", { createReqDto }) };
         } catch (e) {
@@ -127,13 +127,36 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async persistToReqbuf(spaceAbspath: string, relpath: string, request: HttpReq): Promise<void> {
-        await TAURI_INVOKE("persist_to_reqbuf", { spaceAbspath, relpath, request });
+    async persistToReqbuf(
+        spaceAbspath: string,
+        relpath: string,
+        request: HttpReq,
+    ): Promise<Result<null, CmdErr>> {
+        try {
+            return {
+                status: "ok",
+                data: await TAURI_INVOKE("persist_to_reqbuf", { spaceAbspath, relpath, request }),
+            };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
     },
-    async writeReqbufToReqtoml(spaceAbspath: string, reqRelpath: string): Promise<void> {
-        await TAURI_INVOKE("write_reqbuf_to_reqtoml", { spaceAbspath, reqRelpath });
+    async writeReqbufToReqtoml(
+        spaceAbspath: string,
+        reqRelpath: string,
+    ): Promise<Result<null, CmdErr>> {
+        try {
+            return {
+                status: "ok",
+                data: await TAURI_INVOKE("write_reqbuf_to_reqtoml", { spaceAbspath, reqRelpath }),
+            };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
     },
-    async httpReq(req: HttpReq): Promise<Result<HttpRes, HttpErr>> {
+    async httpReq(req: HttpReq): Promise<Result<HttpRes, CmdHttpErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("http_req", { req }) };
         } catch (e) {
@@ -141,7 +164,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async moveTreeitem(moveTreeitemDto: MoveTreeItemDto): Promise<Result<null, ZakuError>> {
+    async moveTreeitem(moveTreeitemDto: MoveTreeItemDto): Promise<Result<null, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("move_treeitem", { moveTreeitemDto }) };
         } catch (e) {
@@ -158,6 +181,8 @@ export const commands = {
 /** user-defined types **/
 
 export type AudioNotification = { on_req_finish: boolean };
+export type CmdErr = string;
+export type CmdHttpErr = { message: string; code: number | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
     dir_name: string;
@@ -170,7 +195,6 @@ export type CreateNewRequest = { parent_relpath: string; relpath: string };
 export type CreateRequestDto = { parent_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
-export type HttpErr = { message: string; code: number | null };
 export type HttpReq = {
     meta: ReqMeta;
     config: ReqCfg;
@@ -226,7 +250,6 @@ export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
-export type ZakuError = { error: string; message: string };
 export type ZakuState = { active_space: Space | null; spacerefs: SpaceReference[] };
 
 /** tauri-specta globals **/

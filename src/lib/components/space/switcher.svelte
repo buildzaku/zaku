@@ -60,7 +60,7 @@
                     );
                 }
 
-                await commands.deleteSpace(spaceRefCmdResult.data);
+                await commands.removeSpace(spaceRefCmdResult.data);
                 await zakuState.synchronize();
 
                 return;

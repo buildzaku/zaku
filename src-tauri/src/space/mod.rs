@@ -128,9 +128,8 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
                                     .requests
                                     .push(HttpReq::from_reqtoml(&req_toml, file_name));
                             }
-                            Err(err) => {
-                                eprintln!("{}", err);
-                                eprintln!("Unable to parse the request file")
+                            Err(_) => {
+                                eprintln!("Invalid request TOML: '{}'", entry_abspath.display(),);
                             }
                         }
                     }
