@@ -12,9 +12,9 @@ use std::{
 };
 
 use crate::{
-    utils::{hashed_filename, ZAKU_DATA_DIR},
     space::models::RemoveCookieDto,
     store::models::SpaceCookies,
+    utils::{hashed_filename, ZAKU_DATA_DIR},
 };
 
 type CookiesCache = Mutex<HashMap<String, Arc<CookieStoreMutex>>>;

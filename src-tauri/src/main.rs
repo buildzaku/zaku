@@ -14,15 +14,13 @@ pub mod state;
 pub mod store;
 pub mod utils;
 
-use tauri_specta::Builder;
-
 use crate::state::ZakuState;
 
 fn main() {
     #[cfg(target_os = "linux")]
     platform::linux::initialize();
 
-    let builder = Builder::<tauri::Wry>::new().commands(commands::collect());
+    let builder = tauri_specta::Builder::<tauri::Wry>::new().commands(commands::collect());
 
     if std::env::var("GEN_BINDINGS").is_ok() {
         use specta_typescript::Typescript;
@@ -49,14 +47,6 @@ fn main() {
         .setup(|app| {
             state::initialize(app);
             shortcuts::initialize(app);
-
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::Manager;
-
-                let webview_window = app.get_webview_window("main").unwrap();
-                platform::macos::initialize(&webview_window);
-            }
 
             return Ok(());
         })
