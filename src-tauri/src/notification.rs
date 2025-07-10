@@ -1,8 +1,8 @@
 use rodio::{Decoder, OutputStream, Sink};
-use std::fs::File;
-use std::io::BufReader;
+use std::{fs::File, io::BufReader};
+use tauri::{path::BaseDirectory, AppHandle, Manager};
 
-pub fn play_notif_sound() -> Result<(), std::io::Error> {
+pub fn play_notif_sound(app_handle: &AppHandle) -> Result<(), std::io::Error> {
     let (_stream, stream_handle) = OutputStream::try_default().map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -15,7 +15,16 @@ pub fn play_notif_sound() -> Result<(), std::io::Error> {
             format!("Sink creation error: {}", err),
         )
     })?;
-    let sound_file = File::open("assets/sounds/glass.wav")?;
+    let sound_filepath = app_handle
+        .path()
+        .resolve("assets/sounds/glass.wav", BaseDirectory::Resource)
+        .map_err(|err| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Path resolution error: {}", err),
+            )
+        })?;
+    let sound_file = File::open(sound_filepath)?;
     let source = Decoder::new(BufReader::new(sound_file)).map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::Other,

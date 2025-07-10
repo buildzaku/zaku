@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use tauri::{AppHandle, Manager};
+use tauri::Manager;
 
 use crate::core::cookie::SpaceCookies;
 use crate::core::store;
@@ -28,7 +28,7 @@ use crate::{
 #[tauri::command]
 pub fn create_req(
     create_req_dto: CreateRequestDto,
-    app_handle: AppHandle,
+    app_handle: tauri::AppHandle,
 ) -> Result<CreateNewRequest, ZakuError> {
     if create_req_dto.relpath.is_empty() {
         return Err(ZakuError {
@@ -137,7 +137,7 @@ pub fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
+pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> Result<HttpRes, HttpErr> {
     let active_space = store::get_active_spaceref().ok_or(HttpErr {
         message: "no active space".into(),
         code: None,
@@ -192,8 +192,9 @@ pub async fn http_req(req: HttpReq) -> Result<HttpRes, HttpErr> {
         code: None,
     })?;
     if space_settings.notifications.audio.on_req_finish {
-        tokio::spawn(async {
-            let _ = notification::play_notif_sound(); // TODO - handle failures, send toast to UI?
+        let app_handle = app_handle.clone();
+        tokio::spawn(async move {
+            let _ = notification::play_notif_sound(&app_handle); // TODO - handle failures, send toast to UI?
         });
     }
 
