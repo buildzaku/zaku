@@ -1,5 +1,17 @@
 # zaku
 
+## 0.7.0
+
+### Minor Changes
+
+- Add space-level setting to play sound when request finishes - [`42b53ca`](https://github.com/buildzaku/zaku/commit/42b53ca840f1eb7561f4fda6eecc94120ae5fd3e) [#40](https://github.com/buildzaku/zaku/pull/40)
+
+### Patch Changes
+
+- Fix broken notification sound due to missing asset files in production build - [`414f878`](https://github.com/buildzaku/zaku/commit/414f8789054bb5a27a90f4b43755ad5bcf8051ab) [#42](https://github.com/buildzaku/zaku/pull/42)
+
+- Use `trafficLightPosition` tauri config to position macOS traffic lights - [`8c13416`](https://github.com/buildzaku/zaku/commit/8c13416241b7cc2820fb7a399aa8284822793334) [#43](https://github.com/buildzaku/zaku/pull/43)
+
 ## 0.6.0
 
 ### Minor Changes
