@@ -37,8 +37,3 @@ url = { version = "2.5.4" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 wgpu = { version = "25.0.0", default-features = false }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-cocoa = { version = "0.26.0" }
-objc = { version = "0.2.7" }
-rand = { version = "0.9.1" }
