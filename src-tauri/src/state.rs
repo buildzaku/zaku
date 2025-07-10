@@ -1,9 +1,22 @@
+use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{App, Manager};
 
-use super::{space, store};
-use crate::models::zaku::ZakuState;
+use crate::{
+    space::{
+        self,
+        models::{Space, SpaceReference},
+    },
+    store,
+};
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct ZakuState {
+    pub active_space: Option<Space>,
+    pub spacerefs: Vec<SpaceReference>,
+}
 
 pub fn initialize(app: &mut App) {
     let active_spaceref = store::get_active_spaceref().or_else(|| space::first_valid_spaceref());

@@ -1,43 +1,12 @@
-use serde::{Deserialize, Serialize};
-use specta::Type;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::core::{
-    store::spaces::SPACES_STORE_DIR,
+use crate::{
     utils::{hashed_filename, ZAKU_DATA_DIR},
+    store::models::SpaceSettings,
 };
 
 const SETTINGS_FILENAME: &str = "settings.json";
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type)]
-pub enum Theme {
-    System,
-    Light,
-    Dark,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Theme::System
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct AudioNotification {
-    pub on_req_finish: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct NotificationSettings {
-    pub audio: AudioNotification,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct SpaceSettings {
-    pub theme: Theme,
-    pub notifications: NotificationSettings,
-}
 
 impl SpaceSettings {
     pub fn load(space_abspath: &str) -> SpaceSettings {
@@ -84,7 +53,7 @@ impl SpaceSettings {
         let hsh = hashed_filename(space_abspath);
 
         return ZAKU_DATA_DIR
-            .join(SPACES_STORE_DIR)
+            .join(super::SPACES_STORE_DIR)
             .join(hsh)
             .join(SETTINGS_FILENAME);
     }

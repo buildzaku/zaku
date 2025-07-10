@@ -4,8 +4,9 @@ use std::io::{Error, ErrorKind, Write};
 use std::path::Path;
 use toml;
 
-use crate::core::utils;
-use crate::models::collection::CreateCollectionDto;
+pub mod models;
+
+use crate::{collection::models::CreateCollectionDto, utils};
 
 pub fn displayname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>, Error> {
     let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name");

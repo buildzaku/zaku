@@ -1,10 +1,12 @@
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use url::Url;
 
 use crate::{
-    core::utils::from_indexmap,
-    models::{buffer::ReqBuf, space::SpaceCookie, toml::ReqToml},
+    space::models::SpaceCookie,
+    store::models::ReqBuf,
+    utils::{from_indexmap, to_indexmap},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -45,6 +47,47 @@ pub struct ReqCfg {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReqTomlMeta {
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReqTomlConfig {
+    pub method: String,
+    pub url: Option<String>,
+    pub headers: Option<IndexMap<String, String>>,
+    pub parameters: Option<IndexMap<String, String>>,
+    pub content_type: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ReqToml {
+    pub meta: ReqTomlMeta,
+    pub config: ReqTomlConfig,
+}
+
+impl ReqToml {
+    pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
+        let meta = ReqTomlMeta {
+            name: req_buf.meta.display_name.clone(),
+        };
+
+        let cfg = &req_buf.config;
+        let config = ReqTomlConfig {
+            method: cfg.method.clone(),
+            url: cfg.url.raw.clone(),
+            headers: to_indexmap(&cfg.headers),
+            parameters: to_indexmap(&cfg.parameters),
+            content_type: cfg.content_type.clone(),
+            body: cfg.body.clone(),
+        };
+
+        Self { meta, config }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]

@@ -4,20 +4,21 @@ use std::io::Error;
 use std::path::{Path, PathBuf};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::core::request;
-use crate::core::utils::{hashed_filename, ZAKU_DATA_DIR};
-use crate::models::buffer::{ReqBuf, SpaceBuf};
-use crate::models::request::HttpReq;
-use crate::models::toml::ReqToml;
+use crate::{
+    request,
+    request::models::{HttpReq, ReqToml},
+    store::models::{ReqBuf, SpaceBuf},
+    utils::{hashed_filename, ZAKU_DATA_DIR},
+};
 
-const SPACE_BUFFER_DIR: &str = "spaces";
+const SETTINGS_FILENAME: &str = "buffer.json";
 
 impl SpaceBuf {
     pub fn load(space_abspath: &Path) -> RwLock<Self> {
         let spacebuf_file = ZAKU_DATA_DIR
-            .join(SPACE_BUFFER_DIR)
+            .join(super::SPACES_STORE_DIR)
             .join(&hashed_filename(&space_abspath.to_string_lossy()))
-            .join("buffer.json");
+            .join(SETTINGS_FILENAME);
 
         if spacebuf_file.exists() {
             let content =
@@ -46,9 +47,9 @@ impl SpaceBuf {
 
     pub fn persist(&self) {
         let buf_filepath = ZAKU_DATA_DIR
-            .join(SPACE_BUFFER_DIR)
+            .join(super::SPACES_STORE_DIR)
             .join(&hashed_filename(&self.abspath))
-            .join("buffer.json");
+            .join(SETTINGS_FILENAME);
 
         if let Some(parent) = buf_filepath.parent() {
             fs::create_dir_all(parent).expect("Failed to create parent directories");
