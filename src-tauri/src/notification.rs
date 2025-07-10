@@ -15,8 +15,7 @@ pub fn play_notif_sound(app_handle: &AppHandle) -> Result<(), std::io::Error> {
             format!("Sink creation error: {}", err),
         )
     })?;
-
-    let sound_path = app_handle
+    let sound_filepath = app_handle
         .path()
         .resolve("assets/sounds/glass.wav", BaseDirectory::Resource)
         .map_err(|err| {
@@ -25,7 +24,7 @@ pub fn play_notif_sound(app_handle: &AppHandle) -> Result<(), std::io::Error> {
                 format!("Path resolution error: {}", err),
             )
         })?;
-    let sound_file = File::open(sound_path)?;
+    let sound_file = File::open(sound_filepath)?;
     let source = Decoder::new(BufReader::new(sound_file)).map_err(|err| {
         std::io::Error::new(
             std::io::ErrorKind::Other,
