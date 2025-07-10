@@ -73,12 +73,12 @@ pub fn shortcut_combination(
         && modifiers.contains(Modifiers::ALT)
         && code == Code::KeyI
     {
-        return Some(ShortcutCombination::CommandOptionI);
+        Some(ShortcutCombination::CommandOptionI)
     } else if modifiers.contains(Modifiers::CONTROL)
         && modifiers.contains(Modifiers::SHIFT)
         && code == Code::KeyI
     {
-        return Some(ShortcutCombination::ControlShiftI);
+        Some(ShortcutCombination::ControlShiftI)
     } else {
         return None;
     }

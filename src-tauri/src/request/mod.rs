@@ -9,7 +9,7 @@ use crate::request::models::{ReqToml, ReqTomlConfig, ReqTomlMeta};
 pub mod models;
 
 pub fn create_reqtoml(abspath: &Path, display_name: &str) -> Result<()> {
-    let mut reqtoml_file = File::create_new(&abspath.with_extension("toml"))?;
+    let mut reqtoml_file = File::create_new(abspath.with_extension("toml"))?;
 
     let req_toml = ReqToml {
         meta: ReqTomlMeta {
@@ -47,5 +47,5 @@ pub fn persist_reqtoml(req_abspath: &Path, req_toml: &ReqToml) -> Result<()> {
     let toml_str = toml::to_string_pretty(&req_toml)?;
     fs::write(req_abspath, toml_str)?;
 
-    return Ok(());
+    Ok(())
 }

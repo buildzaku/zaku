@@ -35,5 +35,5 @@ pub fn play_finish(app_handle: &AppHandle) -> Result<(), std::io::Error> {
     sink.append(source);
     sink.sleep_until_end();
 
-    return Ok(());
+    Ok(())
 }

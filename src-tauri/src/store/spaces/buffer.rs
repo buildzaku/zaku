@@ -95,5 +95,5 @@ pub fn write_reqbuf_to_reqtoml(space_abspath: &Path, req_relpath: &Path) -> Resu
         .remove(&req_relpath.to_string_lossy().to_string());
     spacebuf_wlock.persist();
 
-    return Ok(());
+    Ok(())
 }

@@ -51,16 +51,16 @@ pub fn to_indexmap(fields: &[(bool, String, String)]) -> Option<IndexMap<String,
 }
 
 pub fn join_str_paths(paths: Vec<&str>) -> String {
-    return paths
+    paths
         .into_iter()
         .filter(|path| !path.is_empty())
         .collect::<Vec<&str>>()
-        .join("/");
+        .join("/")
 }
 
 pub fn hashed_filename(abspath: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(abspath.as_bytes());
 
-    return format!("{:x}", hasher.finalize());
+    format!("{:x}", hasher.finalize())
 }

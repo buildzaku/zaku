@@ -178,27 +178,20 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
 
             let sub_collections_iter = sub_collection_ref_cell.collections.clone().into_iter();
             stack.push((sub_collection, sub_collections_iter));
+        } else if let Some((mut parent_collection, parent_sub_collections_iter)) = stack.pop() {
+            parent_collection.collections.push(cur_collection);
+            stack.push((parent_collection, parent_sub_collections_iter));
         } else {
-            if let Some((mut parent_collection, parent_sub_collections_iter)) = stack.pop() {
-                parent_collection.collections.push(cur_collection);
-
-                stack.push((parent_collection, parent_sub_collections_iter));
-            } else {
-                root_collection = Some(cur_collection);
-            }
+            root_collection = Some(cur_collection);
         }
     }
 
     match root_collection {
-        Some(collection) => {
-            return Ok(collection);
-        }
-        None => {
-            return Err(Error::new(
-                ErrorKind::NotFound,
-                "Failed to build collection, stack is empty no collection to return",
-            ));
-        }
+        Some(collection) => Ok(collection),
+        None => Err(Error::new(
+            ErrorKind::NotFound,
+            "Failed to build collection, stack is empty no collection to return",
+        )),
     }
 }
 
@@ -222,13 +215,13 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space, Error> {
                     );
                 let settings = SpaceSettings::load(space_abspath.to_string_lossy().as_ref());
 
-                return Ok(Space {
+                Ok(Space {
                     abspath: space_abspath.to_string_lossy().into_owned(),
                     meta: space_config_file.meta,
                     root: root_collection,
                     cookies: cookies_by_domain,
                     settings,
-                });
+                })
             }
             Err(err) => {
                 eprintln!("{}", err);

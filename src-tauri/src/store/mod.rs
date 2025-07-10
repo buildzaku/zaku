@@ -20,9 +20,9 @@ static ZAKU_STORE: Lazy<RwLock<ZakuStore>> = Lazy::new(|| {
         let content = fs::read_to_string(&*STORE_ABSPATH).expect("Failed to read from store");
         let store: ZakuStore = serde_json::from_str(&content).expect("Failed to deserialize data");
 
-        return RwLock::new(store);
+        RwLock::new(store)
     } else {
-        return RwLock::new(ZakuStore::default());
+        RwLock::new(ZakuStore::default())
     }
 });
 
@@ -51,7 +51,7 @@ impl ZakuStore {
 pub fn get_active_spaceref() -> Option<SpaceReference> {
     let zaku_store = ZakuStore::acq_rlock();
 
-    return zaku_store.active_spaceref.clone();
+    zaku_store.active_spaceref.clone()
 }
 
 pub fn set_active_spaceref(space_reference: SpaceReference) {
@@ -64,7 +64,7 @@ pub fn set_active_spaceref(space_reference: SpaceReference) {
 pub fn get_spacerefs() -> Vec<SpaceReference> {
     let zaku_store = ZakuStore::acq_rlock();
 
-    return zaku_store.spacerefs.clone();
+    zaku_store.spacerefs.clone()
 }
 
 pub fn set_spacerefs(spacerefs: Vec<SpaceReference>) {

@@ -135,7 +135,7 @@ pub async fn create_collection(
     fs::create_dir(&dir_abspath)
         .map_err(|err| CmdErr(format!("Failed to create collection: {}", err)))?;
 
-    collection::save_displayname_if_missing(&active_space_abspath, &dir_relpath, &dir_display_name)
+    collection::save_displayname_if_missing(&active_space_abspath, &dir_relpath, dir_display_name)
         .unwrap_or_else(|err| {
             eprintln!("Failed to save display name {}", err);
         });
@@ -145,17 +145,14 @@ pub async fn create_collection(
         relpath: dir_relpath,
     };
 
-    match space::parse_space(&active_space_abspath) {
-        Ok(active_space) => zaku_state.active_space = Some(active_space),
-        Err(err) => {
-            return Err(CmdErr(format!(
-                "Failed to parse space after creating the collection: {}",
-                err
-            )))
-        }
-    }
+    zaku_state.active_space = Some(space::parse_space(&active_space_abspath).map_err(|err| {
+        CmdErr(format!(
+            "Failed to parse space after creating the collection: {}",
+            err
+        ))
+    })?);
 
-    return Ok(create_new_collection);
+    Ok(create_new_collection)
 }
 
 #[specta::specta]
@@ -215,7 +212,7 @@ pub fn move_treeitem(
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 #[specta::specta]
@@ -226,7 +223,7 @@ pub fn is_notif_enabled(app_handle: tauri::AppHandle) -> CmdResult<bool> {
         .permission_state()
         .map_err(|err| CmdErr(format!("Failed to get current permissions state: {}", err)))?;
 
-    return Ok(permission_state == PermissionState::Granted);
+    Ok(permission_state == PermissionState::Granted)
 }
 
 #[specta::specta]
@@ -237,7 +234,7 @@ pub fn request_notif_access(app_handle: tauri::AppHandle) -> CmdResult<bool> {
         .request_permission()
         .map_err(|err| CmdErr(format!("Failed to request for permissions: {}", err)))?;
 
-    return Ok(permission_state == PermissionState::Granted);
+    Ok(permission_state == PermissionState::Granted)
 }
 
 #[specta::specta]
@@ -254,7 +251,7 @@ pub fn dispatch_notif(
         .show()
         .map_err(|err| CmdErr(format!("Failed to dispatch notification: {}", err)))?;
 
-    return Ok(());
+    Ok(())
 }
 
 #[specta::specta]
@@ -328,7 +325,7 @@ pub async fn create_req(
         format!("{}.toml", file_sanitized_name).as_str(),
     ]);
 
-    request::create_reqtoml(&file_abspath, &file_display_name)
+    request::create_reqtoml(&file_abspath, file_display_name)
         .map_err(|err| CmdErr(format!("Failed to create request file: {}", err)))?;
 
     let create_new_result = CreateNewRequest {
@@ -346,7 +343,7 @@ pub async fn create_req(
         }
     }
 
-    return Ok(create_new_result);
+    Ok(create_new_result)
 }
 
 #[specta::specta]
@@ -461,14 +458,14 @@ pub async fn http_req(
     let size_bytes = Some(data.len() as u32);
     SpaceCookies::persist(space_abspath);
 
-    return Ok(HttpRes {
+    Ok(HttpRes {
         status: Some(status),
         data,
         headers,
         cookies,
         size_bytes,
         elapsed_ms: Some(elapsed_ms),
-    });
+    })
 }
 
 #[specta::specta]
@@ -511,7 +508,7 @@ pub async fn create_space(
     fs::create_dir(&space_config_dir).expect("Failed to create `.zaku` directory");
 
     let mut space_config_file =
-        File::create(&space_config_dir.join("config").with_extension("toml"))
+        File::create(space_config_dir.join("config").with_extension("toml"))
             .expect("Failed to create `config.toml`");
 
     let space_config = SpaceConfigFile {
@@ -547,7 +544,7 @@ pub async fn create_space(
         }
     }
 
-    return Ok(spaceref);
+    Ok(spaceref)
 }
 
 #[specta::specta]
@@ -574,7 +571,7 @@ pub fn set_active_space(
             zaku_state.active_space = Some(space);
             zaku_state.spacerefs = store::get_spacerefs();
 
-            return Ok(());
+            Ok(())
         }
         Err(err) => Err(CmdErr(format!("Unable to parse space: {}", err))),
     }
@@ -582,33 +579,32 @@ pub fn set_active_space(
 
 #[specta::specta]
 #[tauri::command]
-pub fn remove_space(space_reference: SpaceReference, state: tauri::State<Mutex<ZakuState>>) -> () {
+pub fn remove_space(
+    space_reference: SpaceReference,
+    state: tauri::State<Mutex<ZakuState>>,
+) -> CmdResult<()> {
     let mut zaku_state = state.lock().unwrap();
     store::remove_spaceref(space_reference);
 
     let active_space = store::get_active_spaceref();
 
-    if let None = active_space {
+    if active_space.is_none() {
         zaku_state.active_space = None;
 
-        match space::first_valid_spaceref() {
-            Some(valid_space_reference) => {
-                store::set_active_spaceref(valid_space_reference.clone());
+        if let Some(valid_space_reference) = space::first_valid_spaceref() {
+            store::set_active_spaceref(valid_space_reference.clone());
 
-                match space::parse_space(&PathBuf::from(valid_space_reference.clone().path)) {
-                    Ok(active_space) => {
-                        zaku_state.active_space = Some(active_space);
-                    }
-                    Err(_) => {}
-                }
+            if let Ok(active_space) =
+                space::parse_space(&PathBuf::from(&valid_space_reference.path))
+            {
+                zaku_state.active_space = Some(active_space);
             }
-            None => {}
         }
     }
 
     zaku_state.spacerefs = store::get_spacerefs();
 
-    return ();
+    Ok(())
 }
 
 #[specta::specta]
@@ -623,11 +619,9 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
                 name: space_config_file.meta.name,
             };
 
-            return Ok(space_reference);
+            Ok(space_reference)
         }
-        Err(err) => {
-            return Err(CmdErr(format!("Unable to parse space: {}", err)));
-        }
+        Err(err) => Err(CmdErr(format!("Unable to parse space: {}", err))),
     }
 }
 
@@ -654,13 +648,13 @@ pub async fn get_space_cookies(
         },
     );
 
-    return Ok(cookies_by_domain);
+    Ok(cookies_by_domain)
 }
 
 #[specta::specta]
 #[tauri::command]
-pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> bool {
-    return SpaceCookies::remove(space_abspath, rm_cookie_dto).is_some();
+pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> CmdResult<bool> {
+    Ok(SpaceCookies::remove(space_abspath, rm_cookie_dto).is_some())
 }
 
 #[specta::specta]
@@ -669,7 +663,7 @@ pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -
     SpaceSettings::persist(space_abspath, &settings)
         .map_err(|err| CmdErr(format!("Failed to persist space settings: {}", err)))?;
 
-    return Ok(());
+    Ok(())
 }
 
 #[specta::specta]
@@ -683,6 +677,8 @@ pub fn get_zaku_state(state: tauri::State<Mutex<ZakuState>>) -> CmdResult<ZakuSt
 
 #[specta::specta]
 #[tauri::command]
-pub fn show_main_window(window: tauri::Window) {
+pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
     window.get_webview_window("main").unwrap().show().unwrap();
+
+    Ok(())
 }

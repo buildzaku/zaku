@@ -48,7 +48,7 @@ fn main() {
             state::initialize(app);
             shortcuts::initialize(app);
 
-            return Ok(());
+            Ok(())
         })
         .invoke_handler(builder.invoke_handler());
 
