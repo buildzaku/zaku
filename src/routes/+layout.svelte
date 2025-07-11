@@ -9,7 +9,7 @@
     import "../app.css";
     import { Toaster } from "$lib/components/primitives/sonner";
     import { TitleBar } from "$lib/components/title-bar";
-    import { zakuState } from "$lib/state.svelte";
+    import { sharedState } from "$lib/state.svelte";
     import { commands } from "$lib/bindings";
 
     let { children }: { children: Snippet } = $props();
@@ -22,9 +22,9 @@
         if (!dev) {
             document.addEventListener("contextmenu", disableContextMenu);
         }
-        await zakuState.synchronize();
+        await sharedState.synchronize();
 
-        if (zakuState.activeSpace !== null) {
+        if (sharedState.activeSpace !== null) {
             await goto("/space");
         } else if (page.url.pathname !== "/") {
             await goto("/");
@@ -34,7 +34,7 @@
     });
 
     $effect(() => {
-        if (zakuState.activeSpace === null) {
+        if (sharedState.activeSpace === null) {
             goto("/");
         }
     });

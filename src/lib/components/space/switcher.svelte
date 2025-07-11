@@ -2,7 +2,7 @@
     import { goto } from "$app/navigation";
     import { ChevronDownIcon, CheckIcon, PyramidIcon } from "@lucide/svelte";
 
-    import { treeActionsState, treeItemsState, zakuState } from "$lib/state.svelte";
+    import { treeActionsState, treeItemsState, sharedState } from "$lib/state.svelte";
     import { buttonVariants } from "$lib/components/primitives/button";
     import {
         DropdownMenu,
@@ -39,7 +39,7 @@
                 throw new Error(`Cannot get space reference for ${cmdResult.data}`);
             }
 
-            await zakuState.setActiveSpace(spaceRefCmdResult.data);
+            await sharedState.setActiveSpace(spaceRefCmdResult.data);
             await goto("/space");
         } catch (err) {
             console.error(err);
@@ -51,17 +51,19 @@
     }
 
     async function handleDeleteSpace() {
-        if (zakuState.activeSpace) {
+        if (sharedState.activeSpace) {
             try {
-                const spaceRefCmdResult = await commands.getSpaceref(zakuState.activeSpace.abspath);
+                const spaceRefCmdResult = await commands.getSpaceref(
+                    sharedState.activeSpace.abspath,
+                );
                 if (spaceRefCmdResult.status === "error") {
                     throw new Error(
-                        `Cannot get space reference for ${zakuState.activeSpace.abspath}`,
+                        `Cannot get space reference for ${sharedState.activeSpace.abspath}`,
                     );
                 }
 
-                await commands.deleteSpace(spaceRefCmdResult.data);
-                await zakuState.synchronize();
+                await commands.removeSpace(spaceRefCmdResult.data);
+                await sharedState.synchronize();
 
                 return;
             } catch (err) {
@@ -71,7 +73,7 @@
     }
 </script>
 
-{#if zakuState.activeSpace}
+{#if sharedState.activeSpace}
     <DropdownMenu>
         <DropdownMenuTrigger
             class={cn(
@@ -86,7 +88,7 @@
             <PyramidIcon size={14} class="max-h-[14px] max-w-[14px]" />
             {#if !isSidebarCollapsed}
                 <div class="flex grow items-center justify-between overflow-hidden">
-                    <span class="truncate pr-0.5">{zakuState.activeSpace.meta.name}</span>
+                    <span class="truncate pr-0.5">{sharedState.activeSpace.meta.name}</span>
                     <ChevronDownIcon size={14} class="max-h-[14px] max-w-[14px]" />
                 </div>
             {/if}
@@ -101,11 +103,11 @@
                     <p>Switch Space</p>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent class="w-[185px]" sideOffset={4}>
-                    {#each zakuState.spaceRefs as spaceRef (spaceRef.path)}
+                    {#each sharedState.spaceRefs as spaceRef (spaceRef.path)}
                         <DropdownMenuItem
                             class="text-small flex h-7 justify-between rounded-md px-2"
                             onclick={async () => {
-                                await zakuState.setActiveSpace(spaceRef);
+                                await sharedState.setActiveSpace(spaceRef);
                                 treeActionsState.reset();
                                 treeItemsState.reset();
                             }}
@@ -113,7 +115,7 @@
                             <div class="flex items-center overflow-hidden">
                                 <span class="truncate">{spaceRef.name}</span>
                             </div>
-                            {#if spaceRef.path === zakuState.activeSpace.abspath}
+                            {#if spaceRef.path === sharedState.activeSpace.abspath}
                                 <CheckIcon size={14} class="max-h-[14px] max-w-[14px]" />
                             {/if}
                         </DropdownMenuItem>

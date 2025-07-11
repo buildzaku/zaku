@@ -2,13 +2,13 @@ import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { TreeItemPreview } from "$lib/components/tree-item";
-import { zakuState, treeActionsState, treeItemsState } from "$lib/state.svelte";
+import { sharedState, treeActionsState, treeItemsState } from "$lib/state.svelte";
 import { TreeItemType } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto, TreeItem } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-import { commands, type Collection, type MoveTreeItemDto } from "$lib/bindings";
-import { Err, Ok } from "$lib/utils";
-import type { Result } from "$lib/utils";
+import { err, ok } from "$lib/utils";
+import { commands } from "$lib/bindings";
+import type { Result, MoveTreeItemDto, Collection } from "$lib/bindings";
 
 export function isCollection(treeItem: TreeItem): treeItem is Collection {
     return Object.hasOwn(treeItem.meta, "dir_name");
@@ -106,7 +106,7 @@ export async function handleDrop(event: DragEvent) {
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    if (zakuState.activeSpace === null) {
+    if (sharedState.activeSpace === null) {
         console.warn("Active space not found");
         return;
     }
@@ -119,14 +119,14 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const mutRootCollection = zakuState.activeSpace.root;
+    const mutRootCollection = sharedState.activeSpace.root;
     const addTreeItemToCollectionResult = addTreeItemToCollection({
         parentRelativePath: treeActionsState.dragPayload.parentRelativePath,
         treeItem: treeActionsState.dragPayload.treeItem,
         targetPath: treeActionsState.dropTargetPath,
         mutRootCollection,
     });
-    if (!addTreeItemToCollectionResult.ok) {
+    if (addTreeItemToCollectionResult.status === "error") {
         console.error("Cannot add tree item to the collection");
         return;
     }
@@ -145,7 +145,7 @@ export async function handleDrop(event: DragEvent) {
         removeTreeItemDto,
         mutRootCollection,
     });
-    if (!removeTreeItemFromCollectionResult.ok) {
+    if (removeTreeItemFromCollectionResult.status === "error") {
         console.error("Unable to remove tree item from the collection");
         return;
     }
@@ -219,10 +219,10 @@ export function addTreeItemToCollection({
     treeItem,
     targetPath,
     mutRootCollection,
-}: AddTreeItemToCollectionParams): Result<void> {
+}: AddTreeItemToCollectionParams): Result<void, void> {
     if (targetPath === parentRelativePath) {
         console.warn(`Abort dropping to the same parent \`${parentRelativePath}\``);
-        return Err();
+        return err();
     }
 
     let current: Collection = mutRootCollection;
@@ -234,7 +234,7 @@ export function addTreeItemToCollection({
         );
         if (!nextCollection) {
             console.warn(`Target collection \`${segment}\` not found in \`${traversedPath}\``);
-            return Err();
+            return err();
         }
 
         current = nextCollection;
@@ -254,12 +254,12 @@ export function addTreeItemToCollection({
             console.warn(
                 `Abort moving collection to itself or it's own child collection \`${targetPath}\``,
             );
-            return Err();
+            return err();
         }
     } else {
         if (parentRelativePath === traversedPath) {
             console.warn(`Abort moving request into the same collection \`${targetPath}\``);
-            return Err();
+            return err();
         }
     }
 
@@ -272,14 +272,14 @@ export function addTreeItemToCollection({
                 `Collection with directory name ${treeItem.meta.dir_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
-            return Err();
+            return err();
         }
         current.collections.push(treeItem);
         current.collections.sort((a, b) =>
             a.meta.dir_name.toLocaleLowerCase().localeCompare(b.meta.dir_name),
         );
 
-        return Ok();
+        return ok();
     } else {
         const reqFileNameAlreadyExists = current.requests.some(
             request => request.meta.file_name === treeItem.meta.file_name,
@@ -289,12 +289,12 @@ export function addTreeItemToCollection({
                 `Request with file name ${treeItem.meta.file_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
-            return Err();
+            return err();
         }
         current.requests.push(treeItem);
         current.requests.sort((a, b) => a.meta.file_name.localeCompare(b.meta.file_name));
 
-        return Ok();
+        return ok();
     }
 }
 
@@ -308,7 +308,7 @@ export function removeTreeItemFromCollection({
     parentRelativePath,
     removeTreeItemDto,
     mutRootCollection,
-}: RemoveTreeItemFromCollectionParams): Result<void> {
+}: RemoveTreeItemFromCollectionParams): Result<void, void> {
     const segments = pathSegments(parentRelativePath);
     let current: Collection = mutRootCollection;
 
@@ -319,7 +319,7 @@ export function removeTreeItemFromCollection({
         if (!nextCollection) {
             console.warn(`Collection not found for segment: ${segment}`);
 
-            return Err();
+            return err();
         }
 
         current = nextCollection;
@@ -330,12 +330,12 @@ export function removeTreeItemFromCollection({
             collection => collection.meta.dir_name !== removeTreeItemDto.dir_name,
         );
 
-        return Ok();
+        return ok();
     } else {
         current.requests = current.requests.filter(
             request => request.meta.file_name !== removeTreeItemDto.file_name,
         );
 
-        return Ok();
+        return ok();
     }
 }
