@@ -33,21 +33,21 @@ export type ZakuReqCfg = {
     };
 };
 
-class ZakuState {
+class SharedState {
     public activeSpace: Space | null = $state(null);
     public spaceRefs: SpaceReference[] = $state([]);
 
     public async synchronize() {
-        const getZakuStateResult = await commands.getZakuState();
+        const getSharedStateResult = await commands.getSharedState();
 
-        if (getZakuStateResult.status === "ok") {
-            this.activeSpace = getZakuStateResult.data.active_space;
-            this.spaceRefs = getZakuStateResult.data.spacerefs;
+        if (getSharedStateResult.status === "ok") {
+            this.activeSpace = getSharedStateResult.data.active_space;
+            this.spaceRefs = getSharedStateResult.data.spacerefs;
 
             treeActionsState.reset();
             await tick();
         } else {
-            console.error(getZakuStateResult.error);
+            console.error(getSharedStateResult.error);
             toast("Something went wrong while synchronizing state");
         }
     }
@@ -66,7 +66,7 @@ class ZakuState {
     }
 }
 
-export const zakuState = new ZakuState();
+export const sharedState = new SharedState();
 
 class TreeActionsState {
     public dragPayload: DragPayload | null = $state(null);

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { zakuState, treeActionsState } from "$lib/state.svelte";
+    import { sharedState, treeActionsState } from "$lib/state.svelte";
     import { Button } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon, XIcon } from "@lucide/svelte";
     import type { PaneAPI } from "paneforge";
@@ -46,7 +46,7 @@
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
     let spaceSettingsStr: string = $state(
-        zakuState.activeSpace ? JSON.stringify(zakuState.activeSpace.settings) : String(),
+        sharedState.activeSpace ? JSON.stringify(sharedState.activeSpace.settings) : String(),
     );
 
     let shouldRenderCreateNewRequestInput = $derived(
@@ -122,8 +122,8 @@
     </div>
 {/snippet}
 
-{#if zakuState.activeSpace}
-    {@const spaceRef = zakuState.activeSpace}
+{#if sharedState.activeSpace}
+    {@const spaceRef = sharedState.activeSpace}
     <div class="flex size-full flex-col justify-between">
         <div class="flex w-full items-center justify-center border-b p-1.5 pt-0">
             <div class={cn("flex w-full items-center justify-between gap-1.5")}>

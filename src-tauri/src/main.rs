@@ -14,7 +14,7 @@ pub mod state;
 pub mod store;
 pub mod utils;
 
-use crate::state::ZakuState;
+use crate::state::SharedState;
 
 const BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
 
@@ -38,7 +38,7 @@ fn main() {
     }
 
     let app = tauri::Builder::default()
-        .manage(Mutex::new(ZakuState {
+        .manage(Mutex::new(SharedState {
             active_space: None,
             spacerefs: Vec::new(),
         }))

@@ -2,7 +2,7 @@ import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { TreeItemPreview } from "$lib/components/tree-item";
-import { zakuState, treeActionsState, treeItemsState } from "$lib/state.svelte";
+import { sharedState, treeActionsState, treeItemsState } from "$lib/state.svelte";
 import { TreeItemType } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto, TreeItem } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
@@ -106,7 +106,7 @@ export async function handleDrop(event: DragEvent) {
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    if (zakuState.activeSpace === null) {
+    if (sharedState.activeSpace === null) {
         console.warn("Active space not found");
         return;
     }
@@ -119,7 +119,7 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const mutRootCollection = zakuState.activeSpace.root;
+    const mutRootCollection = sharedState.activeSpace.root;
     const addTreeItemToCollectionResult = addTreeItemToCollection({
         parentRelativePath: treeActionsState.dragPayload.parentRelativePath,
         treeItem: treeActionsState.dragPayload.treeItem,

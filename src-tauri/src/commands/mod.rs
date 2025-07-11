@@ -30,7 +30,7 @@ use crate::{
             SpaceReference,
         },
     },
-    state::ZakuState,
+    state::SharedState,
     store::{
         self,
         models::{SpaceCookies, SpaceSettings},
@@ -43,7 +43,7 @@ pub mod models;
 
 pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
     tauri_specta::collect_commands![
-        get_zaku_state,
+        get_sharedstate,
         create_space,
         set_active_space,
         remove_space,
@@ -77,9 +77,9 @@ pub async fn create_collection(
         });
     };
 
-    let state = app_handle.state::<Mutex<ZakuState>>();
-    let mut zaku_state = state.lock().unwrap();
-    let active_space = zaku_state
+    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
+    let mut sharedstate = sharedstate_mtx.lock().unwrap();
+    let active_space = sharedstate
         .active_space
         .clone()
         .expect("Active space not found");
@@ -149,7 +149,7 @@ pub async fn create_collection(
         relpath: dir_relpath,
     };
 
-    zaku_state.active_space =
+    sharedstate.active_space =
         Some(
             space::parse_space(&active_space_abspath).map_err(|err| CmdErr::Err {
                 message: format!(
@@ -193,9 +193,9 @@ pub fn move_treeitem(
     move_treeitem_dto: MoveTreeItemDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<()> {
-    let state = app_handle.state::<Mutex<ZakuState>>();
-    let mut zaku_state = state.lock().unwrap();
-    let active_space = zaku_state
+    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
+    let mut sharedstate = sharedstate_mtx.lock().unwrap();
+    let active_space = sharedstate
         .active_space
         .clone()
         .expect("Active space not found");
@@ -210,7 +210,7 @@ pub fn move_treeitem(
     fs::rename(src_abspath, dest_abspath).expect("Unable to move tree item");
 
     match space::parse_space(&active_space_abspath) {
-        Ok(active_space) => zaku_state.active_space = Some(active_space),
+        Ok(active_space) => sharedstate.active_space = Some(active_space),
         Err(err) => {
             return Err(CmdErr::Err {
                 message: format!("Failed to parse space after moving the tree item: {}", err),
@@ -278,9 +278,9 @@ pub async fn create_req(
         });
     }
 
-    let state = app_handle.state::<Mutex<ZakuState>>();
-    let mut zaku_state = state.lock().unwrap();
-    let active_space = zaku_state
+    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
+    let mut sharedstate = sharedstate_mtx.lock().unwrap();
+    let active_space = sharedstate
         .active_space
         .clone()
         .expect("Active space not found");
@@ -346,7 +346,7 @@ pub async fn create_req(
     };
 
     match space::parse_space(&active_space_abspath) {
-        Ok(active_space) => zaku_state.active_space = Some(active_space),
+        Ok(active_space) => sharedstate.active_space = Some(active_space),
         Err(err) => {
             return Err(CmdErr::Err {
                 message: format!("Failed to parse space after creating the request: {}", err),
@@ -484,7 +484,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
 #[tauri::command]
 pub async fn create_space(
     create_space_dto: CreateSpaceDto,
-    state: tauri::State<'_, Mutex<ZakuState>>,
+    sharedstate_mtx: tauri::State<'_, Mutex<SharedState>>,
 ) -> CmdResult<SpaceReference> {
     let location = PathBuf::from(create_space_dto.location.as_str());
     if !location.exists() {
@@ -495,7 +495,7 @@ pub async fn create_space(
 
     let space_abspath = location.join(create_space_dto.name.clone());
     let mut spacerefs = store::get_spacerefs();
-    let mut zaku_state = state.lock().unwrap();
+    let mut sharedstate = sharedstate_mtx.lock().unwrap();
 
     if spacerefs
         .iter()
@@ -555,8 +555,8 @@ pub async fn create_space(
 
     match space::parse_space(&PathBuf::from(spaceref.clone().path)) {
         Ok(active_space) => {
-            zaku_state.active_space = Some(active_space);
-            zaku_state.spacerefs = spacerefs;
+            sharedstate.active_space = Some(active_space);
+            sharedstate.spacerefs = spacerefs;
         }
         Err(_) => {
             // TODO - handle
@@ -570,9 +570,9 @@ pub async fn create_space(
 #[tauri::command]
 pub fn set_active_space(
     space_reference: SpaceReference,
-    state: tauri::State<Mutex<ZakuState>>,
+    sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
-    let mut zaku_state = state.lock().unwrap();
+    let mut sharedstate = sharedstate_mtx.lock().unwrap();
     let space_abspath = PathBuf::from(space_reference.path.as_str());
 
     if !space_abspath.exists() {
@@ -595,8 +595,8 @@ pub fn set_active_space(
                 }
             })?;
 
-            zaku_state.active_space = Some(space);
-            zaku_state.spacerefs = store::get_spacerefs();
+            sharedstate.active_space = Some(space);
+            sharedstate.spacerefs = store::get_spacerefs();
 
             Ok(())
         }
@@ -610,9 +610,9 @@ pub fn set_active_space(
 #[tauri::command]
 pub fn remove_space(
     space_reference: SpaceReference,
-    state: tauri::State<Mutex<ZakuState>>,
+    sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
-    let mut zaku_state = state.lock().unwrap();
+    let mut sharedstate = sharedstate_mtx.lock().unwrap();
     store::remove_spaceref(space_reference).map_err(|e| CmdErr::Err {
         message: e.to_string(),
     })?;
@@ -620,7 +620,7 @@ pub fn remove_space(
     let active_space = store::get_active_spaceref();
 
     if active_space.is_none() {
-        zaku_state.active_space = None;
+        sharedstate.active_space = None;
 
         if let Some(valid_space_reference) = space::first_valid_spaceref() {
             store::set_active_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr::Err {
@@ -630,12 +630,12 @@ pub fn remove_space(
             if let Ok(active_space) =
                 space::parse_space(&PathBuf::from(&valid_space_reference.path))
             {
-                zaku_state.active_space = Some(active_space);
+                sharedstate.active_space = Some(active_space);
             }
         }
     }
 
-    zaku_state.spacerefs = store::get_spacerefs();
+    sharedstate.spacerefs = store::get_spacerefs();
 
     Ok(())
 }
@@ -710,9 +710,11 @@ pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -
 
 #[specta::specta]
 #[tauri::command]
-pub fn get_zaku_state(state: tauri::State<Mutex<ZakuState>>) -> CmdResult<ZakuState> {
-    match state.lock() {
-        Ok(zaku_state) => Ok(zaku_state.clone()),
+pub fn get_sharedstate(
+    sharedstate_mtx: tauri::State<Mutex<SharedState>>,
+) -> CmdResult<SharedState> {
+    match sharedstate_mtx.lock() {
+        Ok(sharedstate) => Ok(sharedstate.clone()),
         Err(e) => Err(CmdErr::Err {
             message: format!("State lock error: {}", e),
         }),

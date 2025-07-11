@@ -3,9 +3,9 @@
 /** user-defined commands **/
 
 export const commands = {
-    async getZakuState(): Promise<Result<ZakuState, CmdErr>> {
+    async getSharedState(): Promise<Result<SharedState, CmdErr>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("get_zaku_state") };
+            return { status: "ok", data: await TAURI_INVOKE("get_sharedstate") };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -272,7 +272,7 @@ export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
-export type ZakuState = { active_space: Space | null; spacerefs: SpaceReference[] };
+export type SharedState = { active_space: Space | null; spacerefs: SpaceReference[] };
 
 /** tauri-specta globals **/
 

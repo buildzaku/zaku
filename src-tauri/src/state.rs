@@ -14,7 +14,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct ZakuState {
+pub struct SharedState {
     pub active_space: Option<Space>,
     pub spacerefs: Vec<SpaceReference>,
 }
@@ -22,15 +22,15 @@ pub struct ZakuState {
 pub fn initialize(app: &mut App) -> Result<()> {
     let active_spaceref = store::get_active_spaceref().or_else(|| space::first_valid_spaceref());
     let spacerefs = store::get_spacerefs();
-    let state = app.app_handle().state::<Mutex<ZakuState>>();
-    let mut zaku_state = state.lock().unwrap();
+    let sharedstate_mtx = app.app_handle().state::<Mutex<SharedState>>();
+    let mut sharedstate = sharedstate_mtx.lock().unwrap();
 
     if let Some(active_spaceref) = active_spaceref {
         let active_spacepath = PathBuf::from(active_spaceref.path);
 
         space::parse_space(&active_spacepath)
             .map(|active_space| {
-                zaku_state.active_space = Some(active_space);
+                sharedstate.active_space = Some(active_space);
             })
             .or_else(|_| {
                 if let Some(valid_space_reference) = space::first_valid_spaceref() {
@@ -39,7 +39,7 @@ pub fn initialize(app: &mut App) -> Result<()> {
                     let valid_space_path = PathBuf::from(&valid_space_reference.path);
                     space::parse_space(&valid_space_path)
                         .map(|valid_space| {
-                            zaku_state.active_space = Some(valid_space);
+                            sharedstate.active_space = Some(valid_space);
                         })
                         .map_err(|e| {
                             eprintln!("Error parsing space: {}", e);
@@ -51,7 +51,7 @@ pub fn initialize(app: &mut App) -> Result<()> {
             })?;
     }
 
-    zaku_state.spacerefs = spacerefs;
+    sharedstate.spacerefs = spacerefs;
 
     Ok(())
 }
