@@ -2,36 +2,12 @@ import { tick } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { version } from "$app/environment";
-import { RELATIVE_SPACE_ROOT, REQUEST_BODY_TYPES } from "$lib/utils/constants";
-import type { ValueOf } from "$lib/utils";
+import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { TreeItemType } from "$lib/models";
 import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq } from "$lib/bindings";
 import { joinPaths } from "./components/tree-item/utils.svelte";
-
-export type ReqCfg = ZakuReqCfg;
-
-export type MaybeKey<T extends string = string> = T | `_${T}`;
-
-export type SerializedValue = string | number | boolean | null;
-
-export type ZakuReqCfg = {
-    name: string;
-    method: string;
-    headers?: Record<MaybeKey, SerializedValue>;
-    params?: Record<MaybeKey, SerializedValue>;
-    body: {
-        active: ValueOf<typeof REQUEST_BODY_TYPES>;
-        "application/json": Record<string, SerializedValue>;
-        "application/xml": string;
-        "application/x-www-form-urlencoded": Record<string, SerializedValue>;
-        // "application/octet-stream": ?,
-        //  "multipart/form-data": ?,
-        "text/html": string;
-        "text/plain": string;
-    };
-};
 
 class SharedState {
     public activeSpace: Space | null = $state(null);

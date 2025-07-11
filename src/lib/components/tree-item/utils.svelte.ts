@@ -6,9 +6,9 @@ import { sharedState, treeActionsState, treeItemsState } from "$lib/state.svelte
 import { TreeItemType } from "$lib/models";
 import type { DragOverDto, DragPayload, RemoveTreeItemDto, TreeItem } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-import { commands, type Collection, type MoveTreeItemDto } from "$lib/bindings";
 import { Err, Ok } from "$lib/utils";
-import type { Result } from "$lib/utils";
+import { commands } from "$lib/bindings";
+import type { Result, MoveTreeItemDto, Collection } from "$lib/bindings";
 
 export function isCollection(treeItem: TreeItem): treeItem is Collection {
     return Object.hasOwn(treeItem.meta, "dir_name");
@@ -126,7 +126,7 @@ export async function handleDrop(event: DragEvent) {
         targetPath: treeActionsState.dropTargetPath,
         mutRootCollection,
     });
-    if (!addTreeItemToCollectionResult.ok) {
+    if (addTreeItemToCollectionResult.status === "error") {
         console.error("Cannot add tree item to the collection");
         return;
     }
@@ -145,7 +145,7 @@ export async function handleDrop(event: DragEvent) {
         removeTreeItemDto,
         mutRootCollection,
     });
-    if (!removeTreeItemFromCollectionResult.ok) {
+    if (removeTreeItemFromCollectionResult.status === "error") {
         console.error("Unable to remove tree item from the collection");
         return;
     }
@@ -219,7 +219,7 @@ export function addTreeItemToCollection({
     treeItem,
     targetPath,
     mutRootCollection,
-}: AddTreeItemToCollectionParams): Result<void> {
+}: AddTreeItemToCollectionParams): Result<void, void> {
     if (targetPath === parentRelativePath) {
         console.warn(`Abort dropping to the same parent \`${parentRelativePath}\``);
         return Err();
@@ -308,7 +308,7 @@ export function removeTreeItemFromCollection({
     parentRelativePath,
     removeTreeItemDto,
     mutRootCollection,
-}: RemoveTreeItemFromCollectionParams): Result<void> {
+}: RemoveTreeItemFromCollectionParams): Result<void, void> {
     const segments = pathSegments(parentRelativePath);
     let current: Collection = mutRootCollection;
 
