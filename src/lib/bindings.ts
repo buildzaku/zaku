@@ -30,8 +30,13 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async removeSpace(spaceReference: SpaceReference): Promise<null> {
-        return await TAURI_INVOKE("remove_space", { spaceReference });
+    async removeSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
+        try {
+            return { status: "ok", data: await TAURI_INVOKE("remove_space", { spaceReference }) };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
     },
     async getSpaceref(path: string): Promise<Result<SpaceReference, CmdErr>> {
         try {
@@ -41,8 +46,19 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async removeCookie(spaceAbspath: string, rmCookieDto: RemoveCookieDto): Promise<boolean> {
-        return await TAURI_INVOKE("remove_cookie", { spaceAbspath, rmCookieDto });
+    async removeCookie(
+        spaceAbspath: string,
+        rmCookieDto: RemoveCookieDto,
+    ): Promise<Result<boolean, CmdErr>> {
+        try {
+            return {
+                status: "ok",
+                data: await TAURI_INVOKE("remove_cookie", { spaceAbspath, rmCookieDto }),
+            };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
     },
     async getSpaceCookies(
         spaceAbspath: string,
@@ -71,8 +87,13 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async showMainWindow(): Promise<void> {
-        await TAURI_INVOKE("show_main_window");
+    async showMainWindow(): Promise<Result<null, CmdErr>> {
+        try {
+            return { status: "ok", data: await TAURI_INVOKE("show_main_window") };
+        } catch (e) {
+            if (e instanceof Error) throw e;
+            else return { status: "error", error: e as any };
+        }
     },
     async openDirDialog(options: OpenDirDialogOpt | null): Promise<Result<string | null, CmdErr>> {
         try {
@@ -156,7 +177,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async httpReq(req: HttpReq): Promise<Result<HttpRes, CmdHttpErr>> {
+    async httpReq(req: HttpReq): Promise<Result<HttpRes, CmdErr>> {
         try {
             return { status: "ok", data: await TAURI_INVOKE("http_req", { req }) };
         } catch (e) {
@@ -181,8 +202,9 @@ export const commands = {
 /** user-defined types **/
 
 export type AudioNotification = { on_req_finish: boolean };
-export type CmdErr = string;
-export type CmdHttpErr = { message: string; code: number | null };
+export type CmdErr =
+    | { Msg: { message: string } }
+    | { Http: { message: string; code: number | null } };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
     dir_name: string;
