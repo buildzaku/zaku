@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -9,7 +7,7 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct ZakuStore {
+pub struct AppStore {
     pub active_spaceref: Option<SpaceReference>,
     pub spacerefs: Vec<SpaceReference>,
 }
@@ -39,12 +37,6 @@ impl ReqBuf {
 
         Self { meta, config }
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct SpaceBuf {
-    pub abspath: String,
-    pub requests: HashMap<String, ReqBuf>,
 }
 
 pub struct SpaceCookies;

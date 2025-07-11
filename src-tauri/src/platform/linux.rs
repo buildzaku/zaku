@@ -9,10 +9,14 @@ use {
     },
 };
 
-pub fn initialize() {
+use crate::error::Result;
+
+pub fn initialize() -> Result<()> {
     if has_nvidia_gpu() {
         env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); // https://github.com/tauri-apps/tauri/issues/9304
     }
+
+    Ok(())
 }
 
 fn has_nvidia_gpu() -> bool {

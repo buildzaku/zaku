@@ -11,7 +11,7 @@
     import { Label } from "$lib/components/primitives/label";
     import { Input } from "$lib/components/primitives/input";
     import { tick } from "svelte";
-    import { zakuState } from "$lib/state.svelte";
+    import { sharedState } from "$lib/state.svelte";
     import { commands } from "$lib/bindings";
 
     type Props = {
@@ -58,7 +58,7 @@
             return;
         }
 
-        await zakuState.setActiveSpace(spaceReference.data);
+        await sharedState.setActiveSpace(spaceReference.data);
         isOpen = false;
 
         await onCreate();

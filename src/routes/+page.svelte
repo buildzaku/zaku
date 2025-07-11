@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Button } from "$lib/components/primitives/button";
     import { goto } from "$app/navigation";
-    import { zakuState } from "$lib/state.svelte";
+    import { sharedState } from "$lib/state.svelte";
     import { SpaceCreateDialog } from "$lib/components/space";
     import { commands } from "$lib/bindings";
 
@@ -22,7 +22,7 @@
                 throw new Error(`Cannot get space reference for ${cmdResult.data}`);
             }
 
-            await zakuState.setActiveSpace(spaceRefCmdResult.data);
+            await sharedState.setActiveSpace(spaceRefCmdResult.data);
             await goto("/space");
         } catch (err) {
             console.error(err);

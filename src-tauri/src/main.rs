@@ -14,41 +14,41 @@ pub mod state;
 pub mod store;
 pub mod utils;
 
-use crate::state::ZakuState;
+use crate::state::SharedState;
+
+const BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
 
 fn main() {
     #[cfg(target_os = "linux")]
-    platform::linux::initialize();
+    platform::linux::initialize().expect("Failed to initialize linux platform");
 
-    let builder = tauri_specta::Builder::<tauri::Wry>::new().commands(commands::collect());
+    let builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(commands::collect())
+        .error_handling(tauri_specta::ErrorHandlingMode::Result);
 
     if std::env::var("GEN_BINDINGS").is_ok() {
-        use specta_typescript::Typescript;
-        use std::process::Command;
+        use specta_typescript::{formatter, Typescript};
 
         builder
-            .export(Typescript::default(), "./../src/lib/bindings.ts")
+            .export(
+                Typescript::default().formatter(formatter::prettier),
+                BINDINGS_PATH,
+            )
             .expect("Failed to export typescript bindings");
-
-        Command::new("pnpm")
-            .arg("format")
-            .current_dir("./../src")
-            .status()
-            .expect("Failed to execute pnpm format");
     }
 
     let app = tauri::Builder::default()
-        .manage(Mutex::new(ZakuState {
+        .manage(Mutex::new(SharedState {
             active_space: None,
             spacerefs: Vec::new(),
         }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            state::initialize(app);
-            shortcuts::initialize(app);
+            state::initialize(app)?;
+            shortcuts::initialize(app)?;
 
-            return Ok(());
+            Ok(())
         })
         .invoke_handler(builder.invoke_handler());
 

@@ -175,12 +175,6 @@ pub struct CreateRequestDto {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct HttpErr {
-    pub message: String,
-    pub code: Option<u16>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct HttpRes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<u16>,
