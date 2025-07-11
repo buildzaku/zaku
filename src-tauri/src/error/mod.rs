@@ -52,8 +52,10 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[serde(tag = "type")]
+#[specta(tag = "type")]
 pub enum CmdErr {
-    Msg { message: String },
+    Err { message: String },
     Http { message: String, code: Option<u16> },
 }
 

@@ -203,8 +203,8 @@ export const commands = {
 
 export type AudioNotification = { on_req_finish: boolean };
 export type CmdErr =
-    | { Msg: { message: string } }
-    | { Http: { message: string; code: number | null } };
+    | { type: "Err"; message: string }
+    | { type: "Http"; message: string; code: number | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
     dir_name: string;

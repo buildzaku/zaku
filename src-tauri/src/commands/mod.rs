@@ -72,7 +72,7 @@ pub async fn create_collection(
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewCollection> {
     if create_collection_dto.relpath.is_empty() {
-        return Err(CmdErr::Msg {
+        return Err(CmdErr::Err {
             message: "Cannot create a collection without name".to_string(),
         });
     };
@@ -113,7 +113,7 @@ pub async fn create_collection(
 
             let dirs_sanitized_relpath =
                 collection::create_collections_all(&active_space_abspath, &create_collection_dto)
-                    .map_err(|err| CmdErr::Msg {
+                    .map_err(|err| CmdErr::Err {
                     message: format!("Failed to create collection: {}", err),
                 })?;
 
@@ -135,7 +135,7 @@ pub async fn create_collection(
         dir_sanitized_name.as_str(),
     ]);
 
-    fs::create_dir(&dir_abspath).map_err(|err| CmdErr::Msg {
+    fs::create_dir(&dir_abspath).map_err(|err| CmdErr::Err {
         message: format!("Failed to create collection: {}", err),
     })?;
 
@@ -151,7 +151,7 @@ pub async fn create_collection(
 
     zaku_state.active_space =
         Some(
-            space::parse_space(&active_space_abspath).map_err(|err| CmdErr::Msg {
+            space::parse_space(&active_space_abspath).map_err(|err| CmdErr::Err {
                 message: format!(
                     "Failed to parse space after creating the collection: {}",
                     err
@@ -212,7 +212,7 @@ pub fn move_treeitem(
     match space::parse_space(&active_space_abspath) {
         Ok(active_space) => zaku_state.active_space = Some(active_space),
         Err(err) => {
-            return Err(CmdErr::Msg {
+            return Err(CmdErr::Err {
                 message: format!("Failed to parse space after moving the tree item: {}", err),
             });
         }
@@ -227,7 +227,7 @@ pub fn is_notif_enabled(app_handle: tauri::AppHandle) -> CmdResult<bool> {
     let permission_state = app_handle
         .notification()
         .permission_state()
-        .map_err(|err| CmdErr::Msg {
+        .map_err(|err| CmdErr::Err {
             message: format!("Failed to get current permissions state: {}", err),
         })?;
 
@@ -240,7 +240,7 @@ pub fn request_notif_access(app_handle: tauri::AppHandle) -> CmdResult<bool> {
     let permission_state = app_handle
         .notification()
         .request_permission()
-        .map_err(|err| CmdErr::Msg {
+        .map_err(|err| CmdErr::Err {
             message: format!("Failed to request for permissions: {}", err),
         })?;
 
@@ -259,7 +259,7 @@ pub fn dispatch_notif(
         .title(&options.title)
         .body(&options.body)
         .show()
-        .map_err(|err| CmdErr::Msg {
+        .map_err(|err| CmdErr::Err {
             message: format!("Failed to dispatch notification: {}", err),
         })?;
 
@@ -273,7 +273,7 @@ pub async fn create_req(
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewRequest> {
     if create_req_dto.relpath.is_empty() {
-        return Err(CmdErr::Msg {
+        return Err(CmdErr::Err {
             message: "Cannot create a request without name".to_string(),
         });
     }
@@ -314,7 +314,7 @@ pub async fn create_req(
 
             let dirs_sanitized_relpath =
                 collection::create_collections_all(&active_space_abspath, &create_collection_dto)
-                    .map_err(|err| CmdErr::Msg {
+                    .map_err(|err| CmdErr::Err {
                     message: format!("Failed to create request's parent directories: {}", err),
                 })?;
 
@@ -336,7 +336,7 @@ pub async fn create_req(
         format!("{}.toml", file_sanitized_name).as_str(),
     ]);
 
-    request::create_reqtoml(&file_abspath, file_display_name).map_err(|err| CmdErr::Msg {
+    request::create_reqtoml(&file_abspath, file_display_name).map_err(|err| CmdErr::Err {
         message: format!("Failed to create request file: {}", err),
     })?;
 
@@ -348,7 +348,7 @@ pub async fn create_req(
     match space::parse_space(&active_space_abspath) {
         Ok(active_space) => zaku_state.active_space = Some(active_space),
         Err(err) => {
-            return Err(CmdErr::Msg {
+            return Err(CmdErr::Err {
                 message: format!("Failed to parse space after creating the request: {}", err),
             });
         }
@@ -384,7 +384,7 @@ pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> 
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {
-    let active_space = store::get_active_spaceref().ok_or(CmdErr::Msg {
+    let active_space = store::get_active_spaceref().ok_or(CmdErr::Err {
         message: "No active space".into(),
     })?;
     let space_abspath = active_space.path.as_str();
@@ -393,14 +393,14 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     let client = reqwest::Client::builder()
         .cookie_provider(Arc::clone(&cookie_store))
         .build()
-        .map_err(|e| CmdErr::Msg {
+        .map_err(|e| CmdErr::Err {
             message: e.to_string(),
         })?;
     let cfg = &req.config;
-    let url = cfg.url.raw.clone().ok_or(CmdErr::Msg {
+    let url = cfg.url.raw.clone().ok_or(CmdErr::Err {
         message: "Missing URL".into(),
     })?;
-    let method = reqwest::Method::from_bytes(cfg.method.as_bytes()).map_err(|e| CmdErr::Msg {
+    let method = reqwest::Method::from_bytes(cfg.method.as_bytes()).map_err(|e| CmdErr::Err {
         message: e.to_string(),
     })?;
     let mut builder = client.request(method, &url);
@@ -429,7 +429,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     }
 
     let start = Instant::now();
-    let resp = builder.send().await.map_err(|e| CmdErr::Msg {
+    let resp = builder.send().await.map_err(|e| CmdErr::Err {
         message: e.to_string(),
     })?;
     if space_settings.notifications.audio.on_req_finish {
@@ -479,7 +479,7 @@ pub async fn create_space(
 ) -> CmdResult<SpaceReference> {
     let location = PathBuf::from(create_space_dto.location.as_str());
     if !location.exists() {
-        return Err(CmdErr::Msg {
+        return Err(CmdErr::Err {
             message: format!("Location does not exist: {}", create_space_dto.location),
         });
     }
@@ -492,7 +492,7 @@ pub async fn create_space(
         .iter()
         .any(|sr| sr.path == space_abspath.to_string_lossy())
     {
-        return Err(CmdErr::Msg {
+        return Err(CmdErr::Err {
             message: format!(
                 "Space already exists in saved spaces: {}",
                 space_abspath.to_string_lossy()
@@ -500,7 +500,7 @@ pub async fn create_space(
         });
     }
     if space_abspath.exists() {
-        return Err(CmdErr::Msg {
+        return Err(CmdErr::Err {
             message: format!(
                 "Directory with this name already exists: {}",
                 space_abspath.to_string_lossy()
@@ -563,7 +563,7 @@ pub fn set_active_space(
     let space_abspath = PathBuf::from(space_reference.path.as_str());
 
     if !space_abspath.exists() {
-        return Err(CmdErr::Msg {
+        return Err(CmdErr::Err {
             message: format!(
                 "Directory does not exist: {}",
                 space_abspath.to_string_lossy()
@@ -581,7 +581,7 @@ pub fn set_active_space(
 
             Ok(())
         }
-        Err(err) => Err(CmdErr::Msg {
+        Err(err) => Err(CmdErr::Err {
             message: format!("Unable to parse space: {}", err),
         }),
     }
@@ -631,7 +631,7 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
 
             Ok(space_reference)
         }
-        Err(err) => Err(CmdErr::Msg {
+        Err(err) => Err(CmdErr::Err {
             message: format!("Unable to parse space: {}", err),
         }),
     }
@@ -643,7 +643,7 @@ pub async fn get_space_cookies(
     space_abspath: &str,
 ) -> CmdResult<HashMap<String, Vec<SpaceCookie>>> {
     let cookie_store = SpaceCookies::load(space_abspath);
-    let store = cookie_store.lock().map_err(|_| CmdErr::Msg {
+    let store = cookie_store.lock().map_err(|_| CmdErr::Err {
         message: "Failed to lock the cookie store (CookieStoreLockFailed)".into(),
     })?;
 
@@ -672,7 +672,7 @@ pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> Cmd
 #[specta::specta]
 #[tauri::command]
 pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> CmdResult<()> {
-    SpaceSettings::persist(space_abspath, &settings).map_err(|err| CmdErr::Msg {
+    SpaceSettings::persist(space_abspath, &settings).map_err(|err| CmdErr::Err {
         message: format!("Failed to persist space settings: {}", err),
     })?;
 
@@ -684,7 +684,7 @@ pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -
 pub fn get_zaku_state(state: tauri::State<Mutex<ZakuState>>) -> CmdResult<ZakuState> {
     match state.lock() {
         Ok(zaku_state) => Ok(zaku_state.clone()),
-        Err(e) => Err(CmdErr::Msg {
+        Err(e) => Err(CmdErr::Err {
             message: format!("State lock error: {}", e),
         }),
     }
