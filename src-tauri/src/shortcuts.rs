@@ -1,9 +1,9 @@
 use tauri::Manager;
-use tauri_plugin_global_shortcut::{Code, Modifiers};
+use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
-use crate::utils;
+use crate::{error::Result, utils};
 
-pub fn initialize(app: &mut tauri::App) {
+pub fn initialize(app: &mut tauri::App) -> Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
     {
         use tauri_plugin_global_shortcut::ShortcutState;
@@ -17,45 +17,44 @@ pub fn initialize(app: &mut tauri::App) {
         #[cfg(target_os = "linux")]
         let shortcuts = ["Control+Shift+I", "Command+Option+I"];
 
-        app.handle()
-            .plugin(
-                tauri_plugin_global_shortcut::Builder::new()
-                    .with_shortcuts(shortcuts)
-                    .unwrap()
-                    .with_handler(|handler_app, shortcut, event| {
-                        if event.state == ShortcutState::Pressed {
-                            match shortcut_combination(shortcut) {
-                                #[cfg(target_os = "macos")]
-                                Some(ShortcutCombination::CommandOptionI) => {
-                                    utils::toggle_devtools(handler_app.app_handle());
-                                }
-                                #[cfg(target_os = "macos")]
-                                Some(ShortcutCombination::ControlShiftI) => {}
-
-                                #[cfg(target_os = "windows")]
-                                Some(ShortcutCombination::ControlShiftI) => {
-                                    utils::toggle_devtools(handler_app.app_handle());
-                                }
-                                #[cfg(target_os = "windows")]
-                                Some(ShortcutCombination::CommandOptionI) => {}
-
-                                #[cfg(target_os = "linux")]
-                                Some(ShortcutCombination::ControlShiftI) => {
-                                    utils::toggle_devtools(handler_app.app_handle());
-                                }
-                                #[cfg(target_os = "linux")]
-                                Some(ShortcutCombination::CommandOptionI) => {
-                                    utils::toggle_devtools(handler_app.app_handle());
-                                }
-
-                                None => {}
+        app.handle().plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_shortcuts(shortcuts)?
+                .with_handler(|handler_app, shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        match shortcut_combination(shortcut) {
+                            #[cfg(target_os = "macos")]
+                            Some(ShortcutCombination::CommandOptionI) => {
+                                utils::toggle_devtools(handler_app.app_handle());
                             }
+                            #[cfg(target_os = "macos")]
+                            Some(ShortcutCombination::ControlShiftI) => {}
+
+                            #[cfg(target_os = "windows")]
+                            Some(ShortcutCombination::ControlShiftI) => {
+                                utils::toggle_devtools(handler_app.app_handle());
+                            }
+                            #[cfg(target_os = "windows")]
+                            Some(ShortcutCombination::CommandOptionI) => {}
+
+                            #[cfg(target_os = "linux")]
+                            Some(ShortcutCombination::ControlShiftI) => {
+                                utils::toggle_devtools(handler_app.app_handle());
+                            }
+                            #[cfg(target_os = "linux")]
+                            Some(ShortcutCombination::CommandOptionI) => {
+                                utils::toggle_devtools(handler_app.app_handle());
+                            }
+
+                            None => {}
                         }
-                    })
-                    .build(),
-            )
-            .unwrap();
+                    }
+                })
+                .build(),
+        )?
     }
+
+    Ok(())
 }
 
 pub enum ShortcutCombination {
@@ -63,9 +62,7 @@ pub enum ShortcutCombination {
     ControlShiftI,
 }
 
-pub fn shortcut_combination(
-    shortcut: &tauri_plugin_global_shortcut::Shortcut,
-) -> Option<ShortcutCombination> {
+pub fn shortcut_combination(shortcut: &Shortcut) -> Option<ShortcutCombination> {
     let modifiers = shortcut.mods;
     let code = shortcut.key;
 
@@ -80,6 +77,6 @@ pub fn shortcut_combination(
     {
         Some(ShortcutCombination::ControlShiftI)
     } else {
-        return None;
+        None
     }
 }

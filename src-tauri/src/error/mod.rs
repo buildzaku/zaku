@@ -42,6 +42,9 @@ pub enum Error {
 
     #[from]
     CookieStore(cookie_store::Error),
+
+    #[from]
+    ShortcutPlugin(tauri_plugin_global_shortcut::Error),
 }
 
 impl fmt::Display for Error {
