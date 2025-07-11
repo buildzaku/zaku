@@ -2,35 +2,18 @@ use rodio::{Decoder, OutputStream, Sink};
 use std::{fs::File, io::BufReader};
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
-pub fn play_finish(app_handle: &AppHandle) -> Result<(), std::io::Error> {
-    let (_stream, stream_handle) = OutputStream::try_default().map_err(|err| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Audio stream error: {}", err),
-        )
-    })?;
-    let sink = Sink::try_new(&stream_handle).map_err(|err| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Sink creation error: {}", err),
-        )
-    })?;
+use crate::error::{Error, Result};
+
+pub fn play_finish(app_handle: &AppHandle) -> Result<()> {
+    let (_stream, stream_handle) = OutputStream::try_default()?;
+    let sink = Sink::try_new(&stream_handle)?;
     let sound_filepath = app_handle
         .path()
         .resolve("assets/sounds/glass.wav", BaseDirectory::Resource)
-        .map_err(|err| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Path resolution error: {}", err),
-            )
-        })?;
+        .map_err(|e| Error::FileNotFound(e.to_string()))?;
     let sound_file = File::open(sound_filepath)?;
-    let source = Decoder::new(BufReader::new(sound_file)).map_err(|err| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Audio decode error: {}", err),
-        )
-    })?;
+    let source = Decoder::new(BufReader::new(sound_file))
+        .map_err(|e| Error::FileReadError(e.to_string()))?;
 
     sink.append(source);
     sink.sleep_until_end();

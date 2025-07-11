@@ -38,7 +38,10 @@ pub enum Error {
     Time(time::error::Error),
 
     #[from]
-    Rodio(rodio::StreamError),
+    RodioStream(rodio::StreamError),
+
+    #[from]
+    RodioPlay(rodio::PlayError),
 
     #[from]
     CookieStore(cookie_store::Error),
