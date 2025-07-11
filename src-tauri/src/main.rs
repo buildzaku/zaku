@@ -45,7 +45,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            state::initialize(app);
+            state::initialize(app)?;
             shortcuts::initialize(app);
 
             Ok(())

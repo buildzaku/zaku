@@ -545,9 +545,13 @@ pub async fn create_space(
         name: create_space_dto.name,
     };
 
-    store::set_active_spaceref(spaceref.clone());
+    store::set_active_spaceref(spaceref.clone()).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
     spacerefs.push(spaceref.clone());
-    store::set_spacerefs(spacerefs.clone());
+    store::set_spacerefs(spacerefs.clone()).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
 
     match space::parse_space(&PathBuf::from(spaceref.clone().path)) {
         Ok(active_space) => {
@@ -582,8 +586,14 @@ pub fn set_active_space(
 
     match space::parse_space(&space_abspath) {
         Ok(space) => {
-            store::set_active_spaceref(space_reference.clone());
-            store::insert_spaceref_if_missing(space_reference.clone());
+            store::set_active_spaceref(space_reference.clone()).map_err(|e| CmdErr::Err {
+                message: e.to_string(),
+            })?;
+            store::insert_spaceref_if_missing(space_reference.clone()).map_err(|e| {
+                CmdErr::Err {
+                    message: e.to_string(),
+                }
+            })?;
 
             zaku_state.active_space = Some(space);
             zaku_state.spacerefs = store::get_spacerefs();
@@ -603,7 +613,9 @@ pub fn remove_space(
     state: tauri::State<Mutex<ZakuState>>,
 ) -> CmdResult<()> {
     let mut zaku_state = state.lock().unwrap();
-    store::remove_spaceref(space_reference);
+    store::remove_spaceref(space_reference).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
 
     let active_space = store::get_active_spaceref();
 
@@ -611,7 +623,9 @@ pub fn remove_space(
         zaku_state.active_space = None;
 
         if let Some(valid_space_reference) = space::first_valid_spaceref() {
-            store::set_active_spaceref(valid_space_reference.clone());
+            store::set_active_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr::Err {
+                message: e.to_string(),
+            })?;
 
             if let Ok(active_space) =
                 space::parse_space(&PathBuf::from(&valid_space_reference.path))

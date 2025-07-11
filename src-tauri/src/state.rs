@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use tauri::{App, Manager};
 
 use crate::{
+    error::Result,
     space::{
         self,
         models::{Space, SpaceReference},
@@ -18,7 +19,7 @@ pub struct ZakuState {
     pub spacerefs: Vec<SpaceReference>,
 }
 
-pub fn initialize(app: &mut App) {
+pub fn initialize(app: &mut App) -> Result<()> {
     let active_spaceref = store::get_active_spaceref().or_else(|| space::first_valid_spaceref());
     let spacerefs = store::get_spacerefs();
     let state = app.app_handle().state::<Mutex<ZakuState>>();
@@ -27,29 +28,30 @@ pub fn initialize(app: &mut App) {
     if let Some(active_spaceref) = active_spaceref {
         let active_spacepath = PathBuf::from(active_spaceref.path);
 
-        match space::parse_space(&active_spacepath) {
-            Ok(active_space) => {
+        space::parse_space(&active_spacepath)
+            .map(|active_space| {
                 zaku_state.active_space = Some(active_space);
-            }
-            Err(_) => match space::first_valid_spaceref() {
-                Some(valid_space_reference) => {
-                    store::set_active_spaceref(valid_space_reference.clone());
+            })
+            .or_else(|_| {
+                if let Some(valid_space_reference) = space::first_valid_spaceref() {
+                    store::set_active_spaceref(valid_space_reference.clone())?;
 
-                    let valid_space_path = PathBuf::from(valid_space_reference.path);
-
-                    match space::parse_space(&valid_space_path) {
-                        Ok(valid_space) => {
+                    let valid_space_path = PathBuf::from(&valid_space_reference.path);
+                    space::parse_space(&valid_space_path)
+                        .map(|valid_space| {
                             zaku_state.active_space = Some(valid_space);
-                        }
-                        Err(err) => {
-                            eprintln!("Error parsing space: {}", err);
-                        }
-                    }
+                        })
+                        .map_err(|e| {
+                            eprintln!("Error parsing space: {}", e);
+                            e
+                        })
+                } else {
+                    Ok(())
                 }
-                None => {}
-            },
-        };
+            })?;
     }
 
     zaku_state.spacerefs = spacerefs;
+
+    Ok(())
 }
