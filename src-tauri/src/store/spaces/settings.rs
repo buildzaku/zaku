@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use crate::{
     error::Result,
     store::models::SpaceSettings,
-    utils::{hashed_filename, ZAKU_DATA_DIR},
+    utils::{hashed_filename, APP_DATA_DIR},
 };
 
 const SETTINGS_FILENAME: &str = "settings.json";
@@ -34,7 +34,7 @@ impl SpaceSettings {
     fn filepath(space_abspath: &str) -> PathBuf {
         let hsh = hashed_filename(space_abspath);
 
-        ZAKU_DATA_DIR
+        APP_DATA_DIR
             .join(super::SPACES_STORE_DIR)
             .join(hsh)
             .join(SETTINGS_FILENAME)

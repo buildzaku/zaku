@@ -14,7 +14,7 @@ pub fn toggle_devtools(app_handle: &AppHandle) {
     }
 }
 
-pub static ZAKU_DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
+pub static APP_DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
     dirs::data_dir()
         .expect("Unable to get data directory")
         .join("Zaku")

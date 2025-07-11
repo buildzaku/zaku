@@ -12,7 +12,7 @@ use crate::{
     error::{Error, Result},
     space::models::RemoveCookieDto,
     store::models::SpaceCookies,
-    utils::{hashed_filename, ZAKU_DATA_DIR},
+    utils::{hashed_filename, APP_DATA_DIR},
 };
 
 type CookiesCache = Mutex<HashMap<String, Arc<CookieStoreMutex>>>;
@@ -31,7 +31,7 @@ impl SpaceCookies {
             return Ok(Arc::clone(space_cookies));
         }
 
-        let cookie_file = ZAKU_DATA_DIR
+        let cookie_file = APP_DATA_DIR
             .join(super::SPACES_STORE_DIR)
             .join(&hsh_space_abspath)
             .join("cookies.json");
@@ -57,7 +57,7 @@ impl SpaceCookies {
             .map_err(|_| Error::LockError("Failed to lock cookie cache".into()))?;
 
         if let Some(space_cookies) = cache.get(space_abspath) {
-            let cookie_file = ZAKU_DATA_DIR
+            let cookie_file = APP_DATA_DIR
                 .join(super::SPACES_STORE_DIR)
                 .join(&hsh_space_abspath)
                 .join("cookies.json");
