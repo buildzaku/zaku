@@ -7,7 +7,7 @@ import { TreeItemType } from "$lib/models";
 import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq } from "$lib/bindings";
-import { joinPaths } from "./components/tree-item/utils.svelte";
+import { joinPaths } from "$lib/components/tree-item/utils.svelte";
 
 class SharedState {
     public activeSpace: Space | null = $state(null);

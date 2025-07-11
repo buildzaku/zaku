@@ -1,6 +1,6 @@
 <script lang="ts">
     import { sharedState, treeActionsState } from "$lib/state.svelte";
-    import { Button } from "$lib/components/primitives/button";
+    import { Button, buttonVariants } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon, XIcon } from "@lucide/svelte";
     import type { PaneAPI } from "paneforge";
 
@@ -125,29 +125,28 @@
 {#if sharedState.activeSpace}
     {@const spaceRef = sharedState.activeSpace}
     <div class="flex size-full flex-col justify-between">
-        <div class="flex w-full items-center justify-center border-b p-1.5 pt-0">
-            <div class={cn("flex w-full items-center justify-between gap-1.5")}>
-                <div class="flex-grow overflow-hidden text-ellipsis whitespace-nowrap">
-                    <SpaceSwitcher isSidebarCollapsed={isCollapsed} />
-                </div>
-                {#if !isCollapsed}
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onclick={() => {
-                            if (isCollapsed) {
-                                pane.expand();
-                                pane.resize(24);
-                            } else {
-                                pane.collapse();
-                            }
-                        }}
-                        class="flex-shrink-0"
-                    >
-                        <ChevronsLeftIcon size={16} class="min-h-[14px] min-w-[14px]" />
-                    </Button>
-                {/if}
+        <!-- ALIGNMENT-MARKER: Matches ResizablePane's mt-px -->
+        <div class="flex w-full items-center justify-center gap-1.5 border-b p-1.5 pt-px">
+            <div class="flex min-w-0 grow">
+                <SpaceSwitcher isSidebarCollapsed={isCollapsed} />
             </div>
+            {#if !isCollapsed}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onclick={() => {
+                        if (isCollapsed) {
+                            pane.expand();
+                            pane.resize(24);
+                        } else {
+                            pane.collapse();
+                        }
+                    }}
+                    class="flex-shrink-0"
+                >
+                    <ChevronsLeftIcon size={16} class="min-h-[14px] min-w-[14px]" />
+                </Button>
+            {/if}
         </div>
         <div class="group/explorer flex w-full grow items-start justify-center overflow-y-auto">
             {#if isCollapsed}
@@ -217,11 +216,14 @@
             )}
         >
             <Dialog>
-                <DialogTrigger>
-                    <Button size="icon" variant="ghost">
-                        <SettingsIcon strokeWidth={1.25} size={16} />
-                        <span class="sr-only">Settings</span>
-                    </Button>
+                <DialogTrigger
+                    class={buttonVariants({
+                        variant: "ghost",
+                        size: "icon",
+                    })}
+                >
+                    <SettingsIcon strokeWidth={1.25} size={16} />
+                    <span class="sr-only">Settings</span>
                 </DialogTrigger>
                 <DialogContent class="flex h-[80%] max-h-[80%] w-[80%] max-w-[80%] flex-col">
                     <DialogHeader>
@@ -261,10 +263,13 @@
                 </DialogContent>
             </Dialog>
             <Dialog>
-                <DialogTrigger>
-                    <Button size="icon" variant="ghost">
-                        <CookieIcon size={14} />
-                    </Button>
+                <DialogTrigger
+                    class={buttonVariants({
+                        variant: "ghost",
+                        size: "icon",
+                    })}
+                >
+                    <CookieIcon size={14} />
                 </DialogTrigger>
                 <DialogContent class="flex h-[80%] max-h-[80%] w-[80%] max-w-[80%] flex-col">
                     <DialogHeader>
