@@ -15,25 +15,17 @@ architectures:
           - arm64
       build-for:
           - arm64
-package-repositories:
-    - type: apt
-      components:
-          - main
-      suites:
-          - jammy
-      key-id: 78E1918602959B9C59103100F1831DDAFC42E99D
-      url: http://ppa.launchpad.net/snappy-dev/snapcraft-daily/ubuntu
-layout:
-    /usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1:
-        bind: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/webkit2gtk-4.1
 apps:
     zaku:
         command: usr/bin/zaku
         desktop: usr/share/applications/Zaku.desktop
-        extensions:
-            - gnome
         plugs:
             - network
+        environment:
+            LD_LIBRARY_PATH: "$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET:$LD_LIBRARY_PATH"
+            PKG_CONFIG_PATH: "$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/pkgconfig:$PKG_CONFIG_PATH"
+            CFLAGS: "-I$SNAP/usr/include"
+            LDFLAGS: "-L$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET"
 parts:
     build-app:
         plugin: dump
@@ -51,9 +43,12 @@ parts:
             - libayatana-appindicator3-dev
             - librsvg2-dev
             - dpkg
+            - libasound2-dev
+            - libglib2.0-dev
         stage-packages:
             - libwebkit2gtk-4.1-0
             - libayatana-appindicator3-1
+            - libasound2
         source: .
         override-build: |
             set -eu
