@@ -16,7 +16,7 @@ pub mod utils;
 
 use crate::state::ZakuState;
 
-const TS_BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
+const BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
 
 fn main() {
     #[cfg(target_os = "linux")]
@@ -32,7 +32,7 @@ fn main() {
         builder
             .export(
                 Typescript::default().formatter(formatter::prettier),
-                TS_BINDINGS_PATH,
+                BINDINGS_PATH,
             )
             .expect("Failed to export typescript bindings");
     }
