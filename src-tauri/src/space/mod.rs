@@ -198,7 +198,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
 pub fn parse_space(space_abspath: &Path) -> Result<Space> {
     let root_collection = parse_root_collection(space_abspath)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
-    let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref());
+    let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref())?;
     let store = cookie_store.lock().unwrap();
     let cookies: Vec<SpaceCookie> = store
         .iter_any()

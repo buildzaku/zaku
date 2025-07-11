@@ -11,6 +11,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     FileNotFound(String),
     FileReadError(String),
+    LockError(String),
 
     #[from]
     Io(io::Error),

@@ -388,7 +388,9 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         message: "No active space".into(),
     })?;
     let space_abspath = active_space.path.as_str();
-    let cookie_store = SpaceCookies::load(space_abspath);
+    let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
     let space_settings = SpaceSettings::load(space_abspath).map_err(|e| CmdErr::Err {
         message: e.to_string(),
     })?;
@@ -461,7 +463,9 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         code: Some(status),
     })?;
     let size_bytes = Some(data.len() as u32);
-    SpaceCookies::persist(space_abspath);
+    SpaceCookies::persist(space_abspath).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
 
     Ok(HttpRes {
         status: Some(status),
@@ -644,7 +648,9 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
 pub async fn get_space_cookies(
     space_abspath: &str,
 ) -> CmdResult<HashMap<String, Vec<SpaceCookie>>> {
-    let cookie_store = SpaceCookies::load(space_abspath);
+    let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
     let store = cookie_store.lock().map_err(|_| CmdErr::Err {
         message: "Failed to lock the cookie store (CookieStoreLockFailed)".into(),
     })?;
@@ -668,7 +674,11 @@ pub async fn get_space_cookies(
 #[specta::specta]
 #[tauri::command]
 pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> CmdResult<bool> {
-    Ok(SpaceCookies::remove(space_abspath, rm_cookie_dto).is_some())
+    SpaceCookies::remove(space_abspath, rm_cookie_dto)
+        .map(|opt| opt.is_some())
+        .map_err(|e| CmdErr::Err {
+            message: e.to_string(),
+        })
 }
 
 #[specta::specta]
