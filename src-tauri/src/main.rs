@@ -20,7 +20,7 @@ const BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
 
 fn main() {
     #[cfg(target_os = "linux")]
-    platform::linux::initialize().expect("Failed to initialize Linux platform");
+    platform::linux::initialize().expect("Failed to initialize linux platform");
 
     let builder = tauri_specta::Builder::<tauri::Wry>::new()
         .commands(commands::collect())

@@ -43,7 +43,7 @@ pub mod models;
 
 pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
     tauri_specta::collect_commands![
-        get_sharedstate,
+        get_shared_state,
         create_space,
         set_active_space,
         remove_space,
@@ -710,7 +710,7 @@ pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -
 
 #[specta::specta]
 #[tauri::command]
-pub fn get_sharedstate(
+pub fn get_shared_state(
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<SharedState> {
     match sharedstate_mtx.lock() {

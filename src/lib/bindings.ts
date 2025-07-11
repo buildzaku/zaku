@@ -5,7 +5,7 @@
 export const commands = {
     async getSharedState(): Promise<Result<SharedState, CmdErr>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("get_sharedstate") };
+            return { status: "ok", data: await TAURI_INVOKE("get_shared_state") };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -251,6 +251,7 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
+export type SharedState = { active_space: Space | null; spacerefs: SpaceReference[] };
 export type Space = {
     abspath: string;
     meta: SpaceMeta;
@@ -272,7 +273,6 @@ export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
-export type SharedState = { active_space: Space | null; spacerefs: SpaceReference[] };
 
 /** tauri-specta globals **/
 
