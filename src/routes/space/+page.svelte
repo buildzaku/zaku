@@ -13,7 +13,7 @@
     import { ConfigurationPane } from "$lib/components/configuration-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
-    import { treeItemsState, debounced, zakuState, baseRequestHeaders } from "$lib/state.svelte";
+    import { treeItemsState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
@@ -84,11 +84,11 @@
 
         const httpRes = await commands.httpReq(req);
 
-        if (zakuState.activeSpace) {
-            const cookiesResult = await commands.getSpaceCookies(zakuState.activeSpace.abspath);
+        if (sharedState.activeSpace) {
+            const cookiesResult = await commands.getSpaceCookies(sharedState.activeSpace.abspath);
 
             if (cookiesResult.status === "ok") {
-                zakuState.activeSpace.cookies = cookiesResult.data;
+                sharedState.activeSpace.cookies = cookiesResult.data;
             }
         }
 
@@ -109,7 +109,7 @@
     }
 
     async function handleSave(event: KeyboardEvent) {
-        const activeSpaceRef = zakuState.activeSpace;
+        const activeSpaceRef = sharedState.activeSpace;
         const activeReqRef = treeItemsState.activeRequest;
         if (!activeSpaceRef || !activeReqRef) {
             return;
@@ -145,7 +145,7 @@
         // Important hack to keep the effect deeply reactive
         JSON.stringify(treeItemsState.activeRequest);
 
-        const activeSpaceRef = zakuState.activeSpace;
+        const activeSpaceRef = sharedState.activeSpace;
         const activeReqRef = treeItemsState.activeRequest;
 
         if (isActiveReqSavedToFs) {

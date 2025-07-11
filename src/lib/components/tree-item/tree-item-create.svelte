@@ -4,7 +4,7 @@
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
     import { TreeItemType } from "$lib/models";
-    import { zakuState, treeActionsState, treeItemsState } from "$lib/state.svelte";
+    import { sharedState, treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
@@ -51,7 +51,7 @@
             }
 
             inputName = "";
-            await zakuState.synchronize();
+            await sharedState.synchronize();
 
             treeItemsState.focussedItem = {
                 type: TreeItemType.Collection,
@@ -78,7 +78,7 @@
             }
 
             inputName = "";
-            await zakuState.synchronize();
+            await sharedState.synchronize();
 
             treeItemsState.focussedItem = {
                 type: TreeItemType.Request,

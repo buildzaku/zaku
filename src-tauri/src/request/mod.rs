@@ -1,19 +1,15 @@
 use std::fs::{self, File};
-use std::io::{Error, ErrorKind, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use toml;
 
+use crate::error::{Error, Result};
 use crate::request::models::{ReqToml, ReqTomlConfig, ReqTomlMeta};
 
 pub mod models;
 
-pub fn create_reqtoml(abspath: &Path, display_name: &str) -> Result<(), Error> {
-    let mut reqtoml_file = File::create_new(&abspath.with_extension("toml")).map_err(|err| {
-        Error::new(
-            ErrorKind::Other,
-            format!("Failed to create request file: {}", err),
-        )
-    })?;
+pub fn create_reqtoml(abspath: &Path, display_name: &str) -> Result<()> {
+    let mut reqtoml_file = File::create_new(abspath.with_extension("toml"))?;
 
     let req_toml = ReqToml {
         meta: ReqTomlMeta {
@@ -29,57 +25,27 @@ pub fn create_reqtoml(abspath: &Path, display_name: &str) -> Result<(), Error> {
         },
     };
 
-    let toml_str = toml::to_string_pretty(&req_toml).map_err(|err| {
-        Error::new(
-            ErrorKind::Other,
-            format!("Failed to serialize request file: {}", err),
-        )
-    })?;
+    let toml_str = toml::to_string_pretty(&req_toml)?;
 
-    reqtoml_file.write_all(toml_str.as_bytes()).map_err(|err| {
-        Error::new(
-            ErrorKind::Other,
-            format!("Failed to write to request file: {}", err),
-        )
-    })?;
+    reqtoml_file.write_all(toml_str.as_bytes())?;
 
-    return Ok(());
+    Ok(())
 }
 
-pub fn parse_reqtoml(abspath: &PathBuf) -> Result<ReqToml, Error> {
-    let toml_str = match fs::read_to_string(abspath) {
-        Ok(toml_str) => toml_str,
-        Err(err) => {
-            return Err(Error::new(
-                ErrorKind::NotFound,
-                format!("Failed to load {}: {}", abspath.display(), err),
-            ));
-        }
-    };
+pub fn parse_reqtoml(abspath: &PathBuf) -> Result<ReqToml> {
+    let toml_str = std::fs::read_to_string(abspath)?;
+    let req_toml = toml::from_str(&toml_str)?;
 
-    let req_toml = match toml::from_str(&toml_str) {
-        Ok(req_toml) => req_toml,
-        Err(err) => {
-            return Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("Failed to parse {}: {}", abspath.display(), err),
-            ));
-        }
-    };
-
-    return Ok(req_toml);
+    Ok(req_toml)
 }
 
-pub fn persist_reqtoml(req_abspath: &Path, req_toml: &ReqToml) -> Result<(), Error> {
+pub fn persist_reqtoml(req_abspath: &Path, req_toml: &ReqToml) -> Result<()> {
     if !req_abspath.exists() {
-        return Err(Error::new(
-            ErrorKind::NotFound,
-            format!("Request file does not exist: {:?}", req_abspath),
-        ));
+        return Err(Error::FileNotFound(req_abspath.display().to_string()));
     }
 
-    let toml_str = toml::to_string_pretty(&req_toml).unwrap();
-    fs::write(req_abspath, toml_str).unwrap();
+    let toml_str = toml::to_string_pretty(&req_toml)?;
+    fs::write(req_abspath, toml_str)?;
 
-    return Ok(());
+    Ok(())
 }
