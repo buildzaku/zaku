@@ -2,17 +2,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct CmdErr(pub String);
-
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct CmdHttpErr {
-    pub message: String,
-    pub code: Option<u16>,
-}
-
-pub type CmdResult<T, E = CmdErr> = Result<T, E>;
-
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct OpenDirDialogOpt {
     pub title: Option<String>,
 }

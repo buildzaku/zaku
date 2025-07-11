@@ -1,4 +1,7 @@
 use derive_more::From;
+use serde::Deserialize;
+use serde::Serialize;
+use specta::Type;
 use std::fmt;
 use std::io;
 
@@ -47,3 +50,11 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub enum CmdErr {
+    Msg { message: String },
+    Http { message: String, code: Option<u16> },
+}
+
+pub type CmdResult<T> = core::result::Result<T, CmdErr>;
