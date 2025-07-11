@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
@@ -9,6 +8,8 @@ use std::vec::IntoIter;
 use crate::{
     collection,
     collection::models::{Collection, CollectionMeta},
+    error::Error,
+    error::Result,
     request,
     request::models::HttpReq,
     space::models::{Space, SpaceConfigFile, SpaceCookie, SpaceReference},
@@ -25,7 +26,7 @@ pub struct CollectionRcRefCell {
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }
 
-fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
+fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let space_dirname = space_abspath
         .file_name()
         .unwrap_or_else(|| space_abspath.as_os_str())
@@ -102,6 +103,10 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
                         .collections
                         .push(sub_collection);
                 } else if entry_abspath.is_file() {
+                    if entry_abspath.extension().and_then(|e| e.to_str()) != Some("toml") {
+                        continue;
+                    }
+
                     let relpath = entry_abspath
                         .strip_prefix(space_abspath)
                         .unwrap()
@@ -129,7 +134,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
                                     .push(HttpReq::from_reqtoml(&req_toml, file_name));
                             }
                             Err(_) => {
-                                eprintln!("Invalid request TOML: '{}'", entry_abspath.display(),);
+                                eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
                             }
                         }
                     }
@@ -186,71 +191,44 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection, Error> {
         }
     }
 
-    match root_collection {
-        Some(collection) => Ok(collection),
-        None => Err(Error::new(
-            ErrorKind::NotFound,
-            "Failed to build collection, stack is empty no collection to return",
-        )),
-    }
+    root_collection
+        .ok_or_else(|| Error::FileReadError("Failed to build collection: empty stack".to_string()))
 }
 
-pub fn parse_space(space_abspath: &Path) -> Result<Space, Error> {
-    match parse_root_collection(space_abspath) {
-        Ok(root_collection) => match parse_spacecfg(&space_abspath) {
-            Ok(space_config_file) => {
-                let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref());
-                let store = cookie_store.lock().unwrap();
-                let cookies: Vec<SpaceCookie> = store
-                    .iter_any()
-                    .map(SpaceCookie::from_cookie_store)
-                    .collect();
-                let cookies_by_domain: HashMap<String, Vec<SpaceCookie>> =
-                    cookies.into_iter().fold(
-                        HashMap::new(),
-                        |mut acc: HashMap<String, Vec<SpaceCookie>>, ck| {
-                            acc.entry(ck.domain.clone()).or_default().push(ck);
-                            acc
-                        },
-                    );
-                let settings = SpaceSettings::load(space_abspath.to_string_lossy().as_ref());
-
-                Ok(Space {
-                    abspath: space_abspath.to_string_lossy().into_owned(),
-                    meta: space_config_file.meta,
-                    root: root_collection,
-                    cookies: cookies_by_domain,
-                    settings,
-                })
-            }
-            Err(err) => {
-                eprintln!("{}", err);
-                return Err(err);
-            }
-        },
-        Err(err) => {
-            eprintln!("{}", err);
-            return Err(err);
-        }
-    }
-}
-
-pub fn parse_spacecfg(space_abspath: &Path) -> Result<SpaceConfigFile, Error> {
-    return fs::read_to_string(space_abspath.join(".zaku/config.toml"))
-        .map_err(|err| {
-            Error::new(
-                ErrorKind::NotFound,
-                format!("Failed to load {}: {}", space_abspath.display(), err),
-            )
-        })
-        .and_then(|content| {
-            toml::from_str(&content).map_err(|err| {
-                Error::new(
-                    ErrorKind::InvalidData,
-                    format!("Failed to parse {}: {}", space_abspath.display(), err),
-                )
-            })
+pub fn parse_space(space_abspath: &Path) -> Result<Space> {
+    let root_collection = parse_root_collection(space_abspath)?;
+    let space_config_file = parse_spacecfg(space_abspath)?;
+    let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref());
+    let store = cookie_store.lock().unwrap();
+    let cookies: Vec<SpaceCookie> = store
+        .iter_any()
+        .map(SpaceCookie::from_cookie_store)
+        .collect();
+    let cookies_by_domain: HashMap<String, Vec<SpaceCookie>> =
+        cookies.into_iter().fold(HashMap::new(), |mut acc, ck| {
+            acc.entry(ck.domain.clone()).or_default().push(ck);
+            acc
         });
+
+    let settings = SpaceSettings::load(&space_abspath.to_string_lossy())?;
+
+    Ok(Space {
+        abspath: space_abspath.to_string_lossy().into_owned(),
+        meta: space_config_file.meta,
+        root: root_collection,
+        cookies: cookies_by_domain,
+        settings,
+    })
+}
+
+pub fn parse_spacecfg(space_abspath: &Path) -> Result<SpaceConfigFile> {
+    let path = space_abspath.join(".zaku/config.toml");
+    let content =
+        fs::read_to_string(&path).map_err(|_| Error::FileNotFound(path.display().to_string()))?;
+    let config = toml::from_str(&content)
+        .map_err(|e| Error::FileReadError(format!("{}: {}", path.display(), e)))?;
+
+    Ok(config)
 }
 
 pub fn first_valid_spaceref() -> Option<SpaceReference> {

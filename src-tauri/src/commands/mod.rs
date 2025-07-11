@@ -389,7 +389,9 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     })?;
     let space_abspath = active_space.path.as_str();
     let cookie_store = SpaceCookies::load(space_abspath);
-    let space_settings = SpaceSettings::load(space_abspath);
+    let space_settings = SpaceSettings::load(space_abspath).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
     let client = reqwest::Client::builder()
         .cookie_provider(Arc::clone(&cookie_store))
         .build()
