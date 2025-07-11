@@ -17,41 +17,41 @@ pub fn initialize(app: &mut tauri::App) -> Result<()> {
         #[cfg(target_os = "linux")]
         let shortcuts = ["Control+Shift+I", "Command+Option+I"];
 
-        app.handle().plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(shortcuts)?
-                .with_handler(|handler_app, shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        match shortcut_combination(shortcut) {
-                            #[cfg(target_os = "macos")]
-                            Some(ShortcutCombination::CommandOptionI) => {
-                                utils::toggle_devtools(handler_app.app_handle());
-                            }
-                            #[cfg(target_os = "macos")]
-                            Some(ShortcutCombination::ControlShiftI) => {}
-
-                            #[cfg(target_os = "windows")]
-                            Some(ShortcutCombination::ControlShiftI) => {
-                                utils::toggle_devtools(handler_app.app_handle());
-                            }
-                            #[cfg(target_os = "windows")]
-                            Some(ShortcutCombination::CommandOptionI) => {}
-
-                            #[cfg(target_os = "linux")]
-                            Some(ShortcutCombination::ControlShiftI) => {
-                                utils::toggle_devtools(handler_app.app_handle());
-                            }
-                            #[cfg(target_os = "linux")]
-                            Some(ShortcutCombination::CommandOptionI) => {
-                                utils::toggle_devtools(handler_app.app_handle());
-                            }
-
-                            None => {}
+        let global_shortcuts = tauri_plugin_global_shortcut::Builder::new()
+            .with_shortcuts(shortcuts)?
+            .with_handler(|handler_app, shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    match shortcut_combination(shortcut) {
+                        #[cfg(target_os = "macos")]
+                        Some(ShortcutCombination::CommandOptionI) => {
+                            utils::toggle_devtools(handler_app.app_handle());
                         }
+                        #[cfg(target_os = "macos")]
+                        Some(ShortcutCombination::ControlShiftI) => {}
+
+                        #[cfg(target_os = "windows")]
+                        Some(ShortcutCombination::ControlShiftI) => {
+                            utils::toggle_devtools(handler_app.app_handle());
+                        }
+                        #[cfg(target_os = "windows")]
+                        Some(ShortcutCombination::CommandOptionI) => {}
+
+                        #[cfg(target_os = "linux")]
+                        Some(ShortcutCombination::ControlShiftI) => {
+                            utils::toggle_devtools(handler_app.app_handle());
+                        }
+                        #[cfg(target_os = "linux")]
+                        Some(ShortcutCombination::CommandOptionI) => {
+                            utils::toggle_devtools(handler_app.app_handle());
+                        }
+
+                        None => {}
                     }
-                })
-                .build(),
-        )?
+                }
+            })
+            .build();
+
+        app.handle().plugin(global_shortcuts)?
     }
 
     Ok(())
