@@ -16,25 +16,25 @@ pub mod utils;
 
 use crate::state::ZakuState;
 
+const TS_BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
+
 fn main() {
     #[cfg(target_os = "linux")]
     platform::linux::initialize();
 
-    let builder = tauri_specta::Builder::<tauri::Wry>::new().commands(commands::collect());
+    let builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(commands::collect())
+        .error_handling(tauri_specta::ErrorHandlingMode::Result);
 
     if std::env::var("GEN_BINDINGS").is_ok() {
-        use specta_typescript::Typescript;
-        use std::process::Command;
+        use specta_typescript::{formatter, Typescript};
 
         builder
-            .export(Typescript::default(), "./../src/lib/bindings.ts")
+            .export(
+                Typescript::default().formatter(formatter::prettier),
+                TS_BINDINGS_PATH,
+            )
             .expect("Failed to export typescript bindings");
-
-        Command::new("pnpm")
-            .arg("format")
-            .current_dir("./../src")
-            .status()
-            .expect("Failed to execute pnpm format");
     }
 
     let app = tauri::Builder::default()
