@@ -14,7 +14,8 @@ use crate::{
     request::models::HttpReq,
     space::models::{Space, SpaceConfigFile, SpaceCookie, SpaceReference},
     store,
-    store::models::{SpaceBuf, SpaceCookies, SpaceSettings},
+    store::models::{SpaceCookies, SpaceSettings},
+    store::spaces::buffer::SpaceBuf,
 };
 
 pub mod models;
@@ -35,8 +36,10 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let relative_space_root = "".to_string();
     let collection_name_by_relpath =
         collection::displayname_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
-    let active_space_buffer = SpaceBuf::load(space_abspath);
-    let active_spacebuf_rlock = SpaceBuf::acq_rlock(&active_space_buffer);
+    let active_space_buffer = SpaceBuf::load(space_abspath)?;
+    let active_spacebuf_rlock = active_space_buffer
+        .read()
+        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
     let space_config = match parse_spacecfg(&space_abspath) {
         Ok(space_config) => Some(space_config),
         Err(_) => None,

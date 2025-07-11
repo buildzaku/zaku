@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -39,12 +37,6 @@ impl ReqBuf {
 
         Self { meta, config }
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct SpaceBuf {
-    pub abspath: String,
-    pub requests: HashMap<String, ReqBuf>,
 }
 
 pub struct SpaceCookies;

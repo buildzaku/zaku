@@ -366,7 +366,10 @@ pub async fn persist_to_reqbuf(
 ) -> CmdResult<()> {
     let abs = Path::new(space_abspath);
     let rel = Path::new(relpath);
-    buffer::persist_req_to_spacebuf(abs, rel, request);
+
+    buffer::persist_req_to_spacebuf(abs, rel, request).map_err(|e| CmdErr::Err {
+        message: e.to_string(),
+    })?;
 
     Ok(())
 }
