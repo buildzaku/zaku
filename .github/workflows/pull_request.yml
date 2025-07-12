@@ -9,7 +9,7 @@ env:
     PNPM_VERSION: 10.13.1
 
 jobs:
-    js-format:
+    js_format:
         name: "JS Format"
         if: github.repository == 'buildzaku/zaku'
         runs-on: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
             - name: "Check format"
               run: pnpm run format-check
 
-    js-lint:
+    js_lint:
         name: "JS Lint"
         if: github.repository == 'buildzaku/zaku'
         runs-on: ubuntu-latest
@@ -83,7 +83,7 @@ jobs:
             - name: "Check lint"
               run: pnpm run lint
 
-    rust-format:
+    rust_format:
         name: "Rust Format"
         if: github.repository == 'buildzaku/zaku'
         runs-on: ubuntu-latest
@@ -107,10 +107,22 @@ jobs:
             - name: "Check format"
               run: cargo fmt --all -- --check
 
-    rust-lint:
+    rust_lint:
         name: "Rust Lint"
         if: github.repository == 'buildzaku/zaku'
-        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - platform: "macos-latest"
+                      arch: "aarch64-apple-darwin"
+                    - platform: "macos-latest"
+                      arch: "x86_64-apple-darwin"
+                    - platform: "ubuntu-latest"
+                      arch: null
+                    - platform: "windows-latest"
+                      arch: null
+        runs-on: ${{ matrix.platform }}
         defaults:
             run:
                 working-directory: src-tauri
@@ -122,6 +134,7 @@ jobs:
               uses: dtolnay/rust-toolchain@stable
               with:
                   components: clippy
+                  targets: ${{ matrix.arch }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
@@ -129,6 +142,7 @@ jobs:
                   workspaces: "./src-tauri -> target"
 
             - name: "Install linux dependencies"
+              if: matrix.platform == 'ubuntu-latest'
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
@@ -136,10 +150,22 @@ jobs:
             - name: "Run clippy"
               run: cargo clippy --all-targets --all-features -- -D warnings
 
-    rust-test:
+    rust_test:
         name: "Rust Test"
         if: github.repository == 'buildzaku/zaku'
-        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - platform: "macos-latest"
+                      arch: "aarch64-apple-darwin"
+                    - platform: "macos-latest"
+                      arch: "x86_64-apple-darwin"
+                    - platform: "ubuntu-latest"
+                      arch: null
+                    - platform: "windows-latest"
+                      arch: null
+        runs-on: ${{ matrix.platform }}
         defaults:
             run:
                 working-directory: src-tauri
@@ -149,6 +175,8 @@ jobs:
 
             - name: "Setup Rust"
               uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.arch }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
@@ -156,6 +184,7 @@ jobs:
                   workspaces: "./src-tauri -> target"
 
             - name: "Install linux dependencies"
+              if: matrix.platform == 'ubuntu-latest'
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
@@ -163,7 +192,7 @@ jobs:
             - name: "Run tests"
               run: cargo test --all
 
-    build-app:
+    build_app:
         name: "Build App"
         if: github.repository == 'buildzaku/zaku'
         strategy:
@@ -171,12 +200,16 @@ jobs:
             matrix:
                 include:
                     - platform: "macos-latest"
+                      arch: "aarch64-apple-darwin"
                       args: "--ci --verbose --bundles dmg --target aarch64-apple-darwin"
                     - platform: "macos-latest"
+                      arch: "x86_64-apple-darwin"
                       args: "--ci --verbose --bundles dmg --target x86_64-apple-darwin"
                     - platform: "ubuntu-latest"
+                      arch: null
                       args: "--ci --verbose --bundles deb"
                     - platform: "windows-latest"
+                      arch: null
                       args: "--ci --verbose --bundles msi"
         runs-on: ${{ matrix.platform }}
         steps:
@@ -209,7 +242,7 @@ jobs:
             - name: "Setup Rust"
               uses: dtolnay/rust-toolchain@stable
               with:
-                  targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+                  targets: ${{ matrix.arch }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2

@@ -90,8 +90,8 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    build_and_upload_assets:
-        name: "Build and upload assets"
+    release_builds:
+        name: "Release Builds"
         needs: [version_or_publish]
         if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_upload_or_reupload_assets == 'true') }}
         permissions:
@@ -101,12 +101,16 @@ jobs:
             matrix:
                 include:
                     - platform: "macos-latest"
+                      arch: "aarch64-apple-darwin"
                       args: "--ci --verbose --bundles dmg --target aarch64-apple-darwin"
                     - platform: "macos-latest"
+                      arch: "x86_64-apple-darwin"
                       args: "--ci --verbose --bundles dmg --target x86_64-apple-darwin"
                     - platform: "ubuntu-latest"
+                      arch: null
                       args: "--ci --verbose --bundles deb"
                     - platform: "windows-latest"
+                      arch: null
                       args: "--ci --verbose --bundles msi"
         runs-on: ${{ matrix.platform }}
         steps:
@@ -139,14 +143,14 @@ jobs:
             - name: "Setup Rust"
               uses: dtolnay/rust-toolchain@stable
               with:
-                  targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+                  targets: ${{ matrix.arch }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
               with:
                   workspaces: "./src-tauri -> target"
 
-            - name: "Install system dependencies (Ubuntu only)"
+            - name: "Install linux dependencies"
               if: matrix.platform == 'ubuntu-latest'
               run: |
                   sudo apt-get update
@@ -155,7 +159,7 @@ jobs:
             - name: "Install frontend dependencies"
               run: pnpm install
 
-            - name: "Build application and upload assets"
+            - name: "Create release builds"
               uses: tauri-apps/tauri-action@v0
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
