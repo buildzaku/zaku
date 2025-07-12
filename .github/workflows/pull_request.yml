@@ -104,6 +104,11 @@ jobs:
               with:
                   workspaces: "./src-tauri -> target"
 
+            - name: "Install linux dependencies"
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
+
             - name: "Check format"
               run: cargo fmt --all -- --check
 
@@ -128,6 +133,11 @@ jobs:
               with:
                   workspaces: "./src-tauri -> target"
 
+            - name: "Install linux dependencies"
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
+
             - name: "Run clippy"
               run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -149,6 +159,11 @@ jobs:
               uses: swatinem/rust-cache@v2
               with:
                   workspaces: "./src-tauri -> target"
+
+            - name: "Install linux dependencies"
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
             - name: "Run tests"
               run: cargo test --all
@@ -206,7 +221,7 @@ jobs:
               with:
                   workspaces: "./src-tauri -> target"
 
-            - name: "Install system dependencies (Ubuntu only)"
+            - name: "Install linux dependencies"
               if: matrix.platform == 'ubuntu-latest'
               run: |
                   sudo apt-get update
