@@ -41,19 +41,13 @@ impl ReqBuf {
 
 pub struct SpaceCookies;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type, Default)]
 pub enum Theme {
+    #[default]
     System,
     Light,
     Dark,
 }
-
-impl Default for Theme {
-    fn default() -> Self {
-        Theme::System
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct AudioNotification {
     pub on_req_finish: bool,

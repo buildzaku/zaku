@@ -15,8 +15,8 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 env:
-    NODE_VERSION: 22.14.0
-    PNPM_VERSION: 10.4.1
+    NODE_VERSION: 22.17.0
+    PNPM_VERSION: 10.13.1
 
 jobs:
     version_or_publish:
