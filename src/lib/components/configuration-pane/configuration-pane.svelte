@@ -78,7 +78,7 @@
     {:else}
         <div class="px-1.5">
             <div class="grid auto-cols-min grid-flow-col justify-start gap-2 p-0 [&>*]:text-xs">
-                {#each configTabs as tab}
+                {#each configTabs as tab, idx (idx)}
                     <Button
                         data-state={currentTab === tab ? "active" : "inactive"}
                         class="text-small text-muted-foreground ring-offset-background focus-visible:ring-ring data-[state=active]:border-foreground/20 data-[state=active]:bg-muted data-[state=active]:text-foreground inline-flex h-6 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent px-1.5 font-medium whitespace-nowrap transition-all hover:bg-transparent focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow"
