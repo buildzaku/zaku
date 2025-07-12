@@ -1,5 +1,20 @@
 # zaku
 
+## 0.7.1
+
+### Patch Changes
+
+- Standardize error handling - [`c00627d`](https://github.com/buildzaku/zaku/commit/c00627dcc8f58d67590a35d5954d9e1cf7828173) [#44](https://github.com/buildzaku/zaku/pull/44)
+    - Use structured error types
+    - Replace most `.unwrap()`/`.expect()` calls with `Result` based handling
+    - Use `CmdResult` for all tauri commands
+
+- Add rust clippy, fmt and test checks in CI workflow - [`a2f9fbd`](https://github.com/buildzaku/zaku/commit/a2f9fbdc064b4a536ff392a10e19504cb5374b25) [#46](https://github.com/buildzaku/zaku/pull/46)
+
+- Improve CI workflow - [`e92f848`](https://github.com/buildzaku/zaku/commit/e92f8480ddf6aeb63d99293282c6ed742168781c) [#47](https://github.com/buildzaku/zaku/pull/47)
+    - Add arch targets to the release matrix
+    - Enable linting and testing across all platforms
+
 ## 0.7.0
 
 ### Minor Changes
