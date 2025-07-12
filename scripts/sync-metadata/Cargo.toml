@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = { version = "=1.0.210", features = ["derive"] }
-serde_json = { version = "=1.0.128" }
-serde_yaml = { version = "=0.9.34" }
-toml_edit = { version = "=0.22.22" }
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = { version = "1.0.128" }
+serde_yaml = { version = "0.9.34" }
+toml_edit = { version = "0.22.22" }
