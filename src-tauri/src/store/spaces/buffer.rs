@@ -25,7 +25,7 @@ impl SpaceBuf {
     pub fn load(space_abspath: &Path) -> Result<RwLock<Self>> {
         let spacebuf_file = APP_DATA_DIR
             .join(super::SPACES_STORE_DIR)
-            .join(&hashed_filename(&space_abspath.to_string_lossy()))
+            .join(hashed_filename(&space_abspath.to_string_lossy()))
             .join(SETTINGS_FILENAME);
 
         if spacebuf_file.exists() {
@@ -49,7 +49,7 @@ impl SpaceBuf {
     pub fn persist(&self) -> Result<()> {
         let buf_filepath = APP_DATA_DIR
             .join(super::SPACES_STORE_DIR)
-            .join(&hashed_filename(&self.abspath))
+            .join(hashed_filename(&self.abspath))
             .join(SETTINGS_FILENAME);
 
         if let Some(parent) = buf_filepath.parent() {

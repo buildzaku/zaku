@@ -5,8 +5,6 @@ use specta::Type;
 use std::fmt;
 use std::io;
 
-pub type Result<T> = core::result::Result<T, Error>;
-
 #[derive(Debug, From)]
 pub enum Error {
     FileNotFound(String),
@@ -57,6 +55,8 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 #[serde(tag = "type")]
