@@ -114,7 +114,7 @@ pub async fn create_collection(
             let dirs_sanitized_relpath =
                 collection::create_collections_all(&active_space_abspath, &create_collection_dto)
                     .map_err(|err| CmdErr::Err {
-                    message: format!("Failed to create collection: {}", err),
+                    message: format!("Failed to create collection: {err}"),
                 })?;
 
             let dir_parent_relpath = utils::join_str_paths(vec![
@@ -136,12 +136,12 @@ pub async fn create_collection(
     ]);
 
     fs::create_dir(&dir_abspath).map_err(|err| CmdErr::Err {
-        message: format!("Failed to create collection: {}", err),
+        message: format!("Failed to create collection: {err}"),
     })?;
 
     collection::save_displayname_if_missing(&active_space_abspath, &dir_relpath, dir_display_name)
         .unwrap_or_else(|err| {
-            eprintln!("Failed to save display name {}", err);
+            eprintln!("Failed to save display name {err}");
         });
 
     let create_new_collection = CreateNewCollection {
@@ -152,10 +152,7 @@ pub async fn create_collection(
     sharedstate.active_space =
         Some(
             space::parse_space(&active_space_abspath).map_err(|err| CmdErr::Err {
-                message: format!(
-                    "Failed to parse space after creating the collection: {}",
-                    err
-                ),
+                message: format!("Failed to parse space after creating the collection: {err}"),
             })?,
         );
 
@@ -213,7 +210,7 @@ pub fn move_treeitem(
         Ok(active_space) => sharedstate.active_space = Some(active_space),
         Err(err) => {
             return Err(CmdErr::Err {
-                message: format!("Failed to parse space after moving the tree item: {}", err),
+                message: format!("Failed to parse space after moving the tree item: {err}"),
             });
         }
     }
@@ -228,7 +225,7 @@ pub fn is_notif_enabled(app_handle: tauri::AppHandle) -> CmdResult<bool> {
         .notification()
         .permission_state()
         .map_err(|err| CmdErr::Err {
-            message: format!("Failed to get current permissions state: {}", err),
+            message: format!("Failed to get current permissions state: {err}"),
         })?;
 
     Ok(permission_state == PermissionState::Granted)
@@ -241,7 +238,7 @@ pub fn request_notif_access(app_handle: tauri::AppHandle) -> CmdResult<bool> {
         .notification()
         .request_permission()
         .map_err(|err| CmdErr::Err {
-            message: format!("Failed to request for permissions: {}", err),
+            message: format!("Failed to request for permissions: {err}"),
         })?;
 
     Ok(permission_state == PermissionState::Granted)
@@ -260,7 +257,7 @@ pub fn dispatch_notif(
         .body(&options.body)
         .show()
         .map_err(|err| CmdErr::Err {
-            message: format!("Failed to dispatch notification: {}", err),
+            message: format!("Failed to dispatch notification: {err}"),
         })?;
 
     Ok(())
@@ -315,7 +312,7 @@ pub async fn create_req(
             let dirs_sanitized_relpath =
                 collection::create_collections_all(&active_space_abspath, &create_collection_dto)
                     .map_err(|err| CmdErr::Err {
-                    message: format!("Failed to create request's parent directories: {}", err),
+                    message: format!("Failed to create request's parent directories: {err}"),
                 })?;
 
             let file_parent_relpath = utils::join_str_paths(vec![
@@ -333,11 +330,11 @@ pub async fn create_req(
         .join(file_sanitized_name.clone());
     let file_relpath = utils::join_str_paths(vec![
         file_parent_relpath.clone().as_str(),
-        format!("{}.toml", file_sanitized_name).as_str(),
+        format!("{file_sanitized_name}.toml").as_str(),
     ]);
 
     request::create_reqtoml(&file_abspath, file_display_name).map_err(|err| CmdErr::Err {
-        message: format!("Failed to create request file: {}", err),
+        message: format!("Failed to create request file: {err}"),
     })?;
 
     let create_new_result = CreateNewRequest {
@@ -349,7 +346,7 @@ pub async fn create_req(
         Ok(active_space) => sharedstate.active_space = Some(active_space),
         Err(err) => {
             return Err(CmdErr::Err {
-                message: format!("Failed to parse space after creating the request: {}", err),
+                message: format!("Failed to parse space after creating the request: {err}"),
             });
         }
     }
@@ -601,7 +598,7 @@ pub fn set_active_space(
             Ok(())
         }
         Err(err) => Err(CmdErr::Err {
-            message: format!("Unable to parse space: {}", err),
+            message: format!("Unable to parse space: {err}"),
         }),
     }
 }
@@ -655,7 +652,7 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
             Ok(space_reference)
         }
         Err(err) => Err(CmdErr::Err {
-            message: format!("Unable to parse space: {}", err),
+            message: format!("Unable to parse space: {err}"),
         }),
     }
 }
@@ -702,7 +699,7 @@ pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> Cmd
 #[tauri::command]
 pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> CmdResult<()> {
     SpaceSettings::persist(space_abspath, &settings).map_err(|err| CmdErr::Err {
-        message: format!("Failed to persist space settings: {}", err),
+        message: format!("Failed to persist space settings: {err}"),
     })?;
 
     Ok(())
@@ -716,7 +713,7 @@ pub fn get_shared_state(
     match sharedstate_mtx.lock() {
         Ok(sharedstate) => Ok(sharedstate.clone()),
         Err(e) => Err(CmdErr::Err {
-            message: format!("State lock error: {}", e),
+            message: format!("State lock error: {e}"),
         }),
     }
 }

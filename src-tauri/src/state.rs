@@ -42,7 +42,8 @@ pub fn initialize(app: &mut App) -> Result<()> {
                             sharedstate.active_space = Some(valid_space);
                         })
                         .map_err(|e| {
-                            eprintln!("Error parsing space: {}", e);
+                            eprintln!("Error parsing space: {e}");
+
                             e
                         })
                 } else {

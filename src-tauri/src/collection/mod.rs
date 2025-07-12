@@ -99,7 +99,7 @@ pub fn create_collections_all(
         ]);
 
         save_displayname_if_missing(space_abspath, &cur_collection_relpath, dir_display_name)
-            .map_err(|e| Error::FileReadError(format!("{}: {}", cur_collection_relpath, e)))?;
+            .map_err(|e| Error::FileReadError(format!("{cur_collection_relpath}: {e}")))?;
 
         if !collections_relpath.is_empty() {
             collections_relpath.push('/');

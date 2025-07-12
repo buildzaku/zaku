@@ -43,7 +43,8 @@ pub fn to_indexmap(fields: &[(bool, String, String)]) -> Option<IndexMap<String,
         fields
             .iter()
             .map(|(included, key, value)| {
-                let key = if *included { key } else { &format!("!{}", key) };
+                let key = if *included { key } else { &format!("!{key}") };
+
                 (key.clone(), value.clone())
             })
             .collect(),

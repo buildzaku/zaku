@@ -40,10 +40,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let active_spacebuf_rlock = active_space_buffer
         .read()
         .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
-    let space_config = match parse_spacecfg(space_abspath) {
-        Ok(space_config) => Some(space_config),
-        Err(_) => None,
-    };
+    let space_config = parse_spacecfg(space_abspath).ok();
 
     let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
         meta: CollectionMeta {
