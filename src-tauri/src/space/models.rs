@@ -57,7 +57,7 @@ impl SpaceCookie {
             path: ck.path().unwrap_or("/").to_string(),
             secure: ck.secure().unwrap_or(false),
             http_only: ck.http_only().unwrap_or(false),
-            same_site: ck.same_site().map(|ss| format!("{:?}", ss)),
+            same_site: ck.same_site().map(|ss| format!("{ss:?}")),
             expires: match ck.expires() {
                 Some(cookie::Expiration::DateTime(dt)) => Some(dt.format(&Rfc3339).unwrap()),
                 _ => None,
@@ -73,7 +73,7 @@ impl SpaceCookie {
             path: rc.path().unwrap_or("/").to_string(),
             secure: rc.secure().unwrap_or(false),
             http_only: rc.http_only().unwrap_or(false),
-            same_site: rc.same_site().map(|ss| format!("{:?}", ss)),
+            same_site: rc.same_site().map(|ss| format!("{ss:?}")),
             expires: match rc.expires() {
                 Some(cookie::Expiration::DateTime(dt)) => Some(dt.format(&Rfc3339).unwrap()),
                 _ => None,

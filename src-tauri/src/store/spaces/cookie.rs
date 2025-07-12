@@ -71,7 +71,7 @@ impl SpaceCookies {
                 .lock()
                 .map_err(|_| Error::LockError("Failed to lock cookie store".into()))?;
 
-            cookie_json::save(&*locked, &mut writer)?;
+            cookie_json::save(&locked, &mut writer)?;
         }
 
         Ok(())
