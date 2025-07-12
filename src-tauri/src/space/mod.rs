@@ -30,7 +30,7 @@ pub struct CollectionRcRefCell {
 fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let space_dirname = space_abspath
         .file_name()
-        .unwrap_or_else(|| space_abspath.as_os_str())
+        .unwrap_or(space_abspath.as_os_str())
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
@@ -40,7 +40,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let active_spacebuf_rlock = active_space_buffer
         .read()
         .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
-    let space_config = match parse_spacecfg(&space_abspath) {
+    let space_config = match parse_spacecfg(space_abspath) {
         Ok(space_config) => Some(space_config),
         Err(_) => None,
     };
@@ -235,7 +235,7 @@ pub fn parse_spacecfg(space_abspath: &Path) -> Result<SpaceConfigFile> {
 }
 
 pub fn first_valid_spaceref() -> Option<SpaceReference> {
-    return store::get_spacerefs()
+    store::get_spacerefs()
         .into_iter()
         .find_map(|space_reference| {
             let space_abspath = PathBuf::from(&space_reference.path);
@@ -244,5 +244,5 @@ pub fn first_valid_spaceref() -> Option<SpaceReference> {
                 Ok(_) => Some(space_reference),
                 Err(_) => None,
             }
-        });
+        })
 }

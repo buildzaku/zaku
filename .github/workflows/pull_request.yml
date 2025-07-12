@@ -5,12 +5,12 @@ on: [pull_request]
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 env:
-    NODE_VERSION: 22.14.0
-    PNPM_VERSION: 10.4.1
+    NODE_VERSION: 22.17.0
+    PNPM_VERSION: 10.13.1
 
 jobs:
-    format:
-        name: "Format"
+    js-format:
+        name: "JS Format"
         if: github.repository == 'buildzaku/zaku'
         runs-on: ubuntu-latest
         steps:
@@ -46,8 +46,8 @@ jobs:
             - name: "Check format"
               run: pnpm run format-check
 
-    lint:
-        name: "Lint"
+    js-lint:
+        name: "JS Lint"
         if: github.repository == 'buildzaku/zaku'
         runs-on: ubuntu-latest
         steps:
@@ -83,8 +83,78 @@ jobs:
             - name: "Check lint"
               run: pnpm run lint
 
-    build:
-        name: "Build"
+    rust-format:
+        name: "Rust Format"
+        if: github.repository == 'buildzaku/zaku'
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: src-tauri
+        steps:
+            - name: "Checkout repository"
+              uses: actions/checkout@v4
+
+            - name: "Setup Rust"
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: rustfmt
+
+            - name: "Setup Rust cache"
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: "./src-tauri -> target"
+
+            - name: "Check format"
+              run: cargo fmt --all -- --check
+
+    rust-lint:
+        name: "Rust Lint"
+        if: github.repository == 'buildzaku/zaku'
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: src-tauri
+        steps:
+            - name: "Checkout repository"
+              uses: actions/checkout@v4
+
+            - name: "Setup Rust"
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  components: clippy
+
+            - name: "Setup Rust cache"
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: "./src-tauri -> target"
+
+            - name: "Run clippy"
+              run: cargo clippy --all-targets --all-features -- -D warnings
+
+    rust-test:
+        name: "Rust Test"
+        if: github.repository == 'buildzaku/zaku'
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: src-tauri
+        steps:
+            - name: "Checkout repository"
+              uses: actions/checkout@v4
+
+            - name: "Setup Rust"
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: "Setup Rust cache"
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: "./src-tauri -> target"
+
+            - name: "Run tests"
+              run: cargo test --all
+
+    build-app:
+        name: "Build App"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
