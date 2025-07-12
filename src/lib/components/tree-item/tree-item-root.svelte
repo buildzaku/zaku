@@ -5,7 +5,7 @@
     import type { Collection } from "$lib/bindings";
     import { treeActionsState, treeItemsState } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
-    import { Button } from "$lib/components/primitives/button";
+    import { buttonVariants } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
     import {
         Tooltip,
@@ -90,22 +90,21 @@
             >
                 <TooltipProvider>
                     <Tooltip delayDuration={500} disableHoverableContent>
-                        <TooltipTrigger>
-                            <Button
-                                data-create-tree-item-button
-                                variant="ghost"
-                                size="icon"
-                                onclick={event => {
-                                    event.stopImmediatePropagation();
-                                    treeActionsState.createNewItem = TreeItemType.Request;
-                                }}
-                                class="flex items-center justify-center"
-                            >
-                                <FilePlusIcon
-                                    size={13}
-                                    class="size-[13px] max-h-[13px] max-w-[13px]"
-                                />
-                            </Button>
+                        <TooltipTrigger
+                            data-create-tree-item-button
+                            class={cn(
+                                buttonVariants({
+                                    variant: "ghost",
+                                    size: "icon",
+                                }),
+                                "flex size-5 max-h-5 min-h-5 max-w-5 min-w-5 items-center justify-center",
+                            )}
+                            onclick={event => {
+                                event.stopImmediatePropagation();
+                                treeActionsState.createNewItem = TreeItemType.Request;
+                            }}
+                        >
+                            <FilePlusIcon size={13} class="size-[13px] max-h-[13px] max-w-[13px]" />
                         </TooltipTrigger>
                         <TooltipContent>
                             <p>New Request</p>
@@ -114,22 +113,24 @@
                 </TooltipProvider>
                 <TooltipProvider>
                     <Tooltip delayDuration={500} disableHoverableContent>
-                        <TooltipTrigger>
-                            <Button
-                                data-create-tree-item-button
-                                variant="ghost"
-                                size="icon"
-                                onclick={event => {
-                                    event.stopImmediatePropagation();
-                                    treeActionsState.createNewItem = TreeItemType.Collection;
-                                }}
-                                class="flex items-center justify-center"
-                            >
-                                <FolderPlusIcon
-                                    size={13}
-                                    class="size-[13px] max-h-[13px] max-w-[13px]"
-                                />
-                            </Button>
+                        <TooltipTrigger
+                            data-create-tree-item-button
+                            class={cn(
+                                buttonVariants({
+                                    variant: "ghost",
+                                    size: "icon",
+                                }),
+                                "flex size-5 max-h-5 min-h-5 max-w-5 min-w-5 items-center justify-center",
+                            )}
+                            onclick={event => {
+                                event.stopImmediatePropagation();
+                                treeActionsState.createNewItem = TreeItemType.Collection;
+                            }}
+                        >
+                            <FolderPlusIcon
+                                size={13}
+                                class="size-[13px] max-h-[13px] max-w-[13px]"
+                            />
                         </TooltipTrigger>
                         <TooltipContent>
                             <p>New Collection</p>

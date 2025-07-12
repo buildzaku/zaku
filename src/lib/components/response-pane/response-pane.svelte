@@ -16,10 +16,10 @@
     type Props = {
         pane: PaneAPI;
         isCollapsed: boolean;
-        activeReqRef: ActiveRequest;
+        activeReq: ActiveRequest;
     };
 
-    let { pane, isCollapsed, activeReqRef }: Props = $props();
+    let { pane, isCollapsed, activeReq }: Props = $props();
 
     function prettyJson(data: string | undefined) {
         if (!data) return String();
@@ -158,38 +158,31 @@
     </div>
 {/snippet}
 
+{#snippet responseBtn(collapsed: boolean, onclick: () => void)}
+    <Button variant="ghost" {onclick} class="mr-1 hover:bg-transparent">
+        <span class="pr-1.5 text-xs font-medium">Response</span>
+        {#if collapsed}
+            <ChevronUpIcon size={14} />
+        {:else}
+            <ChevronDownIcon size={14} />
+        {/if}
+    </Button>
+{/snippet}
+
 <div class="size-full">
-    {#if activeReqRef.self.status === "Idle"}
+    {#if activeReq.self.status === "Idle"}
         {#if isCollapsed}
-            <div class="bg-accent/25 flex h-8 w-full items-center justify-between border-b">
-                <div class="flex size-full items-center justify-end">
-                    <Button
-                        variant="ghost"
-                        onclick={() => {
-                            pane.expand();
-                            pane.resize(60);
-                        }}
-                        class="hover:bg-transparent"
-                    >
-                        <span class="pr-1.5 text-xs font-medium">Response</span>
-                        <ChevronUpIcon size={14} />
-                    </Button>
-                </div>
+            <div class="bg-accent/25 flex h-8 w-full items-center justify-end border-b">
+                {@render responseBtn(isCollapsed, () => {
+                    pane.expand();
+                    pane.resize(60);
+                })}
             </div>
         {:else}
-            <div class="bg-accent/25 flex h-8 w-full items-center justify-between border-b">
-                <div class="flex size-full items-center justify-end">
-                    <Button
-                        variant="ghost"
-                        onclick={() => {
-                            pane.collapse();
-                        }}
-                        class="hover:bg-transparent"
-                    >
-                        <span class="pr-1.5 text-xs font-medium">Response</span>
-                        <ChevronDownIcon size={14} />
-                    </Button>
-                </div>
+            <div class="bg-accent/25 flex h-8 w-full items-center justify-end border-b">
+                {@render responseBtn(isCollapsed, () => {
+                    pane.collapse();
+                })}
             </div>
             <div class="flex size-full items-center justify-center gap-2 pb-8">
                 <RocketIcon size="20" />
@@ -198,7 +191,7 @@
                 </span>
             </div>
         {/if}
-    {:else if activeReqRef.self.status === "Pending"}
+    {:else if activeReq.self.status === "Pending"}
         <div class="flex size-full items-center justify-center">
             <RefreshCwIcon
                 strokeWidth={1.5}
@@ -213,19 +206,15 @@
                 class="bg-card flex h-8 w-full items-center justify-between border-y border-t-transparent"
             >
                 {#if isCollapsed}
-                    <button
-                        class="flex h-8 w-full cursor-pointer items-center justify-end gap-1.5 border-b px-3"
-                        onclick={() => {
+                    <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b">
+                        {#if activeReq.self.response}
+                            {@render httpResMeta(activeReq.self.response)}
+                        {/if}
+                        {@render responseBtn(isCollapsed, () => {
                             pane.expand();
                             pane.resize(60);
-                        }}
-                    >
-                        {#if activeReqRef.self.response}
-                            {@render httpResMeta(activeReqRef.self.response)}
-                        {/if}
-                        <span class="pr-1.5 text-xs font-medium">Response</span>
-                        <ChevronUpIcon size={14} />
-                    </button>
+                        })}
+                    </div>
                 {:else}
                     <div class="px-1.5">
                         <TabsList
@@ -234,40 +223,34 @@
                             <TabsTrigger value="body">Body</TabsTrigger>
                             <TabsTrigger value="cookies">
                                 {"Cookies".concat(
-                                    activeReqRef.self.response?.cookies
-                                        ? ` (${activeReqRef.self.response?.cookies.length})`
+                                    activeReq.self.response?.cookies
+                                        ? ` (${activeReq.self.response?.cookies.length})`
                                         : "",
                                 )}
                             </TabsTrigger>
                             <TabsTrigger value="headers">
                                 {"Headers".concat(
-                                    activeReqRef.self.response?.headers
-                                        ? ` (${activeReqRef.self.response?.headers.length})`
+                                    activeReq.self.response?.headers
+                                        ? ` (${activeReq.self.response?.headers.length})`
                                         : "",
                                 )}
                             </TabsTrigger>
                         </TabsList>
                     </div>
-                    <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b px-3">
-                        {#if activeReqRef.self.response}
-                            {@render httpResMeta(activeReqRef.self.response)}
+                    <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b">
+                        {#if activeReq.self.response}
+                            {@render httpResMeta(activeReq.self.response)}
                         {/if}
-                        <button
-                            onclick={() => {
-                                pane.collapse();
-                            }}
-                            class="flex cursor-pointer items-center gap-1.5 hover:bg-transparent"
-                        >
-                            <span class="pr-1.5 text-xs font-medium">Response</span>
-                            <ChevronDownIcon size={14} />
-                        </button>
+                        {@render responseBtn(isCollapsed, () => {
+                            pane.collapse();
+                        })}
                     </div>
                 {/if}
             </div>
             {#if !isCollapsed}
                 <div class="bg-background flex h-[calc(100%-32px)] w-full">
                     <TabsContent value="body" class="m-0 size-full">
-                        {#if activeReqRef.self.status === "Success"}
+                        {#if activeReq.self.status === "Success"}
                             <Tabs value="pretty" class="bg-card size-full">
                                 <div class="flex items-center justify-end border-b px-3">
                                     <TabsList class="my-1 auto-cols-min grid-flow-col gap-2 p-0">
@@ -283,7 +266,7 @@
                                         <CodeBlock
                                             language={json()}
                                             readOnly={true}
-                                            value={prettyJson(activeReqRef.self.response?.data)}
+                                            value={prettyJson(activeReq.self.response?.data)}
                                             class="size-full"
                                         />
                                     </TabsContent>
@@ -291,7 +274,7 @@
                                         <CodeBlock
                                             language={null}
                                             readOnly={true}
-                                            value={activeReqRef.self.response?.data}
+                                            value={activeReq.self.response?.data}
                                             class="size-full"
                                         />
                                     </TabsContent>
@@ -299,8 +282,8 @@
                                         <iframe
                                             title=""
                                             src="about:blank"
-                                            srcdoc={activeReqRef.self.response
-                                                ? activeReqRef.self.response.data
+                                            srcdoc={activeReq.self.response
+                                                ? activeReq.self.response.data
                                                 : ""}
                                             class="size-full"
                                             loading="lazy"
@@ -309,14 +292,14 @@
                                     </TabsContent>
                                 </div>
                             </Tabs>
-                        {:else if activeReqRef.self.status === "Error"}
-                            {#if activeReqRef.self.response && activeReqRef.self.response.data}
+                        {:else if activeReq.self.status === "Error"}
+                            {#if activeReq.self.response && activeReq.self.response.data}
                                 <div class="flex size-full items-center justify-center gap-2">
                                     <Alert
                                         variant="destructive"
                                         class="w-fit max-w-[50%] py-1 [&>*]:select-text"
                                     >
-                                        <span>{activeReqRef.self.response.data}</span>
+                                        <span>{activeReq.self.response.data}</span>
                                     </Alert>
                                 </div>
                             {:else}
@@ -326,10 +309,10 @@
                                     <CodeBlock
                                         language={json()}
                                         readOnly={true}
-                                        value={activeReqRef.self.response &&
-                                        activeReqRef.self.response.status
+                                        value={activeReq.self.response &&
+                                        activeReq.self.response.status
                                             ? HTTP_STATUS_DESCRIPTION[
-                                                  activeReqRef.self.response.status
+                                                  activeReq.self.response.status
                                               ]
                                             : "Something went wrong."}
                                         class="size-full"
@@ -339,8 +322,8 @@
                         {/if}
                     </TabsContent>
                     <TabsContent value="cookies" class="m-0 size-full">
-                        {#if activeReqRef.self.response}
-                            {@render cookiesTable(activeReqRef.self.response.cookies)}
+                        {#if activeReq.self.response}
+                            {@render cookiesTable(activeReq.self.response.cookies)}
                         {:else}
                             <div class="flex size-full items-center justify-center">
                                 No cookies for you :(
@@ -348,8 +331,8 @@
                         {/if}
                     </TabsContent>
                     <TabsContent value="headers" class="m-0 size-full">
-                        {#if activeReqRef.self.response}
-                            {@render headersTable(activeReqRef.self.response.headers)}
+                        {#if activeReq.self.response}
+                            {@render headersTable(activeReq.self.response.headers)}
                         {:else}
                             <div class="flex size-full items-center justify-center">
                                 No headers received
