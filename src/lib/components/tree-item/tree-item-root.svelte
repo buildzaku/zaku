@@ -148,7 +148,7 @@
             {@render children()}
             <div
                 class="min-h-8 w-full flex-grow cursor-default"
-                tabindex={0}
+                tabindex={-1}
                 role="button"
                 aria-grabbed="false"
                 draggable="false"
