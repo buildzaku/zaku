@@ -52,6 +52,22 @@ pub fn save_displayname_if_missing(
     Ok(())
 }
 
+/// Creates a collection directory (nested if needed) based on `relpath`
+/// under the specified `parent_relpath`. Each segment is sanitized for
+/// the filesystem and the original segment is saved as display name
+///
+/// Example, if `relpath` is `"Settings/Notifications"`, it creates:
+/// - Directories: `settings/notifications`
+/// - Display names saved:
+///   - `settings` -> `"Settings"`
+///   - `notifications` -> `"Notifications"`
+///
+/// Directories are created under `space_abspath/parent_relpath`.
+///
+/// - `space_abspath`: Absolute path of space.
+/// - `create_collection_dto`: Contains `parent_relpath` and `relpath`.
+///
+/// Returns a `Result`  containing the created collection's relative path
 pub fn create_collections_all(
     space_abspath: &Path,
     create_collection_dto: &CreateCollectionDto,
