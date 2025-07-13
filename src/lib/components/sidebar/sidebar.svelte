@@ -152,18 +152,20 @@
             {#if isCollapsed}
                 <TooltipProvider>
                     <Tooltip delayDuration={500} disableHoverableContent>
-                        <TooltipTrigger>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onclick={() => {
-                                    pane.expand();
-                                    pane.resize(24);
-                                }}
-                                class="my-1.5 flex-shrink-0"
-                            >
-                                <CompassIcon size={14} class="min-h-[14px] min-w-[14px]" />
-                            </Button>
+                        <TooltipTrigger
+                            class={cn(
+                                buttonVariants({
+                                    variant: "ghost",
+                                    size: "icon",
+                                }),
+                                "my-1.5 flex-shrink-0",
+                            )}
+                            onclick={() => {
+                                pane.expand();
+                                pane.resize(24);
+                            }}
+                        >
+                            <CompassIcon size={14} class="min-h-[14px] min-w-[14px]" />
                         </TooltipTrigger>
                         <TooltipContent side="right">Explorer</TooltipContent>
                     </Tooltip>
