@@ -11,8 +11,8 @@
         "dev": "vite dev",
         "build": "vite build",
         "preview": "vite preview",
-        "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-        "check-watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+        "svelte-check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+        "svelte-check-watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
         "lint": "eslint . --max-warnings=0",
         "format": "prettier --write \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
         "format-check": "prettier --check \"**/*.{svelte,js,cjs,mjs,ts,cts,mts,json,md,yaml,yml}\"",
@@ -23,7 +23,8 @@
         "changeset-status": "changeset status --verbose",
         "changeset-version": "changeset version && pnpm run sync-metadata && pnpm run format",
         "changeset-tag": "changeset tag",
-        "tauri": "tauri"
+        "tauri": "tauri",
+        "checks": "./scripts/checks.sh"
     },
     "devDependencies": {
         "@changesets/cli": "2.29.5",
