@@ -1,5 +1,6 @@
 <script lang="ts">
     import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
+    import { toast } from "svelte-sonner";
 
     import { TreeItemContent, TreeItemCreate } from ".";
     import { type TreeItem, type DragOverDto, TreeItemType } from "$lib/models";
@@ -14,7 +15,8 @@
         handleDrop,
         handleDragEnd,
         buildPath,
-        isCollection,
+        isCol,
+        isReq,
     } from "$lib/components/tree-item/utils.svelte";
 
     type Props = {
@@ -37,9 +39,39 @@
     );
     let shouldHighlight = $derived(isDropAllowed(currentPath));
 
-    const dragOverDto: DragOverDto = isCollection(treeItem)
+    const dragOverDto: DragOverDto = isCol(treeItem)
         ? { type: TreeItemType.Collection, relativePath: currentPath }
         : { type: TreeItemType.Request, parentRelativePath: parentPath };
+
+    type TreeItemFocusParams = { treeItem: TreeItem; parentRelpath: string; relpath: string };
+    function handleTreeItemFocus({ treeItem, parentRelpath, relpath }: TreeItemFocusParams) {
+        if (isCol(treeItem)) {
+            treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
+
+            treeItemsState.focussedItem = {
+                type: TreeItemType.Collection,
+                parentRelativePath: parentRelpath,
+                relativePath: relpath,
+            };
+        } else if (isReq(treeItem)) {
+            treeItemsState.focussedItem = {
+                type: TreeItemType.Request,
+                parentRelativePath: parentRelpath,
+                relativePath: relpath,
+            };
+
+            treeItemsState.activeRequest = {
+                parentRelativePath: parentRelpath,
+                self: treeItem,
+            };
+
+            if (!treeItemsState.openRequests.includes(treeItem)) {
+                treeItemsState.openRequests.push(treeItem);
+            }
+        } else {
+            toast.error("Something went wrong while trying to focus on item");
+        }
+    }
 </script>
 
 <div
@@ -67,9 +99,8 @@
         onkeydown={keyboardEvent => {
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
-                if (isCollection(treeItem)) {
-                    treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
-                }
+
+                handleTreeItemFocus({ treeItem, parentRelpath: parentPath, relpath: currentPath });
             }
         }}
         style="padding-left: {level * 8}px"
@@ -82,29 +113,11 @@
         onclick={() => {
             treeActionsState.createNewItem = null;
 
-            if (isCollection(treeItem)) {
-                treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
-                treeItemsState.focussedItem = {
-                    type: TreeItemType.Collection,
-                    parentRelativePath: parentPath,
-                    relativePath: currentPath,
-                };
-            } else {
-                treeItemsState.focussedItem = {
-                    type: TreeItemType.Request,
-                    parentRelativePath: parentPath,
-                    relativePath: currentPath,
-                };
-                treeItemsState.activeRequest = { parentRelativePath: parentPath, self: treeItem };
-
-                if (!treeItemsState.openRequests.includes(treeItem)) {
-                    treeItemsState.openRequests.push(treeItem);
-                }
-            }
+            handleTreeItemFocus({ treeItem, parentRelpath: parentPath, relpath: currentPath });
         }}
     >
         <div class="flex size-full items-center gap-1 pl-1.5">
-            {#if isCollection(treeItem)}
+            {#if isCol(treeItem)}
                 {#if treeItem.meta.is_expanded}
                     <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
                 {:else}
@@ -137,7 +150,7 @@
         </div>
     </div>
 
-    {#if isCollection(treeItem)}
+    {#if isCol(treeItem)}
         {#if shouldRenderCreateNewRequestInput}
             <TreeItemCreate
                 type={TreeItemType.Request}

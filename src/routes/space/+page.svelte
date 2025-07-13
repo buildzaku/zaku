@@ -188,9 +188,11 @@
         >
             <Sidebar pane={leftPane} bind:isCollapsed={isLeftPaneCollapsed} />
         </ResizablePane>
+
+        <!-- align-marker: mt-px to align with sidebar's pt-px -->
         <ResizablePane
             defaultSize={50}
-            class="bg-card relative mr-1.5 mb-1.5 rounded-md border border-l-0"
+            class="bg-card relative mt-px mr-1.5 mb-1.5 rounded-md border border-l-0"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
             {@const activeReqRef = treeItemsState.activeRequest}
@@ -254,7 +256,7 @@
                         <ResponsePane
                             pane={resPane}
                             isCollapsed={isResPaneCollapsed}
-                            {activeReqRef}
+                            activeReq={activeReqRef}
                         />
                     </ResizablePane>
                 </ResizablePaneGroup>

@@ -27,7 +27,7 @@
     }
 </script>
 
-<div class="flex flex-col gap-2">
+<div class="flex flex-col gap-3">
     {#each baseRequestHeaders as baseHeader, idx (idx)}
         <div class="flex gap-2">
             <div class="flex size-6 items-center justify-center">
@@ -91,8 +91,8 @@
             </Button>
         </div>
     {/each}
+    <Button variant="ghost" onclick={() => addHeader(config)} class="h-6 w-fit gap-1 border px-2">
+        <PlusIcon size={14} class="max-h-[14px] max-w-[14px]" />
+        <span class="text-small">Add Header</span>
+    </Button>
 </div>
-<Button variant="ghost" onclick={() => addHeader(config)} class="my-3 h-6 gap-1 border px-2">
-    <PlusIcon size={14} class="max-h-[14px] max-w-[14px]" />
-    <span class="text-small">Add Header</span>
-</Button>
