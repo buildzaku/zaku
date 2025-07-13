@@ -8,10 +8,20 @@ import type { DragOverDto, DragPayload, RemoveTreeItemDto, TreeItem } from "$lib
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { err, ok } from "$lib/utils";
 import { commands } from "$lib/bindings";
-import type { Result, MoveTreeItemDto, Collection } from "$lib/bindings";
+import type { Result, MoveTreeItemDto, Collection, HttpReq } from "$lib/bindings";
 
-export function isCollection(treeItem: TreeItem): treeItem is Collection {
-    return Object.hasOwn(treeItem.meta, "dir_name");
+// TODO - add test
+export function isCol(treeItem: TreeItem): treeItem is Collection {
+    return Object.hasOwn(treeItem, "requests") && Object.hasOwn(treeItem, "collections");
+}
+
+// TODO - add test
+export function isReq(treeItem: TreeItem): treeItem is HttpReq {
+    return (
+        Object.hasOwn(treeItem, "status") &&
+        Object.hasOwn(treeItem, "config") &&
+        Object.hasOwn(treeItem, "response")
+    );
 }
 
 export function isSubPath(currentPath: string, targetPath: string): boolean {
@@ -38,7 +48,7 @@ export function isDropAllowed(path: string): boolean {
             return false;
         }
 
-        if (isCollection(treeActionsState.dragPayload.treeItem)) {
+        if (isCol(treeActionsState.dragPayload.treeItem)) {
             const dirName = treeActionsState.dragPayload.treeItem.meta.dir_name;
             const relativePath =
                 treeActionsState.dragPayload.parentRelativePath === RELATIVE_SPACE_ROOT
@@ -76,7 +86,7 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
         previewContainer.style.left = "-1000px";
         document.body.appendChild(previewContainer);
 
-        const previewTitle = isCollection(payload.treeItem)
+        const previewTitle = isCol(payload.treeItem)
             ? (payload.treeItem.meta.display_name ?? payload.treeItem.meta.dir_name)
             : (payload.treeItem.meta.display_name ?? payload.treeItem.meta.file_name);
 
@@ -131,7 +141,7 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const removeTreeItemDto: RemoveTreeItemDto = isCollection(treeActionsState.dragPayload.treeItem)
+    const removeTreeItemDto: RemoveTreeItemDto = isCol(treeActionsState.dragPayload.treeItem)
         ? {
               type: TreeItemType.Collection,
               dir_name: treeActionsState.dragPayload.treeItem.meta.dir_name,
@@ -150,7 +160,7 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const fileOrDirName = isCollection(treeActionsState.dragPayload.treeItem)
+    const fileOrDirName = isCol(treeActionsState.dragPayload.treeItem)
         ? treeActionsState.dragPayload.treeItem.meta.dir_name
         : treeActionsState.dragPayload.treeItem.meta.file_name;
     const moveTreeItemDto: MoveTreeItemDto = {
@@ -244,7 +254,7 @@ export function addTreeItemToCollection({
                 : traversedPath.concat("/").concat(segment);
     }
 
-    if (isCollection(treeItem)) {
+    if (isCol(treeItem)) {
         const relativePath =
             parentRelativePath === RELATIVE_SPACE_ROOT
                 ? parentRelativePath.concat(treeItem.meta.dir_name)
@@ -263,7 +273,7 @@ export function addTreeItemToCollection({
         }
     }
 
-    if (isCollection(treeItem)) {
+    if (isCol(treeItem)) {
         const collectionDirNameAlreadyExists = current.collections.some(
             collection => collection.meta.dir_name === treeItem.meta.dir_name,
         );
