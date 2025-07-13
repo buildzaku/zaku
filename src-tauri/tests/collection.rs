@@ -79,7 +79,7 @@ mod create_collections_all {
         if let Err(Error::Io(err)) = result {
             assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
         } else {
-            panic!("Expected Io::NotFound error, got: {:?}", result);
+            panic!("Expected Io::NotFound error, got: {result:?}");
         }
     }
 
@@ -200,5 +200,50 @@ mod create_collections_all {
         let result = collection::create_collections_all(space_abspath, &dto).unwrap();
         assert_eq!(result, "settings/preferences");
         assert!(space_abspath.join("root/settings/preferences").exists());
+    }
+
+    #[test]
+    fn invalid_characters_should_be_sanitized() {
+        let tmp = tempfile::tempdir().unwrap();
+        let space_abspath = tmp.path();
+        std::fs::create_dir_all(space_abspath.join("logs")).unwrap();
+
+        let dto = CreateCollectionDto {
+            parent_relpath: "logs".to_string(),
+            relpath: r#"Error|Logs/<Critical>?Events:2025*Backup\Archive"Today""#.to_string(),
+        };
+
+        let result = collection::create_collections_all(space_abspath, &dto);
+        assert!(result.is_ok());
+
+        let expected = "error-logs/critical--events-2025-backup-archive-today";
+        assert_eq!(result.unwrap(), expected);
+
+        let expected_path = space_abspath.join("logs").join(expected);
+        assert!(expected_path.exists());
+    }
+
+    #[cfg(windows)]
+    mod windows {
+        use super::*;
+
+        #[test]
+        fn reserved_names_should_fail() {
+            let tmp = tempfile::tempdir().unwrap();
+            let space_abspath = tmp.path();
+            std::fs::create_dir_all(space_abspath.join("system")).unwrap();
+
+            let dto = CreateCollectionDto {
+                parent_relpath: "system".to_string(),
+                relpath: "NUL/Config".to_string(),
+            };
+
+            let result = collection::create_collections_all(space_abspath, &dto);
+
+            assert!(
+                result.is_err(),
+                "Expected failure due to reserved name on Windows"
+            );
+        }
     }
 }

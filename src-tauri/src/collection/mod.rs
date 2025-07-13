@@ -62,10 +62,10 @@ pub fn save_displayname_if_missing(
 ///   - `settings` -> `"Settings"`
 ///   - `notifications` -> `"Notifications"`
 ///
-/// Directories are created under `space_abspath/parent_relpath`.
+/// Directories are created under `space_abspath/parent_relpath`
 ///
-/// - `space_abspath`: Absolute path of space.
-/// - `create_collection_dto`: Contains `parent_relpath` and `relpath`.
+/// - `space_abspath`: Absolute path of space
+/// - `create_collection_dto`: Contains `parent_relpath` and `relpath`
 ///
 /// Returns a `Result`  containing the created collection's relative path
 pub fn create_collections_all(
@@ -79,11 +79,7 @@ pub fn create_collections_all(
     let mut dirs = Vec::new();
     for dir_display_name in create_collection_dto.relpath.split('/') {
         let dir_display_name = dir_display_name.trim();
-        let dir_sanitized_name = dir_display_name
-            .to_lowercase()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join("-");
+        let dir_sanitized_name = utils::sanitize_path_segment(dir_display_name);
 
         if dir_display_name.is_empty() || dir_sanitized_name.is_empty() {
             continue;
