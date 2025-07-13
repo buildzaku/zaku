@@ -189,7 +189,7 @@
             <Sidebar pane={leftPane} bind:isCollapsed={isLeftPaneCollapsed} />
         </ResizablePane>
 
-        <!-- ALIGNMENT-MARKER: mt-px to align with sidebar's pt-px -->
+        <!-- align-marker: mt-px to align with sidebar's pt-px -->
         <ResizablePane
             defaultSize={50}
             class="bg-card relative mt-px mr-1.5 mb-1.5 rounded-md border border-l-0"
