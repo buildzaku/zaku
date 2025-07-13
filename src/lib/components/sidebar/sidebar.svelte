@@ -134,7 +134,7 @@
                                 delete space.cookies[domain];
                             }
                         } else {
-                            toast(`Unable to remove '${ck.name}' cookie`);
+                            toast.error(`Unable to remove '${ck.name}' cookie`);
                         }
                     }}
                 >

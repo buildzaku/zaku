@@ -24,7 +24,7 @@ class SharedState {
             await tick();
         } else {
             console.error(getSharedStateResult.error);
-            toast("Something went wrong while synchronizing state");
+            toast.error("Something went wrong while synchronizing state");
         }
     }
 
@@ -35,7 +35,7 @@ class SharedState {
             await this.synchronize();
         } else {
             console.error(setActiveSpaceResult.error);
-            toast("Something went wrong while setting space");
+            toast.error("Something went wrong while setting space");
         }
 
         return;
