@@ -8,6 +8,7 @@
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
+    import { toast } from "svelte-sonner";
 
     type Props = {
         parentRelativePath: string;
@@ -45,6 +46,7 @@
             });
 
             if (createCollectionResult.status === "error") {
+                toast.error(`Unable to create collection`);
                 console.error(createCollectionResult.error);
 
                 return;
@@ -72,6 +74,8 @@
             });
 
             if (createReqResult.status === "error") {
+                // TODO - get error from cmd
+                toast.error(`Unable to create request`);
                 console.error(createReqResult.error);
 
                 return;

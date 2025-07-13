@@ -170,7 +170,7 @@ export async function handleDrop(event: DragEvent) {
     const moveTreeItemResult = await commands.moveTreeitem(moveTreeItemDto);
     if (moveTreeItemResult.status === "error") {
         console.error(moveTreeItemResult.error);
-        toast(
+        toast.error(
             `Something went wrong. Unable to move \`${treeActionsState.dragPayload.treeItem.meta.display_name}\``,
         );
 
@@ -278,7 +278,7 @@ export function addTreeItemToCollection({
             collection => collection.meta.dir_name === treeItem.meta.dir_name,
         );
         if (collectionDirNameAlreadyExists) {
-            toast(
+            toast.error(
                 `Collection with directory name ${treeItem.meta.dir_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
@@ -295,7 +295,7 @@ export function addTreeItemToCollection({
             request => request.meta.file_name === treeItem.meta.file_name,
         );
         if (reqFileNameAlreadyExists) {
-            toast(
+            toast.error(
                 `Request with file name ${treeItem.meta.file_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
