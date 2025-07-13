@@ -87,8 +87,12 @@
         >
             <PyramidIcon size={14} class="max-h-[14px] max-w-[14px]" />
             {#if !isSidebarCollapsed}
-                <div class="flex grow items-center justify-between overflow-hidden">
-                    <span class="truncate pr-0.5">{sharedState.activeSpace.meta.name}</span>
+                <div class="flex min-w-0 grow items-center justify-between">
+                    <span
+                        class="min-w-0 truncate overflow-hidden pr-0.5 text-ellipsis whitespace-nowrap"
+                    >
+                        {sharedState.activeSpace.meta.name}
+                    </span>
                     <ChevronDownIcon size={14} class="max-h-[14px] max-w-[14px]" />
                 </div>
             {/if}
