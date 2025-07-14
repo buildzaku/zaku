@@ -98,7 +98,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .into_owned();
     let relative_space_root = "".to_string();
     let collection_name_by_relpath =
-        collection::displayname_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
+        collection::colname_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
     let active_space_buffer = SpaceBuf::load(space_abspath)?;
     let active_spacebuf_rlock = active_space_buffer
         .read()

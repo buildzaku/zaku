@@ -9,40 +9,40 @@ use crate::{
 };
 
 #[test]
-fn displayname_by_relpath_reads_existing_data() {
+fn colname_by_relpath_reads_existing_data() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let dsname_path = space_abspath.join(".zaku/collections/display_name.toml");
-    fs::create_dir_all(dsname_path.parent().unwrap()).unwrap();
-    fs::write(&dsname_path, r#""demo/path" = "Demo Path""#).unwrap();
+    let colname_filepath = space_abspath.join(".zaku/collections/display_name.toml");
+    fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
+    fs::write(&colname_filepath, r#""demo/path" = "Demo Path""#).unwrap();
 
-    let dsname_map = collection::displayname_by_relpath(space_abspath)
+    let colname_map = collection::colname_by_relpath(space_abspath)
         .expect("Failed to get display names for collections");
-    assert_eq!(dsname_map.get("demo/path"), Some(&"Demo Path".into()));
+    assert_eq!(colname_map.get("demo/path"), Some(&"Demo Path".into()));
 }
 
 #[test]
-fn displayname_by_relpath_invalid_toml_should_fail() {
+fn colname_by_relpath_invalid_toml_should_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let dsname_path = space_abspath.join(".zaku/collections/display_name.toml");
-    fs::create_dir_all(dsname_path.parent().unwrap()).unwrap();
-    fs::write(&dsname_path, "not = [valid").unwrap();
+    let colname_filepath = space_abspath.join(".zaku/collections/display_name.toml");
+    fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
+    fs::write(&colname_filepath, "not = [valid").unwrap();
 
-    let result = collection::displayname_by_relpath(space_abspath);
+    let result = collection::colname_by_relpath(space_abspath);
     assert!(result.is_err());
 }
 
 #[test]
-fn displayname_by_relpath_creates_file_if_missing() {
+fn colname_by_relpath_creates_file_if_missing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let dsname_map = collection::displayname_by_relpath(space_abspath)
+    let colname_map = collection::colname_by_relpath(space_abspath)
         .expect("Failed to get display names for collections");
-    assert!(dsname_map.is_empty());
+    assert!(colname_map.is_empty());
 
     let file_path = space_abspath.join(".zaku/collections/display_name.toml");
     assert!(file_path.exists());
@@ -59,10 +59,10 @@ fn save_displayname_if_missing_writes_new_entry() {
     collection::save_displayname_if_missing(space_abspath, "config/settings", "Config Settings")
         .expect("Failed to save display name for collection");
 
-    let dsname_map = collection::displayname_by_relpath(space_abspath)
+    let colname_map = collection::colname_by_relpath(space_abspath)
         .expect("Failed to get display names for collections");
     assert_eq!(
-        dsname_map.get("config/settings"),
+        colname_map.get("config/settings"),
         Some(&"Config Settings".into())
     );
 }
@@ -77,9 +77,9 @@ fn save_displayname_if_missing_does_not_overwrite_existing() {
     collection::save_displayname_if_missing(space_abspath, "a/b", "Beta")
         .expect("Failed to save display name for collection");
 
-    let dsname_map = collection::displayname_by_relpath(space_abspath)
+    let colname_map = collection::colname_by_relpath(space_abspath)
         .expect("Failed to get display names for collections");
-    assert_eq!(dsname_map.get("a/b"), Some(&"Alpha".into()));
+    assert_eq!(colname_map.get("a/b"), Some(&"Alpha".into()));
 }
 
 #[test]
@@ -425,10 +425,10 @@ fn create_collection_should_save_display_name() {
     let result = collection::create_collection(&collection_dto, &mut sharedstate)
         .expect("Failed to create collection");
 
-    let dsname_map = collection::displayname_by_relpath(&space_abspath)
+    let colname_map = collection::colname_by_relpath(&space_abspath)
         .expect("Failed to get display names for collections");
     assert_eq!(
-        dsname_map.get("prefs/privacy-settings"),
+        colname_map.get("prefs/privacy-settings"),
         Some(&"Privacy Settings".into())
     );
 

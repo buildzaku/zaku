@@ -24,7 +24,7 @@ use crate::{
 /// - `space_abspath`: Absolute path of space
 ///
 /// Returns a `Result` containing the collection's relpath-to-display-name map
-pub fn displayname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>> {
+pub fn colname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>> {
     let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name.toml");
 
     let content = match fs::read_to_string(&displayname_file_abspath) {
@@ -63,7 +63,7 @@ pub fn save_displayname_if_missing(
 ) -> Result<()> {
     let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name.toml");
 
-    let mut collection_name_by_relpath = displayname_by_relpath(space_abspath)?;
+    let mut collection_name_by_relpath = colname_by_relpath(space_abspath)?;
 
     collection_name_by_relpath
         .entry(collection_relpath.to_string())
