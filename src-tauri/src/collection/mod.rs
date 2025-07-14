@@ -1,13 +1,15 @@
-use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::{collections::HashMap, path::PathBuf};
 use toml;
 
 pub mod models;
 
+use crate::space;
 use crate::{
-    collection::models::CreateCollectionDto,
+    collection::models::{CreateCollectionDto, CreateNewCollection},
     error::{Error, Result},
+    state::SharedState,
     utils,
 };
 
@@ -139,6 +141,84 @@ pub fn create_collections_all(
     }
 
     Ok(collections_relpath)
+}
+
+pub fn create_collection(
+    dto: &CreateCollectionDto,
+    sharedstate: &mut SharedState,
+) -> Result<CreateNewCollection> {
+    if dto.relpath.trim().is_empty() {
+        return Err(Error::FileNotFound(
+            "Cannot create a collection without name".to_string(),
+        ));
+    }
+
+    let active_space = sharedstate
+        .active_space
+        .clone()
+        .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
+
+    let active_space_abspath = PathBuf::from(&active_space.abspath);
+
+    let (parsed_parent_relpath, dir_display_name) = match dto.relpath.rfind('/') {
+        Some(last_slash_index) => {
+            let parsed_parent_relpath = &dto.relpath[..last_slash_index];
+            let dir_display_name = &dto.relpath[last_slash_index + 1..];
+
+            (
+                Some(parsed_parent_relpath.to_string()),
+                dir_display_name.to_string(),
+            )
+        }
+        None => (None, dto.relpath.clone()),
+    };
+
+    let dir_display_name = dir_display_name.trim();
+    let dir_sanitized_name = dir_display_name
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .join("-");
+
+    let (dir_parent_relpath, dir_sanitized_name) = match parsed_parent_relpath {
+        Some(ref parsed_parent_relpath) => {
+            let dto = CreateCollectionDto {
+                parent_relpath: dto.parent_relpath.clone(),
+                relpath: parsed_parent_relpath.to_string(),
+            };
+
+            let dirs_sanitized_relpath = create_collections_all(&active_space_abspath, &dto)?;
+
+            let dir_parent_relpath = utils::join_str_paths(vec![
+                dto.parent_relpath.as_str(),
+                dirs_sanitized_relpath.as_str(),
+            ]);
+
+            (dir_parent_relpath, dir_sanitized_name)
+        }
+        None => (dto.parent_relpath.clone(), dir_sanitized_name),
+    };
+
+    let dir_abspath = active_space_abspath
+        .join(&dir_parent_relpath)
+        .join(&dir_sanitized_name);
+    let dir_relpath = utils::join_str_paths(vec![
+        dir_parent_relpath.as_str(),
+        dir_sanitized_name.as_str(),
+    ]);
+
+    fs::create_dir(&dir_abspath)?;
+
+    save_displayname_if_missing(&active_space_abspath, &dir_relpath, dir_display_name)?;
+
+    let create_new_collection = CreateNewCollection {
+        parent_relpath: dir_parent_relpath,
+        relpath: dir_relpath,
+    };
+
+    sharedstate.active_space = Some(space::parse_space(&active_space_abspath)?);
+
+    Ok(create_new_collection)
 }
 
 #[cfg(test)]

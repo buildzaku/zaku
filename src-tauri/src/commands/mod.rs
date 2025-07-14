@@ -12,10 +12,12 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::{
-    collection::{self, models::CreateCollectionDto},
+    collection::{
+        self,
+        models::{CreateCollectionDto, CreateNewCollection},
+    },
     commands::models::{
-        CreateNewCollection, CreateNewRequest, DispatchNotificationOptions, MoveTreeItemDto,
-        OpenDirDialogOpt,
+        CreateNewRequest, DispatchNotificationOptions, MoveTreeItemDto, OpenDirDialogOpt,
     },
     error::{CmdErr, CmdResult},
     notifications,
@@ -71,92 +73,16 @@ pub async fn create_collection(
     create_collection_dto: CreateCollectionDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewCollection> {
-    if create_collection_dto.relpath.is_empty() {
-        return Err(CmdErr::Err {
-            message: "Cannot create a collection without name".to_string(),
-        });
-    };
-
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-    let active_space = sharedstate
-        .active_space
-        .clone()
-        .expect("Active space not found");
-    let active_space_abspath = PathBuf::from(&active_space.abspath);
-
-    let (parsed_parent_relpath, dir_display_name) = match create_collection_dto.relpath.rfind('/') {
-        Some(last_slash_index) => {
-            let parsed_parent_relpath = &create_collection_dto.relpath[..last_slash_index];
-            let dir_display_name = &create_collection_dto.relpath[last_slash_index + 1..];
-
-            (
-                Some(parsed_parent_relpath.to_string()),
-                dir_display_name.to_string(),
-            )
-        }
-        None => (None, create_collection_dto.relpath),
-    };
-
-    let dir_display_name = dir_display_name.trim();
-    let dir_sanitized_name = dir_display_name
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join("-");
-    let (dir_parent_relpath, dir_sanitized_name) = match parsed_parent_relpath {
-        Some(ref parsed_parent_relpath) => {
-            let create_collection_dto = CreateCollectionDto {
-                parent_relpath: create_collection_dto.parent_relpath.clone(),
-                relpath: parsed_parent_relpath.to_string(),
-            };
-
-            let dirs_sanitized_relpath =
-                collection::create_collections_all(&active_space_abspath, &create_collection_dto)
-                    .map_err(|err| CmdErr::Err {
-                    message: format!("Failed to create collection: {err}"),
-                })?;
-
-            let dir_parent_relpath = utils::join_str_paths(vec![
-                create_collection_dto.parent_relpath.as_str(),
-                dirs_sanitized_relpath.as_str(),
-            ]);
-
-            (dir_parent_relpath, dir_sanitized_name)
-        }
-        None => (create_collection_dto.parent_relpath, dir_sanitized_name),
-    };
-
-    let dir_abspath = active_space_abspath
-        .join(dir_parent_relpath.clone())
-        .join(dir_sanitized_name.clone());
-    let dir_relpath = utils::join_str_paths(vec![
-        dir_parent_relpath.clone().as_str(),
-        dir_sanitized_name.as_str(),
-    ]);
-
-    fs::create_dir(&dir_abspath).map_err(|err| CmdErr::Err {
-        message: format!("Failed to create collection: {err}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("State lock failed: {e}"),
     })?;
 
-    collection::save_displayname_if_missing(&active_space_abspath, &dir_relpath, dir_display_name)
-        .unwrap_or_else(|err| {
-            eprintln!("Failed to save display name {err}");
-        });
-
-    let create_new_collection = CreateNewCollection {
-        parent_relpath: dir_parent_relpath,
-        relpath: dir_relpath,
-    };
-
-    sharedstate.active_space =
-        Some(
-            space::parse_space(&active_space_abspath).map_err(|err| CmdErr::Err {
-                message: format!("Failed to parse space after creating the collection: {err}"),
-            })?,
-        );
-
-    Ok(create_new_collection)
+    collection::create_collection(&create_collection_dto, &mut sharedstate).map_err(|err| {
+        CmdErr::Err {
+            message: format!("Failed to create collection: {err}"),
+        }
+    })
 }
 
 #[specta::specta]

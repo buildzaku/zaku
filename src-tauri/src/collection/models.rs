@@ -22,3 +22,9 @@ pub struct CreateCollectionDto {
     pub parent_relpath: String,
     pub relpath: String,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct CreateNewCollection {
+    pub parent_relpath: String,
+    pub relpath: String,
+}
