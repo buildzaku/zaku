@@ -206,11 +206,7 @@ export type CmdErr =
     | { type: "Err"; message: string }
     | { type: "Http"; message: string; code: number | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
-export type CollectionMeta = {
-    dir_name: string;
-    display_name: string | null;
-    is_expanded: boolean;
-};
+export type CollectionMeta = { dir_name: string; name: string | null; is_expanded: boolean };
 export type CreateCollectionDto = { parent_relpath: string; relpath: string };
 export type CreateNewCollection = { parent_relpath: string; relpath: string };
 export type CreateNewRequest = { parent_relpath: string; relpath: string };
@@ -243,7 +239,7 @@ export type ReqCfg = {
     content_type?: string;
     body?: string;
 };
-export type ReqMeta = { file_name: string; display_name: string; has_unsaved_changes: boolean };
+export type ReqMeta = { file_name: string; name: string; has_unsaved_changes: boolean };
 export type ReqStatus = "Idle" | "Pending" | "Success" | "Error";
 export type ReqUrl = {
     raw?: string;

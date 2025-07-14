@@ -125,7 +125,7 @@
                 {/if}
                 <CollectionIcon size={12} />
                 <span class="truncate text-sm">
-                    {treeItem.meta.display_name ?? treeItem.meta.dir_name}
+                    {treeItem.meta.name ?? treeItem.meta.dir_name}
                 </span>
             {:else}
                 <div class="flex w-full items-center justify-between">
@@ -139,7 +139,7 @@
                             {treeItem.config.method}
                         </span>
                         <span class="truncate text-sm">
-                            {treeItem.meta.display_name ?? treeItem.meta.file_name}
+                            {treeItem.meta.name ?? treeItem.meta.file_name}
                         </span>
                     </div>
                     {#if treeItem.meta.has_unsaved_changes}
