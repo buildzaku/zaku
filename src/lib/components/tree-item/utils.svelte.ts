@@ -87,8 +87,8 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
         document.body.appendChild(previewContainer);
 
         const previewTitle = isCol(payload.treeItem)
-            ? (payload.treeItem.meta.display_name ?? payload.treeItem.meta.dir_name)
-            : (payload.treeItem.meta.display_name ?? payload.treeItem.meta.file_name);
+            ? (payload.treeItem.meta.name ?? payload.treeItem.meta.dir_name)
+            : (payload.treeItem.meta.name ?? payload.treeItem.meta.file_name);
 
         const treeItemPreview = mount(TreeItemPreview, {
             target: previewContainer,
@@ -171,7 +171,7 @@ export async function handleDrop(event: DragEvent) {
     if (moveTreeItemResult.status === "error") {
         console.error(moveTreeItemResult.error);
         toast.error(
-            `Something went wrong. Unable to move \`${treeActionsState.dragPayload.treeItem.meta.display_name}\``,
+            `Something went wrong. Unable to move \`${treeActionsState.dragPayload.treeItem.meta.name}\``,
         );
 
         return;

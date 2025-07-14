@@ -22,7 +22,7 @@ impl ReqBuf {
     pub fn from_req(req: &HttpReq) -> Self {
         let meta = ReqMeta {
             file_name: req.meta.file_name.clone(),
-            display_name: req.meta.display_name.clone(),
+            name: req.meta.name.clone(),
             has_unsaved_changes: true,
         };
 
@@ -41,13 +41,14 @@ impl ReqBuf {
 
 pub struct SpaceCookies;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default, Type)]
 pub enum Theme {
     #[default]
     System,
     Light,
     Dark,
 }
+
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct AudioNotification {
     pub on_req_finish: bool,

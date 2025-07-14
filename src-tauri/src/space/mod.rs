@@ -1,10 +1,15 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
 
+use crate::collection::models::ColName;
+use crate::space::models::{CreateSpaceDto, SpaceMeta};
+use crate::state::SharedState;
+use crate::utils;
 use crate::{
     collection,
     collection::models::{Collection, CollectionMeta},
@@ -27,6 +32,65 @@ pub struct CollectionRcRefCell {
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }
 
+pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Result<SpaceReference> {
+    let location = PathBuf::from(dto.location.as_str());
+    if !location.exists() {
+        return Err(Error::FileNotFound(format!(
+            "Location does not exist: {}",
+            dto.location
+        )));
+    }
+
+    let space_dirname = utils::sanitize_path_segment(&dto.name);
+    let space_abspath = location.join(&space_dirname);
+    let mut spacerefs = store::get_spacerefs();
+
+    if spacerefs
+        .iter()
+        .any(|sr| sr.path == space_abspath.to_string_lossy())
+    {
+        return Err(Error::FileNotFound(format!(
+            "Space already exists in saved spaces: {}",
+            space_abspath.to_string_lossy()
+        )));
+    }
+    if space_abspath.exists() {
+        return Err(Error::FileNotFound(format!(
+            "Directory with this name already exists: {}",
+            space_abspath.to_string_lossy()
+        )));
+    }
+
+    fs::create_dir(&space_abspath)?;
+    let config_dir = space_abspath.join(".zaku");
+    fs::create_dir(&config_dir)?;
+
+    let mut config_file = File::create(config_dir.join("config.toml"))?;
+    let config = SpaceConfigFile {
+        meta: SpaceMeta {
+            name: dto.name.clone(),
+        },
+    };
+
+    config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
+
+    let spaceref = SpaceReference {
+        path: space_abspath.to_string_lossy().to_string(),
+        name: dto.name,
+    };
+
+    store::set_active_spaceref(spaceref.clone())?;
+    spacerefs.push(spaceref.clone());
+    store::set_spacerefs(spacerefs.clone())?;
+
+    if let Ok(active_space) = parse_space(&PathBuf::from(&spaceref.path)) {
+        sharedstate.active_space = Some(active_space);
+        sharedstate.spacerefs = spacerefs;
+    }
+
+    Ok(spaceref)
+}
+
 fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let space_dirname = space_abspath
         .file_name()
@@ -34,8 +98,9 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
-    let collection_name_by_relpath =
-        collection::displayname_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
+    let colname = collection::colname_by_relpath(space_abspath).unwrap_or_else(|_| ColName {
+        mappings: HashMap::new(),
+    });
     let active_space_buffer = SpaceBuf::load(space_abspath)?;
     let active_spacebuf_rlock = active_space_buffer
         .read()
@@ -45,7 +110,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
         meta: CollectionMeta {
             dir_name: space_dirname,
-            display_name: space_config.map(|config| config.meta.name),
+            name: space_config.map(|config| config.meta.name),
             is_expanded: true,
         },
         requests: Vec::new(),
@@ -90,7 +155,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             dir_name: name,
-                            display_name: collection_name_by_relpath.get(&relpath).cloned(),
+                            name: colname.mappings.get(&relpath).cloned(),
                             is_expanded: true,
                         },
                         requests: Vec::new(),

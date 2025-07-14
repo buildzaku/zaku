@@ -65,3 +65,27 @@ pub fn hashed_filename(abspath: &str) -> String {
 
     format!("{:x}", hasher.finalize())
 }
+
+/// Sanitizes a segment (directory/file) name to be safe across platforms
+///
+/// - Converts to lowercase
+/// - Replaces invalid characters with `-`
+/// - Replaces whitespace with `-`
+/// - Trims leading/trailing hyphens
+pub fn sanitize_path_segment(segment: &str) -> String {
+    const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
+
+    let mut sanitized = String::new();
+
+    for char in segment.to_lowercase().chars() {
+        if char.is_whitespace() || INVALID_CHARS.contains(&char) {
+            if !sanitized.ends_with('-') {
+                sanitized.push('-');
+            }
+        } else {
+            sanitized.push(char);
+        }
+    }
+
+    sanitized.trim_matches('-').to_string()
+}

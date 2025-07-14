@@ -11,7 +11,7 @@ pub struct CreateSpaceDto {
     pub location: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct SpaceMeta {
     pub name: String,
 }
@@ -21,7 +21,7 @@ pub struct SpaceConfigFile {
     pub meta: SpaceMeta,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct Space {
     pub abspath: String,
     pub meta: SpaceMeta,
