@@ -143,6 +143,16 @@ pub fn create_collections_all(
     Ok(collections_relpath)
 }
 
+/// Creates new collection directory/directories under the active space
+///
+/// If the collection path contains nested segments (e.g. `"Settings/Notifications"`),
+/// it creates all parent directories as needed and stores each segment's original
+/// name as display name.
+///
+/// - `dto`: Contains `parent_relpath` and `relpath` of the new collection from space root
+/// - `sharedstate`: Shared state of the app
+///
+/// Returns a `Result` containing the newly created collection's metadata
 pub fn create_collection(
     dto: &CreateCollectionDto,
     sharedstate: &mut SharedState,
