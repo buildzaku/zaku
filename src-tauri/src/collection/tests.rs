@@ -143,8 +143,8 @@ fn create_collections_all_parent_folder_missing_should_fail() {
 
 #[test]
 fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("admin")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -160,8 +160,8 @@ fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
 
 #[test]
 fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("settings")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -177,8 +177,8 @@ fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
 
 #[test]
 fn create_collections_all_relpath_with_only_empty_segments_should_return_error() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("posts")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -192,8 +192,8 @@ fn create_collections_all_relpath_with_only_empty_segments_should_return_error()
 
 #[test]
 fn create_collections_all_duplicate_create_collections_should_not_fail() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("workspace")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -209,8 +209,8 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
 
 #[test]
 fn create_collections_all_special_characters_should_be_sanitized_or_preserved() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("library")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -229,8 +229,8 @@ fn create_collections_all_special_characters_should_be_sanitized_or_preserved() 
 
 #[test]
 fn create_collections_all_unicode_segments_should_be_handled() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("global")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -245,8 +245,8 @@ fn create_collections_all_unicode_segments_should_be_handled() {
 
 #[test]
 fn create_collections_all_trailing_slash_should_be_ignored() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("root")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -261,8 +261,8 @@ fn create_collections_all_trailing_slash_should_be_ignored() {
 
 #[test]
 fn create_collections_all_invalid_characters_should_be_sanitized() {
-    let tmp = tempfile::tempdir().unwrap();
-    let space_abspath = tmp.path();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("logs")).unwrap();
 
     let dto = CreateCollectionDto {
@@ -282,14 +282,14 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
 
 #[test]
 fn create_collection_basic() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let space_name = "Main Space";
     let space_dirname = "main-space";
-    let space_abspath = tmp.path().join(space_dirname);
+    let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
         name: space_name.into(),
-        location: tmp.path().to_string_lossy().into(),
+        location: tmp_dir.path().to_string_lossy().into(),
     };
 
     let mut sharedstate = SharedState::default();
@@ -311,14 +311,14 @@ fn create_collection_basic() {
 
 #[test]
 fn create_collection_empty_relpath_should_fail() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let space_name = "Empty Check";
     let space_dirname = "empty-check";
-    let space_abspath = tmp.path().join(space_dirname);
+    let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
         name: space_name.into(),
-        location: tmp.path().to_string_lossy().into(),
+        location: tmp_dir.path().to_string_lossy().into(),
     };
 
     let mut sharedstate = SharedState::default();
@@ -349,14 +349,14 @@ fn create_collection_missing_active_space_should_fail() {
 
 #[test]
 fn create_collection_unicode_path_should_succeed() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let space_name = "Global Space";
     let space_dirname = "global-space";
-    let space_abspath = tmp.path().join(space_dirname);
+    let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
         name: space_name.into(),
-        location: tmp.path().to_string_lossy().into(),
+        location: tmp_dir.path().to_string_lossy().into(),
     };
 
     let mut sharedstate = SharedState::default();
@@ -376,14 +376,14 @@ fn create_collection_unicode_path_should_succeed() {
 
 #[test]
 fn create_collection_should_save_display_name() {
-    let tmp = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().unwrap();
     let space_name = "Prefs";
     let space_dirname = "prefs";
-    let space_abspath = tmp.path().join(space_dirname);
+    let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
         name: space_name.into(),
-        location: tmp.path().to_string_lossy().into(),
+        location: tmp_dir.path().to_string_lossy().into(),
     };
 
     let mut sharedstate = SharedState::default();
@@ -414,8 +414,8 @@ mod windows {
 
     #[test]
     fn create_collections_all_reserved_names_should_fail() {
-        let tmp = tempfile::tempdir().unwrap();
-        let space_abspath = tmp.path();
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let space_abspath = tmp_dir.path();
         std::fs::create_dir_all(space_abspath.join("system")).unwrap();
 
         let dto = CreateCollectionDto {
