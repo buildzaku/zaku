@@ -5,25 +5,25 @@ use crate::space::models::CreateSpaceDto;
 
 #[test]
 fn displayname_by_relpath_reads_existing_data() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
     let displayname_path = space_abspath.join(".zaku/collections/display_name.toml");
     fs::create_dir_all(displayname_path.parent().unwrap()).unwrap();
     fs::write(&displayname_path, r#""demo/path" = "Demo Path""#).unwrap();
 
-    let map = displayname_by_relpath(space_abspath).unwrap();
-    assert_eq!(map.get("demo/path"), Some(&"Demo Path".into()));
+    let displayname_map = displayname_by_relpath(space_abspath).unwrap();
+    assert_eq!(displayname_map.get("demo/path"), Some(&"Demo Path".into()));
 }
 
 #[test]
 fn displayname_by_relpath_invalid_toml_should_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
-    let path = space_abspath.join(".zaku/collections/display_name.toml");
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(&path, "not = [valid").unwrap();
+    let displayname_path = space_abspath.join(".zaku/collections/display_name.toml");
+    fs::create_dir_all(displayname_path.parent().unwrap()).unwrap();
+    fs::write(&displayname_path, "not = [valid").unwrap();
 
     let result = displayname_by_relpath(space_abspath);
     assert!(result.is_err());
@@ -31,11 +31,11 @@ fn displayname_by_relpath_invalid_toml_should_fail() {
 
 #[test]
 fn displayname_by_relpath_creates_file_if_missing() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
-    let result = displayname_by_relpath(space_abspath).unwrap();
-    assert!(result.is_empty());
+    let displayname_map = displayname_by_relpath(space_abspath).unwrap();
+    assert!(displayname_map.is_empty());
 
     let file_path = space_abspath.join(".zaku/collections/display_name.toml");
     assert!(file_path.exists());
@@ -46,18 +46,21 @@ fn displayname_by_relpath_creates_file_if_missing() {
 
 #[test]
 fn save_displayname_if_missing_writes_new_entry() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
     save_displayname_if_missing(space_abspath, "config/settings", "Config Settings").unwrap();
 
-    let map = displayname_by_relpath(space_abspath).unwrap();
-    assert_eq!(map.get("config/settings"), Some(&"Config Settings".into()));
+    let displayname_map = displayname_by_relpath(space_abspath).unwrap();
+    assert_eq!(
+        displayname_map.get("config/settings"),
+        Some(&"Config Settings".into())
+    );
 }
 
 #[test]
 fn save_displayname_if_missing_does_not_overwrite_existing() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
     save_displayname_if_missing(space_abspath, "a/b", "Alpha").unwrap();
@@ -69,7 +72,7 @@ fn save_displayname_if_missing_does_not_overwrite_existing() {
 
 #[test]
 fn create_collections_all_basic() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     let dto = CreateCollectionDto {
         parent_relpath: "admin".into(),
@@ -88,7 +91,7 @@ fn create_collections_all_basic() {
 
 #[test]
 fn create_collections_all_empty_relpath() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     let dto = CreateCollectionDto {
         parent_relpath: "auth".into(),
@@ -101,7 +104,7 @@ fn create_collections_all_empty_relpath() {
 
 #[test]
 fn create_collections_all_sanitization() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     let dto = CreateCollectionDto {
         parent_relpath: "users".into(),
@@ -120,7 +123,7 @@ fn create_collections_all_sanitization() {
 
 #[test]
 fn create_collections_all_parent_folder_missing_should_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
     let dto = CreateCollectionDto {
@@ -143,7 +146,7 @@ fn create_collections_all_parent_folder_missing_should_fail() {
 
 #[test]
 fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("admin")).unwrap();
 
@@ -160,7 +163,7 @@ fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
 
 #[test]
 fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("settings")).unwrap();
 
@@ -177,7 +180,7 @@ fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
 
 #[test]
 fn create_collections_all_relpath_with_only_empty_segments_should_return_error() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("posts")).unwrap();
 
@@ -192,7 +195,7 @@ fn create_collections_all_relpath_with_only_empty_segments_should_return_error()
 
 #[test]
 fn create_collections_all_duplicate_create_collections_should_not_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("workspace")).unwrap();
 
@@ -209,7 +212,7 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
 
 #[test]
 fn create_collections_all_special_characters_should_be_sanitized_or_preserved() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("library")).unwrap();
 
@@ -229,7 +232,7 @@ fn create_collections_all_special_characters_should_be_sanitized_or_preserved() 
 
 #[test]
 fn create_collections_all_unicode_segments_should_be_handled() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("global")).unwrap();
 
@@ -245,7 +248,7 @@ fn create_collections_all_unicode_segments_should_be_handled() {
 
 #[test]
 fn create_collections_all_trailing_slash_should_be_ignored() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("root")).unwrap();
 
@@ -261,7 +264,7 @@ fn create_collections_all_trailing_slash_should_be_ignored() {
 
 #[test]
 fn create_collections_all_invalid_characters_should_be_sanitized() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("logs")).unwrap();
 
@@ -282,7 +285,7 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
 
 #[test]
 fn create_collection_basic() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_name = "Main Space";
     let space_dirname = "main-space";
     let space_abspath = tmp_dir.path().join(space_dirname);
@@ -311,7 +314,7 @@ fn create_collection_basic() {
 
 #[test]
 fn create_collection_empty_relpath_should_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_name = "Empty Check";
     let space_dirname = "empty-check";
     let space_abspath = tmp_dir.path().join(space_dirname);
@@ -349,7 +352,7 @@ fn create_collection_missing_active_space_should_fail() {
 
 #[test]
 fn create_collection_unicode_path_should_succeed() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_name = "Global Space";
     let space_dirname = "global-space";
     let space_abspath = tmp_dir.path().join(space_dirname);
@@ -376,7 +379,7 @@ fn create_collection_unicode_path_should_succeed() {
 
 #[test]
 fn create_collection_should_save_display_name() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_name = "Prefs";
     let space_dirname = "prefs";
     let space_abspath = tmp_dir.path().join(space_dirname);
@@ -414,7 +417,7 @@ mod windows {
 
     #[test]
     fn create_collections_all_reserved_names_should_fail() {
-        let tmp_dir = tempfile::tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
         let space_abspath = tmp_dir.path();
         std::fs::create_dir_all(space_abspath.join("system")).unwrap();
 
