@@ -1,7 +1,12 @@
-use super::*;
+use std::fs;
 use tempfile;
 
-use crate::space::models::CreateSpaceDto;
+use crate::{
+    collection::{self, models::CreateCollectionDto},
+    error::Error,
+    space::{self, models::CreateSpaceDto},
+    state::SharedState,
+};
 
 #[test]
 fn displayname_by_relpath_reads_existing_data() {
@@ -12,8 +17,8 @@ fn displayname_by_relpath_reads_existing_data() {
     fs::create_dir_all(dsname_path.parent().unwrap()).unwrap();
     fs::write(&dsname_path, r#""demo/path" = "Demo Path""#).unwrap();
 
-    let dsname_map =
-        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
+    let dsname_map = collection::displayname_by_relpath(space_abspath)
+        .expect("Failed to get display names for collections");
     assert_eq!(dsname_map.get("demo/path"), Some(&"Demo Path".into()));
 }
 
@@ -26,7 +31,7 @@ fn displayname_by_relpath_invalid_toml_should_fail() {
     fs::create_dir_all(dsname_path.parent().unwrap()).unwrap();
     fs::write(&dsname_path, "not = [valid").unwrap();
 
-    let result = displayname_by_relpath(space_abspath);
+    let result = collection::displayname_by_relpath(space_abspath);
     assert!(result.is_err());
 }
 
@@ -35,8 +40,8 @@ fn displayname_by_relpath_creates_file_if_missing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let dsname_map =
-        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
+    let dsname_map = collection::displayname_by_relpath(space_abspath)
+        .expect("Failed to get display names for collections");
     assert!(dsname_map.is_empty());
 
     let file_path = space_abspath.join(".zaku/collections/display_name.toml");
@@ -51,11 +56,11 @@ fn save_displayname_if_missing_writes_new_entry() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    save_displayname_if_missing(space_abspath, "config/settings", "Config Settings")
+    collection::save_displayname_if_missing(space_abspath, "config/settings", "Config Settings")
         .expect("Failed to save display name for collection");
 
-    let dsname_map =
-        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
+    let dsname_map = collection::displayname_by_relpath(space_abspath)
+        .expect("Failed to get display names for collections");
     assert_eq!(
         dsname_map.get("config/settings"),
         Some(&"Config Settings".into())
@@ -67,13 +72,13 @@ fn save_displayname_if_missing_does_not_overwrite_existing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    save_displayname_if_missing(space_abspath, "a/b", "Alpha")
+    collection::save_displayname_if_missing(space_abspath, "a/b", "Alpha")
         .expect("Failed to save display name for collection");
-    save_displayname_if_missing(space_abspath, "a/b", "Beta")
+    collection::save_displayname_if_missing(space_abspath, "a/b", "Beta")
         .expect("Failed to save display name for collection");
 
-    let dsname_map =
-        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
+    let dsname_map = collection::displayname_by_relpath(space_abspath)
+        .expect("Failed to get display names for collections");
     assert_eq!(dsname_map.get("a/b"), Some(&"Alpha".into()));
 }
 
@@ -89,7 +94,7 @@ fn create_collections_all_basic() {
     let col_abspath = space_abspath.join("admin");
     fs::create_dir_all(&col_abspath).unwrap();
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
     assert_eq!(col_relpath, "users/settings/notifications");
 
@@ -106,7 +111,7 @@ fn create_collections_all_empty_relpath() {
         relpath: "   ".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto);
+    let result = collection::create_collections_all(space_abspath, &dto);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
 }
 
@@ -121,7 +126,7 @@ fn create_collections_all_sanitization() {
 
     fs::create_dir_all(space_abspath.join("users")).unwrap();
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
     assert_eq!(col_relpath, "notification-settings/list-notifications");
 
@@ -140,7 +145,7 @@ fn create_collections_all_parent_folder_missing_should_fail() {
         relpath: "Preferences/Privacy".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto);
+    let result = collection::create_collections_all(space_abspath, &dto);
     assert!(
         result.is_err(),
         "Expected failure due to missing parent folder"
@@ -164,7 +169,7 @@ fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
         relpath: "  /Notifications       /   ".into(),
     };
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
     assert_eq!(col_relpath, "notifications");
 
@@ -182,7 +187,7 @@ fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
         relpath: "System///Display".into(),
     };
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
     assert_eq!(col_relpath, "system/display");
 
@@ -200,7 +205,7 @@ fn create_collections_all_relpath_with_only_empty_segments_should_return_error()
         relpath: "   /   /   ".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto);
+    let result = collection::create_collections_all(space_abspath, &dto);
     assert!(matches!(result, Ok(p) if p.is_empty()));
 }
 
@@ -215,9 +220,9 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
         relpath: "Config/Options".into(),
     };
 
-    let _ = create_collections_all(space_abspath, &dto)
+    let _ = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
     assert_eq!(col_relpath, "config/options");
@@ -234,7 +239,7 @@ fn create_collections_all_special_characters_should_be_sanitized_or_preserved() 
         relpath: "Config@Home/Naïve#Settings/🔥 Experimental".into(),
     };
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
     assert_eq!(col_relpath, "config@home/naïve#settings/🔥-experimental");
@@ -255,7 +260,7 @@ fn create_collections_all_unicode_segments_should_be_handled() {
         relpath: "ザク/設定".into(),
     };
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
     assert_eq!(col_relpath, "ザク/設定");
     assert!(space_abspath.join("global/ザク/設定").exists());
@@ -272,7 +277,7 @@ fn create_collections_all_trailing_slash_should_be_ignored() {
         relpath: "Settings/Preferences/".into(),
     };
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
     assert_eq!(col_relpath, "settings/preferences");
     assert!(space_abspath.join("root/settings/preferences").exists());
@@ -289,7 +294,7 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
         relpath: r#"Error|Logs/<Critical>?Events:2025*Backup\Archive"Today""#.into(),
     };
 
-    let col_relpath = create_collections_all(space_abspath, &dto)
+    let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
     let expected_relpath = "error-logs/critical--events-2025-backup-archive-today";
@@ -322,8 +327,8 @@ fn create_collection_basic() {
         relpath: "Settings/Notifications".into(),
     };
 
-    let col =
-        create_collection(&collection_dto, &mut sharedstate).expect("Failed to create collection");
+    let col = collection::create_collection(&collection_dto, &mut sharedstate)
+        .expect("Failed to create collection");
 
     assert_eq!(col.relpath, "admin/settings/notifications");
     assert!(space_abspath.join("admin/settings/notifications").exists());
@@ -351,7 +356,7 @@ fn create_collection_empty_relpath_should_fail() {
         relpath: "   ".into(),
     };
 
-    let result = create_collection(&collection_dto, &mut sharedstate);
+    let result = collection::create_collection(&collection_dto, &mut sharedstate);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
 }
 
@@ -363,7 +368,7 @@ fn create_collection_missing_active_space_should_fail() {
     };
 
     let mut sharedstate = SharedState::default();
-    let result = create_collection(&collection_dto, &mut sharedstate);
+    let result = collection::create_collection(&collection_dto, &mut sharedstate);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
 }
 
@@ -389,8 +394,8 @@ fn create_collection_unicode_path_should_succeed() {
         relpath: "ザク/設定".into(),
     };
 
-    let result =
-        create_collection(&collection_dto, &mut sharedstate).expect("Failed to create collection");
+    let result = collection::create_collection(&collection_dto, &mut sharedstate)
+        .expect("Failed to create collection");
     assert_eq!(result.relpath, "global/ザク/設定");
     assert!(space_abspath.join("global/ザク/設定").exists());
 }
@@ -417,10 +422,10 @@ fn create_collection_should_save_display_name() {
         relpath: "Privacy Settings".into(),
     };
 
-    let result =
-        create_collection(&collection_dto, &mut sharedstate).expect("Failed to create collection");
+    let result = collection::create_collection(&collection_dto, &mut sharedstate)
+        .expect("Failed to create collection");
 
-    let dsname_map = displayname_by_relpath(&space_abspath)
+    let dsname_map = collection::displayname_by_relpath(&space_abspath)
         .expect("Failed to get display names for collections");
     assert_eq!(
         dsname_map.get("prefs/privacy-settings"),
@@ -446,7 +451,7 @@ mod windows {
             relpath: "NUL/Config".into(),
         };
 
-        let result = create_collections_all(space_abspath, &dto);
+        let result = collection::create_collections_all(space_abspath, &dto);
 
         assert!(
             result.is_err(),
