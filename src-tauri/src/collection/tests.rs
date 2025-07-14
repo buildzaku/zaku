@@ -12,7 +12,8 @@ fn displayname_by_relpath_reads_existing_data() {
     fs::create_dir_all(displayname_path.parent().unwrap()).unwrap();
     fs::write(&displayname_path, r#""demo/path" = "Demo Path""#).unwrap();
 
-    let displayname_map = displayname_by_relpath(space_abspath).unwrap();
+    let displayname_map =
+        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
     assert_eq!(displayname_map.get("demo/path"), Some(&"Demo Path".into()));
 }
 
@@ -34,7 +35,8 @@ fn displayname_by_relpath_creates_file_if_missing() {
     let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
-    let displayname_map = displayname_by_relpath(space_abspath).unwrap();
+    let displayname_map =
+        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
     assert!(displayname_map.is_empty());
 
     let file_path = space_abspath.join(".zaku/collections/display_name.toml");
@@ -51,7 +53,8 @@ fn save_displayname_if_missing_writes_new_entry() {
 
     save_displayname_if_missing(space_abspath, "config/settings", "Config Settings").unwrap();
 
-    let displayname_map = displayname_by_relpath(space_abspath).unwrap();
+    let displayname_map =
+        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
     assert_eq!(
         displayname_map.get("config/settings"),
         Some(&"Config Settings".into())
@@ -66,8 +69,9 @@ fn save_displayname_if_missing_does_not_overwrite_existing() {
     save_displayname_if_missing(space_abspath, "a/b", "Alpha").unwrap();
     save_displayname_if_missing(space_abspath, "a/b", "Beta").unwrap();
 
-    let map = displayname_by_relpath(space_abspath).unwrap();
-    assert_eq!(map.get("a/b"), Some(&"Alpha".into()));
+    let displayname_map =
+        displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
+    assert_eq!(displayname_map.get("a/b"), Some(&"Alpha".into()));
 }
 
 #[test]
@@ -401,7 +405,8 @@ fn create_collection_should_save_display_name() {
 
     let result = create_collection(&collection_dto, &mut sharedstate).unwrap();
 
-    let displayname_map = displayname_by_relpath(&space_abspath).unwrap();
+    let displayname_map = displayname_by_relpath(&space_abspath)
+        .expect("Failed to get display names for collections");
     assert_eq!(
         displayname_map.get("prefs/privacy-settings"),
         Some(&"Privacy Settings".into())
