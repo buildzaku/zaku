@@ -205,21 +205,18 @@ pub async fn create_req(
         .expect("Active space not found");
     let active_space_abspath = PathBuf::from(&active_space.abspath);
 
-    let (parsed_parent_relpath, file_display_name) = match create_req_dto.relpath.rfind('/') {
+    let (parsed_parent_relpath, reqname) = match create_req_dto.relpath.rfind('/') {
         Some(last_slash_index) => {
             let parsed_parent_relpath = &create_req_dto.relpath[..last_slash_index];
-            let file_display_name = &create_req_dto.relpath[last_slash_index + 1..];
+            let reqname = &create_req_dto.relpath[last_slash_index + 1..];
 
-            (
-                Some(parsed_parent_relpath.to_string()),
-                file_display_name.to_string(),
-            )
+            (Some(parsed_parent_relpath.to_string()), reqname.to_string())
         }
         None => (None, create_req_dto.relpath),
     };
 
-    let file_display_name = file_display_name.trim();
-    let file_sanitized_name = file_display_name
+    let reqname = reqname.trim();
+    let file_sanitized_name = reqname
         .to_lowercase()
         .split_whitespace()
         .collect::<Vec<&str>>()
@@ -255,7 +252,7 @@ pub async fn create_req(
         format!("{file_sanitized_name}.toml").as_str(),
     ]);
 
-    request::create_reqtoml(&file_abspath, file_display_name).map_err(|err| CmdErr::Err {
+    request::create_reqtoml(&file_abspath, reqname).map_err(|err| CmdErr::Err {
         message: format!("Failed to create request file: {err}"),
     })?;
 

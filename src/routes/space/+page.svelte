@@ -200,7 +200,7 @@
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
                         <div class="mb-3 flex">
-                            {activeReqRef.self.meta.display_name}
+                            {activeReqRef.self.meta.name}
                         </div>
                         <div>
                             <form class="flex gap-2">

@@ -22,7 +22,7 @@ impl ReqBuf {
     pub fn from_req(req: &HttpReq) -> Self {
         let meta = ReqMeta {
             file_name: req.meta.file_name.clone(),
-            display_name: req.meta.display_name.clone(),
+            name: req.meta.name.clone(),
             has_unsaved_changes: true,
         };
 

@@ -8,12 +8,12 @@ use crate::request::models::{ReqToml, ReqTomlConfig, ReqTomlMeta};
 
 pub mod models;
 
-pub fn create_reqtoml(abspath: &Path, display_name: &str) -> Result<()> {
+pub fn create_reqtoml(abspath: &Path, name: &str) -> Result<()> {
     let mut reqtoml_file = File::create_new(abspath.with_extension("toml"))?;
 
     let req_toml = ReqToml {
         meta: ReqTomlMeta {
-            name: display_name.to_string(),
+            name: name.to_string(),
         },
         config: ReqTomlConfig {
             method: "GET".to_string(),

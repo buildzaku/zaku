@@ -8,6 +8,7 @@ pub mod models;
 #[cfg(test)]
 pub mod tests;
 
+use crate::collection::models::ColName;
 use crate::space;
 use crate::{
     collection::models::{CreateCollectionDto, CreateNewCollection},
@@ -16,36 +17,41 @@ use crate::{
     utils,
 };
 
-/// Reads the collection display names from `.zaku/collections/display_name.toml`
+/// Reads the collection names from `.zaku/collections/name.toml`
 ///
 /// If the file doesn't exist, it creates a new one and returns an empty map. Used to
-/// map sanitized relpaths back to their original UI display names
+/// map sanitized relpaths back to their original names
 ///
 /// - `space_abspath`: Absolute path of space
 ///
-/// Returns a `Result` containing the collection's relpath-to-display-name map
+/// Returns a `Result` containing the collection's relpath-to-col-name map
 pub fn colname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>> {
-    let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name.toml");
+    let colname_file_abspath = space_abspath.join(".zaku/collections/name.toml");
 
-    let content = match fs::read_to_string(&displayname_file_abspath) {
+    let content = match fs::read_to_string(&colname_file_abspath) {
         Ok(content) => content,
         Err(_) => {
-            let empty_map: HashMap<String, String> = HashMap::new();
-
-            if let Some(parent) = displayname_file_abspath.parent() {
+            if let Some(parent) = colname_file_abspath.parent() {
                 fs::create_dir_all(parent)?;
             }
 
-            let serialized = toml::to_string_pretty(&empty_map)?;
-            fs::write(&displayname_file_abspath, &serialized)?;
+            let colname = ColName {
+                mappings: HashMap::new(),
+            };
+
+            let serialized = toml::to_string_pretty(&colname)?;
+            fs::write(&colname_file_abspath, &serialized)?;
             serialized
         }
     };
 
-    Ok(toml::from_str(&content)?)
+    let colname: ColName = toml::from_str(&content)?;
+    let colname_map = colname.mappings;
+
+    Ok(colname_map)
 }
 
-/// Saves the collection's display name in `.zaku/collections/display_name.toml` if
+/// Saves the collection's name in `.zaku/collections/name.toml` if
 /// it doesn't exist already
 ///
 /// This helps preserve the original casing and formatting for UI, while allowing
@@ -53,36 +59,36 @@ pub fn colname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String
 ///
 /// - `space_abspath`: Absolute path of space
 /// - `collection_relpath`: Path relative to space where the collection resides
-/// - `collection_display_name`: Original name to display on UI
+/// - `colname`: Original collection name
 ///
 /// Returns a `Result` indicating success or failure
-pub fn save_displayname_if_missing(
+pub fn save_colname_if_missing(
     space_abspath: &Path,
     collection_relpath: &str,
-    collection_display_name: &str,
+    colname: &str,
 ) -> Result<()> {
-    let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name.toml");
+    let colname_file_abspath = space_abspath.join(".zaku/collections/name.toml");
 
     let mut collection_name_by_relpath = colname_by_relpath(space_abspath)?;
 
     collection_name_by_relpath
         .entry(collection_relpath.to_string())
-        .or_insert_with(|| collection_display_name.to_string());
+        .or_insert_with(|| colname.to_string());
 
     let toml_content = toml::to_string_pretty(&collection_name_by_relpath)?;
 
-    fs::write(&displayname_file_abspath, toml_content)?;
+    fs::write(&colname_file_abspath, toml_content)?;
 
     Ok(())
 }
 
 /// Creates a collection directory (nested if needed) based on `relpath`
 /// under the specified `parent_relpath`. Each segment is sanitized for
-/// the filesystem and the original segment is saved as display name
+/// the filesystem and the original segment is saved as collection name
 ///
 /// Example, if `relpath` is `"Settings/Notifications"`, it creates:
 /// - Directories: `settings/notifications`
-/// - Display names saved:
+/// - Collection names saved:
 ///   - `settings` -> `"Settings"`
 ///   - `notifications` -> `"Notifications"`
 ///
@@ -101,21 +107,21 @@ pub fn create_collections_all(
     }
 
     let mut dirs = Vec::new();
-    for dir_display_name in create_collection_dto.relpath.split('/') {
-        let dir_display_name = dir_display_name.trim();
-        let dir_sanitized_name = utils::sanitize_path_segment(dir_display_name);
+    for colname in create_collection_dto.relpath.split('/') {
+        let colname = colname.trim();
+        let dir_sanitized_name = utils::sanitize_path_segment(colname);
 
-        if dir_display_name.is_empty() || dir_sanitized_name.is_empty() {
+        if colname.is_empty() || dir_sanitized_name.is_empty() {
             continue;
         }
 
-        dirs.push((dir_sanitized_name, dir_display_name.to_string()));
+        dirs.push((dir_sanitized_name, colname.to_string()));
     }
 
     let collection_parent_abspath = space_abspath.join(&create_collection_dto.parent_relpath);
     let mut collections_relpath = String::new();
 
-    for (dir_sanitized_name, dir_display_name) in &dirs {
+    for (dir_sanitized_name, colname) in &dirs {
         let mut cur_collection_relpath = collections_relpath.clone();
 
         if !cur_collection_relpath.is_empty() {
@@ -134,7 +140,7 @@ pub fn create_collections_all(
             &cur_collection_relpath,
         ]);
 
-        save_displayname_if_missing(space_abspath, &cur_collection_relpath, dir_display_name)
+        save_colname_if_missing(space_abspath, &cur_collection_relpath, colname)
             .map_err(|e| Error::FileReadError(format!("{cur_collection_relpath}: {e}")))?;
 
         if !collections_relpath.is_empty() {
@@ -149,8 +155,7 @@ pub fn create_collections_all(
 /// Creates new collection directory/directories under the active space
 ///
 /// If the collection path contains nested segments (e.g. `"Settings/Notifications"`),
-/// it creates all parent directories as needed and stores each segment's original
-/// name as display name.
+/// it creates all parent directories as needed and stores each segment's original name.
 ///
 /// - `dto`: Contains `parent_relpath` and `relpath` of the new collection from space root
 /// - `sharedstate`: Shared state of the app
@@ -173,21 +178,18 @@ pub fn create_collection(
 
     let active_space_abspath = PathBuf::from(&active_space.abspath);
 
-    let (parsed_parent_relpath, dir_display_name) = match dto.relpath.rfind('/') {
+    let (parsed_parent_relpath, colname) = match dto.relpath.rfind('/') {
         Some(last_slash_index) => {
             let parsed_parent_relpath = &dto.relpath[..last_slash_index];
-            let dir_display_name = &dto.relpath[last_slash_index + 1..];
+            let colname = &dto.relpath[last_slash_index + 1..];
 
-            (
-                Some(parsed_parent_relpath.to_string()),
-                dir_display_name.to_string(),
-            )
+            (Some(parsed_parent_relpath.to_string()), colname.to_string())
         }
         None => (None, dto.relpath.clone()),
     };
 
-    let dir_display_name = dir_display_name.trim();
-    let dir_sanitized_name = dir_display_name
+    let colname = colname.trim();
+    let dir_sanitized_name = colname
         .to_lowercase()
         .split_whitespace()
         .collect::<Vec<&str>>()
@@ -222,7 +224,7 @@ pub fn create_collection(
 
     fs::create_dir(&dir_abspath)?;
 
-    save_displayname_if_missing(&active_space_abspath, &dir_relpath, dir_display_name)?;
+    save_colname_if_missing(&active_space_abspath, &dir_relpath, colname)?;
 
     let create_new_collection = CreateNewCollection {
         parent_relpath: dir_parent_relpath,

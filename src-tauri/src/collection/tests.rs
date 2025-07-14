@@ -13,12 +13,12 @@ fn colname_by_relpath_reads_existing_data() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let colname_filepath = space_abspath.join(".zaku/collections/display_name.toml");
+    let colname_filepath = space_abspath.join(".zaku/collections/name.toml");
     fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
     fs::write(&colname_filepath, r#""demo/path" = "Demo Path""#).unwrap();
 
-    let colname_map = collection::colname_by_relpath(space_abspath)
-        .expect("Failed to get display names for collections");
+    let colname_map =
+        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
     assert_eq!(colname_map.get("demo/path"), Some(&"Demo Path".into()));
 }
 
@@ -27,7 +27,7 @@ fn colname_by_relpath_invalid_toml_should_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let colname_filepath = space_abspath.join(".zaku/collections/display_name.toml");
+    let colname_filepath = space_abspath.join(".zaku/collections/name.toml");
     fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
     fs::write(&colname_filepath, "not = [valid").unwrap();
 
@@ -40,11 +40,11 @@ fn colname_by_relpath_creates_file_if_missing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let colname_map = collection::colname_by_relpath(space_abspath)
-        .expect("Failed to get display names for collections");
+    let colname_map =
+        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
     assert!(colname_map.is_empty());
 
-    let file_path = space_abspath.join(".zaku/collections/display_name.toml");
+    let file_path = space_abspath.join(".zaku/collections/name.toml");
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
@@ -52,15 +52,15 @@ fn colname_by_relpath_creates_file_if_missing() {
 }
 
 #[test]
-fn save_displayname_if_missing_writes_new_entry() {
+fn save_colname_if_missing_writes_new_entry() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    collection::save_displayname_if_missing(space_abspath, "config/settings", "Config Settings")
-        .expect("Failed to save display name for collection");
+    collection::save_colname_if_missing(space_abspath, "config/settings", "Config Settings")
+        .expect("Failed to save collection name");
 
-    let colname_map = collection::colname_by_relpath(space_abspath)
-        .expect("Failed to get display names for collections");
+    let colname_map =
+        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
     assert_eq!(
         colname_map.get("config/settings"),
         Some(&"Config Settings".into())
@@ -68,17 +68,17 @@ fn save_displayname_if_missing_writes_new_entry() {
 }
 
 #[test]
-fn save_displayname_if_missing_does_not_overwrite_existing() {
+fn save_colname_if_missing_does_not_overwrite_existing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    collection::save_displayname_if_missing(space_abspath, "a/b", "Alpha")
-        .expect("Failed to save display name for collection");
-    collection::save_displayname_if_missing(space_abspath, "a/b", "Beta")
-        .expect("Failed to save display name for collection");
+    collection::save_colname_if_missing(space_abspath, "a/b", "Alpha")
+        .expect("Failed to save collection name");
+    collection::save_colname_if_missing(space_abspath, "a/b", "Beta")
+        .expect("Failed to save collection name");
 
-    let colname_map = collection::colname_by_relpath(space_abspath)
-        .expect("Failed to get display names for collections");
+    let colname_map =
+        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
     assert_eq!(colname_map.get("a/b"), Some(&"Alpha".into()));
 }
 
@@ -401,7 +401,7 @@ fn create_collection_unicode_path_should_succeed() {
 }
 
 #[test]
-fn create_collection_should_save_display_name() {
+fn create_collection_should_save_colname() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_name = "Prefs";
     let space_dirname = "prefs";
@@ -425,8 +425,8 @@ fn create_collection_should_save_display_name() {
     let result = collection::create_collection(&collection_dto, &mut sharedstate)
         .expect("Failed to create collection");
 
-    let colname_map = collection::colname_by_relpath(&space_abspath)
-        .expect("Failed to get display names for collections");
+    let colname_map =
+        collection::colname_by_relpath(&space_abspath).expect("Failed to get collection names");
     assert_eq!(
         colname_map.get("prefs/privacy-settings"),
         Some(&"Privacy Settings".into())

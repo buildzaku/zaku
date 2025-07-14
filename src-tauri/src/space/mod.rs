@@ -97,7 +97,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
-    let collection_name_by_relpath =
+    let colname_map =
         collection::colname_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
     let active_space_buffer = SpaceBuf::load(space_abspath)?;
     let active_spacebuf_rlock = active_space_buffer
@@ -108,7 +108,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
         meta: CollectionMeta {
             dir_name: space_dirname,
-            display_name: space_config.map(|config| config.meta.name),
+            name: space_config.map(|config| config.meta.name),
             is_expanded: true,
         },
         requests: Vec::new(),
@@ -153,7 +153,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             dir_name: name,
-                            display_name: collection_name_by_relpath.get(&relpath).cloned(),
+                            name: colname_map.get(&relpath).cloned(),
                             is_expanded: true,
                         },
                         requests: Vec::new(),
