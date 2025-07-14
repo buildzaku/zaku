@@ -1,8 +1,7 @@
 use cookie::Cookie as RawCookie;
 use std::{
     collections::HashMap,
-    fs::{self, File},
-    io::Write,
+    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Instant,
@@ -27,10 +26,7 @@ use crate::{
     },
     space::{
         self,
-        models::{
-            CreateSpaceDto, RemoveCookieDto, SpaceConfigFile, SpaceCookie, SpaceMeta,
-            SpaceReference,
-        },
+        models::{CreateSpaceDto, RemoveCookieDto, SpaceCookie, SpaceReference},
     },
     state::SharedState,
     store::{
@@ -409,84 +405,13 @@ pub async fn create_space(
     create_space_dto: CreateSpaceDto,
     sharedstate_mtx: tauri::State<'_, Mutex<SharedState>>,
 ) -> CmdResult<SpaceReference> {
-    let location = PathBuf::from(create_space_dto.location.as_str());
-    if !location.exists() {
-        return Err(CmdErr::Err {
-            message: format!("Location does not exist: {}", create_space_dto.location),
-        });
-    }
-
-    let space_abspath = location.join(create_space_dto.name.clone());
-    let mut spacerefs = store::get_spacerefs();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-
-    if spacerefs
-        .iter()
-        .any(|sr| sr.path == space_abspath.to_string_lossy())
-    {
-        return Err(CmdErr::Err {
-            message: format!(
-                "Space already exists in saved spaces: {}",
-                space_abspath.to_string_lossy()
-            ),
-        });
-    }
-    if space_abspath.exists() {
-        return Err(CmdErr::Err {
-            message: format!(
-                "Directory with this name already exists: {}",
-                space_abspath.to_string_lossy()
-            ),
-        });
-    }
-
-    fs::create_dir(&space_abspath).expect("Failed to create space directory");
-
-    let space_config_dir = space_abspath.join(".zaku");
-    fs::create_dir(&space_config_dir).expect("Failed to create `.zaku` directory");
-
-    let mut space_config_file =
-        File::create(space_config_dir.join("config").with_extension("toml"))
-            .expect("Failed to create `config.toml`");
-
-    let space_config = SpaceConfigFile {
-        meta: SpaceMeta {
-            name: create_space_dto.name.clone(),
-        },
-    };
-
-    space_config_file
-        .write_all(
-            toml::to_string_pretty(&space_config)
-                .expect("Failed to serialize space config")
-                .as_bytes(),
-        )
-        .expect("Failed to write to config file");
-
-    let spaceref = SpaceReference {
-        path: space_abspath.to_string_lossy().to_string(),
-        name: create_space_dto.name,
-    };
-
-    store::set_active_spaceref(spaceref.clone()).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
-    })?;
-    spacerefs.push(spaceref.clone());
-    store::set_spacerefs(spacerefs.clone()).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("Failed to acquire lock: {e}"),
     })?;
 
-    match space::parse_space(&PathBuf::from(spaceref.clone().path)) {
-        Ok(active_space) => {
-            sharedstate.active_space = Some(active_space);
-            sharedstate.spacerefs = spacerefs;
-        }
-        Err(_) => {
-            // TODO - handle
-        }
-    }
-
-    Ok(spaceref)
+    space::create_space(create_space_dto, &mut sharedstate).map_err(|e| CmdErr::Err {
+        message: format!("Failed to create space: {e}"),
+    })
 }
 
 #[specta::specta]

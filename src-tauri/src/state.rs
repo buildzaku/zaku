@@ -13,7 +13,7 @@ use crate::{
     store,
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize, Type, Default)]
 pub struct SharedState {
     pub active_space: Option<Space>,
     pub spacerefs: Vec<SpaceReference>,

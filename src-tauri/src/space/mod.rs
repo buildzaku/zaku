@@ -1,10 +1,13 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
 
+use crate::space::models::{CreateSpaceDto, SpaceMeta};
+use crate::state::SharedState;
 use crate::{
     collection,
     collection::models::{Collection, CollectionMeta},
@@ -25,6 +28,64 @@ pub struct CollectionRcRefCell {
     pub meta: CollectionMeta,
     pub requests: Vec<HttpReq>,
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
+}
+
+pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Result<SpaceReference> {
+    let location = PathBuf::from(dto.location.as_str());
+    if !location.exists() {
+        return Err(Error::FileNotFound(format!(
+            "Location does not exist: {}",
+            dto.location
+        )));
+    }
+
+    let space_abspath = location.join(dto.name.clone());
+    let mut spacerefs = store::get_spacerefs();
+
+    if spacerefs
+        .iter()
+        .any(|sr| sr.path == space_abspath.to_string_lossy())
+    {
+        return Err(Error::FileNotFound(format!(
+            "Space already exists in saved spaces: {}",
+            space_abspath.to_string_lossy()
+        )));
+    }
+    if space_abspath.exists() {
+        return Err(Error::FileNotFound(format!(
+            "Directory with this name already exists: {}",
+            space_abspath.to_string_lossy()
+        )));
+    }
+
+    fs::create_dir(&space_abspath)?;
+    let config_dir = space_abspath.join(".zaku");
+    fs::create_dir(&config_dir)?;
+
+    let mut config_file = File::create(config_dir.join("config.toml"))?;
+    let config = SpaceConfigFile {
+        meta: SpaceMeta {
+            name: dto.name.clone(),
+        },
+    };
+
+    config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
+
+    let spaceref = SpaceReference {
+        path: space_abspath.to_string_lossy().to_string(),
+        name: dto.name,
+    };
+
+    store::set_active_spaceref(spaceref.clone())?;
+    spacerefs.push(spaceref.clone());
+    store::set_spacerefs(spacerefs.clone())?;
+
+    if let Ok(active_space) = parse_space(&PathBuf::from(&spaceref.path)) {
+        sharedstate.active_space = Some(active_space);
+        sharedstate.spacerefs = spacerefs;
+    }
+
+    Ok(spaceref)
 }
 
 fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {

@@ -234,11 +234,13 @@ pub fn create_collection(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use tempfile;
+
+    use crate::space::models::CreateSpaceDto;
 
     #[test]
     fn displayname_by_relpath_reads_existing_data() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
 
         let displayname_path = space_abspath.join(".zaku/collections/display_name.toml");
@@ -246,12 +248,12 @@ mod tests {
         fs::write(&displayname_path, r#""demo/path" = "Demo Path""#).unwrap();
 
         let map = displayname_by_relpath(space_abspath).unwrap();
-        assert_eq!(map.get("demo/path"), Some(&"Demo Path".to_string()));
+        assert_eq!(map.get("demo/path"), Some(&"Demo Path".into()));
     }
 
     #[test]
     fn displayname_by_relpath_invalid_toml_should_fail() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
 
         let path = space_abspath.join(".zaku/collections/display_name.toml");
@@ -264,7 +266,7 @@ mod tests {
 
     #[test]
     fn displayname_by_relpath_creates_file_if_missing() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
 
         let result = displayname_by_relpath(space_abspath).unwrap();
@@ -279,37 +281,34 @@ mod tests {
 
     #[test]
     fn save_displayname_if_missing_writes_new_entry() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
 
         save_displayname_if_missing(space_abspath, "config/settings", "Config Settings").unwrap();
 
         let map = displayname_by_relpath(space_abspath).unwrap();
-        assert_eq!(
-            map.get("config/settings"),
-            Some(&"Config Settings".to_string())
-        );
+        assert_eq!(map.get("config/settings"), Some(&"Config Settings".into()));
     }
 
     #[test]
     fn save_displayname_if_missing_does_not_overwrite_existing() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
 
         save_displayname_if_missing(space_abspath, "a/b", "Alpha").unwrap();
         save_displayname_if_missing(space_abspath, "a/b", "Beta").unwrap();
 
         let map = displayname_by_relpath(space_abspath).unwrap();
-        assert_eq!(map.get("a/b"), Some(&"Alpha".to_string()));
+        assert_eq!(map.get("a/b"), Some(&"Alpha".into()));
     }
 
     #[test]
     fn create_collections_all_basic() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
         let dto = CreateCollectionDto {
-            parent_relpath: "admin".to_string(),
-            relpath: "Users/Settings/Notifications".to_string(),
+            parent_relpath: "admin".into(),
+            relpath: "Users/Settings/Notifications".into(),
         };
 
         let col_abspath = space_abspath.join("admin");
@@ -324,11 +323,11 @@ mod tests {
 
     #[test]
     fn create_collections_all_empty_relpath() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
         let dto = CreateCollectionDto {
-            parent_relpath: "auth".to_string(),
-            relpath: "   ".to_string(),
+            parent_relpath: "auth".into(),
+            relpath: "   ".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto);
@@ -337,11 +336,11 @@ mod tests {
 
     #[test]
     fn create_collections_all_sanitization() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
         let dto = CreateCollectionDto {
-            parent_relpath: "users".to_string(),
-            relpath: "Notification Settings/List notifications".to_string(),
+            parent_relpath: "users".into(),
+            relpath: "Notification Settings/List notifications".into(),
         };
 
         fs::create_dir_all(space_abspath.join("users")).unwrap();
@@ -356,12 +355,12 @@ mod tests {
 
     #[test]
     fn create_collections_all_parent_folder_missing_should_fail() {
-        let tmp_dir = tempdir().unwrap();
+        let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "admin/settings".to_string(),
-            relpath: "Preferences/Privacy".to_string(),
+            parent_relpath: "admin/settings".into(),
+            relpath: "Preferences/Privacy".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto);
@@ -379,13 +378,13 @@ mod tests {
 
     #[test]
     fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
-        let tmp = tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("admin")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "admin".to_string(),
-            relpath: "  /Notifications       /   ".to_string(),
+            parent_relpath: "admin".into(),
+            relpath: "  /Notifications       /   ".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto).unwrap();
@@ -396,13 +395,13 @@ mod tests {
 
     #[test]
     fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
-        let tmp = tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("settings")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "settings".to_string(),
-            relpath: "System///Display".to_string(),
+            parent_relpath: "settings".into(),
+            relpath: "System///Display".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto).unwrap();
@@ -413,13 +412,13 @@ mod tests {
 
     #[test]
     fn create_collections_all_relpath_with_only_empty_segments_should_return_error() {
-        let tmp = tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("posts")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "posts".to_string(),
-            relpath: "   /   /   ".to_string(),
+            parent_relpath: "posts".into(),
+            relpath: "   /   /   ".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto);
@@ -428,13 +427,13 @@ mod tests {
 
     #[test]
     fn create_collections_all_duplicate_create_collections_should_not_fail() {
-        let tmp = tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("workspace")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "workspace".to_string(),
-            relpath: "Config/Options".to_string(),
+            parent_relpath: "workspace".into(),
+            relpath: "Config/Options".into(),
         };
 
         let _ = create_collections_all(space_abspath, &dto).unwrap();
@@ -450,8 +449,8 @@ mod tests {
         std::fs::create_dir_all(space_abspath.join("library")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "library".to_string(),
-            relpath: "Config@Home/Naïve#Settings/🔥 Experimental".to_string(),
+            parent_relpath: "library".into(),
+            relpath: "Config@Home/Naïve#Settings/🔥 Experimental".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto).unwrap();
@@ -471,8 +470,8 @@ mod tests {
         std::fs::create_dir_all(space_abspath.join("global")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "global".to_string(),
-            relpath: "ザク/設定".to_string(),
+            parent_relpath: "global".into(),
+            relpath: "ザク/設定".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto).unwrap();
@@ -487,8 +486,8 @@ mod tests {
         std::fs::create_dir_all(space_abspath.join("root")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "root".to_string(),
-            relpath: "Settings/Preferences/".to_string(),
+            parent_relpath: "root".into(),
+            relpath: "Settings/Preferences/".into(),
         };
 
         let result = create_collections_all(space_abspath, &dto).unwrap();
@@ -503,8 +502,8 @@ mod tests {
         std::fs::create_dir_all(space_abspath.join("logs")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "logs".to_string(),
-            relpath: r#"Error|Logs/<Critical>?Events:2025*Backup\Archive"Today""#.to_string(),
+            parent_relpath: "logs".into(),
+            relpath: r#"Error|Logs/<Critical>?Events:2025*Backup\Archive"Today""#.into(),
         };
 
         let result = create_collections_all(space_abspath, &dto);
@@ -515,6 +514,133 @@ mod tests {
 
         let expected_path = space_abspath.join("logs").join(expected);
         assert!(expected_path.exists());
+    }
+
+    #[test]
+    fn create_collection_basic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let space_name = "Main Space";
+        let space_dirname = "main-space";
+        let space_abspath = tmp.path().join(space_dirname);
+        let dto = CreateSpaceDto {
+            name: space_name.into(),
+            location: tmp.path().to_string_lossy().into(),
+        };
+
+        let mut sharedstate = SharedState::default();
+        let spaceref = space::create_space(dto, &mut sharedstate).unwrap();
+        assert_eq!(spaceref.name, space_name);
+
+        fs::create_dir_all(space_abspath.join("admin")).unwrap();
+
+        let collection_dto = CreateCollectionDto {
+            parent_relpath: "admin".into(),
+            relpath: "Settings/Notifications".into(),
+        };
+
+        let result = create_collection(&collection_dto, &mut sharedstate).unwrap();
+
+        assert_eq!(result.relpath, "settings/notifications");
+        assert!(space_abspath.join("admin/settings/notifications").exists());
+    }
+
+    #[test]
+    fn create_collection_empty_relpath_should_fail() {
+        let tmp = tempfile::tempdir().unwrap();
+        let space_name = "Empty Check";
+        let space_dirname = "empty-check";
+        let space_abspath = tmp.path().join(space_dirname);
+
+        let dto = CreateSpaceDto {
+            name: space_name.into(),
+            location: tmp.path().to_string_lossy().into(),
+        };
+
+        let mut sharedstate = SharedState::default();
+        let _ = space::create_space(dto, &mut sharedstate).unwrap();
+
+        fs::create_dir_all(space_abspath.join("admin")).unwrap();
+
+        let collection_dto = CreateCollectionDto {
+            parent_relpath: "admin".into(),
+            relpath: "   ".into(),
+        };
+
+        let result = create_collection(&collection_dto, &mut sharedstate);
+        assert!(matches!(result, Err(Error::FileNotFound(_))));
+    }
+
+    #[test]
+    fn create_collection_missing_active_space_should_fail() {
+        let collection_dto = CreateCollectionDto {
+            parent_relpath: "admin".into(),
+            relpath: "Trending Posts".into(),
+        };
+
+        let mut sharedstate = SharedState::default();
+        let result = create_collection(&collection_dto, &mut sharedstate);
+        assert!(matches!(result, Err(Error::FileNotFound(_))));
+    }
+
+    #[test]
+    fn create_collection_unicode_path_should_succeed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let space_name = "Global Space";
+        let space_dirname = "global-space";
+        let space_abspath = tmp.path().join(space_dirname);
+
+        let dto = CreateSpaceDto {
+            name: space_name.into(),
+            location: tmp.path().to_string_lossy().into(),
+        };
+
+        let mut sharedstate = SharedState::default();
+        let _ = space::create_space(dto, &mut sharedstate).unwrap();
+
+        fs::create_dir_all(space_abspath.join("global")).unwrap();
+
+        let collection_dto = CreateCollectionDto {
+            parent_relpath: "global".into(),
+            relpath: "ザク/設定".into(),
+        };
+
+        let result = create_collection(&collection_dto, &mut sharedstate).unwrap();
+        assert_eq!(result.relpath, "ザク/設定");
+        assert!(space_abspath.join("global/ザク/設定").exists());
+    }
+
+    #[test]
+    fn create_collection_should_save_display_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let space_name = "Prefs";
+        let space_dirname = "prefs";
+        let space_abspath = tmp.path().join(space_dirname);
+
+        let dto = CreateSpaceDto {
+            name: space_name.into(),
+            location: tmp.path().to_string_lossy().into(),
+        };
+
+        let mut sharedstate = SharedState::default();
+        let _ = space::create_space(dto, &mut sharedstate).unwrap();
+
+        fs::create_dir_all(space_abspath.join("prefs")).unwrap();
+
+        let collection_dto = CreateCollectionDto {
+            parent_relpath: "prefs".into(),
+            relpath: "Privacy Settings".into(),
+        };
+
+        let result = create_collection(&collection_dto, &mut sharedstate).unwrap();
+
+        let displayname_map = displayname_by_relpath(&space_abspath).unwrap();
+        assert_eq!(
+            displayname_map.get("prefs/privacy-settings"),
+            Some(&"Privacy Settings".into())
+        );
+
+        assert_eq!(result.relpath, "privacy-settings");
+        assert!(space_abspath.join("prefs/privacy-settings").exists());
     }
 
     #[cfg(windows)]
@@ -528,8 +654,8 @@ mod tests {
             std::fs::create_dir_all(space_abspath.join("system")).unwrap();
 
             let dto = CreateCollectionDto {
-                parent_relpath: "system".to_string(),
-                relpath: "NUL/Config".to_string(),
+                parent_relpath: "system".into(),
+                relpath: "NUL/Config".into(),
             };
 
             let result = create_collections_all(space_abspath, &dto);
