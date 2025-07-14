@@ -73,7 +73,7 @@ pub fn hashed_filename(abspath: &str) -> String {
 /// - Replaces whitespace with `-`
 /// - Trims leading/trailing hyphens
 pub fn sanitize_path_segment(segment: &str) -> String {
-    const INVALID_CHARS: [char; 9] = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+    const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
 
     segment
         .to_lowercase()
