@@ -6522,6 +6522,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tauri-specta",
+ "tempfile",
  "time",
  "tokio",
  "toml 0.8.23",

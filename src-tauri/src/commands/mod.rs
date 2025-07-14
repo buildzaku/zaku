@@ -1,8 +1,7 @@
 use cookie::Cookie as RawCookie;
 use std::{
     collections::HashMap,
-    fs::{self, File},
-    io::Write,
+    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Instant,
@@ -12,10 +11,12 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
 use crate::{
-    collection::{self, models::CreateCollectionDto},
+    collection::{
+        self,
+        models::{CreateCollectionDto, CreateNewCollection},
+    },
     commands::models::{
-        CreateNewCollection, CreateNewRequest, DispatchNotificationOptions, MoveTreeItemDto,
-        OpenDirDialogOpt,
+        CreateNewRequest, DispatchNotificationOptions, MoveTreeItemDto, OpenDirDialogOpt,
     },
     error::{CmdErr, CmdResult},
     notifications,
@@ -25,10 +26,7 @@ use crate::{
     },
     space::{
         self,
-        models::{
-            CreateSpaceDto, RemoveCookieDto, SpaceConfigFile, SpaceCookie, SpaceMeta,
-            SpaceReference,
-        },
+        models::{CreateSpaceDto, RemoveCookieDto, SpaceCookie, SpaceReference},
     },
     state::SharedState,
     store::{
@@ -71,92 +69,16 @@ pub async fn create_collection(
     create_collection_dto: CreateCollectionDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewCollection> {
-    if create_collection_dto.relpath.is_empty() {
-        return Err(CmdErr::Err {
-            message: "Cannot create a collection without name".to_string(),
-        });
-    };
-
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-    let active_space = sharedstate
-        .active_space
-        .clone()
-        .expect("Active space not found");
-    let active_space_abspath = PathBuf::from(&active_space.abspath);
-
-    let (parsed_parent_relpath, dir_display_name) = match create_collection_dto.relpath.rfind('/') {
-        Some(last_slash_index) => {
-            let parsed_parent_relpath = &create_collection_dto.relpath[..last_slash_index];
-            let dir_display_name = &create_collection_dto.relpath[last_slash_index + 1..];
-
-            (
-                Some(parsed_parent_relpath.to_string()),
-                dir_display_name.to_string(),
-            )
-        }
-        None => (None, create_collection_dto.relpath),
-    };
-
-    let dir_display_name = dir_display_name.trim();
-    let dir_sanitized_name = dir_display_name
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join("-");
-    let (dir_parent_relpath, dir_sanitized_name) = match parsed_parent_relpath {
-        Some(ref parsed_parent_relpath) => {
-            let create_collection_dto = CreateCollectionDto {
-                parent_relpath: create_collection_dto.parent_relpath.clone(),
-                relpath: parsed_parent_relpath.to_string(),
-            };
-
-            let dirs_sanitized_relpath =
-                collection::create_collections_all(&active_space_abspath, &create_collection_dto)
-                    .map_err(|err| CmdErr::Err {
-                    message: format!("Failed to create collection: {err}"),
-                })?;
-
-            let dir_parent_relpath = utils::join_str_paths(vec![
-                create_collection_dto.parent_relpath.as_str(),
-                dirs_sanitized_relpath.as_str(),
-            ]);
-
-            (dir_parent_relpath, dir_sanitized_name)
-        }
-        None => (create_collection_dto.parent_relpath, dir_sanitized_name),
-    };
-
-    let dir_abspath = active_space_abspath
-        .join(dir_parent_relpath.clone())
-        .join(dir_sanitized_name.clone());
-    let dir_relpath = utils::join_str_paths(vec![
-        dir_parent_relpath.clone().as_str(),
-        dir_sanitized_name.as_str(),
-    ]);
-
-    fs::create_dir(&dir_abspath).map_err(|err| CmdErr::Err {
-        message: format!("Failed to create collection: {err}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("State lock failed: {e}"),
     })?;
 
-    collection::save_displayname_if_missing(&active_space_abspath, &dir_relpath, dir_display_name)
-        .unwrap_or_else(|err| {
-            eprintln!("Failed to save display name {err}");
-        });
-
-    let create_new_collection = CreateNewCollection {
-        parent_relpath: dir_parent_relpath,
-        relpath: dir_relpath,
-    };
-
-    sharedstate.active_space =
-        Some(
-            space::parse_space(&active_space_abspath).map_err(|err| CmdErr::Err {
-                message: format!("Failed to parse space after creating the collection: {err}"),
-            })?,
-        );
-
-    Ok(create_new_collection)
+    collection::create_collection(&create_collection_dto, &mut sharedstate).map_err(|err| {
+        CmdErr::Err {
+            message: format!("Failed to create collection: {err}"),
+        }
+    })
 }
 
 #[specta::specta]
@@ -283,21 +205,18 @@ pub async fn create_req(
         .expect("Active space not found");
     let active_space_abspath = PathBuf::from(&active_space.abspath);
 
-    let (parsed_parent_relpath, file_display_name) = match create_req_dto.relpath.rfind('/') {
+    let (parsed_parent_relpath, reqname) = match create_req_dto.relpath.rfind('/') {
         Some(last_slash_index) => {
             let parsed_parent_relpath = &create_req_dto.relpath[..last_slash_index];
-            let file_display_name = &create_req_dto.relpath[last_slash_index + 1..];
+            let reqname = &create_req_dto.relpath[last_slash_index + 1..];
 
-            (
-                Some(parsed_parent_relpath.to_string()),
-                file_display_name.to_string(),
-            )
+            (Some(parsed_parent_relpath.to_string()), reqname.to_string())
         }
         None => (None, create_req_dto.relpath),
     };
 
-    let file_display_name = file_display_name.trim();
-    let file_sanitized_name = file_display_name
+    let reqname = reqname.trim();
+    let file_sanitized_name = reqname
         .to_lowercase()
         .split_whitespace()
         .collect::<Vec<&str>>()
@@ -333,7 +252,7 @@ pub async fn create_req(
         format!("{file_sanitized_name}.toml").as_str(),
     ]);
 
-    request::create_reqtoml(&file_abspath, file_display_name).map_err(|err| CmdErr::Err {
+    request::create_reqtoml(&file_abspath, reqname).map_err(|err| CmdErr::Err {
         message: format!("Failed to create request file: {err}"),
     })?;
 
@@ -483,84 +402,13 @@ pub async fn create_space(
     create_space_dto: CreateSpaceDto,
     sharedstate_mtx: tauri::State<'_, Mutex<SharedState>>,
 ) -> CmdResult<SpaceReference> {
-    let location = PathBuf::from(create_space_dto.location.as_str());
-    if !location.exists() {
-        return Err(CmdErr::Err {
-            message: format!("Location does not exist: {}", create_space_dto.location),
-        });
-    }
-
-    let space_abspath = location.join(create_space_dto.name.clone());
-    let mut spacerefs = store::get_spacerefs();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-
-    if spacerefs
-        .iter()
-        .any(|sr| sr.path == space_abspath.to_string_lossy())
-    {
-        return Err(CmdErr::Err {
-            message: format!(
-                "Space already exists in saved spaces: {}",
-                space_abspath.to_string_lossy()
-            ),
-        });
-    }
-    if space_abspath.exists() {
-        return Err(CmdErr::Err {
-            message: format!(
-                "Directory with this name already exists: {}",
-                space_abspath.to_string_lossy()
-            ),
-        });
-    }
-
-    fs::create_dir(&space_abspath).expect("Failed to create space directory");
-
-    let space_config_dir = space_abspath.join(".zaku");
-    fs::create_dir(&space_config_dir).expect("Failed to create `.zaku` directory");
-
-    let mut space_config_file =
-        File::create(space_config_dir.join("config").with_extension("toml"))
-            .expect("Failed to create `config.toml`");
-
-    let space_config = SpaceConfigFile {
-        meta: SpaceMeta {
-            name: create_space_dto.name.clone(),
-        },
-    };
-
-    space_config_file
-        .write_all(
-            toml::to_string_pretty(&space_config)
-                .expect("Failed to serialize space config")
-                .as_bytes(),
-        )
-        .expect("Failed to write to config file");
-
-    let spaceref = SpaceReference {
-        path: space_abspath.to_string_lossy().to_string(),
-        name: create_space_dto.name,
-    };
-
-    store::set_active_spaceref(spaceref.clone()).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
-    })?;
-    spacerefs.push(spaceref.clone());
-    store::set_spacerefs(spacerefs.clone()).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("Failed to acquire lock: {e}"),
     })?;
 
-    match space::parse_space(&PathBuf::from(spaceref.clone().path)) {
-        Ok(active_space) => {
-            sharedstate.active_space = Some(active_space);
-            sharedstate.spacerefs = spacerefs;
-        }
-        Err(_) => {
-            // TODO - handle
-        }
-    }
-
-    Ok(spaceref)
+    space::create_space(create_space_dto, &mut sharedstate).map_err(|e| CmdErr::Err {
+        message: format!("Failed to create space: {e}"),
+    })
 }
 
 #[specta::specta]
