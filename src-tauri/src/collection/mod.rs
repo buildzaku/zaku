@@ -11,6 +11,14 @@ use crate::{
     utils,
 };
 
+/// Reads the collection display names from `.zaku/collections/display_name.toml`
+///
+/// If the file doesn't exist, it creates a new one and returns an empty map. Used to
+/// map sanitized relpaths back to their original UI display names
+///
+/// - `space_abspath`: Absolute path of space
+///
+/// Returns a `Result` containing the collection's relpath-to-display-name map
 pub fn displayname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>> {
     let displayname_file_abspath = space_abspath.join(".zaku/collections/display_name.toml");
 
@@ -32,6 +40,17 @@ pub fn displayname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, St
     Ok(toml::from_str(&content)?)
 }
 
+/// Saves the collection's display name in `.zaku/collections/display_name.toml` if
+/// it doesn't exist already
+///
+/// This helps preserve the original casing and formatting for UI, while allowing
+/// sanitized versions to be used as actual directory names
+///
+/// - `space_abspath`: Absolute path of space
+/// - `collection_relpath`: Path relative to space where the collection resides
+/// - `collection_display_name`: Original name to display on UI
+///
+/// Returns a `Result` indicating success or failure
 pub fn save_displayname_if_missing(
     space_abspath: &Path,
     collection_relpath: &str,
@@ -123,12 +142,79 @@ pub fn create_collections_all(
 }
 
 #[cfg(test)]
-mod create_collections_all {
+mod tests {
     use super::*;
     use tempfile::tempdir;
 
     #[test]
-    fn basic() {
+    fn displayname_by_relpath_reads_existing_data() {
+        let tmp_dir = tempdir().unwrap();
+        let space_abspath = tmp_dir.path();
+
+        let displayname_path = space_abspath.join(".zaku/collections/display_name.toml");
+        fs::create_dir_all(displayname_path.parent().unwrap()).unwrap();
+        fs::write(&displayname_path, r#""demo/path" = "Demo Path""#).unwrap();
+
+        let map = displayname_by_relpath(space_abspath).unwrap();
+        assert_eq!(map.get("demo/path"), Some(&"Demo Path".to_string()));
+    }
+
+    #[test]
+    fn displayname_by_relpath_invalid_toml_should_fail() {
+        let tmp_dir = tempdir().unwrap();
+        let space_abspath = tmp_dir.path();
+
+        let path = space_abspath.join(".zaku/collections/display_name.toml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "not = [valid").unwrap();
+
+        let result = displayname_by_relpath(space_abspath);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn displayname_by_relpath_creates_file_if_missing() {
+        let tmp_dir = tempdir().unwrap();
+        let space_abspath = tmp_dir.path();
+
+        let result = displayname_by_relpath(space_abspath).unwrap();
+        assert!(result.is_empty());
+
+        let file_path = space_abspath.join(".zaku/collections/display_name.toml");
+        assert!(file_path.exists());
+
+        let content = fs::read_to_string(file_path).unwrap();
+        assert!(content.contains("{}") || content.trim().is_empty());
+    }
+
+    #[test]
+    fn save_displayname_if_missing_writes_new_entry() {
+        let tmp_dir = tempdir().unwrap();
+        let space_abspath = tmp_dir.path();
+
+        save_displayname_if_missing(space_abspath, "config/settings", "Config Settings").unwrap();
+
+        let map = displayname_by_relpath(space_abspath).unwrap();
+        assert_eq!(
+            map.get("config/settings"),
+            Some(&"Config Settings".to_string())
+        );
+    }
+
+    #[test]
+    fn save_displayname_if_missing_does_not_overwrite_existing() {
+        let tmp_dir = tempdir().unwrap();
+        let space_abspath = tmp_dir.path();
+
+        save_displayname_if_missing(space_abspath, "a/b", "Alpha").unwrap();
+        save_displayname_if_missing(space_abspath, "a/b", "Beta").unwrap();
+
+        let map = displayname_by_relpath(space_abspath).unwrap();
+        assert_eq!(map.get("a/b"), Some(&"Alpha".to_string()));
+    }
+
+    #[test]
+    fn create_collections_all_basic() {
         let tmp_dir = tempdir().unwrap();
         let space_abspath = tmp_dir.path();
         let dto = CreateCollectionDto {
@@ -147,7 +233,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn empty_relpath() {
+    fn create_collections_all_empty_relpath() {
         let tmp_dir = tempdir().unwrap();
         let space_abspath = tmp_dir.path();
         let dto = CreateCollectionDto {
@@ -160,7 +246,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn sanitization() {
+    fn create_collections_all_sanitization() {
         let tmp_dir = tempdir().unwrap();
         let space_abspath = tmp_dir.path();
         let dto = CreateCollectionDto {
@@ -179,7 +265,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn parent_folder_missing_should_fail() {
+    fn create_collections_all_parent_folder_missing_should_fail() {
         let tmp_dir = tempdir().unwrap();
         let space_abspath = tmp_dir.path();
 
@@ -202,7 +288,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn relpath_with_whitespace_segments_should_skip() {
+    fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
         let tmp = tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("admin")).unwrap();
@@ -219,7 +305,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn relpath_with_multiple_slashes_should_be_handled() {
+    fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
         let tmp = tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("settings")).unwrap();
@@ -236,7 +322,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn relpath_with_only_empty_segments_should_return_error() {
+    fn create_collections_all_relpath_with_only_empty_segments_should_return_error() {
         let tmp = tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("posts")).unwrap();
@@ -251,7 +337,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn duplicate_create_collections_should_not_fail() {
+    fn create_collections_all_duplicate_create_collections_should_not_fail() {
         let tmp = tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("workspace")).unwrap();
@@ -268,7 +354,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn special_characters_should_be_sanitized_or_preserved() {
+    fn create_collections_all_special_characters_should_be_sanitized_or_preserved() {
         let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("library")).unwrap();
@@ -289,7 +375,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn unicode_segments_should_be_handled() {
+    fn create_collections_all_unicode_segments_should_be_handled() {
         let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("global")).unwrap();
@@ -305,7 +391,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn trailing_slash_should_be_ignored() {
+    fn create_collections_all_trailing_slash_should_be_ignored() {
         let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("root")).unwrap();
@@ -321,7 +407,7 @@ mod create_collections_all {
     }
 
     #[test]
-    fn invalid_characters_should_be_sanitized() {
+    fn create_collections_all_invalid_characters_should_be_sanitized() {
         let tmp = tempfile::tempdir().unwrap();
         let space_abspath = tmp.path();
         std::fs::create_dir_all(space_abspath.join("logs")).unwrap();
@@ -346,7 +432,7 @@ mod create_collections_all {
         use super::*;
 
         #[test]
-        fn reserved_names_should_fail() {
+        fn create_collections_all_reserved_names_should_fail() {
             let tmp = tempfile::tempdir().unwrap();
             let space_abspath = tmp.path();
             std::fs::create_dir_all(space_abspath.join("system")).unwrap();
