@@ -51,7 +51,8 @@ fn save_displayname_if_missing_writes_new_entry() {
     let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
-    save_displayname_if_missing(space_abspath, "config/settings", "Config Settings").unwrap();
+    save_displayname_if_missing(space_abspath, "config/settings", "Config Settings")
+        .expect("Failed to save display name for collection");
 
     let displayname_map =
         displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
@@ -66,8 +67,10 @@ fn save_displayname_if_missing_does_not_overwrite_existing() {
     let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
-    save_displayname_if_missing(space_abspath, "a/b", "Alpha").unwrap();
-    save_displayname_if_missing(space_abspath, "a/b", "Beta").unwrap();
+    save_displayname_if_missing(space_abspath, "a/b", "Alpha")
+        .expect("Failed to save display name for collection");
+    save_displayname_if_missing(space_abspath, "a/b", "Beta")
+        .expect("Failed to save display name for collection");
 
     let displayname_map =
         displayname_by_relpath(space_abspath).expect("Failed to get display names for collections");
@@ -86,8 +89,9 @@ fn create_collections_all_basic() {
     let col_abspath = space_abspath.join("admin");
     fs::create_dir_all(&col_abspath).unwrap();
 
-    let result = create_collections_all(space_abspath, &dto).unwrap();
-    assert_eq!(result, "users/settings/notifications");
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
+    assert_eq!(col_relpath, "users/settings/notifications");
 
     let expected_path = col_abspath.join("users/settings/notifications");
     assert!(expected_path.exists());
@@ -117,7 +121,8 @@ fn create_collections_all_sanitization() {
 
     fs::create_dir_all(space_abspath.join("users")).unwrap();
 
-    let col_relpath = create_collections_all(space_abspath, &dto).unwrap();
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
     assert_eq!(col_relpath, "notification-settings/list-notifications");
 
     assert!(space_abspath
@@ -159,8 +164,9 @@ fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
         relpath: "  /Notifications       /   ".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto).unwrap();
-    assert_eq!(result, "notifications");
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
+    assert_eq!(col_relpath, "notifications");
 
     assert!(space_abspath.join("admin/notifications").exists());
 }
@@ -176,8 +182,9 @@ fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
         relpath: "System///Display".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto).unwrap();
-    assert_eq!(result, "system/display");
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
+    assert_eq!(col_relpath, "system/display");
 
     assert!(space_abspath.join("settings/system/display").exists());
 }
@@ -208,10 +215,12 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
         relpath: "Config/Options".into(),
     };
 
-    let _ = create_collections_all(space_abspath, &dto).unwrap();
-    let result = create_collections_all(space_abspath, &dto).unwrap();
+    let _ = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
 
-    assert_eq!(result, "config/options");
+    assert_eq!(col_relpath, "config/options");
 }
 
 #[test]
@@ -225,9 +234,10 @@ fn create_collections_all_special_characters_should_be_sanitized_or_preserved() 
         relpath: "Config@Home/Naïve#Settings/🔥 Experimental".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto).unwrap();
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
 
-    assert_eq!(result, "config@home/naïve#settings/🔥-experimental");
+    assert_eq!(col_relpath, "config@home/naïve#settings/🔥-experimental");
 
     let expected_path = space_abspath.join("library/config@home/naïve#settings/🔥-experimental");
 
@@ -245,8 +255,9 @@ fn create_collections_all_unicode_segments_should_be_handled() {
         relpath: "ザク/設定".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto).unwrap();
-    assert_eq!(result, "ザク/設定");
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
+    assert_eq!(col_relpath, "ザク/設定");
     assert!(space_abspath.join("global/ザク/設定").exists());
 }
 
@@ -261,8 +272,9 @@ fn create_collections_all_trailing_slash_should_be_ignored() {
         relpath: "Settings/Preferences/".into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto).unwrap();
-    assert_eq!(result, "settings/preferences");
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
+    assert_eq!(col_relpath, "settings/preferences");
     assert!(space_abspath.join("root/settings/preferences").exists());
 }
 
@@ -277,13 +289,13 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
         relpath: r#"Error|Logs/<Critical>?Events:2025*Backup\Archive"Today""#.into(),
     };
 
-    let result = create_collections_all(space_abspath, &dto);
-    assert!(result.is_ok());
+    let col_relpath = create_collections_all(space_abspath, &dto)
+        .expect("Failed to create collection directory/directories");
 
-    let expected = "error-logs/critical--events-2025-backup-archive-today";
-    assert_eq!(result.unwrap(), expected);
+    let expected_relpath = "error-logs/critical--events-2025-backup-archive-today";
+    assert_eq!(col_relpath, expected_relpath);
 
-    let expected_path = space_abspath.join("logs").join(expected);
+    let expected_path = space_abspath.join("logs").join(expected_relpath);
     assert!(expected_path.exists());
 }
 
@@ -310,9 +322,10 @@ fn create_collection_basic() {
         relpath: "Settings/Notifications".into(),
     };
 
-    let result = create_collection(&collection_dto, &mut sharedstate).unwrap();
+    let col =
+        create_collection(&collection_dto, &mut sharedstate).expect("Failed to create collection");
 
-    assert_eq!(result.relpath, "admin/settings/notifications");
+    assert_eq!(col.relpath, "admin/settings/notifications");
     assert!(space_abspath.join("admin/settings/notifications").exists());
 }
 
@@ -376,7 +389,8 @@ fn create_collection_unicode_path_should_succeed() {
         relpath: "ザク/設定".into(),
     };
 
-    let result = create_collection(&collection_dto, &mut sharedstate).unwrap();
+    let result =
+        create_collection(&collection_dto, &mut sharedstate).expect("Failed to create collection");
     assert_eq!(result.relpath, "global/ザク/設定");
     assert!(space_abspath.join("global/ザク/設定").exists());
 }
@@ -403,7 +417,8 @@ fn create_collection_should_save_display_name() {
         relpath: "Privacy Settings".into(),
     };
 
-    let result = create_collection(&collection_dto, &mut sharedstate).unwrap();
+    let result =
+        create_collection(&collection_dto, &mut sharedstate).expect("Failed to create collection");
 
     let displayname_map = displayname_by_relpath(&space_abspath)
         .expect("Failed to get display names for collections");
