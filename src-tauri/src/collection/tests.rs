@@ -1,8 +1,11 @@
-use std::fs;
+use std::{collections::HashMap, fs};
 use tempfile;
 
 use crate::{
-    collection::{self, models::CreateCollectionDto},
+    collection::{
+        self,
+        models::{ColName, CreateCollectionDto},
+    },
     error::Error,
     space::{self, models::CreateSpaceDto},
     state::SharedState,
@@ -10,16 +13,28 @@ use crate::{
 
 #[test]
 fn colname_by_relpath_reads_existing_data() {
-    let tmp_dir = tempfile::tempdir().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
     let space_abspath = tmp_dir.path();
 
     let colname_filepath = space_abspath.join(".zaku/collections/name.toml");
-    fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
-    fs::write(&colname_filepath, r#""demo/path" = "Demo Path""#).unwrap();
+    fs::create_dir_all(
+        colname_filepath
+            .parent()
+            .expect("Failed to get parent directory"),
+    )
+    .expect("Failed to create parent directories");
 
-    let colname_map =
+    let mut mappings = HashMap::new();
+    mappings.insert("demo/path".to_string(), "Demo Path".to_string());
+
+    let data = ColName { mappings };
+    let serialized = toml::to_string_pretty(&data).expect("Failed to serialize ColName struct");
+
+    fs::write(&colname_filepath, serialized).expect("Failed to write TOML file");
+
+    let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-    assert_eq!(colname_map.get("demo/path"), Some(&"Demo Path".into()));
+    assert_eq!(colname.mappings.get("demo/path"), Some(&"Demo Path".into()));
 }
 
 #[test]
@@ -29,7 +44,9 @@ fn colname_by_relpath_invalid_toml_should_fail() {
 
     let colname_filepath = space_abspath.join(".zaku/collections/name.toml");
     fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
-    fs::write(&colname_filepath, "not = [valid").unwrap();
+
+    let invalid_toml = "[mappings\n\"demo/path\" = \"Demo Path\"";
+    fs::write(&colname_filepath, invalid_toml).unwrap();
 
     let result = collection::colname_by_relpath(space_abspath);
     assert!(result.is_err());
@@ -40,15 +57,15 @@ fn colname_by_relpath_creates_file_if_missing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let colname_map =
+    let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-    assert!(colname_map.is_empty());
+    assert!(colname.mappings.is_empty());
 
     let file_path = space_abspath.join(".zaku/collections/name.toml");
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
-    assert!(content.contains("{}") || content.trim().is_empty());
+    assert_eq!(content.trim(), "[mappings]");
 }
 
 #[test]
@@ -59,10 +76,10 @@ fn save_colname_if_missing_writes_new_entry() {
     collection::save_colname_if_missing(space_abspath, "config/settings", "Config Settings")
         .expect("Failed to save collection name");
 
-    let colname_map =
+    let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
     assert_eq!(
-        colname_map.get("config/settings"),
+        colname.mappings.get("config/settings"),
         Some(&"Config Settings".into())
     );
 }
@@ -77,9 +94,9 @@ fn save_colname_if_missing_does_not_overwrite_existing() {
     collection::save_colname_if_missing(space_abspath, "a/b", "Beta")
         .expect("Failed to save collection name");
 
-    let colname_map =
+    let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-    assert_eq!(colname_map.get("a/b"), Some(&"Alpha".into()));
+    assert_eq!(colname.mappings.get("a/b"), Some(&"Alpha".into()));
 }
 
 #[test]
@@ -425,10 +442,10 @@ fn create_collection_should_save_colname() {
     let result = collection::create_collection(&collection_dto, &mut sharedstate)
         .expect("Failed to create collection");
 
-    let colname_map =
+    let colname =
         collection::colname_by_relpath(&space_abspath).expect("Failed to get collection names");
     assert_eq!(
-        colname_map.get("prefs/privacy-settings"),
+        colname.mappings.get("prefs/privacy-settings"),
         Some(&"Privacy Settings".into())
     );
 

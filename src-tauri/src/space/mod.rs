@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::vec::IntoIter;
 
+use crate::collection::models::ColName;
 use crate::space::models::{CreateSpaceDto, SpaceMeta};
 use crate::state::SharedState;
 use crate::utils;
@@ -97,8 +98,9 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
-    let colname_map =
-        collection::colname_by_relpath(space_abspath).unwrap_or_else(|_| HashMap::new());
+    let colname = collection::colname_by_relpath(space_abspath).unwrap_or_else(|_| ColName {
+        mappings: HashMap::new(),
+    });
     let active_space_buffer = SpaceBuf::load(space_abspath)?;
     let active_spacebuf_rlock = active_space_buffer
         .read()
@@ -153,7 +155,7 @@ fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             dir_name: name,
-                            name: colname_map.get(&relpath).cloned(),
+                            name: colname.mappings.get(&relpath).cloned(),
                             is_expanded: true,
                         },
                         requests: Vec::new(),

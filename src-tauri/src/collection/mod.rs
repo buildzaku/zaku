@@ -25,7 +25,7 @@ use crate::{
 /// - `space_abspath`: Absolute path of space
 ///
 /// Returns a `Result` containing the collection's relpath-to-col-name map
-pub fn colname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String>> {
+pub fn colname_by_relpath(space_abspath: &Path) -> Result<ColName> {
     let colname_file_abspath = space_abspath.join(".zaku/collections/name.toml");
 
     let content = match fs::read_to_string(&colname_file_abspath) {
@@ -46,13 +46,12 @@ pub fn colname_by_relpath(space_abspath: &Path) -> Result<HashMap<String, String
     };
 
     let colname: ColName = toml::from_str(&content)?;
-    let colname_map = colname.mappings;
 
-    Ok(colname_map)
+    Ok(colname)
 }
 
 /// Saves the collection's name in `.zaku/collections/name.toml` if
-/// it doesn't exist already
+/// it doesn't already exist
 ///
 /// This helps preserve the original casing and formatting for UI, while allowing
 /// sanitized versions to be used as actual directory names
@@ -72,6 +71,7 @@ pub fn save_colname_if_missing(
     let mut collection_name_by_relpath = colname_by_relpath(space_abspath)?;
 
     collection_name_by_relpath
+        .mappings
         .entry(collection_relpath.to_string())
         .or_insert_with(|| colname.to_string());
 
