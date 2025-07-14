@@ -27,8 +27,8 @@ fn colname_by_relpath_reads_existing_data() {
     let mut mappings = HashMap::new();
     mappings.insert("demo/path".to_string(), "Demo Path".to_string());
 
-    let data = ColName { mappings };
-    let serialized = toml::to_string_pretty(&data).expect("Failed to serialize ColName struct");
+    let colname = ColName { mappings };
+    let serialized = toml::to_string_pretty(&colname).expect("Failed to serialize ColName struct");
 
     fs::write(&colname_filepath, serialized).expect("Failed to write TOML file");
 
@@ -262,8 +262,25 @@ fn create_collections_all_special_characters_should_be_sanitized_or_preserved() 
     assert_eq!(col_relpath, "config@home/naïve#settings/🔥-experimental");
 
     let expected_path = space_abspath.join("library/config@home/naïve#settings/🔥-experimental");
-
     assert!(expected_path.exists());
+
+    let colname = collection::colname_by_relpath(space_abspath)
+        .expect("Failed to read collection name mappings");
+
+    assert_eq!(
+        colname.mappings.get("library/config@home"),
+        Some(&"Config@Home".to_string())
+    );
+    assert_eq!(
+        colname.mappings.get("library/config@home/naïve#settings"),
+        Some(&"Naïve#Settings".to_string())
+    );
+    assert_eq!(
+        colname
+            .mappings
+            .get("library/config@home/naïve#settings/🔥-experimental"),
+        Some(&"🔥 Experimental".to_string())
+    );
 }
 
 #[test]
@@ -314,7 +331,7 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected_relpath = "error-logs/critical--events-2025-backup-archive-today";
+    let expected_relpath = "error-logs/critical-events-2025-backup-archive-today";
     assert_eq!(col_relpath, expected_relpath);
 
     let expected_path = space_abspath.join("logs").join(expected_relpath);

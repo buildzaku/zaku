@@ -75,14 +75,17 @@ pub fn hashed_filename(abspath: &str) -> String {
 pub fn sanitize_path_segment(segment: &str) -> String {
     const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
 
-    segment
-        .to_lowercase()
-        .chars()
-        .map(|c| if INVALID_CHARS.contains(&c) { '-' } else { c })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join("-")
-        .trim_matches('-')
-        .to_string()
+    let mut sanitized = String::new();
+
+    for char in segment.to_lowercase().chars() {
+        if char.is_whitespace() || INVALID_CHARS.contains(&char) {
+            if !sanitized.ends_with('-') {
+                sanitized.push('-');
+            }
+        } else {
+            sanitized.push(char);
+        }
+    }
+
+    sanitized.trim_matches('-').to_string()
 }
