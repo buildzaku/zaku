@@ -13,14 +13,16 @@ pub mod models;
 #[cfg(test)]
 pub mod tests;
 
-use crate::collection::models::{ColName, Collection, CollectionMeta, CollectionRcRefCell};
 use crate::{
-    collection::models::{CreateCollectionDto, CreateNewCollection},
+    collection::models::{
+        ColName, Collection, CollectionMeta, CollectionRcRefCell, CreateCollectionDto,
+        CreateNewCollection,
+    },
     error::{Error, Result},
+    request, space,
     state::SharedState,
     utils,
 };
-use crate::{request, space};
 
 pub fn parse_cols(parent_relpath: &str, col_abspath: &str) -> Result<Vec<Collection>> {
     let col_abspath = Path::new(col_abspath);

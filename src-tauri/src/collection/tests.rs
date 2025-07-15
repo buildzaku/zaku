@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 use tempfile;
 
 use crate::{
@@ -11,10 +7,7 @@ use crate::{
         models::{ColName, Collection, CreateCollectionDto},
     },
     error::Error,
-    request::{
-        self,
-        models::{CreateRequestDto, HttpReq},
-    },
+    request::{self, models::CreateRequestDto},
     space::{self, models::CreateSpaceDto},
     state::SharedState,
     utils,
@@ -22,7 +15,7 @@ use crate::{
 
 #[test]
 fn parse_col_should_match_created_structure() {
-    let collections = vec![
+    let collections_dto = vec![
         CreateCollectionDto {
             parent_relpath: "".into(),
             relpath: "Auth".into(),
@@ -49,7 +42,7 @@ fn parse_col_should_match_created_structure() {
         },
     ];
 
-    let requests = vec![
+    let requests_dto = vec![
         CreateRequestDto {
             parent_relpath: "".into(),
             relpath: "Ping".into(),
@@ -88,7 +81,7 @@ fn parse_col_should_match_created_structure() {
         },
     ];
 
-    let expected_col_names = HashMap::from([
+    let expected_colname_by_relpath = HashMap::from([
         ("auth", "Auth"),
         ("users", "Users"),
         ("users/settings/notifications", "Notifications"),
@@ -97,7 +90,7 @@ fn parse_col_should_match_created_structure() {
         ("⚠️-ザク/🔥/💬-status", "💬 Status?"),
     ]);
 
-    let expected_req_names = HashMap::from([
+    let expected_reqname_by_relpath = HashMap::from([
         ("ping.toml", "Ping"),
         ("admin/ban-user-by-id.toml", "Ban User by ID"),
         ("auth/access-token.toml", "Access Token"),
@@ -128,20 +121,27 @@ fn parse_col_should_match_created_structure() {
     space::create_space(dto, &mut sharedstate).expect("Failed to create space");
     let space_abspath = PathBuf::from(&sharedstate.active_space.as_ref().unwrap().abspath);
 
-    for col in &collections {
-        collection::create_collections_all(&space_abspath, col)
+    for col_dto in &collections_dto {
+        collection::create_collections_all(&space_abspath, col_dto)
             .expect("Failed to create collection");
     }
 
-    for req in &requests {
-        dbg!(req);
-        request::create_req(req, &mut sharedstate).expect("Failed to create request");
+    for req_dto in &requests_dto {
+        request::create_req(req_dto, &mut sharedstate).expect("Failed to create request");
     }
 
-    let root_collection =
-        collection::parse_cols(&space_abspath).expect("Failed to parse collection");
+    let collections = collection::parse_cols("", &space_abspath.to_string_lossy())
+        .expect("Failed to parse collection");
+    let requests = request::parse_reqs(&space_abspath.to_string_lossy())
+        .expect("Failed to parse root requests");
 
-    dbg!(&root_collection);
+    for req in &requests {
+        let req_path = &req.meta.file_name;
+        let expected = expected_reqname_by_relpath
+            .get(req_path.as_str())
+            .expect(&format!("Unexpected root request: {}", req_path));
+        assert_eq!(&req.meta.name, expected, "Root request name mismatch");
+    }
 
     fn walk_and_assert(
         col: &Collection,
@@ -149,9 +149,7 @@ fn parse_col_should_match_created_structure() {
         col_names: &HashMap<&str, &str>,
         req_names: &HashMap<&str, &str>,
     ) {
-        let relpath = if parent.is_empty() && col.meta.name.as_deref() == Some("Main Space") {
-            "".to_string()
-        } else if parent.is_empty() {
+        let relpath = if parent.is_empty() {
             col.meta.dir_name.clone()
         } else {
             utils::join_str_paths(vec![parent, &col.meta.dir_name])
@@ -183,12 +181,14 @@ fn parse_col_should_match_created_structure() {
         }
     }
 
-    walk_and_assert(
-        &root_collection,
-        "",
-        &expected_col_names,
-        &expected_req_names,
-    );
+    for col in &collections {
+        walk_and_assert(
+            col,
+            "",
+            &expected_colname_by_relpath,
+            &expected_reqname_by_relpath,
+        );
+    }
 }
 
 #[test]
