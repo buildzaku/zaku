@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, path::PathBuf};
 use tempfile;
 
 use crate::{
@@ -7,9 +7,120 @@ use crate::{
         models::{ColName, CreateCollectionDto},
     },
     error::Error,
+    request::{self, models::CreateRequestDto},
     space::{self, models::CreateSpaceDto},
     state::SharedState,
 };
+
+#[test]
+fn parse_collection_should_match_created_structure() {
+    struct TempCollection<'a> {
+        relpath: &'a str,
+        req_relpaths: Vec<&'a str>,
+    }
+
+    let structure = vec![
+        TempCollection {
+            relpath: "Auth",
+            req_relpaths: vec!["Access Token"],
+        },
+        TempCollection {
+            relpath: "Users",
+            req_relpaths: vec![
+                "Get user by ID",
+                "Settings/Update User Preferences",
+                "Settings/Notifications/List notifications",
+            ],
+        },
+        TempCollection {
+            relpath: "",
+            req_relpaths: vec!["Ping", "Admin/Ban User by ID"],
+        },
+    ];
+
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_name = "Structure Test";
+    let space_dir = "structure-test";
+    let dto = CreateSpaceDto {
+        name: space_name.into(),
+        location: tmp_dir.path().to_string_lossy().into(),
+    };
+
+    let mut sharedstate = SharedState::default();
+    space::create_space(dto, &mut sharedstate).expect("Failed to create space");
+    let space_abspath = PathBuf::from(&sharedstate.active_space.as_ref().unwrap().abspath);
+
+    for col in &structure {
+        let is_spaceroot = col.relpath.is_empty();
+        if !is_spaceroot {
+            let col_dto = CreateCollectionDto {
+                parent_relpath: "".to_string(),
+                relpath: col.relpath.to_string(),
+            };
+            collection::create_collections_all(&space_abspath, &col_dto)
+                .expect("Failed to create collection");
+        }
+
+        for relpath in col.req_relpaths.iter().cloned() {
+            let req_dto = CreateRequestDto {
+                parent_relpath: col.relpath.to_string(),
+                relpath: relpath.to_string(),
+            };
+            request::create_req(&req_dto, &mut sharedstate).expect("Failed to create request");
+        }
+    }
+
+    let parsed = collection::parse_collection(&space_abspath).expect("Failed to parse collection");
+    assert_eq!(parsed.meta.dir_name, space_dir);
+
+    let root_subs = &parsed.collections;
+
+    let auth = root_subs
+        .iter()
+        .find(|c| c.meta.dir_name == "auth")
+        .expect("Missing 'auth'");
+    assert!(auth.requests.iter().any(|r| r.meta.name == "Access Token"));
+
+    let users = root_subs
+        .iter()
+        .find(|c| c.meta.dir_name == "users")
+        .expect("Missing 'users'");
+    assert!(users
+        .requests
+        .iter()
+        .any(|r| r.meta.name == "Get user by ID"));
+
+    let settings = users
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "settings")
+        .expect("Missing 'settings'");
+    assert!(settings
+        .requests
+        .iter()
+        .any(|r| r.meta.name == "Update User Preferences"));
+
+    let notifications = settings
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "notifications")
+        .expect("Missing 'notifications'");
+    assert!(notifications
+        .requests
+        .iter()
+        .any(|r| r.meta.name == "List notifications"));
+
+    assert!(parsed.requests.iter().any(|r| r.meta.name == "Ping"));
+
+    let admin = root_subs
+        .iter()
+        .find(|c| c.meta.dir_name == "admin")
+        .expect("Missing 'admin'");
+    assert!(admin
+        .requests
+        .iter()
+        .any(|r| r.meta.name == "Ban User by ID"));
+}
 
 #[test]
 fn colname_by_relpath_reads_existing_data() {

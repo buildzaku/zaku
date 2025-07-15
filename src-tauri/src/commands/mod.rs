@@ -34,7 +34,6 @@ use crate::{
         models::{SpaceCookies, SpaceSettings},
         spaces::buffer,
     },
-    utils,
 };
 
 pub mod models;
@@ -191,86 +190,14 @@ pub async fn create_req(
     create_req_dto: CreateRequestDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewRequest> {
-    if create_req_dto.relpath.is_empty() {
-        return Err(CmdErr::Err {
-            message: "Cannot create a request without name".to_string(),
-        });
-    }
-
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-    let active_space = sharedstate
-        .active_space
-        .clone()
-        .expect("Active space not found");
-    let active_space_abspath = PathBuf::from(&active_space.abspath);
-
-    let (parsed_parent_relpath, reqname) = match create_req_dto.relpath.rfind('/') {
-        Some(last_slash_index) => {
-            let parsed_parent_relpath = &create_req_dto.relpath[..last_slash_index];
-            let reqname = &create_req_dto.relpath[last_slash_index + 1..];
-
-            (Some(parsed_parent_relpath.to_string()), reqname.to_string())
-        }
-        None => (None, create_req_dto.relpath),
-    };
-
-    let reqname = reqname.trim();
-    let file_sanitized_name = reqname
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join("-");
-    let (file_parent_relpath, file_sanitized_name) = match parsed_parent_relpath {
-        Some(ref parsed_parent_relpath) => {
-            let create_collection_dto = CreateCollectionDto {
-                parent_relpath: create_req_dto.parent_relpath.clone(),
-                relpath: parsed_parent_relpath.to_string(),
-            };
-
-            let dirs_sanitized_relpath =
-                collection::create_collections_all(&active_space_abspath, &create_collection_dto)
-                    .map_err(|err| CmdErr::Err {
-                    message: format!("Failed to create request's parent directories: {err}"),
-                })?;
-
-            let file_parent_relpath = utils::join_str_paths(vec![
-                create_req_dto.parent_relpath.as_str(),
-                dirs_sanitized_relpath.as_str(),
-            ]);
-
-            (file_parent_relpath, file_sanitized_name)
-        }
-        None => (create_req_dto.parent_relpath, file_sanitized_name),
-    };
-
-    let file_abspath = active_space_abspath
-        .join(file_parent_relpath.clone())
-        .join(file_sanitized_name.clone());
-    let file_relpath = utils::join_str_paths(vec![
-        file_parent_relpath.clone().as_str(),
-        format!("{file_sanitized_name}.toml").as_str(),
-    ]);
-
-    request::create_reqtoml(&file_abspath, reqname).map_err(|err| CmdErr::Err {
-        message: format!("Failed to create request file: {err}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("State lock failed: {e}"),
     })?;
 
-    let create_new_result = CreateNewRequest {
-        parent_relpath: file_parent_relpath,
-        relpath: file_relpath,
-    };
-
-    match space::parse_space(&active_space_abspath) {
-        Ok(active_space) => sharedstate.active_space = Some(active_space),
-        Err(err) => {
-            return Err(CmdErr::Err {
-                message: format!("Failed to parse space after creating the request: {err}"),
-            });
-        }
-    }
-
-    Ok(create_new_result)
+    request::create_req(&create_req_dto, &mut sharedstate).map_err(|err| CmdErr::Err {
+        message: format!("Failed to create request: {err}"),
+    })
 }
 
 #[specta::specta]

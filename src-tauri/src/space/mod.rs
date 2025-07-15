@@ -1,36 +1,25 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::vec::IntoIter;
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    io::Write,
+    path::{Path, PathBuf},
+};
 
-use crate::collection::models::ColName;
-use crate::space::models::{CreateSpaceDto, SpaceMeta};
 use crate::state::SharedState;
 use crate::utils;
 use crate::{
     collection,
-    collection::models::{Collection, CollectionMeta},
+    space::models::{CreateSpaceDto, SpaceMeta},
+};
+use crate::{
     error::Error,
     error::Result,
-    request,
-    request::models::HttpReq,
     space::models::{Space, SpaceConfigFile, SpaceCookie, SpaceReference},
     store,
     store::models::{SpaceCookies, SpaceSettings},
-    store::spaces::buffer::SpaceBuf,
 };
 
 pub mod models;
-
-#[derive(Clone, Debug)]
-pub struct CollectionRcRefCell {
-    pub meta: CollectionMeta,
-    pub requests: Vec<HttpReq>,
-    pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
-}
 
 pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Result<SpaceReference> {
     let location = PathBuf::from(dto.location.as_str());
@@ -91,181 +80,12 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
     Ok(spaceref)
 }
 
-fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
-    let space_dirname = space_abspath
-        .file_name()
-        .unwrap_or(space_abspath.as_os_str())
-        .to_string_lossy()
-        .into_owned();
-    let relative_space_root = "".to_string();
-    let colname = collection::colname_by_relpath(space_abspath).unwrap_or_else(|_| ColName {
-        mappings: HashMap::new(),
-    });
-    let active_space_buffer = SpaceBuf::load(space_abspath)?;
-    let active_spacebuf_rlock = active_space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
-    let space_config = parse_spacecfg(space_abspath).ok();
-
-    let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
-        meta: CollectionMeta {
-            dir_name: space_dirname,
-            name: space_config.map(|config| config.meta.name),
-            is_expanded: true,
-        },
-        requests: Vec::new(),
-        collections: Vec::new(),
-    }));
-
-    let mut stack: Vec<(PathBuf, Rc<RefCell<CollectionRcRefCell>>)> = Vec::new();
-    stack.push((
-        PathBuf::from(&relative_space_root),
-        Rc::clone(&root_collection_ref_cell),
-    ));
-
-    while let Some((path, collection_rc_refcell)) = stack.pop() {
-        if let Ok(entries) = fs::read_dir(space_abspath.join(&path)) {
-            for entry in entries.flatten() {
-                let is_symlink = entry
-                    .file_type()
-                    .map(|file_type| file_type.is_symlink())
-                    .unwrap_or(false);
-                if is_symlink {
-                    continue;
-                }
-
-                let entry_abspath = entry.path();
-
-                if entry_abspath.is_dir() {
-                    let name = entry_abspath
-                        .file_name()
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    if name == ".zaku" {
-                        continue;
-                    }
-
-                    let relpath = entry_abspath
-                        .strip_prefix(space_abspath)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-
-                    let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
-                        meta: CollectionMeta {
-                            dir_name: name,
-                            name: colname.mappings.get(&relpath).cloned(),
-                            is_expanded: true,
-                        },
-                        requests: Vec::new(),
-                        collections: Vec::new(),
-                    }));
-
-                    stack.push((PathBuf::from(&relpath), Rc::clone(&sub_collection)));
-                    collection_rc_refcell
-                        .borrow_mut()
-                        .collections
-                        .push(sub_collection);
-                } else if entry_abspath.is_file() {
-                    if entry_abspath.extension().and_then(|e| e.to_str()) != Some("toml") {
-                        continue;
-                    }
-
-                    let relpath = entry_abspath
-                        .strip_prefix(space_abspath)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    let req_buf = active_spacebuf_rlock.requests.get(&relpath);
-
-                    if let Some(req_buf) = req_buf {
-                        collection_rc_refcell
-                            .borrow_mut()
-                            .requests
-                            .push(HttpReq::from_reqbuf(req_buf));
-                    } else {
-                        let file_name = entry_abspath
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .into_owned();
-
-                        match request::parse_reqtoml(&entry_abspath) {
-                            Ok(req_toml) => {
-                                collection_rc_refcell
-                                    .borrow_mut()
-                                    .requests
-                                    .push(HttpReq::from_reqtoml(&req_toml, file_name));
-                            }
-                            Err(_) => {
-                                eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let mut stack: Vec<(Collection, IntoIter<Rc<RefCell<CollectionRcRefCell>>>)> = Vec::new();
-    let mut root_collection: Option<Collection> = None;
-
-    {
-        let root_collection_ref_cell = root_collection_ref_cell.borrow();
-        let root_collection = Collection {
-            meta: CollectionMeta {
-                ..root_collection_ref_cell.meta.clone()
-            },
-            requests: root_collection_ref_cell
-                .requests
-                .iter()
-                .map(|req| HttpReq { ..req.clone() })
-                .collect(),
-            collections: Vec::new(),
-        };
-
-        let sub_collections_iter = root_collection_ref_cell.collections.clone().into_iter();
-        stack.push((root_collection, sub_collections_iter));
-    }
-
-    while let Some((cur_collection, mut sub_collections_iter)) = stack.pop() {
-        if let Some(sub_collection_ref_cell) = sub_collections_iter.next() {
-            stack.push((cur_collection, sub_collections_iter));
-
-            let sub_collection_ref_cell = sub_collection_ref_cell.borrow();
-            let sub_collection = Collection {
-                meta: CollectionMeta {
-                    ..sub_collection_ref_cell.meta.clone()
-                },
-                requests: sub_collection_ref_cell
-                    .requests
-                    .iter()
-                    .map(|req| HttpReq { ..req.clone() })
-                    .collect(),
-                collections: Vec::new(),
-            };
-
-            let sub_collections_iter = sub_collection_ref_cell.collections.clone().into_iter();
-            stack.push((sub_collection, sub_collections_iter));
-        } else if let Some((mut parent_collection, parent_sub_collections_iter)) = stack.pop() {
-            parent_collection.collections.push(cur_collection);
-            stack.push((parent_collection, parent_sub_collections_iter));
-        } else {
-            root_collection = Some(cur_collection);
-        }
-    }
-
-    root_collection
-        .ok_or_else(|| Error::FileReadError("Failed to build collection: empty stack".to_string()))
-}
-
 pub fn parse_space(space_abspath: &Path) -> Result<Space> {
-    let root_collection = parse_root_collection(space_abspath)?;
+    let root_collection = collection::parse_collection(space_abspath)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
     let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref())?;
-    let store = cookie_store.lock().unwrap();
-    let cookies: Vec<SpaceCookie> = store
+    let cookie_store_mtx = cookie_store.lock().unwrap();
+    let cookies: Vec<SpaceCookie> = cookie_store_mtx
         .iter_any()
         .map(SpaceCookie::from_cookie_store)
         .collect();
