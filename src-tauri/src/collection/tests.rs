@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 use tempfile;
 
 use crate::{
@@ -21,6 +25,10 @@ fn parse_collection_should_match_created_structure() {
 
     let structure = vec![
         TempCollection {
+            relpath: "",
+            req_relpaths: vec!["Ping", "Admin/Ban User by ID"],
+        },
+        TempCollection {
             relpath: "Auth",
             req_relpaths: vec!["Access Token"],
         },
@@ -33,12 +41,16 @@ fn parse_collection_should_match_created_structure() {
             ],
         },
         TempCollection {
-            relpath: "",
-            req_relpaths: vec!["Ping", "Admin/Ban User by ID"],
-        },
-        TempCollection {
             relpath: "Trending/Posts",
             req_relpaths: vec!["List Top 25"],
+        },
+        TempCollection {
+            relpath: "Data ~~~ Stats/Charts\\Monthly  ",
+            req_relpaths: vec!["Export/CSV*&Report"],
+        },
+        TempCollection {
+            relpath: "⚠️ ザク/🔥/💬 Status?",
+            req_relpaths: vec!["💡Idea:/*>?Bank"],
         },
     ];
 
@@ -56,18 +68,20 @@ fn parse_collection_should_match_created_structure() {
 
     for col in &structure {
         let is_spaceroot = col.relpath.is_empty();
+        let mut parent_relpath = "".to_string();
+
         if !is_spaceroot {
             let col_dto = CreateCollectionDto {
                 parent_relpath: "".to_string(),
                 relpath: col.relpath.to_string(),
             };
-            collection::create_collections_all(&space_abspath, &col_dto)
+            parent_relpath = collection::create_collections_all(&space_abspath, &col_dto)
                 .expect("Failed to create collection");
         }
 
         for relpath in col.req_relpaths.iter().cloned() {
             let req_dto = CreateRequestDto {
-                parent_relpath: col.relpath.to_string(),
+                parent_relpath: parent_relpath.clone(),
                 relpath: relpath.to_string(),
             };
             request::create_req(&req_dto, &mut sharedstate).expect("Failed to create request");
@@ -154,16 +168,86 @@ fn parse_collection_should_match_created_structure() {
     let trending_path = space_abspath.join("trending");
     assert!(trending_path.is_dir());
 
-    let nested = trending
+    let posts = trending
         .collections
         .iter()
         .find(|c| c.meta.dir_name == "posts")
         .expect("Missing 'posts'");
-    assert_eq!(nested.meta.name.as_deref(), Some("Posts"));
+    assert_eq!(posts.meta.name.as_deref(), Some("Posts"));
     let posts_path = trending_path.join("posts");
     assert!(posts_path.is_dir());
-    assert!(nested.requests.iter().any(|r| r.meta.name == "List Top 25"));
+    assert!(posts.requests.iter().any(|r| r.meta.name == "List Top 25"));
     assert!(posts_path.join("list-top-25.toml").is_file());
+
+    let data_stats = root_collections
+        .iter()
+        .find(|c| c.meta.dir_name == "data-~~~-stats")
+        .expect("Missing 'data-~~~-stats'");
+    assert_eq!(data_stats.meta.name.as_deref(), Some("Data ~~~ Stats"));
+    let data_path = space_abspath.join("data-~~~-stats");
+    assert!(data_path.is_dir());
+
+    let charts = data_stats
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "charts-monthly")
+        .expect("Missing 'charts-monthly'");
+    assert_eq!(charts.meta.name.as_deref(), Some("Charts\\Monthly"));
+    let charts_path = data_path.join("charts-monthly");
+    assert!(charts_path.is_dir());
+
+    let export = charts
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "export")
+        .expect("Missing 'export'");
+    assert_eq!(export.meta.name.as_deref(), Some("Export"));
+    let export_path = charts_path.join("export");
+    assert!(export_path.is_dir());
+
+    assert!(export.requests.iter().any(|r| r.meta.name == "CSV*&Report"));
+    assert!(export_path.join("csv-&report.toml").is_file());
+
+    let zaku = root_collections
+        .iter()
+        .find(|c| c.meta.dir_name == "⚠️-ザク")
+        .expect("Missing '⚠️-ザク'");
+    assert_eq!(zaku.meta.name.as_deref(), Some("⚠️ ザク"));
+    let zaku_path = space_abspath.join("⚠️-ザク");
+    assert!(zaku_path.is_dir());
+
+    let fire = zaku
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "🔥")
+        .expect("Missing '🔥'");
+    assert_eq!(fire.meta.name.as_deref(), Some("🔥"));
+    let fire_path = zaku_path.join("🔥");
+    assert!(fire_path.is_dir());
+
+    let status = fire
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "💬-status")
+        .expect("Missing '💬-status'");
+    assert_eq!(status.meta.name.as_deref(), Some("💬 Status?"));
+    let status_path = fire_path.join("💬-status");
+    assert!(status_path.is_dir());
+
+    let idea = status
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "💡idea")
+        .expect("Missing '💡idea'");
+    assert_eq!(idea.meta.name.as_deref(), Some("💡Idea:"));
+    let idea_path = status_path.join("💡idea");
+    assert!(idea_path.is_dir());
+
+    for r in &idea.requests {
+        println!("Request meta.name: {:?}", r.meta.name);
+    }
+    assert!(idea.requests.iter().any(|r| r.meta.name == "*>?Bank"));
+    assert!(idea_path.join("bank.toml").is_file());
 }
 
 #[test]
