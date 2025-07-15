@@ -83,58 +83,87 @@ fn parse_collection_should_match_created_structure() {
         .iter()
         .find(|c| c.meta.dir_name == "auth")
         .expect("Missing 'auth'");
+    assert_eq!(auth.meta.name.as_deref(), Some("Auth"));
+    let auth_path = space_abspath.join("auth");
+    assert!(auth_path.is_dir());
     assert!(auth.requests.iter().any(|r| r.meta.name == "Access Token"));
+    assert!(auth_path.join("access-token.toml").is_file());
 
     let users = root_collections
         .iter()
         .find(|c| c.meta.dir_name == "users")
         .expect("Missing 'users'");
+    assert_eq!(users.meta.name.as_deref(), Some("Users"));
+    let users_path = space_abspath.join("users");
+    assert!(users_path.is_dir());
     assert!(users
         .requests
         .iter()
         .any(|r| r.meta.name == "Get user by ID"));
+    assert!(users_path.join("get-user-by-id.toml").is_file());
 
     let settings = users
         .collections
         .iter()
         .find(|c| c.meta.dir_name == "settings")
         .expect("Missing 'settings'");
+    assert_eq!(settings.meta.name.as_deref(), Some("Settings"));
+    let settings_path = users_path.join("settings");
+    assert!(settings_path.is_dir());
     assert!(settings
         .requests
         .iter()
         .any(|r| r.meta.name == "Update User Preferences"));
+    assert!(settings_path.join("update-user-preferences.toml").is_file());
 
     let notifications = settings
         .collections
         .iter()
         .find(|c| c.meta.dir_name == "notifications")
         .expect("Missing 'notifications'");
+    assert_eq!(notifications.meta.name.as_deref(), Some("Notifications"));
+    let notifications_path = settings_path.join("notifications");
+    assert!(notifications_path.is_dir());
     assert!(notifications
         .requests
         .iter()
         .any(|r| r.meta.name == "List notifications"));
+    assert!(notifications_path.join("list-notifications.toml").is_file());
 
     assert!(parsed.requests.iter().any(|r| r.meta.name == "Ping"));
+    assert!(space_abspath.join("ping.toml").is_file());
 
     let admin = root_collections
         .iter()
         .find(|c| c.meta.dir_name == "admin")
         .expect("Missing 'admin'");
+    assert_eq!(admin.meta.name.as_deref(), Some("Admin"));
+    let admin_path = space_abspath.join("admin");
+    assert!(admin_path.is_dir());
     assert!(admin
         .requests
         .iter()
         .any(|r| r.meta.name == "Ban User by ID"));
+    assert!(admin_path.join("ban-user-by-id.toml").is_file());
 
     let trending = root_collections
         .iter()
         .find(|c| c.meta.dir_name == "trending")
         .expect("Missing 'trending'");
+    assert_eq!(trending.meta.name.as_deref(), Some("Trending"));
+    let trending_path = space_abspath.join("trending");
+    assert!(trending_path.is_dir());
+
     let nested = trending
         .collections
         .iter()
         .find(|c| c.meta.dir_name == "posts")
         .expect("Missing 'posts'");
+    assert_eq!(nested.meta.name.as_deref(), Some("Posts"));
+    let posts_path = trending_path.join("posts");
+    assert!(posts_path.is_dir());
     assert!(nested.requests.iter().any(|r| r.meta.name == "List Top 25"));
+    assert!(posts_path.join("list-top-25.toml").is_file());
 }
 
 #[test]
