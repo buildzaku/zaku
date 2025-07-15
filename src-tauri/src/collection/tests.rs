@@ -36,6 +36,10 @@ fn parse_collection_should_match_created_structure() {
             relpath: "",
             req_relpaths: vec!["Ping", "Admin/Ban User by ID"],
         },
+        TempCollection {
+            relpath: "Trending/Posts",
+            req_relpaths: vec!["List Top 25"],
+        },
     ];
 
     let tmp_dir = tempfile::tempdir().unwrap();
@@ -73,15 +77,15 @@ fn parse_collection_should_match_created_structure() {
     let parsed = collection::parse_collection(&space_abspath).expect("Failed to parse collection");
     assert_eq!(parsed.meta.dir_name, space_dir);
 
-    let root_subs = &parsed.collections;
+    let root_collections = &parsed.collections;
 
-    let auth = root_subs
+    let auth = root_collections
         .iter()
         .find(|c| c.meta.dir_name == "auth")
         .expect("Missing 'auth'");
     assert!(auth.requests.iter().any(|r| r.meta.name == "Access Token"));
 
-    let users = root_subs
+    let users = root_collections
         .iter()
         .find(|c| c.meta.dir_name == "users")
         .expect("Missing 'users'");
@@ -112,7 +116,7 @@ fn parse_collection_should_match_created_structure() {
 
     assert!(parsed.requests.iter().any(|r| r.meta.name == "Ping"));
 
-    let admin = root_subs
+    let admin = root_collections
         .iter()
         .find(|c| c.meta.dir_name == "admin")
         .expect("Missing 'admin'");
@@ -120,6 +124,17 @@ fn parse_collection_should_match_created_structure() {
         .requests
         .iter()
         .any(|r| r.meta.name == "Ban User by ID"));
+
+    let trending = root_collections
+        .iter()
+        .find(|c| c.meta.dir_name == "trending")
+        .expect("Missing 'trending'");
+    let nested = trending
+        .collections
+        .iter()
+        .find(|c| c.meta.dir_name == "posts")
+        .expect("Missing 'posts'");
+    assert!(nested.requests.iter().any(|r| r.meta.name == "List Top 25"));
 }
 
 #[test]
