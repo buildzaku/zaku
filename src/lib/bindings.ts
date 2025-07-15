@@ -251,7 +251,8 @@ export type SharedState = { active_space: Space | null; spacerefs: SpaceReferenc
 export type Space = {
     abspath: string;
     meta: SpaceMeta;
-    root: Collection;
+    collections: Collection[];
+    requests: HttpReq[];
     cookies: Partial<{ [key in string]: SpaceCookie[] }>;
     settings: SpaceSettings;
 };
