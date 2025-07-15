@@ -266,7 +266,7 @@ export type SpaceCookie = {
     same_site: string | null;
     expires: string | null;
 };
-export type SpaceMeta = { name: string };
+export type SpaceMeta = { name: string; is_expanded: boolean };
 export type SpaceReference = { path: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
