@@ -14,8 +14,6 @@ pub mod models;
 pub mod tests;
 
 use crate::collection::models::{ColName, Collection, CollectionMeta, CollectionRcRefCell};
-use crate::request::models::HttpReq;
-use crate::store::spaces::buffer::SpaceBuf;
 use crate::{
     collection::models::{CreateCollectionDto, CreateNewCollection},
     error::{Error, Result},
@@ -24,173 +22,112 @@ use crate::{
 };
 use crate::{request, space};
 
-pub fn parse_collection(col_abspath: &Path) -> Result<Collection> {
-    let dirname = col_abspath
-        .file_name()
-        .unwrap_or(col_abspath.as_os_str())
-        .to_string_lossy()
-        .into_owned();
-    let relative_space_root = "".to_string();
+pub fn parse_cols(parent_relpath: &str, col_abspath: &str) -> Result<Vec<Collection>> {
+    let col_abspath = Path::new(col_abspath);
     let colname = colname_by_relpath(col_abspath).unwrap_or_else(|_| ColName {
         mappings: HashMap::new(),
     });
-    let active_space_buffer = SpaceBuf::load(col_abspath)?;
-    let active_spacebuf_rlock = active_space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
-    let space_config = space::parse_spacecfg(col_abspath).ok();
 
-    let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
-        meta: CollectionMeta {
-            dir_name: dirname,
-            name: space_config.map(|config| config.meta.name),
-            is_expanded: true,
-        },
-        requests: Vec::new(),
-        collections: Vec::new(),
-    }));
-
+    let mut root_collections = Vec::new();
     let mut stack: Vec<(PathBuf, Rc<RefCell<CollectionRcRefCell>>)> = Vec::new();
-    stack.push((
-        PathBuf::from(&relative_space_root),
-        Rc::clone(&root_collection_ref_cell),
-    ));
 
-    while let Some((path, collection_rc_refcell)) = stack.pop() {
-        if let Ok(entries) = fs::read_dir(col_abspath.join(&path)) {
+    for entry in fs::read_dir(col_abspath)?.flatten() {
+        let entry_path = entry.path();
+        if !entry_path.is_dir() || entry.file_name() == ".zaku" {
+            continue;
+        }
+
+        let dir_name = entry_path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let relpath = Path::new(parent_relpath)
+            .join(&dir_name)
+            .to_string_lossy()
+            .into_owned();
+
+        let col_ref = Rc::new(RefCell::new(CollectionRcRefCell {
+            meta: CollectionMeta {
+                dir_name: dir_name.clone(),
+                name: colname.mappings.get(&relpath).cloned(),
+                is_expanded: true,
+            },
+            requests: Vec::new(),
+            collections: Vec::new(),
+        }));
+
+        stack.push((PathBuf::from(&relpath), Rc::clone(&col_ref)));
+        root_collections.push(Rc::clone(&col_ref));
+    }
+
+    while let Some((relpath, col_ref)) = stack.pop() {
+        let abspath = col_abspath.join(&relpath);
+        let reqs = request::parse_reqs(&abspath.to_string_lossy())?;
+        col_ref.borrow_mut().requests = reqs;
+
+        if let Ok(entries) = fs::read_dir(&abspath) {
             for entry in entries.flatten() {
-                let is_symlink = entry
-                    .file_type()
-                    .map(|file_type| file_type.is_symlink())
-                    .unwrap_or(false);
-                if is_symlink {
+                let path = entry.path();
+                if !path.is_dir() || entry.file_name() == ".zaku" {
                     continue;
                 }
 
-                let entry_abspath = entry.path();
+                let dir_name = path.file_name().unwrap().to_string_lossy().into_owned();
+                let sub_relpath = Path::new(&relpath)
+                    .join(&dir_name)
+                    .to_string_lossy()
+                    .into_owned();
 
-                if entry_abspath.is_dir() {
-                    let name = entry_abspath
-                        .file_name()
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    if name == ".zaku" {
-                        continue;
-                    }
+                let sub_ref = Rc::new(RefCell::new(CollectionRcRefCell {
+                    meta: CollectionMeta {
+                        dir_name: dir_name.clone(),
+                        name: colname.mappings.get(&sub_relpath).cloned(),
+                        is_expanded: true,
+                    },
+                    requests: Vec::new(),
+                    collections: Vec::new(),
+                }));
 
-                    let relpath = entry_abspath
-                        .strip_prefix(col_abspath)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-
-                    let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
-                        meta: CollectionMeta {
-                            dir_name: name,
-                            name: colname.mappings.get(&relpath).cloned(),
-                            is_expanded: true,
-                        },
-                        requests: Vec::new(),
-                        collections: Vec::new(),
-                    }));
-
-                    stack.push((PathBuf::from(&relpath), Rc::clone(&sub_collection)));
-                    collection_rc_refcell
-                        .borrow_mut()
-                        .collections
-                        .push(sub_collection);
-                } else if entry_abspath.is_file() {
-                    if entry_abspath.extension().and_then(|e| e.to_str()) != Some("toml") {
-                        continue;
-                    }
-
-                    let relpath = entry_abspath
-                        .strip_prefix(col_abspath)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    let req_buf = active_spacebuf_rlock.requests.get(&relpath);
-
-                    if let Some(req_buf) = req_buf {
-                        collection_rc_refcell
-                            .borrow_mut()
-                            .requests
-                            .push(HttpReq::from_reqbuf(req_buf));
-                    } else {
-                        let file_name = entry_abspath
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .into_owned();
-
-                        match request::parse_reqtoml(&entry_abspath) {
-                            Ok(req_toml) => {
-                                collection_rc_refcell
-                                    .borrow_mut()
-                                    .requests
-                                    .push(HttpReq::from_reqtoml(&req_toml, file_name));
-                            }
-                            Err(_) => {
-                                eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
-                            }
-                        }
-                    }
-                }
+                stack.push((PathBuf::from(&sub_relpath), Rc::clone(&sub_ref)));
+                col_ref.borrow_mut().collections.push(sub_ref);
             }
         }
     }
 
-    let mut stack: Vec<(Collection, IntoIter<Rc<RefCell<CollectionRcRefCell>>>)> = Vec::new();
-    let mut root_collection: Option<Collection> = None;
+    let mut result = Vec::new();
+    let mut build_stack: Vec<(Collection, IntoIter<Rc<RefCell<CollectionRcRefCell>>>)> = Vec::new();
 
-    {
-        let root_collection_ref_cell = root_collection_ref_cell.borrow();
-        let root_collection = Collection {
-            meta: CollectionMeta {
-                ..root_collection_ref_cell.meta.clone()
-            },
-            requests: root_collection_ref_cell
-                .requests
-                .iter()
-                .map(|req| HttpReq { ..req.clone() })
-                .collect(),
+    for col_ref in root_collections {
+        let root = col_ref.borrow();
+        let base = Collection {
+            meta: root.meta.clone(),
+            requests: root.requests.clone(),
             collections: Vec::new(),
         };
+        let children = root.collections.clone().into_iter();
+        build_stack.push((base, children));
 
-        let sub_collections_iter = root_collection_ref_cell.collections.clone().into_iter();
-        stack.push((root_collection, sub_collections_iter));
-    }
-
-    while let Some((cur_collection, mut sub_collections_iter)) = stack.pop() {
-        if let Some(sub_collection_ref_cell) = sub_collections_iter.next() {
-            stack.push((cur_collection, sub_collections_iter));
-
-            let sub_collection_ref_cell = sub_collection_ref_cell.borrow();
-            let sub_collection = Collection {
-                meta: CollectionMeta {
-                    ..sub_collection_ref_cell.meta.clone()
-                },
-                requests: sub_collection_ref_cell
-                    .requests
-                    .iter()
-                    .map(|req| HttpReq { ..req.clone() })
-                    .collect(),
-                collections: Vec::new(),
-            };
-
-            let sub_collections_iter = sub_collection_ref_cell.collections.clone().into_iter();
-            stack.push((sub_collection, sub_collections_iter));
-        } else if let Some((mut parent_collection, parent_sub_collections_iter)) = stack.pop() {
-            parent_collection.collections.push(cur_collection);
-            stack.push((parent_collection, parent_sub_collections_iter));
-        } else {
-            root_collection = Some(cur_collection);
+        while let Some((cur, mut children)) = build_stack.pop() {
+            if let Some(child_ref) = children.next() {
+                build_stack.push((cur, children));
+                let child = child_ref.borrow();
+                let c = Collection {
+                    meta: child.meta.clone(),
+                    requests: child.requests.clone(),
+                    collections: Vec::new(),
+                };
+                build_stack.push((c, child.collections.clone().into_iter()));
+            } else if let Some((mut parent, parent_iter)) = build_stack.pop() {
+                parent.collections.push(cur);
+                build_stack.push((parent, parent_iter));
+            } else {
+                result.push(cur);
+            }
         }
     }
 
-    root_collection
-        .ok_or_else(|| Error::FileReadError("Failed to build collection: empty stack".to_string()))
+    Ok(result)
 }
 
 /// Reads the collection names from `.zaku/collections/name.toml`

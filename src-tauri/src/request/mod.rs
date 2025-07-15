@@ -6,11 +6,48 @@ use toml;
 use crate::collection::models::CreateCollectionDto;
 use crate::commands::models::CreateNewRequest;
 use crate::error::{Error, Result};
-use crate::request::models::{CreateRequestDto, ReqToml, ReqTomlConfig, ReqTomlMeta};
+use crate::request::models::{CreateRequestDto, HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta};
 use crate::state::SharedState;
+use crate::store::spaces::buffer::SpaceBuf;
 use crate::{collection, space, utils};
 
 pub mod models;
+
+pub fn parse_reqs(dir_abspath: &str) -> Result<Vec<HttpReq>> {
+    let dir_abspath = Path::new(dir_abspath);
+    let mut requests = Vec::new();
+    let spacebuf = SpaceBuf::load(dir_abspath)?;
+    let spacebuf_rlock = spacebuf
+        .read()
+        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
+
+    if let Ok(entries) = fs::read_dir(dir_abspath) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                let relpath = path
+                    .strip_prefix(dir_abspath)
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned();
+
+                if let Some(req_buf) = spacebuf_rlock.requests.get(&relpath) {
+                    requests.push(HttpReq::from_reqbuf(req_buf));
+                } else {
+                    let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
+                    if let Ok(req_toml) = parse_reqtoml(&path) {
+                        requests.push(HttpReq::from_reqtoml(&req_toml, file_name));
+                    } else {
+                        eprintln!("Invalid request TOML: '{}'", path.display());
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(requests)
+}
 
 pub fn create_req(
     dto: &CreateRequestDto,

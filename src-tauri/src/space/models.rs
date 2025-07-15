@@ -3,7 +3,9 @@ use specta::Type;
 use std::collections::HashMap;
 use time::format_description::well_known::Rfc3339;
 
-use crate::{collection::models::Collection, store::models::SpaceSettings};
+use crate::{
+    collection::models::Collection, request::models::HttpReq, store::models::SpaceSettings,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateSpaceDto {
@@ -25,7 +27,8 @@ pub struct SpaceConfigFile {
 pub struct Space {
     pub abspath: String,
     pub meta: SpaceMeta,
-    pub root: Collection,
+    pub collections: Vec<Collection>,
+    pub requests: Vec<HttpReq>,
     pub cookies: HashMap<String, Vec<SpaceCookie>>,
     pub settings: SpaceSettings,
 }

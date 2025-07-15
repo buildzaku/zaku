@@ -5,7 +5,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::state::SharedState;
 use crate::utils;
 use crate::{
     collection,
@@ -18,6 +17,7 @@ use crate::{
     store,
     store::models::{SpaceCookies, SpaceSettings},
 };
+use crate::{request, state::SharedState};
 
 pub mod models;
 
@@ -81,9 +81,11 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
 }
 
 pub fn parse_space(space_abspath: &Path) -> Result<Space> {
-    let root_collection = collection::parse_collection(space_abspath)?;
+    let space_abspath_str = space_abspath.to_string_lossy();
+    let collections = collection::parse_cols("", &space_abspath_str)?;
+    let requests = request::parse_reqs(&space_abspath_str)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
-    let cookie_store = SpaceCookies::load(space_abspath.to_string_lossy().as_ref())?;
+    let cookie_store = SpaceCookies::load(space_abspath_str.as_ref())?;
     let cookie_store_mtx = cookie_store.lock().unwrap();
     let cookies: Vec<SpaceCookie> = cookie_store_mtx
         .iter_any()
@@ -95,12 +97,13 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space> {
             acc
         });
 
-    let settings = SpaceSettings::load(&space_abspath.to_string_lossy())?;
+    let settings = SpaceSettings::load(&space_abspath_str)?;
 
     Ok(Space {
-        abspath: space_abspath.to_string_lossy().into_owned(),
+        abspath: space_abspath_str.into_owned(),
         meta: space_config_file.meta,
-        root: root_collection,
+        collections,
+        requests,
         cookies: cookies_by_domain,
         settings,
     })
