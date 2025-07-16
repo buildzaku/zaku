@@ -84,8 +84,7 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
 
 pub fn parse_space(space_abspath: &Path) -> Result<Space> {
     let space_abspath_str = space_abspath.to_string_lossy();
-    let collections = collection::parse_cols("", &space_abspath_str)?;
-    let requests = request::parse_reqs(&space_abspath_str)?;
+    let root_collection = collection::parse_root_collection(space_abspath)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
     let cookie_store = SpaceCookies::load(space_abspath_str.as_ref())?;
     let cookie_store_mtx = cookie_store.lock().unwrap();
@@ -104,8 +103,7 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space> {
     Ok(Space {
         abspath: space_abspath_str.into_owned(),
         meta: space_config_file.meta,
-        collections,
-        requests,
+        root_collection,
         cookies: cookies_by_domain,
         settings,
     })

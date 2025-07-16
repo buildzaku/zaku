@@ -2,9 +2,9 @@
     import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
     import { toast } from "svelte-sonner";
 
-    import { TreeItemContent, TreeItemCreate } from ".";
-    import { type TreeItem, type DragOverDto, TreeItemType } from "$lib/models";
-    import { treeActionsState, treeItemsState } from "$lib/state.svelte";
+    import { TreeNodeContent, TreeNodeCreate } from ".";
+    import type { TreeNode, DragOverDto } from "$lib/models";
+    import { treeActionsState, treeNodesState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
@@ -22,51 +22,51 @@
     type Props = {
         parentPath: string;
         currentPath: string;
-        treeItem: TreeItem;
+        node: TreeNode;
         level: number;
         class?: string;
     };
 
-    let { parentPath, currentPath, treeItem, level, class: className }: Props = $props();
+    let { parentPath, currentPath, node, level, class: className }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
-        treeActionsState.createNewItem === "request" &&
+        treeActionsState.createNewNode === "request" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        treeActionsState.createNewItem === "collection" &&
+        treeActionsState.createNewNode === "collection" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
     let shouldHighlight = $derived(isDropAllowed(currentPath));
 
-    const dragOverDto: DragOverDto = isCol(treeItem)
-        ? { type: TreeItemType.Collection, relativePath: currentPath }
-        : { type: TreeItemType.Request, parentRelativePath: parentPath };
+    const dragOverDto: DragOverDto = isCol(node)
+        ? { type: "collection", relativePath: currentPath }
+        : { type: "request", parentRelativePath: parentPath };
 
-    type TreeItemFocusParams = { treeItem: TreeItem; parentRelpath: string; relpath: string };
-    function handleTreeItemFocus({ treeItem, parentRelpath, relpath }: TreeItemFocusParams) {
-        if (isCol(treeItem)) {
-            treeItem.meta.is_expanded = !treeItem.meta.is_expanded;
+    type TreeNodeFocusParams = { node: TreeNode; parentRelpath: string; relpath: string };
+    function handleTreeItemFocus({ node, parentRelpath, relpath }: TreeNodeFocusParams) {
+        if (isCol(node)) {
+            node.meta.is_expanded = !node.meta.is_expanded;
 
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Collection,
+            treeNodesState.focussedNode = {
+                type: "collection",
                 parentRelativePath: parentRelpath,
                 relativePath: relpath,
             };
-        } else if (isReq(treeItem)) {
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Request,
+        } else if (isReq(node)) {
+            treeNodesState.focussedNode = {
+                type: "request",
                 parentRelativePath: parentRelpath,
                 relativePath: relpath,
             };
 
-            treeItemsState.activeRequest = {
+            treeNodesState.activeRequest = {
                 parentRelativePath: parentRelpath,
-                self: treeItem,
+                self: node,
             };
 
-            if (!treeItemsState.openRequests.includes(treeItem)) {
-                treeItemsState.openRequests.push(treeItem);
+            if (!treeNodesState.openRequests.includes(node)) {
+                treeNodesState.openRequests.push(node);
             }
         } else {
             toast.error("Something went wrong while trying to focus on item");
@@ -91,7 +91,7 @@
         aria-grabbed="false"
         draggable="true"
         ondragstart={event => {
-            handleDragStart(event, { parentRelativePath: parentPath, treeItem });
+            handleDragStart(event, { parentRelativePath: parentPath, node });
         }}
         ondragover={event => handleDragOver(event, dragOverDto)}
         ondrop={handleDrop}
@@ -100,32 +100,32 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
 
-                handleTreeItemFocus({ treeItem, parentRelpath: parentPath, relpath: currentPath });
+                handleTreeItemFocus({ node, parentRelpath: parentPath, relpath: currentPath });
             }
         }}
         style="padding-left: {level * 8}px"
         class={cn(
             "focus-visible:ring-ring flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none",
-            treeItemsState.focussedItem.relativePath === currentPath
+            treeNodesState.focussedNode.relativePath === currentPath
                 ? "bg-accent"
                 : "hover:bg-accent/60",
         )}
         onclick={() => {
-            treeActionsState.createNewItem = null;
+            treeActionsState.createNewNode = null;
 
-            handleTreeItemFocus({ treeItem, parentRelpath: parentPath, relpath: currentPath });
+            handleTreeItemFocus({ node, parentRelpath: parentPath, relpath: currentPath });
         }}
     >
         <div class="flex size-full items-center gap-1 pl-1.5">
-            {#if isCol(treeItem)}
-                {#if treeItem.meta.is_expanded}
+            {#if isCol(node)}
+                {#if node.meta.is_expanded}
                     <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
                 {:else}
                     <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
                 {/if}
                 <CollectionIcon size={12} />
                 <span class="truncate text-sm">
-                    {treeItem.meta.name ?? treeItem.meta.dir_name}
+                    {node.meta.name ?? node.meta.dir_name}
                 </span>
             {:else}
                 <div class="flex w-full items-center justify-between">
@@ -133,16 +133,16 @@
                         <span
                             class={cn(
                                 "pl-3 text-[9px] font-bold",
-                                getMethodColorClass(treeItem.config.method),
+                                getMethodColorClass(node.config.method),
                             )}
                         >
-                            {treeItem.config.method}
+                            {node.config.method}
                         </span>
                         <span class="truncate text-sm">
-                            {treeItem.meta.name ?? treeItem.meta.file_name}
+                            {node.meta.name ?? node.meta.file_name}
                         </span>
                     </div>
-                    {#if treeItem.meta.has_unsaved_changes}
+                    {#if node.meta.has_unsaved_changes}
                         <DotIcon size={6} class="fill-primary/80 mr-2.5" />
                     {/if}
                 </div>
@@ -150,39 +150,35 @@
         </div>
     </div>
 
-    {#if isCol(treeItem)}
+    {#if isCol(node)}
         {#if shouldRenderCreateNewRequestInput}
-            <TreeItemCreate
-                type={TreeItemType.Request}
-                parentRelativePath={currentPath}
-                level={level + 1}
-            />
+            <TreeNodeCreate type={"request"} parentRelativePath={currentPath} level={level + 1} />
         {/if}
 
-        {#if treeItem.meta.is_expanded}
-            {#each treeItem.requests as request (buildPath(currentPath, request.meta.file_name))}
-                <TreeItemContent
+        {#if node.meta.is_expanded}
+            {#each node.requests as request (buildPath(currentPath, request.meta.file_name))}
+                <TreeNodeContent
                     parentPath={currentPath}
                     currentPath={buildPath(currentPath, request.meta.file_name)}
-                    treeItem={request}
+                    node={request}
                     level={level + 1}
                 />
             {/each}
         {/if}
 
         {#if shouldRenderCreateNewCollectionInput}
-            <TreeItemCreate
-                type={TreeItemType.Collection}
+            <TreeNodeCreate
+                type={"collection"}
                 parentRelativePath={currentPath}
                 level={level + 1}
             />
         {/if}
-        {#if treeItem.meta.is_expanded}
-            {#each treeItem.collections as collection (buildPath(currentPath, collection.meta.dir_name))}
-                <TreeItemContent
+        {#if node.meta.is_expanded}
+            {#each node.collections as collection (buildPath(currentPath, collection.meta.dir_name))}
+                <TreeNodeContent
                     parentPath={currentPath}
                     currentPath={buildPath(currentPath, collection.meta.dir_name)}
-                    treeItem={collection}
+                    node={collection}
                     level={level + 1}
                 />
             {/each}

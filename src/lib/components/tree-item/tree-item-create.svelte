@@ -3,8 +3,7 @@
     import { listen, TauriEvent } from "@tauri-apps/api/event";
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
-    import { TreeItemType } from "$lib/models";
-    import { sharedState, treeActionsState, treeItemsState } from "$lib/state.svelte";
+    import { sharedState, treeActionsState, treeNodesState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
@@ -12,7 +11,7 @@
 
     type Props = {
         parentRelativePath: string;
-        type: TreeItemType;
+        type: "collection" | "request";
         level: number;
         class?: string;
     };
@@ -55,8 +54,8 @@
             inputName = "";
             await sharedState.synchronize();
 
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Collection,
+            treeNodesState.focussedNode = {
+                type: "collection",
                 parentRelativePath: createCollectionResult.data.parent_relpath,
                 relativePath: createCollectionResult.data.relpath,
             };
@@ -84,8 +83,8 @@
             inputName = "";
             await sharedState.synchronize();
 
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Request,
+            treeNodesState.focussedNode = {
+                type: "request",
                 parentRelativePath: createReqResult.data.parent_relpath,
                 relativePath: createReqResult.data.relpath,
             };
@@ -139,7 +138,7 @@
                 type="text"
                 onfocusout={async event => {
                     if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
-                        treeActionsState.createNewItem = null;
+                        treeActionsState.createNewNode = null;
                         inputName = "";
                     } else {
                         inputName = "";

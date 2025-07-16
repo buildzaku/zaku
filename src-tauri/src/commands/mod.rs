@@ -31,7 +31,7 @@ use crate::{
         models::{SpaceCookies, SpaceSettings},
         spaces::buffer,
     },
-    tree_node::{self, DragPayload, FocusedTreeNode},
+    tree_node::{self, HandleTreeNodeDropDto},
 };
 
 pub mod models;
@@ -56,9 +56,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
         persist_to_reqbuf,
         write_reqbuf_to_reqtoml,
         http_req,
-        is_drop_allowed,
-        is_focused_node_in_collection,
-        move_tree_node
+        handle_tree_node_drop
     ]
 }
 
@@ -469,55 +467,16 @@ pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
 
 #[specta::specta]
 #[tauri::command]
-pub fn is_drop_allowed(
-    drag_payload: DragPayload,
-    drop_target_path: String,
-    path: String,
-) -> CmdResult<bool> {
-    Ok(tree_node::is_drop_allowed(
-        &drag_payload,
-        &drop_target_path,
-        &path,
-    ))
-}
-
-#[specta::specta]
-#[tauri::command]
-pub fn is_focused_node_in_collection(
-    collection_path: String,
-    focused_node: FocusedTreeNode,
-) -> CmdResult<bool> {
-    Ok(tree_node::is_focused_node_in_collection(
-        &collection_path,
-        &focused_node,
-    ))
-}
-
-#[specta::specta]
-#[tauri::command]
-pub async fn move_tree_node(
-    drag_payload: DragPayload,
-    drop_target_path: String,
+pub async fn handle_tree_node_drop(
+    dto: HandleTreeNodeDropDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<()> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
     let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
         message: format!("State lock failed: {e}"),
     })?;
-    let space = sharedstate
-        .active_space
-        .as_mut()
-        .ok_or_else(|| CmdErr::Err {
-            message: "No active space loaded".into(),
-        })?;
 
-    let move_command = tree_node::process_drag_drop(&drag_payload, &drop_target_path, space)
-        .map_err(|e| CmdErr::Err {
-            message: format!("Unable to process drag/drop: {e}"),
-        })?;
-    tree_node::move_filesystem_node(&move_command, &space.abspath).map_err(|e| CmdErr::Err {
-        message: format!("Unable move tree node: {e}"),
-    })?;
-
-    Ok(())
+    tree_node::handle_tree_node_drop(&dto, &mut sharedstate).map_err(|err| CmdErr::Err {
+        message: format!("Failed to handle drop: {err}"),
+    })
 }

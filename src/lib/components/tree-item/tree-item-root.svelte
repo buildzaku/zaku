@@ -2,8 +2,8 @@
     import type { Snippet } from "svelte";
     import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
 
-    import type { Collection, Space } from "$lib/bindings";
-    import { treeActionsState, treeItemsState } from "$lib/state.svelte";
+    import type { Collection } from "$lib/bindings";
+    import { treeActionsState, treeNodesState } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
     import { buttonVariants } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
@@ -20,11 +20,10 @@
         handleDrop,
         isDropAllowed,
     } from "$lib/components/tree-item/utils.svelte";
-    import { TreeItemType } from "$lib/models";
 
-    type Props = { currentPath: string; space: Space; children: Snippet; class?: string };
+    type Props = { currentPath: string; root: Collection; children: Snippet; class?: string };
 
-    let { currentPath, space, children, class: className }: Props = $props();
+    let { currentPath, root, children, class: className }: Props = $props();
 
     let shouldHighlight = $derived(isDropAllowed(currentPath));
 </script>
@@ -39,15 +38,15 @@
         aria-grabbed="false"
         draggable="false"
         ondragover={event =>
-            handleDragOver(event, { type: TreeItemType.Collection, relativePath: currentPath })}
+            handleDragOver(event, { type: "collection", relativePath: currentPath })}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
         onkeydown={keyboardEvent => {
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
-                space.meta.is_expanded = !space.meta.is_expanded;
-                treeItemsState.focussedItem = {
-                    type: TreeItemType.Collection,
+                root.meta.is_expanded = !root.meta.is_expanded;
+                treeNodesState.focussedNode = {
+                    type: "collection",
                     relativePath: RELATIVE_SPACE_ROOT,
                     parentRelativePath: RELATIVE_SPACE_ROOT,
                 };
@@ -57,26 +56,26 @@
             "focus:ring-ring flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:ring-1 focus:outline-none",
         )}
         onclick={() => {
-            space.meta.is_expanded = !space.meta.is_expanded;
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Collection,
+            root.meta.is_expanded = !root.meta.is_expanded;
+            treeNodesState.focussedNode = {
+                type: "collection",
                 relativePath: RELATIVE_SPACE_ROOT,
                 parentRelativePath: RELATIVE_SPACE_ROOT,
             };
         }}
     >
         <div class="flex h-full items-center gap-1 pl-1.5">
-            {#if space.meta.is_expanded}
+            {#if root.meta.is_expanded}
                 <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {:else}
                 <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {/if}
             <span class="truncate">
-                {space.meta.name}
+                {root.meta.name ?? root.meta.dir_name}
             </span>
         </div>
 
-        {#if space.meta.is_expanded}
+        {#if root.meta.is_expanded}
             <div
                 role="button"
                 tabindex={-1}
@@ -101,7 +100,7 @@
                             )}
                             onclick={event => {
                                 event.stopImmediatePropagation();
-                                treeActionsState.createNewItem = TreeItemType.Request;
+                                treeActionsState.createNewNode = "request";
                             }}
                         >
                             <FilePlusIcon size={13} class="size-[13px] max-h-[13px] max-w-[13px]" />
@@ -124,7 +123,7 @@
                             )}
                             onclick={event => {
                                 event.stopImmediatePropagation();
-                                treeActionsState.createNewItem = TreeItemType.Collection;
+                                treeActionsState.createNewNode = "collection";
                             }}
                         >
                             <FolderPlusIcon
@@ -141,7 +140,7 @@
         {/if}
     </div>
 
-    {#if space.meta.is_expanded}
+    {#if root.meta.is_expanded}
         <div
             class="flex h-[calc(100dvh-36px-35px-36px-22px-37px)] max-h-[calc(100dvh-36px-35px-36px-22px-37px)] w-full flex-1 flex-col overflow-y-auto"
         >
@@ -154,7 +153,7 @@
                 draggable="false"
                 ondragover={event =>
                     handleDragOver(event, {
-                        type: TreeItemType.Collection,
+                        type: "collection",
                         relativePath: currentPath,
                     })}
                 ondrop={handleDrop}

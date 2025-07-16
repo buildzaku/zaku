@@ -1,26 +1,25 @@
 import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
-import { TreeItemPreview } from "$lib/components/tree-item";
-import { sharedState, treeActionsState, treeItemsState } from "$lib/state.svelte";
-import { TreeItemType } from "$lib/models";
-import type { DragOverDto, DragPayload, RemoveTreeItemDto, TreeItem } from "$lib/models";
+import { TreeNodePreview } from "$lib/components/tree-item";
+import { sharedState, treeActionsState, treeNodesState } from "$lib/state.svelte";
+import type { DragOverDto, DragPayload, RemoveTreeNodeDto, TreeNode } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { err, ok } from "$lib/utils";
 import { commands } from "$lib/bindings";
-import type { Result, MoveTreeItemDto, Collection, HttpReq } from "$lib/bindings";
+import type { Result, Collection, HttpReq } from "$lib/bindings";
 
 // TODO - add test
-export function isCol(treeItem: TreeItem): treeItem is Collection {
-    return Object.hasOwn(treeItem, "requests") && Object.hasOwn(treeItem, "collections");
+export function isCol(treeNode: TreeNode): treeNode is Collection {
+    return Object.hasOwn(treeNode, "requests") && Object.hasOwn(treeNode, "collections");
 }
 
 // TODO - add test
-export function isReq(treeItem: TreeItem): treeItem is HttpReq {
+export function isReq(treeNode: TreeNode): treeNode is HttpReq {
     return (
-        Object.hasOwn(treeItem, "status") &&
-        Object.hasOwn(treeItem, "config") &&
-        Object.hasOwn(treeItem, "response")
+        Object.hasOwn(treeNode, "status") &&
+        Object.hasOwn(treeNode, "config") &&
+        Object.hasOwn(treeNode, "response")
     );
 }
 
@@ -48,8 +47,8 @@ export function isDropAllowed(path: string): boolean {
             return false;
         }
 
-        if (isCol(treeActionsState.dragPayload.treeItem)) {
-            const dirName = treeActionsState.dragPayload.treeItem.meta.dir_name;
+        if (isCol(treeActionsState.dragPayload.node)) {
+            const dirName = treeActionsState.dragPayload.node.meta.dir_name;
             const relativePath =
                 treeActionsState.dragPayload.parentRelativePath === RELATIVE_SPACE_ROOT
                     ? treeActionsState.dragPayload.parentRelativePath.concat(dirName)
@@ -86,11 +85,11 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
         previewContainer.style.left = "-1000px";
         document.body.appendChild(previewContainer);
 
-        const previewTitle = isCol(payload.treeItem)
-            ? (payload.treeItem.meta.name ?? payload.treeItem.meta.dir_name)
-            : (payload.treeItem.meta.name ?? payload.treeItem.meta.file_name);
+        const previewTitle = isCol(payload.node)
+            ? (payload.node.meta.name ?? payload.node.meta.dir_name)
+            : (payload.node.meta.name ?? payload.node.meta.file_name);
 
-        const treeItemPreview = mount(TreeItemPreview, {
+        const treeNodePreview = mount(TreeNodePreview, {
             target: previewContainer,
             props: { title: previewTitle },
         });
@@ -100,7 +99,7 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
             event.dataTransfer.setDragImage(dragImage, 0, 0);
 
             function cleanup() {
-                unmount(treeItemPreview);
+                unmount(treeNodePreview);
                 document.body.removeChild(previewContainer);
             }
 
@@ -129,49 +128,49 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const mutRootCollection = sharedState.activeSpace.root;
-    const addTreeItemToCollectionResult = addTreeItemToCollection({
+    const mutRootCollection = sharedState.activeSpace.root_collection;
+    const addTreeNodeToCollectionResult = addTreeNodeToCollection({
         parentRelativePath: treeActionsState.dragPayload.parentRelativePath,
-        treeItem: treeActionsState.dragPayload.treeItem,
+        treeNode: treeActionsState.dragPayload.node,
         targetPath: treeActionsState.dropTargetPath,
         mutRootCollection,
     });
-    if (addTreeItemToCollectionResult.status === "error") {
+    if (addTreeNodeToCollectionResult.status === "error") {
         console.error("Cannot add tree item to the collection");
         return;
     }
 
-    const removeTreeItemDto: RemoveTreeItemDto = isCol(treeActionsState.dragPayload.treeItem)
+    const removeTreeNodeDto: RemoveTreeNodeDto = isCol(treeActionsState.dragPayload.treeNode)
         ? {
-              type: TreeItemType.Collection,
-              dir_name: treeActionsState.dragPayload.treeItem.meta.dir_name,
+              type: TreeNodeType.Collection,
+              dir_name: treeActionsState.dragPayload.treeNode.meta.dir_name,
           }
         : {
-              type: TreeItemType.Request,
-              file_name: treeActionsState.dragPayload.treeItem.meta.file_name,
+              type: TreeNodeType.Request,
+              file_name: treeActionsState.dragPayload.treeNode.meta.file_name,
           };
-    const removeTreeItemFromCollectionResult = removeTreeItemFromCollection({
+    const removeTreeNodeFromCollectionResult = removeTreeNodeFromCollection({
         parentRelativePath: treeActionsState.dragPayload.parentRelativePath,
-        removeTreeItemDto,
+        removeTreeNodeDto,
         mutRootCollection,
     });
-    if (removeTreeItemFromCollectionResult.status === "error") {
+    if (removeTreeNodeFromCollectionResult.status === "error") {
         console.error("Unable to remove tree item from the collection");
         return;
     }
 
-    const fileOrDirName = isCol(treeActionsState.dragPayload.treeItem)
-        ? treeActionsState.dragPayload.treeItem.meta.dir_name
-        : treeActionsState.dragPayload.treeItem.meta.file_name;
-    const moveTreeItemDto: MoveTreeItemDto = {
+    const fileOrDirName = isCol(treeActionsState.dragPayload.treeNode)
+        ? treeActionsState.dragPayload.treeNode.meta.dir_name
+        : treeActionsState.dragPayload.treeNode.meta.file_name;
+    const moveTreeNodeDto: MoveTreeNodeDto = {
         src_relpath: buildPath(treeActionsState.dragPayload.parentRelativePath, fileOrDirName),
         dest_relpath: buildPath(treeActionsState.dropTargetPath, fileOrDirName),
     };
-    const moveTreeItemResult = await commands.moveTreeitem(moveTreeItemDto);
-    if (moveTreeItemResult.status === "error") {
-        console.error(moveTreeItemResult.error);
+    const moveTreeNodeResult = await commands.moveTreeitem(moveTreeNodeDto);
+    if (moveTreeNodeResult.status === "error") {
+        console.error(moveTreeNodeResult.error);
         toast.error(
-            `Something went wrong. Unable to move \`${treeActionsState.dragPayload.treeItem.meta.name}\``,
+            `Something went wrong. Unable to move \`${treeActionsState.dragPayload.treeNode.meta.name}\``,
         );
 
         return;
@@ -202,34 +201,34 @@ export function handleDragEnd(event: DragEvent) {
     treeActionsState.dropTargetPath = null;
 }
 
-export function buildPath(currentPath: string, treeItemName: string) {
-    return currentPath === RELATIVE_SPACE_ROOT ? treeItemName : `${currentPath}/${treeItemName}`;
+export function buildPath(currentPath: string, treeNodeName: string) {
+    return currentPath === RELATIVE_SPACE_ROOT ? treeNodeName : `${currentPath}/${treeNodeName}`;
 }
 
 export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string): boolean {
     const isCurrentCollectionFocussed =
-        treeItemsState.focussedItem.type === "collection" &&
-        treeItemsState.focussedItem.relativePath === currentPath;
+        treeNodesState.focussedNode.type === "collection" &&
+        treeNodesState.focussedNode.relativePath === currentPath;
     const isCurrentCollectionChildFocussed =
-        treeItemsState.focussedItem.type === "request" &&
-        treeItemsState.focussedItem.parentRelativePath === currentPath;
+        treeNodesState.focussedNode.type === "request" &&
+        treeNodesState.focussedNode.parentRelativePath === currentPath;
 
     return isCurrentCollectionFocussed || isCurrentCollectionChildFocussed;
 }
 
-export type AddTreeItemToCollectionParams = {
+export type AddTreeNodeToCollectionParams = {
     parentRelativePath: string;
-    treeItem: TreeItem;
+    treeNode: TreeNode;
     targetPath: string;
     mutRootCollection: Collection;
 };
 
-export function addTreeItemToCollection({
+export function addTreeNodeToCollection({
     parentRelativePath,
-    treeItem,
+    treeNode,
     targetPath,
     mutRootCollection,
-}: AddTreeItemToCollectionParams): Result<void, void> {
+}: AddTreeNodeToCollectionParams): Result<void, void> {
     if (targetPath === parentRelativePath) {
         console.warn(`Abort dropping to the same parent \`${parentRelativePath}\``);
         return err();
@@ -254,11 +253,11 @@ export function addTreeItemToCollection({
                 : traversedPath.concat("/").concat(segment);
     }
 
-    if (isCol(treeItem)) {
+    if (isCol(treeNode)) {
         const relativePath =
             parentRelativePath === RELATIVE_SPACE_ROOT
-                ? parentRelativePath.concat(treeItem.meta.dir_name)
-                : parentRelativePath.concat("/").concat(treeItem.meta.dir_name);
+                ? parentRelativePath.concat(treeNode.meta.dir_name)
+                : parentRelativePath.concat("/").concat(treeNode.meta.dir_name);
 
         if (isSubPath(relativePath, targetPath)) {
             console.warn(
@@ -273,18 +272,18 @@ export function addTreeItemToCollection({
         }
     }
 
-    if (isCol(treeItem)) {
+    if (isCol(treeNode)) {
         const collectionDirNameAlreadyExists = current.collections.some(
-            collection => collection.meta.dir_name === treeItem.meta.dir_name,
+            collection => collection.meta.dir_name === treeNode.meta.dir_name,
         );
         if (collectionDirNameAlreadyExists) {
             toast.error(
-                `Collection with directory name ${treeItem.meta.dir_name} already exists in the ${current.meta.dir_name} collection`,
+                `Collection with directory name ${treeNode.meta.dir_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
             return err();
         }
-        current.collections.push(treeItem);
+        current.collections.push(treeNode);
         current.collections.sort((a, b) =>
             a.meta.dir_name.toLocaleLowerCase().localeCompare(b.meta.dir_name),
         );
@@ -292,33 +291,33 @@ export function addTreeItemToCollection({
         return ok();
     } else {
         const reqFileNameAlreadyExists = current.requests.some(
-            request => request.meta.file_name === treeItem.meta.file_name,
+            request => request.meta.file_name === treeNode.meta.file_name,
         );
         if (reqFileNameAlreadyExists) {
             toast.error(
-                `Request with file name ${treeItem.meta.file_name} already exists in the ${current.meta.dir_name} collection`,
+                `Request with file name ${treeNode.meta.file_name} already exists in the ${current.meta.dir_name} collection`,
             );
 
             return err();
         }
-        current.requests.push(treeItem);
+        current.requests.push(treeNode);
         current.requests.sort((a, b) => a.meta.file_name.localeCompare(b.meta.file_name));
 
         return ok();
     }
 }
 
-export type RemoveTreeItemFromCollectionParams = {
+export type RemoveTreeNodeFromCollectionParams = {
     parentRelativePath: string;
-    removeTreeItemDto: RemoveTreeItemDto;
+    removeTreeNodeDto: RemoveTreeNodeDto;
     mutRootCollection: Collection;
 };
 
-export function removeTreeItemFromCollection({
+export function removeTreeNodeFromCollection({
     parentRelativePath,
-    removeTreeItemDto,
+    removeTreeNodeDto,
     mutRootCollection,
-}: RemoveTreeItemFromCollectionParams): Result<void, void> {
+}: RemoveTreeNodeFromCollectionParams): Result<void, void> {
     const segments = pathSegments(parentRelativePath);
     let current: Collection = mutRootCollection;
 
@@ -335,15 +334,15 @@ export function removeTreeItemFromCollection({
         current = nextCollection;
     }
 
-    if (removeTreeItemDto.type === "collection") {
+    if (removeTreeNodeDto.type === "collection") {
         current.collections = current.collections.filter(
-            collection => collection.meta.dir_name !== removeTreeItemDto.dir_name,
+            collection => collection.meta.dir_name !== removeTreeNodeDto.dir_name,
         );
 
         return ok();
     } else {
         current.requests = current.requests.filter(
-            request => request.meta.file_name !== removeTreeItemDto.file_name,
+            request => request.meta.file_name !== removeTreeNodeDto.file_name,
         );
 
         return ok();

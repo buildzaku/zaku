@@ -6,7 +6,7 @@
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import { TreeItemContent, TreeItemCreate, TreeItemRoot } from "$lib/components/tree-item";
+    import { TreeNodeContent, TreeNodeCreate, TreeNodeRoot } from "$lib/components/tree-item";
     import {
         Tooltip,
         TooltipTrigger,
@@ -14,7 +14,6 @@
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-    import { TreeItemType } from "$lib/models";
     import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
     import {
         Dialog,
@@ -50,11 +49,11 @@
     );
 
     let shouldRenderCreateNewRequestInput = $derived(
-        treeActionsState.createNewItem === "request" &&
+        treeActionsState.createNewNode === "request" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        treeActionsState.createNewItem === "collection" &&
+        treeActionsState.createNewNode === "collection" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
 </script>
@@ -236,39 +235,39 @@
                     <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
-                    <TreeItemRoot currentPath={RELATIVE_SPACE_ROOT} space={spaceRef}>
+                    <TreeNodeRoot currentPath={RELATIVE_SPACE_ROOT} root={spaceRef.root_collection}>
                         {#if shouldRenderCreateNewRequestInput}
-                            <TreeItemCreate
-                                type={TreeItemType.Request}
+                            <TreeNodeCreate
+                                type="request"
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.requests as request (request.meta.file_name)}
-                            <TreeItemContent
+                        {#each spaceRef.root_collection.requests as request (request.meta.file_name)}
+                            <TreeNodeContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={request.meta.file_name}
-                                treeItem={request}
+                                node={request}
                                 level={1}
                             />
                         {/each}
 
                         {#if shouldRenderCreateNewCollectionInput}
-                            <TreeItemCreate
-                                type={TreeItemType.Collection}
+                            <TreeNodeCreate
+                                type="collection"
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.collections as collection (collection.meta.dir_name)}
-                            <TreeItemContent
+                        {#each spaceRef.root_collection.collections as collection (collection.meta.dir_name)}
+                            <TreeNodeContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={collection.meta.dir_name}
-                                treeItem={collection}
+                                node={collection}
                                 level={1}
                             />
                         {/each}
-                    </TreeItemRoot>
+                    </TreeNodeRoot>
                 </div>
             {/if}
         </div>

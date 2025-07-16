@@ -2,9 +2,8 @@ import { tick } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { version } from "$app/environment";
-import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-import { TreeItemType } from "$lib/models";
-import type { ActiveRequest, DragPayload, FocussedTreeItem } from "$lib/models";
+
+import type { ActiveRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq } from "$lib/bindings";
 import { joinPaths } from "$lib/components/tree-item/utils.svelte";
@@ -47,36 +46,36 @@ export const sharedState = new SharedState();
 class TreeActionsState {
     public dragPayload: DragPayload | null = $state(null);
     public dropTargetPath: string | null = $state(null);
-    public createNewItem: TreeItemType | null = $state(null);
+    public createNewNode: "collection" | "request" | null = $state(null);
 
     public reset() {
         this.dragPayload = null;
         this.dropTargetPath = null;
-        this.createNewItem = null;
+        this.createNewNode = null;
     }
 }
 
 export const treeActionsState = new TreeActionsState();
 
-class TreeItemsState {
-    #rootItem: FocussedTreeItem = {
-        type: TreeItemType.Collection,
-        relativePath: RELATIVE_SPACE_ROOT,
-        parentRelativePath: RELATIVE_SPACE_ROOT,
+class TreeNodesState {
+    #rootNode: FocussedTreeNode = {
+        type: "collection",
+        relativePath: "",
+        parentRelativePath: "",
     };
 
-    public focussedItem: FocussedTreeItem = $state(this.#rootItem);
+    public focussedNode: FocussedTreeNode = $state(this.#rootNode);
     public activeRequest: ActiveRequest | null = $state(null);
     public openRequests: HttpReq[] = $state([]);
 
     public reset() {
-        this.focussedItem = this.#rootItem;
+        this.focussedNode = this.#rootNode;
         this.activeRequest = null;
         this.openRequests = [];
     }
 }
 
-export const treeItemsState = new TreeItemsState();
+export const treeNodesState = new TreeNodesState();
 
 type AbsoluteRequestPath = string;
 

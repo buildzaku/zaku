@@ -1,50 +1,40 @@
 import type { Collection, HttpReq } from "$lib/bindings";
 
-export type ZkResponse = {
-    status: number;
-    data: string;
-};
-
-export type TreeItem = Collection | HttpReq;
+export type TreeNode = Collection | HttpReq;
 
 export type DragPayload = {
     parentRelativePath: string;
-    treeItem: TreeItem;
+    node: TreeNode;
 };
-
-export enum TreeItemType {
-    Collection = "collection",
-    Request = "request",
-}
 
 export type DragOverDto =
     | {
-          type: TreeItemType.Collection;
+          type: "collection";
           relativePath: string;
       }
     | {
-          type: TreeItemType.Request;
+          type: "request";
           parentRelativePath: string;
       };
 
-export type RemoveTreeItemDto =
+export type RemoveTreeNodeDto =
     | {
-          type: TreeItemType.Collection;
+          type: "collection";
           dir_name: string;
       }
     | {
-          type: TreeItemType.Request;
+          type: "request";
           file_name: string;
       };
 
-export type FocussedTreeItem =
+export type FocussedTreeNode =
     | {
-          type: TreeItemType.Collection;
+          type: "collection";
           parentRelativePath: string;
           relativePath: string;
       }
     | {
-          type: TreeItemType.Request;
+          type: "request";
           parentRelativePath: string;
           relativePath: string;
       };

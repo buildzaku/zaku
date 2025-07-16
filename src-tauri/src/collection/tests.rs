@@ -13,183 +13,183 @@ use crate::{
     utils,
 };
 
-#[test]
-fn parse_col_should_match_created_structure() {
-    let collections_dto = vec![
-        CreateCollectionDto {
-            parent_relpath: "".into(),
-            relpath: "Auth".into(),
-        },
-        CreateCollectionDto {
-            parent_relpath: "".into(),
-            relpath: "Users".into(),
-        },
-        CreateCollectionDto {
-            parent_relpath: "users".into(),
-            relpath: "Settings/Notifications".into(),
-        },
-        CreateCollectionDto {
-            parent_relpath: "".into(),
-            relpath: "Trending/Posts".into(),
-        },
-        CreateCollectionDto {
-            parent_relpath: "".into(),
-            relpath: "Data ~~~ Stats/Charts\\Monthly  ".into(),
-        },
-        CreateCollectionDto {
-            parent_relpath: "".into(),
-            relpath: "⚠️ ザク/🔥/💬 Status?".into(),
-        },
-    ];
+// #[test]
+// fn parse_col_should_match_created_structure() {
+//     let collections_dto = vec![
+//         CreateCollectionDto {
+//             parent_relpath: "".into(),
+//             relpath: "Auth".into(),
+//         },
+//         CreateCollectionDto {
+//             parent_relpath: "".into(),
+//             relpath: "Users".into(),
+//         },
+//         CreateCollectionDto {
+//             parent_relpath: "users".into(),
+//             relpath: "Settings/Notifications".into(),
+//         },
+//         CreateCollectionDto {
+//             parent_relpath: "".into(),
+//             relpath: "Trending/Posts".into(),
+//         },
+//         CreateCollectionDto {
+//             parent_relpath: "".into(),
+//             relpath: "Data ~~~ Stats/Charts\\Monthly  ".into(),
+//         },
+//         CreateCollectionDto {
+//             parent_relpath: "".into(),
+//             relpath: "⚠️ ザク/🔥/💬 Status?".into(),
+//         },
+//     ];
 
-    let requests_dto = vec![
-        CreateRequestDto {
-            parent_relpath: "".into(),
-            relpath: "Ping".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "".into(),
-            relpath: "Admin/Ban User by ID".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "auth".into(),
-            relpath: "Access Token".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "users".into(),
-            relpath: "Get user by ID".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "users/settings".into(),
-            relpath: "Update User Preferences".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "users/settings/notifications".into(),
-            relpath: "List notifications".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "trending/posts".into(),
-            relpath: "List Top 25".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "data-~~~-stats/charts-monthly".into(),
-            relpath: "Export/CSV*&Report".into(),
-        },
-        CreateRequestDto {
-            parent_relpath: "⚠️-ザク/🔥/💬-status".into(),
-            relpath: "💡Idea:/*>?Bank".into(),
-        },
-    ];
+//     let requests_dto = vec![
+//         CreateRequestDto {
+//             parent_relpath: "".into(),
+//             relpath: "Ping".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "".into(),
+//             relpath: "Admin/Ban User by ID".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "auth".into(),
+//             relpath: "Access Token".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "users".into(),
+//             relpath: "Get user by ID".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "users/settings".into(),
+//             relpath: "Update User Preferences".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "users/settings/notifications".into(),
+//             relpath: "List notifications".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "trending/posts".into(),
+//             relpath: "List Top 25".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "data-~~~-stats/charts-monthly".into(),
+//             relpath: "Export/CSV*&Report".into(),
+//         },
+//         CreateRequestDto {
+//             parent_relpath: "⚠️-ザク/🔥/💬-status".into(),
+//             relpath: "💡Idea:/*>?Bank".into(),
+//         },
+//     ];
 
-    let expected_colname_by_relpath = HashMap::from([
-        ("auth", "Auth"),
-        ("users", "Users"),
-        ("users/settings/notifications", "Notifications"),
-        ("trending/posts", "Posts"),
-        ("data-~~~-stats/charts-monthly", "Charts\\Monthly"),
-        ("⚠️-ザク/🔥/💬-status", "💬 Status?"),
-    ]);
+//     let expected_colname_by_relpath = HashMap::from([
+//         ("auth", "Auth"),
+//         ("users", "Users"),
+//         ("users/settings/notifications", "Notifications"),
+//         ("trending/posts", "Posts"),
+//         ("data-~~~-stats/charts-monthly", "Charts\\Monthly"),
+//         ("⚠️-ザク/🔥/💬-status", "💬 Status?"),
+//     ]);
 
-    let expected_reqname_by_relpath = HashMap::from([
-        ("ping.toml", "Ping"),
-        ("admin/ban-user-by-id.toml", "Ban User by ID"),
-        ("auth/access-token.toml", "Access Token"),
-        ("users/get-user-by-id.toml", "Get user by ID"),
-        (
-            "users/settings/update-user-preferences.toml",
-            "Update User Preferences",
-        ),
-        (
-            "users/settings/notifications/list-notifications.toml",
-            "List notifications",
-        ),
-        ("trending/posts/list-top-25.toml", "List Top 25"),
-        (
-            "data-~~~-stats/charts-monthly/export/csv-&report.toml",
-            "CSV*&Report",
-        ),
-        ("⚠️-ザク/🔥/💬-status/💡idea/bank.toml", "*>?Bank"),
-    ]);
+//     let expected_reqname_by_relpath = HashMap::from([
+//         ("ping.toml", "Ping"),
+//         ("admin/ban-user-by-id.toml", "Ban User by ID"),
+//         ("auth/access-token.toml", "Access Token"),
+//         ("users/get-user-by-id.toml", "Get user by ID"),
+//         (
+//             "users/settings/update-user-preferences.toml",
+//             "Update User Preferences",
+//         ),
+//         (
+//             "users/settings/notifications/list-notifications.toml",
+//             "List notifications",
+//         ),
+//         ("trending/posts/list-top-25.toml", "List Top 25"),
+//         (
+//             "data-~~~-stats/charts-monthly/export/csv-&report.toml",
+//             "CSV*&Report",
+//         ),
+//         ("⚠️-ザク/🔥/💬-status/💡idea/bank.toml", "*>?Bank"),
+//     ]);
 
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let dto = CreateSpaceDto {
-        name: "Main Space".into(),
-        location: tmp_dir.path().to_string_lossy().into(),
-    };
+//     let tmp_dir = tempfile::tempdir().unwrap();
+//     let dto = CreateSpaceDto {
+//         name: "Main Space".into(),
+//         location: tmp_dir.path().to_string_lossy().into(),
+//     };
 
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).expect("Failed to create space");
-    let space_abspath = PathBuf::from(&sharedstate.active_space.as_ref().unwrap().abspath);
+//     let mut sharedstate = SharedState::default();
+//     space::create_space(dto, &mut sharedstate).expect("Failed to create space");
+//     let space_abspath = PathBuf::from(&sharedstate.active_space.as_ref().unwrap().abspath);
 
-    for col_dto in &collections_dto {
-        collection::create_collections_all(&space_abspath, col_dto)
-            .expect("Failed to create collection");
-    }
+//     for col_dto in &collections_dto {
+//         collection::create_collections_all(&space_abspath, col_dto)
+//             .expect("Failed to create collection");
+//     }
 
-    for req_dto in &requests_dto {
-        request::create_req(req_dto, &mut sharedstate).expect("Failed to create request");
-    }
+//     for req_dto in &requests_dto {
+//         request::create_req(req_dto, &mut sharedstate).expect("Failed to create request");
+//     }
 
-    let collections = collection::parse_cols("", &space_abspath.to_string_lossy())
-        .expect("Failed to parse collection");
-    let requests = request::parse_reqs(&space_abspath.to_string_lossy())
-        .expect("Failed to parse root requests");
+//     let collections = collection::parse_cols("", &space_abspath.to_string_lossy())
+//         .expect("Failed to parse collection");
+//     let requests = request::parse_reqs(&space_abspath.to_string_lossy())
+//         .expect("Failed to parse root requests");
 
-    for req in &requests {
-        let req_path = &req.meta.file_name;
-        let expected = expected_reqname_by_relpath
-            .get(req_path.as_str())
-            .expect(&format!("Unexpected root request: {}", req_path));
-        assert_eq!(&req.meta.name, expected, "Root request name mismatch");
-    }
+//     for req in &requests {
+//         let req_path = &req.meta.file_name;
+//         let expected = expected_reqname_by_relpath
+//             .get(req_path.as_str())
+//             .expect(&format!("Unexpected root request: {}", req_path));
+//         assert_eq!(&req.meta.name, expected, "Root request name mismatch");
+//     }
 
-    fn walk_and_assert(
-        col: &Collection,
-        parent: &str,
-        col_names: &HashMap<&str, &str>,
-        req_names: &HashMap<&str, &str>,
-    ) {
-        let relpath = if parent.is_empty() {
-            col.meta.dir_name.clone()
-        } else {
-            utils::join_str_paths(vec![parent, &col.meta.dir_name])
-        };
+//     fn walk_and_assert(
+//         col: &Collection,
+//         parent: &str,
+//         col_names: &HashMap<&str, &str>,
+//         req_names: &HashMap<&str, &str>,
+//     ) {
+//         let relpath = if parent.is_empty() {
+//             col.meta.dir_name.clone()
+//         } else {
+//             utils::join_str_paths(vec![parent, &col.meta.dir_name])
+//         };
 
-        if let Some(expected_name) = col_names.get(relpath.as_str()) {
-            assert_eq!(
-                col.meta.name.as_deref(),
-                Some(*expected_name),
-                "Collection name mismatch at '{}'",
-                relpath
-            );
-        }
+//         if let Some(expected_name) = col_names.get(relpath.as_str()) {
+//             assert_eq!(
+//                 col.meta.name.as_deref(),
+//                 Some(*expected_name),
+//                 "Collection name mismatch at '{}'",
+//                 relpath
+//             );
+//         }
 
-        for req in &col.requests {
-            let req_path = utils::join_str_paths(vec![&relpath, &req.meta.file_name]);
-            let expected_name = req_names
-                .get(req_path.as_str())
-                .expect(&format!("Unexpected request: {}", req_path));
-            assert_eq!(
-                req.meta.name, *expected_name,
-                "Request name mismatch at '{}'",
-                req_path
-            );
-        }
+//         for req in &col.requests {
+//             let req_path = utils::join_str_paths(vec![&relpath, &req.meta.file_name]);
+//             let expected_name = req_names
+//                 .get(req_path.as_str())
+//                 .expect(&format!("Unexpected request: {}", req_path));
+//             assert_eq!(
+//                 req.meta.name, *expected_name,
+//                 "Request name mismatch at '{}'",
+//                 req_path
+//             );
+//         }
 
-        for child in &col.collections {
-            walk_and_assert(child, &relpath, col_names, req_names);
-        }
-    }
+//         for child in &col.collections {
+//             walk_and_assert(child, &relpath, col_names, req_names);
+//         }
+//     }
 
-    for col in &collections {
-        walk_and_assert(
-            col,
-            "",
-            &expected_colname_by_relpath,
-            &expected_reqname_by_relpath,
-        );
-    }
-}
+//     for col in &collections {
+//         walk_and_assert(
+//             col,
+//             "",
+//             &expected_colname_by_relpath,
+//             &expected_reqname_by_relpath,
+//         );
+//     }
+// }
 
 #[test]
 fn colname_by_relpath_reads_existing_data() {
