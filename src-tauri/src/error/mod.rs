@@ -10,6 +10,7 @@ pub enum Error {
     FileNotFound(String),
     FileReadError(String),
     LockError(String),
+    InvalidPath(String),
 
     #[from]
     Io(io::Error),

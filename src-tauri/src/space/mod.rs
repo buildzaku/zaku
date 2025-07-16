@@ -7,15 +7,16 @@ use std::{
 
 use crate::{
     collection,
-    error::Error,
-    error::Result,
+    error::{Error, Result},
     request,
     space::models::{
         CreateSpaceDto, Space, SpaceConfigFile, SpaceCookie, SpaceMeta, SpaceReference,
     },
     state::SharedState,
-    store,
-    store::models::{SpaceCookies, SpaceSettings},
+    store::{
+        self,
+        models::{SpaceCookies, SpaceSettings},
+    },
     utils,
 };
 
@@ -58,6 +59,7 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
     let config = SpaceConfigFile {
         meta: SpaceMeta {
             name: dto.name.clone(),
+            is_expanded: true,
         },
     };
 

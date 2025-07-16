@@ -16,6 +16,7 @@ pub struct CreateSpaceDto {
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct SpaceMeta {
     pub name: String,
+    pub is_expanded: bool, // TODO - move this to settings/buffer?
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]

@@ -12,6 +12,7 @@ pub mod shortcuts;
 pub mod space;
 pub mod state;
 pub mod store;
+pub mod tree_node;
 pub mod utils;
 
 use crate::state::SharedState;

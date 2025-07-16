@@ -1,7 +1,6 @@
 use cookie::Cookie as RawCookie;
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Instant,
@@ -15,9 +14,7 @@ use crate::{
         self,
         models::{CreateCollectionDto, CreateNewCollection},
     },
-    commands::models::{
-        CreateNewRequest, DispatchNotificationOptions, MoveTreeItemDto, OpenDirDialogOpt,
-    },
+    commands::models::{CreateNewRequest, DispatchNotificationOptions, OpenDirDialogOpt},
     error::{CmdErr, CmdResult},
     notifications,
     request::{
@@ -34,6 +31,7 @@ use crate::{
         models::{SpaceCookies, SpaceSettings},
         spaces::buffer,
     },
+    tree_node::{self, DragPayload, FocusedTreeNode},
 };
 
 pub mod models;
@@ -58,7 +56,9 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
         persist_to_reqbuf,
         write_reqbuf_to_reqtoml,
         http_req,
-        move_treeitem,
+        is_drop_allowed,
+        is_focused_node_in_collection,
+        move_tree_node
     ]
 }
 
@@ -103,40 +103,6 @@ pub async fn open_dir_dialog(
         )),
         None => Ok(None),
     }
-}
-
-#[specta::specta]
-#[tauri::command]
-pub fn move_treeitem(
-    move_treeitem_dto: MoveTreeItemDto,
-    app_handle: tauri::AppHandle,
-) -> CmdResult<()> {
-    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-    let active_space = sharedstate
-        .active_space
-        .clone()
-        .expect("Active space not found");
-    let active_space_abspath = PathBuf::from(&active_space.abspath);
-    let MoveTreeItemDto {
-        src_relpath,
-        dest_relpath,
-    } = move_treeitem_dto;
-    let src_abspath = active_space_abspath.join(src_relpath);
-    let dest_abspath = active_space_abspath.join(dest_relpath);
-
-    fs::rename(src_abspath, dest_abspath).expect("Unable to move tree item");
-
-    match space::parse_space(&active_space_abspath) {
-        Ok(active_space) => sharedstate.active_space = Some(active_space),
-        Err(err) => {
-            return Err(CmdErr::Err {
-                message: format!("Failed to parse space after moving the tree item: {err}"),
-            });
-        }
-    }
-
-    Ok(())
 }
 
 #[specta::specta]
@@ -497,6 +463,61 @@ pub fn get_shared_state(
 #[tauri::command]
 pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
     window.get_webview_window("main").unwrap().show().unwrap();
+
+    Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn is_drop_allowed(
+    drag_payload: DragPayload,
+    drop_target_path: String,
+    path: String,
+) -> CmdResult<bool> {
+    Ok(tree_node::is_drop_allowed(
+        &drag_payload,
+        &drop_target_path,
+        &path,
+    ))
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn is_focused_node_in_collection(
+    collection_path: String,
+    focused_node: FocusedTreeNode,
+) -> CmdResult<bool> {
+    Ok(tree_node::is_focused_node_in_collection(
+        &collection_path,
+        &focused_node,
+    ))
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn move_tree_node(
+    drag_payload: DragPayload,
+    drop_target_path: String,
+    app_handle: tauri::AppHandle,
+) -> CmdResult<()> {
+    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("State lock failed: {e}"),
+    })?;
+    let space = sharedstate
+        .active_space
+        .as_mut()
+        .ok_or_else(|| CmdErr::Err {
+            message: "No active space loaded".into(),
+        })?;
+
+    let move_command = tree_node::process_drag_drop(&drag_payload, &drop_target_path, space)
+        .map_err(|e| CmdErr::Err {
+            message: format!("Unable to process drag/drop: {e}"),
+        })?;
+    tree_node::move_filesystem_node(&move_command, &space.abspath).map_err(|e| CmdErr::Err {
+        message: format!("Unable move tree node: {e}"),
+    })?;
 
     Ok(())
 }

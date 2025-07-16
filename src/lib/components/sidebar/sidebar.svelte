@@ -236,7 +236,7 @@
                     <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
-                    <TreeItemRoot currentPath={RELATIVE_SPACE_ROOT} root={spaceRef.root}>
+                    <TreeItemRoot currentPath={RELATIVE_SPACE_ROOT} space={spaceRef}>
                         {#if shouldRenderCreateNewRequestInput}
                             <TreeItemCreate
                                 type={TreeItemType.Request}
@@ -244,7 +244,7 @@
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.root.requests as request (request.meta.file_name)}
+                        {#each spaceRef.requests as request (request.meta.file_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={request.meta.file_name}
@@ -260,7 +260,7 @@
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.root.collections as collection (collection.meta.dir_name)}
+                        {#each spaceRef.collections as collection (collection.meta.dir_name)}
                             <TreeItemContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={collection.meta.dir_name}
