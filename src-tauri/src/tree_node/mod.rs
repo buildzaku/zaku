@@ -52,7 +52,7 @@ pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a C
                 .iter()
                 .find(|col| col.meta.fsname == segment_str)
                 .ok_or_else(|| {
-                    Error::InvalidPath(format!("Collection not found: {}", segment_str))
+                    Error::InvalidPath(format!("Collection not found: {segment_str}"))
                 })?;
         }
     }
@@ -78,7 +78,7 @@ fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&
                 .iter_mut()
                 .find(|col| col.meta.fsname == segment_str)
                 .ok_or_else(|| {
-                    Error::InvalidPath(format!("Collection not found: {}", segment_str))
+                    Error::InvalidPath(format!("Collection not found: {segment_str}"))
                 })?;
         }
     }
@@ -219,15 +219,15 @@ pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> R
     }
 
     let dest_parent_col = find_collection(&space.root_collection, dest_parent_relpath)?;
-    if node_exists_at_dest(&dest_parent_col, &dto.node_type, &src_fsname) {
+    if node_exists_at_dest(dest_parent_col, &dto.node_type, &src_fsname) {
         return Err(Error::InvalidPath(format!(
             "{} '{}' already exists",
             dto.node_type, src_fsname
         )));
     }
 
-    let src_parent_col = find_collection(&space.root_collection, &src_parent_relpath)?;
-    if !src_exists(&src_parent_col, &dto.node_type, &src_fsname) {
+    let src_parent_col = find_collection(&space.root_collection, src_parent_relpath)?;
+    if !src_exists(src_parent_col, &dto.node_type, &src_fsname) {
         return Err(Error::InvalidPath(format!(
             "{} '{}' not found",
             dto.node_type, src_fsname
@@ -237,7 +237,7 @@ pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> R
     match dto.node_type {
         NodeType::Collection => {
             let src_parent_col =
-                find_collection_mut(&mut space.root_collection, &src_parent_relpath)?;
+                find_collection_mut(&mut space.root_collection, src_parent_relpath)?;
             let node_idx = src_parent_col
                 .collections
                 .iter()
@@ -246,7 +246,7 @@ pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> R
             let collection = src_parent_col.collections.remove(node_idx);
 
             let dest_parent_col =
-                find_collection_mut(&mut space.root_collection, &dest_parent_relpath)?;
+                find_collection_mut(&mut space.root_collection, dest_parent_relpath)?;
             dest_parent_col.collections.push(collection);
             dest_parent_col.collections.sort_by(|a, b| {
                 a.meta
@@ -257,7 +257,7 @@ pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> R
         }
         NodeType::Request => {
             let src_parent_col =
-                find_collection_mut(&mut space.root_collection, &src_parent_relpath)?;
+                find_collection_mut(&mut space.root_collection, src_parent_relpath)?;
             let node_idx = src_parent_col
                 .requests
                 .iter()
@@ -266,7 +266,7 @@ pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> R
             let request = src_parent_col.requests.remove(node_idx);
 
             let dest_parent_col =
-                find_collection_mut(&mut space.root_collection, &dest_parent_relpath)?;
+                find_collection_mut(&mut space.root_collection, dest_parent_relpath)?;
             dest_parent_col.requests.push(request);
             dest_parent_col
                 .requests

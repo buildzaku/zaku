@@ -194,10 +194,10 @@ pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> 
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {
-    let space = store::get_spaceref().ok_or(CmdErr::Err {
+    let spaceref = store::get_spaceref().ok_or(CmdErr::Err {
         message: "No space found".into(),
     })?;
-    let space_abspath = space.path.as_str();
+    let space_abspath = spaceref.path.as_str();
     let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr::Err {
         message: e.to_string(),
     })?;
@@ -353,9 +353,9 @@ pub fn remove_space(
         message: e.to_string(),
     })?;
 
-    let space = store::get_spaceref();
+    let spaceref = store::get_spaceref();
 
-    if space.is_none() {
+    if spaceref.is_none() {
         sharedstate.space = None;
 
         if let Some(valid_space_reference) = space::first_valid_spaceref() {
