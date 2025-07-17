@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use time::format_description::well_known::Rfc3339;
 
 use crate::{
-    collection::models::Collection, request::models::HttpReq, store::models::SpaceSettings,
+    collection::models::Collection, store::models::SpaceSettings,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]

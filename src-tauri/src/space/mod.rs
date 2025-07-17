@@ -8,7 +8,6 @@ use std::{
 use crate::{
     collection,
     error::{Error, Result},
-    request,
     space::models::{
         CreateSpaceDto, Space, SpaceConfigFile, SpaceCookie, SpaceMeta, SpaceReference,
     },

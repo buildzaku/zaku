@@ -6,9 +6,8 @@ use toml;
 use crate::collection::models::CreateCollectionDto;
 use crate::commands::models::CreateNewRequest;
 use crate::error::{Error, Result};
-use crate::request::models::{CreateRequestDto, HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta};
+use crate::request::models::{CreateRequestDto, ReqToml, ReqTomlConfig, ReqTomlMeta};
 use crate::state::SharedState;
-use crate::store::spaces::buffer::SpaceBuf;
 use crate::{collection, space, utils};
 
 pub mod models;

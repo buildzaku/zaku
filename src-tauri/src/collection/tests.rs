@@ -1,16 +1,14 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::HashMap, fs};
 use tempfile;
 
 use crate::{
     collection::{
         self,
-        models::{ColName, Collection, CreateCollectionDto},
+        models::{ColName, CreateCollectionDto},
     },
     error::Error,
-    request::{self, models::CreateRequestDto},
     space::{self, models::CreateSpaceDto},
     state::SharedState,
-    utils,
 };
 
 // #[test]

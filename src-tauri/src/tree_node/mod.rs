@@ -37,7 +37,7 @@ fn navigate_to_collection<'a>(root: &'a mut Collection, path: &str) -> Result<&'
             .collections
             .iter_mut()
             .find(|col| col.meta.dir_name == segment)
-            .ok_or_else(|| Error::InvalidPath(format!("Collection not found: {}", segment)))?;
+            .ok_or_else(|| Error::InvalidPath(format!("Collection not found: {segment}")))?;
     }
 
     Ok(current)
@@ -120,7 +120,7 @@ pub fn handle_tree_node_drop(
             .requests
             .iter()
             .position(|req| req.meta.file_name == src_filename)
-            .ok_or_else(|| Error::InvalidPath(format!("Request not found: {}", src_filename)))?;
+            .ok_or_else(|| Error::InvalidPath(format!("Request not found: {src_filename}")))?;
 
         TreeNode::Request(Box::new(src_parent_collection.requests.remove(pos)))
     };
