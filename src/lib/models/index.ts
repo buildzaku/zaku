@@ -17,16 +17,6 @@ export type DragOverDto =
           parentRelativePath: string;
       };
 
-export type RemoveTreeNodeDto =
-    | {
-          type: "collection";
-          dir_name: string;
-      }
-    | {
-          type: "request";
-          file_name: string;
-      };
-
 export type FocussedTreeNode =
     | {
           type: "collection";

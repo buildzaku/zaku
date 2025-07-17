@@ -1,25 +1,35 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::fs;
-use std::path::Path;
+use std::{fmt, fs, path::Path};
 
 use crate::collection::models::Collection;
 use crate::error::{Error, Result};
 use crate::state::SharedState;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Type)]
+#[serde(rename_all = "lowercase")]
 pub enum NodeType {
     Collection,
     Request,
 }
 
+impl fmt::Display for NodeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NodeType::Collection => write!(f, "collection"),
+            NodeType::Request => write!(f, "request"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct HandleTreeNodeDropDto {
+    pub node_type: NodeType,
     pub src_relpath: String,
     pub dest_relpath: String,
 }
 
-fn get_node_type(abspath: &Path) -> Result<NodeType> {
+fn detect_node(abspath: &Path) -> Result<NodeType> {
     if !abspath.exists() {
         return Err(Error::FileNotFound(format!(
             "Path does not exist: {}",
@@ -27,31 +37,18 @@ fn get_node_type(abspath: &Path) -> Result<NodeType> {
         )));
     }
 
-    if abspath.is_dir() {
-        let dirname = abspath
-            .file_name()
-            .ok_or_else(|| Error::InvalidPath("Invalid directory path".to_string()))?
-            .to_string_lossy();
+    let fsname = abspath
+        .file_name()
+        .ok_or_else(|| Error::InvalidPath("Invalid path: no file name".into()))?
+        .to_string_lossy();
 
-        if dirname == ".zaku" {
-            return Err(Error::InvalidPath(
-                "Cannot move .zaku directory".to_string(),
-            ));
-        }
-
+    if abspath.is_dir() && fsname != ".zaku" {
         return Ok(NodeType::Collection);
-    } else if abspath.is_file() {
-        let filename = abspath
-            .file_name()
-            .ok_or_else(|| Error::InvalidPath("Invalid file path".to_string()))?
-            .to_string_lossy();
-
-        if filename.ends_with(".toml") {
-            return Ok(NodeType::Request);
-        }
+    } else if abspath.is_file() && fsname.ends_with(".toml") {
+        return Ok(NodeType::Request);
+    } else {
+        return Err(Error::InvalidPath("Invalid node type".into()));
     }
-
-    Err(Error::InvalidPath("Invalid node type".to_string()))
 }
 
 pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a Collection> {
@@ -92,7 +89,7 @@ fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&
     Ok(cur_collection)
 }
 
-fn execute_filesystem_move(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
+fn fsmove(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
     if !src_abspath.exists() {
         return Err(Error::FileNotFound(format!(
             "Source does not exist: {}",
@@ -116,6 +113,32 @@ fn execute_filesystem_move(src_abspath: &Path, dest_abspath: &Path) -> Result<()
     fs::rename(src_abspath, dest_abspath)?;
 
     Ok(())
+}
+
+fn node_exists_at_dest(dest_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
+    match node_type {
+        NodeType::Collection => dest_parent_col
+            .collections
+            .iter()
+            .any(|c| c.meta.dir_name == fsname),
+        NodeType::Request => dest_parent_col
+            .requests
+            .iter()
+            .any(|r| r.meta.file_name == fsname),
+    }
+}
+
+fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
+    match node_type {
+        NodeType::Collection => src_parent_col
+            .collections
+            .iter()
+            .any(|c| c.meta.dir_name == fsname),
+        NodeType::Request => src_parent_col
+            .requests
+            .iter()
+            .any(|r| r.meta.file_name == fsname),
+    }
 }
 
 pub fn handle_tree_node_drop(
@@ -142,7 +165,7 @@ pub fn handle_tree_node_drop(
 
     let src_abspath = Path::new(&active_space.abspath).join(&dto.src_relpath);
     let dest_abspath = Path::new(&active_space.abspath).join(&dto.dest_relpath);
-    let node_type = get_node_type(&src_abspath)?;
+    let node_type = detect_node(&src_abspath)?;
 
     if src_parent_relpath == dest_parent_relpath {
         return Err(Error::InvalidPath("Cannot drop to same parent".into()));
@@ -150,7 +173,6 @@ pub fn handle_tree_node_drop(
 
     if node_type == NodeType::Collection {
         let collection_path = src_parent_relpath.join(&src_fsname);
-
         if dest_parent_relpath.starts_with(&collection_path) {
             return Err(Error::InvalidPath(
                 "Cannot move collection into itself".into(),
@@ -158,82 +180,37 @@ pub fn handle_tree_node_drop(
         }
     }
 
-    // Check for duplicates
-    let dest_collection = find_collection(&active_space.root_collection, &dest_parent_relpath)?;
-
-    match node_type {
-        NodeType::Collection => {
-            if dest_collection
-                .collections
-                .iter()
-                .any(|c| c.meta.dir_name == src_fsname)
-            {
-                return Err(Error::InvalidPath(format!(
-                    "Collection '{}' already exists",
-                    src_fsname
-                )));
-            }
-        }
-        NodeType::Request => {
-            if dest_collection
-                .requests
-                .iter()
-                .any(|r| r.meta.file_name == src_fsname)
-            {
-                return Err(Error::InvalidPath(format!(
-                    "Request '{}' already exists",
-                    src_fsname
-                )));
-            }
-        }
+    let dest_parent_col = find_collection(&active_space.root_collection, dest_parent_relpath)?;
+    if node_exists_at_dest(&dest_parent_col, &node_type, &src_fsname) {
+        return Err(Error::InvalidPath(format!(
+            "{} '{}' already exists",
+            node_type, src_fsname
+        )));
     }
 
-    // Check source exists
-    let src_collection = find_collection(&active_space.root_collection, &src_parent_relpath)?;
-
-    match node_type {
-        NodeType::Collection => {
-            if !src_collection
-                .collections
-                .iter()
-                .any(|c| c.meta.dir_name == src_fsname)
-            {
-                return Err(Error::InvalidPath(format!(
-                    "Collection '{}' not found",
-                    src_fsname
-                )));
-            }
-        }
-        NodeType::Request => {
-            if !src_collection
-                .requests
-                .iter()
-                .any(|r| r.meta.file_name == src_fsname)
-            {
-                return Err(Error::InvalidPath(format!(
-                    "Request '{}' not found",
-                    src_fsname
-                )));
-            }
-        }
+    let src_parent_col = find_collection(&active_space.root_collection, &src_parent_relpath)?;
+    if !src_exists(&src_parent_col, &node_type, &src_fsname) {
+        return Err(Error::InvalidPath(format!(
+            "{} '{}' not found",
+            node_type, src_fsname
+        )));
     }
 
-    // Move in tree
     match node_type {
         NodeType::Collection => {
-            let src_collection =
+            let src_parent_col =
                 find_collection_mut(&mut active_space.root_collection, &src_parent_relpath)?;
-            let node_idx = src_collection
+            let node_idx = src_parent_col
                 .collections
                 .iter()
                 .position(|c| c.meta.dir_name == src_fsname)
                 .unwrap();
-            let collection = src_collection.collections.remove(node_idx);
+            let collection = src_parent_col.collections.remove(node_idx);
 
-            let dest_collection =
+            let dest_parent_col =
                 find_collection_mut(&mut active_space.root_collection, &dest_parent_relpath)?;
-            dest_collection.collections.push(collection);
-            dest_collection.collections.sort_by(|a, b| {
+            dest_parent_col.collections.push(collection);
+            dest_parent_col.collections.sort_by(|a, b| {
                 a.meta
                     .dir_name
                     .to_lowercase()
@@ -241,25 +218,25 @@ pub fn handle_tree_node_drop(
             });
         }
         NodeType::Request => {
-            let src_collection =
+            let src_parent_col =
                 find_collection_mut(&mut active_space.root_collection, &src_parent_relpath)?;
-            let node_idx = src_collection
+            let node_idx = src_parent_col
                 .requests
                 .iter()
                 .position(|r| r.meta.file_name == src_fsname)
                 .unwrap();
-            let request = src_collection.requests.remove(node_idx);
+            let request = src_parent_col.requests.remove(node_idx);
 
-            let dest_collection =
+            let dest_parent_col =
                 find_collection_mut(&mut active_space.root_collection, &dest_parent_relpath)?;
-            dest_collection.requests.push(request);
-            dest_collection
+            dest_parent_col.requests.push(request);
+            dest_parent_col
                 .requests
                 .sort_by(|a, b| a.meta.file_name.cmp(&b.meta.file_name));
         }
     }
 
-    execute_filesystem_move(&src_abspath, &dest_abspath)?;
+    fsmove(&src_abspath, &dest_abspath)?;
 
     Ok(())
 }

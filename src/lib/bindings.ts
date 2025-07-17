@@ -213,7 +213,11 @@ export type CreateNewRequest = { parent_relpath: string; relpath: string };
 export type CreateRequestDto = { parent_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
-export type HandleTreeNodeDropDto = { src_relpath: string; dest_relpath: string };
+export type HandleTreeNodeDropDto = {
+    node_type: NodeType;
+    src_relpath: string;
+    dest_relpath: string;
+};
 export type HttpReq = {
     meta: ReqMeta;
     config: ReqCfg;
@@ -228,6 +232,7 @@ export type HttpRes = {
     size_bytes?: number;
     elapsed_ms?: number;
 };
+export type NodeType = "collection" | "request";
 export type NotificationSettings = { audio: AudioNotification };
 export type OpenDirDialogOpt = { title: string | null };
 export type RemoveCookieDto = { domain: string; path: string; name: string };
@@ -265,7 +270,7 @@ export type SpaceCookie = {
     same_site: string | null;
     expires: string | null;
 };
-export type SpaceMeta = { name: string; is_expanded: boolean };
+export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
