@@ -134,7 +134,7 @@ use crate::{
 //         .expect("Failed to parse root requests");
 
 //     for req in &requests {
-//         let req_path = &req.meta.file_name;
+//         let req_path = &req.meta.fsname;
 //         let expected = expected_reqname_by_relpath
 //             .get(req_path.as_str())
 //             .expect(&format!("Unexpected root request: {}", req_path));
@@ -148,9 +148,9 @@ use crate::{
 //         req_names: &HashMap<&str, &str>,
 //     ) {
 //         let relpath = if parent.is_empty() {
-//             col.meta.dir_name.clone()
+//             col.meta.fsname.clone()
 //         } else {
-//             utils::join_str_paths(vec![parent, &col.meta.dir_name])
+//             utils::join_str_paths(vec![parent, &col.meta.fsname])
 //         };
 
 //         if let Some(expected_name) = col_names.get(relpath.as_str()) {
@@ -163,7 +163,7 @@ use crate::{
 //         }
 
 //         for req in &col.requests {
-//             let req_path = utils::join_str_paths(vec![&relpath, &req.meta.file_name]);
+//             let req_path = utils::join_str_paths(vec![&relpath, &req.meta.fsname]);
 //             let expected_name = req_names
 //                 .get(req_path.as_str())
 //                 .expect(&format!("Unexpected request: {}", req_path));

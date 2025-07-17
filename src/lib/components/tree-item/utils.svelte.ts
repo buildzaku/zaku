@@ -8,12 +8,10 @@ import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { commands } from "$lib/bindings";
 import type { Collection, HttpReq } from "$lib/bindings";
 
-// TODO - add test
 export function isCol(treeNode: TreeNode): treeNode is Collection {
     return Object.hasOwn(treeNode, "requests") && Object.hasOwn(treeNode, "collections");
 }
 
-// TODO - add test
 export function isReq(treeNode: TreeNode): treeNode is HttpReq {
     return (
         Object.hasOwn(treeNode, "status") &&
@@ -50,7 +48,7 @@ export function isDropAllowed(path: string): boolean {
         }
 
         if (isCol(explorerActionsState.dragPayload.node)) {
-            const dirName = explorerActionsState.dragPayload.node.meta.dir_name;
+            const dirName = explorerActionsState.dragPayload.node.meta.fsname;
             const relativePath =
                 explorerActionsState.dragPayload.parentRelativePath === RELATIVE_SPACE_ROOT
                     ? explorerActionsState.dragPayload.parentRelativePath.concat(dirName)
@@ -91,8 +89,8 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
         document.body.appendChild(previewContainer);
 
         const previewTitle = isCol(payload.node)
-            ? (payload.node.meta.name ?? payload.node.meta.dir_name)
-            : (payload.node.meta.name ?? payload.node.meta.file_name);
+            ? (payload.node.meta.name ?? payload.node.meta.fsname)
+            : (payload.node.meta.name ?? payload.node.meta.fsname);
 
         const treeNodePreview = mount(TreeNodePreview, {
             target: previewContainer,
@@ -129,16 +127,14 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const fileOrDirName = isCol(explorerActionsState.dragPayload.node)
-        ? explorerActionsState.dragPayload.node.meta.dir_name
-        : explorerActionsState.dragPayload.node.meta.file_name;
     const src_relpath = buildPath(
         explorerActionsState.dragPayload.parentRelativePath,
-        fileOrDirName,
+        explorerActionsState.dragPayload.node.meta.fsname,
     );
-    const dest_relpath = buildPath(explorerActionsState.dropTargetPath, fileOrDirName); // ← Add filename here
-
-    console.log({ src_relpath, dest_relpath });
+    const dest_relpath = buildPath(
+        explorerActionsState.dropTargetPath,
+        explorerActionsState.dragPayload.node.meta.fsname,
+    );
 
     const treeNodeDropResult = await commands.handleTreeNodeDrop({
         node_type: isCol(explorerActionsState.dragPayload.node) ? "collection" : "request",
@@ -184,11 +180,11 @@ export async function handleDrop(event: DragEvent) {
 //     const removeTreeNodeDto: RemoveTreeNodeDto = isCol(explorerActionsState.dragPayload.node)
 //         ? {
 //               type: "collection",
-//               dir_name: explorerActionsState.dragPayload.node.meta.dir_name,
+//               fsname: explorerActionsState.dragPayload.node.meta.fsname,
 //           }
 //         : {
 //               type: "request",
-//               file_name: explorerActionsState.dragPayload.node.meta.file_name,
+//               fsname: explorerActionsState.dragPayload.node.meta.fsname,
 //           };
 //     const removeTreeNodeFromCollectionResult = removeTreeNodeFromCollection({
 //         parentRelativePath: explorerActionsState.dragPayload.parentRelativePath,
@@ -201,8 +197,8 @@ export async function handleDrop(event: DragEvent) {
 //     }
 
 //     const fileOrDirName = isCol(explorerActionsState.dragPayload.node)
-//         ? explorerActionsState.dragPayload.node.meta.dir_name
-//         : explorerActionsState.dragPayload.node.meta.file_name;
+//         ? explorerActionsState.dragPayload.node.meta.fsname
+//         : explorerActionsState.dragPayload.node.meta.fsname;
 //     const moveTreeNodeDto: MoveTreeNodeDto = {
 //         src_relpath: buildPath(explorerActionsState.dragPayload.parentRelativePath, fileOrDirName),
 //         dest_relpath: buildPath(explorerActionsState.dropTargetPath, fileOrDirName),
@@ -280,7 +276,7 @@ export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string):
 
 //     for (const segment of pathSegments(targetPath)) {
 //         const nextCollection = current.collections.find(
-//             collection => collection.meta.dir_name === segment,
+//             collection => collection.meta.fsname === segment,
 //         );
 //         if (!nextCollection) {
 //             console.warn(`Target collection \`${segment}\` not found in \`${traversedPath}\``);
@@ -297,8 +293,8 @@ export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string):
 //     if (isCol(treeNode)) {
 //         const relativePath =
 //             parentRelativePath === RELATIVE_SPACE_ROOT
-//                 ? parentRelativePath.concat(treeNode.meta.dir_name)
-//                 : parentRelativePath.concat("/").concat(treeNode.meta.dir_name);
+//                 ? parentRelativePath.concat(treeNode.meta.fsname)
+//                 : parentRelativePath.concat("/").concat(treeNode.meta.fsname);
 
 //         if (isSubPath(relativePath, targetPath)) {
 //             console.warn(
@@ -315,34 +311,34 @@ export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string):
 
 //     if (isCol(treeNode)) {
 //         const collectionDirNameAlreadyExists = current.collections.some(
-//             collection => collection.meta.dir_name === treeNode.meta.dir_name,
+//             collection => collection.meta.fsname === treeNode.meta.fsname,
 //         );
 //         if (collectionDirNameAlreadyExists) {
 //             toast.error(
-//                 `Collection with directory name ${treeNode.meta.dir_name} already exists in the ${current.meta.dir_name} collection`,
+//                 `Collection with directory name ${treeNode.meta.fsname} already exists in the ${current.meta.fsname} collection`,
 //             );
 
 //             return err();
 //         }
 //         current.collections.push(treeNode);
 //         current.collections.sort((a, b) =>
-//             a.meta.dir_name.toLocaleLowerCase().localeCompare(b.meta.dir_name),
+//             a.meta.fsname.toLocaleLowerCase().localeCompare(b.meta.fsname),
 //         );
 
 //         return ok();
 //     } else {
 //         const reqFileNameAlreadyExists = current.requests.some(
-//             request => request.meta.file_name === treeNode.meta.file_name,
+//             request => request.meta.fsname === treeNode.meta.fsname,
 //         );
 //         if (reqFileNameAlreadyExists) {
 //             toast.error(
-//                 `Request with file name ${treeNode.meta.file_name} already exists in the ${current.meta.dir_name} collection`,
+//                 `Request with file name ${treeNode.meta.fsname} already exists in the ${current.meta.fsname} collection`,
 //             );
 
 //             return err();
 //         }
 //         current.requests.push(treeNode);
-//         current.requests.sort((a, b) => a.meta.file_name.localeCompare(b.meta.file_name));
+//         current.requests.sort((a, b) => a.meta.fsname.localeCompare(b.meta.fsname));
 
 //         return ok();
 //     }
@@ -364,7 +360,7 @@ export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string):
 
 //     for (const segment of segments) {
 //         const nextCollection = current.collections.find(
-//             collection => collection.meta.dir_name === segment,
+//             collection => collection.meta.fsname === segment,
 //         );
 //         if (!nextCollection) {
 //             console.warn(`Collection not found for segment: ${segment}`);
@@ -377,13 +373,13 @@ export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string):
 
 //     if (removeTreeNodeDto.type === "collection") {
 //         current.collections = current.collections.filter(
-//             collection => collection.meta.dir_name !== removeTreeNodeDto.dir_name,
+//             collection => collection.meta.fsname !== removeTreeNodeDto.fsname,
 //         );
 
 //         return ok();
 //     } else {
 //         current.requests = current.requests.filter(
-//             request => request.meta.file_name !== removeTreeNodeDto.file_name,
+//             request => request.meta.fsname !== removeTreeNodeDto.fsname,
 //         );
 
 //         return ok();

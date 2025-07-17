@@ -125,7 +125,7 @@
                 {/if}
                 <CollectionIcon size={12} />
                 <span class="truncate text-sm">
-                    {node.meta.name ?? node.meta.dir_name}
+                    {node.meta.name ?? node.meta.fsname}
                 </span>
             {:else}
                 <div class="flex w-full items-center justify-between">
@@ -139,7 +139,7 @@
                             {node.config.method}
                         </span>
                         <span class="truncate text-sm">
-                            {node.meta.name ?? node.meta.file_name}
+                            {node.meta.name ?? node.meta.fsname}
                         </span>
                     </div>
                     {#if node.meta.has_unsaved_changes}
@@ -156,10 +156,10 @@
         {/if}
 
         {#if node.meta.is_expanded}
-            {#each node.requests as request (buildPath(currentPath, request.meta.file_name))}
+            {#each node.requests as request (buildPath(currentPath, request.meta.fsname))}
                 <TreeNodeContent
                     parentPath={currentPath}
-                    currentPath={buildPath(currentPath, request.meta.file_name)}
+                    currentPath={buildPath(currentPath, request.meta.fsname)}
                     node={request}
                     level={level + 1}
                 />
@@ -170,10 +170,10 @@
             <TreeNodeCreate type="collection" parentRelativePath={currentPath} level={level + 1} />
         {/if}
         {#if node.meta.is_expanded}
-            {#each node.collections as collection (buildPath(currentPath, collection.meta.dir_name))}
+            {#each node.collections as collection (buildPath(currentPath, collection.meta.fsname))}
                 <TreeNodeContent
                     parentPath={currentPath}
-                    currentPath={buildPath(currentPath, collection.meta.dir_name)}
+                    currentPath={buildPath(currentPath, collection.meta.fsname)}
                     node={collection}
                     level={level + 1}
                 />

@@ -7,7 +7,7 @@ use crate::request::models::HttpReq;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct CollectionMeta {
-    pub dir_name: String,
+    pub fsname: String,
     pub name: Option<String>,
     pub is_expanded: bool,
 }

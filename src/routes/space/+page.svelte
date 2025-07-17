@@ -121,16 +121,13 @@
             const absoluteReqPath = joinPaths([
                 spaceSnapshot.abspath,
                 openReqSnapshot.parentRelativePath,
-                openReqSnapshot.self.meta.file_name,
+                openReqSnapshot.self.meta.fsname,
             ]);
 
             await debounced.flush(absoluteReqPath);
             await commands.writeReqbufToReqtoml(
                 spaceSnapshot.abspath,
-                joinPaths([
-                    openReqSnapshot.parentRelativePath,
-                    openReqSnapshot.self.meta.file_name,
-                ]),
+                joinPaths([openReqSnapshot.parentRelativePath, openReqSnapshot.self.meta.fsname]),
             );
 
             isActiveReqSavedToFs = true;
@@ -141,7 +138,7 @@
     const spaceSnapshot = explorerState.openRequest;
     let isActiveReqSavedToFs = false;
     let prevActiveReqRelPath = spaceSnapshot
-        ? `${spaceSnapshot.parentRelativePath}/${spaceSnapshot.self.meta.file_name}`
+        ? `${spaceSnapshot.parentRelativePath}/${spaceSnapshot.self.meta.fsname}`
         : null;
 
     $effect(() => {
@@ -157,7 +154,7 @@
         }
 
         const openReqRelPath = openReqSnapshot
-            ? `${openReqSnapshot.parentRelativePath}/${openReqSnapshot.self.meta.file_name}`
+            ? `${openReqSnapshot.parentRelativePath}/${openReqSnapshot.self.meta.fsname}`
             : null;
 
         if (

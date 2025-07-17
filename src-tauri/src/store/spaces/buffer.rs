@@ -74,7 +74,7 @@ pub fn persist_req_to_spacebuf(
         .map_err(|_| Error::LockError("Failed to acquire write lock".into()))?;
 
     let req_relpath = parent_relpath
-        .join(&request.meta.file_name)
+        .join(&request.meta.fsname)
         .to_string_lossy()
         .to_string();
     let req_buf = ReqBuf::from_req(&request);

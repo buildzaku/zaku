@@ -44,7 +44,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
 
     let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
         meta: CollectionMeta {
-            dir_name: space_dirname,
+            fsname: space_dirname,
             name: space_config.map(|config| config.meta.name),
             is_expanded: true,
         },
@@ -89,7 +89,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
 
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
-                            dir_name: name,
+                            fsname: name,
                             name: colname.mappings.get(&relpath).cloned(),
                             is_expanded: true,
                         },
@@ -120,7 +120,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                             .requests
                             .push(HttpReq::from_reqbuf(req_buf));
                     } else {
-                        let file_name = entry_abspath
+                        let fsname = entry_abspath
                             .file_name()
                             .unwrap()
                             .to_string_lossy()
@@ -131,7 +131,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                                 collection_rc_refcell
                                     .borrow_mut()
                                     .requests
-                                    .push(HttpReq::from_reqtoml(&req_toml, file_name));
+                                    .push(HttpReq::from_reqtoml(&req_toml, fsname));
                             }
                             Err(_) => {
                                 eprintln!("Invalid request TOML: '{}'", entry_abspath.display());

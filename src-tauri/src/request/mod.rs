@@ -34,9 +34,9 @@ pub mod models;
 //                 if let Some(req_buf) = spacebuf_rlock.requests.get(&relpath) {
 //                     requests.push(HttpReq::from_reqbuf(req_buf));
 //                 } else {
-//                     let file_name = path.file_name().unwrap().to_string_lossy().into_owned();
+//                     let fsname = path.fsname().unwrap().to_string_lossy().into_owned();
 //                     if let Ok(req_toml) = parse_reqtoml(&path) {
-//                         requests.push(HttpReq::from_reqtoml(&req_toml, file_name));
+//                         requests.push(HttpReq::from_reqtoml(&req_toml, fsname));
 //                     } else {
 //                         eprintln!("Invalid request TOML: '{}'", path.display());
 //                     }

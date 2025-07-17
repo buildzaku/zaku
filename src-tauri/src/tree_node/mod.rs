@@ -60,7 +60,7 @@ pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a C
             cur_collection = cur_collection
                 .collections
                 .iter()
-                .find(|col| col.meta.dir_name == segment_str)
+                .find(|col| col.meta.fsname == segment_str)
                 .ok_or_else(|| {
                     Error::InvalidPath(format!("Collection not found: {}", segment_str))
                 })?;
@@ -79,7 +79,7 @@ fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&
             cur_collection = cur_collection
                 .collections
                 .iter_mut()
-                .find(|col| col.meta.dir_name == segment_str)
+                .find(|col| col.meta.fsname == segment_str)
                 .ok_or_else(|| {
                     Error::InvalidPath(format!("Collection not found: {}", segment_str))
                 })?;
@@ -120,11 +120,11 @@ fn node_exists_at_dest(dest_parent_col: &Collection, node_type: &NodeType, fsnam
         NodeType::Collection => dest_parent_col
             .collections
             .iter()
-            .any(|c| c.meta.dir_name == fsname),
+            .any(|c| c.meta.fsname == fsname),
         NodeType::Request => dest_parent_col
             .requests
             .iter()
-            .any(|r| r.meta.file_name == fsname),
+            .any(|r| r.meta.fsname == fsname),
     }
 }
 
@@ -133,11 +133,11 @@ fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -
         NodeType::Collection => src_parent_col
             .collections
             .iter()
-            .any(|c| c.meta.dir_name == fsname),
+            .any(|c| c.meta.fsname == fsname),
         NodeType::Request => src_parent_col
             .requests
             .iter()
-            .any(|r| r.meta.file_name == fsname),
+            .any(|r| r.meta.fsname == fsname),
     }
 }
 
@@ -203,7 +203,7 @@ pub fn handle_tree_node_drop(
             let node_idx = src_parent_col
                 .collections
                 .iter()
-                .position(|c| c.meta.dir_name == src_fsname)
+                .position(|c| c.meta.fsname == src_fsname)
                 .unwrap();
             let collection = src_parent_col.collections.remove(node_idx);
 
@@ -212,9 +212,9 @@ pub fn handle_tree_node_drop(
             dest_parent_col.collections.push(collection);
             dest_parent_col.collections.sort_by(|a, b| {
                 a.meta
-                    .dir_name
+                    .fsname
                     .to_lowercase()
-                    .cmp(&b.meta.dir_name.to_lowercase())
+                    .cmp(&b.meta.fsname.to_lowercase())
             });
         }
         NodeType::Request => {
@@ -223,7 +223,7 @@ pub fn handle_tree_node_drop(
             let node_idx = src_parent_col
                 .requests
                 .iter()
-                .position(|r| r.meta.file_name == src_fsname)
+                .position(|r| r.meta.fsname == src_fsname)
                 .unwrap();
             let request = src_parent_col.requests.remove(node_idx);
 
@@ -232,7 +232,7 @@ pub fn handle_tree_node_drop(
             dest_parent_col.requests.push(request);
             dest_parent_col
                 .requests
-                .sort_by(|a, b| a.meta.file_name.cmp(&b.meta.file_name));
+                .sort_by(|a, b| a.meta.fsname.cmp(&b.meta.fsname));
         }
     }
 

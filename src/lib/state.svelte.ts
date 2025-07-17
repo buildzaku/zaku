@@ -100,7 +100,7 @@ class Debounced {
         const absoluteRequestPath = joinPaths([
             absoluteSpacePath,
             openRequest.parentRelativePath,
-            openRequest.self.meta.file_name,
+            openRequest.self.meta.fsname,
         ]);
 
         const current = this.#state.get(absoluteRequestPath);
