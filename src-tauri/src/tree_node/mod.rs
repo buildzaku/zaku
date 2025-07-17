@@ -29,6 +29,15 @@ pub struct HandleTreeNodeDropDto {
     pub dest_relpath: String,
 }
 
+/// Finds a collection within the collection tree by traversing the relative path
+///
+/// Walks through the collection hierarchy starting from the root collection,
+/// following each path component to find the target collection.
+///
+/// - `root`: Root collection to start the search from
+/// - `relpath`: Relative path to the target collection
+///
+/// Returns a `Result` containing a reference to the found collection
 pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a Collection> {
     let mut cur_collection = root;
 
@@ -48,6 +57,13 @@ pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a C
     Ok(cur_collection)
 }
 
+/// Same as `find_collection` but returns a mutable reference to allow
+/// modifications to the found collection.
+///
+/// - `root`: Root collection to start the search from
+/// - `relpath`: Relative path to the target collection
+///
+/// Returns a `Result` containing a mutable reference to the found collection
 fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&'a mut Collection> {
     let mut cur_collection = root;
 
@@ -67,6 +83,16 @@ fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&
     Ok(cur_collection)
 }
 
+/// Moves a file or directory from source to destination path
+///
+/// Ensures the source exists, destination doesn't exist and all destination parent
+/// directories exists before moving. Throws an error if any of these conditions
+/// are not met.
+///
+/// - `src_abspath`: Absolute path of the source file/directory
+/// - `dest_abspath`: Absolute path of the destination file/directory
+///
+/// Returns a `Result` indicating success or failure of the move operation
 fn fsmove(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
     if !src_abspath.exists() {
         return Err(Error::FileNotFound(format!(
@@ -84,7 +110,10 @@ fn fsmove(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
 
     if let Some(dest_dir) = dest_abspath.parent() {
         if !dest_dir.exists() {
-            fs::create_dir_all(dest_dir)?;
+            return Err(Error::InvalidPath(format!(
+                "Destination parent directory does not exist: {}",
+                dest_dir.display()
+            )));
         }
     }
 
@@ -93,6 +122,16 @@ fn fsmove(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Checks if a node with the given name already exists in the destination collection
+///
+/// Searches through the appropriate collection (collections or requests) based
+/// on the node type to determine if a node with the same filesystem name exists.
+///
+/// - `dest_parent_col`: Collection to check for existing nodes
+/// - `node_type`: Type of node to check for (Collection or Request)
+/// - `fsname`: Filesystem name to search for
+///
+/// Returns `true` if a node with the same name exists, `false` otherwise
 fn node_exists_at_dest(dest_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
     match node_type {
         NodeType::Collection => dest_parent_col
@@ -106,6 +145,16 @@ fn node_exists_at_dest(dest_parent_col: &Collection, node_type: &NodeType, fsnam
     }
 }
 
+/// Checks if a source node exists in the source collection
+///
+/// Verifies that the node being moved actually exists in the source collection
+/// before attempting the move operation.
+///
+/// - `src_parent_col`: Collection to check for the source node
+/// - `node_type`: Type of node to check for (Collection or Request)
+/// - `fsname`: Filesystem name to search for
+///
+/// Returns `true` if the source node exists, `false` otherwise
 fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
     match node_type {
         NodeType::Collection => src_parent_col
@@ -119,6 +168,23 @@ fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -
     }
 }
 
+/// Handles drag-and-drop operations for tree nodes (collections and requests)
+///
+/// Moves a node from source to destination path, updating both the filesystem
+/// and the in-memory collection structure. Performs validation to ensure:
+/// - Source and destination are different
+/// - Collections cannot be moved into themselves
+/// - No naming conflicts at destination
+/// - Source node exists
+///
+/// After validation, removes the node from the source collection, adds it to
+/// the destination collection, sorts the destination collection, and moves
+/// the filesystem entry.
+///
+/// - `dto`: Contains node type and source/destination relative paths
+/// - `sharedstate`: Shared state containing the space and collection tree
+///
+/// Returns a `Result` indicating success or failure of the drop operation
 pub fn handle_tree_node_drop(
     dto: &HandleTreeNodeDropDto,
     sharedstate: &mut SharedState,
@@ -140,9 +206,6 @@ pub fn handle_tree_node_drop(
     let dest_parent_relpath = Path::new(&dto.dest_relpath)
         .parent()
         .unwrap_or_else(|| Path::new(""));
-
-    let src_abspath = Path::new(&space.abspath).join(&dto.src_relpath);
-    let dest_abspath = Path::new(&space.abspath).join(&dto.dest_relpath);
 
     if src_parent_relpath == dest_parent_relpath {
         return Err(Error::InvalidPath("Cannot drop to same parent".into()));
@@ -213,6 +276,8 @@ pub fn handle_tree_node_drop(
         }
     }
 
+    let src_abspath = Path::new(&space.abspath).join(&dto.src_relpath);
+    let dest_abspath = Path::new(&space.abspath).join(&dto.dest_relpath);
     fsmove(&src_abspath, &dest_abspath)?;
 
     Ok(())
