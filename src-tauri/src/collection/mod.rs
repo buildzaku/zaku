@@ -336,11 +336,7 @@ pub fn create_collection(
     };
 
     let colname = colname.trim();
-    let dir_sanitized_name = colname
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join("-");
+    let dir_sanitized_name = utils::sanitize_path_segment(colname);
 
     let (dir_parent_relpath, dir_sanitized_name) = match parsed_parent_relpath {
         Some(ref parsed_parent_relpath) => {
