@@ -7,7 +7,7 @@ use crate::{
     request::{self, models::CreateRequestDto},
     space::{self, models::CreateSpaceDto},
     state::SharedState,
-    tree_node::{self, HandleTreeNodeDropDto, NodeType},
+    tree_node::{self, MoveTreeNodeDto, NodeType},
 };
 
 const SPACE_NAME: &str = "Tree Node";
@@ -124,16 +124,16 @@ fn find_collection_fails_for_partially_invalid_path() {
 }
 
 #[test]
-fn handle_tree_node_drop_fails_with_no_space() {
+fn move_tree_node_fails_with_no_space() {
     let mut sharedstate = SharedState::default();
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "parent-collection-1".to_string(),
         dest_relpath: "parent-collection-2/parent-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "No space found"),
@@ -142,17 +142,17 @@ fn handle_tree_node_drop_fails_with_no_space() {
 }
 
 #[test]
-fn handle_tree_node_drop_fails_with_invalid_source_path() {
+fn move_tree_node_fails_with_invalid_source_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "".to_string(),
         dest_relpath: "parent-collection-1/child-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Invalid source path"),
@@ -161,7 +161,7 @@ fn handle_tree_node_drop_fails_with_invalid_source_path() {
 }
 
 #[test]
-fn handle_tree_node_drop_fails_when_dropping_to_same_parent() {
+fn move_tree_node_fails_when_dropping_to_same_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -171,13 +171,13 @@ fn handle_tree_node_drop_fails_when_dropping_to_same_parent() {
     };
     collection::create_collection(&dto, &mut sharedstate).expect("Failed to create collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "parent-collection-1".to_string(),
         dest_relpath: "parent-collection-2".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Cannot drop to same parent"),
@@ -186,7 +186,7 @@ fn handle_tree_node_drop_fails_when_dropping_to_same_parent() {
 }
 
 #[test]
-fn handle_tree_node_drop_fails_when_moving_collection_into_itself() {
+fn move_tree_node_fails_when_moving_collection_into_itself() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -197,13 +197,13 @@ fn handle_tree_node_drop_fails_when_moving_collection_into_itself() {
     collection::create_collection(&dto, &mut sharedstate)
         .expect("Failed to create parent collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "parent-collection-1".to_string(),
         dest_relpath: "parent-collection-1/parent-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Cannot move collection into itself"),
@@ -212,7 +212,7 @@ fn handle_tree_node_drop_fails_when_moving_collection_into_itself() {
 }
 
 #[test]
-fn handle_tree_node_drop_fails_when_destination_already_exists() {
+fn move_tree_node_fails_when_destination_already_exists() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -237,13 +237,13 @@ fn handle_tree_node_drop_fails_when_destination_already_exists() {
     collection::create_collection(&create_dto, &mut sharedstate)
         .expect("Failed to create conflicting collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "parent-collection-1".to_string(),
         dest_relpath: "parent-collection-2/parent-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert!(msg.contains("already exists")),
@@ -252,7 +252,7 @@ fn handle_tree_node_drop_fails_when_destination_already_exists() {
 }
 
 #[test]
-fn handle_tree_node_drop_fails_when_source_not_found() {
+fn move_tree_node_fails_when_source_not_found() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -263,13 +263,13 @@ fn handle_tree_node_drop_fails_when_source_not_found() {
     collection::create_collection(&dto, &mut sharedstate)
         .expect("Failed to create parent collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "nonexistent-collection".to_string(),
         dest_relpath: "parent-collection-1/nonexistent-collection".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert!(msg.contains("not found")),
@@ -278,7 +278,7 @@ fn handle_tree_node_drop_fails_when_source_not_found() {
 }
 
 #[test]
-fn handle_tree_node_drop_successfully_moves_collection() {
+fn move_tree_node_successfully_moves_collection() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -296,13 +296,13 @@ fn handle_tree_node_drop_successfully_moves_collection() {
     collection::create_collection(&dto, &mut sharedstate)
         .expect("Failed to create parent collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "parent-collection-1".to_string(),
         dest_relpath: "parent-collection-2/parent-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_ok());
 
     let space = sharedstate.space.unwrap();
@@ -328,7 +328,7 @@ fn handle_tree_node_drop_successfully_moves_collection() {
 }
 
 #[test]
-fn handle_tree_node_drop_successfully_moves_request() {
+fn move_tree_node_successfully_moves_request() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -345,13 +345,13 @@ fn handle_tree_node_drop_successfully_moves_request() {
     collection::create_collection(&dto, &mut sharedstate)
         .expect("Failed to create parent collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
         src_relpath: "parent-request-1.toml".to_string(),
         dest_relpath: "parent-collection-1/parent-request-1.toml".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_ok());
 
     let space = sharedstate.space.unwrap();
@@ -374,7 +374,7 @@ fn handle_tree_node_drop_successfully_moves_request() {
 }
 
 #[test]
-fn handle_tree_node_drop_fails_with_missing_destination_parent_directory() {
+fn move_tree_node_fails_with_missing_destination_parent_directory() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -397,13 +397,13 @@ fn handle_tree_node_drop_fails_with_missing_destination_parent_directory() {
     fs::remove_dir_all(space_path.join("parent-collection-2"))
         .expect("Failed to remove parent directory");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "parent-collection-1".to_string(),
         dest_relpath: "parent-collection-2/parent-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => {
@@ -414,7 +414,7 @@ fn handle_tree_node_drop_fails_with_missing_destination_parent_directory() {
 }
 
 #[test]
-fn handle_tree_node_drop_successfully_moves_collection_to_parent() {
+fn move_tree_node_successfully_moves_collection_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -425,13 +425,13 @@ fn handle_tree_node_drop_successfully_moves_collection_to_parent() {
     collection::create_collection(&dto, &mut sharedstate)
         .expect("Failed to create nested collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "grand-parent-collection-1/parent-collection-1/child-collection-1".to_string(),
         dest_relpath: "grand-parent-collection-1/child-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_ok());
 
     let space = sharedstate.space.unwrap();
@@ -471,7 +471,7 @@ fn handle_tree_node_drop_successfully_moves_collection_to_parent() {
 }
 
 #[test]
-fn handle_tree_node_drop_successfully_moves_request_to_parent() {
+fn move_tree_node_successfully_moves_request_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -488,14 +488,14 @@ fn handle_tree_node_drop_successfully_moves_request_to_parent() {
     };
     request::create_req(&dto, &mut sharedstate).expect("Failed to create request");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
         src_relpath: "grand-parent-collection-1/parent-collection-1/grand-child-request-1.toml"
             .to_string(),
         dest_relpath: "grand-parent-collection-1/grand-child-request-1.toml".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_ok());
 
     let space = sharedstate.space.unwrap();
@@ -532,7 +532,7 @@ fn handle_tree_node_drop_successfully_moves_request_to_parent() {
 }
 
 #[test]
-fn handle_tree_node_drop_successfully_moves_collection_to_grandparent() {
+fn move_tree_node_successfully_moves_collection_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -543,13 +543,13 @@ fn handle_tree_node_drop_successfully_moves_collection_to_grandparent() {
     collection::create_collection(&dto, &mut sharedstate)
         .expect("Failed to create deeply nested collection");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         src_relpath: "great-grand-parent-collection-1/grand-parent-collection-1/parent-collection-1/child-collection-1".to_string(),
         dest_relpath: "great-grand-parent-collection-1/grand-parent-collection-1/child-collection-1".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_ok());
 
     let space = sharedstate.space.unwrap();
@@ -587,7 +587,7 @@ fn handle_tree_node_drop_successfully_moves_collection_to_grandparent() {
 }
 
 #[test]
-fn handle_tree_node_drop_successfully_moves_request_to_grandparent() {
+fn move_tree_node_successfully_moves_request_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_sharedstate(tmp_dir.path());
 
@@ -607,13 +607,13 @@ fn handle_tree_node_drop_successfully_moves_request_to_grandparent() {
     };
     request::create_req(&dto, &mut sharedstate).expect("Failed to create request");
 
-    let dto = HandleTreeNodeDropDto {
+    let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
         src_relpath: "great-grand-parent-collection-1/grand-parent-collection-1/parent-collection-1/great-grand-child-request-1.toml".to_string(),
         dest_relpath: "great-grand-parent-collection-1/great-grand-child-request-1.toml".to_string(),
     };
 
-    let result = tree_node::handle_tree_node_drop(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
     assert!(result.is_ok());
 
     let space = sharedstate.space.unwrap();

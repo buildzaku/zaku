@@ -31,7 +31,7 @@ use crate::{
         models::{SpaceCookies, SpaceSettings},
         spaces::buffer,
     },
-    tree_node::{self, HandleTreeNodeDropDto},
+    tree_node::{self, MoveTreeNodeDto},
 };
 
 pub mod models;
@@ -56,7 +56,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
         persist_to_reqbuf,
         write_reqbuf_to_reqtoml,
         http_req,
-        handle_tree_node_drop
+        move_tree_node
     ]
 }
 
@@ -465,16 +465,13 @@ pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn handle_tree_node_drop(
-    dto: HandleTreeNodeDropDto,
-    app_handle: tauri::AppHandle,
-) -> CmdResult<()> {
+pub async fn move_tree_node(dto: MoveTreeNodeDto, app_handle: tauri::AppHandle) -> CmdResult<()> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
     let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
         message: format!("State lock failed: {e}"),
     })?;
 
-    tree_node::handle_tree_node_drop(&dto, &mut sharedstate).map_err(|err| CmdErr::Err {
+    tree_node::move_tree_node(&dto, &mut sharedstate).map_err(|err| CmdErr::Err {
         message: format!("Failed to handle drop: {err}"),
     })
 }

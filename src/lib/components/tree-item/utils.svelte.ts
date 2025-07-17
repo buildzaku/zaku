@@ -136,7 +136,7 @@ export async function handleDrop(event: DragEvent) {
         explorerActionsState.dragPayload.node.meta.fsname,
     );
 
-    const treeNodeDropResult = await commands.handleTreeNodeDrop({
+    const treeNodeDropResult = await commands.moveTreeNode({
         node_type: isCol(explorerActionsState.dragPayload.node) ? "collection" : "request",
         src_relpath,
         dest_relpath,

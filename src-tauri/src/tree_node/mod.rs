@@ -26,7 +26,7 @@ impl fmt::Display for NodeType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct HandleTreeNodeDropDto {
+pub struct MoveTreeNodeDto {
     pub node_type: NodeType,
     pub src_relpath: String,
     pub dest_relpath: String,
@@ -171,10 +171,8 @@ fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -
     }
 }
 
-/// Handles drag-and-drop operations for tree nodes (collections and requests)
-///
 /// Moves a node from source to destination path, updating both the filesystem
-/// and the in-memory collection structure. Performs validation to ensure:
+/// and collections in shared state. Performs validation to ensure:
 /// - Source and destination are different
 /// - Collections cannot be moved into themselves
 /// - No naming conflicts at destination
@@ -188,10 +186,7 @@ fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -
 /// - `sharedstate`: Shared state containing the space and collection tree
 ///
 /// Returns a `Result` indicating success or failure of the drop operation
-pub fn handle_tree_node_drop(
-    dto: &HandleTreeNodeDropDto,
-    sharedstate: &mut SharedState,
-) -> Result<()> {
+pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> Result<()> {
     let space = sharedstate
         .space
         .as_mut()

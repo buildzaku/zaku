@@ -182,9 +182,9 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async handleTreeNodeDrop(dto: HandleTreeNodeDropDto): Promise<Result<null, CmdErr>> {
+    async moveTreeNode(dto: MoveTreeNodeDto): Promise<Result<null, CmdErr>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("handle_tree_node_drop", { dto }) };
+            return { status: "ok", data: await TAURI_INVOKE("move_tree_node", { dto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -210,11 +210,6 @@ export type CreateNewRequest = { parent_relpath: string; relpath: string };
 export type CreateRequestDto = { parent_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
-export type HandleTreeNodeDropDto = {
-    node_type: NodeType;
-    src_relpath: string;
-    dest_relpath: string;
-};
 export type HttpReq = {
     meta: ReqMeta;
     config: ReqCfg;
@@ -229,6 +224,7 @@ export type HttpRes = {
     size_bytes?: number;
     elapsed_ms?: number;
 };
+export type MoveTreeNodeDto = { node_type: NodeType; src_relpath: string; dest_relpath: string };
 export type NodeType = "collection" | "request";
 export type NotificationSettings = { audio: AudioNotification };
 export type OpenDirDialogOpt = { title: string | null };
