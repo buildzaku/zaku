@@ -61,7 +61,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 #[serde(tag = "type")]
-#[specta(tag = "type")]
 pub enum CmdErr {
     Err { message: String },
     Http { message: String, code: Option<u16> },

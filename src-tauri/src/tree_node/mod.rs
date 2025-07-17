@@ -7,7 +7,7 @@ use crate::error::{Error, Result};
 use crate::state::SharedState;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Type)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum NodeType {
     Collection,
     Request,
