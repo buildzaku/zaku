@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AppStore {
-    pub active_spaceref: Option<SpaceReference>,
+    pub spaceref: Option<SpaceReference>,
     pub spacerefs: Vec<SpaceReference>,
 }
 

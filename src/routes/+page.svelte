@@ -23,7 +23,7 @@
                 throw new Error(`Cannot get space reference for ${cmdResult.data}`);
             }
 
-            await sharedState.setActiveSpace(spaceRefCmdResult.data);
+            await sharedState.setSpace(spaceRefCmdResult.data);
             await goto("/space");
         } catch (err) {
             console.error(err);

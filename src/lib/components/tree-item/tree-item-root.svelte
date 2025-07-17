@@ -3,7 +3,7 @@
     import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
 
     import type { Collection } from "$lib/bindings";
-    import { treeActionsState, treeNodesState } from "$lib/state.svelte";
+    import { explorerActionsState, explorerState } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
     import { buttonVariants } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
@@ -45,7 +45,7 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 root.meta.is_expanded = !root.meta.is_expanded;
-                treeNodesState.focussedNode = {
+                explorerState.focussedNode = {
                     type: "collection",
                     relativePath: RELATIVE_SPACE_ROOT,
                     parentRelativePath: RELATIVE_SPACE_ROOT,
@@ -57,7 +57,7 @@
         )}
         onclick={() => {
             root.meta.is_expanded = !root.meta.is_expanded;
-            treeNodesState.focussedNode = {
+            explorerState.focussedNode = {
                 type: "collection",
                 relativePath: RELATIVE_SPACE_ROOT,
                 parentRelativePath: RELATIVE_SPACE_ROOT,
@@ -100,7 +100,7 @@
                             )}
                             onclick={event => {
                                 event.stopImmediatePropagation();
-                                treeActionsState.createNewNode = "request";
+                                explorerActionsState.createNewNode = "request";
                             }}
                         >
                             <FilePlusIcon size={13} class="size-[13px] max-h-[13px] max-w-[13px]" />
@@ -123,7 +123,7 @@
                             )}
                             onclick={event => {
                                 event.stopImmediatePropagation();
-                                treeActionsState.createNewNode = "collection";
+                                explorerActionsState.createNewNode = "collection";
                             }}
                         >
                             <FolderPlusIcon

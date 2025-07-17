@@ -36,8 +36,8 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let colname = colname_by_relpath(space_abspath).unwrap_or_else(|_| ColName {
         mappings: HashMap::new(),
     });
-    let active_space_buffer = SpaceBuf::load(space_abspath)?;
-    let active_spacebuf_rlock = active_space_buffer
+    let space_buffer = SpaceBuf::load(space_abspath)?;
+    let spacebuf_rlock = space_buffer
         .read()
         .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
     let space_config = parse_spacecfg(space_abspath).ok();
@@ -112,7 +112,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                         .unwrap()
                         .to_string_lossy()
                         .into_owned();
-                    let req_buf = active_spacebuf_rlock.requests.get(&relpath);
+                    let req_buf = spacebuf_rlock.requests.get(&relpath);
 
                     if let Some(req_buf) = req_buf {
                         collection_rc_refcell
@@ -330,7 +330,7 @@ pub fn create_collections_all(
     Ok(collections_relpath)
 }
 
-/// Creates new collection directory/directories under the active space
+/// Creates new collection directory/directories under the space
 ///
 /// If the collection path contains nested segments (e.g. `"Settings/Notifications"`),
 /// it creates all parent directories as needed and stores each segment's original name.
@@ -349,12 +349,12 @@ pub fn create_collection(
         ));
     }
 
-    let active_space = sharedstate
-        .active_space
+    let space = sharedstate
+        .space
         .clone()
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
 
-    let active_space_abspath = PathBuf::from(&active_space.abspath);
+    let space_abspath = PathBuf::from(&space.abspath);
 
     let (parsed_parent_relpath, colname) = match dto.relpath.rfind('/') {
         Some(last_slash_index) => {
@@ -380,7 +380,7 @@ pub fn create_collection(
                 relpath: parsed_parent_relpath.to_string(),
             };
 
-            let dirs_sanitized_relpath = create_collections_all(&active_space_abspath, &dto)?;
+            let dirs_sanitized_relpath = create_collections_all(&space_abspath, &dto)?;
 
             let dir_parent_relpath = utils::join_str_paths(vec![
                 dto.parent_relpath.as_str(),
@@ -392,7 +392,7 @@ pub fn create_collection(
         None => (dto.parent_relpath.clone(), dir_sanitized_name),
     };
 
-    let dir_abspath = active_space_abspath
+    let dir_abspath = space_abspath
         .join(&dir_parent_relpath)
         .join(&dir_sanitized_name);
     let dir_relpath = utils::join_str_paths(vec![
@@ -402,14 +402,14 @@ pub fn create_collection(
 
     fs::create_dir(&dir_abspath)?;
 
-    save_colname_if_missing(&active_space_abspath, &dir_relpath, colname)?;
+    save_colname_if_missing(&space_abspath, &dir_relpath, colname)?;
 
     let create_new_collection = CreateNewCollection {
         parent_relpath: dir_parent_relpath,
         relpath: dir_relpath,
     };
 
-    sharedstate.active_space = Some(space::parse_space(&active_space_abspath)?);
+    sharedstate.space = Some(space::parse_space(&space_abspath)?);
 
     Ok(create_new_collection)
 }

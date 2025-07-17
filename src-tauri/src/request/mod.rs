@@ -58,12 +58,12 @@ pub fn create_req(
         ));
     }
 
-    let active_space = sharedstate
-        .active_space
+    let space = sharedstate
+        .space
         .clone()
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
 
-    let space_abspath = PathBuf::from(&active_space.abspath);
+    let space_abspath = PathBuf::from(&space.abspath);
 
     let (parsed_parent_relpath, reqname) = match dto.relpath.rfind('/') {
         Some(index) => {
@@ -111,7 +111,7 @@ pub fn create_req(
         relpath: file_relpath,
     };
 
-    sharedstate.active_space = Some(space::parse_space(&space_abspath)?);
+    sharedstate.space = Some(space::parse_space(&space_abspath)?);
 
     Ok(created)
 }

@@ -4,7 +4,7 @@
 
     import { TreeNodeContent, TreeNodeCreate } from ".";
     import type { TreeNode, DragOverDto } from "$lib/models";
-    import { treeActionsState, treeNodesState } from "$lib/state.svelte";
+    import { explorerActionsState, explorerState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
@@ -30,11 +30,11 @@
     let { parentPath, currentPath, node, level, class: className }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
-        treeActionsState.createNewNode === "request" &&
+        explorerActionsState.createNewNode === "request" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        treeActionsState.createNewNode === "collection" &&
+        explorerActionsState.createNewNode === "collection" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
     );
     let shouldHighlight = $derived(isDropAllowed(currentPath));
@@ -48,25 +48,25 @@
         if (isCol(node)) {
             node.meta.is_expanded = !node.meta.is_expanded;
 
-            treeNodesState.focussedNode = {
+            explorerState.focussedNode = {
                 type: "collection",
                 parentRelativePath: parentRelpath,
                 relativePath: relpath,
             };
         } else if (isReq(node)) {
-            treeNodesState.focussedNode = {
+            explorerState.focussedNode = {
                 type: "request",
                 parentRelativePath: parentRelpath,
                 relativePath: relpath,
             };
 
-            treeNodesState.activeRequest = {
+            explorerState.openRequest = {
                 parentRelativePath: parentRelpath,
                 self: node,
             };
 
-            if (!treeNodesState.openRequests.includes(node)) {
-                treeNodesState.openRequests.push(node);
+            if (!explorerState.backgroundRequests.includes(node)) {
+                explorerState.backgroundRequests.push(node);
             }
         } else {
             toast.error("Something went wrong while trying to focus on item");
@@ -106,12 +106,12 @@
         style="padding-left: {level * 8}px"
         class={cn(
             "focus-visible:ring-ring flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none",
-            treeNodesState.focussedNode.relativePath === currentPath
+            explorerState.focussedNode.relativePath === currentPath
                 ? "bg-accent"
                 : "hover:bg-accent/60",
         )}
         onclick={() => {
-            treeActionsState.createNewNode = null;
+            explorerActionsState.createNewNode = null;
 
             handleTreeItemFocus({ node, parentRelpath: parentPath, relpath: currentPath });
         }}

@@ -40,7 +40,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
     tauri_specta::collect_commands![
         get_shared_state,
         create_space,
-        set_active_space,
+        set_space,
         remove_space,
         get_spaceref,
         remove_cookie,
@@ -194,10 +194,10 @@ pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> 
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {
-    let active_space = store::get_active_spaceref().ok_or(CmdErr::Err {
-        message: "No active space".into(),
+    let space = store::get_spaceref().ok_or(CmdErr::Err {
+        message: "No space found".into(),
     })?;
-    let space_abspath = active_space.path.as_str();
+    let space_abspath = space.path.as_str();
     let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr::Err {
         message: e.to_string(),
     })?;
@@ -304,7 +304,7 @@ pub async fn create_space(
 
 #[specta::specta]
 #[tauri::command]
-pub fn set_active_space(
+pub fn set_space(
     space_reference: SpaceReference,
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
@@ -322,7 +322,7 @@ pub fn set_active_space(
 
     match space::parse_space(&space_abspath) {
         Ok(space) => {
-            store::set_active_spaceref(space_reference.clone()).map_err(|e| CmdErr::Err {
+            store::set_spaceref(space_reference.clone()).map_err(|e| CmdErr::Err {
                 message: e.to_string(),
             })?;
             store::insert_spaceref_if_missing(space_reference.clone()).map_err(|e| {
@@ -331,7 +331,7 @@ pub fn set_active_space(
                 }
             })?;
 
-            sharedstate.active_space = Some(space);
+            sharedstate.space = Some(space);
             sharedstate.spacerefs = store::get_spacerefs();
 
             Ok(())
@@ -353,20 +353,18 @@ pub fn remove_space(
         message: e.to_string(),
     })?;
 
-    let active_space = store::get_active_spaceref();
+    let space = store::get_spaceref();
 
-    if active_space.is_none() {
-        sharedstate.active_space = None;
+    if space.is_none() {
+        sharedstate.space = None;
 
         if let Some(valid_space_reference) = space::first_valid_spaceref() {
-            store::set_active_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr::Err {
+            store::set_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr::Err {
                 message: e.to_string(),
             })?;
 
-            if let Ok(active_space) =
-                space::parse_space(&PathBuf::from(&valid_space_reference.path))
-            {
-                sharedstate.active_space = Some(active_space);
+            if let Ok(space) = space::parse_space(&PathBuf::from(&valid_space_reference.path)) {
+                sharedstate.space = Some(space);
             }
         }
     }

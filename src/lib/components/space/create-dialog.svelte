@@ -44,12 +44,12 @@
     }
 
     async function handleCreateSpace() {
-        const spaceReference = await commands.createSpace({
+        const createSpaceResult = await commands.createSpace({
             name: createSpaceName,
             location: createSpaceLocation,
         });
 
-        if (spaceReference.status === "error") {
+        if (createSpaceResult.status === "error") {
             await commands.dispatchNotif({
                 title: "Something went wrong.",
                 body: `Unable to create space "${createSpaceName}", make sure the directory exists and try again.`,
@@ -58,7 +58,7 @@
             return;
         }
 
-        await sharedState.setActiveSpace(spaceReference.data);
+        await sharedState.setSpace(createSpaceResult.data);
         isOpen = false;
 
         await onCreate();

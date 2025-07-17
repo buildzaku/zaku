@@ -45,15 +45,15 @@ impl AppStore {
     }
 }
 
-pub fn get_active_spaceref() -> Option<SpaceReference> {
-    APP_STORE.read().ok()?.active_spaceref.clone()
+pub fn get_spaceref() -> Option<SpaceReference> {
+    APP_STORE.read().ok()?.spaceref.clone()
 }
 
-pub fn set_active_spaceref(space_reference: SpaceReference) -> Result<()> {
+pub fn set_spaceref(space_reference: SpaceReference) -> Result<()> {
     let mut app_store = APP_STORE
         .write()
         .map_err(|_| Error::LockError("Failed to acquire write lock".into()))?;
-    app_store.active_spaceref = Some(space_reference);
+    app_store.spaceref = Some(space_reference);
     app_store.persist()
 }
 
@@ -99,9 +99,9 @@ pub fn remove_spaceref(space_reference: SpaceReference) -> Result<()> {
         .spacerefs
         .retain(|r| r.path != space_reference.path);
 
-    if let Some(active) = &app_store.active_spaceref {
-        if active.path == space_reference.path {
-            app_store.active_spaceref = None;
+    if let Some(spaceref) = &app_store.spaceref {
+        if spaceref.path == space_reference.path {
+            app_store.spaceref = None;
         }
     }
 

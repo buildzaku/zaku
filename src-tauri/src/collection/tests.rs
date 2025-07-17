@@ -117,7 +117,7 @@ use crate::{
 
 //     let mut sharedstate = SharedState::default();
 //     space::create_space(dto, &mut sharedstate).expect("Failed to create space");
-//     let space_abspath = PathBuf::from(&sharedstate.active_space.as_ref().unwrap().abspath);
+//     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
 //     for col_dto in &collections_dto {
 //         collection::create_collections_all(&space_abspath, col_dto)
@@ -573,7 +573,7 @@ fn create_collection_empty_relpath_should_fail() {
 }
 
 #[test]
-fn create_collection_missing_active_space_should_fail() {
+fn create_collection_missing_space_should_fail() {
     let collection_dto = CreateCollectionDto {
         parent_relpath: "admin".into(),
         relpath: "Trending Posts".into(),

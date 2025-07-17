@@ -9,17 +9,17 @@
     import { Button } from "$lib/components/primitives/button";
     import { Badge } from "$lib/components/primitives/badge";
     import { HTTP_STATUS_DESCRIPTION } from "$lib/utils/constants";
-    import type { ActiveRequest } from "$lib/models";
+    import type { OpenRequest } from "$lib/models";
     import type { HttpRes, SpaceCookie } from "$lib/bindings";
     import { prettyJson, formatSize, formatElapsed } from "$lib/utils";
 
     type Props = {
         pane: PaneAPI;
         isCollapsed: boolean;
-        activeReq: ActiveRequest;
+        openReq: OpenRequest;
     };
 
-    let { pane, isCollapsed, activeReq }: Props = $props();
+    let { pane, isCollapsed, openReq }: Props = $props();
 </script>
 
 {#snippet httpResMeta(httpRes: HttpRes)}
@@ -134,13 +134,13 @@
     <div class="bg-card flex h-8 w-full items-center justify-between border-y border-t-transparent">
         {#if isCollapsed}
             <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b">
-                {#if (activeReq.self.status === "Success" || activeReq.self.status === "Error") && activeReq.self.response}
-                    {@render httpResMeta(activeReq.self.response)}
+                {#if (openReq.self.status === "Success" || openReq.self.status === "Error") && openReq.self.response}
+                    {@render httpResMeta(openReq.self.response)}
                 {/if}
                 {@render responseBtn(isCollapsed)}
             </div>
         {:else}
-            {#if activeReq.self.status === "Success" || activeReq.self.status === "Error"}
+            {#if openReq.self.status === "Success" || openReq.self.status === "Error"}
                 <div class="px-1.5">
                     <TabsList
                         class="grid auto-cols-min grid-flow-col justify-start gap-2 p-0 [&>*]:text-xs"
@@ -148,15 +148,15 @@
                         <TabsTrigger value="body">Body</TabsTrigger>
                         <TabsTrigger value="cookies">
                             {"Cookies".concat(
-                                activeReq.self.response?.cookies
-                                    ? ` (${activeReq.self.response?.cookies.length})`
+                                openReq.self.response?.cookies
+                                    ? ` (${openReq.self.response?.cookies.length})`
                                     : "",
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="headers">
                             {"Headers".concat(
-                                activeReq.self.response?.headers
-                                    ? ` (${activeReq.self.response?.headers.length})`
+                                openReq.self.response?.headers
+                                    ? ` (${openReq.self.response?.headers.length})`
                                     : "",
                             )}
                         </TabsTrigger>
@@ -165,8 +165,8 @@
             {/if}
 
             <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b">
-                {#if (activeReq.self.status === "Success" || activeReq.self.status === "Error") && activeReq.self.response}
-                    {@render httpResMeta(activeReq.self.response)}
+                {#if (openReq.self.status === "Success" || openReq.self.status === "Error") && openReq.self.response}
+                    {@render httpResMeta(openReq.self.response)}
                 {/if}
                 {@render responseBtn(isCollapsed)}
             </div>
@@ -180,14 +180,14 @@
     {#if !isCollapsed}
         <div class="bg-background flex h-[calc(100%-32px)] w-full">
             <TabsContent value="body" class="m-0 size-full">
-                {#if activeReq.self.status === "Idle"}
+                {#if openReq.self.status === "Idle"}
                     <div class="bg-card flex size-full items-center justify-center gap-2 pb-8">
                         <RocketIcon size="20" />
                         <span>
                             Hit <b class="font-semibold">Send</b> to make a request
                         </span>
                     </div>
-                {:else if activeReq.self.status === "Pending"}
+                {:else if openReq.self.status === "Pending"}
                     <div class="flex size-full items-center justify-center">
                         <RefreshCwIcon
                             strokeWidth={1.5}
@@ -196,7 +196,7 @@
                             class="mr-3 animate-spin"
                         />
                     </div>
-                {:else if activeReq.self.status === "Success" || activeReq.self.status === "Error"}
+                {:else if openReq.self.status === "Success" || openReq.self.status === "Error"}
                     <Tabs value="pretty" class="bg-card size-full">
                         <div class="flex items-center justify-end border-b px-3">
                             <TabsList class="my-1 auto-cols-min grid-flow-col gap-2 p-0">
@@ -210,7 +210,7 @@
                                 <CodeBlock
                                     language={json()}
                                     readOnly={true}
-                                    value={prettyJson(activeReq.self.response?.data)}
+                                    value={prettyJson(openReq.self.response?.data)}
                                     class="size-full"
                                 />
                             </TabsContent>
@@ -218,7 +218,7 @@
                                 <CodeBlock
                                     language={null}
                                     readOnly={true}
-                                    value={activeReq.self.response?.data}
+                                    value={openReq.self.response?.data}
                                     class="size-full"
                                 />
                             </TabsContent>
@@ -226,9 +226,7 @@
                                 <iframe
                                     title=""
                                     src="about:blank"
-                                    srcdoc={activeReq.self.response
-                                        ? activeReq.self.response.data
-                                        : ""}
+                                    srcdoc={openReq.self.response ? openReq.self.response.data : ""}
                                     class="size-full"
                                     loading="lazy"
                                     sandbox=""
@@ -239,8 +237,8 @@
                 {/if}
             </TabsContent>
             <TabsContent value="cookies" class="m-0 size-full">
-                {#if activeReq.self.response}
-                    {@render cookiesTable(activeReq.self.response.cookies)}
+                {#if openReq.self.response}
+                    {@render cookiesTable(openReq.self.response.cookies)}
                 {:else}
                     <div class="flex size-full items-center justify-center">
                         No cookies for you :(
@@ -248,8 +246,8 @@
                 {/if}
             </TabsContent>
             <TabsContent value="headers" class="m-0 size-full">
-                {#if activeReq.self.response}
-                    {@render headersTable(activeReq.self.response.headers)}
+                {#if openReq.self.response}
+                    {@render headersTable(openReq.self.response.headers)}
                 {:else}
                     <div class="flex size-full items-center justify-center">
                         No headers received

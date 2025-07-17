@@ -13,7 +13,7 @@
     import { ConfigurationPane } from "$lib/components/configuration-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
-    import { treeNodesState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
+    import { explorerState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
@@ -27,14 +27,14 @@
     let isResPaneCollapsed = $state(false);
 
     async function handleSend() {
-        const activeReqRef = treeNodesState.activeRequest;
-        if (!activeReqRef) return;
+        const openReqSnapshot = explorerState.openRequest;
+        if (!openReqSnapshot) return;
 
-        activeReqRef.self.status = "Pending";
+        openReqSnapshot.self.status = "Pending";
         const validProtocol = /^(https?:\/\/)/i;
-        if (!validProtocol.test(activeReqRef.self.config.url.raw ?? "")) {
-            activeReqRef.self.status = "Error";
-            activeReqRef.self.response = {
+        if (!validProtocol.test(openReqSnapshot.self.config.url.raw ?? "")) {
+            openReqSnapshot.self.status = "Error";
+            openReqSnapshot.self.response = {
                 data: "Invalid or missing protocol",
                 headers: [],
                 cookies: [],
@@ -42,11 +42,11 @@
             return;
         }
 
-        const url = new URL(activeReqRef.self.config.url.raw ?? "");
+        const url = new URL(openReqSnapshot.self.config.url.raw ?? "");
 
         const requestHeaders = [
             ...baseRequestHeaders,
-            ...(activeReqRef.self.config.headers ?? []),
+            ...(openReqSnapshot.self.config.headers ?? []),
         ].reduce((acc: Record<string, string>, [include, key, value]) => {
             if (include && !(key in acc)) {
                 acc[key] = value;
@@ -55,14 +55,14 @@
         }, {});
 
         if (
-            activeReqRef.self.config.content_type &&
-            activeReqRef.self.config.content_type !== REQUEST_BODY_TYPES.None
+            openReqSnapshot.self.config.content_type &&
+            openReqSnapshot.self.config.content_type !== REQUEST_BODY_TYPES.None
         ) {
             const hasContentType = Object.keys(requestHeaders).some(
                 k => k.toLowerCase() === "content-type",
             );
             if (!hasContentType) {
-                requestHeaders["Content-Type"] = activeReqRef.self.config.content_type;
+                requestHeaders["Content-Type"] = openReqSnapshot.self.config.content_type;
             }
         }
 
@@ -73,35 +73,35 @@
             path: url.pathname,
         };
         const req: HttpReq = {
-            meta: activeReqRef.self.meta,
+            meta: openReqSnapshot.self.meta,
             config: {
-                ...activeReqRef.self.config,
+                ...openReqSnapshot.self.config,
                 url: reqUrl,
             },
-            status: activeReqRef.self.status,
+            status: openReqSnapshot.self.status,
             response: null,
         };
 
         const httpRes = await commands.httpReq(req);
 
-        if (sharedState.activeSpace) {
-            const cookiesResult = await commands.getSpaceCookies(sharedState.activeSpace.abspath);
+        if (sharedState.space) {
+            const cookiesResult = await commands.getSpaceCookies(sharedState.space.abspath);
 
             if (cookiesResult.status === "ok") {
-                sharedState.activeSpace.cookies = cookiesResult.data;
+                sharedState.space.cookies = cookiesResult.data;
             }
         }
 
         if (httpRes.status === "error") {
-            activeReqRef.self.status = "Error";
-            activeReqRef.self.response = {
+            openReqSnapshot.self.status = "Error";
+            openReqSnapshot.self.response = {
                 data: httpRes.error.message,
                 headers: [],
                 cookies: [],
             };
         } else {
-            activeReqRef.self.response = httpRes.data;
-            activeReqRef.self.status =
+            openReqSnapshot.self.response = httpRes.data;
+            openReqSnapshot.self.status =
                 httpRes.data.status && httpRes.data.status >= 200 && httpRes.data.status < 300
                     ? "Success"
                     : "Error";
@@ -109,9 +109,9 @@
     }
 
     async function handleSave(event: KeyboardEvent) {
-        const activeSpaceRef = sharedState.activeSpace;
-        const activeReqRef = treeNodesState.activeRequest;
-        if (!activeSpaceRef || !activeReqRef) {
+        const spaceSnapshot = sharedState.space;
+        const openReqSnapshot = explorerState.openRequest;
+        if (!spaceSnapshot || !openReqSnapshot) {
             return;
         }
 
@@ -119,54 +119,57 @@
             event.preventDefault();
 
             const absoluteReqPath = joinPaths([
-                activeSpaceRef.abspath,
-                activeReqRef.parentRelativePath,
-                activeReqRef.self.meta.file_name,
+                spaceSnapshot.abspath,
+                openReqSnapshot.parentRelativePath,
+                openReqSnapshot.self.meta.file_name,
             ]);
 
             await debounced.flush(absoluteReqPath);
             await commands.writeReqbufToReqtoml(
-                activeSpaceRef.abspath,
-                joinPaths([activeReqRef.parentRelativePath, activeReqRef.self.meta.file_name]),
+                spaceSnapshot.abspath,
+                joinPaths([
+                    openReqSnapshot.parentRelativePath,
+                    openReqSnapshot.self.meta.file_name,
+                ]),
             );
 
             isActiveReqSavedToFs = true;
-            activeReqRef.self.meta.has_unsaved_changes = false;
+            openReqSnapshot.self.meta.has_unsaved_changes = false;
         }
     }
 
-    const activeSpaceRef = treeNodesState.activeRequest;
+    const spaceSnapshot = explorerState.openRequest;
     let isActiveReqSavedToFs = false;
-    let prevActiveReqRelPath = activeSpaceRef
-        ? `${activeSpaceRef.parentRelativePath}/${activeSpaceRef.self.meta.file_name}`
+    let prevActiveReqRelPath = spaceSnapshot
+        ? `${spaceSnapshot.parentRelativePath}/${spaceSnapshot.self.meta.file_name}`
         : null;
 
     $effect(() => {
         // Important hack to keep the effect deeply reactive
-        JSON.stringify(treeNodesState.activeRequest);
+        JSON.stringify(explorerState.openRequest);
 
-        const activeSpaceRef = sharedState.activeSpace;
-        const activeReqRef = treeNodesState.activeRequest;
+        const spaceSnapshot = sharedState.space;
+        const openReqSnapshot = explorerState.openRequest;
 
         if (isActiveReqSavedToFs) {
             isActiveReqSavedToFs = false;
             return;
         }
 
-        const activeReqRelPath = activeReqRef
-            ? `${activeReqRef.parentRelativePath}/${activeReqRef.self.meta.file_name}`
+        const openReqRelPath = openReqSnapshot
+            ? `${openReqSnapshot.parentRelativePath}/${openReqSnapshot.self.meta.file_name}`
             : null;
 
         if (
-            activeSpaceRef &&
-            activeReqRef &&
+            spaceSnapshot &&
+            openReqSnapshot &&
             prevActiveReqRelPath &&
-            prevActiveReqRelPath === activeReqRelPath
+            prevActiveReqRelPath === openReqRelPath
         ) {
-            debounced.saveRequestToBuffer(activeSpaceRef.abspath, activeReqRef);
-            activeReqRef.self.meta.has_unsaved_changes = true;
+            debounced.saveRequestToBuffer(spaceSnapshot.abspath, openReqSnapshot);
+            openReqSnapshot.self.meta.has_unsaved_changes = true;
         } else {
-            prevActiveReqRelPath = activeReqRelPath;
+            prevActiveReqRelPath = openReqRelPath;
         }
     });
 </script>
@@ -195,24 +198,24 @@
             class="bg-card relative mt-px mr-1.5 mb-1.5 rounded-md border border-l-0"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
-            {@const activeReqRef = treeNodesState.activeRequest}
-            {#if activeReqRef}
+            {@const openReqSnapshot = explorerState.openRequest}
+            {#if openReqSnapshot}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
                         <div class="mb-3 flex">
-                            {activeReqRef.self.meta.name}
+                            {openReqSnapshot.self.meta.name}
                         </div>
                         <div>
                             <form class="flex gap-2">
-                                <SelectMethod bind:selected={activeReqRef.self.config.method} />
+                                <SelectMethod bind:selected={openReqSnapshot.self.config.method} />
                                 <Input
-                                    bind:value={activeReqRef.self.config.url.raw}
+                                    bind:value={openReqSnapshot.self.config.url.raw}
                                     type="text"
                                     class="font-mono text-xs"
                                 />
                                 <Button
                                     type="submit"
-                                    disabled={activeReqRef.self.status === "Pending"}
+                                    disabled={openReqSnapshot.self.status === "Pending"}
                                     onclick={handleSend}>Send</Button
                                 >
                             </form>
@@ -235,7 +238,7 @@
                         <ConfigurationPane
                             pane={cfgPane}
                             bind:isCollapsed={isReqPaneCollapsed}
-                            bind:config={activeReqRef.self.config}
+                            bind:config={openReqSnapshot.self.config}
                         />
                     </ResizablePane>
                     <ResizableHandle withHandle />
@@ -256,7 +259,7 @@
                         <ResponsePane
                             pane={resPane}
                             isCollapsed={isResPaneCollapsed}
-                            activeReq={activeReqRef}
+                            openReq={openReqSnapshot}
                         />
                     </ResizablePane>
                 </ResizablePaneGroup>

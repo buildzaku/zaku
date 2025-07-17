@@ -3,7 +3,7 @@
     import { listen, TauriEvent } from "@tauri-apps/api/event";
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
-    import { sharedState, treeActionsState, treeNodesState } from "$lib/state.svelte";
+    import { sharedState, explorerActionsState, explorerState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
@@ -54,7 +54,7 @@
             inputName = "";
             await sharedState.synchronize();
 
-            treeNodesState.focussedNode = {
+            explorerState.focussedNode = {
                 type: "collection",
                 parentRelativePath: createCollectionResult.data.parent_relpath,
                 relativePath: createCollectionResult.data.relpath,
@@ -83,7 +83,7 @@
             inputName = "";
             await sharedState.synchronize();
 
-            treeNodesState.focussedNode = {
+            explorerState.focussedNode = {
                 type: "request",
                 parentRelativePath: createReqResult.data.parent_relpath,
                 relativePath: createReqResult.data.relpath,
@@ -138,7 +138,7 @@
                 type="text"
                 onfocusout={async event => {
                     if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
-                        treeActionsState.createNewNode = null;
+                        explorerActionsState.createNewNode = null;
                         inputName = "";
                     } else {
                         inputName = "";

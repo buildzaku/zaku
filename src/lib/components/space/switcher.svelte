@@ -2,7 +2,7 @@
     import { goto } from "$app/navigation";
     import { ChevronDownIcon, CheckIcon, PyramidIcon } from "@lucide/svelte";
 
-    import { treeActionsState, treeNodesState, sharedState } from "$lib/state.svelte";
+    import { explorerActionsState, explorerState, sharedState } from "$lib/state.svelte";
     import { buttonVariants } from "$lib/components/primitives/button";
     import {
         DropdownMenu,
@@ -26,20 +26,22 @@
 
     async function handleOpenExistingSpace() {
         try {
-            const cmdResult = await commands.openDirDialog({ title: "Open an existing Space" });
-            if (cmdResult.status === "error") {
+            const openDirDialogResult = await commands.openDirDialog({
+                title: "Open an existing Space",
+            });
+            if (openDirDialogResult.status === "error") {
                 throw new Error("Unable to open existing space");
             }
-            if (!cmdResult.data) {
+            if (!openDirDialogResult.data) {
                 return;
             }
 
-            const spaceRefCmdResult = await commands.getSpaceref(cmdResult.data);
-            if (spaceRefCmdResult.status === "error") {
-                throw new Error(`Cannot get space reference for ${cmdResult.data}`);
+            const getSpaceRefResult = await commands.getSpaceref(openDirDialogResult.data);
+            if (getSpaceRefResult.status === "error") {
+                throw new Error(`Cannot get space reference for ${openDirDialogResult.data}`);
             }
 
-            await sharedState.setActiveSpace(spaceRefCmdResult.data);
+            await sharedState.setSpace(getSpaceRefResult.data);
             await goto("/space");
         } catch (err) {
             console.error(err);
@@ -51,18 +53,14 @@
     }
 
     async function handleDeleteSpace() {
-        if (sharedState.activeSpace) {
+        if (sharedState.space) {
             try {
-                const spaceRefCmdResult = await commands.getSpaceref(
-                    sharedState.activeSpace.abspath,
-                );
-                if (spaceRefCmdResult.status === "error") {
-                    throw new Error(
-                        `Cannot get space reference for ${sharedState.activeSpace.abspath}`,
-                    );
+                const getSpaceRefResult = await commands.getSpaceref(sharedState.space.abspath);
+                if (getSpaceRefResult.status === "error") {
+                    throw new Error(`Cannot get space reference for ${sharedState.space.abspath}`);
                 }
 
-                await commands.removeSpace(spaceRefCmdResult.data);
+                await commands.removeSpace(getSpaceRefResult.data);
                 await sharedState.synchronize();
 
                 return;
@@ -73,7 +71,7 @@
     }
 </script>
 
-{#if sharedState.activeSpace}
+{#if sharedState.space}
     <DropdownMenu>
         <DropdownMenuTrigger
             class={cn(
@@ -91,7 +89,7 @@
                     <span
                         class="min-w-0 truncate overflow-hidden pr-0.5 text-ellipsis whitespace-nowrap"
                     >
-                        {sharedState.activeSpace.meta.name}
+                        {sharedState.space.meta.name}
                     </span>
                     <ChevronDownIcon size={14} class="max-h-[14px] max-w-[14px]" />
                 </div>
@@ -111,15 +109,15 @@
                         <DropdownMenuItem
                             class="text-small flex h-7 justify-between rounded-md px-2"
                             onclick={async () => {
-                                await sharedState.setActiveSpace(spaceRef);
-                                treeActionsState.reset();
-                                treeNodesState.reset();
+                                await sharedState.setSpace(spaceRef);
+                                explorerActionsState.reset();
+                                explorerState.reset();
                             }}
                         >
                             <div class="flex items-center overflow-hidden">
                                 <span class="truncate">{spaceRef.name}</span>
                             </div>
-                            {#if spaceRef.path === sharedState.activeSpace.abspath}
+                            {#if spaceRef.path === sharedState.space.abspath}
                                 <CheckIcon size={14} class="max-h-[14px] max-w-[14px]" />
                             {/if}
                         </DropdownMenuItem>

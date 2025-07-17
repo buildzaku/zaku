@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { sharedState, treeActionsState } from "$lib/state.svelte";
+    import { sharedState, explorerActionsState } from "$lib/state.svelte";
     import { Button, buttonVariants } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon, XIcon } from "@lucide/svelte";
     import type { PaneAPI } from "paneforge";
@@ -45,15 +45,15 @@
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
     let spaceSettingsStr: string = $state(
-        sharedState.activeSpace ? JSON.stringify(sharedState.activeSpace.settings) : String(),
+        sharedState.space ? JSON.stringify(sharedState.space.settings) : String(),
     );
 
     let shouldRenderCreateNewRequestInput = $derived(
-        treeActionsState.createNewNode === "request" &&
+        explorerActionsState.createNewNode === "request" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        treeActionsState.createNewNode === "collection" &&
+        explorerActionsState.createNewNode === "collection" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
 </script>
@@ -182,8 +182,8 @@
     </Dialog>
 {/snippet}
 
-{#if sharedState.activeSpace}
-    {@const spaceRef = sharedState.activeSpace}
+{#if sharedState.space}
+    {@const spaceSnapshot = sharedState.space}
     <div class="flex size-full flex-col justify-between">
         <!-- align-marker: matches ResizablePane's mt-px -->
         <div class="flex w-full items-center justify-center gap-1.5 border-b p-1.5 pt-px">
@@ -235,7 +235,10 @@
                     <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
-                    <TreeNodeRoot currentPath={RELATIVE_SPACE_ROOT} root={spaceRef.root_collection}>
+                    <TreeNodeRoot
+                        currentPath={RELATIVE_SPACE_ROOT}
+                        root={spaceSnapshot.root_collection}
+                    >
                         {#if shouldRenderCreateNewRequestInput}
                             <TreeNodeCreate
                                 type="request"
@@ -243,7 +246,7 @@
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.root_collection.requests as request (request.meta.file_name)}
+                        {#each spaceSnapshot.root_collection.requests as request (request.meta.file_name)}
                             <TreeNodeContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={request.meta.file_name}
@@ -259,7 +262,7 @@
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.root_collection.collections as collection (collection.meta.dir_name)}
+                        {#each spaceSnapshot.root_collection.collections as collection (collection.meta.dir_name)}
                             <TreeNodeContent
                                 parentPath={RELATIVE_SPACE_ROOT}
                                 currentPath={collection.meta.dir_name}
@@ -274,13 +277,13 @@
 
         {#if isCollapsed}
             <div class="flex flex-col items-center justify-between gap-1.5 border-t p-1.5">
-                {@render cookiesButton(spaceRef)}
-                {@render settingsButton(spaceRef)}
+                {@render cookiesButton(spaceSnapshot)}
+                {@render settingsButton(spaceSnapshot)}
             </div>
         {:else}
             <div class="flex items-center justify-between gap-1.5 border-t p-1.5">
-                {@render settingsButton(spaceRef)}
-                {@render cookiesButton(spaceRef)}
+                {@render settingsButton(spaceSnapshot)}
+                {@render cookiesButton(spaceSnapshot)}
             </div>
         {/if}
     </div>

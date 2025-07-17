@@ -68,12 +68,12 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
         name: dto.name,
     };
 
-    store::set_active_spaceref(spaceref.clone())?;
+    store::set_spaceref(spaceref.clone())?;
     spacerefs.push(spaceref.clone());
     store::set_spacerefs(spacerefs.clone())?;
 
-    if let Ok(active_space) = parse_space(&PathBuf::from(&spaceref.path)) {
-        sharedstate.active_space = Some(active_space);
+    if let Ok(space) = parse_space(&PathBuf::from(&spaceref.path)) {
+        sharedstate.space = Some(space);
         sharedstate.spacerefs = spacerefs;
     }
 

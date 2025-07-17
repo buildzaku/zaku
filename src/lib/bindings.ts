@@ -19,12 +19,9 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async setActiveSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
+    async setSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
         try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("set_active_space", { spaceReference }),
-            };
+            return { status: "ok", data: await TAURI_INVOKE("set_space", { spaceReference }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -252,7 +249,7 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
-export type SharedState = { active_space: Space | null; spacerefs: SpaceReference[] };
+export type SharedState = { space: Space | null; spacerefs: SpaceReference[] };
 export type Space = {
     abspath: string;
     meta: SpaceMeta;

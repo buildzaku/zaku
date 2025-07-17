@@ -40,7 +40,7 @@ fn main() {
 
     let app = tauri::Builder::default()
         .manage(Mutex::new(SharedState {
-            active_space: None,
+            space: None,
             spacerefs: Vec::new(),
         }))
         .plugin(tauri_plugin_notification::init())

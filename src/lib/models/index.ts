@@ -29,7 +29,7 @@ export type FocussedTreeNode =
           relativePath: string;
       };
 
-export type ActiveRequest = {
+export type OpenRequest = {
     parentRelativePath: string;
     self: HttpReq;
 };

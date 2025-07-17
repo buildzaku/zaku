@@ -3,23 +3,23 @@ import { toast } from "svelte-sonner";
 
 import { version } from "$app/environment";
 
-import type { ActiveRequest, DragPayload, FocussedTreeNode } from "$lib/models";
+import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
-import type { SpaceReference, Space, HttpReq } from "$lib/bindings";
+import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
 import { joinPaths } from "$lib/components/tree-item/utils.svelte";
 
 class SharedState {
-    public activeSpace: Space | null = $state(null);
+    public space: Space | null = $state(null);
     public spaceRefs: SpaceReference[] = $state([]);
 
     public async synchronize() {
         const getSharedStateResult = await commands.getSharedState();
 
         if (getSharedStateResult.status === "ok") {
-            this.activeSpace = getSharedStateResult.data.active_space;
+            this.space = getSharedStateResult.data.space;
             this.spaceRefs = getSharedStateResult.data.spacerefs;
 
-            treeActionsState.reset();
+            explorerActionsState.reset();
             await tick();
         } else {
             console.error(getSharedStateResult.error);
@@ -27,13 +27,13 @@ class SharedState {
         }
     }
 
-    public async setActiveSpace(spaceReference: SpaceReference) {
-        const setActiveSpaceResult = await commands.setActiveSpace(spaceReference);
+    public async setSpace(spaceReference: SpaceReference) {
+        const setSpaceResult = await commands.setSpace(spaceReference);
 
-        if (setActiveSpaceResult.status === "ok") {
+        if (setSpaceResult.status === "ok") {
             await this.synchronize();
         } else {
-            console.error(setActiveSpaceResult.error);
+            console.error(setSpaceResult.error);
             toast.error("Something went wrong while setting space");
         }
 
@@ -43,10 +43,10 @@ class SharedState {
 
 export const sharedState = new SharedState();
 
-class TreeActionsState {
+class ExplorerActionsState {
     public dragPayload: DragPayload | null = $state(null);
     public dropTargetPath: string | null = $state(null);
-    public createNewNode: "collection" | "request" | null = $state(null);
+    public createNewNode: NodeType | null = $state(null);
 
     public reset() {
         this.dragPayload = null;
@@ -55,9 +55,9 @@ class TreeActionsState {
     }
 }
 
-export const treeActionsState = new TreeActionsState();
+export const explorerActionsState = new ExplorerActionsState();
 
-class TreeNodesState {
+class ExplorerState {
     #rootNode: FocussedTreeNode = {
         type: "collection",
         relativePath: "",
@@ -65,42 +65,42 @@ class TreeNodesState {
     };
 
     public focussedNode: FocussedTreeNode = $state(this.#rootNode);
-    public activeRequest: ActiveRequest | null = $state(null);
-    public openRequests: HttpReq[] = $state([]);
+    public openRequest: OpenRequest | null = $state(null);
+    public backgroundRequests: HttpReq[] = $state([]);
 
     public reset() {
         this.focussedNode = this.#rootNode;
-        this.activeRequest = null;
-        this.openRequests = [];
+        this.openRequest = null;
+        this.backgroundRequests = [];
     }
 }
 
-export const treeNodesState = new TreeNodesState();
+export const explorerState = new ExplorerState();
 
 type AbsoluteRequestPath = string;
 
 type DebouncedState = {
     timer: NodeJS.Timeout;
     absoluteSpacePath: string;
-    activeRequest: ActiveRequest;
+    openRequest: OpenRequest;
 };
 
 class Debounced {
     #state: Map<AbsoluteRequestPath, DebouncedState> = new Map();
     #DELAY = 1500;
 
-    async #invokeSaveReqToBuf(absoluteSpacePath: string, activeRequest: ActiveRequest) {
+    async #invokeSaveReqToBuf(absoluteSpacePath: string, openRequest: OpenRequest) {
         await commands.persistToReqbuf(
             absoluteSpacePath,
-            activeRequest.parentRelativePath,
-            activeRequest.self,
+            openRequest.parentRelativePath,
+            openRequest.self,
         );
     }
-    public saveRequestToBuffer(absoluteSpacePath: string, activeRequest: ActiveRequest): void {
+    public saveRequestToBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
         const absoluteRequestPath = joinPaths([
             absoluteSpacePath,
-            activeRequest.parentRelativePath,
-            activeRequest.self.meta.file_name,
+            openRequest.parentRelativePath,
+            openRequest.self.meta.file_name,
         ]);
 
         const current = this.#state.get(absoluteRequestPath);
@@ -109,14 +109,14 @@ class Debounced {
         }
 
         const timer = setTimeout(() => {
-            this.#invokeSaveReqToBuf(absoluteSpacePath, activeRequest);
+            this.#invokeSaveReqToBuf(absoluteSpacePath, openRequest);
             this.#state.delete(absoluteRequestPath);
         }, this.#DELAY);
 
         this.#state.set(absoluteRequestPath, {
             timer,
             absoluteSpacePath,
-            activeRequest,
+            openRequest,
         });
     }
     public isPending(absoluteRequestPath: string): boolean {
@@ -125,15 +125,15 @@ class Debounced {
     public async flush(absoluteRequestPath: string): Promise<void> {
         const currentState = this.#state.get(absoluteRequestPath);
         if (currentState) {
-            const { timer, absoluteSpacePath, activeRequest } = currentState;
-            await this.#invokeSaveReqToBuf(absoluteSpacePath, activeRequest);
+            const { timer, absoluteSpacePath, openRequest } = currentState;
+            await this.#invokeSaveReqToBuf(absoluteSpacePath, openRequest);
             this.#state.delete(absoluteRequestPath);
             clearTimeout(timer);
         }
     }
     public async flushAll(): Promise<void> {
-        for (const { timer, absoluteSpacePath, activeRequest } of this.#state.values()) {
-            await this.#invokeSaveReqToBuf(absoluteSpacePath, activeRequest);
+        for (const { timer, absoluteSpacePath, openRequest } of this.#state.values()) {
+            await this.#invokeSaveReqToBuf(absoluteSpacePath, openRequest);
             clearTimeout(timer);
         }
     }
