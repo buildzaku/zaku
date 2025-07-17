@@ -6,6 +6,9 @@ use crate::collection::models::Collection;
 use crate::error::{Error, Result};
 use crate::state::SharedState;
 
+#[cfg(test)]
+pub mod tests;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeType {
