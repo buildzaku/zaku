@@ -94,7 +94,7 @@ pub fn write_reqbuf_to_reqtoml(space_abspath: &Path, req_relpath: &Path) -> Resu
     let relpath_str = req_relpath.to_string_lossy().to_string();
     if let Some(req_buf) = spacebuf_wlock.requests.get(&relpath_str) {
         let req_toml = ReqToml::from_reqbuf(req_buf);
-        request::persist_reqtoml(&space_abspath.join(req_relpath), &req_toml)?;
+        request::update_reqtoml(&space_abspath.join(req_relpath), &req_toml)?;
     }
 
     spacebuf_wlock.requests.remove(&relpath_str);
