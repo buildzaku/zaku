@@ -2,7 +2,7 @@ import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { TreeNodePreview } from "$lib/components/tree-item";
-import { treeActionsState, treeNodesState } from "$lib/state.svelte";
+import { sharedState, treeActionsState, treeNodesState } from "$lib/state.svelte";
 import type { DragOverDto, DragPayload, TreeNode } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { commands } from "$lib/bindings";
@@ -126,10 +126,20 @@ export async function handleDrop(event: DragEvent) {
     const fileOrDirName = isCol(treeActionsState.dragPayload.node)
         ? treeActionsState.dragPayload.node.meta.dir_name
         : treeActionsState.dragPayload.node.meta.file_name;
-    commands.handleTreeNodeDrop({
-        src_relpath: buildPath(treeActionsState.dragPayload.parentRelativePath, fileOrDirName),
-        dest_relpath: buildPath(treeActionsState.dropTargetPath, fileOrDirName),
+    const src_relpath = buildPath(treeActionsState.dragPayload.parentRelativePath, fileOrDirName);
+    const dest_relpath = buildPath(treeActionsState.dropTargetPath, fileOrDirName); // ← Add filename here
+
+    console.log({ src_relpath, dest_relpath });
+
+    const treeNodeDropResult = await commands.handleTreeNodeDrop({
+        src_relpath,
+        dest_relpath,
     });
+    if (treeNodeDropResult.status === "error") {
+        console.error(JSON.stringify(treeNodeDropResult.error, null, 2));
+    }
+
+    await sharedState.synchronize();
 }
 
 // export async function handleDrop(event: DragEvent) {

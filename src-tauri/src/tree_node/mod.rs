@@ -48,36 +48,38 @@ pub fn handle_tree_node_drop(
     dto: &HandleTreeNodeDropDto,
     sharedstate: &mut SharedState,
 ) -> Result<()> {
-    // Get the active space
     let active_space = sharedstate
         .active_space
         .as_mut()
         .ok_or_else(|| Error::InvalidPath("No active space found".to_string()))?;
 
-    // Parse source and destination paths
-    let src_path = Path::new(&dto.src_relpath);
-    let dest_path = Path::new(&dto.dest_relpath);
+    println!(
+        "Space collections: {:?}",
+        active_space
+            .root_collection
+            .iter()
+            .map(|c| &c.meta.dir_name)
+            .collect::<Vec<_>>()
+    );
 
-    let src_filename = src_path
+    let src_abspath = Path::new(&active_space.abspath).join(&dto.src_relpath);
+    let dest_abspath = Path::new(&active_space.abspath).join(&dto.dest_relpath);
+    let src_filename = src_abspath
         .file_name()
         .ok_or_else(|| Error::InvalidPath("Invalid source path".to_string()))?
         .to_string_lossy()
         .to_string();
-
-    let src_parent = src_path
+    let src_parent = src_abspath
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let dest_parent = dest_abspath
         .parent()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let dest_parent = dest_path
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let is_collection = !src_filename.ends_with(".toml");
 
-    // Check if it's a collection or request based on file extension
-    let is_collection = !src_filename.ends_with(".http");
-
-    // Basic validation
     if src_parent == dest_parent {
         return Err(Error::InvalidPath(
             "Cannot drop node to the same parent".to_string(),
@@ -88,6 +90,16 @@ pub fn handle_tree_node_drop(
     let src_parent_collection = if src_parent.is_empty() {
         &mut active_space.root_collection
     } else {
+        println!("Trying to navigate to: '{}'", dest_parent);
+        println!(
+            "Available collections: {:?}",
+            space
+                .collections
+                .iter()
+                .map(|c| &c.meta.dir_name)
+                .collect::<Vec<_>>()
+        );
+
         navigate_to_collection(&mut active_space.root_collection, &src_parent)?
     };
 
@@ -174,10 +186,6 @@ pub fn handle_tree_node_drop(
                 .sort_by(|a, b| a.meta.file_name.cmp(&b.meta.file_name));
         }
     }
-
-    // Move the actual file/directory on the filesystem
-    let src_abspath = Path::new(&active_space.abspath).join(&dto.src_relpath);
-    let dest_abspath = Path::new(&active_space.abspath).join(&dto.dest_relpath);
 
     // Ensure the destination directory exists
     if let Some(dest_dir) = dest_abspath.parent() {

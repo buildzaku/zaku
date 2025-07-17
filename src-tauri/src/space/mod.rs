@@ -58,7 +58,6 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
     let config = SpaceConfigFile {
         meta: SpaceMeta {
             name: dto.name.clone(),
-            is_expanded: true,
         },
     };
 
