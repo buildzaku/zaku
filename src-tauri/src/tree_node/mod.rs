@@ -15,6 +15,12 @@ pub struct HandleTreeNodeDropDto {
     pub dest_relpath: String,
 }
 
+#[derive(Clone, Debug)]
+enum TreeNode {
+    Collection(Box<Collection>),
+    Request(Box<HttpReq>),
+}
+
 // Utility functions
 fn path_segments(path: &str) -> Vec<&str> {
     path.split('/')
@@ -61,12 +67,12 @@ pub fn handle_tree_node_drop(
     let src_parent = src_path
         .parent()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| "".to_string());
+        .unwrap_or_default();
 
     let dest_parent = dest_path
         .parent()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| "".to_string());
+        .unwrap_or_default();
 
     // Check if it's a collection or request based on file extension
     let is_collection = !src_filename.ends_with(".http");
@@ -92,13 +98,13 @@ pub fn handle_tree_node_drop(
             .collections
             .iter()
             .position(|col| col.meta.dir_name == src_filename)
-            .ok_or_else(|| Error::InvalidPath(format!("Collection not found: {}", src_filename)))?;
+            .ok_or_else(|| Error::InvalidPath(format!("Collection not found: {src_filename}")))?;
 
         let collection = src_parent_collection.collections.remove(pos);
 
         // Validate: don't allow moving collection into itself or its children
         if !dest_parent.is_empty()
-            && dest_parent.starts_with(&format!("{}/{}", src_parent, src_filename))
+            && dest_parent.starts_with(&format!("{src_parent}/{src_filename}"))
         {
             // Put it back and return error
             src_parent_collection.collections.insert(pos, collection);
@@ -107,7 +113,7 @@ pub fn handle_tree_node_drop(
             ));
         }
 
-        TreeNode::Collection(collection)
+        TreeNode::Collection(Box::new(collection))
     } else {
         // Find and remove request
         let pos = src_parent_collection
@@ -116,7 +122,7 @@ pub fn handle_tree_node_drop(
             .position(|req| req.meta.file_name == src_filename)
             .ok_or_else(|| Error::InvalidPath(format!("Request not found: {}", src_filename)))?;
 
-        TreeNode::Request(src_parent_collection.requests.remove(pos))
+        TreeNode::Request(Box::new(src_parent_collection.requests.remove(pos)))
     };
 
     // Find the destination parent collection
@@ -141,7 +147,7 @@ pub fn handle_tree_node_drop(
                 )));
             }
 
-            dest_parent_collection.collections.push(collection);
+            dest_parent_collection.collections.push(*collection);
             dest_parent_collection.collections.sort_by(|a, b| {
                 a.meta
                     .dir_name
@@ -162,7 +168,7 @@ pub fn handle_tree_node_drop(
                 )));
             }
 
-            dest_parent_collection.requests.push(request);
+            dest_parent_collection.requests.push(*request);
             dest_parent_collection
                 .requests
                 .sort_by(|a, b| a.meta.file_name.cmp(&b.meta.file_name));
@@ -200,11 +206,4 @@ pub fn handle_tree_node_drop(
     fs::rename(&src_full_path, &dest_full_path)?;
 
     Ok(())
-}
-
-// Enum to represent either a collection or request
-#[derive(Clone, Debug)]
-enum TreeNode {
-    Collection(Collection),
-    Request(HttpReq),
 }

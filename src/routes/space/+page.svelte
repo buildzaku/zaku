@@ -13,7 +13,7 @@
     import { ConfigurationPane } from "$lib/components/configuration-pane";
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
-    import { treeItemsState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
+    import { treeNodesState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
     import { joinPaths } from "$lib/components/tree-item/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
@@ -27,7 +27,7 @@
     let isResPaneCollapsed = $state(false);
 
     async function handleSend() {
-        const activeReqRef = treeItemsState.activeRequest;
+        const activeReqRef = treeNodesState.activeRequest;
         if (!activeReqRef) return;
 
         activeReqRef.self.status = "Pending";
@@ -110,7 +110,7 @@
 
     async function handleSave(event: KeyboardEvent) {
         const activeSpaceRef = sharedState.activeSpace;
-        const activeReqRef = treeItemsState.activeRequest;
+        const activeReqRef = treeNodesState.activeRequest;
         if (!activeSpaceRef || !activeReqRef) {
             return;
         }
@@ -135,7 +135,7 @@
         }
     }
 
-    const activeSpaceRef = treeItemsState.activeRequest;
+    const activeSpaceRef = treeNodesState.activeRequest;
     let isActiveReqSavedToFs = false;
     let prevActiveReqRelPath = activeSpaceRef
         ? `${activeSpaceRef.parentRelativePath}/${activeSpaceRef.self.meta.file_name}`
@@ -143,10 +143,10 @@
 
     $effect(() => {
         // Important hack to keep the effect deeply reactive
-        JSON.stringify(treeItemsState.activeRequest);
+        JSON.stringify(treeNodesState.activeRequest);
 
         const activeSpaceRef = sharedState.activeSpace;
-        const activeReqRef = treeItemsState.activeRequest;
+        const activeReqRef = treeNodesState.activeRequest;
 
         if (isActiveReqSavedToFs) {
             isActiveReqSavedToFs = false;
@@ -195,7 +195,7 @@
             class="bg-card relative mt-px mr-1.5 mb-1.5 rounded-md border border-l-0"
         >
             <ResizableHandle withHandle class="absolute z-10 h-full" />
-            {@const activeReqRef = treeItemsState.activeRequest}
+            {@const activeReqRef = treeNodesState.activeRequest}
             {#if activeReqRef}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">

@@ -2,7 +2,7 @@
     import { goto } from "$app/navigation";
     import { ChevronDownIcon, CheckIcon, PyramidIcon } from "@lucide/svelte";
 
-    import { treeActionsState, treeItemsState, sharedState } from "$lib/state.svelte";
+    import { treeActionsState, treeNodesState, sharedState } from "$lib/state.svelte";
     import { buttonVariants } from "$lib/components/primitives/button";
     import {
         DropdownMenu,
@@ -113,7 +113,7 @@
                             onclick={async () => {
                                 await sharedState.setActiveSpace(spaceRef);
                                 treeActionsState.reset();
-                                treeItemsState.reset();
+                                treeNodesState.reset();
                             }}
                         >
                             <div class="flex items-center overflow-hidden">

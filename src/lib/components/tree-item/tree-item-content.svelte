@@ -152,7 +152,7 @@
 
     {#if isCol(node)}
         {#if shouldRenderCreateNewRequestInput}
-            <TreeNodeCreate type={"request"} parentRelativePath={currentPath} level={level + 1} />
+            <TreeNodeCreate type="request" parentRelativePath={currentPath} level={level + 1} />
         {/if}
 
         {#if node.meta.is_expanded}
@@ -167,11 +167,7 @@
         {/if}
 
         {#if shouldRenderCreateNewCollectionInput}
-            <TreeNodeCreate
-                type={"collection"}
-                parentRelativePath={currentPath}
-                level={level + 1}
-            />
+            <TreeNodeCreate type="collection" parentRelativePath={currentPath} level={level + 1} />
         {/if}
         {#if node.meta.is_expanded}
             {#each node.collections as collection (buildPath(currentPath, collection.meta.dir_name))}
