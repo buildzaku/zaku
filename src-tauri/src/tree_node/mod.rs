@@ -54,16 +54,32 @@ fn get_node_type(abspath: &Path) -> Result<NodeType> {
     Err(Error::InvalidPath("Invalid node type".to_string()))
 }
 
-fn navigate_to_collection<'a>(
-    root: &'a mut Collection,
-    relpath: &str,
-) -> Result<&'a mut Collection> {
-    let mut current = root;
+pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a Collection> {
+    let mut cur_collection = root;
 
-    for component in Path::new(relpath).components() {
+    for component in relpath.components() {
         if let std::path::Component::Normal(segment) = component {
             let segment_str = segment.to_string_lossy();
-            current = current
+            cur_collection = cur_collection
+                .collections
+                .iter()
+                .find(|col| col.meta.dir_name == segment_str)
+                .ok_or_else(|| {
+                    Error::InvalidPath(format!("Collection not found: {}", segment_str))
+                })?;
+        }
+    }
+
+    Ok(cur_collection)
+}
+
+fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&'a mut Collection> {
+    let mut cur_collection = root;
+
+    for component in relpath.components() {
+        if let std::path::Component::Normal(segment) = component {
+            let segment_str = segment.to_string_lossy();
+            cur_collection = cur_collection
                 .collections
                 .iter_mut()
                 .find(|col| col.meta.dir_name == segment_str)
@@ -73,7 +89,7 @@ fn navigate_to_collection<'a>(
         }
     }
 
-    Ok(current)
+    Ok(cur_collection)
 }
 
 fn execute_filesystem_move(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
@@ -119,39 +135,31 @@ pub fn handle_tree_node_drop(
 
     let src_parent_relpath = Path::new(&dto.src_relpath)
         .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
+        .unwrap_or_else(|| Path::new(""));
     let dest_parent_relpath = Path::new(&dto.dest_relpath)
         .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+        .unwrap_or_else(|| Path::new(""));
 
     let src_abspath = Path::new(&active_space.abspath).join(&dto.src_relpath);
     let dest_abspath = Path::new(&active_space.abspath).join(&dto.dest_relpath);
     let node_type = get_node_type(&src_abspath)?;
 
     if src_parent_relpath == dest_parent_relpath {
-        return Err(Error::InvalidPath("Cannot drop to same parent".to_string()));
+        return Err(Error::InvalidPath("Cannot drop to same parent".into()));
     }
 
     if node_type == NodeType::Collection {
-        let collection_path = if src_parent_relpath.is_empty() {
-            src_fsname.clone()
-        } else {
-            format!("{src_parent_relpath}/{src_fsname}")
-        };
+        let collection_path = src_parent_relpath.join(&src_fsname);
 
-        if !dest_parent_relpath.is_empty() && dest_parent_relpath.starts_with(&collection_path) {
+        if dest_parent_relpath.starts_with(&collection_path) {
             return Err(Error::InvalidPath(
-                "Cannot move collection into itself".to_string(),
+                "Cannot move collection into itself".into(),
             ));
         }
     }
 
     // Check for duplicates
-    let dest_collection =
-        navigate_to_collection(&mut active_space.root_collection, &dest_parent_relpath)?;
+    let dest_collection = find_collection(&active_space.root_collection, &dest_parent_relpath)?;
 
     match node_type {
         NodeType::Collection => {
@@ -181,8 +189,7 @@ pub fn handle_tree_node_drop(
     }
 
     // Check source exists
-    let src_collection =
-        navigate_to_collection(&mut active_space.root_collection, &src_parent_relpath)?;
+    let src_collection = find_collection(&active_space.root_collection, &src_parent_relpath)?;
 
     match node_type {
         NodeType::Collection => {
@@ -215,7 +222,7 @@ pub fn handle_tree_node_drop(
     match node_type {
         NodeType::Collection => {
             let src_collection =
-                navigate_to_collection(&mut active_space.root_collection, &src_parent_relpath)?;
+                find_collection_mut(&mut active_space.root_collection, &src_parent_relpath)?;
             let node_idx = src_collection
                 .collections
                 .iter()
@@ -224,7 +231,7 @@ pub fn handle_tree_node_drop(
             let collection = src_collection.collections.remove(node_idx);
 
             let dest_collection =
-                navigate_to_collection(&mut active_space.root_collection, &dest_parent_relpath)?;
+                find_collection_mut(&mut active_space.root_collection, &dest_parent_relpath)?;
             dest_collection.collections.push(collection);
             dest_collection.collections.sort_by(|a, b| {
                 a.meta
@@ -235,7 +242,7 @@ pub fn handle_tree_node_drop(
         }
         NodeType::Request => {
             let src_collection =
-                navigate_to_collection(&mut active_space.root_collection, &src_parent_relpath)?;
+                find_collection_mut(&mut active_space.root_collection, &src_parent_relpath)?;
             let node_idx = src_collection
                 .requests
                 .iter()
@@ -244,7 +251,7 @@ pub fn handle_tree_node_drop(
             let request = src_collection.requests.remove(node_idx);
 
             let dest_collection =
-                navigate_to_collection(&mut active_space.root_collection, &dest_parent_relpath)?;
+                find_collection_mut(&mut active_space.root_collection, &dest_parent_relpath)?;
             dest_collection.requests.push(request);
             dest_collection
                 .requests
