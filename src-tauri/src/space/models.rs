@@ -3,9 +3,7 @@ use specta::Type;
 use std::collections::HashMap;
 use time::format_description::well_known::Rfc3339;
 
-use crate::{
-    collection::models::Collection, store::models::SpaceSettings,
-};
+use crate::{collection::models::Collection, store::models::SpaceSettings};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateSpaceDto {

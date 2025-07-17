@@ -176,34 +176,34 @@ pub fn handle_tree_node_drop(
     }
 
     // Move the actual file/directory on the filesystem
-    let src_full_path = Path::new(&active_space.abspath).join(&dto.src_relpath);
-    let dest_full_path = Path::new(&active_space.abspath).join(&dto.dest_relpath);
+    let src_abspath = Path::new(&active_space.abspath).join(&dto.src_relpath);
+    let dest_abspath = Path::new(&active_space.abspath).join(&dto.dest_relpath);
 
     // Ensure the destination directory exists
-    if let Some(dest_dir) = dest_full_path.parent() {
+    if let Some(dest_dir) = dest_abspath.parent() {
         if !dest_dir.exists() {
             fs::create_dir_all(dest_dir)?;
         }
     }
 
     // Check if source exists
-    if !src_full_path.exists() {
+    if !src_abspath.exists() {
         return Err(Error::FileNotFound(format!(
             "Source path does not exist: {}",
-            src_full_path.display()
+            src_abspath.display()
         )));
     }
 
     // Check if destination already exists
-    if dest_full_path.exists() {
+    if dest_abspath.exists() {
         return Err(Error::InvalidPath(format!(
             "Destination path already exists: {}",
-            dest_full_path.display()
+            dest_abspath.display()
         )));
     }
 
     // Perform the move
-    fs::rename(&src_full_path, &dest_full_path)?;
+    fs::rename(&src_abspath, &dest_abspath)?;
 
     Ok(())
 }
