@@ -141,8 +141,7 @@ fn parse_root_collection_should_match_created_structure() {
                 assert_eq!(
                     collection.meta.name.as_deref(),
                     Some(*expected_name),
-                    "Collection name mismatch at '{}'",
-                    current_path
+                    "Collection name mismatch at '{current_path}'"
                 );
             }
         }
@@ -156,11 +155,10 @@ fn parse_root_collection_should_match_created_structure() {
 
             let expected_name = expected_reqname_by_relpath
                 .get(req_path.as_str())
-                .expect(&format!("Unexpected request: {}", req_path));
+                .unwrap_or_else(|| panic!("Unexpected request: {req_path}"));
             assert_eq!(
                 req.meta.name, *expected_name,
-                "Request name mismatch at '{}'",
-                req_path
+                "Request name mismatch at '{req_path}'"
             );
         }
 
