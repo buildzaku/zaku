@@ -103,40 +103,9 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                         .collections
                         .push(sub_collection);
                 } else if entry_abspath.is_file() {
-                    if entry_abspath.extension().and_then(|e| e.to_str()) != Some("toml") {
-                        continue;
-                    }
-
-                    let relpath = entry_abspath
-                        .strip_prefix(space_abspath)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
-                    let req_buf = spacebuf_rlock.requests.get(&relpath);
-
-                    if let Some(req_buf) = req_buf {
-                        collection_rc_refcell
-                            .borrow_mut()
-                            .requests
-                            .push(HttpReq::from_reqbuf(req_buf));
-                    } else {
-                        let fsname = entry_abspath
-                            .file_name()
-                            .unwrap()
-                            .to_string_lossy()
-                            .into_owned();
-
-                        match request::parse_reqtoml(&entry_abspath) {
-                            Ok(req_toml) => {
-                                collection_rc_refcell
-                                    .borrow_mut()
-                                    .requests
-                                    .push(HttpReq::from_reqtoml(&req_toml, fsname));
-                            }
-                            Err(_) => {
-                                eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
-                            }
-                        }
+                    let req = request::parse_req(&entry_abspath, space_abspath, &spacebuf_rlock);
+                    if let Some(req) = req {
+                        collection_rc_refcell.borrow_mut().requests.push(req);
                     }
                 }
             }

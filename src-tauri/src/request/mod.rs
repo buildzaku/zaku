@@ -1,52 +1,59 @@
-use std::fs::{self, File};
-use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::{Path, PathBuf},
+    sync::RwLockReadGuard,
+};
 use toml;
 
-use crate::collection::models::CreateCollectionDto;
-use crate::commands::models::CreateNewRequest;
-use crate::error::{Error, Result};
-use crate::request::models::{CreateRequestDto, ReqToml, ReqTomlConfig, ReqTomlMeta};
-use crate::state::SharedState;
-use crate::{collection, space, utils};
+use crate::{
+    collection::{self, models::CreateCollectionDto},
+    commands::models::CreateNewRequest,
+    error::{Error, Result},
+    request::models::{CreateRequestDto, HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
+    space,
+    state::SharedState,
+    store::spaces::buffer::SpaceBuf,
+    utils,
+};
 
 pub mod models;
 
-// pub fn parse_req(dir_abspath: &str) -> Result<Vec<HttpReq>> {
-//     let dir_abspath = Path::new(dir_abspath);
-//     let mut requests = Vec::new();
-//     let spacebuf = SpaceBuf::load(dir_abspath)?;
-//     let spacebuf_rlock = spacebuf
-//         .read()
-//         .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
+pub fn parse_req(
+    entry_abspath: &Path,
+    space_abspath: &Path,
+    spacebuf_rlock: &RwLockReadGuard<'_, SpaceBuf>,
+) -> Option<HttpReq> {
+    let is_file = entry_abspath.is_file();
+    let is_toml = entry_abspath.extension().and_then(|e| e.to_str()) == Some("toml");
+    if !is_file || !is_toml {
+        return None;
+    }
 
-//     if let Ok(entries) = fs::read_dir(dir_abspath) {
-//         for entry in entries.flatten() {
-//             let path = entry.path();
+    let relpath = entry_abspath
+        .strip_prefix(space_abspath)
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
 
-//             if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("toml") {
-//                 let relpath = path
-//                     .strip_prefix(dir_abspath)
-//                     .unwrap()
-//                     .to_string_lossy()
-//                     .into_owned();
+    if let Some(req_buf) = spacebuf_rlock.requests.get(&relpath) {
+        Some(HttpReq::from_reqbuf(req_buf))
+    } else {
+        let fsname = entry_abspath
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
 
-//                 if let Some(req_buf) = spacebuf_rlock.requests.get(&relpath) {
-//                     requests.push(HttpReq::from_reqbuf(req_buf));
-//                 } else {
-//                     let fsname = path.fsname().unwrap().to_string_lossy().into_owned();
-//                     if let Ok(req_toml) = parse_reqtoml(&path) {
-//                         requests.push(HttpReq::from_reqtoml(&req_toml, fsname));
-//                     } else {
-//                         eprintln!("Invalid request TOML: '{}'", path.display());
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     Ok(requests)
-// }
+        match parse_reqtoml(entry_abspath) {
+            Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, fsname)),
+            Err(_) => {
+                eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
+                None
+            }
+        }
+    }
+}
 
 pub fn create_req(
     dto: &CreateRequestDto,
@@ -140,7 +147,7 @@ pub fn create_reqtoml(abspath: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn parse_reqtoml(abspath: &PathBuf) -> Result<ReqToml> {
+pub fn parse_reqtoml(abspath: &Path) -> Result<ReqToml> {
     let toml_str = std::fs::read_to_string(abspath)?;
     let req_toml = toml::from_str(&toml_str)?;
 
