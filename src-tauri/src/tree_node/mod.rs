@@ -29,28 +29,6 @@ pub struct HandleTreeNodeDropDto {
     pub dest_relpath: String,
 }
 
-fn detect_node(abspath: &Path) -> Result<NodeType> {
-    if !abspath.exists() {
-        return Err(Error::FileNotFound(format!(
-            "Path does not exist: {}",
-            abspath.display()
-        )));
-    }
-
-    let fsname = abspath
-        .file_name()
-        .ok_or_else(|| Error::InvalidPath("Invalid path: no file name".into()))?
-        .to_string_lossy();
-
-    if abspath.is_dir() && fsname != ".zaku" {
-        return Ok(NodeType::Collection);
-    } else if abspath.is_file() && fsname.ends_with(".toml") {
-        return Ok(NodeType::Request);
-    } else {
-        return Err(Error::InvalidPath("Invalid node type".into()));
-    }
-}
-
 pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a Collection> {
     let mut cur_collection = root;
 
@@ -165,13 +143,12 @@ pub fn handle_tree_node_drop(
 
     let src_abspath = Path::new(&space.abspath).join(&dto.src_relpath);
     let dest_abspath = Path::new(&space.abspath).join(&dto.dest_relpath);
-    let node_type = detect_node(&src_abspath)?;
 
     if src_parent_relpath == dest_parent_relpath {
         return Err(Error::InvalidPath("Cannot drop to same parent".into()));
     }
 
-    if node_type == NodeType::Collection {
+    if dto.node_type == NodeType::Collection {
         let collection_path = src_parent_relpath.join(&src_fsname);
         if dest_parent_relpath.starts_with(&collection_path) {
             return Err(Error::InvalidPath(
@@ -181,22 +158,22 @@ pub fn handle_tree_node_drop(
     }
 
     let dest_parent_col = find_collection(&space.root_collection, dest_parent_relpath)?;
-    if node_exists_at_dest(&dest_parent_col, &node_type, &src_fsname) {
+    if node_exists_at_dest(&dest_parent_col, &dto.node_type, &src_fsname) {
         return Err(Error::InvalidPath(format!(
             "{} '{}' already exists",
-            node_type, src_fsname
+            dto.node_type, src_fsname
         )));
     }
 
     let src_parent_col = find_collection(&space.root_collection, &src_parent_relpath)?;
-    if !src_exists(&src_parent_col, &node_type, &src_fsname) {
+    if !src_exists(&src_parent_col, &dto.node_type, &src_fsname) {
         return Err(Error::InvalidPath(format!(
             "{} '{}' not found",
-            node_type, src_fsname
+            dto.node_type, src_fsname
         )));
     }
 
-    match node_type {
+    match dto.node_type {
         NodeType::Collection => {
             let src_parent_col =
                 find_collection_mut(&mut space.root_collection, &src_parent_relpath)?;
