@@ -19,12 +19,9 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async setActiveSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
+    async setSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
         try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("set_active_space", { spaceReference }),
-            };
+            return { status: "ok", data: await TAURI_INVOKE("set_space", { spaceReference }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -185,9 +182,9 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async moveTreeitem(moveTreeitemDto: MoveTreeItemDto): Promise<Result<null, CmdErr>> {
+    async moveTreeNode(dto: MoveTreeNodeDto): Promise<Result<null, CmdErr>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("move_treeitem", { moveTreeitemDto }) };
+            return { status: "ok", data: await TAURI_INVOKE("move_tree_node", { dto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -206,7 +203,7 @@ export type CmdErr =
     | { type: "Err"; message: string }
     | { type: "Http"; message: string; code: number | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
-export type CollectionMeta = { dir_name: string; name: string | null; is_expanded: boolean };
+export type CollectionMeta = { fsname: string; name: string | null; is_expanded: boolean };
 export type CreateCollectionDto = { parent_relpath: string; relpath: string };
 export type CreateNewCollection = { parent_relpath: string; relpath: string };
 export type CreateNewRequest = { parent_relpath: string; relpath: string };
@@ -227,7 +224,8 @@ export type HttpRes = {
     size_bytes?: number;
     elapsed_ms?: number;
 };
-export type MoveTreeItemDto = { src_relpath: string; dest_relpath: string };
+export type MoveTreeNodeDto = { node_type: NodeType; src_relpath: string; dest_relpath: string };
+export type NodeType = "collection" | "request";
 export type NotificationSettings = { audio: AudioNotification };
 export type OpenDirDialogOpt = { title: string | null };
 export type RemoveCookieDto = { domain: string; path: string; name: string };
@@ -239,7 +237,7 @@ export type ReqCfg = {
     content_type?: string;
     body?: string;
 };
-export type ReqMeta = { file_name: string; name: string; has_unsaved_changes: boolean };
+export type ReqMeta = { fsname: string; name: string; has_unsaved_changes: boolean };
 export type ReqStatus = "Idle" | "Pending" | "Success" | "Error";
 export type ReqUrl = {
     raw?: string;
@@ -247,11 +245,11 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
-export type SharedState = { active_space: Space | null; spacerefs: SpaceReference[] };
+export type SharedState = { space: Space | null; spacerefs: SpaceReference[] };
 export type Space = {
     abspath: string;
     meta: SpaceMeta;
-    root: Collection;
+    root_collection: Collection;
     cookies: Partial<{ [key in string]: SpaceCookie[] }>;
     settings: SpaceSettings;
 };

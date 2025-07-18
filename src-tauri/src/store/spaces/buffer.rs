@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::HashMap;
-use std::fs::{self};
-use std::path::Path;
-use std::sync::RwLock;
+use std::{collections::HashMap, fs, path::Path, sync::RwLock};
 
 use crate::{
     error::{Error, Result},
@@ -74,7 +71,7 @@ pub fn persist_req_to_spacebuf(
         .map_err(|_| Error::LockError("Failed to acquire write lock".into()))?;
 
     let req_relpath = parent_relpath
-        .join(&request.meta.file_name)
+        .join(&request.meta.fsname)
         .to_string_lossy()
         .to_string();
     let req_buf = ReqBuf::from_req(&request);
@@ -94,7 +91,7 @@ pub fn write_reqbuf_to_reqtoml(space_abspath: &Path, req_relpath: &Path) -> Resu
     let relpath_str = req_relpath.to_string_lossy().to_string();
     if let Some(req_buf) = spacebuf_wlock.requests.get(&relpath_str) {
         let req_toml = ReqToml::from_reqbuf(req_buf);
-        request::persist_reqtoml(&space_abspath.join(req_relpath), &req_toml)?;
+        request::update_reqtoml(&space_abspath.join(req_relpath), &req_toml)?;
     }
 
     spacebuf_wlock.requests.remove(&relpath_str);

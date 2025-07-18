@@ -51,12 +51,13 @@ pub fn to_indexmap(fields: &[(bool, String, String)]) -> Option<IndexMap<String,
     )
 }
 
-pub fn join_str_paths(paths: Vec<&str>) -> String {
+pub fn join_strpaths(paths: Vec<&str>) -> String {
     paths
         .into_iter()
         .filter(|path| !path.is_empty())
-        .collect::<Vec<&str>>()
-        .join("/")
+        .collect::<PathBuf>()
+        .to_string_lossy()
+        .to_string()
 }
 
 pub fn hashed_filename(abspath: &str) -> String {
@@ -72,7 +73,7 @@ pub fn hashed_filename(abspath: &str) -> String {
 /// - Replaces invalid characters with `-`
 /// - Replaces whitespace with `-`
 /// - Trims leading/trailing hyphens
-pub fn sanitize_path_segment(segment: &str) -> String {
+pub fn sanitize_pathseg(segment: &str) -> String {
     const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
 
     let mut sanitized = String::new();
@@ -88,4 +89,8 @@ pub fn sanitize_path_segment(segment: &str) -> String {
     }
 
     sanitized.trim_matches('-').to_string()
+}
+
+pub fn sanitize_pathseg_bslash(segment: &str) -> String {
+    segment.replace('\\', "-")
 }
