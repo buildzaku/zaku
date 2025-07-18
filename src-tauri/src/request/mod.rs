@@ -19,7 +19,7 @@ use crate::{
 
 pub mod models;
 
-/// Parses a request file into an `HttpReq` object
+/// Parses a request file into `HttpReq` struct
 ///
 /// Checks if the entry is a valid TOML file, then attempts to parse it. First checks
 /// the space buffer for any unsaved changes, if not then read directly from
