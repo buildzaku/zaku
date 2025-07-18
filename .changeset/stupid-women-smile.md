@@ -2,6 +2,6 @@
 "zaku": patch
 ---
 
-Port move tree node operation logic to rust
+Port `move_tree_node` operation logic to rust
 
 - Fix path handling across different platforms
