@@ -87,16 +87,6 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                         .to_string_lossy()
                         .into_owned();
 
-                    // temp
-                    eprintln!("Processing directory on Windows:");
-                    eprintln!("  entry_abspath: {entry_abspath:?}");
-                    eprintln!("  space_abspath: {space_abspath:?}");
-                    eprintln!("  relpath: '{relpath}'");
-                    eprintln!("  relpath bytes: {:?}", relpath.as_bytes());
-                    eprintln!("  looking up in colname mappings...");
-                    let mapped_name = colname.mappings.get(&relpath);
-                    eprintln!("  mapped_name result: {mapped_name:?}");
-
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             fsname: name,
@@ -223,14 +213,6 @@ pub fn save_colname_if_missing(
     collection_relpath: &str,
     colname: &str,
 ) -> Result<()> {
-    // temp
-    eprintln!("SAVE_COLNAME_IF_MISSING:");
-    eprintln!("  collection_relpath: '{collection_relpath}'");
-    eprintln!("  colname: '{colname}'");
-    eprintln!(
-        "  collection_relpath bytes: {:?}",
-        collection_relpath.as_bytes()
-    );
     let colname_file_abspath = space_abspath.join(".zaku/collections/name.toml");
 
     let mut collection_name_by_relpath = colname_by_relpath(space_abspath)?;

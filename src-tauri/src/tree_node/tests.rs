@@ -97,7 +97,7 @@ fn find_collection_finds_nested_child() {
         .expect("Failed to create nested collection");
 
     let space = sharedstate.space.unwrap();
-    log_collection_tree(&space.root_collection, 0); // temp
+    // log_collection_tree(&space.root_collection, 0); // temp
     let result = tree_node::find_collection(
         &space.root_collection,
         Path::new("parent-collection-1/child-collection-1"),
