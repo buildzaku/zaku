@@ -87,7 +87,7 @@ fn parse_root_collection_should_match_created_structure() {
         (vec!["users"], "Users"),
         (vec!["users", "settings", "notifications"], "Notifications"),
         (vec!["trending", "posts"], "Posts"),
-        (vec!["data-~~~-stats", "charts-monthly"], "Charts\\Monthly"),
+        (vec!["data-~~~-stats", "charts-monthly"], "Charts-Monthly"),
         (vec!["⚠️-ザク", "🔥", "💬-status"], "💬 Status?"),
     ];
 
@@ -156,24 +156,13 @@ fn parse_root_collection_should_match_created_structure() {
             .expect("Failed to create collection");
     }
 
-    let root_collection =
-        collection::parse_root_collection(&space_abspath).expect("Failed to parse root collection");
-    eprintln!("============== COLLECTIONS ==============");
-    log_collection_tree(&root_collection, 0);
-
-    for (i, req_dto) in requests_dto.iter().enumerate() {
-        eprintln!(
-            "Creating request {}: parent='{}', relpath='{}'",
-            i, req_dto.parent_relpath, req_dto.relpath
-        );
-        request::create_req(req_dto, &mut sharedstate)
-            .unwrap_or_else(|e| panic!("Failed to create request {}: {:?}", i, e));
+    for req_dto in &requests_dto {
+        request::create_req(req_dto, &mut sharedstate).expect("Failed to create request");
     }
 
     let root_collection =
         collection::parse_root_collection(&space_abspath).expect("Failed to parse root collection");
 
-    eprintln!("============== AFTER CREATING ALL REQUESTS ==============");
     log_collection_tree(&root_collection, 0);
     let mut stack = vec![(&root_collection, String::new())];
 
@@ -565,11 +554,8 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expect_relpath = PathBuf::from("error-logs").join(if cfg!(windows) {
-        PathBuf::from("critical-events-2025-backup").join("archive-today")
-    } else {
-        PathBuf::from("critical-events-2025-backup-archive-today")
-    });
+    let expect_relpath =
+        PathBuf::from("error-logs").join("critical-events-2025-backup-archive-today");
     assert_eq!(col_relpath, expect_relpath.to_string_lossy());
 
     let expect_path = space_abspath.join("logs").join(&expect_relpath);

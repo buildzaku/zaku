@@ -90,3 +90,7 @@ pub fn sanitize_path_segment(segment: &str) -> String {
 
     sanitized.trim_matches('-').to_string()
 }
+
+pub fn sanitize_path_segment_bslash(segment: &str) -> String {
+    segment.replace('\\', "-")
+}

@@ -242,19 +242,17 @@ pub fn save_colname_if_missing(
 /// Directories are created under `space_abspath/parent_relpath`
 ///
 /// - `space_abspath`: Absolute path of space
-/// - `create_collection_dto`: Contains `parent_relpath` and `relpath`
+/// - `dto`: Contains `parent_relpath` and `relpath`
 ///
 /// Returns a `Result`  containing the created collection's relative path
-pub fn create_collections_all(
-    space_abspath: &Path,
-    create_collection_dto: &CreateCollectionDto,
-) -> Result<String> {
-    if create_collection_dto.relpath.trim().is_empty() {
+pub fn create_collections_all(space_abspath: &Path, dto: &CreateCollectionDto) -> Result<String> {
+    if dto.relpath.trim().is_empty() {
         return Err(Error::FileNotFound("Collection name is missing".into()));
     }
 
+    let normalized_relpath = utils::sanitize_path_segment_bslash(&dto.relpath);
     let mut dirs = Vec::new();
-    for component in Path::new(&create_collection_dto.relpath).components() {
+    for component in Path::new(&normalized_relpath).components() {
         if let std::path::Component::Normal(os_str) = component {
             let colname = os_str.to_string_lossy();
             let colname = colname.trim();
@@ -268,7 +266,7 @@ pub fn create_collections_all(
         }
     }
 
-    let collection_parent_abspath = space_abspath.join(&create_collection_dto.parent_relpath);
+    let collection_parent_abspath = space_abspath.join(&dto.parent_relpath);
     let mut collections_relpath = String::new();
 
     for (dir_sanitized_name, colname) in &dirs {
@@ -283,10 +281,8 @@ pub fn create_collections_all(
             fs::create_dir(&target_dir)?;
         };
 
-        let cur_collection_relpath = utils::join_strpaths(vec![
-            &create_collection_dto.parent_relpath,
-            &cur_collection_relpath,
-        ]);
+        let cur_collection_relpath =
+            utils::join_strpaths(vec![&dto.parent_relpath, &cur_collection_relpath]);
 
         save_colname_if_missing(space_abspath, &cur_collection_relpath, colname)
             .map_err(|e| Error::FileReadError(format!("{cur_collection_relpath}: {e}")))?;
@@ -324,14 +320,16 @@ pub fn create_collection(
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let relpath = Path::new(&dto.relpath);
+    let normalized_relpath = utils::sanitize_path_segment_bslash(&dto.relpath);
+    let relpath = Path::new(&normalized_relpath);
     let (parsed_parent_relpath, colname) = match relpath.parent() {
         Some(parent) if parent != Path::new("") => {
             let parent_str = parent.to_string_lossy().to_string();
             let colname = relpath.file_name().unwrap().to_string_lossy().to_string();
+
             (Some(parent_str), colname)
         }
-        _ => (None, dto.relpath.clone()),
+        _ => (None, normalized_relpath.clone()),
     };
 
     let colname = colname.trim();
