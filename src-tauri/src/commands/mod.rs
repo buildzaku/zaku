@@ -1,7 +1,6 @@
 use cookie::Cookie as RawCookie;
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Instant,
@@ -15,9 +14,7 @@ use crate::{
         self,
         models::{CreateCollectionDto, CreateNewCollection},
     },
-    commands::models::{
-        CreateNewRequest, DispatchNotificationOptions, MoveTreeItemDto, OpenDirDialogOpt,
-    },
+    commands::models::{CreateNewRequest, DispatchNotificationOptions, OpenDirDialogOpt},
     error::{CmdErr, CmdResult},
     notifications,
     request::{
@@ -34,7 +31,7 @@ use crate::{
         models::{SpaceCookies, SpaceSettings},
         spaces::buffer,
     },
-    utils,
+    tree_node::{self, MoveTreeNodeDto},
 };
 
 pub mod models;
@@ -43,7 +40,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
     tauri_specta::collect_commands![
         get_shared_state,
         create_space,
-        set_active_space,
+        set_space,
         remove_space,
         get_spaceref,
         remove_cookie,
@@ -59,7 +56,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
         persist_to_reqbuf,
         write_reqbuf_to_reqtoml,
         http_req,
-        move_treeitem,
+        move_tree_node
     ]
 }
 
@@ -104,40 +101,6 @@ pub async fn open_dir_dialog(
         )),
         None => Ok(None),
     }
-}
-
-#[specta::specta]
-#[tauri::command]
-pub fn move_treeitem(
-    move_treeitem_dto: MoveTreeItemDto,
-    app_handle: tauri::AppHandle,
-) -> CmdResult<()> {
-    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-    let active_space = sharedstate
-        .active_space
-        .clone()
-        .expect("Active space not found");
-    let active_space_abspath = PathBuf::from(&active_space.abspath);
-    let MoveTreeItemDto {
-        src_relpath,
-        dest_relpath,
-    } = move_treeitem_dto;
-    let src_abspath = active_space_abspath.join(src_relpath);
-    let dest_abspath = active_space_abspath.join(dest_relpath);
-
-    fs::rename(src_abspath, dest_abspath).expect("Unable to move tree item");
-
-    match space::parse_space(&active_space_abspath) {
-        Ok(active_space) => sharedstate.active_space = Some(active_space),
-        Err(err) => {
-            return Err(CmdErr::Err {
-                message: format!("Failed to parse space after moving the tree item: {err}"),
-            });
-        }
-    }
-
-    Ok(())
 }
 
 #[specta::specta]
@@ -191,86 +154,14 @@ pub async fn create_req(
     create_req_dto: CreateRequestDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewRequest> {
-    if create_req_dto.relpath.is_empty() {
-        return Err(CmdErr::Err {
-            message: "Cannot create a request without name".to_string(),
-        });
-    }
-
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-    let active_space = sharedstate
-        .active_space
-        .clone()
-        .expect("Active space not found");
-    let active_space_abspath = PathBuf::from(&active_space.abspath);
-
-    let (parsed_parent_relpath, reqname) = match create_req_dto.relpath.rfind('/') {
-        Some(last_slash_index) => {
-            let parsed_parent_relpath = &create_req_dto.relpath[..last_slash_index];
-            let reqname = &create_req_dto.relpath[last_slash_index + 1..];
-
-            (Some(parsed_parent_relpath.to_string()), reqname.to_string())
-        }
-        None => (None, create_req_dto.relpath),
-    };
-
-    let reqname = reqname.trim();
-    let file_sanitized_name = reqname
-        .to_lowercase()
-        .split_whitespace()
-        .collect::<Vec<&str>>()
-        .join("-");
-    let (file_parent_relpath, file_sanitized_name) = match parsed_parent_relpath {
-        Some(ref parsed_parent_relpath) => {
-            let create_collection_dto = CreateCollectionDto {
-                parent_relpath: create_req_dto.parent_relpath.clone(),
-                relpath: parsed_parent_relpath.to_string(),
-            };
-
-            let dirs_sanitized_relpath =
-                collection::create_collections_all(&active_space_abspath, &create_collection_dto)
-                    .map_err(|err| CmdErr::Err {
-                    message: format!("Failed to create request's parent directories: {err}"),
-                })?;
-
-            let file_parent_relpath = utils::join_str_paths(vec![
-                create_req_dto.parent_relpath.as_str(),
-                dirs_sanitized_relpath.as_str(),
-            ]);
-
-            (file_parent_relpath, file_sanitized_name)
-        }
-        None => (create_req_dto.parent_relpath, file_sanitized_name),
-    };
-
-    let file_abspath = active_space_abspath
-        .join(file_parent_relpath.clone())
-        .join(file_sanitized_name.clone());
-    let file_relpath = utils::join_str_paths(vec![
-        file_parent_relpath.clone().as_str(),
-        format!("{file_sanitized_name}.toml").as_str(),
-    ]);
-
-    request::create_reqtoml(&file_abspath, reqname).map_err(|err| CmdErr::Err {
-        message: format!("Failed to create request file: {err}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("State lock failed: {e}"),
     })?;
 
-    let create_new_result = CreateNewRequest {
-        parent_relpath: file_parent_relpath,
-        relpath: file_relpath,
-    };
-
-    match space::parse_space(&active_space_abspath) {
-        Ok(active_space) => sharedstate.active_space = Some(active_space),
-        Err(err) => {
-            return Err(CmdErr::Err {
-                message: format!("Failed to parse space after creating the request: {err}"),
-            });
-        }
-    }
-
-    Ok(create_new_result)
+    request::create_req(&create_req_dto, &mut sharedstate).map_err(|err| CmdErr::Err {
+        message: format!("Failed to create request: {err}"),
+    })
 }
 
 #[specta::specta]
@@ -303,10 +194,10 @@ pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> 
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {
-    let active_space = store::get_active_spaceref().ok_or(CmdErr::Err {
-        message: "No active space".into(),
+    let spaceref = store::get_spaceref().ok_or(CmdErr::Err {
+        message: "No space found".into(),
     })?;
-    let space_abspath = active_space.path.as_str();
+    let space_abspath = spaceref.path.as_str();
     let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr::Err {
         message: e.to_string(),
     })?;
@@ -413,7 +304,7 @@ pub async fn create_space(
 
 #[specta::specta]
 #[tauri::command]
-pub fn set_active_space(
+pub fn set_space(
     space_reference: SpaceReference,
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
@@ -431,7 +322,7 @@ pub fn set_active_space(
 
     match space::parse_space(&space_abspath) {
         Ok(space) => {
-            store::set_active_spaceref(space_reference.clone()).map_err(|e| CmdErr::Err {
+            store::set_spaceref(space_reference.clone()).map_err(|e| CmdErr::Err {
                 message: e.to_string(),
             })?;
             store::insert_spaceref_if_missing(space_reference.clone()).map_err(|e| {
@@ -440,7 +331,7 @@ pub fn set_active_space(
                 }
             })?;
 
-            sharedstate.active_space = Some(space);
+            sharedstate.space = Some(space);
             sharedstate.spacerefs = store::get_spacerefs();
 
             Ok(())
@@ -462,20 +353,18 @@ pub fn remove_space(
         message: e.to_string(),
     })?;
 
-    let active_space = store::get_active_spaceref();
+    let spaceref = store::get_spaceref();
 
-    if active_space.is_none() {
-        sharedstate.active_space = None;
+    if spaceref.is_none() {
+        sharedstate.space = None;
 
         if let Some(valid_space_reference) = space::first_valid_spaceref() {
-            store::set_active_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr::Err {
+            store::set_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr::Err {
                 message: e.to_string(),
             })?;
 
-            if let Ok(active_space) =
-                space::parse_space(&PathBuf::from(&valid_space_reference.path))
-            {
-                sharedstate.active_space = Some(active_space);
+            if let Ok(space) = space::parse_space(&PathBuf::from(&valid_space_reference.path)) {
+                sharedstate.space = Some(space);
             }
         }
     }
@@ -572,4 +461,17 @@ pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
     window.get_webview_window("main").unwrap().show().unwrap();
 
     Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn move_tree_node(dto: MoveTreeNodeDto, app_handle: tauri::AppHandle) -> CmdResult<()> {
+    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
+        message: format!("State lock failed: {e}"),
+    })?;
+
+    tree_node::move_tree_node(&dto, &mut sharedstate).map_err(|err| CmdErr::Err {
+        message: format!("Failed to handle drop: {err}"),
+    })
 }

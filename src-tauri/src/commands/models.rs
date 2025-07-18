@@ -17,9 +17,3 @@ pub struct CreateNewRequest {
     pub parent_relpath: String,
     pub relpath: String,
 }
-
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct MoveTreeItemDto {
-    pub src_relpath: String,
-    pub dest_relpath: String,
-}

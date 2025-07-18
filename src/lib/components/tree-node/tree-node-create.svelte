@@ -3,8 +3,7 @@
     import { listen, TauriEvent } from "@tauri-apps/api/event";
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
-    import { TreeItemType } from "$lib/models";
-    import { sharedState, treeActionsState, treeItemsState } from "$lib/state.svelte";
+    import { sharedState, explorerActionsState, explorerState } from "$lib/state.svelte";
     import { cn, getMethodColorClass } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
@@ -12,7 +11,7 @@
 
     type Props = {
         parentRelativePath: string;
-        type: TreeItemType;
+        type: "collection" | "request";
         level: number;
         class?: string;
     };
@@ -30,8 +29,8 @@
     function isRelatedElementExcludedFromFocusOutTarget(event: FocusEvent) {
         if (event.relatedTarget && event.relatedTarget instanceof HTMLElement) {
             return (
-                event.relatedTarget.hasAttribute("data-create-tree-item-input") ||
-                event.relatedTarget.hasAttribute("data-create-tree-item-button")
+                event.relatedTarget.hasAttribute("data-create-tree-node-input") ||
+                event.relatedTarget.hasAttribute("data-create-tree-node-button")
             );
         }
 
@@ -46,6 +45,7 @@
             });
 
             if (createCollectionResult.status === "error") {
+                // TODO - get error from cmd
                 toast.error(`Unable to create collection`);
                 console.error(createCollectionResult.error);
 
@@ -55,8 +55,8 @@
             inputName = "";
             await sharedState.synchronize();
 
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Collection,
+            explorerState.focussedNode = {
+                type: "collection",
                 parentRelativePath: createCollectionResult.data.parent_relpath,
                 relativePath: createCollectionResult.data.relpath,
             };
@@ -84,8 +84,8 @@
             inputName = "";
             await sharedState.synchronize();
 
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Request,
+            explorerState.focussedNode = {
+                type: "request",
                 parentRelativePath: createReqResult.data.parent_relpath,
                 relativePath: createReqResult.data.relpath,
             };
@@ -135,11 +135,11 @@
             <input
                 use:initialize
                 bind:this={inputElement}
-                data-create-tree-item-input
+                data-create-tree-node-input
                 type="text"
                 onfocusout={async event => {
                     if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
-                        treeActionsState.createNewItem = null;
+                        explorerActionsState.createNewNode = null;
                         inputName = "";
                     } else {
                         inputName = "";

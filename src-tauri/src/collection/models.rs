@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -7,7 +7,7 @@ use crate::request::models::HttpReq;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct CollectionMeta {
-    pub dir_name: String,
+    pub fsname: String,
     pub name: Option<String>,
     pub is_expanded: bool,
 }
@@ -34,4 +34,11 @@ pub struct CreateNewCollection {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ColName {
     pub mappings: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CollectionRcRefCell {
+    pub meta: CollectionMeta,
+    pub requests: Vec<HttpReq>,
+    pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }

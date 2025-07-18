@@ -1,12 +1,12 @@
 <script lang="ts">
-    import { sharedState, treeActionsState } from "$lib/state.svelte";
+    import { sharedState, explorerActionsState } from "$lib/state.svelte";
     import { Button, buttonVariants } from "$lib/components/primitives/button";
     import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon, XIcon } from "@lucide/svelte";
     import type { PaneAPI } from "paneforge";
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import { TreeItemContent, TreeItemCreate, TreeItemRoot } from "$lib/components/tree-item";
+    import { TreeNodeContent, TreeNodeCreate, TreeNodeRoot } from "$lib/components/tree-node";
     import {
         Tooltip,
         TooltipTrigger,
@@ -14,8 +14,7 @@
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-    import { TreeItemType } from "$lib/models";
-    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
+    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-node/utils.svelte";
     import {
         Dialog,
         DialogTrigger,
@@ -46,15 +45,15 @@
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
     let spaceSettingsStr: string = $state(
-        sharedState.activeSpace ? JSON.stringify(sharedState.activeSpace.settings) : String(),
+        sharedState.space ? JSON.stringify(sharedState.space.settings) : String(),
     );
 
     let shouldRenderCreateNewRequestInput = $derived(
-        treeActionsState.createNewItem === "request" &&
+        explorerActionsState.createNewNode === "request" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
-        treeActionsState.createNewItem === "collection" &&
+        explorerActionsState.createNewNode === "collection" &&
             isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
 </script>
@@ -183,8 +182,8 @@
     </Dialog>
 {/snippet}
 
-{#if sharedState.activeSpace}
-    {@const spaceRef = sharedState.activeSpace}
+{#if sharedState.space}
+    {@const spaceSnapshot = sharedState.space}
     <div class="flex size-full flex-col justify-between">
         <!-- align-marker: matches ResizablePane's mt-px -->
         <div class="flex w-full items-center justify-center gap-1.5 border-b p-1.5 pt-px">
@@ -236,52 +235,55 @@
                     <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
-                    <TreeItemRoot currentPath={RELATIVE_SPACE_ROOT} root={spaceRef.root}>
+                    <TreeNodeRoot
+                        currentPath={RELATIVE_SPACE_ROOT}
+                        root={spaceSnapshot.root_collection}
+                    >
                         {#if shouldRenderCreateNewRequestInput}
-                            <TreeItemCreate
-                                type={TreeItemType.Request}
+                            <TreeNodeCreate
+                                type="request"
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.root.requests as request (request.meta.file_name)}
-                            <TreeItemContent
+                        {#each spaceSnapshot.root_collection.requests as request (request.meta.fsname)}
+                            <TreeNodeContent
                                 parentPath={RELATIVE_SPACE_ROOT}
-                                currentPath={request.meta.file_name}
-                                treeItem={request}
+                                currentPath={request.meta.fsname}
+                                node={request}
                                 level={1}
                             />
                         {/each}
 
                         {#if shouldRenderCreateNewCollectionInput}
-                            <TreeItemCreate
-                                type={TreeItemType.Collection}
+                            <TreeNodeCreate
+                                type="collection"
                                 parentRelativePath={RELATIVE_SPACE_ROOT}
                                 level={1}
                             />
                         {/if}
-                        {#each spaceRef.root.collections as collection (collection.meta.dir_name)}
-                            <TreeItemContent
+                        {#each spaceSnapshot.root_collection.collections as collection (collection.meta.fsname)}
+                            <TreeNodeContent
                                 parentPath={RELATIVE_SPACE_ROOT}
-                                currentPath={collection.meta.dir_name}
-                                treeItem={collection}
+                                currentPath={collection.meta.fsname}
+                                node={collection}
                                 level={1}
                             />
                         {/each}
-                    </TreeItemRoot>
+                    </TreeNodeRoot>
                 </div>
             {/if}
         </div>
 
         {#if isCollapsed}
             <div class="flex flex-col items-center justify-between gap-1.5 border-t p-1.5">
-                {@render cookiesButton(spaceRef)}
-                {@render settingsButton(spaceRef)}
+                {@render cookiesButton(spaceSnapshot)}
+                {@render settingsButton(spaceSnapshot)}
             </div>
         {:else}
             <div class="flex items-center justify-between gap-1.5 border-t p-1.5">
-                {@render settingsButton(spaceRef)}
-                {@render cookiesButton(spaceRef)}
+                {@render settingsButton(spaceSnapshot)}
+                {@render cookiesButton(spaceSnapshot)}
             </div>
         {/if}
     </div>

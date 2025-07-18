@@ -24,7 +24,7 @@
         }
         await sharedState.synchronize();
 
-        if (sharedState.activeSpace !== null) {
+        if (sharedState.space !== null) {
             await goto("/space");
         } else if (page.url.pathname !== "/") {
             await goto("/");
@@ -34,7 +34,7 @@
     });
 
     $effect(() => {
-        if (sharedState.activeSpace === null) {
+        if (sharedState.space === null) {
             goto("/");
         }
     });

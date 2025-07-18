@@ -25,7 +25,7 @@ pub struct SpaceConfigFile {
 pub struct Space {
     pub abspath: String,
     pub meta: SpaceMeta,
-    pub root: Collection,
+    pub root_collection: Collection,
     pub cookies: HashMap<String, Vec<SpaceCookie>>,
     pub settings: SpaceSettings,
 }
