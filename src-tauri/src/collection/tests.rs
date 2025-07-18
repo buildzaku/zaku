@@ -10,6 +10,7 @@ use crate::{
     request::{self, models::CreateRequestDto},
     space::{self, models::CreateSpaceDto},
     state::SharedState,
+    tree_node::tests::log_collection_tree,
     utils,
 };
 
@@ -162,6 +163,7 @@ fn parse_root_collection_should_match_created_structure() {
     let root_collection =
         collection::parse_root_collection(&space_abspath).expect("Failed to parse root collection");
 
+    log_collection_tree(&root_collection, 0);
     let mut stack = vec![(&root_collection, String::new())];
 
     while let Some((collection, current_path)) = stack.pop() {
