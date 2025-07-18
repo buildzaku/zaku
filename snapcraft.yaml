@@ -1,6 +1,6 @@
 name: zaku
 base: core22
-version: 0.7.0
+version: 0.7.1
 summary: Fast, open-source API client with fangs
 description: |
     Fast, open-source API client with fangs
@@ -22,10 +22,10 @@ apps:
         plugs:
             - network
         environment:
-            LD_LIBRARY_PATH: "$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET:$LD_LIBRARY_PATH"
-            PKG_CONFIG_PATH: "$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/pkgconfig:$PKG_CONFIG_PATH"
-            CFLAGS: "-I$SNAP/usr/include"
-            LDFLAGS: "-L$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET"
+            LD_LIBRARY_PATH: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET:$LD_LIBRARY_PATH
+            PKG_CONFIG_PATH: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/pkgconfig:$PKG_CONFIG_PATH
+            CFLAGS: -I$SNAP/usr/include
+            LDFLAGS: -L$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET
 parts:
     build-app:
         plugin: dump
