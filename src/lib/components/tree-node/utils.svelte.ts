@@ -1,7 +1,7 @@
 import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
-import { TreeNodePreview } from "$lib/components/tree-item";
+import { TreeNodePreview } from "$lib/components/tree-node";
 import { sharedState, explorerActionsState, explorerState } from "$lib/state.svelte";
 import type { DragOverDto, DragPayload, TreeNode } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
@@ -135,14 +135,16 @@ export async function handleDrop(event: DragEvent) {
         explorerActionsState.dropTargetPath,
         explorerActionsState.dragPayload.node.meta.fsname,
     );
+    const node_type = isCol(explorerActionsState.dragPayload.node) ? "collection" : "request";
 
     const treeNodeDropResult = await commands.moveTreeNode({
-        node_type: isCol(explorerActionsState.dragPayload.node) ? "collection" : "request",
+        node_type,
         src_relpath,
         dest_relpath,
     });
     if (treeNodeDropResult.status === "error") {
-        console.error(JSON.stringify(treeNodeDropResult.error, null, 2));
+        // TODO - get error from cmd
+        toast.error(`Unable to move the ${node_type}`);
     }
 
     await sharedState.synchronize();

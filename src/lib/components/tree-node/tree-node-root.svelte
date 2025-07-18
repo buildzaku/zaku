@@ -19,7 +19,7 @@
         handleDragOver,
         handleDrop,
         isDropAllowed,
-    } from "$lib/components/tree-item/utils.svelte";
+    } from "$lib/components/tree-node/utils.svelte";
 
     type Props = { currentPath: string; root: Collection; children: Snippet; class?: string };
 
@@ -90,7 +90,7 @@
                 <TooltipProvider>
                     <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger
-                            data-create-tree-item-button
+                            data-create-tree-node-button
                             class={cn(
                                 buttonVariants({
                                     variant: "ghost",
@@ -113,7 +113,7 @@
                 <TooltipProvider>
                     <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger
-                            data-create-tree-item-button
+                            data-create-tree-node-button
                             class={cn(
                                 buttonVariants({
                                     variant: "ghost",

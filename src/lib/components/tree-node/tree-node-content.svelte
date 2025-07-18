@@ -17,7 +17,7 @@
         buildPath,
         isCol,
         isReq,
-    } from "$lib/components/tree-item/utils.svelte";
+    } from "$lib/components/tree-node/utils.svelte";
 
     type Props = {
         parentPath: string;

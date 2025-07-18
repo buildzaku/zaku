@@ -14,7 +14,7 @@
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import { explorerState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
-    import { joinPaths } from "$lib/components/tree-item/utils.svelte";
+    import { joinPaths } from "$lib/components/tree-node/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
     import type { HttpReq, ReqUrl } from "$lib/bindings";

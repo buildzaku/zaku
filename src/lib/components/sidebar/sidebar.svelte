@@ -6,7 +6,7 @@
 
     import { SpaceSwitcher } from "$lib/components/space";
     import { cn } from "$lib/utils/style";
-    import { TreeNodeContent, TreeNodeCreate, TreeNodeRoot } from "$lib/components/tree-item";
+    import { TreeNodeContent, TreeNodeCreate, TreeNodeRoot } from "$lib/components/tree-node";
     import {
         Tooltip,
         TooltipTrigger,
@@ -14,7 +14,7 @@
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-item/utils.svelte";
+    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-node/utils.svelte";
     import {
         Dialog,
         DialogTrigger,

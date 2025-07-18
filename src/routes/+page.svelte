@@ -18,7 +18,6 @@
             }
 
             const spaceRefCmdResult = await commands.getSpaceref(cmdResult.data);
-            console.log(JSON.stringify(spaceRefCmdResult));
             if (spaceRefCmdResult.status === "error") {
                 throw new Error(`Cannot get space reference for ${cmdResult.data}`);
             }

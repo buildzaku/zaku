@@ -29,8 +29,8 @@
     function isRelatedElementExcludedFromFocusOutTarget(event: FocusEvent) {
         if (event.relatedTarget && event.relatedTarget instanceof HTMLElement) {
             return (
-                event.relatedTarget.hasAttribute("data-create-tree-item-input") ||
-                event.relatedTarget.hasAttribute("data-create-tree-item-button")
+                event.relatedTarget.hasAttribute("data-create-tree-node-input") ||
+                event.relatedTarget.hasAttribute("data-create-tree-node-button")
             );
         }
 
@@ -45,6 +45,7 @@
             });
 
             if (createCollectionResult.status === "error") {
+                // TODO - get error from cmd
                 toast.error(`Unable to create collection`);
                 console.error(createCollectionResult.error);
 
@@ -134,7 +135,7 @@
             <input
                 use:initialize
                 bind:this={inputElement}
-                data-create-tree-item-input
+                data-create-tree-node-input
                 type="text"
                 onfocusout={async event => {
                     if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
