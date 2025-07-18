@@ -65,7 +65,7 @@ fn find_collection_finds_direct_child() {
 // temp
 pub fn log_collection_tree(collection: &Collection, depth: usize) {
     let indent = "  ".repeat(depth);
-    eprintln!("{}Collection:", indent);
+    eprintln!("{indent}Collection:");
     eprintln!("{}  fsname: '{}'", indent, collection.meta.fsname);
     eprintln!("{}  name: {:?}", indent, collection.meta.name);
     eprintln!("{}  requests: {}", indent, collection.requests.len());
