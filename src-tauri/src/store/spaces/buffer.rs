@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::HashMap;
-use std::fs::{self};
-use std::path::Path;
-use std::sync::RwLock;
+use std::{collections::HashMap, fs, path::Path, sync::RwLock};
 
 use crate::{
     error::{Error, Result},

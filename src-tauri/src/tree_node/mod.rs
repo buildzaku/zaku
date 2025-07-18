@@ -2,9 +2,11 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{fmt, fs, path::Path};
 
-use crate::collection::models::Collection;
-use crate::error::{Error, Result};
-use crate::state::SharedState;
+use crate::{
+    collection::models::Collection,
+    error::{Error, Result},
+    state::SharedState,
+};
 
 #[cfg(test)]
 pub mod tests;

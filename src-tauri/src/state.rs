@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::{path::PathBuf, sync::Mutex};
 use tauri::{App, Manager};
 
 use crate::{

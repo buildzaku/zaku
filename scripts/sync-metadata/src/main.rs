@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use serde_yaml::{from_str, to_string, Value};
-use std::fs;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 use toml_edit::{value, Array, DocumentMut};
 
 #[derive(Deserialize)]

@@ -1,7 +1,9 @@
 use once_cell::sync::Lazy;
-use std::fs::{self};
-use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::RwLock,
+};
 
 use crate::{
     error::{Error, Result},

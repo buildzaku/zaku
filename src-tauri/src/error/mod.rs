@@ -1,9 +1,7 @@
 use derive_more::From;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::fmt;
-use std::io;
+use std::{fmt, io};
 
 #[derive(Debug, From)]
 pub enum Error {
