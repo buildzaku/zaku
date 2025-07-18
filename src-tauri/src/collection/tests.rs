@@ -156,13 +156,24 @@ fn parse_root_collection_should_match_created_structure() {
             .expect("Failed to create collection");
     }
 
-    for req_dto in &requests_dto {
-        request::create_req(req_dto, &mut sharedstate).expect("Failed to create request");
+    let root_collection =
+        collection::parse_root_collection(&space_abspath).expect("Failed to parse root collection");
+    eprintln!("============== COLLECTIONS ==============");
+    log_collection_tree(&root_collection, 0);
+
+    for (i, req_dto) in requests_dto.iter().enumerate() {
+        eprintln!(
+            "Creating request {}: parent='{}', relpath='{}'",
+            i, req_dto.parent_relpath, req_dto.relpath
+        );
+        request::create_req(req_dto, &mut sharedstate)
+            .unwrap_or_else(|e| panic!("Failed to create request {}: {:?}", i, e));
     }
 
     let root_collection =
         collection::parse_root_collection(&space_abspath).expect("Failed to parse root collection");
 
+    eprintln!("============== AFTER CREATING ALL REQUESTS ==============");
     log_collection_tree(&root_collection, 0);
     let mut stack = vec![(&root_collection, String::new())];
 
