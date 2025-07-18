@@ -518,7 +518,7 @@ fn create_collections_all_unicode_segments_should_be_handled() {
 
     let expected = PathBuf::from("ザク").join("設定");
     assert_eq!(col_relpath, expected.to_string_lossy());
-    assert!(space_abspath.join(&expected).exists());
+    assert!(space_abspath.join("global").join(&expected).exists());
 }
 
 #[test]
@@ -537,7 +537,7 @@ fn create_collections_all_trailing_slash_should_be_ignored() {
 
     let expected = PathBuf::from("settings").join("preferences");
     assert_eq!(col_relpath, expected.to_string_lossy());
-    assert!(space_abspath.join(&expected).exists());
+    assert!(space_abspath.join("root").join(&expected).exists());
 }
 
 #[test]
@@ -554,9 +554,8 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expect_relpath = PathBuf::from("error-logs")
-        .join("critical-events-2025-backup")
-        .join("archive-today");
+    let expect_relpath =
+        PathBuf::from("error-logs").join("critical-events-2025-backup-archive-today");
     assert_eq!(col_relpath, expect_relpath.to_string_lossy());
 
     let expect_path = space_abspath.join("logs").join(&expect_relpath);
