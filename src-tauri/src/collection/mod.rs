@@ -272,27 +272,28 @@ pub fn create_collections_all(
     }
 
     let mut dirs = Vec::new();
-    for colname in create_collection_dto.relpath.split('/') {
-        let colname = colname.trim();
-        let dir_sanitized_name = utils::sanitize_path_segment(colname);
+    for component in Path::new(&create_collection_dto.relpath).components() {
+        if let std::path::Component::Normal(os_str) = component {
+            let colname = os_str.to_string_lossy();
+            let colname = colname.trim();
+            let dir_sanitized_name = utils::sanitize_path_segment(colname);
 
-        if colname.is_empty() || dir_sanitized_name.is_empty() {
-            continue;
+            if colname.is_empty() || dir_sanitized_name.is_empty() {
+                continue;
+            }
+
+            dirs.push((dir_sanitized_name, colname.to_string()));
         }
-
-        dirs.push((dir_sanitized_name, colname.to_string()));
     }
 
     let collection_parent_abspath = space_abspath.join(&create_collection_dto.parent_relpath);
     let mut collections_relpath = String::new();
 
     for (dir_sanitized_name, colname) in &dirs {
-        let mut cur_collection_relpath = collections_relpath.clone();
-
-        if !cur_collection_relpath.is_empty() {
-            cur_collection_relpath.push('/');
-        }
-        cur_collection_relpath.push_str(dir_sanitized_name);
+        let cur_collection_relpath = PathBuf::from(&collections_relpath)
+            .join(dir_sanitized_name)
+            .to_string_lossy()
+            .to_string();
 
         let target_dir = collection_parent_abspath.join(&cur_collection_relpath);
         let dir_exists = fs::metadata(&target_dir).is_ok();
@@ -300,7 +301,7 @@ pub fn create_collections_all(
             fs::create_dir(&target_dir)?;
         };
 
-        let cur_collection_relpath = utils::join_str_paths(vec![
+        let cur_collection_relpath = utils::join_strpaths(vec![
             &create_collection_dto.parent_relpath,
             &cur_collection_relpath,
         ]);
@@ -308,15 +309,14 @@ pub fn create_collections_all(
         save_colname_if_missing(space_abspath, &cur_collection_relpath, colname)
             .map_err(|e| Error::FileReadError(format!("{cur_collection_relpath}: {e}")))?;
 
-        if !collections_relpath.is_empty() {
-            collections_relpath.push('/');
-        }
-        collections_relpath.push_str(dir_sanitized_name);
+        collections_relpath = PathBuf::from(&collections_relpath)
+            .join(dir_sanitized_name)
+            .to_string_lossy()
+            .to_string();
     }
 
     Ok(collections_relpath)
 }
-
 /// Creates new collection directory/directories under the space
 ///
 /// If the collection path contains nested segments (e.g. `"Settings/Notifications"`),
@@ -340,17 +340,16 @@ pub fn create_collection(
         .space
         .clone()
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
-
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let (parsed_parent_relpath, colname) = match dto.relpath.rfind('/') {
-        Some(last_slash_index) => {
-            let parsed_parent_relpath = &dto.relpath[..last_slash_index];
-            let colname = &dto.relpath[last_slash_index + 1..];
-
-            (Some(parsed_parent_relpath.to_string()), colname.to_string())
+    let relpath = Path::new(&dto.relpath);
+    let (parsed_parent_relpath, colname) = match relpath.parent() {
+        Some(parent) if parent != Path::new("") => {
+            let parent_str = parent.to_string_lossy().to_string();
+            let colname = relpath.file_name().unwrap().to_string_lossy().to_string();
+            (Some(parent_str), colname)
         }
-        None => (None, dto.relpath.clone()),
+        _ => (None, dto.relpath.clone()),
     };
 
     let colname = colname.trim();
@@ -365,7 +364,7 @@ pub fn create_collection(
 
             let dirs_sanitized_relpath = create_collections_all(&space_abspath, &dto)?;
 
-            let dir_parent_relpath = utils::join_str_paths(vec![
+            let dir_parent_relpath = utils::join_strpaths(vec![
                 dto.parent_relpath.as_str(),
                 dirs_sanitized_relpath.as_str(),
             ]);
@@ -378,7 +377,7 @@ pub fn create_collection(
     let dir_abspath = space_abspath
         .join(&dir_parent_relpath)
         .join(&dir_sanitized_name);
-    let dir_relpath = utils::join_str_paths(vec![
+    let dir_relpath = utils::join_strpaths(vec![
         dir_parent_relpath.as_str(),
         dir_sanitized_name.as_str(),
     ]);

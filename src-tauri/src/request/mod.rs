@@ -96,16 +96,16 @@ pub fn create_req(
         .space
         .clone()
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
-
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let (parsed_parent_relpath, reqname) = match dto.relpath.rfind('/') {
-        Some(index) => {
-            let parent = &dto.relpath[..index];
-            let name = &dto.relpath[index + 1..];
-            (Some(parent.to_string()), name.to_string())
+    let relpath = Path::new(&dto.relpath);
+    let (parsed_parent_relpath, reqname) = match relpath.parent() {
+        Some(parent) if parent != Path::new("") => {
+            let parent_str = parent.to_string_lossy().to_string();
+            let reqname = relpath.file_name().unwrap().to_string_lossy().to_string();
+            (Some(parent_str), reqname)
         }
-        None => (None, dto.relpath.clone()),
+        _ => (None, dto.relpath.clone()),
     };
 
     let file_sanitized_name = utils::sanitize_path_segment(&reqname);
@@ -120,7 +120,7 @@ pub fn create_req(
             let parent_sanitized_relpath =
                 collection::create_collections_all(&space_abspath, &col_dto)?;
 
-            let full_parent_relpath = utils::join_str_paths(vec![
+            let full_parent_relpath = utils::join_strpaths(vec![
                 dto.parent_relpath.as_str(),
                 parent_sanitized_relpath.as_str(),
             ]);
@@ -133,7 +133,7 @@ pub fn create_req(
     let file_abspath = space_abspath
         .join(&file_parent_relpath)
         .join(&file_sanitized_name);
-    let file_relpath = utils::join_str_paths(vec![
+    let file_relpath = utils::join_strpaths(vec![
         file_parent_relpath.as_str(),
         &format!("{file_sanitized_name}.toml"),
     ]);

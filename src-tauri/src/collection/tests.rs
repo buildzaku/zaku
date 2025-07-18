@@ -152,7 +152,7 @@ fn parse_root_collection_should_match_created_structure() {
             let req_path = if current_path.is_empty() {
                 req.meta.fsname.clone()
             } else {
-                utils::join_str_paths(vec![&current_path, &req.meta.fsname])
+                utils::join_strpaths(vec![&current_path, &req.meta.fsname])
             };
 
             let expected_name = expected_reqname_by_relpath
@@ -168,7 +168,7 @@ fn parse_root_collection_should_match_created_structure() {
             let child_path = if current_path.is_empty() {
                 child.meta.fsname.clone()
             } else {
-                utils::join_str_paths(vec![&current_path, &child.meta.fsname])
+                utils::join_strpaths(vec![&current_path, &child.meta.fsname])
             };
             stack.push((child, child_path));
         }
