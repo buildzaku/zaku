@@ -8,7 +8,7 @@ use crate::{
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AppStore {
-    pub active_spaceref: Option<SpaceReference>,
+    pub spaceref: Option<SpaceReference>,
     pub spacerefs: Vec<SpaceReference>,
 }
 
@@ -21,7 +21,7 @@ pub struct ReqBuf {
 impl ReqBuf {
     pub fn from_req(req: &HttpReq) -> Self {
         let meta = ReqMeta {
-            file_name: req.meta.file_name.clone(),
+            fsname: req.meta.fsname.clone(),
             name: req.meta.name.clone(),
             has_unsaved_changes: true,
         };

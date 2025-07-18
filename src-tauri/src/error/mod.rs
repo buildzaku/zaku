@@ -1,15 +1,14 @@
 use derive_more::From;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::fmt;
-use std::io;
+use std::{fmt, io};
 
 #[derive(Debug, From)]
 pub enum Error {
     FileNotFound(String),
     FileReadError(String),
     LockError(String),
+    InvalidPath(String),
 
     #[from]
     Io(io::Error),
@@ -60,7 +59,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 #[serde(tag = "type")]
-#[specta(tag = "type")]
 pub enum CmdErr {
     Err { message: String },
     Http { message: String, code: Option<u16> },

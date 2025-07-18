@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, path::PathBuf};
 use tempfile;
 
 use crate::{
@@ -7,9 +7,200 @@ use crate::{
         models::{ColName, CreateCollectionDto},
     },
     error::Error,
+    request::{self, models::CreateRequestDto},
     space::{self, models::CreateSpaceDto},
     state::SharedState,
+    utils,
 };
+
+#[test]
+fn parse_root_collection_should_match_created_structure() {
+    let collections_dto = vec![
+        CreateCollectionDto {
+            parent_relpath: "".into(),
+            relpath: "Auth".into(),
+        },
+        CreateCollectionDto {
+            parent_relpath: "".into(),
+            relpath: "Users".into(),
+        },
+        CreateCollectionDto {
+            parent_relpath: "users".into(),
+            relpath: "Settings/Notifications".into(),
+        },
+        CreateCollectionDto {
+            parent_relpath: "".into(),
+            relpath: "Trending/Posts".into(),
+        },
+        CreateCollectionDto {
+            parent_relpath: "".into(),
+            relpath: "Data ~~~ Stats/Charts\\Monthly  ".into(),
+        },
+        CreateCollectionDto {
+            parent_relpath: "".into(),
+            relpath: "⚠️ ザク/🔥/💬 Status?".into(),
+        },
+    ];
+
+    let requests_dto = vec![
+        CreateRequestDto {
+            parent_relpath: "".into(),
+            relpath: "Ping".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "".into(),
+            relpath: "Admin/Ban User by ID".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "auth".into(),
+            relpath: "Access Token".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "users".into(),
+            relpath: "Get user by ID".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "users/settings".into(),
+            relpath: "Update User Preferences".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "users/settings/notifications".into(),
+            relpath: "List notifications".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "trending/posts".into(),
+            relpath: "List Top 25".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "data-~~~-stats/charts-monthly".into(),
+            relpath: "Export/CSV*&Report".into(),
+        },
+        CreateRequestDto {
+            parent_relpath: "⚠️-ザク/🔥/💬-status".into(),
+            relpath: "💡Idea:/*>?Bank".into(),
+        },
+    ];
+
+    let expected_colname_by_relpath_components = vec![
+        (vec!["auth"], "Auth"),
+        (vec!["users"], "Users"),
+        (vec!["users", "settings", "notifications"], "Notifications"),
+        (vec!["trending", "posts"], "Posts"),
+        (vec!["data-~~~-stats", "charts-monthly"], "Charts-Monthly"),
+        (vec!["⚠️-ザク", "🔥", "💬-status"], "💬 Status?"),
+    ];
+
+    let expected_reqname_by_relpath_components = vec![
+        (vec!["ping.toml"], "Ping"),
+        (vec!["admin", "ban-user-by-id.toml"], "Ban User by ID"),
+        (vec!["auth", "access-token.toml"], "Access Token"),
+        (vec!["users", "get-user-by-id.toml"], "Get user by ID"),
+        (
+            vec!["users", "settings", "update-user-preferences.toml"],
+            "Update User Preferences",
+        ),
+        (
+            vec![
+                "users",
+                "settings",
+                "notifications",
+                "list-notifications.toml",
+            ],
+            "List notifications",
+        ),
+        (vec!["trending", "posts", "list-top-25.toml"], "List Top 25"),
+        (
+            vec![
+                "data-~~~-stats",
+                "charts-monthly",
+                "export",
+                "csv-&report.toml",
+            ],
+            "CSV*&Report",
+        ),
+        (
+            vec!["⚠️-ザク", "🔥", "💬-status", "💡idea", "bank.toml"],
+            "*>?Bank",
+        ),
+    ];
+
+    let mut expected_colname_by_relpath = HashMap::new();
+    for (components, name) in expected_colname_by_relpath_components {
+        let path = components
+            .iter()
+            .fold(PathBuf::new(), |acc, comp| acc.join(comp));
+        expected_colname_by_relpath.insert(path.to_string_lossy().to_string(), name);
+    }
+
+    let mut expected_reqname_by_relpath = HashMap::new();
+    for (components, name) in expected_reqname_by_relpath_components {
+        let path = components
+            .iter()
+            .fold(PathBuf::new(), |acc, comp| acc.join(comp));
+        expected_reqname_by_relpath.insert(path.to_string_lossy().to_string(), name);
+    }
+
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let dto = CreateSpaceDto {
+        name: "Main Space".into(),
+        location: tmp_dir.path().to_string_lossy().into(),
+    };
+
+    let mut sharedstate = SharedState::default();
+    space::create_space(dto, &mut sharedstate).expect("Failed to create space");
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+
+    for col_dto in &collections_dto {
+        collection::create_collections_all(&space_abspath, col_dto)
+            .expect("Failed to create collection");
+    }
+
+    for req_dto in &requests_dto {
+        request::create_req(req_dto, &mut sharedstate).expect("Failed to create request");
+    }
+
+    let root_collection =
+        collection::parse_root_collection(&space_abspath).expect("Failed to parse root collection");
+
+    let mut stack = vec![(&root_collection, String::new())];
+
+    while let Some((collection, current_path)) = stack.pop() {
+        if !current_path.is_empty() {
+            if let Some(expected_name) = expected_colname_by_relpath.get(current_path.as_str()) {
+                assert_eq!(
+                    collection.meta.name.as_deref(),
+                    Some(*expected_name),
+                    "Collection name mismatch at '{current_path}'"
+                );
+            }
+        }
+
+        for req in &collection.requests {
+            let req_path = if current_path.is_empty() {
+                req.meta.fsname.clone()
+            } else {
+                utils::join_strpaths(vec![&current_path, &req.meta.fsname])
+            };
+
+            let expected_name = expected_reqname_by_relpath
+                .get(req_path.as_str())
+                .unwrap_or_else(|| panic!("Unexpected request: {req_path}"));
+            assert_eq!(
+                req.meta.name, *expected_name,
+                "Request name mismatch at '{req_path}'"
+            );
+        }
+
+        for child in &collection.collections {
+            let child_path = if current_path.is_empty() {
+                child.meta.fsname.clone()
+            } else {
+                utils::join_strpaths(vec![&current_path, &child.meta.fsname])
+            };
+            stack.push((child, child_path));
+        }
+    }
+}
 
 #[test]
 fn colname_by_relpath_reads_existing_data() {
@@ -113,10 +304,14 @@ fn create_collections_all_basic() {
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
-    assert_eq!(col_relpath, "users/settings/notifications");
 
-    let expected_path = col_abspath.join("users/settings/notifications");
-    assert!(expected_path.exists());
+    let expected = PathBuf::from("users")
+        .join("settings")
+        .join("notifications");
+    assert_eq!(col_relpath, expected.to_string_lossy());
+
+    let expect_path = col_abspath.join("users/settings/notifications");
+    assert!(expect_path.exists());
 }
 
 #[test]
@@ -145,7 +340,9 @@ fn create_collections_all_sanitization() {
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
-    assert_eq!(col_relpath, "notification-settings/list-notifications");
+
+    let expected = PathBuf::from("notification-settings").join("list-notifications");
+    assert_eq!(col_relpath, expected.to_string_lossy());
 
     assert!(space_abspath
         .join("users/notification-settings/list-notifications")
@@ -206,7 +403,9 @@ fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
-    assert_eq!(col_relpath, "system/display");
+
+    let expected = PathBuf::from("system").join("display");
+    assert_eq!(col_relpath, expected.to_string_lossy());
 
     assert!(space_abspath.join("settings/system/display").exists());
 }
@@ -242,7 +441,8 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    assert_eq!(col_relpath, "config/options");
+    let expected = PathBuf::from("config").join("options");
+    assert_eq!(col_relpath, expected.to_string_lossy());
 }
 
 #[test]
@@ -259,26 +459,43 @@ fn create_collections_all_special_characters_should_be_sanitized_or_preserved() 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    assert_eq!(col_relpath, "config@home/naïve#settings/🔥-experimental");
+    let expected = PathBuf::from("config@home")
+        .join("naïve#settings")
+        .join("🔥-experimental");
+    assert_eq!(col_relpath, expected.to_string_lossy());
 
-    let expected_path = space_abspath.join("library/config@home/naïve#settings/🔥-experimental");
-    assert!(expected_path.exists());
+    let expect_path = space_abspath.join("library/config@home/naïve#settings/🔥-experimental");
+    assert!(expect_path.exists());
 
     let colname = collection::colname_by_relpath(space_abspath)
         .expect("Failed to read collection name mappings");
 
-    assert_eq!(
-        colname.mappings.get("library/config@home"),
-        Some(&"Config@Home".to_string())
-    );
-    assert_eq!(
-        colname.mappings.get("library/config@home/naïve#settings"),
-        Some(&"Naïve#Settings".to_string())
-    );
+    let library_config_key = PathBuf::from("library").join("config@home");
     assert_eq!(
         colname
             .mappings
-            .get("library/config@home/naïve#settings/🔥-experimental"),
+            .get(&library_config_key.to_string_lossy().to_string()),
+        Some(&"Config@Home".to_string())
+    );
+
+    let naive_settings_key = PathBuf::from("library")
+        .join("config@home")
+        .join("naïve#settings");
+    assert_eq!(
+        colname
+            .mappings
+            .get(&naive_settings_key.to_string_lossy().to_string()),
+        Some(&"Naïve#Settings".to_string())
+    );
+
+    let experimental_key = PathBuf::from("library")
+        .join("config@home")
+        .join("naïve#settings")
+        .join("🔥-experimental");
+    assert_eq!(
+        colname
+            .mappings
+            .get(&experimental_key.to_string_lossy().to_string()),
         Some(&"🔥 Experimental".to_string())
     );
 }
@@ -296,8 +513,10 @@ fn create_collections_all_unicode_segments_should_be_handled() {
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
-    assert_eq!(col_relpath, "ザク/設定");
-    assert!(space_abspath.join("global/ザク/設定").exists());
+
+    let expected = PathBuf::from("ザク").join("設定");
+    assert_eq!(col_relpath, expected.to_string_lossy());
+    assert!(space_abspath.join("global").join(&expected).exists());
 }
 
 #[test]
@@ -313,8 +532,10 @@ fn create_collections_all_trailing_slash_should_be_ignored() {
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
-    assert_eq!(col_relpath, "settings/preferences");
-    assert!(space_abspath.join("root/settings/preferences").exists());
+
+    let expected = PathBuf::from("settings").join("preferences");
+    assert_eq!(col_relpath, expected.to_string_lossy());
+    assert!(space_abspath.join("root").join(&expected).exists());
 }
 
 #[test]
@@ -331,11 +552,12 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected_relpath = "error-logs/critical-events-2025-backup-archive-today";
-    assert_eq!(col_relpath, expected_relpath);
+    let expect_relpath =
+        PathBuf::from("error-logs").join("critical-events-2025-backup-archive-today");
+    assert_eq!(col_relpath, expect_relpath.to_string_lossy());
 
-    let expected_path = space_abspath.join("logs").join(expected_relpath);
-    assert!(expected_path.exists());
+    let expect_path = space_abspath.join("logs").join(&expect_relpath);
+    assert!(expect_path.exists());
 }
 
 #[test]
@@ -364,7 +586,10 @@ fn create_collection_basic() {
     let col = collection::create_collection(&collection_dto, &mut sharedstate)
         .expect("Failed to create collection");
 
-    assert_eq!(col.relpath, "admin/settings/notifications");
+    let expected = PathBuf::from("admin")
+        .join("settings")
+        .join("notifications");
+    assert_eq!(col.relpath, expected.to_string_lossy());
     assert!(space_abspath.join("admin/settings/notifications").exists());
 }
 
@@ -395,7 +620,7 @@ fn create_collection_empty_relpath_should_fail() {
 }
 
 #[test]
-fn create_collection_missing_active_space_should_fail() {
+fn create_collection_missing_space_should_fail() {
     let collection_dto = CreateCollectionDto {
         parent_relpath: "admin".into(),
         relpath: "Trending Posts".into(),
@@ -430,7 +655,9 @@ fn create_collection_unicode_path_should_succeed() {
 
     let result = collection::create_collection(&collection_dto, &mut sharedstate)
         .expect("Failed to create collection");
-    assert_eq!(result.relpath, "global/ザク/設定");
+
+    let expected = PathBuf::from("global").join("ザク").join("設定");
+    assert_eq!(result.relpath, expected.to_string_lossy());
     assert!(space_abspath.join("global/ザク/設定").exists());
 }
 
@@ -461,12 +688,17 @@ fn create_collection_should_save_colname() {
 
     let colname =
         collection::colname_by_relpath(&space_abspath).expect("Failed to get collection names");
+
+    let expected_key = PathBuf::from("prefs").join("privacy-settings");
     assert_eq!(
-        colname.mappings.get("prefs/privacy-settings"),
+        colname
+            .mappings
+            .get(&expected_key.to_string_lossy().to_string()),
         Some(&"Privacy Settings".into())
     );
 
-    assert_eq!(result.relpath, "prefs/privacy-settings");
+    let expected_relpath = PathBuf::from("prefs").join("privacy-settings");
+    assert_eq!(result.relpath, expected_relpath.to_string_lossy());
     assert!(space_abspath.join("prefs/privacy-settings").exists());
 }
 

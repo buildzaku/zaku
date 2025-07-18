@@ -11,7 +11,7 @@ use crate::{
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqMeta {
-    pub file_name: String,
+    pub fsname: String,
     pub name: String,
     pub has_unsaved_changes: bool,
 }
@@ -109,7 +109,7 @@ pub struct HttpReq {
 impl HttpReq {
     pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
         let meta = ReqMeta {
-            file_name: req_buf.meta.file_name.clone(),
+            fsname: req_buf.meta.fsname.clone(),
             name: req_buf.meta.name.clone(),
             has_unsaved_changes: true,
         };
@@ -122,9 +122,9 @@ impl HttpReq {
         }
     }
 
-    pub fn from_reqtoml(req_toml: &ReqToml, file_name: String) -> Self {
+    pub fn from_reqtoml(req_toml: &ReqToml, fsname: String) -> Self {
         let meta = ReqMeta {
-            file_name,
+            fsname,
             name: req_toml.meta.name.clone(),
             has_unsaved_changes: false,
         };

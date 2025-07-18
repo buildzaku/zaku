@@ -3,7 +3,7 @@
     import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
 
     import type { Collection } from "$lib/bindings";
-    import { treeActionsState, treeItemsState } from "$lib/state.svelte";
+    import { explorerActionsState, explorerState } from "$lib/state.svelte";
     import { cn } from "$lib/utils/style";
     import { buttonVariants } from "$lib/components/primitives/button";
     import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
@@ -19,8 +19,7 @@
         handleDragOver,
         handleDrop,
         isDropAllowed,
-    } from "$lib/components/tree-item/utils.svelte";
-    import { TreeItemType } from "$lib/models";
+    } from "$lib/components/tree-node/utils.svelte";
 
     type Props = { currentPath: string; root: Collection; children: Snippet; class?: string };
 
@@ -39,15 +38,15 @@
         aria-grabbed="false"
         draggable="false"
         ondragover={event =>
-            handleDragOver(event, { type: TreeItemType.Collection, relativePath: currentPath })}
+            handleDragOver(event, { type: "collection", relativePath: currentPath })}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
         onkeydown={keyboardEvent => {
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 root.meta.is_expanded = !root.meta.is_expanded;
-                treeItemsState.focussedItem = {
-                    type: TreeItemType.Collection,
+                explorerState.focussedNode = {
+                    type: "collection",
                     relativePath: RELATIVE_SPACE_ROOT,
                     parentRelativePath: RELATIVE_SPACE_ROOT,
                 };
@@ -58,8 +57,8 @@
         )}
         onclick={() => {
             root.meta.is_expanded = !root.meta.is_expanded;
-            treeItemsState.focussedItem = {
-                type: TreeItemType.Collection,
+            explorerState.focussedNode = {
+                type: "collection",
                 relativePath: RELATIVE_SPACE_ROOT,
                 parentRelativePath: RELATIVE_SPACE_ROOT,
             };
@@ -72,7 +71,7 @@
                 <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {/if}
             <span class="truncate">
-                {root.meta.name ?? root.meta.dir_name}
+                {root.meta.name ?? root.meta.fsname}
             </span>
         </div>
 
@@ -91,7 +90,7 @@
                 <TooltipProvider>
                     <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger
-                            data-create-tree-item-button
+                            data-create-tree-node-button
                             class={cn(
                                 buttonVariants({
                                     variant: "ghost",
@@ -101,7 +100,7 @@
                             )}
                             onclick={event => {
                                 event.stopImmediatePropagation();
-                                treeActionsState.createNewItem = TreeItemType.Request;
+                                explorerActionsState.createNewNode = "request";
                             }}
                         >
                             <FilePlusIcon size={13} class="size-[13px] max-h-[13px] max-w-[13px]" />
@@ -114,7 +113,7 @@
                 <TooltipProvider>
                     <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger
-                            data-create-tree-item-button
+                            data-create-tree-node-button
                             class={cn(
                                 buttonVariants({
                                     variant: "ghost",
@@ -124,7 +123,7 @@
                             )}
                             onclick={event => {
                                 event.stopImmediatePropagation();
-                                treeActionsState.createNewItem = TreeItemType.Collection;
+                                explorerActionsState.createNewNode = "collection";
                             }}
                         >
                             <FolderPlusIcon
@@ -154,7 +153,7 @@
                 draggable="false"
                 ondragover={event =>
                     handleDragOver(event, {
-                        type: TreeItemType.Collection,
+                        type: "collection",
                         relativePath: currentPath,
                     })}
                 ondrop={handleDrop}
