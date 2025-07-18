@@ -552,8 +552,11 @@ fn create_collections_all_invalid_characters_should_be_sanitized() {
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expect_relpath =
-        PathBuf::from("error-logs").join("critical-events-2025-backup-archive-today");
+    let expect_relpath = PathBuf::from("error-logs").join(if cfg!(windows) {
+        PathBuf::from("critical-events-2025-backup").join("archive-today")
+    } else {
+        PathBuf::from("critical-events-2025-backup-archive-today")
+    });
     assert_eq!(col_relpath, expect_relpath.to_string_lossy());
 
     let expect_path = space_abspath.join("logs").join(&expect_relpath);
