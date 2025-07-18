@@ -108,7 +108,7 @@ pub fn create_req(
         _ => (None, dto.relpath.clone()),
     };
 
-    let file_sanitized_name = utils::sanitize_path_segment(&reqname);
+    let file_sanitized_name = utils::sanitize_pathseg(&reqname);
 
     let (file_parent_relpath, file_sanitized_name) = match parsed_parent_relpath {
         Some(ref parent_relpath) => {

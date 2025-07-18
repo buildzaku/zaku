@@ -30,7 +30,7 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
         )));
     }
 
-    let space_dirname = utils::sanitize_path_segment(&dto.name);
+    let space_dirname = utils::sanitize_pathseg(&dto.name);
     let space_abspath = location.join(&space_dirname);
     let mut spacerefs = store::get_spacerefs();
 

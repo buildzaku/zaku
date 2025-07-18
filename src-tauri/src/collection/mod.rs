@@ -250,13 +250,13 @@ pub fn create_collections_all(space_abspath: &Path, dto: &CreateCollectionDto) -
         return Err(Error::FileNotFound("Collection name is missing".into()));
     }
 
-    let normalized_relpath = utils::sanitize_path_segment_bslash(&dto.relpath);
+    let relpath_no_bslashes = utils::sanitize_pathseg_bslash(&dto.relpath);
     let mut dirs = Vec::new();
-    for component in Path::new(&normalized_relpath).components() {
+    for component in Path::new(&relpath_no_bslashes).components() {
         if let std::path::Component::Normal(os_str) = component {
             let colname = os_str.to_string_lossy();
             let colname = colname.trim();
-            let dir_sanitized_name = utils::sanitize_path_segment(colname);
+            let dir_sanitized_name = utils::sanitize_pathseg(colname);
 
             if colname.is_empty() || dir_sanitized_name.is_empty() {
                 continue;
@@ -320,8 +320,8 @@ pub fn create_collection(
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let normalized_relpath = utils::sanitize_path_segment_bslash(&dto.relpath);
-    let relpath = Path::new(&normalized_relpath);
+    let relpath_no_bslashes = utils::sanitize_pathseg_bslash(&dto.relpath);
+    let relpath = Path::new(&relpath_no_bslashes);
     let (parsed_parent_relpath, colname) = match relpath.parent() {
         Some(parent) if parent != Path::new("") => {
             let parent_str = parent.to_string_lossy().to_string();
@@ -329,11 +329,11 @@ pub fn create_collection(
 
             (Some(parent_str), colname)
         }
-        _ => (None, normalized_relpath.clone()),
+        _ => (None, relpath_no_bslashes.clone()),
     };
 
     let colname = colname.trim();
-    let dir_sanitized_name = utils::sanitize_path_segment(colname);
+    let dir_sanitized_name = utils::sanitize_pathseg(colname);
 
     let (dir_parent_relpath, dir_sanitized_name) = match parsed_parent_relpath {
         Some(ref parsed_parent_relpath) => {
