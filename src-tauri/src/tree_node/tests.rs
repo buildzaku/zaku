@@ -2,7 +2,10 @@ use std::{fs, path::Path};
 use tempfile;
 
 use crate::{
-    collection::{self, models::CreateCollectionDto},
+    collection::{
+        self,
+        models::{Collection, CreateCollectionDto},
+    },
     error::Error,
     request::{self, models::CreateRequestDto},
     space::{self, models::CreateSpaceDto},
@@ -59,6 +62,28 @@ fn find_collection_finds_direct_child() {
     assert_eq!(collection.meta.fsname, "parent-collection-1");
 }
 
+// temp
+pub fn log_collection_tree(collection: &Collection, depth: usize) {
+    let indent = "  ".repeat(depth);
+    eprintln!("{}Collection:", indent);
+    eprintln!("{}  fsname: '{}'", indent, collection.meta.fsname);
+    eprintln!("{}  name: {:?}", indent, collection.meta.name);
+    eprintln!("{}  requests: {}", indent, collection.requests.len());
+
+    for (i, req) in collection.requests.iter().enumerate() {
+        eprintln!("{}    req[{}]: {}", indent, i, req.meta.name);
+    }
+
+    eprintln!(
+        "{}  sub-collections: {}",
+        indent,
+        collection.collections.len()
+    );
+    for sub_collection in &collection.collections {
+        log_collection_tree(sub_collection, depth + 1);
+    }
+}
+
 #[test]
 fn find_collection_finds_nested_child() {
     let tmp_dir = tempfile::tempdir().unwrap();
@@ -72,6 +97,7 @@ fn find_collection_finds_nested_child() {
         .expect("Failed to create nested collection");
 
     let space = sharedstate.space.unwrap();
+    log_collection_tree(&space.root_collection, 0); // temp
     let result = tree_node::find_collection(
         &space.root_collection,
         Path::new("parent-collection-1/child-collection-1"),
