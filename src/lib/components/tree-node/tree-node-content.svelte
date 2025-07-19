@@ -5,7 +5,7 @@
     import { TreeNodeContent, TreeNodeCreate } from ".";
     import type { TreeNode, DragOverDto } from "$lib/models";
     import { explorerActionsState, explorerState } from "$lib/state.svelte";
-    import { cn, getMethodColorClass } from "$lib/utils/style";
+    import { cn, requestColors } from "$lib/utils/style";
     import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
         isCurrentCollectionOrAnyOfItsChildFocussed,
@@ -131,10 +131,9 @@
                 <div class="flex w-full items-center justify-between">
                     <div>
                         <span
-                            class={cn(
-                                "pl-3 text-[9px] font-bold",
-                                getMethodColorClass(node.config.method),
-                            )}
+                            class="pl-3 text-[9px] font-bold {requestColors({
+                                method: node.config.method,
+                            })}"
                         >
                             {node.config.method}
                         </span>

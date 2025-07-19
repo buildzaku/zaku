@@ -6,18 +6,18 @@
         SelectContent,
         SelectItem,
     } from "$lib/components/primitives/select";
-    import { getMethodColorClass } from "$lib/utils/style";
+    import { requestColors } from "$lib/utils/style";
 
     let { selected = $bindable() }: { selected: string } = $props();
 </script>
 
 <Select type="single" bind:value={selected}>
     <SelectTrigger class="w-32">
-        <span class={getMethodColorClass(selected)}>{selected}</span>
+        <span class={requestColors({ method: selected })}>{selected}</span>
     </SelectTrigger>
     <SelectContent class="w-[105px]">
         {#each Object.values(METHODS) as METHOD (METHOD)}
-            <SelectItem value={METHOD} class={getMethodColorClass(METHOD)}>
+            <SelectItem value={METHOD} class={requestColors({ method: METHOD })}>
                 {METHOD}
             </SelectItem>
         {/each}

@@ -4,7 +4,7 @@
     import type { UnlistenFn } from "@tauri-apps/api/event";
 
     import { sharedState, explorerActionsState, explorerState } from "$lib/state.svelte";
-    import { cn, getMethodColorClass } from "$lib/utils/style";
+    import { cn, requestColors } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
     import { toast } from "svelte-sonner";
@@ -130,7 +130,9 @@
                 <div class="w-[12px] min-w-[12px]"></div>
                 <CollectionIcon size={12} class="min-h-[12px] min-w-[12px]" />
             {:else}
-                <span class={cn("pl-3 text-[9px] font-bold", getMethodColorClass("GET"))}>GET</span>
+                <span class="pl-3 text-[9px] font-bold {requestColors({ method: 'GET' })}">
+                    GET
+                </span>
             {/if}
             <input
                 use:initialize

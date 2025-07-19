@@ -36,14 +36,14 @@
     --chart-3: oklch(0.769 0.188 70.08);
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
-    --method-get: oklch(0.55 0.15 150);
-    --method-post: oklch(0.6 0.18 60);
-    --method-delete: oklch(0.6 0.2 25);
-    --method-put: oklch(0.55 0.15 220);
-    --method-patch: oklch(0.5 0.12 280);
-    --method-head: oklch(0.6 0.16 80);
-    --method-options: oklch(0.65 0.2 320);
-    --method-default: oklch(0.55 0.02 285);
+    --method-get: oklch(0.5 0.12 150);
+    --method-post: oklch(0.55 0.14 45);
+    --method-delete: oklch(0.5 0.15 15);
+    --method-put: oklch(0.45 0.12 240);
+    --method-patch: oklch(0.4 0.1 270);
+    --method-head: oklch(0.5 0.13 70);
+    --method-options: oklch(0.55 0.16 320);
+    --method-default: oklch(0.45 0.02 285);
 }
 
 .dark {
@@ -79,13 +79,13 @@
     --chart-3: oklch(0.769 0.188 70.08);
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
-    --method-get: oklch(0.7 0.15 150);
-    --method-post: oklch(0.75 0.18 60);
-    --method-delete: oklch(0.75 0.2 25);
-    --method-put: oklch(0.7 0.15 220);
-    --method-patch: oklch(0.7 0.12 280);
-    --method-head: oklch(0.75 0.16 80);
-    --method-options: oklch(0.8 0.2 320);
+    --method-get: oklch(0.75 0.12 150);
+    --method-post: oklch(0.8 0.14 45);
+    --method-delete: oklch(0.75 0.15 15);
+    --method-put: oklch(0.7 0.12 240);
+    --method-patch: oklch(0.65 0.1 270);
+    --method-head: oklch(0.75 0.13 70);
+    --method-options: oklch(0.8 0.16 320);
     --method-default: oklch(0.7 0.02 285);
 }
 
@@ -126,6 +126,14 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+    --color-method-get: var(--method-get);
+    --color-method-post: var(--method-post);
+    --color-method-delete: var(--method-delete);
+    --color-method-put: var(--method-put);
+    --color-method-patch: var(--method-patch);
+    --color-method-head: var(--method-head);
+    --color-method-options: var(--method-options);
+    --color-method-default: var(--method-default);
 }
 
 @theme {
@@ -139,14 +147,6 @@
     --text-medium--line-height: calc(1.25 / 0.9375);
     --text-large: 1.0625rem;
     --text-large--line-height: calc(1.25 / 1.0625);
-    --color-method-get: var(--method-get);
-    --color-method-post: var(--method-post);
-    --color-method-delete: var(--method-delete);
-    --color-method-put: var(--method-put);
-    --color-method-patch: var(--method-patch);
-    --color-method-head: var(--method-head);
-    --color-method-options: var(--method-options);
-    --color-method-default: var(--method-default);
 }
 
 @layer base {
