@@ -131,7 +131,9 @@
 {/snippet}
 
 {#snippet responseBar()}
-    <div class="bg-card flex h-8 w-full items-center justify-between border-y border-t-transparent">
+    <div
+        class="bg-accent/30 flex h-8 w-full items-center justify-between border-y border-t-transparent"
+    >
         {#if isCollapsed}
             <div class="flex h-8 w-full items-center justify-end gap-1.5 border-b">
                 {#if (openReq.self.status === "Success" || openReq.self.status === "Error") && openReq.self.response}

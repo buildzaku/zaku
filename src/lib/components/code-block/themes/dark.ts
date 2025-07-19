@@ -5,7 +5,7 @@ import { tags } from "@lezer/highlight";
 export const dark = EditorView.theme(
     {
         "&": {
-            color: "#9cdcfe",
+            color: "#d4d7e8",
             backgroundColor: "transparent",
         },
         ".cm-content": {
@@ -70,9 +70,9 @@ const highlights = HighlightStyle.define([
             tags.labelName,
             tags.definition(tags.name),
         ],
-        color: "#9cdcfe",
+        color: "#62b3dd",
     },
-    { tag: tags.heading, fontWeight: "bold", color: "#9cdcfe" },
+    { tag: tags.heading, fontWeight: "bold", color: "#62b3dd" },
     {
         tag: [
             tags.typeName,

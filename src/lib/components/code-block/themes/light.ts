@@ -5,36 +5,36 @@ import { tags } from "@lezer/highlight";
 export const light = EditorView.theme(
     {
         "&": {
-            color: "#383a42",
+            color: "#2a2d3a",
             backgroundColor: "transparent",
         },
         ".cm-content": {
-            caretColor: "#000",
+            caretColor: "#2a2d3a",
             fontFamily: "monospace",
         },
         "&.cm-focused .cm-cursor": {
-            borderLeftColor: "#000",
+            borderLeftColor: "#2a2d3a",
         },
         "&.cm-focused .cm-selectionBackground, ::selection": {
-            backgroundColor: "#add6ff",
+            backgroundColor: "#c5d9f1",
         },
         ".cm-selectionMatch": {
-            backgroundColor: "#a8ac94",
+            backgroundColor: "#dae8f7",
         },
         ".cm-line": {
             backgroundColor: "transparent",
         },
         ".cm-activeLine": {
-            boxShadow: "inset 0px 0px 400px 110px rgba(0, 0, 0, 0.10)",
+            backgroundColor: "#f8f8f9",
         },
         ".cm-gutters": {
-            backgroundColor: "#e9ebef",
-            color: "#237893",
+            backgroundColor: "#ededef",
+            color: "#6b6d7a",
             border: "none",
             cursor: "default",
         },
         ".cm-activeLineGutter": {
-            color: "#0b216f",
+            color: "#2a2d3a",
             backgroundColor: "transparent",
         },
     },
@@ -56,9 +56,9 @@ const highlights = HighlightStyle.define([
             tags.bool,
             tags.special(tags.variableName),
         ],
-        color: "#0000ff",
+        color: "#0052cc",
     },
-    { tag: [tags.moduleKeyword, tags.controlKeyword], color: "#af00db" },
+    { tag: [tags.moduleKeyword, tags.controlKeyword], color: "#9333ea" },
     {
         tag: [
             tags.name,
@@ -70,9 +70,9 @@ const highlights = HighlightStyle.define([
             tags.labelName,
             tags.definition(tags.name),
         ],
-        color: "#0070c1",
+        color: "#1c3998",
     },
-    { tag: tags.heading, fontWeight: "bold", color: "#0070c1" },
+    { tag: tags.heading, fontWeight: "bold", color: "#1c3998" },
     {
         tag: [
             tags.typeName,
@@ -84,26 +84,29 @@ const highlights = HighlightStyle.define([
             tags.self,
             tags.namespace,
         ],
-        color: "#267f99",
+        color: "#0891b2",
     },
-    { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#795e26" },
-    { tag: [tags.number], color: "#098658" },
+    {
+        tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
+        color: "#d97706",
+    },
+    { tag: [tags.number], color: "#16a34a" },
     {
         tag: [tags.operator, tags.punctuation, tags.separator, tags.url, tags.escape, tags.regexp],
-        color: "#383a42",
+        color: "#2a2d3a",
     },
-    { tag: [tags.regexp], color: "#af00db" },
+    { tag: [tags.regexp], color: "#c026d3" },
     {
         tag: [tags.special(tags.string), tags.processingInstruction, tags.string, tags.inserted],
-        color: "#a31515",
+        color: "#c8430a",
     },
-    { tag: [tags.angleBracket], color: "#383a42" },
+    { tag: [tags.angleBracket], color: "#6b6d7a" },
     { tag: tags.strong, fontWeight: "bold" },
     { tag: tags.emphasis, fontStyle: "italic" },
     { tag: tags.strikethrough, textDecoration: "line-through" },
-    { tag: [tags.meta, tags.comment], color: "#008000" },
-    { tag: tags.link, color: "#4078f2", textDecoration: "underline" },
-    { tag: tags.invalid, color: "#e45649" },
+    { tag: [tags.meta, tags.comment], color: "#16a34a" },
+    { tag: tags.link, color: "#0052cc", textDecoration: "underline" },
+    { tag: tags.invalid, color: "#dc2626" },
 ]);
 
 export const lightTheme = [light, syntaxHighlighting(highlights)];

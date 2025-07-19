@@ -89,7 +89,7 @@
                 <div class="flex h-6 w-full">
                     <button
                         id="space-path-container"
-                        class="scrollbar-hidden border-input text-small flex h-6 w-full items-center overflow-x-scroll overflow-y-hidden rounded-md rounded-r-none border border-r-0 bg-transparent px-3 py-1 text-nowrap whitespace-nowrap shadow-sm select-text"
+                        class="scrollbar-hidden text-small flex h-6 w-full items-center overflow-x-scroll overflow-y-hidden rounded-md rounded-r-none border border-r-0 bg-transparent px-3 py-1 text-nowrap whitespace-nowrap select-text"
                         onclick={handleCreateSpaceBrowse}
                     >
                         {createSpaceLocation}

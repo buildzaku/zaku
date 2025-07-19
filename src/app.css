@@ -3,25 +3,25 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-    --background: oklch(0.96 0.0056 264.53);
-    --foreground: oklch(0.43 0.0426 279.51);
-    --muted: oklch(0.92 0.0059 264.53);
-    --muted-foreground: oklch(0.41 0.0221 264.29);
-    --popover: oklch(0.93 0.0091 264.52);
-    --popover-foreground: oklch(0.35 0.0322 279.62);
-    --card: oklch(0.94 0.0079 264.52);
-    --card-foreground: oklch(0.39 0.0375 279.56);
-    --border: oklch(0.92 0.0064 264.53);
-    --input: oklch(0.9 0.0084 264.52);
-    --primary: oklch(0.73 0.1967 327.35);
+    --background: oklch(0.97 0.004 285.8);
+    --foreground: oklch(0.15 0.008 285.88);
+    --muted: oklch(0.92 0.006 285.8);
+    --muted-foreground: oklch(0.4 0.015 285.7);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.15 0.008 285.88);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.15 0.008 285.88);
+    --border: oklch(0.88 0.008 285.9);
+    --input: oklch(1 0 0);
+    --primary: oklch(0.65 0.21 327.35);
     --primary-foreground: oklch(1 0 0);
-    --secondary: oklch(0.77 0.0566 304.76);
-    --secondary-foreground: oklch(0.24 0.0445 303.22);
-    --accent: oklch(0.83 0.0235 264.44);
-    --accent-foreground: oklch(0.31 0.0304 263.97);
-    --destructive: oklch(0.48 0.188006 29.3675);
-    --destructive-foreground: oklch(0.97 0.0137 21.07);
-    --ring: oklch(0.81 0.1699 327.01);
+    --secondary: oklch(0.91 0.008 285.9);
+    --secondary-foreground: oklch(0.15 0.008 285.88);
+    --accent: oklch(0.91 0.008 285.9);
+    --accent-foreground: oklch(0.15 0.008 285.88);
+    --destructive: oklch(0.62 0.22 31.65);
+    --destructive-foreground: oklch(1 0 0);
+    --ring: oklch(0.65 0.21 327.35);
     --radius: 0.45rem;
     --sidebar-background: oklch(0.98 0 0);
     --sidebar-foreground: oklch(0.37 0.012 285.8);
@@ -31,11 +31,25 @@
     --sidebar-accent-foreground: oklch(0.21 0.0059 285.88);
     --sidebar-border: oklch(0.93 0.0058 264.53);
     --sidebar-ring: oklch(0.62 0.1879 259.8);
-    --chart-1: oklch(0.646 0.222 41.116);
-    --chart-2: oklch(0.6 0.118 184.704);
-    --chart-3: oklch(0.398 0.07 227.392);
-    --chart-4: oklch(0.828 0.189 84.429);
-    --chart-5: oklch(0.769 0.188 70.08);
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+    --method-get: oklch(0.6 0.14 150);
+    --method-post: oklch(0.65 0.16 45);
+    --method-delete: oklch(0.6 0.18 15);
+    --method-put: oklch(0.55 0.14 240);
+    --method-patch: oklch(0.5 0.12 270);
+    --method-head: oklch(0.68 0.15 70);
+    --method-options: oklch(0.65 0.18 320);
+    --method-default: oklch(0.55 0.06 285);
+    --success: oklch(0.5 0.15 140);
+    --success-bg: oklch(0.94 0.05 140);
+    --success-border: oklch(0.88 0.08 140);
+    --failure: oklch(0.45 0.18 25);
+    --failure-bg: oklch(0.94 0.05 25);
+    --failure-border: oklch(0.88 0.08 25);
 }
 
 .dark {
@@ -71,6 +85,20 @@
     --chart-3: oklch(0.769 0.188 70.08);
     --chart-4: oklch(0.627 0.265 303.9);
     --chart-5: oklch(0.645 0.246 16.439);
+    --method-get: oklch(0.78 0.1 150);
+    --method-post: oklch(0.8 0.12 45);
+    --method-delete: oklch(0.72 0.13 12);
+    --method-put: oklch(0.7 0.1 240);
+    --method-patch: oklch(0.65 0.08 270);
+    --method-head: oklch(0.88 0.11 70);
+    --method-options: oklch(0.8 0.14 320);
+    --method-default: oklch(0.7 0.02 285);
+    --success: oklch(0.8 0.15 140);
+    --success-bg: oklch(0.25 0.05 140);
+    --success-border: oklch(0.35 0.08 140);
+    --failure: oklch(0.75 0.18 25);
+    --failure-bg: oklch(0.25 0.05 25);
+    --failure-border: oklch(0.35 0.08 25);
 }
 
 @theme inline {
@@ -110,6 +138,20 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+    --color-method-get: var(--method-get);
+    --color-method-post: var(--method-post);
+    --color-method-delete: var(--method-delete);
+    --color-method-put: var(--method-put);
+    --color-method-patch: var(--method-patch);
+    --color-method-head: var(--method-head);
+    --color-method-options: var(--method-options);
+    --color-method-default: var(--method-default);
+    --color-success: var(--success);
+    --color-success-bg: var(--success-bg);
+    --color-success-border: var(--success-border);
+    --color-failure: var(--failure);
+    --color-failure-bg: var(--failure-bg);
+    --color-failure-border: var(--failure-border);
 }
 
 @theme {
