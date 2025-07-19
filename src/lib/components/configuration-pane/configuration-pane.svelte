@@ -57,7 +57,7 @@
 
 <div
     class={cn(
-        "bg-accent/25 flex h-8 w-full items-center justify-between border-y",
+        "bg-accent/30 flex h-8 w-full items-center justify-between border-y",
         isCollapsed ? "border-b-transparent" : "",
     )}
 >
