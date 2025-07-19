@@ -13,13 +13,7 @@
 >
     <div></div>
     <div class="flex h-full items-center gap-3 px-4">
-        <Button
-            disabled
-            onclick={toggleMode}
-            variant="ghost"
-            size="icon"
-            class="size-6 min-h-6 min-w-6 p-1"
-        >
+        <Button onclick={toggleMode} variant="ghost" size="icon" class="size-6 min-h-6 min-w-6 p-1">
             <SunIcon size={14} class="block dark:hidden" aria-label="light" />
             <MoonIcon size={14} class="hidden dark:block" aria-label="dark" />
             <span class="sr-only">Toggle theme</span>
