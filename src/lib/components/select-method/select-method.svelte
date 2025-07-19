@@ -12,10 +12,10 @@
 </script>
 
 <Select type="single" bind:value={selected}>
-    <SelectTrigger class="w-32">
+    <SelectTrigger class="w-32 font-medium">
         <span class={requestColors({ method: selected })}>{selected}</span>
     </SelectTrigger>
-    <SelectContent class="w-[105px]">
+    <SelectContent class="w-[105px] font-medium">
         {#each Object.values(METHODS) as METHOD (METHOD)}
             <SelectItem value={METHOD} class={requestColors({ method: METHOD })}>
                 {METHOD}
