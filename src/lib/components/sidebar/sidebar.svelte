@@ -147,12 +147,7 @@
 
 {#snippet cookiesButton(space: Space)}
     <Dialog>
-        <DialogTrigger
-            class={buttonVariants({
-                variant: "ghost",
-                size: "icon",
-            })}
-        >
+        <DialogTrigger class={buttonVariants({ variant: "ghost", size: "icon" })}>
             <CookieIcon size={14} />
         </DialogTrigger>
         <DialogContent class="flex h-[80%] max-h-[80%] w-[80%] max-w-[80%] flex-col">
@@ -168,7 +163,7 @@
                                 <AccordionTrigger class="cursor-pointer px-3 hover:decoration-0">
                                     {domain}
                                 </AccordionTrigger>
-                                <AccordionContent class="bg-background px-3 py-4">
+                                <AccordionContent class="bg-background border-t-[1px] px-3 py-4">
                                     {#if cookies}
                                         {@render cookiesContent(space, domain, cookies)}
                                     {/if}
