@@ -5,7 +5,7 @@
     import { TreeNodeContent, TreeNodeCreate } from ".";
     import type { TreeNode, DragOverDto } from "$lib/models";
     import { explorerActionsState, explorerState } from "$lib/state.svelte";
-    import { cn, getMethodColorClass } from "$lib/utils/style";
+    import { cn, requestColors } from "$lib/utils/style";
     import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
         isCurrentCollectionOrAnyOfItsChildFocussed,
@@ -77,7 +77,7 @@
 <div
     data-parent-path={parentPath}
     data-current-path={currentPath}
-    class={cn("relative min-w-full", shouldHighlight ? "bg-accent/60" : "", className)}
+    class={cn("relative min-w-full", shouldHighlight ? "bg-accent/75" : "", className)}
 >
     {#if level > 1}
         <div
@@ -108,7 +108,7 @@
             "focus-visible:ring-ring flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none",
             explorerState.focussedNode.relativePath === currentPath
                 ? "bg-accent"
-                : "hover:bg-accent/60",
+                : "hover:bg-accent/75",
         )}
         onclick={() => {
             explorerActionsState.createNewNode = null;
@@ -124,7 +124,7 @@
                     <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
                 {/if}
                 <CollectionIcon size={12} />
-                <span class="truncate text-sm">
+                <span class="text-small truncate">
                     {node.meta.name ?? node.meta.fsname}
                 </span>
             {:else}
@@ -133,12 +133,12 @@
                         <span
                             class={cn(
                                 "pl-3 text-[9px] font-bold",
-                                getMethodColorClass(node.config.method),
+                                requestColors({ method: node.config.method }),
                             )}
                         >
                             {node.config.method}
                         </span>
-                        <span class="truncate text-sm">
+                        <span class="text-small truncate">
                             {node.meta.name ?? node.meta.fsname}
                         </span>
                     </div>

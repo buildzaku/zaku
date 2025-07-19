@@ -23,7 +23,7 @@
     <DialogPrimitive.Content
         bind:ref
         class={cn(
-            "bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border p-6 shadow-lg sm:rounded-lg",
+            "bg-background fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border p-6 sm:rounded-lg",
             className,
         )}
         {...restProps}
