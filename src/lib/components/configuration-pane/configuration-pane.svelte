@@ -81,7 +81,7 @@
                 {#each configTabs as tab, idx (idx)}
                     <Button
                         data-state={currentTab === tab ? "active" : "inactive"}
-                        class="text-small text-muted-foreground ring-offset-background focus-visible:ring-ring data-[state=active]:border-foreground/20 data-[state=active]:bg-muted data-[state=active]:text-foreground inline-flex h-6 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent px-1.5 font-medium whitespace-nowrap transition-all hover:bg-transparent focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+                        class="text-small text-muted-foreground ring-offset-background focus-visible:ring-ring data-[state=active]:border-foreground/20 data-[state=active]:bg-muted/75 data-[state=active]:text-foreground inline-flex h-6 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent px-1.5 font-medium whitespace-nowrap transition-all hover:bg-transparent focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
                         onclick={() => (currentTab = tab)}
                     >
                         {tab.charAt(0).toUpperCase() + tab.slice(1)}
