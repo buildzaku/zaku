@@ -30,7 +30,7 @@
 
 <div
     data-current-path={currentPath}
-    class={cn("min-w-full", shouldHighlight ? "bg-accent/60" : "", className)}
+    class={cn("min-w-full", shouldHighlight ? "bg-accent/75" : "", className)}
 >
     <div
         tabindex={0}
