@@ -11,8 +11,8 @@
                 destructive:
                     "bg-destructive text-destructive-foreground hover:bg-destructive/80 border-transparent",
                 outline: "text-foreground",
-                success: "font-normal text-white bg-[#92df0861] border-[#9fea1654]",
-                failure: "font-normal text-white bg-[#e03b3b70] border-[#ea1c1c7a]",
+                success: "font-normal text-success bg-success-bg border-success-border",
+                failure: "font-normal text-failure bg-failure-bg border-failure-border",
             },
         },
         defaultVariants: {

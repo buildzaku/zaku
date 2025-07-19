@@ -44,6 +44,12 @@
     --method-head: oklch(0.5 0.13 70);
     --method-options: oklch(0.55 0.16 320);
     --method-default: oklch(0.45 0.02 285);
+    --success: oklch(0.65 0.15 140);
+    --success-bg: oklch(0.94 0.05 140);
+    --success-border: oklch(0.88 0.08 140);
+    --failure: oklch(0.55 0.18 25);
+    --failure-bg: oklch(0.94 0.05 25);
+    --failure-border: oklch(0.88 0.08 25);
 }
 
 .dark {
@@ -87,6 +93,12 @@
     --method-head: oklch(0.75 0.13 70);
     --method-options: oklch(0.8 0.16 320);
     --method-default: oklch(0.7 0.02 285);
+    --success: oklch(0.8 0.15 140);
+    --success-bg: oklch(0.25 0.05 140);
+    --success-border: oklch(0.35 0.08 140);
+    --failure: oklch(0.75 0.18 25);
+    --failure-bg: oklch(0.25 0.05 25);
+    --failure-border: oklch(0.35 0.08 25);
 }
 
 @theme inline {
@@ -134,6 +146,12 @@
     --color-method-head: var(--method-head);
     --color-method-options: var(--method-options);
     --color-method-default: var(--method-default);
+    --color-success: var(--success);
+    --color-success-bg: var(--success-bg);
+    --color-success-border: var(--success-border);
+    --color-failure: var(--failure);
+    --color-failure-bg: var(--failure-bg);
+    --color-failure-border: var(--failure-border);
 }
 
 @theme {
