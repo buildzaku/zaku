@@ -23,6 +23,7 @@
     } from "@codemirror/language";
     import { defaultKeymap } from "@codemirror/commands";
     import { mode } from "mode-watcher";
+    import type { SystemModeValue } from "mode-watcher";
     import { darkTheme, lightTheme } from "$lib/components/code-block/themes";
 
     type Props = {
@@ -41,7 +42,7 @@
 
     let editorView: EditorView | undefined = $state(undefined);
     let editorElement: HTMLDivElement | undefined = $state(undefined);
-    let editorTheme = $state(mode);
+    let currentTheme: SystemModeValue = $state(mode.current);
 
     const theme = {
         dark: darkTheme,
@@ -77,10 +78,10 @@
             extensions.push(languageCompartment.of(language));
         }
 
-        const currentTheme = mode.current ? theme[mode.current] : theme.dark;
+        const selectedTheme = mode.current ? theme[mode.current] : theme.dark;
         const state = EditorState.create({
             doc: value,
-            extensions: [...extensions, themeCompartment.of(currentTheme)],
+            extensions: [...extensions, themeCompartment.of(selectedTheme)],
         });
 
         editorView = new EditorView({
@@ -115,11 +116,11 @@
                 });
             }
 
-            if (mode.current && mode.current !== editorTheme.current) {
+            if (mode.current && mode.current !== currentTheme) {
                 editorView.dispatch({
                     effects: themeCompartment.reconfigure(theme[mode.current]),
                 });
-                editorTheme = mode;
+                currentTheme = mode.current;
             }
         }
     });
