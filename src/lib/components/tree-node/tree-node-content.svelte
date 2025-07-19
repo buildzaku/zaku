@@ -124,20 +124,21 @@
                     <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
                 {/if}
                 <CollectionIcon size={12} />
-                <span class="truncate text-sm">
+                <span class="text-small truncate">
                     {node.meta.name ?? node.meta.fsname}
                 </span>
             {:else}
                 <div class="flex w-full items-center justify-between">
                     <div>
                         <span
-                            class="pl-3 text-[9px] font-bold {requestColors({
-                                method: node.config.method,
-                            })}"
+                            class={cn(
+                                "pl-3 text-[9px] font-bold",
+                                requestColors({ method: node.config.method }),
+                            )}
                         >
                             {node.config.method}
                         </span>
-                        <span class="truncate text-sm">
+                        <span class="text-small truncate">
                             {node.meta.name ?? node.meta.fsname}
                         </span>
                     </div>
