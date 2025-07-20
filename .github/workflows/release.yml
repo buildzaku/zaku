@@ -7,12 +7,12 @@ on:
     workflow_dispatch:
         inputs:
             force_release_builds:
-                description: "Force run `release_builds`"
+                description: "Force run release_builds"
                 type: boolean
                 default: false
                 required: false
             force_release_snapbuild:
-                description: "Force run `release_snapbuild`"
+                description: "Force run release_snapbuild"
                 type: boolean
                 default: false
                 required: false
@@ -37,8 +37,12 @@ jobs:
         steps:
             - name: "Checkout repository"
               uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+              with: # TEMP
+                  fetch-depth: 0 # TEMP
+                  ref: ${{ github.head_ref }} # TEMP
+
+            - name: "Fetch main branch" # TEMP
+              run: git fetch origin main:main # TEMP
 
             - name: "Setup pnpm"
               uses: pnpm/action-setup@v4
