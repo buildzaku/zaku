@@ -1,5 +1,22 @@
 # zaku
 
+## 0.7.2
+
+### Patch Changes
+
+- Use temp directory in tests to avoid polluting real app store - [`d2f0895`](https://github.com/buildzaku/zaku/commit/d2f089595fc7a4193067fd83f11c38ece51c69f8)
+
+- Migrate snapcraft build & release to github actions - [`3b3d8e4`](https://github.com/buildzaku/zaku/commit/3b3d8e476e8ff1a930a0079a2d20e4d5fa768f83) [#54](https://github.com/buildzaku/zaku/pull/54)
+    - Upgrade snap base to `core24`
+    - Drop ARM support for linux
+
+- Sort collections and requests alphabetically - [`e46ddaa`](https://github.com/buildzaku/zaku/commit/e46ddaad175290330d0324cf34a244e14f4fe1af)
+
+- Show breadcrumb trail for requests - [`2164695`](https://github.com/buildzaku/zaku/commit/2164695d16d21b1249a5d74abe7b417692a5c9b7) [#53](https://github.com/buildzaku/zaku/pull/53)
+
+- Restore light mode and improve theme inconsistencies - [`f5638e3`](https://github.com/buildzaku/zaku/commit/f5638e36bcbaf026cf110e5e9314823fd080d413) [#51](https://github.com/buildzaku/zaku/pull/51)
+    - Fix broken theme sync for code block
+
 ## 0.7.1
 
 ### Patch Changes

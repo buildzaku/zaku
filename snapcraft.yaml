@@ -1,22 +1,19 @@
 name: zaku
 base: core24
-version: 0.7.1
+version: 0.7.2
 summary: Fast, open-source API client with fangs
 description: |
     Fast, open-source API client with fangs
 grade: stable
 confinement: strict
-
 platforms:
-    amd64:
-
+    amd64: null
 apps:
     zaku:
         command: usr/bin/zaku
         desktop: usr/share/applications/Zaku.desktop
         plugs:
             - network
-
 parts:
     app:
         plugin: dump
