@@ -198,6 +198,8 @@
             <ResizableHandle withHandle class="absolute z-10 h-full" />
             {@const openReqSnapshot = explorerState.openRequest}
             {#if openReqSnapshot}
+                {@const MAX_PARENTS_TO_SHOW = 2}
+                {@const parentsOverflow = openReqSnapshot.parentNames.length > MAX_PARENTS_TO_SHOW}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
                         <div class="mb-3 flex items-center gap-0.5">
@@ -207,19 +209,15 @@
                                 </span>
                                 <ChevronRightIcon size={12} class="mx-0.5" />
 
-                                {#if openReqSnapshot.parentNames.length > 2}
+                                {#if parentsOverflow}
                                     <EllipsisIcon size={12} />
                                     <ChevronRightIcon size={12} class="mx-0.5" />
-                                    <span class="cursor-default select-text">
-                                        {openReqSnapshot.parentNames.at(-1)}
-                                    </span>
-                                    <ChevronRightIcon size={12} class="mx-0.5" />
-                                {:else}
-                                    {#each openReqSnapshot.parentNames.slice(1) as parent, idx (idx)}
-                                        <span class="cursor-default select-text">{parent}</span>
-                                        <ChevronRightIcon size={12} class="mx-0.5" />
-                                    {/each}
                                 {/if}
+
+                                {#each openReqSnapshot.parentNames.slice(parentsOverflow ? -1 : 1) as parentName, idx (idx)}
+                                    <span class="cursor-default select-text">{parentName}</span>
+                                    <ChevronRightIcon size={12} class="mx-0.5" />
+                                {/each}
                             {/if}
                             <span class="cursor-default select-text">
                                 {openReqSnapshot.self.meta.name}
