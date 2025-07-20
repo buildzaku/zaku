@@ -6,13 +6,13 @@ on:
             - main
     workflow_dispatch:
         inputs:
-            force_release_builds:
-                description: "Force run release_builds"
+            force_release_build_assets:
+                description: "Force run release_build_assets"
                 type: boolean
                 default: false
                 required: false
-            force_release_snapbuild:
-                description: "Force run release_snapbuild"
+            force_snap_build_and_publish:
+                description: "Force run build_snap and publish_snap"
                 type: boolean
                 default: false
                 required: false
@@ -108,10 +108,10 @@ jobs:
               run: |
                   echo "value=0.7.1" >> $GITHUB_OUTPUT
 
-    release_builds:
-        name: "Release Builds"
+    release_build_assets:
+        name: "Release Build Assets"
         needs: [version_or_publish]
-        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_release_builds == 'true') }}
+        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_release_build_assets == 'true') }}
         permissions:
             contents: "write"
         strategy:
@@ -177,7 +177,7 @@ jobs:
             - name: "Install frontend dependencies"
               run: pnpm install
 
-            - name: "Create release builds"
+            - name: "Build and upload artifacts"
               uses: tauri-apps/tauri-action@v0
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -186,13 +186,19 @@ jobs:
                   releaseName: "v__VERSION__"
                   args: ${{ matrix.args }}
 
-    release_snapbuild:
-        name: "Snapcraft Build & Release"
+    build_snap:
+        name: "Build Snap"
         needs: [version_or_publish]
-        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_release_snapbuild == 'true') }}
+        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_snap_build_and_publish == 'true') }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - arch: "x86_64-unknown-linux-gnu"
+                      target: "amd64"
+                    - arch: "aarch64-unknown-linux-gnu"
+                      target: "arm64"
         runs-on: ubuntu-latest
-        permissions:
-            contents: "read"
         steps:
             - name: "Checkout repository"
               uses: actions/checkout@v4
@@ -222,6 +228,8 @@ jobs:
 
             - name: "Setup Rust"
               uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.arch }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
@@ -233,23 +241,66 @@ jobs:
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
+            - name: "Install ARM dependencies"
+              if: matrix.target == 'arm64'
+              run: |
+                  sudo apt-get install -y gcc-aarch64-linux-gnu
+
             - name: "Install frontend dependencies"
               run: pnpm install
 
             - name: "Build application"
-              run: pnpm tauri build --bundles deb
+              run: pnpm tauri build --bundles deb --target ${{ matrix.arch }}
+              env:
+                  CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+                  CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
 
             - name: "Extract .deb to snap-stage/"
               run: |
+                  mkdir -p snap-stage-${{ matrix.target }}
+                  dpkg -x src-tauri/target/${{ matrix.arch }}/release/bundle/deb/*.deb snap-stage-${{ matrix.target }}/
+                  sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage-${{ matrix.target }}/usr/share/applications/Zaku.desktop
+
+            - name: "Upload snap-stage artifact"
+              uses: actions/upload-artifact@v4
+              with:
+                  name: snap-stage-${{ matrix.target }}
+                  path: snap-stage-${{ matrix.target }}/
+
+    publish_snap:
+        name: "Publish Snap"
+        needs: [version_or_publish, build_snap]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: "read"
+        steps:
+            - name: "Checkout repository"
+              uses: actions/checkout@v4
+
+            - name: "Download all snap-stage artifacts"
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: snap-stage-*
+                  path: artifacts/
+
+            - name: "Combine artifacts into snap-stage"
+              run: |
                   mkdir -p snap-stage
-                  dpkg -x src-tauri/target/release/bundle/deb/*.deb snap-stage/
-                  sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage/usr/share/applications/Zaku.desktop
+
+                  # Copy shared files from amd64 (icons, desktop files, etc.)
+                  cp -r artifacts/snap-stage-amd64/* snap-stage/
+
+                  # Create architecture-specific binary directories
+                  mkdir -p snap-stage/usr/bin/amd64 snap-stage/usr/bin/arm64
+                  cp artifacts/snap-stage-amd64/usr/bin/zaku snap-stage/usr/bin/amd64/
+                  cp artifacts/snap-stage-arm64/usr/bin/zaku snap-stage/usr/bin/arm64/
 
             - name: "Set Snap release channel"
               id: snap_channel
               shell: bash
               run: |
                   VERSION="${{ needs.version_or_publish.outputs.version }}"
+
                   if [[ "$VERSION" == *"-alpha."* ]]; then
                       echo "channel=edge" >> $GITHUB_OUTPUT
                   elif [[ "$VERSION" == *"-beta."* ]]; then
@@ -264,7 +315,7 @@ jobs:
               uses: snapcore/action-build@v1
               id: build
 
-            - name: "Release to Snap Store"
+            - name: "Publish to Snap Store"
               uses: snapcore/action-publish@v1
               env:
                   SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
