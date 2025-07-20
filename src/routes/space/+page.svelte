@@ -18,6 +18,7 @@
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
     import type { HttpReq, ReqUrl } from "$lib/bindings";
+    import { ChevronRightIcon, EllipsisIcon } from "@lucide/svelte";
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
@@ -120,14 +121,14 @@
 
             const absoluteReqPath = joinPaths([
                 spaceSnapshot.abspath,
-                openReqSnapshot.parentRelativePath,
+                openReqSnapshot.parentRelpath,
                 openReqSnapshot.self.meta.fsname,
             ]);
 
             await debounced.flush(absoluteReqPath);
             await commands.writeReqbufToReqtoml(
                 spaceSnapshot.abspath,
-                joinPaths([openReqSnapshot.parentRelativePath, openReqSnapshot.self.meta.fsname]),
+                joinPaths([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname]),
             );
 
             isActiveReqSavedToFs = true;
@@ -138,7 +139,7 @@
     const spaceSnapshot = explorerState.openRequest;
     let isActiveReqSavedToFs = false;
     let prevActiveReqRelPath = spaceSnapshot
-        ? `${spaceSnapshot.parentRelativePath}/${spaceSnapshot.self.meta.fsname}`
+        ? `${spaceSnapshot.parentRelpath}/${spaceSnapshot.self.meta.fsname}`
         : null;
 
     $effect(() => {
@@ -154,7 +155,7 @@
         }
 
         const openReqRelPath = openReqSnapshot
-            ? `${openReqSnapshot.parentRelativePath}/${openReqSnapshot.self.meta.fsname}`
+            ? `${openReqSnapshot.parentRelpath}/${openReqSnapshot.self.meta.fsname}`
             : null;
 
         if (
@@ -197,10 +198,30 @@
             <ResizableHandle withHandle class="absolute z-10 h-full" />
             {@const openReqSnapshot = explorerState.openRequest}
             {#if openReqSnapshot}
+                {@const MAX_PARENTS_TO_SHOW = 2}
+                {@const parentsOverflow = openReqSnapshot.parentNames.length > MAX_PARENTS_TO_SHOW}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
-                        <div class="mb-3 flex">
-                            {openReqSnapshot.self.meta.name}
+                        <div class="mb-3 flex items-center gap-0.5">
+                            {#if openReqSnapshot.parentNames.length > 0}
+                                <span class="cursor-default select-text">
+                                    {openReqSnapshot.parentNames[0]}
+                                </span>
+                                <ChevronRightIcon size={12} class="mx-0.5" />
+
+                                {#if parentsOverflow}
+                                    <EllipsisIcon size={12} />
+                                    <ChevronRightIcon size={12} class="mx-0.5" />
+                                {/if}
+
+                                {#each openReqSnapshot.parentNames.slice(parentsOverflow ? -1 : 1) as parentName, idx (idx)}
+                                    <span class="cursor-default select-text">{parentName}</span>
+                                    <ChevronRightIcon size={12} class="mx-0.5" />
+                                {/each}
+                            {/if}
+                            <span class="cursor-default select-text">
+                                {openReqSnapshot.self.meta.name}
+                            </span>
                         </div>
                         <div>
                             <form class="flex gap-2">
