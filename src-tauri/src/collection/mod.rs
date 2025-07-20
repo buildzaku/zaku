@@ -60,7 +60,10 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
 
     while let Some((path, collection_rc_refcell)) = stack.pop() {
         if let Ok(entries) = fs::read_dir(space_abspath.join(&path)) {
-            for entry in entries.flatten() {
+            let mut entries: Vec<_> = entries.flatten().collect();
+            entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
+
+            for entry in entries {
                 let is_symlink = entry
                     .file_type()
                     .map(|file_type| file_type.is_symlink())
@@ -109,6 +112,30 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                     }
                 }
             }
+
+            collection_rc_refcell
+                .borrow_mut()
+                .collections
+                .sort_by(|a, b| {
+                    let a_meta = &a.borrow().meta;
+                    let b_meta = &b.borrow().meta;
+                    let a_name = a_meta
+                        .name
+                        .as_ref()
+                        .unwrap_or(&a_meta.fsname)
+                        .to_lowercase();
+                    let b_name = b_meta
+                        .name
+                        .as_ref()
+                        .unwrap_or(&b_meta.fsname)
+                        .to_lowercase();
+
+                    a_name.cmp(&b_name)
+                });
+            collection_rc_refcell
+                .borrow_mut()
+                .requests
+                .sort_by(|a, b| a.meta.name.to_lowercase().cmp(&b.meta.name.to_lowercase()));
         }
     }
 
