@@ -1,9 +1,5 @@
 use once_cell::sync::Lazy;
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::RwLock,
-};
+use std::{fs, path::PathBuf, sync::RwLock};
 
 use crate::{
     error::{Error, Result},
@@ -14,34 +10,47 @@ use crate::{
 pub mod models;
 pub mod spaces;
 
-pub static APP_STORE_ABSPATH: Lazy<PathBuf> = Lazy::new(|| {
+#[cfg(test)]
+use tempfile;
+
+#[cfg(test)]
+static TEST_DIR: Lazy<tempfile::TempDir> = Lazy::new(|| tempfile::tempdir().unwrap());
+
+#[cfg(test)]
+static APP_STORE_ABSPATH: Lazy<PathBuf> =
+    Lazy::new(|| TEST_DIR.path().join("Zaku/store").with_extension("json"));
+
+#[cfg(not(test))]
+static APP_STORE_ABSPATH: Lazy<PathBuf> = Lazy::new(|| {
     dirs::data_dir()
         .expect("Unable to get data directory")
         .join("Zaku/store")
         .with_extension("json")
 });
 
-static APP_STORE: Lazy<RwLock<AppStore>> = Lazy::new(|| match AppStore::load(&APP_STORE_ABSPATH) {
+static APP_STORE: Lazy<RwLock<AppStore>> = Lazy::new(|| match AppStore::init() {
     Ok(store) => RwLock::new(store),
     Err(_) => RwLock::new(AppStore::default()),
 });
 
 impl AppStore {
-    fn load(path: &Path) -> Result<Self> {
-        let content = fs::read_to_string(path)
+    fn init() -> Result<Self> {
+        let store_abspath = APP_STORE_ABSPATH.as_path();
+        let store_content = fs::read_to_string(store_abspath)
             .map_err(|_| Error::FileReadError("Failed to read store file".into()))?;
-        let store = serde_json::from_str(&content)?;
+        let store = serde_json::from_str(&store_content)?;
 
         Ok(store)
     }
 
     fn persist(&self) -> Result<()> {
-        if let Some(parent) = APP_STORE_ABSPATH.parent() {
+        let store_abspath = APP_STORE_ABSPATH.as_path();
+        if let Some(parent) = store_abspath.parent() {
             fs::create_dir_all(parent)?;
         }
 
         let serialized_store = serde_json::to_string_pretty(self)?;
-        fs::write(&*APP_STORE_ABSPATH, serialized_store)?;
+        fs::write(store_abspath, serialized_store)?;
 
         Ok(())
     }
