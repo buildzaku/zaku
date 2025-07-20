@@ -91,16 +91,16 @@ jobs:
                   rm changeset-status.json
                   echo "value=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-            - name: "Create a release pull request"
-              id: changesets
-              uses: changesets/action@v1
-              with:
-                  commit: "chore(release): v${{ steps.new_version.outputs.value }}"
-                  title: "chore(release): v${{ steps.new_version.outputs.value }}"
-                  version: pnpm changeset-version
-                  publish: pnpm changeset-tag
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            # - name: "Create a release pull request"
+            #   id: changesets
+            #   uses: changesets/action@v1
+            #   with:
+            #       commit: "chore(release): v${{ steps.new_version.outputs.value }}"
+            #       title: "chore(release): v${{ steps.new_version.outputs.value }}"
+            #       version: pnpm changeset-version
+            #       publish: pnpm changeset-tag
+            #   env:
+            #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     release_builds:
         name: "Release Builds"
