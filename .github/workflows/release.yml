@@ -252,7 +252,7 @@ jobs:
                       echo "channel=candidate" >> $GITHUB_OUTPUT
                   else
                       echo "channel=stable" >> $GITHUB_OUTPUT
-                  shell: bash
+                  fi
 
             - name: "Build Snap"
               uses: snapcore/action-build@v1
