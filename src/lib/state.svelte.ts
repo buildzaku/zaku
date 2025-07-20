@@ -92,14 +92,14 @@ class Debounced {
     async #invokeSaveReqToBuf(absoluteSpacePath: string, openRequest: OpenRequest) {
         await commands.persistToReqbuf(
             absoluteSpacePath,
-            openRequest.parentRelativePath,
+            openRequest.parentRelpath,
             openRequest.self,
         );
     }
     public saveRequestToBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
         const absoluteRequestPath = joinPaths([
             absoluteSpacePath,
-            openRequest.parentRelativePath,
+            openRequest.parentRelpath,
             openRequest.self.meta.fsname,
         ]);
 

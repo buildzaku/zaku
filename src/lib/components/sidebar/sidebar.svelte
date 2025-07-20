@@ -243,7 +243,8 @@
                         {/if}
                         {#each spaceSnapshot.root_collection.requests as request (request.meta.fsname)}
                             <TreeNodeContent
-                                parentPath={RELATIVE_SPACE_ROOT}
+                                parentRelpath={RELATIVE_SPACE_ROOT}
+                                parentNames={[]}
                                 currentPath={request.meta.fsname}
                                 node={request}
                                 level={1}
@@ -259,7 +260,8 @@
                         {/if}
                         {#each spaceSnapshot.root_collection.collections as collection (collection.meta.fsname)}
                             <TreeNodeContent
-                                parentPath={RELATIVE_SPACE_ROOT}
+                                parentRelpath={RELATIVE_SPACE_ROOT}
+                                parentNames={[]}
                                 currentPath={collection.meta.fsname}
                                 node={collection}
                                 level={1}
