@@ -20,14 +20,22 @@
     } from "$lib/components/tree-node/utils.svelte";
 
     type Props = {
-        parentPath: string;
+        parentRelpath: string;
+        parentNames: string[];
         currentPath: string;
         node: TreeNode;
         level: number;
         class?: string;
     };
 
-    let { parentPath, currentPath, node, level, class: className }: Props = $props();
+    let {
+        parentRelpath,
+        parentNames,
+        currentPath,
+        node,
+        level,
+        class: className,
+    }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
         explorerActionsState.createNewNode === "request" &&
@@ -41,7 +49,7 @@
 
     const dragOverDto: DragOverDto = isCol(node)
         ? { type: "collection", relativePath: currentPath }
-        : { type: "request", parentRelativePath: parentPath };
+        : { type: "request", parentRelativePath: parentRelpath };
 
     type TreeNodeFocusParams = { node: TreeNode; parentRelpath: string; relpath: string };
     function handleTreeItemFocus({ node, parentRelpath, relpath }: TreeNodeFocusParams) {
@@ -61,7 +69,8 @@
             };
 
             explorerState.openRequest = {
-                parentRelativePath: parentRelpath,
+                parentRelpath: parentRelpath,
+                parentNames,
                 self: node,
             };
 
@@ -75,7 +84,7 @@
 </script>
 
 <div
-    data-parent-path={parentPath}
+    data-parent-path={parentRelpath}
     data-current-path={currentPath}
     class={cn("relative min-w-full", shouldHighlight ? "bg-accent/75" : "", className)}
 >
@@ -91,7 +100,7 @@
         aria-grabbed="false"
         draggable="true"
         ondragstart={event => {
-            handleDragStart(event, { parentRelativePath: parentPath, node });
+            handleDragStart(event, { parentRelativePath: parentRelpath, node });
         }}
         ondragover={event => handleDragOver(event, dragOverDto)}
         ondrop={handleDrop}
@@ -100,7 +109,7 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
 
-                handleTreeItemFocus({ node, parentRelpath: parentPath, relpath: currentPath });
+                handleTreeItemFocus({ node, parentRelpath: parentRelpath, relpath: currentPath });
             }
         }}
         style="padding-left: {level * 8}px"
@@ -113,7 +122,7 @@
         onclick={() => {
             explorerActionsState.createNewNode = null;
 
-            handleTreeItemFocus({ node, parentRelpath: parentPath, relpath: currentPath });
+            handleTreeItemFocus({ node, parentRelpath: parentRelpath, relpath: currentPath });
         }}
     >
         <div class="flex size-full items-center gap-1 pl-1.5">
@@ -158,7 +167,8 @@
         {#if node.meta.is_expanded}
             {#each node.requests as request (buildPath(currentPath, request.meta.fsname))}
                 <TreeNodeContent
-                    parentPath={currentPath}
+                    parentRelpath={currentPath}
+                    parentNames={[...parentNames, node.meta.name ?? node.meta.fsname]}
                     currentPath={buildPath(currentPath, request.meta.fsname)}
                     node={request}
                     level={level + 1}
@@ -172,7 +182,8 @@
         {#if node.meta.is_expanded}
             {#each node.collections as collection (buildPath(currentPath, collection.meta.fsname))}
                 <TreeNodeContent
-                    parentPath={currentPath}
+                    parentRelpath={currentPath}
+                    parentNames={[...parentNames, node.meta.name ?? node.meta.fsname]}
                     currentPath={buildPath(currentPath, collection.meta.fsname)}
                     node={collection}
                     level={level + 1}
