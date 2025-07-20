@@ -12,7 +12,7 @@ on:
                 default: false
                 required: false
             force_snap_build_and_publish:
-                description: "Force run build_snap and publish_snap"
+                description: "Force run build_snap & publish_snap"
                 type: boolean
                 default: false
                 required: false
