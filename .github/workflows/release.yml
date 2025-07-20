@@ -6,8 +6,13 @@ on:
             - main
     workflow_dispatch:
         inputs:
-            force_upload_or_reupload_assets:
-                description: "Force upload/re-upload assets."
+            force_release_build_assets:
+                description: "Force run release_build_assets"
+                type: boolean
+                default: false
+                required: false
+            force_build_and_publish_snap:
+                description: "Force run build_and_publish_snap"
                 type: boolean
                 default: false
                 required: false
@@ -28,6 +33,7 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             is_published: ${{ steps.changesets.outputs.published }}
+            version: ${{ steps.new_version.outputs.value }}
         steps:
             - name: "Checkout repository"
               uses: actions/checkout@v4
@@ -90,10 +96,10 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    release_builds:
-        name: "Release Builds"
+    release_build_assets:
+        name: "Release Build Assets"
         needs: [version_or_publish]
-        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_upload_or_reupload_assets == 'true') }}
+        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_release_build_assets == 'true') }}
         permissions:
             contents: "write"
         strategy:
@@ -159,7 +165,7 @@ jobs:
             - name: "Install frontend dependencies"
               run: pnpm install
 
-            - name: "Create release builds"
+            - name: "Build and upload artifacts"
               uses: tauri-apps/tauri-action@v0
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -167,3 +173,88 @@ jobs:
                   tagName: "v__VERSION__"
                   releaseName: "v__VERSION__"
                   args: ${{ matrix.args }}
+
+    build_and_publish_snap:
+        name: "Build & Publish Snap"
+        needs: [version_or_publish]
+        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_or_publish.outputs.is_published == 'true' || github.event.inputs.force_build_and_publish_snap == 'true') }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: "Checkout repository"
+              uses: actions/checkout@v4
+
+            - name: "Setup pnpm"
+              uses: pnpm/action-setup@v4
+              with:
+                  version: ${{ env.PNPM_VERSION }}
+
+            - name: "Setup Node.js"
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: pnpm
+
+            - name: "Get pnpm store directory"
+              id: pnpm_cache
+              shell: bash
+              run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+            - name: "Setup pnpm cache"
+              uses: actions/cache@v4
+              with:
+                  path: ${{ steps.pnpm_cache.outputs.pnpm_cache_dir }}
+                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+                  restore-keys: ${{ runner.os }}-pnpm-store-
+
+            - name: "Setup Rust"
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: "Setup Rust cache"
+              uses: swatinem/rust-cache@v2
+              with:
+                  workspaces: "./src-tauri -> target"
+
+            - name: "Install system dependencies"
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
+
+            - name: "Install frontend dependencies"
+              run: pnpm install
+
+            - name: "Build application"
+              run: pnpm tauri build --bundles deb
+
+            - name: "Extract .deb to snap-stage/"
+              run: |
+                  mkdir -p snap-stage
+                  dpkg -x src-tauri/target/release/bundle/deb/*.deb snap-stage/
+                  sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage/usr/share/applications/Zaku.desktop
+
+            - name: "Set Snap release channel"
+              id: snap_channel
+              shell: bash
+              run: |
+                  VERSION="${{ needs.version_or_publish.outputs.version }}"
+
+                  if [[ "$VERSION" == *"-alpha."* ]]; then
+                      echo "channel=edge" >> $GITHUB_OUTPUT
+                  elif [[ "$VERSION" == *"-beta."* ]]; then
+                      echo "channel=beta" >> $GITHUB_OUTPUT
+                  elif [[ "$VERSION" == *"-rc."* ]]; then
+                      echo "channel=candidate" >> $GITHUB_OUTPUT
+                  else
+                      echo "channel=stable" >> $GITHUB_OUTPUT
+                  fi
+
+            - name: "Build Snap package"
+              uses: snapcore/action-build@v1
+              id: build
+
+            - name: "Publish to Snap Store"
+              uses: snapcore/action-publish@v1
+              env:
+                  SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
+              with:
+                  snap: ${{ steps.build.outputs.snap }}
+                  release: ${{ steps.snap_channel.outputs.channel }}
