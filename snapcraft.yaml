@@ -9,7 +9,6 @@ confinement: strict
 
 platforms:
     amd64:
-    arm64:
 
 apps:
     zaku:
