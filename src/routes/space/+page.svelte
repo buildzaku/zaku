@@ -215,7 +215,7 @@
                                     </span>
                                     <ChevronRightIcon size={12} class="mx-0.5" />
                                 {:else}
-                                    {#each openReqSnapshot.parentNames.slice(1) as parent}
+                                    {#each openReqSnapshot.parentNames.slice(1) as parent, idx (idx)}
                                         <span class="cursor-default select-text">{parent}</span>
                                         <ChevronRightIcon size={12} class="mx-0.5" />
                                     {/each}
