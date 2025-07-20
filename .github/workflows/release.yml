@@ -208,8 +208,6 @@ jobs:
 
             - name: "Setup Rust"
               uses: dtolnay/rust-toolchain@stable
-              with:
-                  targets: x86_64-unknown-linux-gnu
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
@@ -225,12 +223,12 @@ jobs:
               run: pnpm install
 
             - name: "Build application"
-              run: pnpm tauri build --bundles deb --target x86_64-unknown-linux-gnu
+              run: pnpm tauri build --bundles deb
 
             - name: "Extract .deb to snap-stage/"
               run: |
                   mkdir -p snap-stage
-                  dpkg -x src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb snap-stage/
+                  dpkg -x src-tauri/target/release/bundle/deb/*.deb snap-stage/
                   sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage/usr/share/applications/Zaku.desktop
 
             - name: "Set Snap release channel"
