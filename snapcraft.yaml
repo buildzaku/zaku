@@ -1,65 +1,28 @@
 name: zaku
-base: core22
+base: core24
 version: 0.7.1
 summary: Fast, open-source API client with fangs
 description: |
     Fast, open-source API client with fangs
 grade: stable
 confinement: strict
+
 architectures:
-    - build-on:
-          - amd64
-      build-for:
-          - amd64
-    - build-on:
-          - arm64
-      build-for:
-          - arm64
+    - amd64
+    - arm64
+
 apps:
     zaku:
         command: usr/bin/zaku
         desktop: usr/share/applications/Zaku.desktop
         plugs:
             - network
-        environment:
-            LD_LIBRARY_PATH: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET:$LD_LIBRARY_PATH
-            PKG_CONFIG_PATH: $SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET/pkgconfig:$PKG_CONFIG_PATH
-            CFLAGS: -I$SNAP/usr/include
-            LDFLAGS: -L$SNAP/usr/lib/$SNAPCRAFT_ARCH_TRIPLET
+
 parts:
-    build-app:
+    app:
         plugin: dump
-        build-snaps:
-            - node/22/stable
-            - rustup/latest/stable
-        build-packages:
-            - libwebkit2gtk-4.1-dev
-            - build-essential
-            - curl
-            - wget
-            - file
-            - libxdo-dev
-            - libssl-dev
-            - libayatana-appindicator3-dev
-            - librsvg2-dev
-            - dpkg
-            - libasound2-dev
-            - libglib2.0-dev
+        source: snap-stage
         stage-packages:
             - libwebkit2gtk-4.1-0
             - libayatana-appindicator3-1
             - libasound2
-        source: .
-        override-build: |
-            set -eu
-
-            rustup default stable
-
-            npm install -g pnpm@10.13.1
-            export PATH="$HOME/.npm-global/bin:$PATH"
-
-            pnpm install
-            pnpm tauri build --bundles deb
-
-            dpkg -x src-tauri/target/release/bundle/deb/*.deb $SNAPCRAFT_PART_INSTALL/
-            sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" $SNAPCRAFT_PART_INSTALL/usr/share/applications/Zaku.desktop
