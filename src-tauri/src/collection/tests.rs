@@ -18,109 +18,135 @@ fn parse_root_collection_should_match_created_structure() {
     let collections_dto = vec![
         CreateCollectionDto {
             parent_relpath: "".into(),
-            relpath: "Auth".into(),
+            relpath: "Parent Col 1".into(),
         },
         CreateCollectionDto {
             parent_relpath: "".into(),
-            relpath: "Users".into(),
+            relpath: "Parent Col 2".into(),
         },
         CreateCollectionDto {
-            parent_relpath: "users".into(),
-            relpath: "Settings/Notifications".into(),
-        },
-        CreateCollectionDto {
-            parent_relpath: "".into(),
-            relpath: "Trending/Posts".into(),
+            parent_relpath: "parent-col-2".into(),
+            relpath: "Child Col 1/Grand Child Col 1".into(),
         },
         CreateCollectionDto {
             parent_relpath: "".into(),
-            relpath: "Data ~~~ Stats/Charts\\Monthly  ".into(),
+            relpath: "Parent Col 3/Child Col 2".into(),
         },
         CreateCollectionDto {
             parent_relpath: "".into(),
-            relpath: "⚠️ ザク/🔥/💬 Status?".into(),
+            relpath: "Tilde ~~~ Parent Col 1/Back\\Slash Child Col 1  ".into(),
+        },
+        CreateCollectionDto {
+            parent_relpath: "".into(),
+            relpath:
+                "⚠️ ザク Unicode Parent Col 1/🔥 Emoji Child Col 1/💬 Emoji Grand Child Col 1?"
+                    .into(),
         },
     ];
 
     let requests_dto = vec![
         CreateRequestDto {
             parent_relpath: "".into(),
-            relpath: "Ping".into(),
+            relpath: "Child Req 1".into(),
         },
         CreateRequestDto {
             parent_relpath: "".into(),
-            relpath: "Admin/Ban User by ID".into(),
+            relpath: "Parent Col 1/Child Req 2".into(),
         },
         CreateRequestDto {
-            parent_relpath: "auth".into(),
-            relpath: "Access Token".into(),
+            parent_relpath: "parent-col-1".into(),
+            relpath: "Parent Req 1".into(),
         },
         CreateRequestDto {
-            parent_relpath: "users".into(),
-            relpath: "Get user by ID".into(),
+            parent_relpath: "parent-col-2".into(),
+            relpath: "Parent Req 2".into(),
         },
         CreateRequestDto {
-            parent_relpath: "users/settings".into(),
-            relpath: "Update User Preferences".into(),
+            parent_relpath: "parent-col-2/child-col-1".into(),
+            relpath: "Child Req 3".into(),
         },
         CreateRequestDto {
-            parent_relpath: "users/settings/notifications".into(),
-            relpath: "List notifications".into(),
+            parent_relpath: "parent-col-2/child-col-1/grand-child-col-1".into(),
+            relpath: "Grand Child Req 1".into(),
         },
         CreateRequestDto {
-            parent_relpath: "trending/posts".into(),
-            relpath: "List Top 25".into(),
+            parent_relpath: "parent-col-3/child-col-2".into(),
+            relpath: "Child Req 4".into(),
         },
         CreateRequestDto {
-            parent_relpath: "data-~~~-stats/charts-monthly".into(),
-            relpath: "Export/CSV*&Report".into(),
+            parent_relpath: "tilde-~~~-parent-col-1/back-slash-child-col-1".into(),
+            relpath: "Grand Child Col 1/Special*&Chars Req 1".into(),
         },
         CreateRequestDto {
-            parent_relpath: "⚠️-ザク/🔥/💬-status".into(),
-            relpath: "💡Idea:/*>?Bank".into(),
+            parent_relpath:
+                "⚠️-ザク-unicode-parent-col-1/🔥-emoji-child-col-1/💬-emoji-grand-child-col-1"
+                    .into(),
+            relpath: "💡Emoji Special: Col 1/*>?Special Chars Req 1".into(),
         },
     ];
 
     let expected_colname_by_relpath_components = vec![
-        (vec!["auth"], "Auth"),
-        (vec!["users"], "Users"),
-        (vec!["users", "settings", "notifications"], "Notifications"),
-        (vec!["trending", "posts"], "Posts"),
-        (vec!["data-~~~-stats", "charts-monthly"], "Charts-Monthly"),
-        (vec!["⚠️-ザク", "🔥", "💬-status"], "💬 Status?"),
+        (vec!["parent-col-1"], "Parent Col 1"),
+        (vec!["parent-col-2"], "Parent Col 2"),
+        (
+            vec!["parent-col-2", "child-col-1", "grand-child-col-1"],
+            "Grand Child Col 1",
+        ),
+        (vec!["parent-col-3", "child-col-2"], "Child Col 2"),
+        (
+            vec!["tilde-~~~-parent-col-1", "back-slash-child-col-1"],
+            "Back-Slash Child Col 1",
+        ),
+        (
+            vec![
+                "⚠️-ザク-unicode-parent-col-1",
+                "🔥-emoji-child-col-1",
+                "💬-emoji-grand-child-col-1",
+            ],
+            "💬 Emoji Grand Child Col 1?",
+        ),
     ];
 
     let expected_reqname_by_relpath_components = vec![
-        (vec!["ping.toml"], "Ping"),
-        (vec!["admin", "ban-user-by-id.toml"], "Ban User by ID"),
-        (vec!["auth", "access-token.toml"], "Access Token"),
-        (vec!["users", "get-user-by-id.toml"], "Get user by ID"),
+        (vec!["child-req-1.toml"], "Child Req 1"),
+        (vec!["parent-col-1", "child-req-2.toml"], "Child Req 2"),
+        (vec!["parent-col-1", "parent-req-1.toml"], "Parent Req 1"),
+        (vec!["parent-col-2", "parent-req-2.toml"], "Parent Req 2"),
         (
-            vec!["users", "settings", "update-user-preferences.toml"],
-            "Update User Preferences",
+            vec!["parent-col-2", "child-col-1", "child-req-3.toml"],
+            "Child Req 3",
         ),
         (
             vec![
-                "users",
-                "settings",
-                "notifications",
-                "list-notifications.toml",
+                "parent-col-2",
+                "child-col-1",
+                "grand-child-col-1",
+                "grand-child-req-1.toml",
             ],
-            "List notifications",
+            "Grand Child Req 1",
         ),
-        (vec!["trending", "posts", "list-top-25.toml"], "List Top 25"),
+        (
+            vec!["parent-col-3", "child-col-2", "child-req-4.toml"],
+            "Child Req 4",
+        ),
         (
             vec![
-                "data-~~~-stats",
-                "charts-monthly",
-                "export",
-                "csv-&report.toml",
+                "tilde-~~~-parent-col-1",
+                "back-slash-child-col-1",
+                "grand-child-col-1",
+                "special-&chars-req-1.toml",
             ],
-            "CSV*&Report",
+            "Special*&Chars Req 1",
         ),
         (
-            vec!["⚠️-ザク", "🔥", "💬-status", "💡idea", "bank.toml"],
-            "*>?Bank",
+            vec![
+                "⚠️-ザク-unicode-parent-col-1",
+                "🔥-emoji-child-col-1",
+                "💬-emoji-grand-child-col-1",
+                "💡emoji-special-col-1",
+                "special-chars-req-1.toml",
+            ],
+            "*>?Special Chars Req 1",
         ),
     ];
 
@@ -142,7 +168,7 @@ fn parse_root_collection_should_match_created_structure() {
 
     let tmp_dir = tempfile::tempdir().unwrap();
     let dto = CreateSpaceDto {
-        name: "Main Space".into(),
+        name: "Space".into(),
         location: tmp_dir.path().to_string_lossy().into(),
     };
 
@@ -216,7 +242,10 @@ fn colname_by_relpath_reads_existing_data() {
     .expect("Failed to create parent directories");
 
     let mut mappings = HashMap::new();
-    mappings.insert("demo/path".to_string(), "Demo Path".to_string());
+    mappings.insert(
+        "parent-col-1/child-col-1".to_string(),
+        "Child Col 1".to_string(),
+    );
 
     let colname = ColName { mappings };
     let serialized = toml::to_string_pretty(&colname).expect("Failed to serialize ColName struct");
@@ -225,7 +254,10 @@ fn colname_by_relpath_reads_existing_data() {
 
     let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-    assert_eq!(colname.mappings.get("demo/path"), Some(&"Demo Path".into()));
+    assert_eq!(
+        colname.mappings.get("parent-col-1/child-col-1"),
+        Some(&"Child Col 1".into())
+    );
 }
 
 #[test]
@@ -236,7 +268,7 @@ fn colname_by_relpath_invalid_toml_should_fail() {
     let colname_filepath = space_abspath.join(".zaku/collections/name.toml");
     fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
 
-    let invalid_toml = "[mappings\n\"demo/path\" = \"Demo Path\"";
+    let invalid_toml = "[mappings\n\"parent-col-1/child-col-1\" = \"Child Col 1\"";
     fs::write(&colname_filepath, invalid_toml).unwrap();
 
     let result = collection::colname_by_relpath(space_abspath);
@@ -264,14 +296,14 @@ fn save_colname_if_missing_writes_new_entry() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    collection::save_colname_if_missing(space_abspath, "config/settings", "Config Settings")
+    collection::save_colname_if_missing(space_abspath, "parent-col-1/child-col-1", "Child Col 1")
         .expect("Failed to save collection name");
 
     let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
     assert_eq!(
-        colname.mappings.get("config/settings"),
-        Some(&"Config Settings".into())
+        colname.mappings.get("parent-col-1/child-col-1"),
+        Some(&"Child Col 1".into())
     );
 }
 
@@ -280,14 +312,17 @@ fn save_colname_if_missing_does_not_overwrite_existing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    collection::save_colname_if_missing(space_abspath, "a/b", "Alpha")
+    collection::save_colname_if_missing(space_abspath, "parent-col-1/child-col-1", "First Name")
         .expect("Failed to save collection name");
-    collection::save_colname_if_missing(space_abspath, "a/b", "Beta")
+    collection::save_colname_if_missing(space_abspath, "parent-col-1/child-col-1", "Second Name")
         .expect("Failed to save collection name");
 
     let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-    assert_eq!(colname.mappings.get("a/b"), Some(&"Alpha".into()));
+    assert_eq!(
+        colname.mappings.get("parent-col-1/child-col-1"),
+        Some(&"First Name".into())
+    );
 }
 
 #[test]
@@ -295,22 +330,22 @@ fn create_collections_all_basic() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
     let dto = CreateCollectionDto {
-        parent_relpath: "admin".into(),
-        relpath: "Users/Settings/Notifications".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "Child Col 1/Grand Child Col 1/Great Grand Child Col 1".into(),
     };
 
-    let col_abspath = space_abspath.join("admin");
+    let col_abspath = space_abspath.join("parent-col-1");
     fs::create_dir_all(&col_abspath).unwrap();
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected = PathBuf::from("users")
-        .join("settings")
-        .join("notifications");
+    let expected = PathBuf::from("child-col-1")
+        .join("grand-child-col-1")
+        .join("great-grand-child-col-1");
     assert_eq!(col_relpath, expected.to_string_lossy());
 
-    let expect_path = col_abspath.join("users/settings/notifications");
+    let expect_path = col_abspath.join("child-col-1/grand-child-col-1/great-grand-child-col-1");
     assert!(expect_path.exists());
 }
 
@@ -319,7 +354,7 @@ fn create_collections_all_empty_relpath() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
     let dto = CreateCollectionDto {
-        parent_relpath: "auth".into(),
+        parent_relpath: "parent-col-1".into(),
         relpath: "   ".into(),
     };
 
@@ -328,24 +363,24 @@ fn create_collections_all_empty_relpath() {
 }
 
 #[test]
-fn create_collections_all_sanitization() {
+fn create_collections_all_sanitization_basic() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
     let dto = CreateCollectionDto {
-        parent_relpath: "users".into(),
-        relpath: "Notification Settings/List notifications".into(),
+        parent_relpath: "grand-parent-col-1".into(),
+        relpath: "Parent Col 1/Child Col 1".into(),
     };
 
-    fs::create_dir_all(space_abspath.join("users")).unwrap();
+    fs::create_dir_all(space_abspath.join("grand-parent-col-1")).unwrap();
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected = PathBuf::from("notification-settings").join("list-notifications");
+    let expected = PathBuf::from("parent-col-1").join("child-col-1");
     assert_eq!(col_relpath, expected.to_string_lossy());
 
     assert!(space_abspath
-        .join("users/notification-settings/list-notifications")
+        .join("grand-parent-col-1/parent-col-1/child-col-1")
         .exists());
 }
 
@@ -355,8 +390,8 @@ fn create_collections_all_parent_folder_missing_should_fail() {
     let space_abspath = tmp_dir.path();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "admin/settings".into(),
-        relpath: "Preferences/Privacy".into(),
+        parent_relpath: "parent-col-1/child-col-1".into(),
+        relpath: "Grand Child Col 1/Great Grand Child Col 1".into(),
     };
 
     let result = collection::create_collections_all(space_abspath, &dto);
@@ -376,48 +411,52 @@ fn create_collections_all_parent_folder_missing_should_fail() {
 fn create_collections_all_relpath_with_whitespace_segments_should_skip() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("admin")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "admin".into(),
-        relpath: "  /Notifications       /   ".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "  /Whitespace Child  Col 1       /   ".into(),
     };
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
-    assert_eq!(col_relpath, "notifications");
+    assert_eq!(col_relpath, "whitespace-child-col-1");
 
-    assert!(space_abspath.join("admin/notifications").exists());
+    assert!(space_abspath
+        .join("parent-col-1/whitespace-child-col-1")
+        .exists());
 }
 
 #[test]
 fn create_collections_all_relpath_with_multiple_slashes_should_be_handled() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("settings")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "settings".into(),
-        relpath: "System///Display".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "Multiple Slash Col 1///Slash  Col 1".into(),
     };
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected = PathBuf::from("system").join("display");
+    let expected = PathBuf::from("multiple-slash-col-1").join("slash-col-1");
     assert_eq!(col_relpath, expected.to_string_lossy());
 
-    assert!(space_abspath.join("settings/system/display").exists());
+    assert!(space_abspath
+        .join("parent-col-1/multiple-slash-col-1/slash-col-1")
+        .exists());
 }
 
 #[test]
 fn create_collections_all_relpath_with_only_empty_segments_should_return_error() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("posts")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "posts".into(),
+        parent_relpath: "parent-col-1".into(),
         relpath: "   /   /   ".into(),
     };
 
@@ -429,11 +468,11 @@ fn create_collections_all_relpath_with_only_empty_segments_should_return_error()
 fn create_collections_all_duplicate_create_collections_should_not_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("workspace")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "workspace".into(),
-        relpath: "Config/Options".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "Duplicate Col 1/Duplicate Col 2".into(),
     };
 
     let _ = collection::create_collections_all(space_abspath, &dto)
@@ -441,7 +480,7 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected = PathBuf::from("config").join("options");
+    let expected = PathBuf::from("duplicate-col-1").join("duplicate-col-2");
     assert_eq!(col_relpath, expected.to_string_lossy());
 }
 
@@ -449,54 +488,55 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
 fn create_collections_all_special_characters_should_be_sanitized_or_preserved() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("library")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "library".into(),
-        relpath: "Config@Home/Naïve#Settings/🔥 Experimental".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "Special@Chars Col 1/Unicode# Col 2/🔥 Emoji Col 3".into(),
     };
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected = PathBuf::from("config@home")
-        .join("naïve#settings")
-        .join("🔥-experimental");
+    let expected = PathBuf::from("special@chars-col-1")
+        .join("unicode#-col-2")
+        .join("🔥-emoji-col-3");
     assert_eq!(col_relpath, expected.to_string_lossy());
 
-    let expect_path = space_abspath.join("library/config@home/naïve#settings/🔥-experimental");
+    let expect_path =
+        space_abspath.join("parent-col-1/special@chars-col-1/unicode#-col-2/🔥-emoji-col-3");
     assert!(expect_path.exists());
 
     let colname = collection::colname_by_relpath(space_abspath)
         .expect("Failed to read collection name mappings");
 
-    let library_config_key = PathBuf::from("library").join("config@home");
+    let special_chars_key = PathBuf::from("parent-col-1").join("special@chars-col-1");
     assert_eq!(
         colname
             .mappings
-            .get(&library_config_key.to_string_lossy().to_string()),
-        Some(&"Config@Home".to_string())
+            .get(&special_chars_key.to_string_lossy().to_string()),
+        Some(&"Special@Chars Col 1".to_string())
     );
 
-    let naive_settings_key = PathBuf::from("library")
-        .join("config@home")
-        .join("naïve#settings");
+    let unicode_chars_key = PathBuf::from("parent-col-1")
+        .join("special@chars-col-1")
+        .join("unicode#-col-2");
     assert_eq!(
         colname
             .mappings
-            .get(&naive_settings_key.to_string_lossy().to_string()),
-        Some(&"Naïve#Settings".to_string())
+            .get(&unicode_chars_key.to_string_lossy().to_string()),
+        Some(&"Unicode# Col 2".to_string())
     );
 
-    let experimental_key = PathBuf::from("library")
-        .join("config@home")
-        .join("naïve#settings")
-        .join("🔥-experimental");
+    let emoji_key = PathBuf::from("parent-col-1")
+        .join("special@chars-col-1")
+        .join("unicode#-col-2")
+        .join("🔥-emoji-col-3");
     assert_eq!(
         colname
             .mappings
-            .get(&experimental_key.to_string_lossy().to_string()),
-        Some(&"🔥 Experimental".to_string())
+            .get(&emoji_key.to_string_lossy().to_string()),
+        Some(&"🔥 Emoji Col 3".to_string())
     );
 }
 
@@ -504,67 +544,74 @@ fn create_collections_all_special_characters_should_be_sanitized_or_preserved() 
 fn create_collections_all_unicode_segments_should_be_handled() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("global")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "global".into(),
-        relpath: "ザク/設定".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "ザク Unicode Col 1/設定 Unicode Col 2".into(),
     };
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected = PathBuf::from("ザク").join("設定");
+    let expected = PathBuf::from("ザク-unicode-col-1").join("設定-unicode-col-2");
     assert_eq!(col_relpath, expected.to_string_lossy());
-    assert!(space_abspath.join("global").join(&expected).exists());
+    assert!(space_abspath.join("parent-col-1").join(&expected).exists());
 }
 
 #[test]
 fn create_collections_all_trailing_slash_should_be_ignored() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("root")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("grand-parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "root".into(),
-        relpath: "Settings/Preferences/".into(),
+        parent_relpath: "grand-parent-col-1".into(),
+        relpath: "Parent Col 1/Child Trailing Slash Col 2/".into(),
     };
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expected = PathBuf::from("settings").join("preferences");
+    let expected = PathBuf::from("parent-col-1").join("child-trailing-slash-col-2");
     assert_eq!(col_relpath, expected.to_string_lossy());
-    assert!(space_abspath.join("root").join(&expected).exists());
+    assert!(space_abspath
+        .join("grand-parent-col-1")
+        .join(&expected)
+        .exists());
 }
 
 #[test]
 fn create_collections_all_invalid_characters_should_be_sanitized() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
-    std::fs::create_dir_all(space_abspath.join("logs")).unwrap();
+    std::fs::create_dir_all(space_abspath.join("grand-parent-col-1")).unwrap();
 
     let dto = CreateCollectionDto {
-        parent_relpath: "logs".into(),
-        relpath: r#"Error|Logs/<Critical>?Events:2025*Backup\Archive"Today""#.into(),
+        parent_relpath: "grand-parent-col-1".into(),
+        relpath: r#"Parent|Invalid Chars Col 1/Child Col::2"/<Grand>?Child:Invalid*Chars::\Col""3"#
+            .into(),
     };
 
     let col_relpath = collection::create_collections_all(space_abspath, &dto)
         .expect("Failed to create collection directory/directories");
 
-    let expect_relpath =
-        PathBuf::from("error-logs").join("critical-events-2025-backup-archive-today");
+    let expect_relpath = PathBuf::from("parent-invalid-chars-col-1")
+        .join("child-col-2")
+        .join("grand-child-invalid-chars-col-3");
     assert_eq!(col_relpath, expect_relpath.to_string_lossy());
 
-    let expect_path = space_abspath.join("logs").join(&expect_relpath);
+    let expect_path = space_abspath
+        .join("grand-parent-col-1")
+        .join(&expect_relpath);
     assert!(expect_path.exists());
 }
 
 #[test]
 fn create_collection_basic() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let space_name = "Main Space";
-    let space_dirname = "main-space";
+    let space_name = "Basic Space";
+    let space_dirname = "basic-space";
     let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
@@ -576,28 +623,30 @@ fn create_collection_basic() {
     let spaceref = space::create_space(dto, &mut sharedstate).unwrap();
     assert_eq!(spaceref.name, space_name);
 
-    fs::create_dir_all(space_abspath.join("admin")).unwrap();
+    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let collection_dto = CreateCollectionDto {
-        parent_relpath: "admin".into(),
-        relpath: "Settings/Notifications".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "Child Col 1/Grand Child Col 1".into(),
     };
 
     let col = collection::create_collection(&collection_dto, &mut sharedstate)
         .expect("Failed to create collection");
 
-    let expected = PathBuf::from("admin")
-        .join("settings")
-        .join("notifications");
+    let expected = PathBuf::from("parent-col-1")
+        .join("child-col-1")
+        .join("grand-child-col-1");
     assert_eq!(col.relpath, expected.to_string_lossy());
-    assert!(space_abspath.join("admin/settings/notifications").exists());
+    assert!(space_abspath
+        .join("parent-col-1/child-col-1/grand-child-col-1")
+        .exists());
 }
 
 #[test]
 fn create_collection_empty_relpath_should_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let space_name = "Empty Check";
-    let space_dirname = "empty-check";
+    let space_name = "Empty Space";
+    let space_dirname = "empty-space";
     let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
@@ -608,10 +657,10 @@ fn create_collection_empty_relpath_should_fail() {
     let mut sharedstate = SharedState::default();
     let _ = space::create_space(dto, &mut sharedstate).unwrap();
 
-    fs::create_dir_all(space_abspath.join("admin")).unwrap();
+    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let collection_dto = CreateCollectionDto {
-        parent_relpath: "admin".into(),
+        parent_relpath: "parent-col-1".into(),
         relpath: "   ".into(),
     };
 
@@ -622,8 +671,8 @@ fn create_collection_empty_relpath_should_fail() {
 #[test]
 fn create_collection_missing_space_should_fail() {
     let collection_dto = CreateCollectionDto {
-        parent_relpath: "admin".into(),
-        relpath: "Trending Posts".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "Child Col 1".into(),
     };
 
     let mut sharedstate = SharedState::default();
@@ -634,8 +683,8 @@ fn create_collection_missing_space_should_fail() {
 #[test]
 fn create_collection_unicode_path_should_succeed() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let space_name = "Global Space";
-    let space_dirname = "global-space";
+    let space_name = "Unicode Space";
+    let space_dirname = "unicode-space";
     let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
@@ -646,26 +695,30 @@ fn create_collection_unicode_path_should_succeed() {
     let mut sharedstate = SharedState::default();
     let _ = space::create_space(dto, &mut sharedstate).unwrap();
 
-    fs::create_dir_all(space_abspath.join("global")).unwrap();
+    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let collection_dto = CreateCollectionDto {
-        parent_relpath: "global".into(),
-        relpath: "ザク/設定".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "ザク Unicode Col 1/設定 Unicode Col 2".into(),
     };
 
     let result = collection::create_collection(&collection_dto, &mut sharedstate)
         .expect("Failed to create collection");
 
-    let expected = PathBuf::from("global").join("ザク").join("設定");
+    let expected = PathBuf::from("parent-col-1")
+        .join("ザク-unicode-col-1")
+        .join("設定-unicode-col-2");
     assert_eq!(result.relpath, expected.to_string_lossy());
-    assert!(space_abspath.join("global/ザク/設定").exists());
+    assert!(space_abspath
+        .join("parent-col-1/ザク-unicode-col-1/設定-unicode-col-2")
+        .exists());
 }
 
 #[test]
 fn create_collection_should_save_colname() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let space_name = "Prefs";
-    let space_dirname = "prefs";
+    let space_name = "ColName Space";
+    let space_dirname = "colname-space";
     let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
@@ -676,11 +729,11 @@ fn create_collection_should_save_colname() {
     let mut sharedstate = SharedState::default();
     let _ = space::create_space(dto, &mut sharedstate).unwrap();
 
-    fs::create_dir_all(space_abspath.join("prefs")).unwrap();
+    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
     let collection_dto = CreateCollectionDto {
-        parent_relpath: "prefs".into(),
-        relpath: "Privacy Settings".into(),
+        parent_relpath: "parent-col-1".into(),
+        relpath: "Child Col 1".into(),
     };
 
     let result = collection::create_collection(&collection_dto, &mut sharedstate)
@@ -689,17 +742,17 @@ fn create_collection_should_save_colname() {
     let colname =
         collection::colname_by_relpath(&space_abspath).expect("Failed to get collection names");
 
-    let expected_key = PathBuf::from("prefs").join("privacy-settings");
+    let expected_key = PathBuf::from("parent-col-1").join("child-col-1");
     assert_eq!(
         colname
             .mappings
             .get(&expected_key.to_string_lossy().to_string()),
-        Some(&"Privacy Settings".into())
+        Some(&"Child Col 1".into())
     );
 
-    let expected_relpath = PathBuf::from("prefs").join("privacy-settings");
+    let expected_relpath = PathBuf::from("parent-col-1").join("child-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
-    assert!(space_abspath.join("prefs/privacy-settings").exists());
+    assert!(space_abspath.join("parent-col-1/child-col-1").exists());
 }
 
 #[cfg(windows)]
@@ -710,11 +763,11 @@ mod windows {
     fn create_collections_all_reserved_names_should_fail() {
         let tmp_dir = tempfile::tempdir().unwrap();
         let space_abspath = tmp_dir.path();
-        std::fs::create_dir_all(space_abspath.join("system")).unwrap();
+        std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
         let dto = CreateCollectionDto {
-            parent_relpath: "system".into(),
-            relpath: "NUL/Config".into(),
+            parent_relpath: "parent-col-1".into(),
+            relpath: "Reserved Name Col 1/NUL".into(),
         };
 
         let result = collection::create_collections_all(space_abspath, &dto);
