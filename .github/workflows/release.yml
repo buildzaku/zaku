@@ -241,10 +241,14 @@ jobs:
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
+                  # Enable multiarch for cross-compilation
+                  sudo dpkg --add-architecture arm64
+
             - name: "Install ARM dependencies"
               if: matrix.target == 'arm64'
               run: |
-                  sudo apt-get install -y gcc-aarch64-linux-gnu
+                  sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config-aarch64-linux-gnu
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev:arm64 libappindicator3-dev:arm64 librsvg2-dev:arm64 libasound2-dev:arm64
 
             - name: "Install frontend dependencies"
               run: pnpm install
@@ -254,6 +258,8 @@ jobs:
               env:
                   CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
                   CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+                  PKG_CONFIG_aarch64_unknown_linux_gnu: aarch64-linux-gnu-pkg-config
+                  PKG_CONFIG_ALLOW_CROSS: 1
 
             - name: "Extract .deb to snap-stage/"
               run: |
