@@ -247,7 +247,7 @@ jobs:
                       echo "channel=stable" >> $GITHUB_OUTPUT
                   fi
 
-            - name: "Build Snap"
+            - name: "Build Snap package"
               uses: snapcore/action-build@v1
               id: build
 

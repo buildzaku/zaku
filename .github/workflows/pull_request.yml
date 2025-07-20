@@ -263,8 +263,8 @@ jobs:
               with:
                   args: ${{ matrix.args }}
 
-    build_snap:
-        name: "Build Snap"
+    build_snap_package:
+        name: "Build Snap Package"
         if: github.repository == 'buildzaku/zaku'
         runs-on: ubuntu-latest
         steps:
@@ -319,6 +319,6 @@ jobs:
                   dpkg -x src-tauri/target/release/bundle/deb/*.deb snap-stage/
                   sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage/usr/share/applications/Zaku.desktop
 
-            - name: "Build Snap"
+            - name: "Build Snap package"
               uses: snapcore/action-build@v1
               id: build
