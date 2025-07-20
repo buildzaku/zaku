@@ -6500,7 +6500,7 @@ dependencies = [
 
 [[package]]
 name = "zaku"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "cookie",
  "cookie_store",
