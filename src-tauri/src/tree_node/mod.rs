@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::{fmt, fs, path::Path};
+use std::{
+    fmt, fs,
+    path::{self, Path},
+};
 
 use crate::{
     collection::models::Collection,
@@ -47,7 +50,7 @@ pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a C
     let mut cur_collection = root;
 
     for component in relpath.components() {
-        if let std::path::Component::Normal(segment) = component {
+        if let path::Component::Normal(segment) = component {
             let segment_str = segment.to_string_lossy();
             cur_collection = cur_collection
                 .collections
@@ -73,7 +76,7 @@ fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&
     let mut cur_collection = root;
 
     for component in relpath.components() {
-        if let std::path::Component::Normal(segment) = component {
+        if let path::Component::Normal(segment) = component {
             let segment_str = segment.to_string_lossy();
             cur_collection = cur_collection
                 .collections

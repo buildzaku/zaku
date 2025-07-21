@@ -63,7 +63,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
 #[specta::specta]
 #[tauri::command]
 pub async fn create_collection(
-    create_collection_dto: CreateCollectionDto,
+    dto: CreateCollectionDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewCollection> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
@@ -71,7 +71,16 @@ pub async fn create_collection(
         message: format!("State lock failed: {e}"),
     })?;
 
-    collection::create_collection(&create_collection_dto, &mut sharedstate).map_err(|err| {
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        &dto.location_relpath,
+        &dto.relpath,
+        &mut sharedstate,
+    )
+    .map_err(|err| CmdErr::Err {
+        message: format!("Failed to create parent collections: {err}"),
+    })?;
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate).map_err(|err| {
         CmdErr::Err {
             message: format!("Failed to create collection: {err}"),
         }
@@ -151,7 +160,7 @@ pub fn dispatch_notif(
 #[specta::specta]
 #[tauri::command]
 pub async fn create_req(
-    create_req_dto: CreateRequestDto,
+    dto: CreateRequestDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewRequest> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
@@ -159,8 +168,19 @@ pub async fn create_req(
         message: format!("State lock failed: {e}"),
     })?;
 
-    request::create_req(&create_req_dto, &mut sharedstate).map_err(|err| CmdErr::Err {
-        message: format!("Failed to create request: {err}"),
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        &dto.location_relpath,
+        &dto.relpath,
+        &mut sharedstate,
+    )
+    .map_err(|err| CmdErr::Err {
+        message: format!("Failed to create parent collections: {err}"),
+    })?;
+
+    request::create_req(&parent_relpath, &req_segment, &mut sharedstate).map_err(|err| {
+        CmdErr::Err {
+            message: format!("Failed to create request: {err}"),
+        }
     })
 }
 

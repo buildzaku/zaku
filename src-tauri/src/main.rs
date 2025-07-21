@@ -5,6 +5,7 @@ use std::sync::Mutex;
 pub mod collection;
 pub mod commands;
 pub mod error;
+pub mod models;
 pub mod notifications;
 pub mod platform;
 pub mod request;

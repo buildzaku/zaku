@@ -9,6 +9,8 @@ pub enum Error {
     FileReadError(String),
     LockError(String),
     InvalidPath(String),
+    InvalidName(String),
+    SanitizationError(String),
 
     #[from]
     Io(io::Error),
