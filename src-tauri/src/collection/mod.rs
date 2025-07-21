@@ -277,7 +277,7 @@ pub fn create_parent_collections_if_missing(
         let dir_abspath = space_abspath.join(&target_path);
 
         if !dir_abspath.exists() {
-            create_collection(&current_parent, &segment, sharedstate)?;
+            create_collection(&current_parent, segment, sharedstate)?;
         }
 
         current_parent = target_path;
