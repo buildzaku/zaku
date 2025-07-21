@@ -32,7 +32,6 @@ use crate::{
         spaces::buffer,
     },
     tree_node::{self, MoveTreeNodeDto},
-    utils,
 };
 
 pub mod models;
@@ -72,27 +71,19 @@ pub async fn create_collection(
         message: format!("State lock failed: {e}"),
     })?;
 
-    let location_relpath = Path::new(&dto.location_relpath); // TODO - update dto to have &Path instead of String? Need to make sure specta handles it
-    let segments = utils::to_sanitized_segments(&dto.relpath);
-    let (last_segment, relpath_segments) = segments.split_last().unwrap();
-
-    let parent_relpath = collection::create_collection_parents_if_missing(
-        location_relpath,
-        relpath_segments,
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(&dto.location_relpath),
+        &dto.relpath,
         &mut sharedstate,
     )
     .map_err(|err| CmdErr::Err {
         message: format!("Failed to create parent collections: {err}"),
     })?;
 
-    collection::create_collection(
-        &parent_relpath,
-        &last_segment.fsname,
-        &last_segment.name,
-        &mut sharedstate,
-    )
-    .map_err(|err| CmdErr::Err {
-        message: format!("Failed to create collection: {err}"),
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate).map_err(|err| {
+        CmdErr::Err {
+            message: format!("Failed to create collection: {err}"),
+        }
     })
 }
 
@@ -177,27 +168,19 @@ pub async fn create_req(
         message: format!("State lock failed: {e}"),
     })?;
 
-    let location_relpath = Path::new(&dto.location_relpath);
-    let segments = utils::to_sanitized_segments(&dto.relpath);
-    let (last_segment, relpath_segments) = segments.split_last().unwrap();
-
-    let parent_relpath = collection::create_collection_parents_if_missing(
-        location_relpath,
-        relpath_segments,
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        Path::new(&dto.location_relpath),
+        &dto.relpath,
         &mut sharedstate,
     )
     .map_err(|err| CmdErr::Err {
         message: format!("Failed to create parent collections: {err}"),
     })?;
 
-    request::create_req(
-        &parent_relpath,
-        &last_segment.fsname,
-        &last_segment.name,
-        &mut sharedstate,
-    )
-    .map_err(|err| CmdErr::Err {
-        message: format!("Failed to create request: {err}"),
+    request::create_req(&parent_relpath, &req_segment, &mut sharedstate).map_err(|err| {
+        CmdErr::Err {
+            message: format!("Failed to create request: {err}"),
+        }
     })
 }
 

@@ -1,18 +1,33 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 use tempfile;
 
 use crate::{
+    collection,
     error::Error,
+    models::SanitizedSegment,
     request::{
         self,
-        models::{
-            CreateRequestDto, HttpReq, ReqCfg, ReqMeta, ReqToml, ReqTomlConfig, ReqTomlMeta, ReqUrl,
-        },
+        models::{HttpReq, ReqCfg, ReqMeta, ReqToml, ReqTomlConfig, ReqTomlMeta, ReqUrl},
     },
     space::{self, models::CreateSpaceDto},
     state::SharedState,
     store::{models::ReqBuf, spaces::buffer::SpaceBuf},
 };
+
+fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
+    let dto = CreateSpaceDto {
+        name: "Req Space".to_string(),
+        location: tmp_path.to_string_lossy().to_string(),
+    };
+
+    let mut sharedstate = SharedState::default();
+    space::create_space(dto, &mut sharedstate).expect("Failed to create test space");
+
+    sharedstate
+}
 
 #[test]
 fn parse_req_returns_none_for_non_toml_file() {
@@ -151,25 +166,18 @@ fn parse_req_returns_buffered_request_when_available() {
 #[test]
 fn create_req_basic() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Basic Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "Child Req 1".into(),
+    let req_segment = SanitizedSegment {
+        name: "Child Req 1".to_string(),
+        fsname: "child-req-1".to_string(),
     };
 
-    let result =
-        request::create_req(&request_dto, &mut sharedstate).expect("Failed to create request");
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
+        .expect("Failed to create request");
 
     let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("child-req-1.toml");
     assert_eq!(result.relpath, expected_reqfile_relpath.to_string_lossy());
@@ -185,20 +193,17 @@ fn create_req_basic() {
 #[test]
 fn create_req_with_nested_collections() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Nested Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Grand Parent Col 1/Parent Col 1/Child Req 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "".into(),
-        relpath: "Grand Parent Col 1/Parent Col 1/Child Req 1".into(),
-    };
-
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(&parent_relpath, &req_segment, &mut sharedstate)
         .expect("Failed to create request with nested collections");
 
     let expected_reqfile_relpath = PathBuf::from("grand-parent-col-1")
@@ -206,8 +211,6 @@ fn create_req_with_nested_collections() {
         .join("child-req-1.toml");
     assert_eq!(result.relpath, expected_reqfile_relpath.to_string_lossy());
 
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     let expected_reqfile_abspath =
         space_abspath.join("grand-parent-col-1/parent-col-1/child-req-1.toml");
     assert!(expected_reqfile_abspath.exists());
@@ -219,58 +222,45 @@ fn create_req_with_nested_collections() {
 }
 
 #[test]
-fn create_req_empty_relpath_should_fail() {
+fn create_req_empty_fsname_should_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateSpaceDto {
-        name: "Empty Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "   ".into(),
+    let req_segment = SanitizedSegment {
+        name: "Empty Req 1".to_string(),
+        fsname: "   ".to_string(),
     };
 
-    let result = request::create_req(&request_dto, &mut sharedstate);
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
 }
 
 #[test]
 fn create_req_missing_space_should_fail() {
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "Child Req 1".into(),
+    let req_segment = SanitizedSegment {
+        name: "Child Req 1".to_string(),
+        fsname: "child-req-1".to_string(),
     };
 
     let mut sharedstate = SharedState::default();
-    let result = request::create_req(&request_dto, &mut sharedstate);
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
 }
 
 #[test]
 fn create_req_sanitizes_filename() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Sanitize Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "Special*Chars<>|Req 1".into(),
+    let req_segment = SanitizedSegment {
+        name: "Special*Chars<>|Req 1".to_string(),
+        fsname: "special-chars-req-1".to_string(),
     };
 
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
         .expect("Failed to create request with special characters");
 
     let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("special-chars-req-1.toml");
@@ -286,24 +276,17 @@ fn create_req_sanitizes_filename() {
 #[test]
 fn create_req_with_unicode_characters() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Unicode Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "ザク Unicode Req 1".into(),
+    let req_segment = SanitizedSegment {
+        name: "ザク Unicode Req 1".to_string(),
+        fsname: "ザク-unicode-req-1".to_string(),
     };
 
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
         .expect("Failed to create request with unicode characters");
 
     let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("ザク-unicode-req-1.toml");
@@ -319,24 +302,17 @@ fn create_req_with_unicode_characters() {
 #[test]
 fn create_req_with_whitespace_handling() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Whitespace Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "  Multiple   Spaces  Req 1  ".into(),
+    let req_segment = SanitizedSegment {
+        name: "  Multiple   Spaces  Req 1  ".to_string(),
+        fsname: "multiple-spaces-req-1".to_string(),
     };
 
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
         .expect("Failed to create request with whitespace");
 
     let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("multiple-spaces-req-1.toml");
@@ -349,26 +325,20 @@ fn create_req_with_whitespace_handling() {
 #[test]
 fn create_req_duplicate_name_should_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Duplicate Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "Duplicate Req 1".into(),
+    let req_segment = SanitizedSegment {
+        name: "Duplicate Req 1".to_string(),
+        fsname: "duplicate-req-1".to_string(),
     };
 
-    request::create_req(&request_dto, &mut sharedstate).expect("Failed to create first request");
+    request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
+        .expect("Failed to create first request");
 
-    let result = request::create_req(&request_dto, &mut sharedstate);
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate);
 
     assert!(result.is_err());
 }
@@ -403,8 +373,6 @@ fn create_reqtoml_skips_serializing_empty_optional_fields() {
 
     let toml_file = reqfile_abspath.with_extension("toml");
     let toml_content = fs::read_to_string(&toml_file).unwrap();
-
-    eprintln!("{toml_content}");
 
     assert!(!toml_content.contains("url ="));
     assert!(!toml_content.contains("headers ="));
@@ -729,20 +697,17 @@ fn http_req_from_reqbuf_has_unsaved_changes() {
 #[test]
 fn create_req_creates_parent_collections_with_proper_hierarchy() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Hierarchy Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Req 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "".into(),
-        relpath: "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Req 1".into(),
-    };
-
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(&parent_relpath, &req_segment, &mut sharedstate)
         .expect("Failed to create request with deep hierarchy");
 
     let expected_reqfile_relpath = PathBuf::from("great-grand-parent-col-1")
@@ -750,9 +715,6 @@ fn create_req_creates_parent_collections_with_proper_hierarchy() {
         .join("parent-col-1")
         .join("child-req-1.toml");
     assert_eq!(result.relpath, expected_reqfile_relpath.to_string_lossy());
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
 
     assert!(space_abspath.join("great-grand-parent-col-1").exists());
     assert!(space_abspath
@@ -769,24 +731,17 @@ fn create_req_creates_parent_collections_with_proper_hierarchy() {
 #[test]
 fn create_req_handles_mixed_invalid_characters_and_unicode() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Mixed Chars Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "ザク*Special<>|Chars:Req\\1".into(),
+    let req_segment = SanitizedSegment {
+        name: "ザク*Special<>|Chars:Req\\1".to_string(),
+        fsname: "ザク-special-chars-req-1".to_string(),
     };
 
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
         .expect("Failed to create request with mixed characters");
 
     let expected_reqfile_relpath =
@@ -803,24 +758,16 @@ fn create_req_handles_mixed_invalid_characters_and_unicode() {
 #[test]
 fn create_req_with_trailing_slash_in_relpath() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateSpaceDto {
-        name: "Trailing Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1/Child Col 1/Trailing Req 1/",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
 
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
-    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
-
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "Child Col 1/Trailing Req 1/".into(),
-    };
-
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(&parent_relpath, &req_segment, &mut sharedstate)
         .expect("Failed to create request with trailing slash");
 
     let expected_reqfile_relpath = PathBuf::from("parent-col-1")
@@ -832,24 +779,18 @@ fn create_req_with_trailing_slash_in_relpath() {
 #[test]
 fn create_req_updates_shared_state() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "State Update Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "State Update Req 1".into(),
+    let req_segment = SanitizedSegment {
+        name: "State Update Req 1".to_string(),
+        fsname: "state-update-req-1".to_string(),
     };
 
-    request::create_req(&request_dto, &mut sharedstate).expect("Failed to create request");
+    request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
+        .expect("Failed to create request");
 
     assert!(sharedstate.space.is_some());
 }
@@ -857,24 +798,17 @@ fn create_req_updates_shared_state() {
 #[test]
 fn create_req_with_backslash_characters() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-    let dto = CreateSpaceDto {
-        name: "Backslash Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
-
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_abspath = PathBuf::from(&space.abspath);
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "parent-col-1".into(),
-        relpath: "Back\\Slash Req 1".into(),
+    let req_segment = SanitizedSegment {
+        name: "Back\\Slash Req 1".to_string(),
+        fsname: "back-slash-req-1".to_string(),
     };
 
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate)
         .expect("Failed to create request with backslash");
 
     let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("back-slash-req-1.toml");
@@ -890,26 +824,56 @@ fn create_req_with_backslash_characters() {
 #[test]
 fn create_req_with_multiple_slashes_in_relpath() {
     let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateSpaceDto {
-        name: "Multiple Slash Space".to_string(),
-        location: tmp_dir.path().to_string_lossy().to_string(),
-    };
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).unwrap();
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1///Child Col 1//Multiple Slash Req 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
 
-    let request_dto = CreateRequestDto {
-        parent_relpath: "".into(),
-        relpath: "Parent Col 1///Child Col 1//Multiple Slash Req 1".into(),
-    };
-
-    let result = request::create_req(&request_dto, &mut sharedstate)
+    let result = request::create_req(&parent_relpath, &req_segment, &mut sharedstate)
         .expect("Failed to create request with multiple slashes");
 
     let expected_reqfile_relpath = PathBuf::from("parent-col-1")
         .join("child-col-1")
         .join("multiple-slash-req-1.toml");
     assert_eq!(result.relpath, expected_reqfile_relpath.to_string_lossy());
+}
+
+#[test]
+fn create_req_integrated_flow() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1/Child Col 1/Grand Child Req 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    let result = request::create_req(&parent_relpath, &req_segment, &mut sharedstate)
+        .expect("Failed to create request");
+
+    let expected_reqfile_relpath = PathBuf::from("parent-col-1")
+        .join("child-col-1")
+        .join("grand-child-req-1.toml");
+    assert_eq!(result.relpath, expected_reqfile_relpath.to_string_lossy());
+
+    assert!(space_abspath.join("parent-col-1").exists());
+    assert!(space_abspath.join("parent-col-1/child-col-1").exists());
+    assert!(space_abspath
+        .join("parent-col-1/child-col-1/grand-child-req-1.toml")
+        .exists());
+
+    let req_toml = request::parse_reqtoml(
+        &space_abspath.join("parent-col-1/child-col-1/grand-child-req-1.toml"),
+    )
+    .unwrap();
+    assert_eq!(req_toml.meta.name, "Grand Child Req 1");
 }
 
 #[cfg(windows)]
@@ -919,24 +883,17 @@ mod windows {
     #[test]
     fn create_req_reserved_names_should_be_handled() {
         let tmp_dir = tempfile::tempdir().unwrap();
+        let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+        let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
-        let dto = CreateSpaceDto {
-            name: "Reserved Space".to_string(),
-            location: tmp_dir.path().to_string_lossy().to_string(),
-        };
-        let mut sharedstate = SharedState::default();
-        space::create_space(dto, &mut sharedstate).unwrap();
-
-        let space = sharedstate.space.as_ref().unwrap();
-        let space_abspath = PathBuf::from(&space.abspath);
         fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
 
-        let request_dto = CreateRequestDto {
-            parent_relpath: "parent-col-1".into(),
-            relpath: "CON Req 1".into(),
+        let req_segment = SanitizedSegment {
+            name: "CON Req 1".to_string(),
+            fsname: "con-req-1".to_string(),
         };
 
-        let result = request::create_req(&request_dto, &mut sharedstate);
+        let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate);
 
         match result {
             Ok(created) => {

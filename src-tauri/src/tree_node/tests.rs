@@ -2,9 +2,10 @@ use std::{fs, path::Path};
 use tempfile;
 
 use crate::{
-    collection::{self, models::CreateCollectionDto},
+    collection,
     error::Error,
-    request::{self, models::CreateRequestDto},
+    models::SanitizedSegment,
+    request,
     space::{self, models::CreateSpaceDto},
     state::SharedState,
     tree_node::{self, MoveTreeNodeDto, NodeType},
@@ -38,11 +39,15 @@ fn find_collection_finds_direct_child() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate).expect("Failed to create collection");
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+        .expect("Failed to create collection");
 
     let space = sharedstate.space.unwrap();
     let result = tree_node::find_collection(&space.root_collection, Path::new("parent-col-1"));
@@ -57,11 +62,14 @@ fn find_collection_finds_nested_child() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1/Child Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1/Child Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create nested collection");
 
     let space = sharedstate.space.unwrap();
@@ -96,11 +104,14 @@ fn find_collection_fails_for_partially_invalid_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create parent collection");
 
     let space = sharedstate.space.unwrap();
@@ -159,11 +170,15 @@ fn move_tree_node_fails_when_dropping_to_same_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate).expect("Failed to create collection");
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+        .expect("Failed to create collection");
 
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
@@ -184,11 +199,14 @@ fn move_tree_node_fails_when_moving_collection_into_itself() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create parent collection");
 
     let dto = MoveTreeNodeDto {
@@ -210,26 +228,37 @@ fn move_tree_node_fails_when_destination_already_exists() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create source collection");
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 2/Child Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 2/Child Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create existing collection");
 
-    let create_dto = CreateCollectionDto {
-        parent_relpath: "parent-col-2".to_string(),
-        relpath: "Parent Col 1".to_string(),
+    let conflicting_segment = SanitizedSegment {
+        name: "Parent Col 1".to_string(),
+        fsname: "parent-col-1".to_string(),
     };
-    collection::create_collection(&create_dto, &mut sharedstate)
-        .expect("Failed to create conflicting collection");
+
+    collection::create_collection(
+        Path::new("parent-col-2"),
+        &conflicting_segment,
+        &mut sharedstate,
+    )
+    .expect("Failed to create conflicting collection");
 
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
@@ -250,11 +279,14 @@ fn move_tree_node_fails_when_source_not_found() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create parent collection");
 
     let dto = MoveTreeNodeDto {
@@ -276,18 +308,24 @@ fn move_tree_node_successfully_moves_collection() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create source collection");
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 2".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 2",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create parent collection");
 
     let dto = MoveTreeNodeDto {
@@ -320,17 +358,22 @@ fn move_tree_node_successfully_moves_request() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateRequestDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Req 1".to_string(),
+    let req_segment = SanitizedSegment {
+        name: "Parent Req 1".to_string(),
+        fsname: "parent-req-1".to_string(),
     };
-    request::create_req(&dto, &mut sharedstate).expect("Failed to create request");
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    request::create_req(Path::new(""), &req_segment, &mut sharedstate)
+        .expect("Failed to create request");
+
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create parent collection");
 
     let dto = MoveTreeNodeDto {
@@ -363,18 +406,24 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create source collection");
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Parent Col 2".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Parent Col 2",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create parent collection");
 
     let space = sharedstate.space.as_ref().unwrap();
@@ -402,11 +451,14 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Grand Parent Col 1/Parent Col 1/Child Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Grand Parent Col 1/Parent Col 1/Child Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create nested collection");
 
     let dto = MoveTreeNodeDto {
@@ -452,18 +504,27 @@ fn move_tree_node_successfully_moves_request_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Grand Parent Col 1/Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Grand Parent Col 1/Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create nested collection");
 
-    let dto = CreateRequestDto {
-        parent_relpath: "grand-parent-col-1/parent-col-1".to_string(),
-        relpath: "Grand Child Req 1".to_string(),
+    let req_segment = SanitizedSegment {
+        name: "Grand Child Req 1".to_string(),
+        fsname: "grand-child-req-1".to_string(),
     };
-    request::create_req(&dto, &mut sharedstate).expect("Failed to create request");
+
+    request::create_req(
+        Path::new("grand-parent-col-1/parent-col-1"),
+        &req_segment,
+        &mut sharedstate,
+    )
+    .expect("Failed to create request");
 
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
@@ -510,11 +571,14 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create deeply nested collection");
 
     let dto = MoveTreeNodeDto {
@@ -565,18 +629,27 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
-    let dto = CreateCollectionDto {
-        parent_relpath: "".to_string(),
-        relpath: "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1".to_string(),
-    };
-    collection::create_collection(&dto, &mut sharedstate)
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        Path::new(""),
+        "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1",
+        &mut sharedstate,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
         .expect("Failed to create nested collection");
 
-    let dto = CreateRequestDto {
-        parent_relpath: "great-grand-parent-col-1/grand-parent-col-1/parent-col-1".to_string(),
-        relpath: "Great Grand Child Req 1".to_string(),
+    let req_segment = SanitizedSegment {
+        name: "Great Grand Child Req 1".to_string(),
+        fsname: "great-grand-child-req-1".to_string(),
     };
-    request::create_req(&dto, &mut sharedstate).expect("Failed to create request");
+
+    request::create_req(
+        Path::new("great-grand-parent-col-1/grand-parent-col-1/parent-col-1"),
+        &req_segment,
+        &mut sharedstate,
+    )
+    .expect("Failed to create request");
 
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,

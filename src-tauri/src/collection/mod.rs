@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     fs,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     rc::Rc,
     vec::IntoIter,
 };
@@ -23,6 +23,7 @@ use crate::{
     space::{self, parse_spacecfg},
     state::SharedState,
     store::spaces::buffer::SpaceBuf,
+    utils,
 };
 
 pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
@@ -255,38 +256,42 @@ pub fn save_colname_if_missing(
     Ok(())
 }
 
-pub fn create_collection_parents_if_missing(
+pub fn create_parent_collections_if_missing(
     location_relpath: &Path,
-    segments: &[SanitizedSegment],
+    relpath: &str,
     sharedstate: &mut SharedState,
-) -> Result<PathBuf> {
-    let mut parent_relpath = location_relpath.to_path_buf();
+) -> Result<(PathBuf, SanitizedSegment)> {
+    let segments = utils::to_sanitized_segments(relpath);
+    let (last_segment, relpath_segments) = segments.split_last().unwrap();
 
-    for segment in segments {
-        let acc_parent_relpath = parent_relpath.join(&segment.fsname);
+    let mut current_parent = location_relpath.to_path_buf();
+
+    for segment in relpath_segments {
+        let target_path = current_parent.join(&segment.fsname);
+
         let space = sharedstate
             .space
             .as_ref()
             .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
         let space_abspath = PathBuf::from(&space.abspath);
-        let dir_abspath = space_abspath.join(&acc_parent_relpath);
+        let dir_abspath = space_abspath.join(&target_path);
+
         if !dir_abspath.exists() {
-            create_collection(&parent_relpath, &segment.fsname, &segment.name, sharedstate)?;
+            create_collection(&current_parent, &segment, sharedstate)?;
         }
 
-        parent_relpath = acc_parent_relpath;
+        current_parent = target_path;
     }
 
-    Ok(parent_relpath)
+    Ok((current_parent, last_segment.clone()))
 }
 
 pub fn create_collection(
     parent_relpath: &Path,
-    fsname: &str,
-    name: &str,
+    col_segment: &SanitizedSegment,
     sharedstate: &mut SharedState,
 ) -> Result<CreateNewCollection> {
-    if fsname.trim().is_empty() {
+    if col_segment.fsname.trim().is_empty() {
         return Err(Error::FileNotFound(
             "Cannot create a collection without name".to_string(),
         ));
@@ -298,12 +303,16 @@ pub fn create_collection(
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let dir_abspath = space_abspath.join(parent_relpath).join(fsname);
-    let dir_relpath = parent_relpath.join(fsname);
+    let dir_abspath = space_abspath.join(parent_relpath).join(&col_segment.fsname);
+    let dir_relpath = parent_relpath.join(&col_segment.fsname);
 
     fs::create_dir(&dir_abspath)?;
 
-    save_colname_if_missing(&space_abspath, &dir_relpath.to_string_lossy(), name)?;
+    save_colname_if_missing(
+        &space_abspath,
+        &dir_relpath.to_string_lossy(),
+        &col_segment.name,
+    )?;
 
     let create_new_collection = CreateNewCollection {
         parent_relpath: parent_relpath.to_string_lossy().to_string(),

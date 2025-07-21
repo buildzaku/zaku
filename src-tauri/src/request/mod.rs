@@ -9,6 +9,7 @@ use toml;
 use crate::{
     commands::models::CreateNewRequest,
     error::{Error, Result},
+    models::SanitizedSegment,
     request::models::{HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
     space,
     state::SharedState,
@@ -70,11 +71,10 @@ pub fn parse_req(
 
 pub fn create_req(
     parent_relpath: &Path,
-    fsname: &str,
-    name: &str,
+    req_segment: &SanitizedSegment,
     sharedstate: &mut SharedState,
 ) -> Result<CreateNewRequest> {
-    if fsname.trim().is_empty() {
+    if req_segment.fsname.trim().is_empty() {
         return Err(Error::FileNotFound(
             "Cannot create a request without name".to_string(),
         ));
@@ -86,10 +86,10 @@ pub fn create_req(
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let reqfile_abspath = space_abspath.join(parent_relpath).join(fsname);
-    let reqfile_relpath = parent_relpath.join(format!("{}.toml", fsname));
+    let reqfile_abspath = space_abspath.join(parent_relpath).join(&req_segment.fsname);
+    let reqfile_relpath = parent_relpath.join(format!("{}.toml", &req_segment.fsname));
 
-    create_reqtoml(&reqfile_abspath, name)?;
+    create_reqtoml(&reqfile_abspath, &req_segment.name)?;
 
     let created = CreateNewRequest {
         parent_relpath: parent_relpath.to_string_lossy().to_string(),
