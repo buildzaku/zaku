@@ -10,10 +10,10 @@ use crate::{
     tree_node::{self, MoveTreeNodeDto, NodeType},
 };
 
-fn tmp_sharedstate(tmp_dir: &Path) -> SharedState {
+fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
     let dto = CreateSpaceDto {
         name: "Tree Space".to_string(),
-        location: tmp_dir.to_string_lossy().to_string(),
+        location: tmp_path.to_string_lossy().to_string(),
     };
 
     let mut sharedstate = SharedState::default();
@@ -25,7 +25,7 @@ fn tmp_sharedstate(tmp_dir: &Path) -> SharedState {
 #[test]
 fn find_collection_returns_root_for_empty_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let sharedstate = tmp_sharedstate(tmp_dir.path());
+    let sharedstate = tmp_space_sharedstate(tmp_dir.path());
     let space = sharedstate.space.unwrap();
 
     let result = tree_node::find_collection(&space.root_collection, Path::new(""));
@@ -36,7 +36,7 @@ fn find_collection_returns_root_for_empty_path() {
 #[test]
 fn find_collection_finds_direct_child() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -55,7 +55,7 @@ fn find_collection_finds_direct_child() {
 #[test]
 fn find_collection_finds_nested_child() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -78,7 +78,7 @@ fn find_collection_finds_nested_child() {
 #[test]
 fn find_collection_fails_for_nonexistent_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let sharedstate = tmp_sharedstate(tmp_dir.path());
+    let sharedstate = tmp_space_sharedstate(tmp_dir.path());
     let space = sharedstate.space.unwrap();
 
     let result = tree_node::find_collection(&space.root_collection, Path::new("nonexistent-col-1"));
@@ -94,7 +94,7 @@ fn find_collection_fails_for_nonexistent_path() {
 #[test]
 fn find_collection_fails_for_partially_invalid_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -138,7 +138,7 @@ fn move_tree_node_fails_with_no_space() {
 #[test]
 fn move_tree_node_fails_with_invalid_source_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
@@ -157,7 +157,7 @@ fn move_tree_node_fails_with_invalid_source_path() {
 #[test]
 fn move_tree_node_fails_when_dropping_to_same_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -182,7 +182,7 @@ fn move_tree_node_fails_when_dropping_to_same_parent() {
 #[test]
 fn move_tree_node_fails_when_moving_collection_into_itself() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -208,7 +208,7 @@ fn move_tree_node_fails_when_moving_collection_into_itself() {
 #[test]
 fn move_tree_node_fails_when_destination_already_exists() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -248,7 +248,7 @@ fn move_tree_node_fails_when_destination_already_exists() {
 #[test]
 fn move_tree_node_fails_when_source_not_found() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -274,7 +274,7 @@ fn move_tree_node_fails_when_source_not_found() {
 #[test]
 fn move_tree_node_successfully_moves_collection() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -318,7 +318,7 @@ fn move_tree_node_successfully_moves_collection() {
 #[test]
 fn move_tree_node_successfully_moves_request() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateRequestDto {
         parent_relpath: "".to_string(),
@@ -361,7 +361,7 @@ fn move_tree_node_successfully_moves_request() {
 #[test]
 fn move_tree_node_fails_with_missing_destination_parent_directory() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -400,7 +400,7 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
 #[test]
 fn move_tree_node_successfully_moves_collection_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -450,7 +450,7 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
 #[test]
 fn move_tree_node_successfully_moves_request_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -508,7 +508,7 @@ fn move_tree_node_successfully_moves_request_to_parent() {
 #[test]
 fn move_tree_node_successfully_moves_collection_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
@@ -563,7 +563,7 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
 #[test]
 fn move_tree_node_successfully_moves_request_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_sharedstate(tmp_dir.path());
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let dto = CreateCollectionDto {
         parent_relpath: "".to_string(),
