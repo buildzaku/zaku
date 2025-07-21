@@ -767,7 +767,7 @@ mod windows {
 
         let dto = CreateCollectionDto {
             parent_relpath: "parent-col-1".into(),
-            relpath: "Reserved Name Col 1/NUL".into(),
+            relpath: "NUL/Child Col 1".into(),
         };
 
         let result = collection::create_collections_all(space_abspath, &dto);
