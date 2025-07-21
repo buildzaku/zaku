@@ -420,6 +420,22 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
 }
 
 #[test]
+fn create_parent_collections_if_missing_special_chars_only_should_fail() {
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+
+    let location_relpath = Path::new("");
+    let relpath = "Parent Col 1/!@#$%/Grand Child Col 1";
+    let result = collection::create_parent_collections_if_missing(
+        location_relpath,
+        relpath,
+        &mut sharedstate,
+    );
+
+    assert!(matches!(result, Err(Error::SanitizationError(_))));
+}
+
+#[test]
 fn create_collection_basic() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
