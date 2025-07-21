@@ -1,8 +1,16 @@
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
-use std::path::PathBuf;
+use std::path::{self, Path, PathBuf};
 use tauri::{AppHandle, Manager};
+
+use crate::{
+    error::{Error, Result},
+    models::SanitizedSegment,
+};
+
+#[cfg(test)]
+pub mod tests;
 
 pub fn toggle_devtools(app_handle: &AppHandle) {
     let webview_window = app_handle.get_webview_window("main").unwrap();
@@ -67,32 +75,56 @@ pub fn hashed_filename(abspath: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Sanitizes a segment (directory/file) name to be safe across platforms
-///
-/// - Converts to lowercase
-/// - Replaces invalid characters with `-`
-/// - Replaces whitespace with `-`
-/// - Trims leading/trailing hyphens
-pub fn sanitize_pathseg(segment: &str) -> String {
-    const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
+pub fn to_fsname(name: &str) -> Result<String> {
+    const WINDOWS_RESERVED: [&str; 22] = [
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
 
-    segment
+    let sanitized = name
         .to_lowercase()
         .chars()
-        .map(|c| {
-            if c.is_whitespace() || INVALID_CHARS.contains(&c) {
-                '-'
+        .map(|char| {
+            if char.is_alphabetic() || char.is_ascii_digit() {
+                char
             } else {
-                c
+                '-'
             }
         })
         .collect::<String>()
         .split('-')
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
-        .join("-")
+        .join("-");
+
+    if sanitized.is_empty() {
+        return Err(Error::SanitizationError(
+            "Empty name after sanitization".to_string(),
+        ));
+    }
+
+    if WINDOWS_RESERVED.contains(&sanitized.as_str()) {
+        return Err(Error::SanitizationError(format!(
+            "Reserved name not allowed: {sanitized}"
+        )));
+    }
+
+    Ok(sanitized)
 }
 
-pub fn sanitize_pathseg_bslash(segment: &str) -> String {
-    segment.replace('\\', "-")
+pub fn to_sanitized_segments(relpath: &str) -> Result<Vec<SanitizedSegment>> {
+    let relpath_no_bslashes = relpath.replace('\\', "-");
+    let mut segments = Vec::new();
+
+    for component in Path::new(&relpath_no_bslashes).components() {
+        if let path::Component::Normal(os_str) = component {
+            let name = os_str.to_string_lossy().trim().to_string();
+            if !name.is_empty() {
+                let fsname = to_fsname(&name)?;
+                segments.push(SanitizedSegment { name, fsname });
+            }
+        }
+    }
+
+    Ok(segments)
 }
