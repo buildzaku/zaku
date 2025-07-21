@@ -224,29 +224,26 @@ pub fn colname_by_relpath(space_abspath: &Path) -> Result<ColName> {
     Ok(colname)
 }
 
-/// Saves the collection's name in `.zaku/collections/name.toml` if
-/// it doesn't already exist
-///
-/// This helps preserve the original casing and formatting for UI, while allowing
-/// sanitized versions to be used as actual directory names
-///
-/// - `space_abspath`: Absolute path of space
-/// - `collection_relpath`: Path relative to space where the collection resides
-/// - `colname`: Original collection name
-///
-/// Returns a `Result` indicating success or failure
 pub fn save_colname_if_missing(
     space_abspath: &Path,
-    collection_relpath: &str,
+    collection_relpath: &Path,
     colname: &str,
 ) -> Result<()> {
-    let colname_file_abspath = space_abspath.join(".zaku/collections/name.toml");
+    let colname_file_abspath = space_abspath
+        .join(".zaku")
+        .join("collections")
+        .join("name.toml");
+
+    // Ensure the directory exists
+    if let Some(parent) = colname_file_abspath.parent() {
+        fs::create_dir_all(parent)?;
+    }
 
     let mut collection_name_by_relpath = colname_by_relpath(space_abspath)?;
 
     collection_name_by_relpath
         .mappings
-        .entry(collection_relpath.to_string())
+        .entry(collection_relpath.to_string_lossy().to_string())
         .or_insert_with(|| colname.to_string());
 
     let toml_content = toml::to_string_pretty(&collection_name_by_relpath)?;
@@ -308,11 +305,7 @@ pub fn create_collection(
 
     fs::create_dir(&dir_abspath)?;
 
-    save_colname_if_missing(
-        &space_abspath,
-        &dir_relpath.to_string_lossy(),
-        &col_segment.name,
-    )?;
+    save_colname_if_missing(&space_abspath, &dir_relpath, &col_segment.name)?;
 
     let create_new_collection = CreateNewCollection {
         parent_relpath: parent_relpath.to_string_lossy().to_string(),
