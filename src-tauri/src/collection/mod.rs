@@ -15,8 +15,7 @@ pub mod tests;
 
 use crate::{
     collection::models::{
-        ColName, Collection, CollectionMeta, CollectionRcRefCell, CreateCollectionDto,
-        CreateNewCollection,
+        ColName, Collection, CollectionMeta, CollectionRcRefCell, CreateNewCollection,
     },
     error::{Error, Result},
     models::SanitizedSegment,
@@ -24,7 +23,6 @@ use crate::{
     space::{self, parse_spacecfg},
     state::SharedState,
     store::spaces::buffer::SpaceBuf,
-    utils,
 };
 
 pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
@@ -256,63 +254,6 @@ pub fn save_colname_if_missing(
 
     Ok(())
 }
-
-// pub fn create_collections_all(space_abspath: &Path, dto: &CreateCollectionDto) -> Result<String> {
-//     if dto.relpath.trim().is_empty() {
-//         return Err(Error::FileNotFound("Collection name is missing".into()));
-//     }
-
-//     let relpath_no_bslashes = utils::rm_backslash(&dto.relpath);
-//     let mut dirs = Vec::new();
-//     for component in Path::new(&relpath_no_bslashes).components() {
-//         if let std::path::Component::Normal(os_str) = component {
-//             let colname = os_str.to_string_lossy();
-//             let colname = colname.trim();
-//             let dir_sanitized_name = utils::sanitize_name(colname);
-
-//             if colname.is_empty() || dir_sanitized_name.is_empty() {
-//                 continue;
-//             }
-
-//             dirs.push((dir_sanitized_name, colname.to_string()));
-//         }
-//     }
-
-//     if dirs.is_empty() {
-//         return Err(Error::InvalidPath(
-//             "Collection path has no valid segments".into(),
-//         ));
-//     }
-
-//     let collection_parent_abspath = space_abspath.join(&dto.parent_relpath);
-//     let mut collections_relpath = String::new();
-
-//     for (dir_sanitized_name, colname) in &dirs {
-//         let cur_collection_relpath = PathBuf::from(&collections_relpath)
-//             .join(dir_sanitized_name)
-//             .to_string_lossy()
-//             .to_string();
-
-//         let target_dir = collection_parent_abspath.join(&cur_collection_relpath);
-//         let dir_exists = fs::metadata(&target_dir).is_ok();
-//         if !dir_exists {
-//             fs::create_dir(&target_dir)?;
-//         };
-
-//         let cur_collection_relpath =
-//             utils::join_strpaths(vec![&dto.parent_relpath, &cur_collection_relpath]);
-
-//         save_colname_if_missing(space_abspath, &cur_collection_relpath, colname)
-//             .map_err(|e| Error::FileReadError(format!("{cur_collection_relpath}: {e}")))?;
-
-//         collections_relpath = PathBuf::from(&collections_relpath)
-//             .join(dir_sanitized_name)
-//             .to_string_lossy()
-//             .to_string();
-//     }
-
-//     Ok(collections_relpath)
-// }
 
 pub fn create_collection_parents_if_missing(
     location_relpath: &Path,

@@ -7,14 +7,12 @@ use std::{
 use toml;
 
 use crate::{
-    collection::{self, models::CreateCollectionDto},
     commands::models::CreateNewRequest,
     error::{Error, Result},
-    request::models::{CreateRequestDto, HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
+    request::models::{HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
     space,
     state::SharedState,
     store::spaces::buffer::SpaceBuf,
-    utils,
 };
 
 pub mod models;
