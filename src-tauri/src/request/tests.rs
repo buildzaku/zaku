@@ -875,31 +875,3 @@ fn create_req_integrated_flow() {
     .unwrap();
     assert_eq!(req_toml.meta.name, "Grand Child Req 1");
 }
-
-#[cfg(windows)]
-mod windows {
-    use super::*;
-
-    #[test]
-    fn create_req_reserved_names_should_be_handled() {
-        let tmp_dir = tempfile::tempdir().unwrap();
-        let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
-        let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
-
-        fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
-
-        let req_segment = SanitizedSegment {
-            name: "CON Req 1".to_string(),
-            fsname: "con-req-1".to_string(),
-        };
-
-        let result = request::create_req(Path::new("parent-col-1"), &req_segment, &mut sharedstate);
-
-        match result {
-            Ok(created) => {
-                assert!(!created.relpath.contains("CON"));
-            }
-            Err(_) => {}
-        }
-    }
-}

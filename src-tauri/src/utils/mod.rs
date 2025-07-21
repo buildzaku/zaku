@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
-use std::path::{Component, Path, PathBuf};
+use std::path::{self, Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
 use crate::models::SanitizedSegment;
@@ -72,40 +72,44 @@ pub fn hashed_filename(abspath: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub fn sanitize_name(name: &str) -> String {
-    const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
+pub fn to_fsname(name: &str) -> Option<String> {
+    const WINDOWS_RESERVED: [&str; 22] = [
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
 
-    name.to_lowercase()
+    let sanitized = name
+        .to_lowercase()
         .chars()
-        .map(|c| {
-            if c.is_whitespace() || INVALID_CHARS.contains(&c) {
-                '-'
+        .map(|char| {
+            if char.is_alphabetic() || char.is_digit(10) {
+                char
             } else {
-                c
+                '-'
             }
         })
         .collect::<String>()
         .split('-')
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
-        .join("-")
-}
+        .join("-");
 
-pub fn rm_backslash(name: &str) -> String {
-    name.replace('\\', "-")
+    if sanitized.is_empty() || WINDOWS_RESERVED.contains(&sanitized.as_str()) {
+        return None;
+    }
+
+    Some(sanitized)
 }
 
 pub fn to_sanitized_segments(relpath: &str) -> Vec<SanitizedSegment> {
-    let relpath_no_bslashes = rm_backslash(relpath);
+    let relpath_no_bslashes = relpath.replace('\\', "-");
     let mut segments = Vec::new();
 
     for component in Path::new(&relpath_no_bslashes).components() {
-        if let Component::Normal(os_str) = component {
+        if let path::Component::Normal(os_str) = component {
             let name = os_str.to_string_lossy().trim().to_string();
             if !name.is_empty() {
-                let fsname = sanitize_name(&name);
-
-                if !fsname.is_empty() {
+                if let Some(fsname) = to_fsname(&name) {
                     segments.push(SanitizedSegment { name, fsname });
                 }
             }

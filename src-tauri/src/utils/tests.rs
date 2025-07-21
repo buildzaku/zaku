@@ -59,13 +59,13 @@ fn to_sanitized_segments_special_characters() {
     assert_eq!(segments.len(), 3);
 
     assert_eq!(segments[0].name, "Special@Chars Col 1");
-    assert_eq!(segments[0].fsname, "special@chars-col-1");
+    assert_eq!(segments[0].fsname, "special-chars-col-1");
 
     assert_eq!(segments[1].name, "Unicode# Col 2");
-    assert_eq!(segments[1].fsname, "unicode#-col-2");
+    assert_eq!(segments[1].fsname, "unicode-col-2");
 
     assert_eq!(segments[2].name, "🔥 Emoji Col 3");
-    assert_eq!(segments[2].fsname, "🔥-emoji-col-3");
+    assert_eq!(segments[2].fsname, "emoji-col-3");
 }
 
 #[test]

@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 use tempfile;
 
 use crate::{
@@ -14,7 +18,7 @@ use crate::{
     utils,
 };
 
-fn tmp_space_sharedstate(tmp_path: &std::path::Path) -> SharedState {
+fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
     let dto = CreateSpaceDto {
         name: "Col Space".to_string(),
         location: tmp_path.to_string_lossy().to_string(),
@@ -87,13 +91,12 @@ fn parse_root_collection_should_match_created_structure() {
             relpath: "Child Req 4".into(),
         },
         CreateRequestDto {
-            location_relpath: "tilde-~~~-parent-col-1/back-slash-child-col-1".into(),
+            location_relpath: "tilde-parent-col-1/back-slash-child-col-1".into(),
             relpath: "Grand Child Col 1/Special*&Chars Req 1".into(),
         },
         CreateRequestDto {
-            location_relpath:
-                "⚠️-ザク-unicode-parent-col-1/🔥-emoji-child-col-1/💬-emoji-grand-child-col-1"
-                    .into(),
+            location_relpath: "ザク-unicode-parent-col-1/emoji-child-col-1/emoji-grand-child-col-1"
+                .into(),
             relpath: "💡Emoji Special: Col 1/*>?Special Chars Req 1".into(),
         },
     ];
@@ -107,14 +110,14 @@ fn parse_root_collection_should_match_created_structure() {
         ),
         (vec!["parent-col-3", "child-col-2"], "Child Col 2"),
         (
-            vec!["tilde-~~~-parent-col-1", "back-slash-child-col-1"],
+            vec!["tilde-parent-col-1", "back-slash-child-col-1"],
             "Back-Slash Child Col 1",
         ),
         (
             vec![
-                "⚠️-ザク-unicode-parent-col-1",
-                "🔥-emoji-child-col-1",
-                "💬-emoji-grand-child-col-1",
+                "ザク-unicode-parent-col-1",
+                "emoji-child-col-1",
+                "emoji-grand-child-col-1",
             ],
             "💬 Emoji Grand Child Col 1?",
         ),
@@ -144,19 +147,19 @@ fn parse_root_collection_should_match_created_structure() {
         ),
         (
             vec![
-                "tilde-~~~-parent-col-1",
+                "tilde-parent-col-1",
                 "back-slash-child-col-1",
                 "grand-child-col-1",
-                "special-&chars-req-1.toml",
+                "special-chars-req-1.toml",
             ],
             "Special*&Chars Req 1",
         ),
         (
             vec![
-                "⚠️-ザク-unicode-parent-col-1",
-                "🔥-emoji-child-col-1",
-                "💬-emoji-grand-child-col-1",
-                "💡emoji-special-col-1",
+                "ザク-unicode-parent-col-1",
+                "emoji-child-col-1",
+                "emoji-grand-child-col-1",
+                "emoji-special-col-1",
                 "special-chars-req-1.toml",
             ],
             "*>?Special Chars Req 1",
@@ -185,7 +188,7 @@ fn parse_root_collection_should_match_created_structure() {
 
     for col_dto in &collections_dto {
         let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-            std::path::Path::new(&col_dto.location_relpath),
+            Path::new(&col_dto.location_relpath),
             &col_dto.relpath,
             &mut sharedstate,
         )
@@ -197,7 +200,7 @@ fn parse_root_collection_should_match_created_structure() {
 
     for req_dto in &requests_dto {
         let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
-            std::path::Path::new(&req_dto.location_relpath),
+            Path::new(&req_dto.location_relpath),
             &req_dto.relpath,
             &mut sharedstate,
         )
@@ -362,7 +365,7 @@ fn create_parent_collections_if_missing_basic() {
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-        std::path::Path::new(""),
+        Path::new(""),
         "Parent Col 1/Child Col 1/Grand Child Col 1",
         &mut sharedstate,
     )
@@ -386,7 +389,7 @@ fn create_parent_collections_if_missing_single_segment() {
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-        std::path::Path::new(""),
+        Path::new(""),
         "Single Col 1",
         &mut sharedstate,
     )
@@ -403,14 +406,14 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
     let (parent_relpath1, col_segment1) = collection::create_parent_collections_if_missing(
-        std::path::Path::new(""),
+        Path::new(""),
         "Duplicate Col 1/Duplicate Col 2",
         &mut sharedstate,
     )
     .expect("Failed to create parent collections first time");
 
     let (parent_relpath2, col_segment2) = collection::create_parent_collections_if_missing(
-        std::path::Path::new(""),
+        Path::new(""),
         "Duplicate Col 1/Duplicate Col 2",
         &mut sharedstate,
     )
@@ -434,12 +437,9 @@ fn create_collection_basic() {
         fsname: "child-col-1".to_string(),
     };
 
-    let result = collection::create_collection(
-        std::path::Path::new("parent-col-1"),
-        &col_segment,
-        &mut sharedstate,
-    )
-    .expect("Failed to create collection");
+    let result =
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate)
+            .expect("Failed to create collection");
 
     let expected_relpath = PathBuf::from("parent-col-1").join("child-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
@@ -456,11 +456,8 @@ fn create_collection_empty_fsname_should_fail() {
         fsname: "   ".to_string(),
     };
 
-    let result = collection::create_collection(
-        std::path::Path::new("parent-col-1"),
-        &col_segment,
-        &mut sharedstate,
-    );
+    let result =
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
 }
 
@@ -472,11 +469,8 @@ fn create_collection_missing_space_should_fail() {
     };
 
     let mut sharedstate = SharedState::default();
-    let result = collection::create_collection(
-        std::path::Path::new("parent-col-1"),
-        &col_segment,
-        &mut sharedstate,
-    );
+    let result =
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
 }
 
@@ -493,12 +487,9 @@ fn create_collection_unicode_path_should_succeed() {
         fsname: "ザク-unicode-col-1".to_string(),
     };
 
-    let result = collection::create_collection(
-        std::path::Path::new("parent-col-1"),
-        &col_segment,
-        &mut sharedstate,
-    )
-    .expect("Failed to create collection");
+    let result =
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate)
+            .expect("Failed to create collection");
 
     let expected_relpath = PathBuf::from("parent-col-1").join("ザク-unicode-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
@@ -520,12 +511,9 @@ fn create_collection_should_save_colname() {
         fsname: "child-col-1".to_string(),
     };
 
-    let result = collection::create_collection(
-        std::path::Path::new("parent-col-1"),
-        &col_segment,
-        &mut sharedstate,
-    )
-    .expect("Failed to create collection");
+    let result =
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate)
+            .expect("Failed to create collection");
 
     let colname =
         collection::colname_by_relpath(&space_abspath).expect("Failed to get collection names");
@@ -550,7 +538,7 @@ fn create_collection_integrated_flow() {
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-        std::path::Path::new(""),
+        Path::new(""),
         "Parent Col 1/Child Col 1/Grand Child Col 1",
         &mut sharedstate,
     )
