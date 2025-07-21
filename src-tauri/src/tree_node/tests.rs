@@ -136,7 +136,7 @@ fn move_tree_node_fails_with_no_space() {
 }
 
 #[test]
-fn move_tree_node_fails_with_invalid_source_path() {
+fn move_tree_node_fails_with_invalid_src_relpath() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 

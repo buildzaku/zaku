@@ -312,16 +312,24 @@ fn save_colname_if_missing_does_not_overwrite_existing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    collection::save_colname_if_missing(space_abspath, "parent-col-1/child-col-1", "First Name")
-        .expect("Failed to save collection name");
-    collection::save_colname_if_missing(space_abspath, "parent-col-1/child-col-1", "Second Name")
-        .expect("Failed to save collection name");
+    collection::save_colname_if_missing(
+        space_abspath,
+        "parent-col-1/child-col-1",
+        "Child Col 1 - First Name",
+    )
+    .expect("Failed to save collection name");
+    collection::save_colname_if_missing(
+        space_abspath,
+        "parent-col-1/child-col-1",
+        "Child Col 1 - Second Name",
+    )
+    .expect("Failed to save collection name");
 
     let colname =
         collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
     assert_eq!(
         colname.mappings.get("parent-col-1/child-col-1"),
-        Some(&"First Name".into())
+        Some(&"Child Col 1 - First Name".into())
     );
 }
 
@@ -461,7 +469,7 @@ fn create_collections_all_relpath_with_only_empty_segments_should_return_error()
     };
 
     let result = collection::create_collections_all(space_abspath, &dto);
-    assert!(matches!(result, Ok(p) if p.is_empty()));
+    assert!(result.is_err());
 }
 
 #[test]
@@ -485,7 +493,7 @@ fn create_collections_all_duplicate_create_collections_should_not_fail() {
 }
 
 #[test]
-fn create_collections_all_special_characters_should_be_sanitized_or_preserved() {
+fn create_collections_all_special_characters_should_be_sanitized_and_name_preserved() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
     std::fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
@@ -717,8 +725,8 @@ fn create_collection_unicode_path_should_succeed() {
 #[test]
 fn create_collection_should_save_colname() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let space_name = "ColName Space";
-    let space_dirname = "colname-space";
+    let space_name = "Col Name Space";
+    let space_dirname = "col-name-space";
     let space_abspath = tmp_dir.path().join(space_dirname);
 
     let dto = CreateSpaceDto {
