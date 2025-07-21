@@ -31,27 +31,27 @@ fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
 fn parse_root_collection_should_match_created_structure() {
     let collections_dto = vec![
         CreateCollectionDto {
-            location_relpath: "".into(),
+            location_relpath: PathBuf::from(""),
             relpath: "Parent Col 1".into(),
         },
         CreateCollectionDto {
-            location_relpath: "".into(),
+            location_relpath: PathBuf::from(""),
             relpath: "Parent Col 2".into(),
         },
         CreateCollectionDto {
-            location_relpath: "parent-col-2".into(),
+            location_relpath: PathBuf::from("parent-col-2"),
             relpath: "Child Col 1/Grand Child Col 1".into(),
         },
         CreateCollectionDto {
-            location_relpath: "".into(),
+            location_relpath: PathBuf::from(""),
             relpath: "Parent Col 3/Child Col 2".into(),
         },
         CreateCollectionDto {
-            location_relpath: "".into(),
+            location_relpath: PathBuf::from(""),
             relpath: "Tilde ~~~ Parent Col 1/Back\\Slash Child Col 1  ".into(),
         },
         CreateCollectionDto {
-            location_relpath: "".into(),
+            location_relpath: PathBuf::from(""),
             relpath:
                 "⚠️ ザク Unicode Parent Col 1/🔥 Emoji Child Col 1/💬 Emoji Grand Child Col 1?"
                     .into(),
@@ -60,40 +60,43 @@ fn parse_root_collection_should_match_created_structure() {
 
     let requests_dto = vec![
         CreateRequestDto {
-            location_relpath: "".into(),
+            location_relpath: PathBuf::from(""),
             relpath: "Child Req 1".into(),
         },
         CreateRequestDto {
-            location_relpath: "".into(),
+            location_relpath: PathBuf::from(""),
             relpath: "Parent Col 1/Child Req 2".into(),
         },
         CreateRequestDto {
-            location_relpath: "parent-col-1".into(),
+            location_relpath: PathBuf::from("parent-col-1"),
             relpath: "Parent Req 1".into(),
         },
         CreateRequestDto {
-            location_relpath: "parent-col-2".into(),
+            location_relpath: PathBuf::from("parent-col-2"),
             relpath: "Parent Req 2".into(),
         },
         CreateRequestDto {
-            location_relpath: "parent-col-2/child-col-1".into(),
+            location_relpath: PathBuf::from("parent-col-2").join("child-col-1"),
             relpath: "Child Req 3".into(),
         },
         CreateRequestDto {
-            location_relpath: "parent-col-2/child-col-1/grand-child-col-1".into(),
+            location_relpath: PathBuf::from("parent-col-2")
+                .join("child-col-1")
+                .join("grand-child-col-1"),
             relpath: "Grand Child Req 1".into(),
         },
         CreateRequestDto {
-            location_relpath: "parent-col-3/child-col-2".into(),
+            location_relpath: PathBuf::from("parent-col-3").join("child-col-2"),
             relpath: "Child Req 4".into(),
         },
         CreateRequestDto {
-            location_relpath: "tilde-parent-col-1/back-slash-child-col-1".into(),
+            location_relpath: PathBuf::from("tilde-parent-col-1").join("back-slash-child-col-1"),
             relpath: "Grand Child Col 1/Special*&Chars Req 1".into(),
         },
         CreateRequestDto {
-            location_relpath: "ザク-unicode-parent-col-1/emoji-child-col-1/emoji-grand-child-col-1"
-                .into(),
+            location_relpath: PathBuf::from("ザク-unicode-parent-col-1")
+                .join("emoji-child-col-1")
+                .join("emoji-grand-child-col-1"),
             relpath: "💡Emoji Special: Col 1/*>?Special Chars Req 1".into(),
         },
     ];
@@ -178,9 +181,11 @@ fn parse_root_collection_should_match_created_structure() {
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     for col_dto in &collections_dto {
+        let location_relpath = Path::new(&col_dto.location_relpath);
+        let relpath = &col_dto.relpath;
         let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-            Path::new(&col_dto.location_relpath),
-            &col_dto.relpath,
+            location_relpath,
+            relpath,
             &mut sharedstate,
         )
         .expect("Failed to create parent collections");
@@ -190,9 +195,11 @@ fn parse_root_collection_should_match_created_structure() {
     }
 
     for req_dto in &requests_dto {
+        let location_relpath = Path::new(&req_dto.location_relpath);
+        let relpath = &req_dto.relpath;
         let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
-            Path::new(&req_dto.location_relpath),
-            &req_dto.relpath,
+            location_relpath,
+            relpath,
             &mut sharedstate,
         )
         .expect("Failed to create parent collections");
@@ -339,9 +346,11 @@ fn create_parent_collections_if_missing_basic() {
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
+    let location_relpath = Path::new("");
+    let relpath = "Parent Col 1/Child Col 1/Grand Child Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-        Path::new(""),
-        "Parent Col 1/Child Col 1/Grand Child Col 1",
+        location_relpath,
+        relpath,
         &mut sharedstate,
     )
     .expect("Failed to create parent collections");
@@ -352,9 +361,14 @@ fn create_parent_collections_if_missing_basic() {
     assert_eq!(col_segment.fsname, "grand-child-col-1");
 
     assert!(space_abspath.join("parent-col-1").exists());
-    assert!(space_abspath.join("parent-col-1/child-col-1").exists());
+    assert!(space_abspath
+        .join("parent-col-1")
+        .join("child-col-1")
+        .exists());
     assert!(!space_abspath
-        .join("parent-col-1/child-col-1/grand-child-col-1")
+        .join("parent-col-1")
+        .join("child-col-1")
+        .join("grand-child-col-1")
         .exists());
 }
 
@@ -363,9 +377,11 @@ fn create_parent_collections_if_missing_single_segment() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
+    let location_relpath = Path::new("");
+    let relpath = "Single Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-        Path::new(""),
-        "Single Col 1",
+        location_relpath,
+        relpath,
         &mut sharedstate,
     )
     .expect("Failed to create parent collections");
@@ -380,16 +396,20 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
 
+    let location_relpath = Path::new("");
+    let relpath = "Duplicate Col 1/Duplicate Col 2";
     let (parent_relpath1, col_segment1) = collection::create_parent_collections_if_missing(
-        Path::new(""),
-        "Duplicate Col 1/Duplicate Col 2",
+        location_relpath,
+        relpath,
         &mut sharedstate,
     )
     .expect("Failed to create parent collections first time");
 
+    let location_relpath = Path::new("");
+    let relpath = "Duplicate Col 1/Duplicate Col 2";
     let (parent_relpath2, col_segment2) = collection::create_parent_collections_if_missing(
-        Path::new(""),
-        "Duplicate Col 1/Duplicate Col 2",
+        location_relpath,
+        relpath,
         &mut sharedstate,
     )
     .expect("Failed to create parent collections second time");
@@ -418,7 +438,10 @@ fn create_collection_basic() {
 
     let expected_relpath = PathBuf::from("parent-col-1").join("child-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
-    assert!(space_abspath.join("parent-col-1/child-col-1").exists());
+    assert!(space_abspath
+        .join("parent-col-1")
+        .join("child-col-1")
+        .exists());
 }
 
 #[test]
@@ -469,7 +492,8 @@ fn create_collection_unicode_path_should_succeed() {
     let expected_relpath = PathBuf::from("parent-col-1").join("ザク-unicode-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
     assert!(space_abspath
-        .join("parent-col-1/ザク-unicode-col-1")
+        .join("parent-col-1")
+        .join("ザク-unicode-col-1")
         .exists());
 }
 
@@ -510,9 +534,11 @@ fn create_collection_integrated_flow() {
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
+    let location_relpath = Path::new("");
+    let relpath = "Parent Col 1/Child Col 1/Grand Child Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-        Path::new(""),
-        "Parent Col 1/Child Col 1/Grand Child Col 1",
+        location_relpath,
+        relpath,
         &mut sharedstate,
     )
     .expect("Failed to create parent collections");
