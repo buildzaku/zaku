@@ -85,7 +85,7 @@ pub fn to_fsname(name: &str) -> Result<String> {
         .to_lowercase()
         .chars()
         .map(|char| {
-            if char.is_alphabetic() || char.is_digit(10) {
+            if char.is_alphabetic() || char.is_ascii_digit() {
                 char
             } else {
                 '-'
@@ -105,8 +105,7 @@ pub fn to_fsname(name: &str) -> Result<String> {
 
     if WINDOWS_RESERVED.contains(&sanitized.as_str()) {
         return Err(Error::SanitizationError(format!(
-            "Reserved name not allowed: {}",
-            sanitized
+            "Reserved name not allowed: {sanitized}"
         )));
     }
 
