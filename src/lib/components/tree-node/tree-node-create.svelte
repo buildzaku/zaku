@@ -18,7 +18,7 @@
 
     let { parentRelativePath, type, level, class: className }: Props = $props();
 
-    let inputName: string = $state("");
+    let inputRelpath: string = $state("");
     let inputElement: HTMLElement | null = $state(null);
     let unlistenWindowBlurEvent: UnlistenFn | null = $state(null);
 
@@ -40,8 +40,8 @@
     async function handleCreateRequestOrCollection() {
         if (type === "collection") {
             const createCollectionResult = await commands.createCollection({
-                parent_relpath: parentRelativePath,
-                relpath: inputName,
+                location_relpath: parentRelativePath,
+                relpath: inputRelpath,
             });
 
             if (createCollectionResult.status === "error") {
@@ -52,7 +52,7 @@
                 return;
             }
 
-            inputName = "";
+            inputRelpath = "";
             await sharedState.synchronize();
 
             explorerState.focussedNode = {
@@ -69,8 +69,8 @@
             }
         } else {
             const createReqResult = await commands.createReq({
-                parent_relpath: parentRelativePath,
-                relpath: inputName,
+                location_relpath: parentRelativePath,
+                relpath: inputRelpath,
             });
 
             if (createReqResult.status === "error") {
@@ -81,7 +81,7 @@
                 return;
             }
 
-            inputName = "";
+            inputRelpath = "";
             await sharedState.synchronize();
 
             explorerState.focussedNode = {
@@ -142,9 +142,9 @@
                 onfocusout={async event => {
                     if (!isRelatedElementExcludedFromFocusOutTarget(event)) {
                         explorerActionsState.createNewNode = null;
-                        inputName = "";
+                        inputRelpath = "";
                     } else {
-                        inputName = "";
+                        inputRelpath = "";
                         await tick();
 
                         if (inputElement) {
@@ -160,7 +160,7 @@
                     }
                 }}
                 class="hover:bg-accent/60 focus-visible:ring-ring w-full text-sm whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none"
-                bind:value={inputName}
+                bind:value={inputRelpath}
             />
         </div>
     </div>
