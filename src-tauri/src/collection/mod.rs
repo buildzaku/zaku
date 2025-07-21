@@ -16,9 +16,10 @@ pub mod tests;
 use crate::{
     collection::models::{
         ColName, Collection, CollectionMeta, CollectionRcRefCell, CreateCollectionDto,
-        CreateNewCollection, SanitizedSegment,
+        CreateNewCollection,
     },
     error::{Error, Result},
+    models::SanitizedSegment,
     request::{self, models::HttpReq},
     space::{self, parse_spacecfg},
     state::SharedState,
@@ -256,104 +257,86 @@ pub fn save_colname_if_missing(
     Ok(())
 }
 
-/// Creates a collection directory (nested if needed) based on `relpath`
-/// under the specified `parent_relpath`. Each segment is sanitized for
-/// the filesystem and the original segment is saved as collection name
-///
-/// Example, if `relpath` is `"Settings/Notifications"`, it creates:
-/// - Directories: `settings/notifications`
-/// - Collection names saved:
-///   - `settings` -> `"Settings"`
-///   - `notifications` -> `"Notifications"`
-///
-/// Directories are created under `space_abspath/parent_relpath`
-///
-/// - `space_abspath`: Absolute path of space
-/// - `dto`: Contains `parent_relpath` and `relpath`
-///
-/// Returns a `Result`  containing the created collection's relative path
-pub fn create_collections_all(space_abspath: &Path, dto: &CreateCollectionDto) -> Result<String> {
-    if dto.relpath.trim().is_empty() {
-        return Err(Error::FileNotFound("Collection name is missing".into()));
-    }
+// pub fn create_collections_all(space_abspath: &Path, dto: &CreateCollectionDto) -> Result<String> {
+//     if dto.relpath.trim().is_empty() {
+//         return Err(Error::FileNotFound("Collection name is missing".into()));
+//     }
 
-    let relpath_no_bslashes = utils::sanitize_pathseg_bslash(&dto.relpath);
-    let mut dirs = Vec::new();
-    for component in Path::new(&relpath_no_bslashes).components() {
-        if let std::path::Component::Normal(os_str) = component {
-            let colname = os_str.to_string_lossy();
-            let colname = colname.trim();
-            let dir_sanitized_name = utils::sanitize_pathseg(colname);
+//     let relpath_no_bslashes = utils::rm_backslash(&dto.relpath);
+//     let mut dirs = Vec::new();
+//     for component in Path::new(&relpath_no_bslashes).components() {
+//         if let std::path::Component::Normal(os_str) = component {
+//             let colname = os_str.to_string_lossy();
+//             let colname = colname.trim();
+//             let dir_sanitized_name = utils::sanitize_name(colname);
 
-            if colname.is_empty() || dir_sanitized_name.is_empty() {
-                continue;
-            }
+//             if colname.is_empty() || dir_sanitized_name.is_empty() {
+//                 continue;
+//             }
 
-            dirs.push((dir_sanitized_name, colname.to_string()));
-        }
-    }
+//             dirs.push((dir_sanitized_name, colname.to_string()));
+//         }
+//     }
 
-    if dirs.is_empty() {
-        return Err(Error::InvalidPath(
-            "Collection path has no valid segments".into(),
-        ));
-    }
+//     if dirs.is_empty() {
+//         return Err(Error::InvalidPath(
+//             "Collection path has no valid segments".into(),
+//         ));
+//     }
 
-    let collection_parent_abspath = space_abspath.join(&dto.parent_relpath);
-    let mut collections_relpath = String::new();
+//     let collection_parent_abspath = space_abspath.join(&dto.parent_relpath);
+//     let mut collections_relpath = String::new();
 
-    for (dir_sanitized_name, colname) in &dirs {
-        let cur_collection_relpath = PathBuf::from(&collections_relpath)
-            .join(dir_sanitized_name)
-            .to_string_lossy()
-            .to_string();
+//     for (dir_sanitized_name, colname) in &dirs {
+//         let cur_collection_relpath = PathBuf::from(&collections_relpath)
+//             .join(dir_sanitized_name)
+//             .to_string_lossy()
+//             .to_string();
 
-        let target_dir = collection_parent_abspath.join(&cur_collection_relpath);
-        let dir_exists = fs::metadata(&target_dir).is_ok();
-        if !dir_exists {
-            fs::create_dir(&target_dir)?;
-        };
+//         let target_dir = collection_parent_abspath.join(&cur_collection_relpath);
+//         let dir_exists = fs::metadata(&target_dir).is_ok();
+//         if !dir_exists {
+//             fs::create_dir(&target_dir)?;
+//         };
 
-        let cur_collection_relpath =
-            utils::join_strpaths(vec![&dto.parent_relpath, &cur_collection_relpath]);
+//         let cur_collection_relpath =
+//             utils::join_strpaths(vec![&dto.parent_relpath, &cur_collection_relpath]);
 
-        save_colname_if_missing(space_abspath, &cur_collection_relpath, colname)
-            .map_err(|e| Error::FileReadError(format!("{cur_collection_relpath}: {e}")))?;
+//         save_colname_if_missing(space_abspath, &cur_collection_relpath, colname)
+//             .map_err(|e| Error::FileReadError(format!("{cur_collection_relpath}: {e}")))?;
 
-        collections_relpath = PathBuf::from(&collections_relpath)
-            .join(dir_sanitized_name)
-            .to_string_lossy()
-            .to_string();
-    }
+//         collections_relpath = PathBuf::from(&collections_relpath)
+//             .join(dir_sanitized_name)
+//             .to_string_lossy()
+//             .to_string();
+//     }
 
-    Ok(collections_relpath)
-}
+//     Ok(collections_relpath)
+// }
 
 pub fn create_collection_parents_if_missing(
-    location: &Path,
+    location_relpath: &Path,
     segments: &[SanitizedSegment],
     sharedstate: &mut SharedState,
 ) -> Result<PathBuf> {
-    let mut current_parent = location.to_path_buf();
+    let mut parent_relpath = location_relpath.to_path_buf();
 
     for segment in segments {
-        let target_path = current_parent.join(&segment.fsname);
-
+        let acc_parent_relpath = parent_relpath.join(&segment.fsname);
         let space = sharedstate
             .space
             .as_ref()
             .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
         let space_abspath = PathBuf::from(&space.abspath);
-        let dir_abspath = space_abspath.join(&target_path);
-
+        let dir_abspath = space_abspath.join(&acc_parent_relpath);
         if !dir_abspath.exists() {
-            create_collection(&current_parent, &segment.fsname, &segment.name, sharedstate)?;
+            create_collection(&parent_relpath, &segment.fsname, &segment.name, sharedstate)?;
         }
 
-        current_parent = target_path;
+        parent_relpath = acc_parent_relpath;
     }
 
-    Ok(current_parent)
+    Ok(parent_relpath)
 }
 
 pub fn create_collection(
@@ -389,23 +372,4 @@ pub fn create_collection(
     sharedstate.space = Some(space::parse_space(&space_abspath)?);
 
     Ok(create_new_collection)
-}
-
-pub fn sanitized_segments(dto: &CreateCollectionDto) -> Vec<SanitizedSegment> {
-    let relpath_no_bslashes = utils::sanitize_pathseg_bslash(&dto.relpath);
-    let mut segments = Vec::new();
-
-    for component in Path::new(&relpath_no_bslashes).components() {
-        if let Component::Normal(os_str) = component {
-            let name = os_str.to_string_lossy().trim().to_string();
-            if !name.is_empty() {
-                let fsname = utils::sanitize_pathseg(&name);
-                if !fsname.is_empty() {
-                    segments.push(SanitizedSegment { name, fsname });
-                }
-            }
-        }
-    }
-
-    segments
 }

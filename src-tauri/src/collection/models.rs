@@ -42,9 +42,3 @@ pub struct CollectionRcRefCell {
     pub requests: Vec<HttpReq>,
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SanitizedSegment {
-    pub name: String,
-    pub fsname: String,
-}

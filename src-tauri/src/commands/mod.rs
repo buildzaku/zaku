@@ -32,6 +32,7 @@ use crate::{
         spaces::buffer,
     },
     tree_node::{self, MoveTreeNodeDto},
+    utils,
 };
 
 pub mod models;
@@ -72,7 +73,7 @@ pub async fn create_collection(
     })?;
 
     let location_relpath = Path::new(&dto.location_relpath); // TODO - update dto to have &Path instead of String? Need to make sure specta handles it
-    let segments = collection::sanitized_segments(&dto);
+    let segments = utils::to_sanitized_segments(&dto.relpath);
     let (last_segment, relpath_segments) = segments.split_last().unwrap();
 
     let parent_relpath = collection::create_collection_parents_if_missing(

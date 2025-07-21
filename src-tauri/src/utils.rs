@@ -1,8 +1,10 @@
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use tauri::{AppHandle, Manager};
+
+use crate::models::SanitizedSegment;
 
 pub fn toggle_devtools(app_handle: &AppHandle) {
     let webview_window = app_handle.get_webview_window("main").unwrap();
@@ -67,17 +69,10 @@ pub fn hashed_filename(abspath: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Sanitizes a segment (directory/file) name to be safe across platforms
-///
-/// - Converts to lowercase
-/// - Replaces invalid characters with `-`
-/// - Replaces whitespace with `-`
-/// - Trims leading/trailing hyphens
-pub fn sanitize_pathseg(segment: &str) -> String {
+pub fn sanitize_name(name: &str) -> String {
     const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
 
-    segment
-        .to_lowercase()
+    name.to_lowercase()
         .chars()
         .map(|c| {
             if c.is_whitespace() || INVALID_CHARS.contains(&c) {
@@ -93,6 +88,26 @@ pub fn sanitize_pathseg(segment: &str) -> String {
         .join("-")
 }
 
-pub fn sanitize_pathseg_bslash(segment: &str) -> String {
-    segment.replace('\\', "-")
+pub fn rm_backslash(name: &str) -> String {
+    name.replace('\\', "-")
+}
+
+pub fn to_sanitized_segments(relpath: &str) -> Vec<SanitizedSegment> {
+    let relpath_no_bslashes = rm_backslash(relpath);
+    let mut segments = Vec::new();
+
+    for component in Path::new(&relpath_no_bslashes).components() {
+        if let Component::Normal(os_str) = component {
+            let name = os_str.to_string_lossy().trim().to_string();
+            if !name.is_empty() {
+                let fsname = sanitize_name(&name);
+
+                if !fsname.is_empty() {
+                    segments.push(SanitizedSegment { name, fsname });
+                }
+            }
+        }
+    }
+
+    segments
 }
