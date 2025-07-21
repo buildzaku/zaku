@@ -293,6 +293,12 @@ pub fn create_collections_all(space_abspath: &Path, dto: &CreateCollectionDto) -
         }
     }
 
+    if dirs.is_empty() {
+        return Err(Error::InvalidPath(
+            "Collection path has no valid segments".into(),
+        ));
+    }
+
     let collection_parent_abspath = space_abspath.join(&dto.parent_relpath);
     let mut collections_relpath = String::new();
 
