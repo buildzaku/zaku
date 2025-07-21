@@ -70,26 +70,13 @@ pub fn parse_req(
     }
 }
 
-/// Creates a new request file and updates the shared state
-///
-/// Validates the request path, creates any necessary parent collections, sanitizes
-/// the filename, and creates a TOML file. The shared state is updated with the new
-/// space structure after creation.
-///
-/// Example: Creating a request at `"API/Users/get-user"` will:
-/// - Create collections: `api/users`
-/// - Generate file: `api/users/get-user.toml`
-/// - Update shared state with refreshed space
-///
-/// - `dto`: Request creation data containing parent path and desired relative path
-/// - `sharedstate`: Mutable reference to the application's shared state
-///
-/// Returns a `Result<CreateNewRequest>` with the created request's path information
 pub fn create_req(
-    dto: &CreateRequestDto,
+    parent_relpath: &Path,
+    fsname: &str,
+    name: &str,
     sharedstate: &mut SharedState,
 ) -> Result<CreateNewRequest> {
-    if dto.relpath.trim().is_empty() {
+    if fsname.trim().is_empty() {
         return Err(Error::FileNotFound(
             "Cannot create a request without name".to_string(),
         ));
@@ -101,51 +88,14 @@ pub fn create_req(
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let relpath = Path::new(&dto.relpath);
-    let (parsed_parent_relpath, reqname) = match relpath.parent() {
-        Some(parent) if parent != Path::new("") => {
-            let parent_str = parent.to_string_lossy().to_string();
-            let reqname = relpath.file_name().unwrap().to_string_lossy().to_string();
-            (Some(parent_str), reqname)
-        }
-        _ => (None, dto.relpath.clone()),
-    };
+    let reqfile_abspath = space_abspath.join(parent_relpath).join(fsname);
+    let reqfile_relpath = parent_relpath.join(format!("{}.toml", fsname));
 
-    let file_sanitized_name = utils::sanitize_name(&reqname);
-
-    let (file_parent_relpath, file_sanitized_name) = match parsed_parent_relpath {
-        Some(ref parent_relpath) => {
-            let col_dto = CreateCollectionDto {
-                parent_relpath: dto.parent_relpath.clone(),
-                relpath: parent_relpath.clone(),
-            };
-
-            let parent_sanitized_relpath =
-                collection::create_collections_all(&space_abspath, &col_dto)?;
-
-            let full_parent_relpath = utils::join_strpaths(vec![
-                dto.parent_relpath.as_str(),
-                parent_sanitized_relpath.as_str(),
-            ]);
-
-            (full_parent_relpath, file_sanitized_name)
-        }
-        None => (dto.parent_relpath.clone(), file_sanitized_name),
-    };
-
-    let file_abspath = space_abspath
-        .join(&file_parent_relpath)
-        .join(&file_sanitized_name);
-    let file_relpath = utils::join_strpaths(vec![
-        file_parent_relpath.as_str(),
-        &format!("{file_sanitized_name}.toml"),
-    ]);
-
-    create_reqtoml(&file_abspath, &reqname)?;
+    create_reqtoml(&reqfile_abspath, name)?;
 
     let created = CreateNewRequest {
-        parent_relpath: file_parent_relpath,
-        relpath: file_relpath,
+        parent_relpath: parent_relpath.to_string_lossy().to_string(),
+        relpath: reqfile_relpath.to_string_lossy().to_string(),
     };
 
     sharedstate.space = Some(space::parse_space(&space_abspath)?);

@@ -170,7 +170,7 @@ impl HttpReq {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateRequestDto {
-    pub parent_relpath: String,
+    pub location_relpath: String,
     pub relpath: String,
 }
 
