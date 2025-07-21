@@ -4,4 +4,4 @@
 
 Prevent double hyphens in sanitized path segments
 
-- Update collection tests with self-describing names
+- Update tests' path segments with self-describing names
