@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -170,7 +172,7 @@ impl HttpReq {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateRequestDto {
-    pub location_relpath: String,
+    pub location_relpath: PathBuf,
     pub relpath: String,
 }
 

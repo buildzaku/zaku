@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -21,7 +21,7 @@ pub struct Collection {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateCollectionDto {
-    pub location_relpath: String,
+    pub location_relpath: PathBuf,
     pub relpath: String,
 }
 

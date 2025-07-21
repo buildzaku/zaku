@@ -72,7 +72,7 @@ pub async fn create_collection(
     })?;
 
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
-        Path::new(&dto.location_relpath),
+        &dto.location_relpath,
         &dto.relpath,
         &mut sharedstate,
     )
@@ -169,7 +169,7 @@ pub async fn create_req(
     })?;
 
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
-        Path::new(&dto.location_relpath),
+        &dto.location_relpath,
         &dto.relpath,
         &mut sharedstate,
     )

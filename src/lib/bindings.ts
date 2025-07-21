@@ -124,22 +124,17 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async createCollection(
-        createCollectionDto: CreateCollectionDto,
-    ): Promise<Result<CreateNewCollection, CmdErr>> {
+    async createCollection(dto: CreateCollectionDto): Promise<Result<CreateNewCollection, CmdErr>> {
         try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("create_collection", { createCollectionDto }),
-            };
+            return { status: "ok", data: await TAURI_INVOKE("create_collection", { dto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
         }
     },
-    async createReq(createReqDto: CreateRequestDto): Promise<Result<CreateNewRequest, CmdErr>> {
+    async createReq(dto: CreateRequestDto): Promise<Result<CreateNewRequest, CmdErr>> {
         try {
-            return { status: "ok", data: await TAURI_INVOKE("create_req", { createReqDto }) };
+            return { status: "ok", data: await TAURI_INVOKE("create_req", { dto }) };
         } catch (e) {
             if (e instanceof Error) throw e;
             else return { status: "error", error: e as any };
@@ -204,10 +199,10 @@ export type CmdErr =
     | { type: "Http"; message: string; code: number | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = { fsname: string; name: string | null; is_expanded: boolean };
-export type CreateCollectionDto = { parent_relpath: string; relpath: string };
+export type CreateCollectionDto = { location_relpath: string; relpath: string };
 export type CreateNewCollection = { parent_relpath: string; relpath: string };
 export type CreateNewRequest = { parent_relpath: string; relpath: string };
-export type CreateRequestDto = { parent_relpath: string; relpath: string };
+export type CreateRequestDto = { location_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
 export type HttpReq = {
