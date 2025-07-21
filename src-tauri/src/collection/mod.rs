@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     rc::Rc,
     vec::IntoIter,
 };
@@ -16,7 +16,7 @@ pub mod tests;
 use crate::{
     collection::models::{
         ColName, Collection, CollectionMeta, CollectionRcRefCell, CreateCollectionDto,
-        CreateNewCollection,
+        CreateNewCollection, SanitizedSegment,
     },
     error::{Error, Result},
     request::{self, models::HttpReq},
@@ -328,20 +328,41 @@ pub fn create_collections_all(space_abspath: &Path, dto: &CreateCollectionDto) -
 
     Ok(collections_relpath)
 }
-/// Creates new collection directory/directories under the space
-///
-/// If the collection path contains nested segments (e.g. `"Settings/Notifications"`),
-/// it creates all parent directories as needed and stores each segment's original name.
-///
-/// - `dto`: Contains `parent_relpath` and `relpath` of the new collection from space root
-/// - `sharedstate`: Shared state of the app
-///
-/// Returns a `Result` containing the newly created collection's metadata
+
+pub fn create_collection_parents_if_missing(
+    location: &Path,
+    segments: &[SanitizedSegment],
+    sharedstate: &mut SharedState,
+) -> Result<PathBuf> {
+    let mut current_parent = location.to_path_buf();
+
+    for segment in segments {
+        let target_path = current_parent.join(&segment.fsname);
+
+        let space = sharedstate
+            .space
+            .as_ref()
+            .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
+        let space_abspath = PathBuf::from(&space.abspath);
+        let dir_abspath = space_abspath.join(&target_path);
+
+        if !dir_abspath.exists() {
+            create_collection(&current_parent, &segment.fsname, &segment.name, sharedstate)?;
+        }
+
+        current_parent = target_path;
+    }
+
+    Ok(current_parent)
+}
+
 pub fn create_collection(
-    dto: &CreateCollectionDto,
+    parent_relpath: &Path,
+    fsname: &str,
+    name: &str,
     sharedstate: &mut SharedState,
 ) -> Result<CreateNewCollection> {
-    if dto.relpath.trim().is_empty() {
+    if fsname.trim().is_empty() {
         return Err(Error::FileNotFound(
             "Cannot create a collection without name".to_string(),
         ));
@@ -353,58 +374,38 @@ pub fn create_collection(
         .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
     let space_abspath = PathBuf::from(&space.abspath);
 
-    let relpath_no_bslashes = utils::sanitize_pathseg_bslash(&dto.relpath);
-    let relpath = Path::new(&relpath_no_bslashes);
-    let (parsed_parent_relpath, colname) = match relpath.parent() {
-        Some(parent) if parent != Path::new("") => {
-            let parent_str = parent.to_string_lossy().to_string();
-            let colname = relpath.file_name().unwrap().to_string_lossy().to_string();
-
-            (Some(parent_str), colname)
-        }
-        _ => (None, relpath_no_bslashes.clone()),
-    };
-
-    let colname = colname.trim();
-    let dir_sanitized_name = utils::sanitize_pathseg(colname);
-
-    let (dir_parent_relpath, dir_sanitized_name) = match parsed_parent_relpath {
-        Some(ref parsed_parent_relpath) => {
-            let dto = CreateCollectionDto {
-                parent_relpath: dto.parent_relpath.clone(),
-                relpath: parsed_parent_relpath.to_string(),
-            };
-
-            let dirs_sanitized_relpath = create_collections_all(&space_abspath, &dto)?;
-
-            let dir_parent_relpath = utils::join_strpaths(vec![
-                dto.parent_relpath.as_str(),
-                dirs_sanitized_relpath.as_str(),
-            ]);
-
-            (dir_parent_relpath, dir_sanitized_name)
-        }
-        None => (dto.parent_relpath.clone(), dir_sanitized_name),
-    };
-
-    let dir_abspath = space_abspath
-        .join(&dir_parent_relpath)
-        .join(&dir_sanitized_name);
-    let dir_relpath = utils::join_strpaths(vec![
-        dir_parent_relpath.as_str(),
-        dir_sanitized_name.as_str(),
-    ]);
+    let dir_abspath = space_abspath.join(parent_relpath).join(fsname);
+    let dir_relpath = parent_relpath.join(fsname);
 
     fs::create_dir(&dir_abspath)?;
 
-    save_colname_if_missing(&space_abspath, &dir_relpath, colname)?;
+    save_colname_if_missing(&space_abspath, &dir_relpath.to_string_lossy(), name)?;
 
     let create_new_collection = CreateNewCollection {
-        parent_relpath: dir_parent_relpath,
-        relpath: dir_relpath,
+        parent_relpath: parent_relpath.to_string_lossy().to_string(),
+        relpath: dir_relpath.to_string_lossy().to_string(),
     };
 
     sharedstate.space = Some(space::parse_space(&space_abspath)?);
 
     Ok(create_new_collection)
+}
+
+pub fn sanitized_segments(dto: &CreateCollectionDto) -> Vec<SanitizedSegment> {
+    let relpath_no_bslashes = utils::sanitize_pathseg_bslash(&dto.relpath);
+    let mut segments = Vec::new();
+
+    for component in Path::new(&relpath_no_bslashes).components() {
+        if let Component::Normal(os_str) = component {
+            let name = os_str.to_string_lossy().trim().to_string();
+            if !name.is_empty() {
+                let fsname = utils::sanitize_pathseg(&name);
+                if !fsname.is_empty() {
+                    segments.push(SanitizedSegment { name, fsname });
+                }
+            }
+        }
+    }
+
+    segments
 }

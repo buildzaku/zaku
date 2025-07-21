@@ -19,6 +19,9 @@ use crate::{
 
 pub mod models;
 
+#[cfg(test)]
+pub mod tests;
+
 /// Parses a request file into `HttpReq` struct
 ///
 /// Checks if the entry is a valid TOML file, then attempts to parse it. First checks

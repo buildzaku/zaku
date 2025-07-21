@@ -21,7 +21,7 @@ pub struct Collection {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateCollectionDto {
-    pub parent_relpath: String,
+    pub location_relpath: String,
     pub relpath: String,
 }
 
@@ -41,4 +41,10 @@ pub struct CollectionRcRefCell {
     pub meta: CollectionMeta,
     pub requests: Vec<HttpReq>,
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SanitizedSegment {
+    pub name: String,
+    pub fsname: String,
 }

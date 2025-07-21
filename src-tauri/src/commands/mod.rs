@@ -63,7 +63,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
 #[specta::specta]
 #[tauri::command]
 pub async fn create_collection(
-    create_collection_dto: CreateCollectionDto,
+    dto: CreateCollectionDto,
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewCollection> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
@@ -71,10 +71,27 @@ pub async fn create_collection(
         message: format!("State lock failed: {e}"),
     })?;
 
-    collection::create_collection(&create_collection_dto, &mut sharedstate).map_err(|err| {
-        CmdErr::Err {
-            message: format!("Failed to create collection: {err}"),
-        }
+    let location_relpath = Path::new(&dto.location_relpath); // TODO - update dto to have &Path instead of String? Need to make sure specta handles it
+    let segments = collection::sanitized_segments(&dto);
+    let (last_segment, relpath_segments) = segments.split_last().unwrap();
+
+    let parent_relpath = collection::create_collection_parents_if_missing(
+        location_relpath,
+        relpath_segments,
+        &mut sharedstate,
+    )
+    .map_err(|err| CmdErr::Err {
+        message: format!("Failed to create parent collections: {err}"),
+    })?;
+
+    collection::create_collection(
+        &parent_relpath,
+        &last_segment.fsname,
+        &last_segment.name,
+        &mut sharedstate,
+    )
+    .map_err(|err| CmdErr::Err {
+        message: format!("Failed to create collection: {err}"),
     })
 }
 
