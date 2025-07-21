@@ -6,6 +6,9 @@ use tauri::{AppHandle, Manager};
 
 use crate::models::SanitizedSegment;
 
+#[cfg(test)]
+pub mod tests;
+
 pub fn toggle_devtools(app_handle: &AppHandle) {
     let webview_window = app_handle.get_webview_window("main").unwrap();
 
