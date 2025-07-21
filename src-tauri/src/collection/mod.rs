@@ -1,12 +1,10 @@
 use std::{
     cell::RefCell,
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     rc::Rc,
     vec::IntoIter,
 };
-use toml;
 
 pub mod models;
 
@@ -33,9 +31,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
-    let colname = colname_by_relpath(space_abspath).unwrap_or_else(|_| ColName {
-        mappings: HashMap::new(),
-    });
+    let colnames = ColName::load(space_abspath)?;
     let space_buffer = SpaceBuf::load(space_abspath)?;
     let spacebuf_rlock = space_buffer
         .read()
@@ -84,23 +80,19 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                         continue;
                     }
 
-                    let relpath = entry_abspath
-                        .strip_prefix(space_abspath)
-                        .unwrap()
-                        .to_string_lossy()
-                        .into_owned();
+                    let relpath = entry_abspath.strip_prefix(space_abspath).unwrap();
 
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             fsname: name,
-                            name: colname.mappings.get(&relpath).cloned(),
+                            name: colnames.get(relpath),
                             is_expanded: true,
                         },
                         requests: Vec::new(),
                         collections: Vec::new(),
                     }));
 
-                    stack.push((PathBuf::from(&relpath), Rc::clone(&sub_collection)));
+                    stack.push((relpath.to_path_buf(), Rc::clone(&sub_collection)));
                     collection_rc_refcell
                         .borrow_mut()
                         .collections
@@ -191,68 +183,6 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .ok_or_else(|| Error::FileReadError("Failed to build collection: empty stack".to_string()))
 }
 
-/// Reads the collection names from `.zaku/collections/name.toml`
-///
-/// If the file doesn't exist, it creates a new one and returns an empty map. Used to
-/// map sanitized relpaths back to their original names
-///
-/// - `space_abspath`: Absolute path of space
-///
-/// Returns a `Result` containing the collection's relpath-to-col-name map
-pub fn colname_by_relpath(space_abspath: &Path) -> Result<ColName> {
-    let colname_file_abspath = space_abspath.join(".zaku/collections/name.toml");
-
-    let content = match fs::read_to_string(&colname_file_abspath) {
-        Ok(content) => content,
-        Err(_) => {
-            if let Some(parent) = colname_file_abspath.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            let colname = ColName {
-                mappings: HashMap::new(),
-            };
-
-            let serialized = toml::to_string_pretty(&colname)?;
-            fs::write(&colname_file_abspath, &serialized)?;
-            serialized
-        }
-    };
-
-    let colname: ColName = toml::from_str(&content)?;
-
-    Ok(colname)
-}
-
-pub fn save_colname_if_missing(
-    space_abspath: &Path,
-    collection_relpath: &Path,
-    colname: &str,
-) -> Result<()> {
-    let colname_file_abspath = space_abspath
-        .join(".zaku")
-        .join("collections")
-        .join("name.toml");
-
-    // Ensure the directory exists
-    if let Some(parent) = colname_file_abspath.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let mut collection_name_by_relpath = colname_by_relpath(space_abspath)?;
-
-    collection_name_by_relpath
-        .mappings
-        .entry(collection_relpath.to_string_lossy().to_string())
-        .or_insert_with(|| colname.to_string());
-
-    let toml_content = toml::to_string_pretty(&collection_name_by_relpath)?;
-
-    fs::write(&colname_file_abspath, toml_content)?;
-
-    Ok(())
-}
-
 pub fn create_parent_collections_if_missing(
     location_relpath: &Path,
     relpath: &str,
@@ -305,7 +235,8 @@ pub fn create_collection(
 
     fs::create_dir(&dir_abspath)?;
 
-    save_colname_if_missing(&space_abspath, &dir_relpath, &col_segment.name)?;
+    let mut colnames = ColName::load(&space_abspath)?;
+    colnames.set(&dir_relpath, &col_segment.name)?;
 
     let create_new_collection = CreateNewCollection {
         parent_relpath: parent_relpath.to_string_lossy().to_string(),

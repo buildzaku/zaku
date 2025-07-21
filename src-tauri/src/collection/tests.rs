@@ -6,10 +6,7 @@ use std::{
 use tempfile;
 
 use crate::{
-    collection::{
-        self,
-        models::{ColName, CreateCollectionDto},
-    },
+    collection::{self, models::CreateCollectionDto, ColName},
     error::Error,
     models::SanitizedSegment,
     request::{self, models::CreateRequestDto},
@@ -101,86 +98,80 @@ fn parse_root_collection_should_match_created_structure() {
         },
     ];
 
-    let expected_colname_by_relpath_components = vec![
-        (vec!["parent-col-1"], "Parent Col 1"),
-        (vec!["parent-col-2"], "Parent Col 2"),
+    let expected_colnames = HashMap::from([
+        (PathBuf::from("parent-col-1"), "Parent Col 1"),
+        (PathBuf::from("parent-col-2"), "Parent Col 2"),
         (
-            vec!["parent-col-2", "child-col-1", "grand-child-col-1"],
+            PathBuf::from("parent-col-2")
+                .join("child-col-1")
+                .join("grand-child-col-1"),
             "Grand Child Col 1",
         ),
-        (vec!["parent-col-3", "child-col-2"], "Child Col 2"),
         (
-            vec!["tilde-parent-col-1", "back-slash-child-col-1"],
+            PathBuf::from("parent-col-3").join("child-col-2"),
+            "Child Col 2",
+        ),
+        (
+            PathBuf::from("tilde-parent-col-1").join("back-slash-child-col-1"),
             "Back-Slash Child Col 1",
         ),
         (
-            vec![
-                "ザク-unicode-parent-col-1",
-                "emoji-child-col-1",
-                "emoji-grand-child-col-1",
-            ],
+            PathBuf::from("ザク-unicode-parent-col-1")
+                .join("emoji-child-col-1")
+                .join("emoji-grand-child-col-1"),
             "💬 Emoji Grand Child Col 1?",
         ),
-    ];
+    ]);
 
-    let expected_reqname_by_relpath_components = vec![
-        (vec!["child-req-1.toml"], "Child Req 1"),
-        (vec!["parent-col-1", "child-req-2.toml"], "Child Req 2"),
-        (vec!["parent-col-1", "parent-req-1.toml"], "Parent Req 1"),
-        (vec!["parent-col-2", "parent-req-2.toml"], "Parent Req 2"),
+    let expected_reqnames = HashMap::from([
+        (PathBuf::from("child-req-1.toml"), "Child Req 1"),
         (
-            vec!["parent-col-2", "child-col-1", "child-req-3.toml"],
+            PathBuf::from("parent-col-1").join("child-req-2.toml"),
+            "Child Req 2",
+        ),
+        (
+            PathBuf::from("parent-col-1").join("parent-req-1.toml"),
+            "Parent Req 1",
+        ),
+        (
+            PathBuf::from("parent-col-2").join("parent-req-2.toml"),
+            "Parent Req 2",
+        ),
+        (
+            PathBuf::from("parent-col-2")
+                .join("child-col-1")
+                .join("child-req-3.toml"),
             "Child Req 3",
         ),
         (
-            vec![
-                "parent-col-2",
-                "child-col-1",
-                "grand-child-col-1",
-                "grand-child-req-1.toml",
-            ],
+            PathBuf::from("parent-col-2")
+                .join("child-col-1")
+                .join("grand-child-col-1")
+                .join("grand-child-req-1.toml"),
             "Grand Child Req 1",
         ),
         (
-            vec!["parent-col-3", "child-col-2", "child-req-4.toml"],
+            PathBuf::from("parent-col-3")
+                .join("child-col-2")
+                .join("child-req-4.toml"),
             "Child Req 4",
         ),
         (
-            vec![
-                "tilde-parent-col-1",
-                "back-slash-child-col-1",
-                "grand-child-col-1",
-                "special-chars-req-1.toml",
-            ],
+            PathBuf::from("tilde-parent-col-1")
+                .join("back-slash-child-col-1")
+                .join("grand-child-col-1")
+                .join("special-chars-req-1.toml"),
             "Special*&Chars Req 1",
         ),
         (
-            vec![
-                "ザク-unicode-parent-col-1",
-                "emoji-child-col-1",
-                "emoji-grand-child-col-1",
-                "emoji-special-col-1",
-                "special-chars-req-1.toml",
-            ],
+            PathBuf::from("ザク-unicode-parent-col-1")
+                .join("emoji-child-col-1")
+                .join("emoji-grand-child-col-1")
+                .join("emoji-special-col-1")
+                .join("special-chars-req-1.toml"),
             "*>?Special Chars Req 1",
         ),
-    ];
-
-    let mut expected_colname_by_relpath = HashMap::new();
-    for (components, name) in expected_colname_by_relpath_components {
-        let path = components
-            .iter()
-            .fold(PathBuf::new(), |acc, comp| acc.join(comp));
-        expected_colname_by_relpath.insert(path.to_string_lossy().to_string(), name);
-    }
-
-    let mut expected_reqname_by_relpath = HashMap::new();
-    for (components, name) in expected_reqname_by_relpath_components {
-        let path = components
-            .iter()
-            .fold(PathBuf::new(), |acc, comp| acc.join(comp));
-        expected_reqname_by_relpath.insert(path.to_string_lossy().to_string(), name);
-    }
+    ]);
 
     let tmp_dir = tempfile::tempdir().unwrap();
     let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
@@ -217,7 +208,8 @@ fn parse_root_collection_should_match_created_structure() {
 
     while let Some((collection, current_path)) = stack.pop() {
         if !current_path.is_empty() {
-            if let Some(expected_name) = expected_colname_by_relpath.get(current_path.as_str()) {
+            let current_pathbuf = PathBuf::from(&current_path);
+            if let Some(expected_name) = expected_colnames.get(&current_pathbuf) {
                 assert_eq!(
                     collection.meta.name.as_deref(),
                     Some(*expected_name),
@@ -227,18 +219,20 @@ fn parse_root_collection_should_match_created_structure() {
         }
 
         for req in &collection.requests {
-            let req_path = if current_path.is_empty() {
-                req.meta.fsname.clone()
+            let req_pathbuf = if current_path.is_empty() {
+                PathBuf::from(&req.meta.fsname)
             } else {
-                utils::join_strpaths(vec![&current_path, &req.meta.fsname])
+                PathBuf::from(&current_path).join(&req.meta.fsname)
             };
 
-            let expected_name = expected_reqname_by_relpath
-                .get(req_path.as_str())
-                .unwrap_or_else(|| panic!("Unexpected request: {req_path}"));
+            let expected_name = expected_reqnames
+                .get(&req_pathbuf)
+                .unwrap_or_else(|| panic!("Unexpected request: {}", req_pathbuf.display()));
             assert_eq!(
-                req.meta.name, *expected_name,
-                "Request name mismatch at '{req_path}'"
+                req.meta.name,
+                *expected_name,
+                "Request name mismatch at '{}'",
+                req_pathbuf.display()
             );
         }
 
@@ -254,65 +248,52 @@ fn parse_root_collection_should_match_created_structure() {
 }
 
 #[test]
-fn colname_by_relpath_reads_existing_data() {
+fn colname_reads_existing_data() {
     let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
+    let space_abspath = tmp_dir.path();
+
+    let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
+
+    let mut colnames = ColName::load(space_abspath).unwrap();
+    colnames.set(&collection_relpath, "Child Col 1").unwrap();
+
+    assert_eq!(
+        colnames.get(&collection_relpath),
+        Some("Child Col 1".to_string())
+    );
+}
+
+#[test]
+fn colname_invalid_toml_should_fail() {
+    let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
     let colname_filepath = space_abspath
         .join(".zaku")
         .join("collections")
         .join("name.toml");
-    fs::create_dir_all(
-        colname_filepath
-            .parent()
-            .expect("Failed to get parent directory"),
-    )
-    .expect("Failed to create parent directories");
-
-    let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
-    let collection_relpath_str = collection_relpath.to_string_lossy().to_string();
-
-    let mut mappings = HashMap::new();
-    mappings.insert(collection_relpath_str.clone(), "Child Col 1".to_string());
-
-    let colname = ColName { mappings };
-    let serialized = toml::to_string_pretty(&colname).expect("Failed to serialize ColName struct");
-
-    fs::write(&colname_filepath, serialized).expect("Failed to write TOML file");
-
-    let colname =
-        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-    assert_eq!(
-        colname.mappings.get(&collection_relpath_str),
-        Some(&"Child Col 1".into())
-    );
-}
-
-#[test]
-fn colname_by_relpath_invalid_toml_should_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let space_abspath = tmp_dir.path();
-
-    let colname_filepath = space_abspath.join(".zaku/collections/name.toml");
     fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
 
     let invalid_toml = "[mappings\n\"parent-col-1/child-col-1\" = \"Child Col 1\"";
     fs::write(&colname_filepath, invalid_toml).unwrap();
 
-    let result = collection::colname_by_relpath(space_abspath);
+    let result = ColName::load(space_abspath);
     assert!(result.is_err());
 }
 
 #[test]
-fn colname_by_relpath_creates_file_if_missing() {
+fn colname_creates_file_if_missing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
-    let colname =
-        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-    assert!(colname.mappings.is_empty());
+    let colnames = ColName::load(space_abspath).unwrap();
+    let name = colnames.get(&PathBuf::from("any-path"));
+    assert_eq!(name, None);
 
-    let file_path = space_abspath.join(".zaku/collections/name.toml");
+    let file_path = space_abspath
+        .join(".zaku")
+        .join("collections")
+        .join("name.toml");
     assert!(file_path.exists());
 
     let content = fs::read_to_string(file_path).unwrap();
@@ -320,55 +301,36 @@ fn colname_by_relpath_creates_file_if_missing() {
 }
 
 #[test]
-fn save_colname_if_missing_writes_new_entry() {
+fn colname_set_if_missing_writes_new_entry() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
     let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
 
-    collection::save_colname_if_missing(space_abspath, &collection_relpath, "Child Col 1")
-        .expect("Failed to save collection name");
+    let mut colnames = ColName::load(space_abspath).unwrap();
+    colnames.set(&collection_relpath, "Child Col 1").unwrap();
 
-    let colname =
-        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-
-    assert_eq!(
-        colname
-            .mappings
-            .get(&collection_relpath.to_string_lossy().to_string()),
-        Some(&"Child Col 1".into())
-    );
+    let name = colnames.get(&collection_relpath);
+    assert_eq!(name, Some("Child Col 1".to_string()));
 }
 
 #[test]
-fn save_colname_if_missing_does_not_overwrite_existing() {
+fn colname_set_if_missing_does_not_overwrite_existing() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let space_abspath = tmp_dir.path();
 
     let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
 
-    collection::save_colname_if_missing(
-        space_abspath,
-        &collection_relpath,
-        "Child Col 1 - First Name",
-    )
-    .expect("Failed to save collection name");
-    collection::save_colname_if_missing(
-        space_abspath,
-        &collection_relpath,
-        "Child Col 1 - Second Name",
-    )
-    .expect("Failed to save collection name");
+    let mut colnames = ColName::load(space_abspath).unwrap();
+    colnames
+        .set(&collection_relpath, "Child Col 1 - First Name")
+        .unwrap();
+    colnames
+        .set(&collection_relpath, "Child Col 1 - Second Name")
+        .unwrap();
 
-    let colname =
-        collection::colname_by_relpath(space_abspath).expect("Failed to get collection names");
-
-    assert_eq!(
-        colname
-            .mappings
-            .get(&collection_relpath.to_string_lossy().to_string()),
-        Some(&"Child Col 1 - First Name".into())
-    );
+    let name = colnames.get(&collection_relpath);
+    assert_eq!(name, Some("Child Col 1 - First Name".to_string()));
 }
 
 #[test]
@@ -528,20 +490,18 @@ fn create_collection_should_save_colname() {
         collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate)
             .expect("Failed to create collection");
 
-    let colname =
-        collection::colname_by_relpath(&space_abspath).expect("Failed to get collection names");
-
-    let expected_key = PathBuf::from("parent-col-1").join("child-col-1");
-    assert_eq!(
-        colname
-            .mappings
-            .get(&expected_key.to_string_lossy().to_string()),
-        Some(&"Child Col 1".into())
-    );
-
+    let colnames = ColName::load(&space_abspath).unwrap();
     let expected_relpath = PathBuf::from("parent-col-1").join("child-col-1");
+
+    assert_eq!(
+        colnames.get(&expected_relpath),
+        Some("Child Col 1".to_string())
+    );
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
-    assert!(space_abspath.join("parent-col-1/child-col-1").exists());
+    assert!(space_abspath
+        .join("parent-col-1")
+        .join("child-col-1")
+        .exists());
 }
 
 #[test]
@@ -576,30 +536,24 @@ fn create_collection_integrated_flow() {
         .join("grand-child-col-1")
         .exists());
 
-    let colname = collection::colname_by_relpath(&space_abspath)
-        .expect("Failed to read collection name mappings");
+    let colnames = ColName::load(&space_abspath).unwrap();
 
-    let parent_relpath = PathBuf::from("parent-col-1").to_string_lossy().to_string();
-    let child_relpath = PathBuf::from("parent-col-1")
-        .join("child-col-1")
-        .to_string_lossy()
-        .to_string();
+    let parent_relpath = PathBuf::from("parent-col-1");
+    let child_relpath = PathBuf::from("parent-col-1").join("child-col-1");
     let grandchild_relpath = PathBuf::from("parent-col-1")
         .join("child-col-1")
-        .join("grand-child-col-1")
-        .to_string_lossy()
-        .to_string();
+        .join("grand-child-col-1");
 
     assert_eq!(
-        colname.mappings.get(&parent_relpath),
-        Some(&"Parent Col 1".to_string())
+        colnames.get(&parent_relpath),
+        Some("Parent Col 1".to_string())
     );
     assert_eq!(
-        colname.mappings.get(&child_relpath),
-        Some(&"Child Col 1".to_string())
+        colnames.get(&child_relpath),
+        Some("Child Col 1".to_string())
     );
     assert_eq!(
-        colname.mappings.get(&grandchild_relpath),
-        Some(&"Grand Child Col 1".to_string())
+        colnames.get(&grandchild_relpath),
+        Some("Grand Child Col 1".to_string())
     );
 }
