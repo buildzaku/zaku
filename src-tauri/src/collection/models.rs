@@ -37,6 +37,13 @@ pub struct CreateNewCollection {
     pub relpath: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct CollectionRcRefCell {
+    pub meta: CollectionMeta,
+    pub requests: Vec<HttpReq>,
+    pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ColName {
     mappings: BTreeMap<String, String>,
@@ -107,11 +114,4 @@ impl ColName {
 
         Ok(())
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct CollectionRcRefCell {
-    pub meta: CollectionMeta,
-    pub requests: Vec<HttpReq>,
-    pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }

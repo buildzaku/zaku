@@ -183,6 +183,16 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .ok_or_else(|| Error::FileReadError("Failed to build collection: empty stack".to_string()))
 }
 
+/// Creates parent collection directories if they don't exist
+///
+/// Parses the `relpath` into segments and creates any missing parent collection
+/// directories, starting from the location relpath and working down the hierarchy
+///
+/// - `location_relpath`: Starting relative path within the space
+/// - `relpath`: Path string to parse into collection segments
+/// - `sharedstate`: Mutable reference to the application's shared state
+///
+/// Returns a `Result<(PathBuf, SanitizedSegment)>` with the final parent path and target segment
 pub fn create_parent_collections_if_missing(
     location_relpath: &Path,
     relpath: &str,
@@ -213,6 +223,16 @@ pub fn create_parent_collections_if_missing(
     Ok((current_parent, last_segment.clone()))
 }
 
+/// Creates a new collection directory in the specified parent path
+///
+/// Creates a new directory for the collection, saves the collection name mapping,
+/// and updates the shared state
+///
+/// - `parent_relpath`: Relative path to the parent directory
+/// - `col_segment`: Sanitized segment containing the collection name and filesystem name
+/// - `sharedstate`: Mutable reference to the application's shared state
+///
+/// Returns a `Result<CreateNewCollection>` containing the created collection's paths
 pub fn create_collection(
     parent_relpath: &Path,
     col_segment: &SanitizedSegment,

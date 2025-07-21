@@ -69,6 +69,16 @@ pub fn parse_req(
     }
 }
 
+/// Creates a new request in the specified collection directory
+///
+/// Creates a new TOML request file in the parent collection directory and updates
+/// the shared state
+///
+/// - `parent_relpath`: Relative path to the parent collection directory
+/// - `req_segment`: Sanitized segment containing the request name and filesystem name
+/// - `sharedstate`: Mutable reference to the application's shared state
+///
+/// Returns a `Result<CreateNewRequest>` containing the created request's paths
 pub fn create_req(
     parent_relpath: &Path,
     req_segment: &SanitizedSegment,
