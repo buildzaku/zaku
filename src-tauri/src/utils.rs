@@ -76,19 +76,21 @@ pub fn hashed_filename(abspath: &str) -> String {
 pub fn sanitize_pathseg(segment: &str) -> String {
     const INVALID_CHARS: [char; 8] = ['<', '>', ':', '"', '\\', '|', '?', '*'];
 
-    let mut sanitized = String::new();
-
-    for char in segment.to_lowercase().chars() {
-        if char.is_whitespace() || INVALID_CHARS.contains(&char) {
-            if !sanitized.ends_with('-') {
-                sanitized.push('-');
+    segment
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_whitespace() || INVALID_CHARS.contains(&c) {
+                '-'
+            } else {
+                c
             }
-        } else {
-            sanitized.push(char);
-        }
-    }
-
-    sanitized.trim_matches('-').to_string()
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 pub fn sanitize_pathseg_bslash(segment: &str) -> String {
