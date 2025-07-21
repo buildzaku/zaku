@@ -4,7 +4,10 @@ use sha2::{Digest, Sha256};
 use std::path::{self, Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
-use crate::models::SanitizedSegment;
+use crate::{
+    error::{Error, Result},
+    models::SanitizedSegment,
+};
 
 #[cfg(test)]
 pub mod tests;
@@ -72,7 +75,7 @@ pub fn hashed_filename(abspath: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub fn to_fsname(name: &str) -> Option<String> {
+pub fn to_fsname(name: &str) -> Result<String> {
     const WINDOWS_RESERVED: [&str; 22] = [
         "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
         "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
@@ -94,14 +97,23 @@ pub fn to_fsname(name: &str) -> Option<String> {
         .collect::<Vec<_>>()
         .join("-");
 
-    if sanitized.is_empty() || WINDOWS_RESERVED.contains(&sanitized.as_str()) {
-        return None;
+    if sanitized.is_empty() {
+        return Err(Error::SanitizationError(
+            "Empty name after sanitization".to_string(),
+        ));
     }
 
-    Some(sanitized)
+    if WINDOWS_RESERVED.contains(&sanitized.as_str()) {
+        return Err(Error::SanitizationError(format!(
+            "Reserved name not allowed: {}",
+            sanitized
+        )));
+    }
+
+    Ok(sanitized)
 }
 
-pub fn to_sanitized_segments(relpath: &str) -> Vec<SanitizedSegment> {
+pub fn to_sanitized_segments(relpath: &str) -> Result<Vec<SanitizedSegment>> {
     let relpath_no_bslashes = relpath.replace('\\', "-");
     let mut segments = Vec::new();
 
@@ -109,12 +121,11 @@ pub fn to_sanitized_segments(relpath: &str) -> Vec<SanitizedSegment> {
         if let path::Component::Normal(os_str) = component {
             let name = os_str.to_string_lossy().trim().to_string();
             if !name.is_empty() {
-                if let Some(fsname) = to_fsname(&name) {
-                    segments.push(SanitizedSegment { name, fsname });
-                }
+                let fsname = to_fsname(&name)?;
+                segments.push(SanitizedSegment { name, fsname });
             }
         }
     }
 
-    segments
+    Ok(segments)
 }

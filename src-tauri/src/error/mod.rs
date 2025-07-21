@@ -10,6 +10,7 @@ pub enum Error {
     LockError(String),
     InvalidPath(String),
     InvalidName(String),
+    SanitizationError(String),
 
     #[from]
     Io(io::Error),

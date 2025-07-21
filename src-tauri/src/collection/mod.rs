@@ -261,7 +261,7 @@ pub fn create_parent_collections_if_missing(
     relpath: &str,
     sharedstate: &mut SharedState,
 ) -> Result<(PathBuf, SanitizedSegment)> {
-    let segments = utils::to_sanitized_segments(relpath);
+    let segments = utils::to_sanitized_segments(relpath)?;
     let (last_segment, relpath_segments) = segments.split_last().unwrap();
 
     let mut current_parent = location_relpath.to_path_buf();

@@ -1,8 +1,9 @@
-use crate::utils;
+use crate::{error::Error, utils};
 
 #[test]
 fn to_sanitized_segments_basic() {
-    let segments = utils::to_sanitized_segments("Parent Col 1/Child Col 1/Grand Child Col 1");
+    let segments =
+        utils::to_sanitized_segments("Parent Col 1/Child Col 1/Grand Child Col 1").unwrap();
 
     assert_eq!(segments.len(), 3);
 
@@ -18,13 +19,13 @@ fn to_sanitized_segments_basic() {
 
 #[test]
 fn to_sanitized_segments_empty_relpath() {
-    let segments = utils::to_sanitized_segments("   ");
+    let segments = utils::to_sanitized_segments("   ").unwrap();
     assert!(segments.is_empty());
 }
 
 #[test]
 fn to_sanitized_segments_with_whitespace_segments() {
-    let segments = utils::to_sanitized_segments("  /Whitespace Child  Col 1       /   ");
+    let segments = utils::to_sanitized_segments("  /Whitespace Child  Col 1       /   ").unwrap();
 
     assert_eq!(segments.len(), 1);
 
@@ -34,7 +35,7 @@ fn to_sanitized_segments_with_whitespace_segments() {
 
 #[test]
 fn to_sanitized_segments_with_multiple_slashes() {
-    let segments = utils::to_sanitized_segments("Multiple Slash Col 1///Slash  Col 1");
+    let segments = utils::to_sanitized_segments("Multiple Slash Col 1///Slash  Col 1").unwrap();
 
     assert_eq!(segments.len(), 2);
 
@@ -47,14 +48,14 @@ fn to_sanitized_segments_with_multiple_slashes() {
 
 #[test]
 fn to_sanitized_segments_with_only_empty_segments() {
-    let segments = utils::to_sanitized_segments("   /   /   ");
+    let segments = utils::to_sanitized_segments("   /   /   ").unwrap();
     assert!(segments.is_empty());
 }
 
 #[test]
 fn to_sanitized_segments_special_characters() {
     let segments =
-        utils::to_sanitized_segments("Special@Chars Col 1/Unicode# Col 2/🔥 Emoji Col 3");
+        utils::to_sanitized_segments("Special@Chars Col 1/Unicode# Col 2/🔥 Emoji Col 3").unwrap();
 
     assert_eq!(segments.len(), 3);
 
@@ -70,7 +71,7 @@ fn to_sanitized_segments_special_characters() {
 
 #[test]
 fn to_sanitized_segments_unicode() {
-    let segments = utils::to_sanitized_segments("ザク Unicode Col 1/設定 Unicode Col 2");
+    let segments = utils::to_sanitized_segments("ザク Unicode Col 1/設定 Unicode Col 2").unwrap();
 
     assert_eq!(segments.len(), 2);
 
@@ -83,7 +84,8 @@ fn to_sanitized_segments_unicode() {
 
 #[test]
 fn to_sanitized_segments_trailing_slash() {
-    let segments = utils::to_sanitized_segments("Parent Col 1/Child Trailing Slash Col 2/");
+    let segments =
+        utils::to_sanitized_segments("Parent Col 1/Child Trailing Slash Col 2/").unwrap();
 
     assert_eq!(segments.len(), 2);
 
@@ -98,7 +100,8 @@ fn to_sanitized_segments_trailing_slash() {
 fn to_sanitized_segments_invalid_characters() {
     let segments = utils::to_sanitized_segments(
         r#"Parent|Invalid Chars Col 1/Child Col::2"/<Grand>?Child:Invalid*Chars::\Col""3"#,
-    );
+    )
+    .unwrap();
 
     assert_eq!(segments.len(), 3);
 
@@ -112,16 +115,14 @@ fn to_sanitized_segments_invalid_characters() {
     assert_eq!(segments[2].fsname, "grand-child-invalid-chars-col-3");
 }
 
-#[cfg(windows)]
-mod windows {
-    use super::*;
+#[test]
+fn to_sanitized_segments_reserved_names_should_be_handled() {
+    let result = utils::to_sanitized_segments("NUL/Child Col 1");
 
-    #[test]
-    fn to_sanitized_segments_reserved_names_should_be_handled() {
-        let segments = utils::to_sanitized_segments("NUL/Child Col 1");
-
-        if !segments.is_empty() || segments[0].fsname == "nul" {
-            panic!("Reserved names should be handled");
+    match result {
+        Err(Error::SanitizationError(msg)) => {
+            assert!(msg.contains("nul"), "Error should mention reserved name");
         }
+        _ => panic!("Expected SanitizationError for reserved name"),
     }
 }
