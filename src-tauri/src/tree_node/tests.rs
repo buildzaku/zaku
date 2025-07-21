@@ -10,12 +10,9 @@ use crate::{
     tree_node::{self, MoveTreeNodeDto, NodeType},
 };
 
-const SPACE_NAME: &str = "Tree Node Space";
-const SPACE_FSNAME: &str = "tree-node-space";
-
 fn tmp_sharedstate(tmp_dir: &Path) -> SharedState {
     let dto = CreateSpaceDto {
-        name: SPACE_NAME.to_string(),
+        name: "Tree Space".to_string(),
         location: tmp_dir.to_string_lossy().to_string(),
     };
 
@@ -33,7 +30,7 @@ fn find_collection_returns_root_for_empty_path() {
 
     let result = tree_node::find_collection(&space.root_collection, Path::new(""));
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().meta.fsname, SPACE_FSNAME.to_string());
+    assert_eq!(result.unwrap().meta.fsname, "tree-space".to_string());
 }
 
 #[test]
