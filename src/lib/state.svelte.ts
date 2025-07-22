@@ -7,6 +7,7 @@ import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
 import { joinPaths } from "$lib/components/tree-node/utils.svelte";
+import { emitCmdError } from "./utils";
 
 class SharedState {
     public space: Space | null = $state(null);
@@ -15,10 +16,7 @@ class SharedState {
     public async synchronize() {
         const getSharedStateResult = await commands.getSharedState();
         if (getSharedStateResult.status !== "ok") {
-            const { kind, details, message } = getSharedStateResult.error;
-            console.error([kind, details].join(" - "));
-            toast.error(message);
-            return;
+            return emitCmdError(getSharedStateResult.error);
         }
 
         this.space = getSharedStateResult.data.space;
@@ -31,9 +29,7 @@ class SharedState {
     public async setSpace(spaceReference: SpaceReference) {
         const setSpaceResult = await commands.setSpace(spaceReference);
         if (setSpaceResult.status !== "ok") {
-            const { kind, details, message } = setSpaceResult.error;
-            console.error([kind, details].join(" - "));
-            toast.error(message);
+            return emitCmdError(setSpaceResult.error);
         }
 
         await this.synchronize();

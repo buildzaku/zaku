@@ -36,6 +36,7 @@
     import { toast } from "svelte-sonner";
     import { Checkbox } from "$lib/components/primitives/checkbox";
     import { Label } from "$lib/components/primitives/label";
+    import { emitCmdError } from "$lib/utils";
 
     type Props = {
         pane: PaneAPI;
@@ -92,15 +93,12 @@
                 <Button
                     disabled={spaceSettingsStr === JSON.stringify(space.settings)}
                     onclick={async () => {
-                        const saveResult = await commands.saveSpaceSettings(
+                        const saveSpaceResult = await commands.saveSpaceSettings(
                             space.abspath,
                             space.settings,
                         );
-                        if (saveResult.status !== "ok") {
-                            const { kind, details, message } = saveResult.error;
-                            console.error([kind, details].join(" - "));
-                            toast.error(message);
-                            return;
+                        if (saveSpaceResult.status !== "ok") {
+                            return emitCmdError(saveSpaceResult.error);
                         }
 
                         spaceSettingsStr = JSON.stringify(space.settings);
@@ -124,25 +122,20 @@
                     size="icon"
                     class="size-4 max-h-4 min-h-4 max-w-4 min-w-4 cursor-pointer rounded-sm"
                     onclick={async () => {
-                        const removeCookieDto: RemoveCookieDto = {
+                        const removeCookieResult = await commands.removeCookie(space.abspath, {
                             domain: ck.domain,
                             path: ck.path,
                             name: ck.name,
-                        };
-                        const isRemoved = await commands.removeCookie(
-                            space.abspath,
-                            removeCookieDto,
-                        );
+                        });
+                        if (removeCookieResult.status !== "ok") {
+                            return emitCmdError(removeCookieResult.error);
+                        }
 
-                        if (isRemoved) {
-                            cookies.splice(idx, 1);
+                        cookies.splice(idx, 1);
+                        const domainCookies = space.cookies[domain];
 
-                            const domainCookies = space.cookies[domain];
-                            if (!domainCookies || domainCookies.length === 0) {
-                                delete space.cookies[domain];
-                            }
-                        } else {
-                            toast.error(`Unable to remove '${ck.name}' cookie`);
+                        if (!domainCookies || domainCookies.length === 0) {
+                            delete space.cookies[domain];
                         }
                     }}
                 >

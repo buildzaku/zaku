@@ -383,7 +383,7 @@ pub fn set_space(
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
     let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock: {}", e);
+        eprintln!("Failed to acquire SharedState lock: {e}");
 
         CmdErr {
             kind: ErrorKind::InternalError,
@@ -528,7 +528,7 @@ pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> Cmd
         .map(|opt| opt.is_some())
         .map_err(|e| CmdErr {
             kind: ErrorKind::CookieError,
-            message: "Failed to remove cookie".to_string(),
+            message: "Unable to remove cookie".to_string(),
             details: Some(e.to_string()),
         })
 }
@@ -553,7 +553,7 @@ pub fn get_shared_state(
     match sharedstate_mtx.lock() {
         Ok(sharedstate) => Ok(sharedstate.clone()),
         Err(e) => {
-            eprintln!("Failed to acquire SharedState lock: {}", e);
+            eprintln!("Failed to acquire SharedState lock: {e}");
 
             Err(CmdErr {
                 kind: ErrorKind::InternalError,
