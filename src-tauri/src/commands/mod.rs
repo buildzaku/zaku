@@ -382,17 +382,21 @@ pub fn set_space(
     space_reference: SpaceReference,
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
-        kind: ErrorKind::LockError,
-        message: "Failed to acquire state lock".to_string(),
-        details: Some(e.to_string()),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
+        eprintln!("Failed to acquire SharedState lock: {}", e);
+
+        CmdErr {
+            kind: ErrorKind::InternalError,
+            message: "Unable to access application state :(".to_string(),
+            details: Some(e.to_string()),
+        }
     })?;
     let space_abspath = PathBuf::from(space_reference.path.as_str());
 
     if !space_abspath.exists() {
         return Err(CmdErr {
             kind: ErrorKind::FileNotFoundError,
-            message: "Directory does not exist".to_string(),
+            message: "Unable to find space directory".to_string(),
             details: Some(space_abspath.to_string_lossy().to_string()),
         });
     }
@@ -401,12 +405,12 @@ pub fn set_space(
         Ok(space) => {
             store::set_spaceref(space_reference.clone()).map_err(|e| CmdErr {
                 kind: ErrorKind::FileWriteError,
-                message: "Failed to set space reference".to_string(),
+                message: "Unable to save space".to_string(),
                 details: Some(e.to_string()),
             })?;
             store::insert_spaceref_if_missing(space_reference.clone()).map_err(|e| CmdErr {
                 kind: ErrorKind::FileWriteError,
-                message: "Failed to insert space reference".to_string(),
+                message: "Unable to save space".to_string(),
                 details: Some(e.to_string()),
             })?;
 
@@ -417,7 +421,7 @@ pub fn set_space(
         }
         Err(err) => Err(CmdErr {
             kind: ErrorKind::ParseError,
-            message: "Unable to parse space".to_string(),
+            message: "Unable to load space".to_string(),
             details: Some(err.to_string()),
         }),
     }
@@ -553,8 +557,7 @@ pub fn get_shared_state(
 
             Err(CmdErr {
                 kind: ErrorKind::InternalError,
-                message: "Something went wrong! Unable to retrieve application state :("
-                    .to_string(),
+                message: "Unable to access application state :(".to_string(),
                 details: Some(e.to_string()),
             })
         }

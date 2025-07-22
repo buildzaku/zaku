@@ -34,8 +34,9 @@ class SharedState {
         if (setSpaceResult.status === "ok") {
             await this.synchronize();
         } else {
-            console.error(setSpaceResult.error);
-            toast.error("Something went wrong while setting space");
+            const { kind, details, message } = setSpaceResult.error;
+            console.error([kind, details].join(" - "));
+            toast.error(message);
         }
 
         return;
