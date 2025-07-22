@@ -1,5 +1,4 @@
 import { tick } from "svelte";
-import { toast } from "svelte-sonner";
 
 import { version } from "$app/environment";
 
@@ -7,7 +6,7 @@ import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
 import { joinPaths } from "$lib/components/tree-node/utils.svelte";
-import { emitCmdError } from "./utils";
+import { emitCmdError } from "$lib/utils";
 
 class SharedState {
     public space: Space | null = $state(null);
