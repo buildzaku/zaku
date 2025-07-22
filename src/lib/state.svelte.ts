@@ -22,8 +22,9 @@ class SharedState {
             explorerActionsState.reset();
             await tick();
         } else {
-            console.error(getSharedStateResult.error);
-            toast.error("Something went wrong while synchronizing state");
+            const { kind, details, message } = getSharedStateResult.error;
+            console.error([kind, details].join(" - "));
+            toast.error(message);
         }
     }
 

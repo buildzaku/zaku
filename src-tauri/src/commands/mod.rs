@@ -548,14 +548,18 @@ pub fn get_shared_state(
 ) -> CmdResult<SharedState> {
     match sharedstate_mtx.lock() {
         Ok(sharedstate) => Ok(sharedstate.clone()),
-        Err(e) => Err(CmdErr {
-            kind: ErrorKind::LockError,
-            message: "Failed to acquire state lock".to_string(),
-            details: Some(e.to_string()),
-        }),
+        Err(e) => {
+            eprintln!("Failed to acquire SharedState lock: {}", e);
+
+            Err(CmdErr {
+                kind: ErrorKind::InternalError,
+                message: "Something went wrong! Unable to retrieve application state :("
+                    .to_string(),
+                details: Some(e.to_string()),
+            })
+        }
     }
 }
-
 #[specta::specta]
 #[tauri::command]
 pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
