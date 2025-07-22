@@ -538,7 +538,7 @@ pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> Cmd
 pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> CmdResult<()> {
     SpaceSettings::persist(space_abspath, &settings).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
-        message: "Failed to save space settings".to_string(),
+        message: "Unable to save space settings".to_string(),
         details: Some(err.to_string()),
     })?;
 

@@ -92,7 +92,16 @@
                 <Button
                     disabled={spaceSettingsStr === JSON.stringify(space.settings)}
                     onclick={async () => {
-                        await commands.saveSpaceSettings(space.abspath, space.settings);
+                        const saveResult = await commands.saveSpaceSettings(
+                            space.abspath,
+                            space.settings,
+                        );
+                        if (saveResult.status !== "ok") {
+                            const { kind, details, message } = saveResult.error;
+                            console.error([kind, details].join(" - "));
+                            toast.error(message);
+                            return;
+                        }
 
                         spaceSettingsStr = JSON.stringify(space.settings);
                         toast.success(`Changes saved to space settings`);
