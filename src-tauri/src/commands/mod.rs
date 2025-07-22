@@ -15,7 +15,7 @@ use crate::{
         models::{CreateCollectionDto, CreateNewCollection},
     },
     commands::models::{CreateNewRequest, DispatchNotificationOptions, OpenDirDialogOpt},
-    error::{CmdErr, CmdResult},
+    error::{CmdErr, CmdResult, ErrorKind},
     notifications,
     request::{
         self,
@@ -67,8 +67,10 @@ pub async fn create_collection(
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewCollection> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
-        message: format!("State lock failed: {e}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
+        kind: ErrorKind::LockError,
+        message: "Failed to acquire state lock".to_string(),
+        details: Some(e.to_string()),
     })?;
 
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
@@ -76,13 +78,17 @@ pub async fn create_collection(
         &dto.relpath,
         &mut sharedstate,
     )
-    .map_err(|err| CmdErr::Err {
-        message: format!("Failed to create parent collections: {err}"),
+    .map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to create parent collections".to_string(),
+        details: Some(err.to_string()),
     })?;
 
     collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate).map_err(|err| {
-        CmdErr::Err {
-            message: format!("Failed to create collection: {err}"),
+        CmdErr {
+            kind: ErrorKind::FileWriteError,
+            message: "Failed to create collection".to_string(),
+            details: Some(err.to_string()),
         }
     })
 }
@@ -105,9 +111,14 @@ pub async fn open_dir_dialog(
     let directory_path = dialog_builder.blocking_pick_folder();
 
     match directory_path {
-        Some(path) => Ok(Some(
-            path.into_path().unwrap().to_string_lossy().to_string(),
-        )),
+        Some(path) => {
+            let path_buf = path.into_path().map_err(|err| CmdErr {
+                kind: ErrorKind::DialogOpenError,
+                message: "Failed to process selected path".to_string(),
+                details: Some(err.to_string()),
+            })?;
+            Ok(Some(path_buf.to_string_lossy().to_string()))
+        }
         None => Ok(None),
     }
 }
@@ -118,8 +129,10 @@ pub fn is_notif_enabled(app_handle: tauri::AppHandle) -> CmdResult<bool> {
     let permission_state = app_handle
         .notification()
         .permission_state()
-        .map_err(|err| CmdErr::Err {
-            message: format!("Failed to get current permissions state: {err}"),
+        .map_err(|err| CmdErr {
+            kind: ErrorKind::NotificationPermissionError,
+            message: "Failed to get notification permissions".to_string(),
+            details: Some(err.to_string()),
         })?;
 
     Ok(permission_state == PermissionState::Granted)
@@ -131,8 +144,10 @@ pub fn request_notif_access(app_handle: tauri::AppHandle) -> CmdResult<bool> {
     let permission_state = app_handle
         .notification()
         .request_permission()
-        .map_err(|err| CmdErr::Err {
-            message: format!("Failed to request for permissions: {err}"),
+        .map_err(|err| CmdErr {
+            kind: ErrorKind::NotificationPermissionError,
+            message: "Failed to request notification permissions".to_string(),
+            details: Some(err.to_string()),
         })?;
 
     Ok(permission_state == PermissionState::Granted)
@@ -150,8 +165,10 @@ pub fn dispatch_notif(
         .title(&options.title)
         .body(&options.body)
         .show()
-        .map_err(|err| CmdErr::Err {
-            message: format!("Failed to dispatch notification: {err}"),
+        .map_err(|err| CmdErr {
+            kind: ErrorKind::NotificationDispatchError,
+            message: "Failed to dispatch notification".to_string(),
+            details: Some(err.to_string()),
         })?;
 
     Ok(())
@@ -164,8 +181,10 @@ pub async fn create_req(
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewRequest> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
-        message: format!("State lock failed: {e}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
+        kind: ErrorKind::LockError,
+        message: "Failed to acquire state lock".to_string(),
+        details: Some(e.to_string()),
     })?;
 
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
@@ -173,14 +192,16 @@ pub async fn create_req(
         &dto.relpath,
         &mut sharedstate,
     )
-    .map_err(|err| CmdErr::Err {
-        message: format!("Failed to create parent collections: {err}"),
+    .map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to create parent collections".to_string(),
+        details: Some(err.to_string()),
     })?;
 
-    request::create_req(&parent_relpath, &req_segment, &mut sharedstate).map_err(|err| {
-        CmdErr::Err {
-            message: format!("Failed to create request: {err}"),
-        }
+    request::create_req(&parent_relpath, &req_segment, &mut sharedstate).map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to create request".to_string(),
+        details: Some(err.to_string()),
     })
 }
 
@@ -194,8 +215,10 @@ pub async fn persist_to_reqbuf(
     let abs = Path::new(space_abspath);
     let rel = Path::new(relpath);
 
-    buffer::persist_req_to_spacebuf(abs, rel, request).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    buffer::persist_req_to_spacebuf(abs, rel, request).map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to save request to buffer".to_string(),
+        details: Some(err.to_string()),
     })?;
 
     Ok(())
@@ -210,34 +233,51 @@ pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> 
 
     Ok(())
 }
-
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {
-    let spaceref = store::get_spaceref().ok_or(CmdErr::Err {
-        message: "No space found".into(),
+    let spaceref = store::get_spaceref().ok_or(CmdErr {
+        kind: ErrorKind::SpaceNotFoundError,
+        message: "Cannot find current space".to_string(),
+        details: None,
     })?;
+
     let space_abspath = spaceref.path.as_str();
-    let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    let cookie_store = SpaceCookies::load(space_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Failed to load cookies".to_string(),
+        details: Some(err.to_string()),
     })?;
-    let space_settings = SpaceSettings::load(space_abspath).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    let space_settings = SpaceSettings::load(space_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Failed to load space settings".to_string(),
+        details: Some(err.to_string()),
     })?;
+
     let client = reqwest::Client::builder()
         .cookie_provider(Arc::clone(&cookie_store))
         .build()
-        .map_err(|e| CmdErr::Err {
-            message: e.to_string(),
+        .map_err(|err| CmdErr {
+            kind: ErrorKind::NetworkError,
+            message: "Failed to create HTTP client".to_string(),
+            details: Some(err.to_string()),
         })?;
+
     let cfg = &req.config;
-    let url = cfg.url.raw.clone().ok_or(CmdErr::Err {
-        message: "Missing URL".into(),
+    let url = cfg.url.raw.clone().ok_or(CmdErr {
+        kind: ErrorKind::InvalidUrlError,
+        message: "URL field is empty".to_string(),
+        details: None,
     })?;
-    let method = reqwest::Method::from_bytes(cfg.method.as_bytes()).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+
+    let method = reqwest::Method::from_bytes(cfg.method.as_bytes()).map_err(|e| CmdErr {
+        kind: ErrorKind::InvalidUrlError,
+        message: "Invalid HTTP method".to_string(),
+        details: Some(e.to_string()),
     })?;
+
     let mut builder = client.request(method, &url);
+
     for (enabled, key, value) in &cfg.headers {
         if *enabled {
             builder = builder.header(key, value);
@@ -263,13 +303,16 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     }
 
     let start = Instant::now();
-    let resp = builder.send().await.map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    let resp = builder.send().await.map_err(|err| CmdErr {
+        kind: ErrorKind::NetworkError,
+        message: "Request failed".to_string(),
+        details: Some(err.to_string()),
     })?;
+
     if space_settings.notifications.audio.on_req_finish {
         let app_handle = app_handle.clone();
         tokio::spawn(async move {
-            let _ = notifications::play_finish(&app_handle); // TODO - handle failures, send toast to UI?
+            let _ = notifications::play_finish(&app_handle);
         });
     }
 
@@ -288,13 +331,17 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         .filter_map(|v| RawCookie::parse(v).ok())
         .map(|ck| SpaceCookie::from_raw_cookie(&ck))
         .collect::<Vec<SpaceCookie>>();
-    let data = resp.text().await.map_err(|e| CmdErr::Http {
-        message: e.to_string(),
-        code: Some(status),
+    let data = resp.text().await.map_err(|err| CmdErr {
+        kind: ErrorKind::NetworkError,
+        message: "Failed to read response".to_string(),
+        details: Some(err.to_string()),
     })?;
     let size_bytes = Some(data.len() as u32);
-    SpaceCookies::persist(space_abspath).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+
+    SpaceCookies::persist(space_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to save cookies".to_string(),
+        details: Some(err.to_string()),
     })?;
 
     Ok(HttpRes {
@@ -313,13 +360,20 @@ pub async fn create_space(
     create_space_dto: CreateSpaceDto,
     sharedstate_mtx: tauri::State<'_, Mutex<SharedState>>,
 ) -> CmdResult<SpaceReference> {
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
-        message: format!("Failed to acquire lock: {e}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
+        kind: ErrorKind::LockError,
+        message: "Failed to acquire state lock".to_string(),
+        details: Some(e.to_string()),
     })?;
 
-    space::create_space(create_space_dto, &mut sharedstate).map_err(|e| CmdErr::Err {
-        message: format!("Failed to create space: {e}"),
-    })
+    let space_ref =
+        space::create_space(create_space_dto, &mut sharedstate).map_err(|err| CmdErr {
+            kind: ErrorKind::FileWriteError,
+            message: "Failed to create space".to_string(),
+            details: Some(err.to_string()),
+        })?;
+
+    Ok(space_ref)
 }
 
 #[specta::specta]
@@ -328,27 +382,32 @@ pub fn set_space(
     space_reference: SpaceReference,
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
+        kind: ErrorKind::LockError,
+        message: "Failed to acquire state lock".to_string(),
+        details: Some(e.to_string()),
+    })?;
     let space_abspath = PathBuf::from(space_reference.path.as_str());
 
     if !space_abspath.exists() {
-        return Err(CmdErr::Err {
-            message: format!(
-                "Directory does not exist: {}",
-                space_abspath.to_string_lossy()
-            ),
+        return Err(CmdErr {
+            kind: ErrorKind::FileNotFoundError,
+            message: "Directory does not exist".to_string(),
+            details: Some(space_abspath.to_string_lossy().to_string()),
         });
     }
 
     match space::parse_space(&space_abspath) {
         Ok(space) => {
-            store::set_spaceref(space_reference.clone()).map_err(|e| CmdErr::Err {
-                message: e.to_string(),
+            store::set_spaceref(space_reference.clone()).map_err(|e| CmdErr {
+                kind: ErrorKind::FileWriteError,
+                message: "Failed to set space reference".to_string(),
+                details: Some(e.to_string()),
             })?;
-            store::insert_spaceref_if_missing(space_reference.clone()).map_err(|e| {
-                CmdErr::Err {
-                    message: e.to_string(),
-                }
+            store::insert_spaceref_if_missing(space_reference.clone()).map_err(|e| CmdErr {
+                kind: ErrorKind::FileWriteError,
+                message: "Failed to insert space reference".to_string(),
+                details: Some(e.to_string()),
             })?;
 
             sharedstate.space = Some(space);
@@ -356,8 +415,10 @@ pub fn set_space(
 
             Ok(())
         }
-        Err(err) => Err(CmdErr::Err {
-            message: format!("Unable to parse space: {err}"),
+        Err(err) => Err(CmdErr {
+            kind: ErrorKind::ParseError,
+            message: "Unable to parse space".to_string(),
+            details: Some(err.to_string()),
         }),
     }
 }
@@ -368,9 +429,15 @@ pub fn remove_space(
     space_reference: SpaceReference,
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
-    store::remove_spaceref(space_reference).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
+        kind: ErrorKind::LockError,
+        message: "Failed to acquire state lock".to_string(),
+        details: Some(e.to_string()),
+    })?;
+    store::remove_spaceref(space_reference).map_err(|e| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to remove space reference".to_string(),
+        details: Some(e.to_string()),
     })?;
 
     let spaceref = store::get_spaceref();
@@ -379,8 +446,10 @@ pub fn remove_space(
         sharedstate.space = None;
 
         if let Some(valid_space_reference) = space::first_valid_spaceref() {
-            store::set_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr::Err {
-                message: e.to_string(),
+            store::set_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr {
+                kind: ErrorKind::FileWriteError,
+                message: "Failed to set fallback space reference".to_string(),
+                details: Some(e.to_string()),
             })?;
 
             if let Ok(space) = space::parse_space(&PathBuf::from(&valid_space_reference.path)) {
@@ -408,8 +477,10 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
 
             Ok(space_reference)
         }
-        Err(err) => Err(CmdErr::Err {
-            message: format!("Unable to parse space: {err}"),
+        Err(err) => Err(CmdErr {
+            kind: ErrorKind::ParseError,
+            message: "Unable to parse space".to_string(),
+            details: Some(err.to_string()),
         }),
     }
 }
@@ -419,11 +490,15 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
 pub async fn get_space_cookies(
     space_abspath: &str,
 ) -> CmdResult<HashMap<String, Vec<SpaceCookie>>> {
-    let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr::Err {
-        message: e.to_string(),
+    let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr {
+        kind: ErrorKind::CookieError,
+        message: "Failed to load cookies".to_string(),
+        details: Some(e.to_string()),
     })?;
-    let store = cookie_store.lock().map_err(|_| CmdErr::Err {
-        message: "Failed to lock the cookie store (CookieStoreLockFailed)".into(),
+    let store = cookie_store.lock().map_err(|e| CmdErr {
+        kind: ErrorKind::LockError,
+        message: "Failed to lock cookie store".to_string(),
+        details: Some(e.to_string()),
     })?;
 
     let cookies: Vec<SpaceCookie> = store
@@ -447,16 +522,20 @@ pub async fn get_space_cookies(
 pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> CmdResult<bool> {
     SpaceCookies::remove(space_abspath, rm_cookie_dto)
         .map(|opt| opt.is_some())
-        .map_err(|e| CmdErr::Err {
-            message: e.to_string(),
+        .map_err(|e| CmdErr {
+            kind: ErrorKind::CookieError,
+            message: "Failed to remove cookie".to_string(),
+            details: Some(e.to_string()),
         })
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> CmdResult<()> {
-    SpaceSettings::persist(space_abspath, &settings).map_err(|err| CmdErr::Err {
-        message: format!("Failed to persist space settings: {err}"),
+    SpaceSettings::persist(space_abspath, &settings).map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to save space settings".to_string(),
+        details: Some(err.to_string()),
     })?;
 
     Ok(())
@@ -469,8 +548,10 @@ pub fn get_shared_state(
 ) -> CmdResult<SharedState> {
     match sharedstate_mtx.lock() {
         Ok(sharedstate) => Ok(sharedstate.clone()),
-        Err(e) => Err(CmdErr::Err {
-            message: format!("State lock error: {e}"),
+        Err(e) => Err(CmdErr {
+            kind: ErrorKind::LockError,
+            message: "Failed to acquire state lock".to_string(),
+            details: Some(e.to_string()),
         }),
     }
 }
@@ -487,11 +568,15 @@ pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
 #[tauri::command]
 pub async fn move_tree_node(dto: MoveTreeNodeDto, app_handle: tauri::AppHandle) -> CmdResult<()> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr::Err {
-        message: format!("State lock failed: {e}"),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
+        kind: ErrorKind::LockError,
+        message: "Failed to acquire state lock".to_string(),
+        details: Some(e.to_string()),
     })?;
 
-    tree_node::move_tree_node(&dto, &mut sharedstate).map_err(|err| CmdErr::Err {
-        message: format!("Failed to handle drop: {err}"),
+    tree_node::move_tree_node(&dto, &mut sharedstate).map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Failed to move tree node".to_string(),
+        details: Some(err.to_string()),
     })
 }

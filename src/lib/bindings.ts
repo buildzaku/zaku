@@ -194,9 +194,7 @@ export const commands = {
 /** user-defined types **/
 
 export type AudioNotification = { on_req_finish: boolean };
-export type CmdErr =
-    | { type: "Err"; message: string }
-    | { type: "Http"; message: string; code: number | null };
+export type CmdErr = { kind: ErrorKind; message: string; details: string | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = { fsname: string; name: string | null; is_expanded: boolean };
 export type CreateCollectionDto = { location_relpath: string; relpath: string };
@@ -205,6 +203,23 @@ export type CreateNewRequest = { parent_relpath: string; relpath: string };
 export type CreateRequestDto = { location_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
+export type ErrorKind =
+    | "SpaceNotFoundError"
+    | "FileNotFoundError"
+    | "FileReadError"
+    | "FileWriteError"
+    | "LockError"
+    | "DialogOpenError"
+    | "NotificationDispatchError"
+    | "NotificationPermissionError"
+    | "InvalidUrlError"
+    | "InvalidPathError"
+    | "InvalidNameError"
+    | "SanitizationError"
+    | "NetworkError"
+    | "ParseError"
+    | "CookieError"
+    | "InternalError";
 export type HttpReq = {
     meta: ReqMeta;
     config: ReqCfg;
