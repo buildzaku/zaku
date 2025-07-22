@@ -14,32 +14,29 @@ class SharedState {
 
     public async synchronize() {
         const getSharedStateResult = await commands.getSharedState();
-
-        if (getSharedStateResult.status === "ok") {
-            this.space = getSharedStateResult.data.space;
-            this.spaceRefs = getSharedStateResult.data.spacerefs;
-
-            explorerActionsState.reset();
-            await tick();
-        } else {
+        if (getSharedStateResult.status !== "ok") {
             const { kind, details, message } = getSharedStateResult.error;
             console.error([kind, details].join(" - "));
             toast.error(message);
+            return;
         }
+
+        this.space = getSharedStateResult.data.space;
+        this.spaceRefs = getSharedStateResult.data.spacerefs;
+
+        explorerActionsState.reset();
+        await tick();
     }
 
     public async setSpace(spaceReference: SpaceReference) {
         const setSpaceResult = await commands.setSpace(spaceReference);
-
-        if (setSpaceResult.status === "ok") {
-            await this.synchronize();
-        } else {
+        if (setSpaceResult.status !== "ok") {
             const { kind, details, message } = setSpaceResult.error;
             console.error([kind, details].join(" - "));
             toast.error(message);
         }
 
-        return;
+        await this.synchronize();
     }
 }
 
