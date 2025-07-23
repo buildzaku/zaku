@@ -53,7 +53,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
         dispatch_notif,
         create_collection,
         create_req,
-        persist_to_reqbuf,
+        write_req_to_reqtoml,
         write_reqbuf_to_reqtoml,
         http_req,
         move_tree_node
@@ -135,7 +135,7 @@ pub fn is_notif_enabled(app_handle: tauri::AppHandle) -> CmdResult<bool> {
         .permission_state()
         .map_err(|err| CmdErr {
             kind: ErrorKind::NotificationPermissionError,
-            message: "Failed to get notification permissions".to_string(),
+            message: "Unable to get notification permissions".to_string(),
             details: Some(err.to_string()),
         })?;
 
@@ -150,7 +150,7 @@ pub fn request_notif_access(app_handle: tauri::AppHandle) -> CmdResult<bool> {
         .request_permission()
         .map_err(|err| CmdErr {
             kind: ErrorKind::NotificationPermissionError,
-            message: "Failed to request notification permissions".to_string(),
+            message: "Unable to request notification permissions".to_string(),
             details: Some(err.to_string()),
         })?;
 
@@ -171,7 +171,7 @@ pub fn dispatch_notif(
         .show()
         .map_err(|err| CmdErr {
             kind: ErrorKind::NotificationDispatchError,
-            message: "Failed to dispatch notification".to_string(),
+            message: "Unable to dispatch notification".to_string(),
             details: Some(err.to_string()),
         })?;
 
@@ -215,7 +215,7 @@ pub async fn create_req(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn persist_to_reqbuf(
+pub async fn write_req_to_reqtoml(
     space_abspath: &str,
     relpath: &str,
     request: HttpReq,
@@ -225,7 +225,7 @@ pub async fn persist_to_reqbuf(
 
     buffer::persist_req_to_spacebuf(abs, rel, request).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
-        message: "Failed to save request to buffer".to_string(),
+        message: "Unable to save request".to_string(),
         details: Some(err.to_string()),
     })?;
 

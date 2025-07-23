@@ -140,7 +140,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async persistToReqbuf(
+    async writeReqToReqtoml(
         spaceAbspath: string,
         relpath: string,
         request: HttpReq,
@@ -148,7 +148,11 @@ export const commands = {
         try {
             return {
                 status: "ok",
-                data: await TAURI_INVOKE("persist_to_reqbuf", { spaceAbspath, relpath, request }),
+                data: await TAURI_INVOKE("write_req_to_reqtoml", {
+                    spaceAbspath,
+                    relpath,
+                    request,
+                }),
             };
         } catch (e) {
             if (e instanceof Error) throw e;
