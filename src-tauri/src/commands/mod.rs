@@ -592,15 +592,19 @@ pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
 #[tauri::command]
 pub async fn move_tree_node(dto: MoveTreeNodeDto, app_handle: tauri::AppHandle) -> CmdResult<()> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
-        kind: ErrorKind::LockError,
-        message: "Failed to acquire state lock".to_string(),
-        details: Some(e.to_string()),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
+        eprintln!("Failed to acquire SharedState lock: {e}");
+
+        CmdErr {
+            kind: ErrorKind::InternalError,
+            message: "Unable to access application state :(".to_string(),
+            details: Some(e.to_string()),
+        }
     })?;
 
     tree_node::move_tree_node(&dto, &mut sharedstate).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
-        message: "Failed to move tree node".to_string(),
+        message: format!("Unable to move the {}", dto.node_type),
         details: Some(err.to_string()),
     })
 }
