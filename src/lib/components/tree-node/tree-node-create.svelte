@@ -68,13 +68,8 @@
                 location_relpath: parentRelativePath,
                 relpath: inputRelpath,
             });
-
-            if (createReqResult.status === "error") {
-                // TODO - get error from cmd
-                toast.error(`Unable to create request`);
-                console.error(createReqResult.error);
-
-                return;
+            if (createReqResult.status !== "ok") {
+                return emitCmdError(createReqResult.error);
             }
 
             inputRelpath = "";

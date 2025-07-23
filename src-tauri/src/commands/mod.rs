@@ -185,10 +185,14 @@ pub async fn create_req(
     app_handle: tauri::AppHandle,
 ) -> CmdResult<CreateNewRequest> {
     let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
-        kind: ErrorKind::LockError,
-        message: "Failed to acquire state lock".to_string(),
-        details: Some(e.to_string()),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
+        eprintln!("Failed to acquire SharedState lock: {e}");
+
+        CmdErr {
+            kind: ErrorKind::InternalError,
+            message: "Unable to access application state :(".to_string(),
+            details: Some(e.to_string()),
+        }
     })?;
 
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
@@ -198,13 +202,13 @@ pub async fn create_req(
     )
     .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
-        message: "Failed to create parent collections".to_string(),
+        message: "Unable to create parent collections".to_string(),
         details: Some(err.to_string()),
     })?;
 
     request::create_req(&parent_relpath, &req_segment, &mut sharedstate).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
-        message: "Failed to create request".to_string(),
+        message: "Unable to create request".to_string(),
         details: Some(err.to_string()),
     })
 }
