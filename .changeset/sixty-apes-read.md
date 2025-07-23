@@ -1,5 +1,5 @@
 ---
-"zaku": patch
+"zaku": minor
 ---
 
 Refactor create collections and requests API
