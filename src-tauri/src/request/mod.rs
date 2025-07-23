@@ -2,7 +2,7 @@ use std::{
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
-    sync::RwLockReadGuard,
+    sync::MutexGuard,
 };
 use toml;
 
@@ -36,7 +36,7 @@ pub mod tests;
 pub fn parse_req(
     entry_abspath: &Path,
     space_abspath: &Path,
-    spacebuf_rlock: &RwLockReadGuard<'_, SpaceBuf>,
+    spacebuf_lock: &MutexGuard<'_, SpaceBuf>,
 ) -> Option<HttpReq> {
     let is_file = entry_abspath.is_file();
     let is_toml = entry_abspath.extension().and_then(|e| e.to_str()) == Some("toml");
@@ -50,7 +50,7 @@ pub fn parse_req(
         .to_string_lossy()
         .into_owned();
 
-    if let Some(req_buf) = spacebuf_rlock.requests.get(&relpath) {
+    if let Some(req_buf) = spacebuf_lock.requests.get(&relpath) {
         Some(HttpReq::from_reqbuf(req_buf))
     } else {
         let fsname = entry_abspath

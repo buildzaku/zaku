@@ -37,13 +37,13 @@ fn parse_req_returns_none_for_non_toml_file() {
     let txt_file_abspath = space_abspath.join("parent-req-1.txt");
     fs::write(&txt_file_abspath, "not a toml file").unwrap();
 
-    let space_buffer = SpaceBuf::load(space_abspath).unwrap();
-    let spacebuf_rlock = space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))
+    let spacebuf = SpaceBuf::get(space_abspath).unwrap();
+    let spacebuf_lock = spacebuf
+        .lock()
+        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&txt_file_abspath, space_abspath, &spacebuf_rlock);
+    let result = request::parse_req(&txt_file_abspath, space_abspath, &spacebuf_lock);
     assert!(result.is_none());
 }
 
@@ -55,13 +55,13 @@ fn parse_req_returns_none_for_directory() {
     let dir_abspath = space_abspath.join("parent-col-1");
     fs::create_dir_all(&dir_abspath).unwrap();
 
-    let space_buffer = SpaceBuf::load(space_abspath).unwrap();
-    let spacebuf_rlock = space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))
+    let spacebuf = SpaceBuf::get(space_abspath).unwrap();
+    let spacebuf_lock = spacebuf
+        .lock()
+        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&dir_abspath, space_abspath, &spacebuf_rlock);
+    let result = request::parse_req(&dir_abspath, space_abspath, &spacebuf_lock);
     assert!(result.is_none());
 }
 
@@ -73,14 +73,14 @@ fn parse_req_successfully_parses_valid_toml_file() {
     let reqfile_abspath = space_abspath.join("parent-req-1");
     request::create_reqtoml(&reqfile_abspath, "Parent Req 1").unwrap();
 
-    let space_buffer = SpaceBuf::load(space_abspath).unwrap();
-    let spacebuf_rlock = space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))
+    let spacebuf = SpaceBuf::get(space_abspath).unwrap();
+    let spacebuf_lock = spacebuf
+        .lock()
+        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
         .unwrap();
 
     let toml_file = reqfile_abspath.with_extension("toml");
-    let result = request::parse_req(&toml_file, space_abspath, &spacebuf_rlock);
+    let result = request::parse_req(&toml_file, space_abspath, &spacebuf_lock);
     assert!(result.is_some());
 
     let http_req = result.unwrap();
@@ -98,13 +98,13 @@ fn parse_req_returns_none_for_invalid_toml() {
     let invalid_toml = "[meta\nname = \"Invalid Req 1\"";
     fs::write(&reqfile_abspath, invalid_toml).unwrap();
 
-    let space_buffer = SpaceBuf::load(space_abspath).unwrap();
-    let spacebuf_rlock = space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))
+    let spacebuf = SpaceBuf::get(space_abspath).unwrap();
+    let spacebuf_lock = spacebuf
+        .lock()
+        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&reqfile_abspath, space_abspath, &spacebuf_rlock);
+    let result = request::parse_req(&reqfile_abspath, space_abspath, &spacebuf_lock);
     assert!(result.is_none());
 }
 
@@ -116,11 +116,11 @@ fn parse_req_returns_buffered_request_when_available() {
     let reqfile_abspath = space_abspath.join("buffered-req-1.toml");
     request::create_reqtoml(&reqfile_abspath.with_extension(""), "Buffered Req 1").unwrap();
 
-    let space_buffer = SpaceBuf::load(space_abspath).unwrap();
+    let spacebuf = SpaceBuf::get(space_abspath).unwrap();
     {
-        let mut spacebuf_wlock = space_buffer
-            .write()
-            .map_err(|_| Error::LockError("Failed to acquire write lock".into()))
+        let mut spacebuf_lock = spacebuf
+            .lock()
+            .map_err(|_| Error::LockError("Failed to acquire lock".into()))
             .unwrap();
 
         let req_buf = ReqBuf {
@@ -144,17 +144,17 @@ fn parse_req_returns_buffered_request_when_available() {
             },
         };
 
-        spacebuf_wlock
+        spacebuf_lock
             .requests
             .insert("buffered-req-1.toml".to_string(), req_buf);
     }
 
-    let spacebuf_rlock = space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))
+    let spacebuf_lock = spacebuf
+        .lock()
+        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&reqfile_abspath, space_abspath, &spacebuf_rlock);
+    let result = request::parse_req(&reqfile_abspath, space_abspath, &spacebuf_lock);
     assert!(result.is_some());
 
     let http_req = result.unwrap();

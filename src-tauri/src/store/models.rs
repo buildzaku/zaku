@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct AppStore {
+pub struct Store {
     pub spaceref: Option<SpaceReference>,
     pub spacerefs: Vec<SpaceReference>,
 }
@@ -39,28 +39,9 @@ impl ReqBuf {
     }
 }
 
-pub struct SpaceCookies;
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub enum Theme {
-    #[default]
     System,
     Light,
     Dark,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct AudioNotification {
-    pub on_req_finish: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct NotificationSettings {
-    pub audio: AudioNotification,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct SpaceSettings {
-    pub theme: Theme,
-    pub notifications: NotificationSettings,
 }

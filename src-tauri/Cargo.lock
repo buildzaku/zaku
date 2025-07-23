@@ -6507,7 +6507,6 @@ dependencies = [
  "derive_more 2.0.1",
  "dirs",
  "indexmap 2.10.0",
- "once_cell",
  "reqwest",
  "reqwest_cookie_store",
  "rodio",
