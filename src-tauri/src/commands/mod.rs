@@ -325,7 +325,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     if space_settings.notifications.audio.on_req_finish {
         let app_handle = app_handle.clone();
         tokio::spawn(async move {
-            let _ = notifications::play_finish(&app_handle);
+            let _ = notifications::play_finish(&app_handle); // TODO - handle failures, send toast to UI?
         });
     }
 
