@@ -1,4 +1,5 @@
-import type { Result } from "$lib/bindings";
+import type { CmdErr, Result } from "$lib/bindings";
+import { toast } from "svelte-sonner";
 
 export type ValueOf<T> = T[keyof T];
 
@@ -56,4 +57,9 @@ export function formatSize(bytes: number): string {
     const gb = mb / 1024;
 
     return gb % 1 === 0 ? `${gb} GB` : `${gb.toFixed(2).replace(/\.?0+$/, "")} GB`;
+}
+
+export function emitCmdError(error: CmdErr) {
+    console.error([error.kind, error.details].join(" - "));
+    toast.error(error.message);
 }

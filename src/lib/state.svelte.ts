@@ -1,5 +1,4 @@
 import { tick } from "svelte";
-import { toast } from "svelte-sonner";
 
 import { version } from "$app/environment";
 
@@ -7,6 +6,7 @@ import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
 import { joinPaths } from "$lib/components/tree-node/utils.svelte";
+import { emitCmdError } from "$lib/utils";
 
 class SharedState {
     public space: Space | null = $state(null);
@@ -14,30 +14,24 @@ class SharedState {
 
     public async synchronize() {
         const getSharedStateResult = await commands.getSharedState();
-
-        if (getSharedStateResult.status === "ok") {
-            this.space = getSharedStateResult.data.space;
-            this.spaceRefs = getSharedStateResult.data.spacerefs;
-
-            explorerActionsState.reset();
-            await tick();
-        } else {
-            console.error(getSharedStateResult.error);
-            toast.error("Something went wrong while synchronizing state");
+        if (getSharedStateResult.status !== "ok") {
+            return emitCmdError(getSharedStateResult.error);
         }
+
+        this.space = getSharedStateResult.data.space;
+        this.spaceRefs = getSharedStateResult.data.spacerefs;
+
+        explorerActionsState.reset();
+        await tick();
     }
 
     public async setSpace(spaceReference: SpaceReference) {
         const setSpaceResult = await commands.setSpace(spaceReference);
-
-        if (setSpaceResult.status === "ok") {
-            await this.synchronize();
-        } else {
-            console.error(setSpaceResult.error);
-            toast.error("Something went wrong while setting space");
+        if (setSpaceResult.status !== "ok") {
+            return emitCmdError(setSpaceResult.error);
         }
 
-        return;
+        await this.synchronize();
     }
 }
 
@@ -90,7 +84,8 @@ class Debounced {
     #DELAY = 1500;
 
     async #invokeSaveReqToBuf(absoluteSpacePath: string, openRequest: OpenRequest) {
-        await commands.persistToReqbuf(
+        // TODO - handle cmd error, is the wrapper even needed anymore?
+        await commands.writeReqToReqtoml(
             absoluteSpacePath,
             openRequest.parentRelpath,
             openRequest.self,
