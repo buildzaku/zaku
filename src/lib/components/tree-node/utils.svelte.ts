@@ -7,6 +7,7 @@ import type { DragOverDto, DragPayload, TreeNode } from "$lib/models";
 import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
 import { commands } from "$lib/bindings";
 import type { Collection, HttpReq } from "$lib/bindings";
+import { emitCmdError } from "$lib/utils";
 
 export function isCol(treeNode: TreeNode): treeNode is Collection {
     return Object.hasOwn(treeNode, "requests") && Object.hasOwn(treeNode, "collections");
@@ -137,14 +138,13 @@ export async function handleDrop(event: DragEvent) {
     );
     const node_type = isCol(explorerActionsState.dragPayload.node) ? "collection" : "request";
 
-    const treeNodeDropResult = await commands.moveTreeNode({
+    const moveTreeNodeResult = await commands.moveTreeNode({
         node_type,
         src_relpath,
         dest_relpath,
     });
-    if (treeNodeDropResult.status === "error") {
-        // TODO - get error from cmd
-        toast.error(`Unable to move the ${node_type}`);
+    if (moveTreeNodeResult.status !== "ok") {
+        return emitCmdError(moveTreeNodeResult.error);
     }
 
     await sharedState.synchronize();

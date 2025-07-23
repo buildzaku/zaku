@@ -19,6 +19,7 @@
     import { commands } from "$lib/bindings";
     import type { HttpReq, ReqUrl } from "$lib/bindings";
     import { ChevronRightIcon, EllipsisIcon } from "@lucide/svelte";
+    import { emitCmdError } from "$lib/utils";
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
@@ -28,8 +29,9 @@
     let isResPaneCollapsed = $state(false);
 
     async function handleSend() {
+        const spaceSnapshot = sharedState.space;
         const openReqSnapshot = explorerState.openRequest;
-        if (!openReqSnapshot) return;
+        if (!spaceSnapshot || !openReqSnapshot) return;
 
         openReqSnapshot.self.status = "Pending";
         const validProtocol = /^(https?:\/\/)/i;
@@ -83,38 +85,37 @@
             response: null,
         };
 
-        const httpRes = await commands.httpReq(req);
-
-        if (sharedState.space) {
-            const cookiesResult = await commands.getSpaceCookies(sharedState.space.abspath);
-
-            if (cookiesResult.status === "ok") {
-                sharedState.space.cookies = cookiesResult.data;
-            }
-        }
-
-        if (httpRes.status === "error") {
+        const httpReqResult = await commands.httpReq(req);
+        if (httpReqResult.status !== "ok") {
             openReqSnapshot.self.status = "Error";
             openReqSnapshot.self.response = {
-                data: httpRes.error.message,
+                data: httpReqResult.error.message,
                 headers: [],
                 cookies: [],
             };
-        } else {
-            openReqSnapshot.self.response = httpRes.data;
-            openReqSnapshot.self.status =
-                httpRes.data.status && httpRes.data.status >= 200 && httpRes.data.status < 300
-                    ? "Success"
-                    : "Error";
+
+            return emitCmdError(httpReqResult.error);
         }
+
+        const getSpaceCookiesResult = await commands.getSpaceCookies(spaceSnapshot.abspath);
+        if (getSpaceCookiesResult.status !== "ok") {
+            return emitCmdError(getSpaceCookiesResult.error);
+        }
+
+        spaceSnapshot.cookies = getSpaceCookiesResult.data;
+        openReqSnapshot.self.response = httpReqResult.data;
+        openReqSnapshot.self.status =
+            httpReqResult.data.status &&
+            httpReqResult.data.status >= 200 &&
+            httpReqResult.data.status < 300
+                ? "Success"
+                : "Error";
     }
 
     async function handleSave(event: KeyboardEvent) {
         const spaceSnapshot = sharedState.space;
         const openReqSnapshot = explorerState.openRequest;
-        if (!spaceSnapshot || !openReqSnapshot) {
-            return;
-        }
+        if (!spaceSnapshot || !openReqSnapshot) return;
 
         if ((event.metaKey || event.ctrlKey) && event.key === "s") {
             event.preventDefault();
@@ -126,10 +127,13 @@
             ]);
 
             await debounced.flush(absoluteReqPath);
-            await commands.writeReqbufToReqtoml(
+            const writeReqbufToReqtomlResult = await commands.writeReqbufToReqtoml(
                 spaceSnapshot.abspath,
                 joinPaths([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname]),
             );
+            if (writeReqbufToReqtomlResult.status !== "ok") {
+                return emitCmdError(writeReqbufToReqtomlResult.error);
+            }
 
             isActiveReqSavedToFs = true;
             openReqSnapshot.self.meta.has_unsaved_changes = false;
