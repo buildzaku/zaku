@@ -84,6 +84,7 @@ class Debounced {
     #DELAY = 1500;
 
     async #invokeSaveReqToBuf(absoluteSpacePath: string, openRequest: OpenRequest) {
+        // TODO - handle cmd error, is the wrapper even needed anymore?
         await commands.persistToReqbuf(
             absoluteSpacePath,
             openRequest.parentRelpath,
