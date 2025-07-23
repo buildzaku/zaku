@@ -114,7 +114,7 @@ pub async fn open_dir_dialog(
         Some(path) => {
             let path_buf = path.into_path().map_err(|err| CmdErr {
                 kind: ErrorKind::DialogOpenError,
-                message: "Failed to process selected path".to_string(),
+                message: "Unable to process selected directory".to_string(),
                 details: Some(err.to_string()),
             })?;
             Ok(Some(path_buf.to_string_lossy().to_string()))

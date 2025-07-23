@@ -13,6 +13,7 @@
     import { tick } from "svelte";
     import { sharedState } from "$lib/state.svelte";
     import { commands } from "$lib/bindings";
+    import { emitCmdError } from "$lib/utils";
 
     type Props = {
         isOpen: boolean;
@@ -25,15 +26,15 @@
     let createSpaceLocation: string = $state("");
 
     async function handleCreateSpaceBrowse() {
-        const cmdResult = await commands.openDirDialog({ title: "Create a new Space" });
-        if (cmdResult.status === "error") {
-            throw new Error("Unable to open selected directory");
+        const openDirDialogResult = await commands.openDirDialog({ title: "Create a new Space" });
+        if (openDirDialogResult.status !== "ok") {
+            return emitCmdError(openDirDialogResult.error);
         }
-        if (!cmdResult.data) {
+        if (!openDirDialogResult.data) {
             return;
         }
 
-        createSpaceLocation = cmdResult.data;
+        createSpaceLocation = openDirDialogResult.data;
 
         const spacePathContainerElement = document.getElementById("space-path-container");
         if (spacePathContainerElement) {
