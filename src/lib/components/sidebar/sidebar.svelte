@@ -32,7 +32,7 @@
     } from "$lib/components/primitives/accordion";
     import { Badge } from "$lib/components/primitives/badge";
     import { commands } from "$lib/bindings";
-    import type { RemoveCookieDto, Space, SpaceCookie } from "$lib/bindings";
+    import type { Space, SpaceCookie } from "$lib/bindings";
     import { toast } from "svelte-sonner";
     import { Checkbox } from "$lib/components/primitives/checkbox";
     import { Label } from "$lib/components/primitives/label";

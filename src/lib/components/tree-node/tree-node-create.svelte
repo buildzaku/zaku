@@ -7,7 +7,6 @@
     import { cn, requestColors } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
-    import { toast } from "svelte-sonner";
     import { emitCmdError } from "$lib/utils";
 
     type Props = {
