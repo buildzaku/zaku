@@ -49,14 +49,8 @@
             name: createSpaceName,
             location: createSpaceLocation,
         });
-
-        if (createSpaceResult.status === "error") {
-            await commands.dispatchNotif({
-                title: "Something went wrong.",
-                body: `Unable to create space "${createSpaceName}", make sure the directory exists and try again.`,
-            });
-
-            return;
+        if (createSpaceResult.status !== "ok") {
+            return emitCmdError(createSpaceResult.error);
         }
 
         await sharedState.setSpace(createSpaceResult.data);

@@ -360,16 +360,20 @@ pub async fn create_space(
     create_space_dto: CreateSpaceDto,
     sharedstate_mtx: tauri::State<'_, Mutex<SharedState>>,
 ) -> CmdResult<SpaceReference> {
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
-        kind: ErrorKind::LockError,
-        message: "Failed to acquire state lock".to_string(),
-        details: Some(e.to_string()),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
+        eprintln!("Failed to acquire SharedState lock in create_space: {}", e);
+        CmdErr {
+            kind: ErrorKind::InternalError,
+            message: "Unable to access application state :(".to_string(),
+            details: Some(e.to_string()),
+        }
     })?;
 
     let space_ref =
         space::create_space(create_space_dto, &mut sharedstate).map_err(|err| CmdErr {
             kind: ErrorKind::FileWriteError,
-            message: "Failed to create space".to_string(),
+            message: "Unable to create space, make sure the directory exists and try again"
+                .to_string(),
             details: Some(err.to_string()),
         })?;
 

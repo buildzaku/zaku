@@ -17,6 +17,7 @@
     import { cn } from "$lib/utils/style";
     import { SpaceCreateDialog } from ".";
     import { commands } from "$lib/bindings";
+    import { emitCmdError } from "$lib/utils";
 
     type Props = { isSidebarCollapsed: boolean };
 
@@ -25,31 +26,23 @@
     let isCreateSpaceDialogOpen = $state(false);
 
     async function handleOpenExistingSpace() {
-        try {
-            const openDirDialogResult = await commands.openDirDialog({
-                title: "Open an existing Space",
-            });
-            if (openDirDialogResult.status === "error") {
-                throw new Error("Unable to open existing space");
-            }
-            if (!openDirDialogResult.data) {
-                return;
-            }
-
-            const getSpaceRefResult = await commands.getSpaceref(openDirDialogResult.data);
-            if (getSpaceRefResult.status === "error") {
-                throw new Error(`Cannot get space reference for ${openDirDialogResult.data}`);
-            }
-
-            await sharedState.setSpace(getSpaceRefResult.data);
-            await goto("/space");
-        } catch (err) {
-            console.error(err);
-            await commands.dispatchNotif({
-                title: "Doesn't look like a valid space.",
-                body: "Unable to parse the directory, make sure it is a valid space and try again.",
-            });
+        const openDirDialogResult = await commands.openDirDialog({
+            title: "Open an existing Space",
+        });
+        if (openDirDialogResult.status !== "ok") {
+            return emitCmdError(openDirDialogResult.error);
         }
+        if (!openDirDialogResult.data) {
+            return;
+        }
+
+        const getSpaceRefResult = await commands.getSpaceref(openDirDialogResult.data);
+        if (getSpaceRefResult.status !== "ok") {
+            return emitCmdError(getSpaceRefResult.error);
+        }
+
+        await sharedState.setSpace(getSpaceRefResult.data);
+        await goto("/space");
     }
 
     async function handleDeleteSpace() {
