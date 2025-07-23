@@ -237,10 +237,15 @@ pub async fn persist_to_reqbuf(
 pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> CmdResult<()> {
     let abs = Path::new(space_abspath);
     let rel = Path::new(req_relpath);
-    buffer::write_reqbuf_to_reqtoml(abs, rel).unwrap();
+    buffer::write_reqbuf_to_reqtoml(abs, rel).map_err(|err| CmdErr {
+        kind: ErrorKind::FileWriteError,
+        message: "Unable to save request".to_string(),
+        details: Some(err.to_string()),
+    })?;
 
     Ok(())
 }
+
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {

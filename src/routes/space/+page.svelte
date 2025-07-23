@@ -19,6 +19,7 @@
     import { commands } from "$lib/bindings";
     import type { HttpReq, ReqUrl } from "$lib/bindings";
     import { ChevronRightIcon, EllipsisIcon } from "@lucide/svelte";
+    import { emitCmdError } from "$lib/utils";
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
@@ -126,10 +127,13 @@
             ]);
 
             await debounced.flush(absoluteReqPath);
-            await commands.writeReqbufToReqtoml(
+            const writeReqbufToReqtomlResult = await commands.writeReqbufToReqtoml(
                 spaceSnapshot.abspath,
                 joinPaths([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname]),
             );
+            if (writeReqbufToReqtomlResult.status !== "ok") {
+                return emitCmdError(writeReqbufToReqtomlResult.error);
+            }
 
             isActiveReqSavedToFs = true;
             openReqSnapshot.self.meta.has_unsaved_changes = false;
