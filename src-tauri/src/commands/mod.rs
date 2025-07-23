@@ -386,8 +386,7 @@ pub async fn create_space(
     let space_ref =
         space::create_space(create_space_dto, &mut sharedstate).map_err(|err| CmdErr {
             kind: ErrorKind::FileWriteError,
-            message: "Unable to create space, make sure the directory exists and try again"
-                .to_string(),
+            message: "Unable to create space, make sure the location exists".to_string(),
             details: Some(err.to_string()),
         })?;
 
