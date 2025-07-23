@@ -30,6 +30,7 @@
             await goto("/");
         }
 
+        // TODO - figure out how to handle failure here
         await commands.showMainWindow();
     });
 
