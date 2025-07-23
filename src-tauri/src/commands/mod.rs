@@ -518,13 +518,17 @@ pub async fn get_space_cookies(
 ) -> CmdResult<HashMap<String, Vec<SpaceCookie>>> {
     let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr {
         kind: ErrorKind::CookieError,
-        message: "Failed to load cookies".to_string(),
+        message: "Unable to load cookies".to_string(),
         details: Some(e.to_string()),
     })?;
-    let store = cookie_store.lock().map_err(|e| CmdErr {
-        kind: ErrorKind::LockError,
-        message: "Failed to lock cookie store".to_string(),
-        details: Some(e.to_string()),
+    let store = cookie_store.lock().map_err(|e| {
+        eprintln!("Failed to acquire cookie store lock: {e}");
+
+        CmdErr {
+            kind: ErrorKind::InternalError,
+            message: "Unable to access cookie store :(".to_string(),
+            details: Some(e.to_string()),
+        }
     })?;
 
     let cookies: Vec<SpaceCookie> = store

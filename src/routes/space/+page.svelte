@@ -87,11 +87,12 @@
         const httpRes = await commands.httpReq(req);
 
         if (sharedState.space) {
-            const cookiesResult = await commands.getSpaceCookies(sharedState.space.abspath);
-
-            if (cookiesResult.status === "ok") {
-                sharedState.space.cookies = cookiesResult.data;
+            const getSpaceCookiesResult = await commands.getSpaceCookies(sharedState.space.abspath);
+            if (getSpaceCookiesResult.status !== "ok") {
+                return emitCmdError(getSpaceCookiesResult.error);
             }
+
+            sharedState.space.cookies = getSpaceCookiesResult.data;
         }
 
         if (httpRes.status === "error") {
