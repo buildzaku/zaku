@@ -2,7 +2,8 @@
 "zaku": patch
 ---
 
-Improve client error handling with `CmdErr` type
+Improve `CmdErr` structure and client error handling
 
-- Replace generic `CmdErr::Err` with `ErrorKind` enum
-- Add human-readable `message` and optional raw `details`
+- Replace `CmdErr` enum variants with `ErrorKind` including message & optional raw details
+- Update client bindings and error handling to use new format
+- Add centralized `emitCmdError` utility function
