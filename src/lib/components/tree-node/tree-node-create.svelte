@@ -8,6 +8,7 @@
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
     import { toast } from "svelte-sonner";
+    import { emitCmdError } from "$lib/utils";
 
     type Props = {
         parentRelativePath: string;
@@ -43,13 +44,8 @@
                 location_relpath: parentRelativePath,
                 relpath: inputRelpath,
             });
-
-            if (createCollectionResult.status === "error") {
-                // TODO - get error from cmd
-                toast.error(`Unable to create collection`);
-                console.error(createCollectionResult.error);
-
-                return;
+            if (createCollectionResult.status !== "ok") {
+                return emitCmdError(createCollectionResult.error);
             }
 
             inputRelpath = "";
