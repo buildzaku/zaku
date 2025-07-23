@@ -361,7 +361,8 @@ pub async fn create_space(
     sharedstate_mtx: tauri::State<'_, Mutex<SharedState>>,
 ) -> CmdResult<SpaceReference> {
     let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock in create_space: {}", e);
+        eprintln!("Failed to acquire SharedState lock: {e}");
+
         CmdErr {
             kind: ErrorKind::InternalError,
             message: "Unable to access application state :(".to_string(),
@@ -437,14 +438,18 @@ pub fn remove_space(
     space_reference: SpaceReference,
     sharedstate_mtx: tauri::State<Mutex<SharedState>>,
 ) -> CmdResult<()> {
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| CmdErr {
-        kind: ErrorKind::LockError,
-        message: "Failed to acquire state lock".to_string(),
-        details: Some(e.to_string()),
+    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
+        eprintln!("Failed to acquire SharedState lock: {e}");
+
+        CmdErr {
+            kind: ErrorKind::InternalError,
+            message: "Unable to access application state :(".to_string(),
+            details: Some(e.to_string()),
+        }
     })?;
     store::remove_spaceref(space_reference).map_err(|e| CmdErr {
         kind: ErrorKind::FileWriteError,
-        message: "Failed to remove space reference".to_string(),
+        message: "Unable to remove space".to_string(),
         details: Some(e.to_string()),
     })?;
 
@@ -456,7 +461,7 @@ pub fn remove_space(
         if let Some(valid_space_reference) = space::first_valid_spaceref() {
             store::set_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr {
                 kind: ErrorKind::FileWriteError,
-                message: "Failed to set fallback space reference".to_string(),
+                message: "Unable to set fallback space".to_string(),
                 details: Some(e.to_string()),
             })?;
 

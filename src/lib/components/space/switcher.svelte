@@ -47,19 +47,18 @@
 
     async function handleDeleteSpace() {
         if (sharedState.space) {
-            try {
-                const getSpaceRefResult = await commands.getSpaceref(sharedState.space.abspath);
-                if (getSpaceRefResult.status === "error") {
-                    throw new Error(`Cannot get space reference for ${sharedState.space.abspath}`);
-                }
-
-                await commands.removeSpace(getSpaceRefResult.data);
-                await sharedState.synchronize();
-
-                return;
-            } catch (err) {
-                console.error(err);
+            const getSpaceRefResult = await commands.getSpaceref(sharedState.space.abspath);
+            if (getSpaceRefResult.status !== "ok") {
+                return emitCmdError(getSpaceRefResult.error);
             }
+
+            const removeSpaceResult = await commands.removeSpace(getSpaceRefResult.data);
+            if (removeSpaceResult.status !== "ok") {
+                return emitCmdError(removeSpaceResult.error);
+            }
+            await sharedState.synchronize();
+
+            return;
         }
     }
 </script>
