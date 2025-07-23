@@ -251,19 +251,19 @@ pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> 
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {
     let spaceref = store::get_spaceref().ok_or(CmdErr {
         kind: ErrorKind::SpaceNotFoundError,
-        message: "Cannot find current space".to_string(),
+        message: "Unable to find current space".to_string(),
         details: None,
     })?;
 
     let space_abspath = spaceref.path.as_str();
     let cookie_store = SpaceCookies::load(space_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Failed to load cookies".to_string(),
+        message: "Unable to load cookies".to_string(),
         details: Some(err.to_string()),
     })?;
     let space_settings = SpaceSettings::load(space_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Failed to load space settings".to_string(),
+        message: "Unable to load space settings".to_string(),
         details: Some(err.to_string()),
     })?;
 
@@ -272,7 +272,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         .build()
         .map_err(|err| CmdErr {
             kind: ErrorKind::NetworkError,
-            message: "Failed to create HTTP client".to_string(),
+            message: "Unable to build request".to_string(),
             details: Some(err.to_string()),
         })?;
 
@@ -318,7 +318,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     let start = Instant::now();
     let resp = builder.send().await.map_err(|err| CmdErr {
         kind: ErrorKind::NetworkError,
-        message: "Request failed".to_string(),
+        message: "Unable to send request".to_string(),
         details: Some(err.to_string()),
     })?;
 
@@ -346,14 +346,14 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         .collect::<Vec<SpaceCookie>>();
     let data = resp.text().await.map_err(|err| CmdErr {
         kind: ErrorKind::NetworkError,
-        message: "Failed to read response".to_string(),
+        message: "Unable to read response".to_string(),
         details: Some(err.to_string()),
     })?;
     let size_bytes = Some(data.len() as u32);
 
     SpaceCookies::persist(space_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
-        message: "Failed to save cookies".to_string(),
+        message: "Unable to save cookies".to_string(),
         details: Some(err.to_string()),
     })?;
 
