@@ -1,5 +1,24 @@
 # zaku
 
+## 0.8.0
+
+### Minor Changes
+
+- Refactor create collections and requests API - [`9408ccd`](https://github.com/buildzaku/zaku/commit/9408ccdc65e7a7861fe30a20ef4ee8081aab90ee) [#58](https://github.com/buildzaku/zaku/pull/58)
+    - Add test suite for request and utils module
+    - Only allow alphabetics, ascii digits and '-' for filesystem name
+    - Throw sanitization error if filesystem name is a reserved name or empty
+
+### Patch Changes
+
+- Prevent double hyphens in sanitized path segments - [`3049465`](https://github.com/buildzaku/zaku/commit/3049465688f8e45b0d93bf01e8f52470d603fa91) [#56](https://github.com/buildzaku/zaku/pull/56)
+    - Update tests' path segments with self-describing names
+
+- Improve `CmdErr` structure and client error handling - [`18fb41f`](https://github.com/buildzaku/zaku/commit/18fb41f8f2615ddbdf553025c2a3ec911acf56bb) [#59](https://github.com/buildzaku/zaku/pull/59)
+    - Replace `CmdErr` enum variants with `ErrorKind` including message & optional raw details
+    - Update client bindings and error handling to use new format
+    - Add centralized `emitCmdError` utility function
+
 ## 0.7.2
 
 ### Patch Changes
