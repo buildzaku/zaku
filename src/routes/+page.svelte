@@ -4,33 +4,28 @@
     import { sharedState } from "$lib/state.svelte";
     import { SpaceCreateDialog } from "$lib/components/space";
     import { commands } from "$lib/bindings";
+    import { emitCmdError } from "$lib/utils";
 
     let isCreateSpaceDialogOpen = $state(false);
 
     async function handleOpenExistingSpace() {
-        try {
-            const cmdResult = await commands.openDirDialog({ title: "Open an existing Space" });
-            if (cmdResult.status === "error") {
-                throw new Error("Unable to open existing space");
-            }
-            if (!cmdResult.data) {
-                return;
-            }
-
-            const spaceRefCmdResult = await commands.getSpaceref(cmdResult.data);
-            if (spaceRefCmdResult.status === "error") {
-                throw new Error(`Cannot get space reference for ${cmdResult.data}`);
-            }
-
-            await sharedState.setSpace(spaceRefCmdResult.data);
-            await goto("/space");
-        } catch (err) {
-            console.error(err);
-            await commands.dispatchNotif({
-                title: "Doesn't look like a valid space.",
-                body: "Unable to parse the directory, make sure it is a valid space and try again.",
-            });
+        const openDirDialogResult = await commands.openDirDialog({
+            title: "Open an existing Space",
+        });
+        if (openDirDialogResult.status !== "ok") {
+            return emitCmdError(openDirDialogResult.error);
         }
+        if (!openDirDialogResult.data) {
+            return;
+        }
+
+        const getSpaceRefResult = await commands.getSpaceref(openDirDialogResult.data);
+        if (getSpaceRefResult.status !== "ok") {
+            return emitCmdError(getSpaceRefResult.error);
+        }
+
+        await sharedState.setSpace(getSpaceRefResult.data);
+        await goto("/space");
     }
 </script>
 

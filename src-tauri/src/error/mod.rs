@@ -60,10 +60,30 @@ impl std::error::Error for Error {}
 pub type Result<T> = core::result::Result<T, Error>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-#[serde(tag = "type")]
-pub enum CmdErr {
-    Err { message: String },
-    Http { message: String, code: Option<u16> },
+pub enum ErrorKind {
+    SpaceNotFoundError,
+    FileNotFoundError,
+    FileReadError,
+    FileWriteError,
+    LockError,
+    DialogOpenError,
+    NotificationDispatchError,
+    NotificationPermissionError,
+    InvalidUrlError,
+    InvalidPathError,
+    InvalidNameError,
+    SanitizationError,
+    NetworkError,
+    ParseError,
+    CookieError,
+    InternalError,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct CmdErr {
+    pub kind: ErrorKind,
+    pub message: String,
+    pub details: Option<String>,
 }
 
 pub type CmdResult<T> = core::result::Result<T, CmdErr>;
