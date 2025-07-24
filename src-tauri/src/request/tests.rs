@@ -40,7 +40,7 @@ fn parse_req_returns_none_for_non_toml_file() {
     let spacebuf = SpaceBuf::get(space_abspath).unwrap();
     let spacebuf_lock = spacebuf
         .lock()
-        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
+        .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
     let result = request::parse_req(&txt_file_abspath, space_abspath, &spacebuf_lock);
@@ -58,7 +58,7 @@ fn parse_req_returns_none_for_directory() {
     let spacebuf = SpaceBuf::get(space_abspath).unwrap();
     let spacebuf_lock = spacebuf
         .lock()
-        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
+        .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
     let result = request::parse_req(&dir_abspath, space_abspath, &spacebuf_lock);
@@ -76,7 +76,7 @@ fn parse_req_successfully_parses_valid_toml_file() {
     let spacebuf = SpaceBuf::get(space_abspath).unwrap();
     let spacebuf_lock = spacebuf
         .lock()
-        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
+        .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
     let toml_file = reqfile_abspath.with_extension("toml");
@@ -101,7 +101,7 @@ fn parse_req_returns_none_for_invalid_toml() {
     let spacebuf = SpaceBuf::get(space_abspath).unwrap();
     let spacebuf_lock = spacebuf
         .lock()
-        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
+        .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
     let result = request::parse_req(&reqfile_abspath, space_abspath, &spacebuf_lock);
@@ -120,7 +120,7 @@ fn parse_req_returns_buffered_request_when_available() {
     {
         let mut spacebuf_lock = spacebuf
             .lock()
-            .map_err(|_| Error::LockError("Failed to acquire lock".into()))
+            .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
             .unwrap();
 
         let req_buf = ReqBuf {
@@ -151,7 +151,7 @@ fn parse_req_returns_buffered_request_when_available() {
 
     let spacebuf_lock = spacebuf
         .lock()
-        .map_err(|_| Error::LockError("Failed to acquire lock".into()))
+        .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
     let result = request::parse_req(&reqfile_abspath, space_abspath, &spacebuf_lock);

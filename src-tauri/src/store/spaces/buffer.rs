@@ -71,7 +71,7 @@ impl SpaceBuf {
     fn fswrite(space_abspath: &Path, buffer: &Arc<Mutex<SpaceBuf>>) -> Result<()> {
         let buf = buffer
             .lock()
-            .map_err(|_| Error::LockError("Failed to acquire lock".into()))?;
+            .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))?;
 
         let buf_filepath = Self::filepath(space_abspath);
 
