@@ -1,5 +1,4 @@
 use indexmap::IndexMap;
-use once_cell::sync::Lazy;
 use sha2::{Digest, Sha256};
 use std::path::{self, Path, PathBuf};
 use tauri::{AppHandle, Manager};
@@ -21,12 +20,6 @@ pub fn toggle_devtools(app_handle: &AppHandle) {
         webview_window.open_devtools();
     }
 }
-
-pub static APP_DATA_DIR: Lazy<PathBuf> = Lazy::new(|| {
-    dirs::data_dir()
-        .expect("Unable to get data directory")
-        .join("Zaku")
-});
 
 pub fn from_indexmap(map: &IndexMap<String, String>) -> Vec<(bool, String, String)> {
     map.iter()
@@ -68,9 +61,9 @@ pub fn join_strpaths(paths: Vec<&str>) -> String {
         .to_string()
 }
 
-pub fn hashed_filename(abspath: &str) -> String {
+pub fn hashed_filename(abspath: &Path) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(abspath.as_bytes());
+    hasher.update(abspath.as_os_str().as_encoded_bytes());
 
     format!("{:x}", hasher.finalize())
 }

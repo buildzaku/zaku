@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::Mutex;
+use tauri::Manager;
 
 pub mod collection;
 pub mod commands;
@@ -15,8 +16,6 @@ pub mod state;
 pub mod store;
 pub mod tree_node;
 pub mod utils;
-
-use crate::state::SharedState;
 
 const BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
 
@@ -40,15 +39,13 @@ fn main() {
     }
 
     let app = tauri::Builder::default()
-        .manage(Mutex::new(SharedState {
-            space: None,
-            spacerefs: Vec::new(),
-        }))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            state::initialize(app)?;
             shortcuts::initialize(app)?;
+
+            let shared_state = state::load_sharedstate()?;
+            app.manage(Mutex::new(shared_state));
 
             Ok(())
         })

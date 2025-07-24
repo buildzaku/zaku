@@ -1,101 +1,142 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::{collections::HashMap, fs, path::Path, sync::RwLock};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     error::{Error, Result},
-    request,
-    request::models::{HttpReq, ReqToml},
-    store::models::ReqBuf,
-    utils::{hashed_filename, APP_DATA_DIR},
+    request::models::{HttpReq, ReqCfg, ReqMeta},
+    store::{self},
+    utils,
 };
 
-const SETTINGS_FILENAME: &str = "buffer.json";
+static SPACEBUF_UPDATE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct SpaceBuf {
-    pub abspath: String,
+    pub abspath: PathBuf,
     pub requests: HashMap<String, ReqBuf>,
 }
 
 impl SpaceBuf {
-    pub fn load(space_abspath: &Path) -> Result<RwLock<Self>> {
-        let spacebuf_file = APP_DATA_DIR
-            .join(super::SPACES_STORE_DIR)
-            .join(hashed_filename(&space_abspath.to_string_lossy()))
-            .join(SETTINGS_FILENAME);
-
-        if spacebuf_file.exists() {
-            let content = fs::read_to_string(&spacebuf_file)
-                .map_err(|_| Error::FileReadError("Failed to read from space buffer".into()))?;
-
-            let space_buffer = serde_json::from_str(&content).unwrap_or_else(|_| SpaceBuf {
-                abspath: space_abspath.to_string_lossy().to_string(),
-                requests: HashMap::new(),
-            });
-
-            Ok(RwLock::new(space_buffer))
-        } else {
-            Ok(RwLock::new(SpaceBuf {
-                abspath: space_abspath.to_string_lossy().to_string(),
-                requests: HashMap::new(),
-            }))
-        }
+    fn filename() -> &'static str {
+        "buffer.json"
     }
 
-    pub fn persist(&self) -> Result<()> {
-        let buf_filepath = APP_DATA_DIR
-            .join(super::SPACES_STORE_DIR)
-            .join(hashed_filename(&self.abspath))
-            .join(SETTINGS_FILENAME);
+    pub fn filepath(space_abspath: &Path) -> PathBuf {
+        let hsh = utils::hashed_filename(space_abspath);
+
+        store::utils::datadir_abspath()
+            .join(store::utils::SPACES_STORE_FSNAME)
+            .join(hsh)
+            .join(Self::filename())
+    }
+
+    fn init(space_abspath: &Path) -> Result<Arc<Mutex<SpaceBuf>>> {
+        let spacebuf_filepath = Self::filepath(space_abspath);
+        if !spacebuf_filepath.exists() {
+            let default_buffer = Arc::new(Mutex::new(SpaceBuf {
+                abspath: space_abspath.to_path_buf(),
+                requests: HashMap::new(),
+            }));
+            Self::fswrite(space_abspath, &default_buffer)?;
+
+            return Ok(default_buffer);
+        }
+
+        let content = fs::read_to_string(&spacebuf_filepath)
+            .map_err(|_| Error::FileReadError("Failed to read from space buffer".into()))?;
+
+        let space_buffer = match serde_json::from_str(&content) {
+            Ok(buffer) => buffer,
+            Err(_) => {
+                // corrupt JSON, use default
+                let default_buffer = SpaceBuf {
+                    abspath: space_abspath.to_path_buf(),
+                    requests: HashMap::new(),
+                };
+                let buffer_arc = Arc::new(Mutex::new(default_buffer));
+                Self::fswrite(space_abspath, &buffer_arc)?;
+
+                return Ok(buffer_arc);
+            }
+        };
+
+        Ok(Arc::new(Mutex::new(space_buffer)))
+    }
+
+    fn fswrite(space_abspath: &Path, buffer: &Arc<Mutex<SpaceBuf>>) -> Result<()> {
+        let buf = buffer
+            .lock()
+            .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))?;
+
+        let buf_filepath = Self::filepath(space_abspath);
 
         if let Some(parent) = buf_filepath.parent() {
             fs::create_dir_all(parent)?;
         }
 
-        let serialized_store = serde_json::to_string_pretty(self)?;
+        let serialized_store = serde_json::to_string_pretty(&*buf)?;
         fs::write(&buf_filepath, serialized_store)?;
 
         Ok(())
     }
-}
 
-pub fn persist_req_to_spacebuf(
-    space_abspath: &Path,
-    parent_relpath: &Path,
-    request: HttpReq,
-) -> Result<()> {
-    let space_buffer = SpaceBuf::load(space_abspath)?;
-    let mut spacebuf_wlock = space_buffer
-        .write()
-        .map_err(|_| Error::LockError("Failed to acquire write lock".into()))?;
-
-    let req_relpath = parent_relpath
-        .join(&request.meta.fsname)
-        .to_string_lossy()
-        .to_string();
-    let req_buf = ReqBuf::from_req(&request);
-
-    spacebuf_wlock.requests.insert(req_relpath, req_buf);
-    spacebuf_wlock.persist()?;
-
-    Ok(())
-}
-
-pub fn write_reqbuf_to_reqtoml(space_abspath: &Path, req_relpath: &Path) -> Result<()> {
-    let space_buffer = SpaceBuf::load(space_abspath)?;
-    let mut spacebuf_wlock = space_buffer
-        .write()
-        .map_err(|_| Error::LockError("Failed to acquire write lock".into()))?;
-
-    let relpath_str = req_relpath.to_string_lossy().to_string();
-    if let Some(req_buf) = spacebuf_wlock.requests.get(&relpath_str) {
-        let req_toml = ReqToml::from_reqbuf(req_buf);
-        request::update_reqtoml(&space_abspath.join(req_relpath), &req_toml)?;
+    pub fn get(space_abspath: &Path) -> Result<Arc<Mutex<SpaceBuf>>> {
+        Self::init(space_abspath)
     }
 
-    spacebuf_wlock.requests.remove(&relpath_str);
-    spacebuf_wlock.persist()?;
+    /// Updates space buffer using a mutator function and persists changes to filesystem
+    ///
+    /// Acquires an exclusive lock to ensure thread-safe updates, loads the current buffer,
+    /// applies the mutator function and writes the changes to the filesystem.
+    /// The update operation is serialized across all concurrent calls for the same space.
+    ///
+    /// - `space_abspath`: Absolute path to the space directory
+    /// - `mutator`: Function that receives the buffer and applies modifications
+    ///
+    /// Returns a `Result<Arc<Mutex<SpaceBuf>>>` containing the updated buffer
+    pub fn update<F>(space_abspath: &Path, mutator: F) -> Result<Arc<Mutex<SpaceBuf>>>
+    where
+        F: FnOnce(&Arc<Mutex<SpaceBuf>>),
+    {
+        let _guard = SPACEBUF_UPDATE_LOCK.lock().unwrap();
 
-    Ok(())
+        let buffer = Self::get(space_abspath)?;
+        mutator(&buffer);
+        Self::fswrite(space_abspath, &buffer)?;
+
+        Ok(buffer)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct ReqBuf {
+    pub meta: ReqMeta,
+    pub config: ReqCfg,
+}
+
+impl ReqBuf {
+    pub fn from_req(req: &HttpReq) -> Self {
+        let meta = ReqMeta {
+            fsname: req.meta.fsname.clone(),
+            name: req.meta.name.clone(),
+            has_unsaved_changes: true,
+        };
+
+        let config = ReqCfg {
+            method: req.config.method.clone(),
+            url: req.config.url.clone(),
+            headers: req.config.headers.clone(),
+            parameters: req.config.parameters.clone(),
+            content_type: req.config.content_type.clone(),
+            body: req.config.body.clone(),
+        };
+
+        Self { meta, config }
+    }
 }

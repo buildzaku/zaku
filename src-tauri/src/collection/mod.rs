@@ -20,7 +20,7 @@ use crate::{
     request::{self, models::HttpReq},
     space::{self, parse_spacecfg},
     state::SharedState,
-    store::spaces::buffer::SpaceBuf,
+    store::SpaceBuf,
     utils,
 };
 
@@ -32,10 +32,10 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .into_owned();
     let relative_space_root = "".to_string();
     let colnames = ColName::load(space_abspath)?;
-    let space_buffer = SpaceBuf::load(space_abspath)?;
-    let spacebuf_rlock = space_buffer
-        .read()
-        .map_err(|_| Error::LockError("Failed to acquire read lock".into()))?;
+    let space_buffer = SpaceBuf::get(space_abspath)?;
+    let spacebuf_lock = space_buffer
+        .lock()
+        .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))?;
     let space_config = parse_spacecfg(space_abspath).ok();
 
     let root_collection_ref_cell = Rc::new(RefCell::new(CollectionRcRefCell {
@@ -98,7 +98,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                         .collections
                         .push(sub_collection);
                 } else if entry_abspath.is_file() {
-                    let req = request::parse_req(&entry_abspath, space_abspath, &spacebuf_rlock);
+                    let req = request::parse_req(&entry_abspath, space_abspath, &spacebuf_lock);
                     if let Some(req) = req {
                         collection_rc_refcell.borrow_mut().requests.push(req);
                     }

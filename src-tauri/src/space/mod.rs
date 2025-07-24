@@ -12,10 +12,7 @@ use crate::{
         CreateSpaceDto, Space, SpaceConfigFile, SpaceCookie, SpaceMeta, SpaceReference,
     },
     state::SharedState,
-    store::{
-        self,
-        models::{SpaceCookies, SpaceSettings},
-    },
+    store::{self, SpaceCookies, SpaceSettings},
     utils,
 };
 
@@ -84,7 +81,7 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space> {
     let space_abspath_str = space_abspath.to_string_lossy();
     let root_collection = collection::parse_root_collection(space_abspath)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
-    let cookie_store = SpaceCookies::load(space_abspath_str.as_ref())?;
+    let cookie_store = SpaceCookies::get(space_abspath)?;
     let cookie_store_mtx = cookie_store.lock().unwrap();
     let cookies: Vec<SpaceCookie> = cookie_store_mtx
         .iter_any()
@@ -96,7 +93,7 @@ pub fn parse_space(space_abspath: &Path) -> Result<Space> {
             acc
         });
 
-    let settings = SpaceSettings::load(&space_abspath_str)?;
+    let settings = SpaceSettings::get(space_abspath)?;
 
     Ok(Space {
         abspath: space_abspath_str.into_owned(),

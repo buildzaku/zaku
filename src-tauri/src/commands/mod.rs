@@ -2,7 +2,7 @@ use cookie::Cookie as RawCookie;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Mutex,
     time::Instant,
 };
 use tauri::Manager;
@@ -19,18 +19,14 @@ use crate::{
     notifications,
     request::{
         self,
-        models::{CreateRequestDto, HttpReq, HttpRes},
+        models::{CreateRequestDto, HttpReq, HttpRes, ReqToml},
     },
     space::{
         self,
         models::{CreateSpaceDto, RemoveCookieDto, SpaceCookie, SpaceReference},
     },
     state::SharedState,
-    store::{
-        self,
-        models::{SpaceCookies, SpaceSettings},
-        spaces::buffer,
-    },
+    store::{self, spaces::buffer::SpaceBuf, ReqBuf, SpaceCookies, SpaceSettings},
     tree_node::{self, MoveTreeNodeDto},
 };
 
@@ -220,10 +216,18 @@ pub async fn write_req_to_reqtoml(
     relpath: &str,
     request: HttpReq,
 ) -> CmdResult<()> {
-    let abs = Path::new(space_abspath);
-    let rel = Path::new(relpath);
+    SpaceBuf::update(Path::new(space_abspath), |space_buffer| {
+        let mut spacebuf_lock = space_buffer.lock().unwrap();
 
-    buffer::persist_req_to_spacebuf(abs, rel, request).map_err(|err| CmdErr {
+        let req_relpath = Path::new(relpath)
+            .join(&request.meta.fsname)
+            .to_string_lossy()
+            .to_string();
+        let req_buf = ReqBuf::from_req(&request);
+
+        spacebuf_lock.requests.insert(req_relpath, req_buf);
+    })
+    .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
         message: "Unable to save request".to_string(),
         details: Some(err.to_string()),
@@ -235,9 +239,20 @@ pub async fn write_req_to_reqtoml(
 #[specta::specta]
 #[tauri::command]
 pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> CmdResult<()> {
-    let abs = Path::new(space_abspath);
-    let rel = Path::new(req_relpath);
-    buffer::write_reqbuf_to_reqtoml(abs, rel).map_err(|err| CmdErr {
+    let space_abspath = Path::new(space_abspath);
+
+    SpaceBuf::update(space_abspath, |space_buffer| {
+        let mut spacebuf_lock = space_buffer.lock().unwrap();
+
+        let relpath_str = Path::new(req_relpath).to_string_lossy().to_string();
+        if let Some(req_buf) = spacebuf_lock.requests.get(&relpath_str) {
+            let req_toml = ReqToml::from_reqbuf(req_buf);
+            let _ = request::update_reqtoml(&space_abspath.join(req_relpath), &req_toml);
+        }
+
+        spacebuf_lock.requests.remove(&relpath_str);
+    })
+    .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
         message: "Unable to save request".to_string(),
         details: Some(err.to_string()),
@@ -255,20 +270,20 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         details: None,
     })?;
 
-    let space_abspath = spaceref.path.as_str();
-    let cookie_store = SpaceCookies::load(space_abspath).map_err(|err| CmdErr {
+    let space_abspath = Path::new(&spaceref.path); // TODO - fix spaceref type and rename to abspath
+    let cookie_store = SpaceCookies::get(space_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
         message: "Unable to load cookies".to_string(),
         details: Some(err.to_string()),
     })?;
-    let space_settings = SpaceSettings::load(space_abspath).map_err(|err| CmdErr {
+    let space_settings = SpaceSettings::get(space_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
         message: "Unable to load space settings".to_string(),
         details: Some(err.to_string()),
     })?;
 
     let client = reqwest::Client::builder()
-        .cookie_provider(Arc::clone(&cookie_store))
+        .cookie_provider(cookie_store)
         .build()
         .map_err(|err| CmdErr {
             kind: ErrorKind::NetworkError,
@@ -351,7 +366,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     })?;
     let size_bytes = Some(data.len() as u32);
 
-    SpaceCookies::persist(space_abspath).map_err(|err| CmdErr {
+    SpaceCookies::update(space_abspath, |_| {}).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
         message: "Unable to save cookies".to_string(),
         details: Some(err.to_string()),
@@ -515,7 +530,7 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
 pub async fn get_space_cookies(
     space_abspath: &str,
 ) -> CmdResult<HashMap<String, Vec<SpaceCookie>>> {
-    let cookie_store = SpaceCookies::load(space_abspath).map_err(|e| CmdErr {
+    let cookie_store = SpaceCookies::get(Path::new(space_abspath)).map_err(|e| CmdErr {
         kind: ErrorKind::CookieError,
         message: "Unable to load cookies".to_string(),
         details: Some(e.to_string()),
@@ -549,19 +564,27 @@ pub async fn get_space_cookies(
 #[specta::specta]
 #[tauri::command]
 pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> CmdResult<bool> {
-    SpaceCookies::remove(space_abspath, rm_cookie_dto)
-        .map(|opt| opt.is_some())
-        .map_err(|e| CmdErr {
-            kind: ErrorKind::CookieError,
-            message: "Unable to remove cookie".to_string(),
-            details: Some(e.to_string()),
-        })
+    let RemoveCookieDto { domain, path, name } = rm_cookie_dto;
+
+    SpaceCookies::update(Path::new(space_abspath), |cookies| {
+        let mut locked = cookies.lock().unwrap();
+        locked.remove(&domain, &path, &name);
+    })
+    .map(|_| true)
+    .map_err(|e| CmdErr {
+        kind: ErrorKind::CookieError,
+        message: "Unable to remove cookie".to_string(),
+        details: Some(e.to_string()),
+    })
 }
 
 #[specta::specta]
 #[tauri::command]
 pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> CmdResult<()> {
-    SpaceSettings::persist(space_abspath, &settings).map_err(|err| CmdErr {
+    SpaceSettings::update(Path::new(space_abspath), |cur_settings| {
+        *cur_settings = settings;
+    })
+    .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
         message: "Unable to save space settings".to_string(),
         details: Some(err.to_string()),
@@ -588,6 +611,7 @@ pub fn get_shared_state(
         }
     }
 }
+
 #[specta::specta]
 #[tauri::command]
 pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
