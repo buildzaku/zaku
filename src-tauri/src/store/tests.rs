@@ -2,8 +2,8 @@ use std::{sync::Arc, thread};
 use tempfile;
 
 use crate::request::models::{ReqCfg, ReqMeta, ReqUrl};
-use crate::store::models::ReqBuf;
-use crate::store::spaces::buffer::SpaceBuf;
+use crate::store::ReqBuf;
+use crate::store::SpaceBuf;
 
 #[test]
 fn spacebuf_get_creates_empty_buffer_when_file_doesnt_exist() {

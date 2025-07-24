@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     error::Result,
-    store::{self, models::Theme},
+    store::{self, Theme},
     utils,
 };
 

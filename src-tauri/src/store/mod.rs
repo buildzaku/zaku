@@ -1,12 +1,9 @@
+use serde::{Deserialize, Serialize};
+use specta::Type;
 use std::{fs, path::PathBuf};
 
-use crate::{
-    error::Result,
-    space::models::SpaceReference,
-    store::{self, models::Store},
-};
+use crate::{error::Result, space::models::SpaceReference, store};
 
-pub mod models;
 pub mod spaces;
 pub mod utils;
 
@@ -14,10 +11,16 @@ pub mod utils;
 pub mod tests;
 
 pub use spaces::{
-    buffer::SpaceBuf,
+    buffer::{ReqBuf, SpaceBuf},
     cookie::SpaceCookies,
     settings::{AudioNotification, NotificationSettings, SpaceSettings},
 };
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct Store {
+    pub spaceref: Option<SpaceReference>,
+    pub spacerefs: Vec<SpaceReference>,
+}
 
 impl Store {
     fn filename() -> &'static str {
@@ -78,6 +81,13 @@ impl Store {
 
         Ok(store)
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type)]
+pub enum Theme {
+    System,
+    Light,
+    Dark,
 }
 
 pub fn get_spaceref() -> Option<SpaceReference> {

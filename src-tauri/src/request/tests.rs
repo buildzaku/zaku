@@ -14,7 +14,7 @@ use crate::{
     },
     space::{self, models::CreateSpaceDto},
     state::SharedState,
-    store::{models::ReqBuf, spaces::buffer::SpaceBuf},
+    store::{spaces::buffer::SpaceBuf, ReqBuf},
 };
 
 fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {

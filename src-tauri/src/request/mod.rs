@@ -13,7 +13,7 @@ use crate::{
     request::models::{HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
     space,
     state::SharedState,
-    store::spaces::buffer::SpaceBuf,
+    store::SpaceBuf,
 };
 
 pub mod models;

@@ -20,7 +20,7 @@ use crate::{
     request::{self, models::HttpReq},
     space::{self, parse_spacecfg},
     state::SharedState,
-    store::spaces::buffer::SpaceBuf,
+    store::SpaceBuf,
     utils,
 };
 

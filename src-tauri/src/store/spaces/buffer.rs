@@ -9,7 +9,8 @@ use std::{
 
 use crate::{
     error::{Error, Result},
-    store::{self, models::ReqBuf},
+    request::models::{HttpReq, ReqCfg, ReqMeta},
+    store::{self},
     utils,
 };
 
@@ -100,5 +101,32 @@ impl SpaceBuf {
         Self::fswrite(space_abspath, &buffer)?;
 
         Ok(buffer)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct ReqBuf {
+    pub meta: ReqMeta,
+    pub config: ReqCfg,
+}
+
+impl ReqBuf {
+    pub fn from_req(req: &HttpReq) -> Self {
+        let meta = ReqMeta {
+            fsname: req.meta.fsname.clone(),
+            name: req.meta.name.clone(),
+            has_unsaved_changes: true,
+        };
+
+        let config = ReqCfg {
+            method: req.config.method.clone(),
+            url: req.config.url.clone(),
+            headers: req.config.headers.clone(),
+            parameters: req.config.parameters.clone(),
+            content_type: req.config.content_type.clone(),
+            body: req.config.body.clone(),
+        };
+
+        Self { meta, config }
     }
 }
