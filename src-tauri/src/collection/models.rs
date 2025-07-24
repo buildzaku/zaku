@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     collections::BTreeMap,
     fs,
+    ops::Deref,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -44,74 +45,93 @@ pub struct CollectionRcRefCell {
     pub collections: Vec<Rc<RefCell<CollectionRcRefCell>>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ColName {
-    mappings: BTreeMap<String, String>,
-
-    #[serde(skip)]
-    space_abspath: PathBuf,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SpaceCollectionsMetadata {
+    pub mappings: BTreeMap<String, String>,
 }
 
-impl ColName {
-    pub fn load(space_abspath: &Path) -> Result<Self> {
+#[derive(Debug)]
+pub struct SpaceCollectionsMetadataStore {
+    metadata: SpaceCollectionsMetadata,
+    abspath: PathBuf,
+}
+
+impl Deref for SpaceCollectionsMetadataStore {
+    type Target = SpaceCollectionsMetadata;
+
+    fn deref(&self) -> &Self::Target {
+        &self.metadata
+    }
+}
+
+impl SpaceCollectionsMetadataStore {
+    fn new(space_abspath: &Path) -> Self {
         let file_abspath = space_abspath
             .join(".zaku")
             .join("collections")
             .join("name.toml");
 
-        let content = match fs::read_to_string(&file_abspath) {
-            Ok(content) => content,
-            Err(_) => {
-                if let Some(parent) = file_abspath.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-
-                let colname = Self {
-                    mappings: BTreeMap::new(),
-                    space_abspath: space_abspath.to_path_buf(),
-                };
-
-                let serialized = toml::to_string_pretty(&colname)?;
-                fs::write(&file_abspath, &serialized)?;
-                serialized
-            }
-        };
-
-        let mut colname: ColName = toml::from_str(&content)?;
-        colname.space_abspath = space_abspath.to_path_buf();
-
-        Ok(colname)
-    }
-
-    pub fn get(&self, relpath: &Path) -> Option<String> {
-        self.mappings
-            .get(&relpath.to_string_lossy().to_string())
-            .cloned()
-    }
-
-    pub fn set(&mut self, relpath: &Path, name: &str) -> Result<()> {
-        let mapping_exists = self
-            .mappings
-            .contains_key(&relpath.to_string_lossy().to_string());
-        if !mapping_exists {
-            self.mappings
-                .insert(relpath.to_string_lossy().to_string(), name.into());
-            self.save()?;
+        Self {
+            metadata: SpaceCollectionsMetadata {
+                mappings: BTreeMap::new(),
+            },
+            abspath: file_abspath,
         }
-
-        Ok(())
     }
 
-    fn save(&self) -> Result<()> {
-        let file_abspath = self
-            .space_abspath
+    fn init(space_abspath: &Path) -> Result<Self> {
+        let file_abspath = space_abspath
             .join(".zaku")
             .join("collections")
             .join("name.toml");
+        if !file_abspath.exists() {
+            let store = Self::new(space_abspath);
+            store.fswrite()?;
 
-        let toml_content = toml::to_string_pretty(self)?;
-        fs::write(&file_abspath, toml_content)?;
+            return Ok(store);
+        }
+
+        let content = fs::read_to_string(&file_abspath)?;
+
+        match toml::from_str::<SpaceCollectionsMetadata>(&content) {
+            Ok(metadata) => Ok(Self {
+                metadata,
+                abspath: file_abspath,
+            }),
+            Err(_) => {
+                let store = Self::new(space_abspath);
+                store.fswrite()?;
+
+                Ok(store)
+            }
+        }
+    }
+
+    fn fswrite(&self) -> Result<()> {
+        if let Some(parent) = self.abspath.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let toml_content = toml::to_string_pretty(&self.metadata)?;
+        fs::write(&self.abspath, toml_content)?;
 
         Ok(())
+    }
+
+    pub fn get(space_abspath: &Path) -> Result<Self> {
+        Self::init(space_abspath)
+    }
+
+    pub fn update<F>(&mut self, mutator: F) -> Result<()>
+    where
+        F: FnOnce(&mut SpaceCollectionsMetadata),
+    {
+        mutator(&mut self.metadata);
+        self.fswrite()
+    }
+
+    /// Consumes the store and returns the inner `SpaceCollectionsMetadata`
+    pub fn into_inner(self) -> SpaceCollectionsMetadata {
+        self.metadata
     }
 }

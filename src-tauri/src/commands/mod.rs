@@ -1,8 +1,9 @@
 use cookie::Cookie as RawCookie;
+use dirs;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::OnceLock,
     time::Instant,
 };
 use tauri::Manager;
@@ -23,14 +24,31 @@ use crate::{
     },
     space::{
         self,
-        models::{CreateSpaceDto, RemoveCookieDto, SpaceCookie, SpaceReference},
+        models::{CreateSpaceDto, RemoveCookieDto, SerializedCookie, SpaceReference},
     },
-    state::SharedState,
-    store::{self, spaces::buffer::SpaceBuf, ReqBuf, SpaceCookies, SpaceSettings},
+    store::{
+        self,
+        spaces::{buffer::SpaceBufferStore, settings::SpaceSettingsStore},
+        state::SharedState,
+        ReqBuffer, SpaceCookieStore, SpaceSettings, StateStore,
+    },
     tree_node::{self, MoveTreeNodeDto},
 };
 
 pub mod models;
+
+static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Returns the absolute path to the application's data directory.
+pub fn datadir_abspath() -> PathBuf {
+    DATA_DIR
+        .get_or_init(|| {
+            dirs::data_dir()
+                .expect("Unable to get data directory")
+                .join("Zaku")
+        })
+        .clone()
+}
 
 pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
     tauri_specta::collect_commands![
@@ -58,25 +76,48 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn create_collection(
-    dto: CreateCollectionDto,
-    app_handle: tauri::AppHandle,
-) -> CmdResult<CreateNewCollection> {
-    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock: {e}");
-
-        CmdErr {
-            kind: ErrorKind::InternalError,
-            message: "Unable to access application state :(".to_string(),
-            details: Some(e.to_string()),
-        }
+pub fn get_shared_state() -> CmdResult<SharedState> {
+    let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let state_store = StateStore::get(&state_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load state store".to_string(),
+        details: Some(err.to_string()),
     })?;
+
+    let shared_state = SharedState::from_state_store(&state_store).map_err(|err| CmdErr {
+        kind: ErrorKind::ParseError,
+        message: "Unable to parse space".to_string(),
+        details: Some(err.to_string()),
+    })?;
+
+    Ok(shared_state)
+}
+
+#[specta::specta]
+#[tauri::command]
+pub async fn create_collection(dto: CreateCollectionDto) -> CmdResult<CreateNewCollection> {
+    let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let state_store = StateStore::get(&state_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load state store".to_string(),
+        details: Some(err.to_string()),
+    })?;
+
+    let space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .ok_or(CmdErr {
+            kind: ErrorKind::SpaceNotFoundError,
+            message: "No current space selected".to_string(),
+            details: None,
+        })?
+        .abspath
+        .clone();
 
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         &dto.location_relpath,
         &dto.relpath,
-        &mut sharedstate,
+        Path::new(&space_abspath),
     )
     .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
@@ -84,13 +125,13 @@ pub async fn create_collection(
         details: Some(err.to_string()),
     })?;
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate).map_err(|err| {
-        CmdErr {
+    collection::create_collection(&parent_relpath, &col_segment, Path::new(&space_abspath)).map_err(
+        |err| CmdErr {
             kind: ErrorKind::FileWriteError,
             message: "Unable to create collection".to_string(),
             details: Some(err.to_string()),
-        }
-    })
+        },
+    )
 }
 
 #[specta::specta]
@@ -117,6 +158,7 @@ pub async fn open_dir_dialog(
                 message: "Unable to process selected directory".to_string(),
                 details: Some(err.to_string()),
             })?;
+
             Ok(Some(path_buf.to_string_lossy().to_string()))
         }
         None => Ok(None),
@@ -176,25 +218,29 @@ pub fn dispatch_notif(
 
 #[specta::specta]
 #[tauri::command]
-pub async fn create_req(
-    dto: CreateRequestDto,
-    app_handle: tauri::AppHandle,
-) -> CmdResult<CreateNewRequest> {
-    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock: {e}");
-
-        CmdErr {
-            kind: ErrorKind::InternalError,
-            message: "Unable to access application state :(".to_string(),
-            details: Some(e.to_string()),
-        }
+pub async fn create_req(dto: CreateRequestDto) -> CmdResult<CreateNewRequest> {
+    let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let state_store = StateStore::get(&state_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load state store".to_string(),
+        details: Some(err.to_string()),
     })?;
+
+    let space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .ok_or(CmdErr {
+            kind: ErrorKind::SpaceNotFoundError,
+            message: "No current space selected".to_string(),
+            details: None,
+        })?
+        .abspath
+        .clone();
 
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &dto.location_relpath,
         &dto.relpath,
-        &mut sharedstate,
+        Path::new(&space_abspath),
     )
     .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
@@ -202,10 +248,12 @@ pub async fn create_req(
         details: Some(err.to_string()),
     })?;
 
-    request::create_req(&parent_relpath, &req_segment, &mut sharedstate).map_err(|err| CmdErr {
-        kind: ErrorKind::FileWriteError,
-        message: "Unable to create request".to_string(),
-        details: Some(err.to_string()),
+    request::create_req(&parent_relpath, &req_segment, Path::new(&space_abspath)).map_err(|err| {
+        CmdErr {
+            kind: ErrorKind::FileWriteError,
+            message: "Unable to create request".to_string(),
+            details: Some(err.to_string()),
+        }
     })
 }
 
@@ -216,16 +264,24 @@ pub async fn write_req_to_reqtoml(
     relpath: &str,
     request: HttpReq,
 ) -> CmdResult<()> {
-    SpaceBuf::update(Path::new(space_abspath), |space_buffer| {
-        let mut spacebuf_lock = space_buffer.lock().unwrap();
+    let sbf_store_abspath =
+        store::utils::sbf_store_abspath(&datadir_abspath(), Path::new(space_abspath));
+    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load space buffer".to_string(),
+        details: Some(err.to_string()),
+    })?;
+
+    SpaceBufferStore::update(&sbf_store, |sbf_store| {
+        let mut sbf_store_mtx = sbf_store.lock().expect("Failed to lock SpaceBufferStore");
 
         let req_relpath = Path::new(relpath)
             .join(&request.meta.fsname)
             .to_string_lossy()
             .to_string();
-        let req_buf = ReqBuf::from_req(&request);
+        let req_buf = ReqBuffer::from_req(&request);
 
-        spacebuf_lock.requests.insert(req_relpath, req_buf);
+        sbf_store_mtx.requests.insert(req_relpath, req_buf);
     })
     .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
@@ -240,17 +296,23 @@ pub async fn write_req_to_reqtoml(
 #[tauri::command]
 pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> CmdResult<()> {
     let space_abspath = Path::new(space_abspath);
+    let sbf_store_abspath = store::utils::sbf_store_abspath(&datadir_abspath(), space_abspath);
+    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load space buffer".to_string(),
+        details: Some(err.to_string()),
+    })?;
 
-    SpaceBuf::update(space_abspath, |space_buffer| {
-        let mut spacebuf_lock = space_buffer.lock().unwrap();
+    SpaceBufferStore::update(&sbf_store, |sbf_store| {
+        let mut sbf_store_mtx = sbf_store.lock().unwrap();
 
         let relpath_str = Path::new(req_relpath).to_string_lossy().to_string();
-        if let Some(req_buf) = spacebuf_lock.requests.get(&relpath_str) {
+        if let Some(req_buf) = sbf_store_mtx.requests.get(&relpath_str) {
             let req_toml = ReqToml::from_reqbuf(req_buf);
             let _ = request::update_reqtoml(&space_abspath.join(req_relpath), &req_toml);
         }
 
-        spacebuf_lock.requests.remove(&relpath_str);
+        sbf_store_mtx.requests.remove(&relpath_str);
     })
     .map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
@@ -264,26 +326,35 @@ pub async fn write_reqbuf_to_reqtoml(space_abspath: &str, req_relpath: &str) -> 
 #[specta::specta]
 #[tauri::command]
 pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<HttpRes> {
-    let spaceref = store::get_spaceref().ok_or(CmdErr {
+    let store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let state_store = StateStore::get(&store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load store".to_string(),
+        details: Some(err.to_string()),
+    })?;
+
+    let spaceref = state_store.spaceref.clone().ok_or(CmdErr {
         kind: ErrorKind::SpaceNotFoundError,
         message: "Unable to find current space".to_string(),
         details: None,
     })?;
 
-    let space_abspath = Path::new(&spaceref.path); // TODO - fix spaceref type and rename to abspath
-    let cookie_store = SpaceCookies::get(space_abspath).map_err(|err| CmdErr {
+    let sck_store_abspath = store::utils::sck_store_abspath(&datadir_abspath(), &spaceref.abspath);
+    let mut sck_store = SpaceCookieStore::get(&sck_store_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
         message: "Unable to load cookies".to_string(),
         details: Some(err.to_string()),
     })?;
-    let space_settings = SpaceSettings::get(space_abspath).map_err(|err| CmdErr {
+
+    let sst_store_abspath = store::utils::sst_store_abspath(&datadir_abspath(), &spaceref.abspath);
+    let sst_store = SpaceSettingsStore::get(&sst_store_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
         message: "Unable to load space settings".to_string(),
         details: Some(err.to_string()),
     })?;
 
     let client = reqwest::Client::builder()
-        .cookie_provider(cookie_store)
+        .cookie_provider(sck_store.cookies.clone())
         .build()
         .map_err(|err| CmdErr {
             kind: ErrorKind::NetworkError,
@@ -337,7 +408,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         details: Some(err.to_string()),
     })?;
 
-    if space_settings.notifications.audio.on_req_finish {
+    if sst_store.notifications.audio.on_req_finish {
         let app_handle = app_handle.clone();
         tokio::spawn(async move {
             let _ = notifications::play_finish(&app_handle); // TODO - handle failures, send toast to UI?
@@ -357,8 +428,8 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
         .iter()
         .filter_map(|v| v.to_str().ok())
         .filter_map(|v| RawCookie::parse(v).ok())
-        .map(|ck| SpaceCookie::from_raw_cookie(&ck))
-        .collect::<Vec<SpaceCookie>>();
+        .map(|ck| SerializedCookie::from_raw_cookie(&ck))
+        .collect::<Vec<SerializedCookie>>();
     let data = resp.text().await.map_err(|err| CmdErr {
         kind: ErrorKind::NetworkError,
         message: "Unable to read response".to_string(),
@@ -366,7 +437,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
     })?;
     let size_bytes = Some(data.len() as u32);
 
-    SpaceCookies::update(space_abspath, |_| {}).map_err(|err| CmdErr {
+    sck_store.update(|_| {}).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
         message: "Unable to save cookies".to_string(),
         details: Some(err.to_string()),
@@ -384,22 +455,16 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
 
 #[specta::specta]
 #[tauri::command]
-pub async fn create_space(
-    create_space_dto: CreateSpaceDto,
-    sharedstate_mtx: tauri::State<'_, Mutex<SharedState>>,
-) -> CmdResult<SpaceReference> {
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock: {e}");
-
-        CmdErr {
-            kind: ErrorKind::InternalError,
-            message: "Unable to access application state :(".to_string(),
-            details: Some(e.to_string()),
-        }
+pub async fn create_space(create_space_dto: CreateSpaceDto) -> CmdResult<SpaceReference> {
+    let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let mut state_store = StateStore::get(&state_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load state store".to_string(),
+        details: Some(err.to_string()),
     })?;
 
     let space_ref =
-        space::create_space(create_space_dto, &mut sharedstate).map_err(|err| CmdErr {
+        space::create_space(create_space_dto, &mut state_store).map_err(|err| CmdErr {
             kind: ErrorKind::FileWriteError,
             message: "Unable to create space, make sure the location exists".to_string(),
             details: Some(err.to_string()),
@@ -410,21 +475,8 @@ pub async fn create_space(
 
 #[specta::specta]
 #[tauri::command]
-pub fn set_space(
-    space_reference: SpaceReference,
-    sharedstate_mtx: tauri::State<Mutex<SharedState>>,
-) -> CmdResult<()> {
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock: {e}");
-
-        CmdErr {
-            kind: ErrorKind::InternalError,
-            message: "Unable to access application state :(".to_string(),
-            details: Some(e.to_string()),
-        }
-    })?;
-    let space_abspath = PathBuf::from(space_reference.path.as_str());
-
+pub fn set_space(space_reference: SpaceReference) -> CmdResult<()> {
+    let space_abspath = &space_reference.abspath;
     if !space_abspath.exists() {
         return Err(CmdErr {
             kind: ErrorKind::FileNotFoundError,
@@ -433,72 +485,84 @@ pub fn set_space(
         });
     }
 
-    match space::parse_space(&space_abspath) {
-        Ok(space) => {
-            store::set_spaceref(space_reference.clone()).map_err(|e| CmdErr {
-                kind: ErrorKind::FileWriteError,
-                message: "Unable to save space".to_string(),
-                details: Some(e.to_string()),
-            })?;
-            store::insert_spaceref_if_missing(space_reference.clone()).map_err(|e| CmdErr {
-                kind: ErrorKind::FileWriteError,
-                message: "Unable to save space".to_string(),
-                details: Some(e.to_string()),
-            })?;
+    let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let temp_state_store = StateStore::get(&state_store_abspath).map_err(|e| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load state store for validation".to_string(),
+        details: Some(e.to_string()),
+    })?;
 
-            sharedstate.space = Some(space);
-            sharedstate.spacerefs = store::get_spacerefs();
+    space::parse_space(space_abspath, &temp_state_store).map_err(|err| CmdErr {
+        kind: ErrorKind::ParseError,
+        message: "Unable to load space".to_string(),
+        details: Some(err.to_string()),
+    })?;
 
-            Ok(())
-        }
-        Err(err) => Err(CmdErr {
-            kind: ErrorKind::ParseError,
-            message: "Unable to load space".to_string(),
-            details: Some(err.to_string()),
-        }),
-    }
+    let mut state_store = temp_state_store;
+
+    state_store
+        .update(|state| {
+            state.spaceref = Some(space_reference.clone());
+
+            let spaceref_exists = state
+                .spacerefs
+                .iter()
+                .any(|r| r.abspath == space_reference.abspath);
+
+            if !spaceref_exists {
+                state.spacerefs.push(space_reference.clone());
+            }
+        })
+        .map_err(|e| CmdErr {
+            kind: ErrorKind::FileWriteError,
+            message: "Unable to save space".to_string(),
+            details: Some(e.to_string()),
+        })?;
+
+    Ok(())
 }
 
 #[specta::specta]
 #[tauri::command]
-pub fn remove_space(
-    space_reference: SpaceReference,
-    sharedstate_mtx: tauri::State<Mutex<SharedState>>,
-) -> CmdResult<()> {
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock: {e}");
-
-        CmdErr {
-            kind: ErrorKind::InternalError,
-            message: "Unable to access application state :(".to_string(),
-            details: Some(e.to_string()),
-        }
-    })?;
-    store::remove_spaceref(space_reference).map_err(|e| CmdErr {
-        kind: ErrorKind::FileWriteError,
-        message: "Unable to remove space".to_string(),
+pub fn remove_space(space_reference: SpaceReference) -> CmdResult<()> {
+    let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let mut state_store = StateStore::get(&state_store_abspath).map_err(|e| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load state store".to_string(),
         details: Some(e.to_string()),
     })?;
 
-    let spaceref = store::get_spaceref();
+    state_store
+        .update(|state| {
+            state
+                .spacerefs
+                .retain(|r| r.abspath != space_reference.abspath);
 
-    if spaceref.is_none() {
-        sharedstate.space = None;
-
-        if let Some(valid_space_reference) = space::first_valid_spaceref() {
-            store::set_spaceref(valid_space_reference.clone()).map_err(|e| CmdErr {
-                kind: ErrorKind::FileWriteError,
-                message: "Unable to set fallback space".to_string(),
-                details: Some(e.to_string()),
-            })?;
-
-            if let Ok(space) = space::parse_space(&PathBuf::from(&valid_space_reference.path)) {
-                sharedstate.space = Some(space);
+            if let Some(spaceref) = &state.spaceref {
+                if spaceref.abspath == space_reference.abspath {
+                    state.spaceref = None;
+                }
             }
+        })
+        .map_err(|e| CmdErr {
+            kind: ErrorKind::FileWriteError,
+            message: "Unable to remove space".to_string(),
+            details: Some(e.to_string()),
+        })?;
+
+    if state_store.spaceref.is_none() {
+        if let Some(valid_space_reference) = space::first_valid_spaceref(&state_store) {
+            state_store
+                .update(|state| {
+                    state.spaceref = Some(valid_space_reference.clone());
+                })
+                .map_err(|e| CmdErr {
+                    kind: ErrorKind::FileWriteError,
+                    message: "Unable to set fallback space".to_string(),
+                    details: Some(e.to_string()),
+                })?;
         }
     }
-
-    sharedstate.spacerefs = store::get_spacerefs();
 
     Ok(())
 }
@@ -511,7 +575,7 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
     match space::parse_spacecfg(&space_abspath) {
         Ok(space_config_file) => {
             let space_reference = SpaceReference {
-                path: space_abspath.to_string_lossy().to_string(),
+                abspath: space_abspath,
                 name: space_config_file.meta.name,
             };
 
@@ -529,13 +593,15 @@ pub fn get_spaceref(path: String) -> CmdResult<SpaceReference> {
 #[tauri::command]
 pub async fn get_space_cookies(
     space_abspath: &str,
-) -> CmdResult<HashMap<String, Vec<SpaceCookie>>> {
-    let cookie_store = SpaceCookies::get(Path::new(space_abspath)).map_err(|e| CmdErr {
+) -> CmdResult<HashMap<String, Vec<SerializedCookie>>> {
+    let sck_store_abspath =
+        store::utils::sck_store_abspath(&datadir_abspath(), Path::new(space_abspath));
+    let sck_store = SpaceCookieStore::get(&sck_store_abspath).map_err(|e| CmdErr {
         kind: ErrorKind::CookieError,
         message: "Unable to load cookies".to_string(),
         details: Some(e.to_string()),
     })?;
-    let store = cookie_store.lock().map_err(|e| {
+    let sck_store_mtx = sck_store.cookies.lock().map_err(|e| {
         eprintln!("Failed to acquire cookie store lock: {e}");
 
         CmdErr {
@@ -545,14 +611,14 @@ pub async fn get_space_cookies(
         }
     })?;
 
-    let cookies: Vec<SpaceCookie> = store
+    let cookies: Vec<SerializedCookie> = sck_store_mtx
         .iter_any()
-        .map(SpaceCookie::from_cookie_store)
+        .map(SerializedCookie::from_cookie_store)
         .collect();
 
-    let cookies_by_domain: HashMap<String, Vec<SpaceCookie>> = cookies.into_iter().fold(
+    let cookies_by_domain: HashMap<String, Vec<SerializedCookie>> = cookies.into_iter().fold(
         HashMap::new(),
-        |mut acc: HashMap<String, Vec<SpaceCookie>>, ck| {
+        |mut acc: HashMap<String, Vec<SerializedCookie>>, ck| {
             acc.entry(ck.domain.clone()).or_default().push(ck);
             acc
         },
@@ -566,50 +632,52 @@ pub async fn get_space_cookies(
 pub fn remove_cookie(space_abspath: &str, rm_cookie_dto: RemoveCookieDto) -> CmdResult<bool> {
     let RemoveCookieDto { domain, path, name } = rm_cookie_dto;
 
-    SpaceCookies::update(Path::new(space_abspath), |cookies| {
-        let mut locked = cookies.lock().unwrap();
-        locked.remove(&domain, &path, &name);
-    })
-    .map(|_| true)
-    .map_err(|e| CmdErr {
+    let sck_store_abspath =
+        store::utils::sck_store_abspath(&datadir_abspath(), Path::new(space_abspath));
+    let mut sck_store = SpaceCookieStore::get(&sck_store_abspath).map_err(|e| CmdErr {
         kind: ErrorKind::CookieError,
-        message: "Unable to remove cookie".to_string(),
+        message: "Unable to load cookies".to_string(),
         details: Some(e.to_string()),
-    })
+    })?;
+
+    sck_store
+        .update(|cookies| {
+            let mut locked = cookies.lock().unwrap();
+            locked.remove(&domain, &path, &name);
+        })
+        .map(|_| true)
+        .map_err(|e| CmdErr {
+            kind: ErrorKind::CookieError,
+            message: "Unable to remove cookie".to_string(),
+            details: Some(e.to_string()),
+        })
 }
 
 #[specta::specta]
 #[tauri::command]
-pub async fn save_space_settings(space_abspath: &str, settings: SpaceSettings) -> CmdResult<()> {
-    SpaceSettings::update(Path::new(space_abspath), |cur_settings| {
-        *cur_settings = settings;
-    })
-    .map_err(|err| CmdErr {
-        kind: ErrorKind::FileWriteError,
-        message: "Unable to save space settings".to_string(),
+pub async fn save_space_settings(
+    space_abspath: &str,
+    space_settings: SpaceSettings,
+) -> CmdResult<()> {
+    let sst_store_abspath =
+        store::utils::sst_store_abspath(&datadir_abspath(), Path::new(space_abspath));
+    let mut sst_store = SpaceSettingsStore::get(&sst_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load space settings".to_string(),
         details: Some(err.to_string()),
     })?;
 
+    sst_store
+        .update(|cur_settings| {
+            *cur_settings = space_settings;
+        })
+        .map_err(|err| CmdErr {
+            kind: ErrorKind::FileWriteError,
+            message: "Unable to save space settings".to_string(),
+            details: Some(err.to_string()),
+        })?;
+
     Ok(())
-}
-
-#[specta::specta]
-#[tauri::command]
-pub fn get_shared_state(
-    sharedstate_mtx: tauri::State<Mutex<SharedState>>,
-) -> CmdResult<SharedState> {
-    match sharedstate_mtx.lock() {
-        Ok(sharedstate) => Ok(sharedstate.clone()),
-        Err(e) => {
-            eprintln!("Failed to acquire SharedState lock: {e}");
-
-            Err(CmdErr {
-                kind: ErrorKind::InternalError,
-                message: "Unable to access application state :(".to_string(),
-                details: Some(e.to_string()),
-            })
-        }
-    }
 }
 
 #[specta::specta]
@@ -622,19 +690,26 @@ pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn move_tree_node(dto: MoveTreeNodeDto, app_handle: tauri::AppHandle) -> CmdResult<()> {
-    let sharedstate_mtx = app_handle.state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().map_err(|e| {
-        eprintln!("Failed to acquire SharedState lock: {e}");
-
-        CmdErr {
-            kind: ErrorKind::InternalError,
-            message: "Unable to access application state :(".to_string(),
-            details: Some(e.to_string()),
-        }
+pub async fn move_tree_node(dto: MoveTreeNodeDto) -> CmdResult<()> {
+    let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
+    let state_store = StateStore::get(&state_store_abspath).map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load state store".to_string(),
+        details: Some(err.to_string()),
     })?;
 
-    tree_node::move_tree_node(&dto, &mut sharedstate).map_err(|err| CmdErr {
+    let space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .ok_or(CmdErr {
+            kind: ErrorKind::SpaceNotFoundError,
+            message: "No current space selected".to_string(),
+            details: None,
+        })?
+        .abspath
+        .clone();
+
+    tree_node::move_tree_node(&dto, &space_abspath, &state_store).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
         message: format!("Unable to move the {}", dto.node_type),
         details: Some(err.to_string()),

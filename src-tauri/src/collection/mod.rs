@@ -13,27 +13,30 @@ pub mod tests;
 
 use crate::{
     collection::models::{
-        ColName, Collection, CollectionMeta, CollectionRcRefCell, CreateNewCollection,
+        Collection, CollectionMeta, CollectionRcRefCell, CreateNewCollection,
+        SpaceCollectionsMetadataStore,
     },
     error::{Error, Result},
     models::SanitizedSegment,
     request::{self, models::HttpReq},
-    space::{self, parse_spacecfg},
-    state::SharedState,
-    store::SpaceBuf,
+    space::parse_spacecfg,
+    store::{self, SpaceBufferStore, StateStore},
     utils,
 };
 
-pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
+pub fn parse_root_collection(space_abspath: &Path, state_store: &StateStore) -> Result<Collection> {
     let space_dirname = space_abspath
         .file_name()
         .unwrap_or(space_abspath.as_os_str())
         .to_string_lossy()
         .into_owned();
     let relative_space_root = "".to_string();
-    let colnames = ColName::load(space_abspath)?;
-    let space_buffer = SpaceBuf::get(space_abspath)?;
-    let spacebuf_lock = space_buffer
+    let scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
+
+    let sbf_store_abspath =
+        store::utils::sbf_store_abspath(state_store.datadir_abspath(), space_abspath);
+    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath)?;
+    let sbf_store_mtx = sbf_store
         .lock()
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))?;
     let space_config = parse_spacecfg(space_abspath).ok();
@@ -85,7 +88,10 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             fsname: name,
-                            name: colnames.get(relpath),
+                            name: scmt_store
+                                .mappings
+                                .get(&relpath.to_string_lossy().to_string())
+                                .cloned(),
                             is_expanded: true,
                         },
                         requests: Vec::new(),
@@ -98,7 +104,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                         .collections
                         .push(sub_collection);
                 } else if entry_abspath.is_file() {
-                    let req = request::parse_req(&entry_abspath, space_abspath, &spacebuf_lock);
+                    let req = request::parse_req(&entry_abspath, space_abspath, &sbf_store_mtx);
                     if let Some(req) = req {
                         collection_rc_refcell.borrow_mut().requests.push(req);
                     }
@@ -190,13 +196,13 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
 ///
 /// - `location_relpath`: Starting relative path within the space
 /// - `relpath`: Path string to parse into collection segments
-/// - `sharedstate`: Mutable reference to the application's shared state
+/// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result<(PathBuf, SanitizedSegment)>` with the final parent path and target segment
 pub fn create_parent_collections_if_missing(
     location_relpath: &Path,
     relpath: &str,
-    sharedstate: &mut SharedState,
+    space_abspath: &Path,
 ) -> Result<(PathBuf, SanitizedSegment)> {
     let segments = utils::to_sanitized_segments(relpath)?;
     let (last_segment, relpath_segments) = segments.split_last().unwrap();
@@ -205,16 +211,10 @@ pub fn create_parent_collections_if_missing(
 
     for segment in relpath_segments {
         let target_path = current_parent.join(&segment.fsname);
-
-        let space = sharedstate
-            .space
-            .as_ref()
-            .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
-        let space_abspath = PathBuf::from(&space.abspath);
         let dir_abspath = space_abspath.join(&target_path);
 
         if !dir_abspath.exists() {
-            create_collection(&current_parent, segment, sharedstate)?;
+            create_collection(&current_parent, segment, space_abspath)?;
         }
 
         current_parent = target_path;
@@ -225,45 +225,46 @@ pub fn create_parent_collections_if_missing(
 
 /// Creates a new collection directory in the specified parent path
 ///
-/// Creates a new directory for the collection, saves the collection name mapping,
-/// and updates the shared state
+/// Creates a new directory for the collection and saves the collection name mapping
 ///
 /// - `parent_relpath`: Relative path to the parent directory
 /// - `col_segment`: Sanitized segment containing the collection name and filesystem name
-/// - `sharedstate`: Mutable reference to the application's shared state
+/// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result<CreateNewCollection>` containing the created collection's paths
 pub fn create_collection(
     parent_relpath: &Path,
     col_segment: &SanitizedSegment,
-    sharedstate: &mut SharedState,
+    space_abspath: &Path,
 ) -> Result<CreateNewCollection> {
     if col_segment.fsname.trim().is_empty() {
-        return Err(Error::FileNotFound(
+        return Err(Error::InvalidName(
             "Cannot create a collection without name".to_string(),
         ));
     }
-
-    let space = sharedstate
-        .space
-        .clone()
-        .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
-    let space_abspath = PathBuf::from(&space.abspath);
 
     let dir_abspath = space_abspath.join(parent_relpath).join(&col_segment.fsname);
     let dir_relpath = parent_relpath.join(&col_segment.fsname);
 
     fs::create_dir(&dir_abspath)?;
 
-    let mut colnames = ColName::load(&space_abspath)?;
-    colnames.set(&dir_relpath, &col_segment.name)?;
+    let mut scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
+    scmt_store.update(|metadata| {
+        let mapping_exists = metadata
+            .mappings
+            .contains_key(&dir_relpath.to_string_lossy().to_string());
+        if !mapping_exists {
+            metadata.mappings.insert(
+                dir_relpath.to_string_lossy().to_string(),
+                col_segment.name.clone(),
+            );
+        }
+    })?;
 
     let create_new_collection = CreateNewCollection {
         parent_relpath: parent_relpath.to_string_lossy().to_string(),
         relpath: dir_relpath.to_string_lossy().to_string(),
     };
-
-    sharedstate.space = Some(space::parse_space(&space_abspath)?);
 
     Ok(create_new_collection)
 }

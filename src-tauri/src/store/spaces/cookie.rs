@@ -7,90 +7,73 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    error::{Error, Result},
-    store::{self},
-    utils,
-};
+use crate::error::{Error, Result};
 
-pub struct SpaceCookies;
+pub struct SpaceCookieStore {
+    pub cookies: Arc<CookieStoreMutex>,
+    abspath: PathBuf,
+}
 
-impl SpaceCookies {
-    fn filename() -> &'static str {
-        "cookies.json"
+impl SpaceCookieStore {
+    fn new(sck_store_abspath: PathBuf, cookies: Arc<CookieStoreMutex>) -> Self {
+        Self {
+            cookies,
+            abspath: sck_store_abspath,
+        }
     }
 
-    pub fn filepath(space_abspath: &Path) -> PathBuf {
-        let hsh = utils::hashed_filename(space_abspath);
-
-        store::utils::datadir_abspath()
-            .join(store::utils::SPACES_STORE_FSNAME)
-            .join(hsh)
-            .join(Self::filename())
-    }
-
-    fn init(space_abspath: &Path) -> Result<Arc<CookieStoreMutex>> {
-        let cookie_filepath = Self::filepath(space_abspath);
-        if !cookie_filepath.exists() {
+    fn init(sck_store_abspath: &Path) -> Result<SpaceCookieStore> {
+        if !sck_store_abspath.exists() {
             let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
-            Self::fswrite(space_abspath, &default_cookies)?;
+            let sck_store = Self::new(sck_store_abspath.to_path_buf(), default_cookies);
+            sck_store.fswrite()?;
 
-            return Ok(default_cookies);
+            return Ok(sck_store);
         }
 
-        let file = fs::File::open(&cookie_filepath).map(BufReader::new)?;
+        let file = fs::File::open(sck_store_abspath).map(BufReader::new)?;
 
         match cookie_json::load(file) {
-            Ok(cookie_store) => Ok(Arc::new(CookieStoreMutex::new(cookie_store))),
-            Err(_) => {
-                // corrupt JSON, use default
-                let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
-                Self::fswrite(space_abspath, &default_cookies)?;
+            Ok(cookie_store) => {
+                let cookies = Arc::new(CookieStoreMutex::new(cookie_store));
 
-                Ok(default_cookies)
+                Ok(Self::new(sck_store_abspath.to_path_buf(), cookies))
+            }
+            Err(_) => {
+                let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
+                let sck_store = Self::new(sck_store_abspath.to_path_buf(), default_cookies);
+                sck_store.fswrite()?;
+
+                Ok(sck_store)
             }
         }
     }
 
-    fn fswrite(space_abspath: &Path, cookies: &Arc<CookieStoreMutex>) -> Result<()> {
-        let cookie_filepath = Self::filepath(space_abspath);
-
-        if let Some(parent) = cookie_filepath.parent() {
+    fn fswrite(&self) -> Result<()> {
+        if let Some(parent) = self.abspath.parent() {
             fs::create_dir_all(parent)?;
         }
 
-        let mut writer = fs::File::create(&cookie_filepath).map(BufWriter::new)?;
-        let locked = cookies
+        let mut writer = fs::File::create(&self.abspath).map(BufWriter::new)?;
+        let sck_store_mtx = self
+            .cookies
             .lock()
             .map_err(|_| Error::LockError("Failed to lock cookie store".into()))?;
 
-        cookie_json::save(&locked, &mut writer)?;
+        cookie_json::save(&sck_store_mtx, &mut writer)?;
 
         Ok(())
     }
 
-    pub fn get(space_abspath: &Path) -> Result<Arc<CookieStoreMutex>> {
-        Self::init(space_abspath)
+    pub fn get(sck_store_abspath: &Path) -> Result<SpaceCookieStore> {
+        Self::init(sck_store_abspath)
     }
 
-    /// Updates space cookies using a mutator function and persists changes to filesystem
-    ///
-    /// Loads the current cookie store, applies the mutator function to modify cookies
-    /// and writes the changes to the filesystem. Each update operation is atomic
-    /// and ensures data consistency.
-    ///
-    /// - `space_abspath`: Absolute path to the space directory
-    /// - `mutator`: Function that receives the cookie store and applies modifications
-    ///
-    /// Returns a `Result<Arc<CookieStoreMutex>>` containing the updated cookie store
-    pub fn update<F>(space_abspath: &Path, mutator: F) -> Result<Arc<CookieStoreMutex>>
+    pub fn update<F>(&mut self, mutator: F) -> Result<()>
     where
         F: FnOnce(&Arc<CookieStoreMutex>),
     {
-        let space_cookies = Self::get(space_abspath)?;
-        mutator(&space_cookies);
-        Self::fswrite(space_abspath, &space_cookies)?;
-
-        Ok(space_cookies)
+        mutator(&self.cookies);
+        self.fswrite()
     }
 }

@@ -9,16 +9,15 @@ use crate::{
     collection,
     error::{Error, Result},
     space::models::{
-        CreateSpaceDto, Space, SpaceConfigFile, SpaceCookie, SpaceMeta, SpaceReference,
+        CreateSpaceDto, SerializedCookie, Space, SpaceConfigFile, SpaceMeta, SpaceReference,
     },
-    state::SharedState,
-    store::{self, SpaceCookies, SpaceSettings},
+    store::{self, SpaceCookieStore, SpaceSettingsStore, StateStore},
     utils,
 };
 
 pub mod models;
 
-pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Result<SpaceReference> {
+pub fn create_space(dto: CreateSpaceDto, state_store: &mut StateStore) -> Result<SpaceReference> {
     let location = PathBuf::from(dto.location.as_str());
     if !location.exists() {
         return Err(Error::FileNotFound(format!(
@@ -29,20 +28,20 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
 
     let space_dirname = utils::to_fsname(&dto.name)?;
     let space_abspath = location.join(&space_dirname);
-    let mut spacerefs = store::get_spacerefs();
-
-    if spacerefs
-        .iter()
-        .any(|sr| sr.path == space_abspath.to_string_lossy())
-    {
-        return Err(Error::FileNotFound(format!(
-            "Space already exists in saved spaces: {}",
-            space_abspath.to_string_lossy()
-        )));
-    }
     if space_abspath.exists() {
         return Err(Error::FileNotFound(format!(
             "Directory with this name already exists: {}",
+            space_abspath.to_string_lossy()
+        )));
+    }
+
+    if state_store
+        .spacerefs
+        .iter()
+        .any(|sr| sr.abspath == *space_abspath)
+    {
+        return Err(Error::FileNotFound(format!(
+            "Space already exists in saved spaces: {}",
             space_abspath.to_string_lossy()
         )));
     }
@@ -61,46 +60,47 @@ pub fn create_space(dto: CreateSpaceDto, sharedstate: &mut SharedState) -> Resul
     config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
 
     let spaceref = SpaceReference {
-        path: space_abspath.to_string_lossy().to_string(),
+        abspath: space_abspath.to_path_buf(),
         name: dto.name,
     };
 
-    store::set_spaceref(spaceref.clone())?;
-    spacerefs.push(spaceref.clone());
-    store::set_spacerefs(spacerefs.clone())?;
-
-    if let Ok(space) = parse_space(&PathBuf::from(&spaceref.path)) {
-        sharedstate.space = Some(space);
-        sharedstate.spacerefs = spacerefs;
-    }
+    state_store.update(|state| {
+        state.spaceref = Some(spaceref.clone());
+        state.spacerefs.push(spaceref.clone());
+    })?;
 
     Ok(spaceref)
 }
 
-pub fn parse_space(space_abspath: &Path) -> Result<Space> {
+pub fn parse_space(space_abspath: &Path, state_store: &StateStore) -> Result<Space> {
     let space_abspath_str = space_abspath.to_string_lossy();
-    let root_collection = collection::parse_root_collection(space_abspath)?;
+    let root_collection = collection::parse_root_collection(space_abspath, state_store)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
-    let cookie_store = SpaceCookies::get(space_abspath)?;
-    let cookie_store_mtx = cookie_store.lock().unwrap();
-    let cookies: Vec<SpaceCookie> = cookie_store_mtx
+
+    let sck_store_abspath =
+        store::utils::sck_store_abspath(state_store.datadir_abspath(), space_abspath);
+    let sck_store = SpaceCookieStore::get(&sck_store_abspath)?;
+    let sck_store_mtx = sck_store.cookies.lock().unwrap();
+    let cookies: Vec<SerializedCookie> = sck_store_mtx
         .iter_any()
-        .map(SpaceCookie::from_cookie_store)
+        .map(SerializedCookie::from_cookie_store)
         .collect();
-    let cookies_by_domain: HashMap<String, Vec<SpaceCookie>> =
+    let cookies_by_domain: HashMap<String, Vec<SerializedCookie>> =
         cookies.into_iter().fold(HashMap::new(), |mut acc, ck| {
             acc.entry(ck.domain.clone()).or_default().push(ck);
             acc
         });
 
-    let settings = SpaceSettings::get(space_abspath)?;
+    let sst_store_abspath =
+        store::utils::sst_store_abspath(state_store.datadir_abspath(), space_abspath);
+    let space_settings = SpaceSettingsStore::get(&sst_store_abspath)?.into_inner();
 
     Ok(Space {
         abspath: space_abspath_str.into_owned(),
         meta: space_config_file.meta,
         root_collection,
         cookies: cookies_by_domain,
-        settings,
+        settings: space_settings,
     })
 }
 
@@ -114,15 +114,15 @@ pub fn parse_spacecfg(space_abspath: &Path) -> Result<SpaceConfigFile> {
     Ok(config)
 }
 
-pub fn first_valid_spaceref() -> Option<SpaceReference> {
-    store::get_spacerefs()
-        .into_iter()
-        .find_map(|space_reference| {
-            let space_abspath = PathBuf::from(&space_reference.path);
+pub fn first_valid_spaceref(state_store: &StateStore) -> Option<SpaceReference> {
+    let spacerefs = state_store.spacerefs.clone();
 
-            match parse_spacecfg(&space_abspath) {
-                Ok(_) => Some(space_reference),
-                Err(_) => None,
-            }
-        })
+    spacerefs.into_iter().find_map(|space_reference| {
+        let space_abspath = &space_reference.abspath;
+
+        match parse_spacecfg(space_abspath) {
+            Ok(_) => Some(space_reference),
+            Err(_) => None,
+        }
+    })
 }
