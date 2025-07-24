@@ -20,7 +20,6 @@ cookie_store = { version = "0.21.1" }
 derive_more = { version = "2.0.1", features = ["from"] }
 dirs = { version = "6.0.0" }
 indexmap = { version = "2.9.0", features = ["serde"] }
-once_cell = { version = "1.21.3" }
 reqwest = { version = "0.12.22", features = ["json", "multipart", "cookies"] }
 reqwest_cookie_store = { version = "0.8.0" }
 rodio = { version = "0.20.1" }

@@ -7,7 +7,7 @@ use url::Url;
 
 use crate::{
     space::models::SpaceCookie,
-    store::models::ReqBuf,
+    store::ReqBuf,
     utils::{from_indexmap, to_indexmap},
 };
 
