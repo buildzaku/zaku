@@ -1,94 +1,90 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
-use crate::{error::Result, space::models::SpaceReference, store};
+use crate::{error::Result, space::models::SpaceReference};
 
 pub mod spaces;
+pub mod user;
 pub mod utils;
 
 #[cfg(test)]
 pub mod tests;
 
 pub use spaces::{
-    buffer::{ReqBuf, SpaceBuf},
-    cookie::SpaceCookies,
-    settings::{AudioNotification, NotificationSettings, SpaceSettings},
+    buffer::{ReqBuffer, SpaceBufferStore},
+    cookie::SpaceCookieStore,
+    settings::{AudioNotification, NotificationSettings, SpaceSettings, SpaceSettingsStore},
 };
+pub use user::settings::{UserSettings, UserSettingsStore};
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Store {
     pub spaceref: Option<SpaceReference>,
     pub spacerefs: Vec<SpaceReference>,
+
+    #[serde(skip)]
+    abspath: PathBuf,
 }
 
 impl Store {
-    fn filename() -> &'static str {
-        "store.json"
+    pub fn new(store_abspath: PathBuf) -> Self {
+        Self {
+            spaceref: None,
+            spacerefs: Vec::new(),
+            abspath: store_abspath,
+        }
     }
 
-    pub fn filepath() -> PathBuf {
-        store::utils::datadir_abspath().join(Self::filename())
-    }
-
-    fn init() -> Result<Store> {
-        let store_path = Self::filepath();
-        if !store_path.exists() {
-            let default_store = Self::default();
-            Self::fswrite(&default_store)?;
+    fn init(store_abspath: &Path) -> Result<Store> {
+        if !store_abspath.exists() {
+            let default_store = Self::new(store_abspath.to_path_buf());
+            default_store.fswrite()?;
 
             return Ok(default_store);
         }
 
-        let store_content = fs::read_to_string(&store_path)?;
+        let store_content = fs::read_to_string(store_abspath)?;
 
-        match serde_json::from_str(&store_content) {
-            Ok(store) => Ok(store),
+        match serde_json::from_str::<Store>(&store_content) {
+            Ok(mut store) => {
+                store.abspath = store_abspath.to_path_buf();
+
+                Ok(store)
+            }
             Err(_) => {
-                // corrupt JSON, use default
-                let default_store = Self::default();
-                Self::fswrite(&default_store)?;
+                let default_store = Self::new(store_abspath.to_path_buf());
+                default_store.fswrite()?;
 
                 Ok(default_store)
             }
         }
     }
 
-    fn fswrite(store: &Store) -> Result<()> {
-        let store_path = Self::filepath();
-
-        if let Some(parent) = store_path.parent() {
+    fn fswrite(&self) -> Result<()> {
+        if let Some(parent) = self.abspath.parent() {
             fs::create_dir_all(parent)?;
         }
 
-        let serialized_store = serde_json::to_string_pretty(store)?;
-        fs::write(&store_path, serialized_store)?;
+        let serialized_store = serde_json::to_string_pretty(self)?;
+        fs::write(&self.abspath, serialized_store)?;
 
         Ok(())
     }
 
-    pub fn get() -> Result<Store> {
-        Self::init()
+    pub fn get(store_abspath: &Path) -> Result<Store> {
+        Self::init(store_abspath)
     }
 
-    /// Updates the main store using a mutator function and persists changes to filesystem
-    ///
-    /// Loads the current store, applies the mutator function to modify store data
-    /// and writes the changes to the filesystem. Each update operation is atomic
-    /// and ensures data consistency.
-    ///
-    /// - `mutator`: Function that receives mutable store and applies modifications
-    ///
-    /// Returns a `Result<Store>` containing the updated store
-    pub fn update<F>(mutator: F) -> Result<Store>
+    pub fn update<F>(&mut self, mutator: F) -> Result<()>
     where
         F: FnOnce(&mut Store),
     {
-        let mut store = Self::get()?;
-        mutator(&mut store);
-        Self::fswrite(&store)?;
-
-        Ok(store)
+        mutator(self);
+        self.fswrite()
     }
 }
 
@@ -97,57 +93,4 @@ pub enum Theme {
     System,
     Light,
     Dark,
-}
-
-pub fn get_spaceref() -> Option<SpaceReference> {
-    Store::get().ok()?.spaceref
-}
-
-pub fn set_spaceref(space_reference: SpaceReference) -> Result<()> {
-    Store::update(|store| {
-        store.spaceref = Some(space_reference);
-    })?;
-
-    Ok(())
-}
-
-pub fn get_spacerefs() -> Vec<SpaceReference> {
-    Store::get().map(|s| s.spacerefs).unwrap_or_default()
-}
-
-pub fn set_spacerefs(spacerefs: Vec<SpaceReference>) -> Result<()> {
-    Store::update(|store| {
-        store.spacerefs = spacerefs;
-    })?;
-
-    Ok(())
-}
-
-pub fn insert_spaceref_if_missing(space_reference: SpaceReference) -> Result<()> {
-    Store::update(|store| {
-        let spaceref_exists = store
-            .spacerefs
-            .iter()
-            .any(|r| r.path == space_reference.path);
-
-        if !spaceref_exists {
-            store.spacerefs.push(space_reference);
-        }
-    })?;
-
-    Ok(())
-}
-
-pub fn remove_spaceref(space_reference: SpaceReference) -> Result<()> {
-    Store::update(|store| {
-        store.spacerefs.retain(|r| r.path != space_reference.path);
-
-        if let Some(spaceref) = &store.spaceref {
-            if spaceref.path == space_reference.path {
-                store.spaceref = None;
-            }
-        }
-    })?;
-
-    Ok(())
 }

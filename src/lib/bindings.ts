@@ -259,7 +259,11 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
-export type SharedState = { space: Space | null; spacerefs: SpaceReference[] };
+export type SharedState = {
+    space: Space | null;
+    spacerefs: SpaceReference[];
+    user_settings: UserSettings;
+};
 export type Space = {
     abspath: string;
     meta: SpaceMeta;
@@ -281,6 +285,7 @@ export type SpaceMeta = { name: string };
 export type SpaceReference = { path: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
+export type UserSettings = { default_theme: Theme };
 
 /** tauri-specta globals **/
 

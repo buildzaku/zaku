@@ -3,6 +3,7 @@ use specta::Type;
 use std::{
     collections::HashMap,
     fs,
+    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -10,117 +11,110 @@ use std::{
 use crate::{
     error::{Error, Result},
     request::models::{HttpReq, ReqCfg, ReqMeta},
-    store::{self},
-    utils,
 };
 
-static SPACEBUF_UPDATE_LOCK: Mutex<()> = Mutex::new(());
+static SBF_STORE_UPDATE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
-pub struct SpaceBuf {
-    pub abspath: PathBuf,
-    pub requests: HashMap<String, ReqBuf>,
+pub struct SpaceBuffer {
+    pub requests: HashMap<String, ReqBuffer>,
+
+    #[serde(skip)]
+    abspath: PathBuf,
 }
 
-impl SpaceBuf {
-    fn filename() -> &'static str {
-        "buffer.json"
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpaceBufferStore(SpaceBuffer);
+
+impl Deref for SpaceBufferStore {
+    type Target = SpaceBuffer;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SpaceBufferStore {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl SpaceBufferStore {
+    fn new(sbf_store_abspath: PathBuf) -> Self {
+        Self(SpaceBuffer {
+            requests: HashMap::new(),
+            abspath: sbf_store_abspath,
+        })
     }
 
-    pub fn filepath(space_abspath: &Path) -> PathBuf {
-        let hsh = utils::hashed_filename(space_abspath);
-
-        store::utils::datadir_abspath()
-            .join(store::utils::SPACES_STORE_FSNAME)
-            .join(hsh)
-            .join(Self::filename())
-    }
-
-    fn init(space_abspath: &Path) -> Result<Arc<Mutex<SpaceBuf>>> {
-        let spacebuf_filepath = Self::filepath(space_abspath);
-        if !spacebuf_filepath.exists() {
-            let default_buffer = Arc::new(Mutex::new(SpaceBuf {
-                abspath: space_abspath.to_path_buf(),
-                requests: HashMap::new(),
-            }));
-            Self::fswrite(space_abspath, &default_buffer)?;
+    fn init(sbf_store_abspath: &Path) -> Result<Arc<Mutex<SpaceBufferStore>>> {
+        if !sbf_store_abspath.exists() {
+            let default_buffer = Arc::new(Mutex::new(Self::new(sbf_store_abspath.to_path_buf())));
+            Self::fswrite(&default_buffer)?;
 
             return Ok(default_buffer);
         }
 
-        let content = fs::read_to_string(&spacebuf_filepath)
+        let content = fs::read_to_string(sbf_store_abspath)
             .map_err(|_| Error::FileReadError("Failed to read from space buffer".into()))?;
 
-        let space_buffer = match serde_json::from_str(&content) {
-            Ok(buffer) => buffer,
+        let sbf_store = match serde_json::from_str::<SpaceBuffer>(&content) {
+            Ok(mut buffer) => {
+                buffer.abspath = sbf_store_abspath.to_path_buf();
+                Self(buffer)
+            }
             Err(_) => {
-                // corrupt JSON, use default
-                let default_buffer = SpaceBuf {
-                    abspath: space_abspath.to_path_buf(),
-                    requests: HashMap::new(),
-                };
+                let default_buffer = Self::new(sbf_store_abspath.to_path_buf());
                 let buffer_arc = Arc::new(Mutex::new(default_buffer));
-                Self::fswrite(space_abspath, &buffer_arc)?;
+                Self::fswrite(&buffer_arc)?;
 
                 return Ok(buffer_arc);
             }
         };
 
-        Ok(Arc::new(Mutex::new(space_buffer)))
+        Ok(Arc::new(Mutex::new(sbf_store)))
     }
 
-    fn fswrite(space_abspath: &Path, buffer: &Arc<Mutex<SpaceBuf>>) -> Result<()> {
-        let buf = buffer
+    fn fswrite(sbf_store: &Arc<Mutex<SpaceBufferStore>>) -> Result<()> {
+        let sbf_store_mtx = sbf_store
             .lock()
             .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))?;
 
-        let buf_filepath = Self::filepath(space_abspath);
-
-        if let Some(parent) = buf_filepath.parent() {
+        if let Some(parent) = sbf_store_mtx.abspath.parent() {
             fs::create_dir_all(parent)?;
         }
 
-        let serialized_store = serde_json::to_string_pretty(&*buf)?;
-        fs::write(&buf_filepath, serialized_store)?;
+        let serialized_store = serde_json::to_string_pretty(&*sbf_store_mtx)?;
+        fs::write(&sbf_store_mtx.abspath, serialized_store)?;
 
         Ok(())
     }
 
-    pub fn get(space_abspath: &Path) -> Result<Arc<Mutex<SpaceBuf>>> {
-        Self::init(space_abspath)
+    pub fn get(sbf_store_abspath: &Path) -> Result<Arc<Mutex<SpaceBufferStore>>> {
+        Self::init(sbf_store_abspath)
     }
 
-    /// Updates space buffer using a mutator function and persists changes to filesystem
-    ///
-    /// Acquires an exclusive lock to ensure thread-safe updates, loads the current buffer,
-    /// applies the mutator function and writes the changes to the filesystem.
-    /// The update operation is serialized across all concurrent calls for the same space.
-    ///
-    /// - `space_abspath`: Absolute path to the space directory
-    /// - `mutator`: Function that receives the buffer and applies modifications
-    ///
-    /// Returns a `Result<Arc<Mutex<SpaceBuf>>>` containing the updated buffer
-    pub fn update<F>(space_abspath: &Path, mutator: F) -> Result<Arc<Mutex<SpaceBuf>>>
+    pub fn update<F>(sbf_store: &Arc<Mutex<SpaceBufferStore>>, mutator: F) -> Result<()>
     where
-        F: FnOnce(&Arc<Mutex<SpaceBuf>>),
+        F: FnOnce(&Arc<Mutex<SpaceBufferStore>>),
     {
-        let _guard = SPACEBUF_UPDATE_LOCK.lock().unwrap();
+        let _guard = SBF_STORE_UPDATE_LOCK.lock().unwrap();
 
-        let buffer = Self::get(space_abspath)?;
-        mutator(&buffer);
-        Self::fswrite(space_abspath, &buffer)?;
+        mutator(sbf_store);
+        Self::fswrite(sbf_store)?;
 
-        Ok(buffer)
+        Ok(())
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct ReqBuf {
+pub struct ReqBuffer {
     pub meta: ReqMeta,
     pub config: ReqCfg,
 }
 
-impl ReqBuf {
+impl ReqBuffer {
     pub fn from_req(req: &HttpReq) -> Self {
         let meta = ReqMeta {
             fsname: req.meta.fsname.clone(),

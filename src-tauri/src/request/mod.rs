@@ -13,7 +13,7 @@ use crate::{
     request::models::{HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
     space,
     state::SharedState,
-    store::SpaceBuf,
+    store::SpaceBufferStore,
 };
 
 pub mod models;
@@ -30,13 +30,13 @@ pub mod tests;
 ///
 /// - `entry_abspath`: Absolute path to the request file
 /// - `space_abspath`: Absolute path of the space
-/// - `spacebuf_rlock`: Read lock guard for the space buffer
+/// - `sbf_store_mtx`: Mutex lock for the space buffer
 ///
 /// Returns an `Option<HttpReq>` containing the parsed request
 pub fn parse_req(
     entry_abspath: &Path,
     space_abspath: &Path,
-    spacebuf_lock: &MutexGuard<'_, SpaceBuf>,
+    sbf_store_mtx: &MutexGuard<'_, SpaceBufferStore>,
 ) -> Option<HttpReq> {
     let is_file = entry_abspath.is_file();
     let is_toml = entry_abspath.extension().and_then(|e| e.to_str()) == Some("toml");
@@ -50,7 +50,7 @@ pub fn parse_req(
         .to_string_lossy()
         .into_owned();
 
-    if let Some(req_buf) = spacebuf_lock.requests.get(&relpath) {
+    if let Some(req_buf) = sbf_store_mtx.requests.get(&relpath) {
         Some(HttpReq::from_reqbuf(req_buf))
     } else {
         let fsname = entry_abspath

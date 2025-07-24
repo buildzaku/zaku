@@ -9,27 +9,14 @@ use crate::{
     error::Error,
     models::SanitizedSegment,
     request,
-    space::{self, models::CreateSpaceDto},
     state::SharedState,
+    store::{self, UserSettingsStore},
     tree_node::{self, MoveTreeNodeDto, NodeType},
 };
-
-fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
-    let dto = CreateSpaceDto {
-        name: "Tree Space".to_string(),
-        location: tmp_path.to_string_lossy().to_string(),
-    };
-
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).expect("Failed to create test space");
-
-    sharedstate
-}
-
 #[test]
 fn find_collection_returns_root_for_empty_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (sharedstate, _store, _space_ref) = store::utils::tmp_space("Tree Space", tmp_dir.path());
     let space = sharedstate.space.unwrap();
 
     let result = tree_node::find_collection(&space.root_collection, Path::new(""));
@@ -40,7 +27,8 @@ fn find_collection_returns_root_for_empty_path() {
 #[test]
 fn find_collection_finds_direct_child() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -65,7 +53,8 @@ fn find_collection_finds_direct_child() {
 #[test]
 fn find_collection_finds_nested_child() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1/Child Col 1";
@@ -91,7 +80,7 @@ fn find_collection_finds_nested_child() {
 #[test]
 fn find_collection_fails_for_nonexistent_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (sharedstate, _store, _space_ref) = store::utils::tmp_space("Tree Space", tmp_dir.path());
     let space = sharedstate.space.unwrap();
 
     let result = tree_node::find_collection(&space.root_collection, Path::new("nonexistent-col-1"));
@@ -107,7 +96,8 @@ fn find_collection_fails_for_nonexistent_path() {
 #[test]
 fn find_collection_fails_for_partially_invalid_path() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -135,7 +125,17 @@ fn find_collection_fails_for_partially_invalid_path() {
 
 #[test]
 fn move_tree_node_fails_with_no_space() {
-    let mut sharedstate = SharedState::default();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let ust_store_abspath = store::utils::ust_store_abspath(tmp_dir.path());
+    let user_settings = UserSettingsStore::get(&ust_store_abspath)
+        .expect("Failed to init user settings")
+        .into_inner();
+
+    let mut sharedstate = SharedState {
+        space: None,
+        spacerefs: Vec::new(),
+        user_settings,
+    };
 
     let dest_relpath = PathBuf::from("parent-col-2").join("parent-col-1");
     let dto = MoveTreeNodeDto {
@@ -155,7 +155,8 @@ fn move_tree_node_fails_with_no_space() {
 #[test]
 fn move_tree_node_fails_with_invalid_src_relpath() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let dest_relpath = PathBuf::from("parent-col-1").join("child-col-1");
     let dto = MoveTreeNodeDto {
@@ -175,7 +176,8 @@ fn move_tree_node_fails_with_invalid_src_relpath() {
 #[test]
 fn move_tree_node_fails_when_dropping_to_same_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -206,7 +208,8 @@ fn move_tree_node_fails_when_dropping_to_same_parent() {
 #[test]
 fn move_tree_node_fails_when_moving_collection_into_itself() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -238,7 +241,8 @@ fn move_tree_node_fails_when_moving_collection_into_itself() {
 #[test]
 fn move_tree_node_fails_when_destination_already_exists() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -294,7 +298,8 @@ fn move_tree_node_fails_when_destination_already_exists() {
 #[test]
 fn move_tree_node_fails_when_source_not_found() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -326,7 +331,8 @@ fn move_tree_node_fails_when_source_not_found() {
 #[test]
 fn move_tree_node_successfully_moves_collection() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -384,7 +390,8 @@ fn move_tree_node_successfully_moves_collection() {
 #[test]
 fn move_tree_node_successfully_moves_request() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let req_segment = SanitizedSegment {
         name: "Parent Req 1".to_string(),
@@ -438,7 +445,8 @@ fn move_tree_node_successfully_moves_request() {
 #[test]
 fn move_tree_node_fails_with_missing_destination_parent_directory() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
@@ -488,7 +496,8 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
 #[test]
 fn move_tree_node_successfully_moves_collection_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Grand Parent Col 1/Parent Col 1/Child Col 1";
@@ -549,7 +558,8 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
 #[test]
 fn move_tree_node_successfully_moves_request_to_parent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Grand Parent Col 1/Parent Col 1";
@@ -619,7 +629,8 @@ fn move_tree_node_successfully_moves_request_to_parent() {
 #[test]
 fn move_tree_node_successfully_moves_collection_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Col 1";
@@ -687,7 +698,8 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
 #[test]
 fn move_tree_node_successfully_moves_request_to_grandparent() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Tree Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1";

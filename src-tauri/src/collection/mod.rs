@@ -20,7 +20,7 @@ use crate::{
     request::{self, models::HttpReq},
     space::{self, parse_spacecfg},
     state::SharedState,
-    store::SpaceBuf,
+    store::{self, SpaceBufferStore},
     utils,
 };
 
@@ -32,8 +32,10 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
         .into_owned();
     let relative_space_root = "".to_string();
     let colnames = ColName::load(space_abspath)?;
-    let space_buffer = SpaceBuf::get(space_abspath)?;
-    let spacebuf_lock = space_buffer
+    let datadir_abspath = store::utils::datadir_abspath();
+    let sbf_store_abspath = store::utils::sbf_store_abspath(&datadir_abspath, space_abspath);
+    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath)?;
+    let sbf_store_mtx = sbf_store
         .lock()
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))?;
     let space_config = parse_spacecfg(space_abspath).ok();
@@ -98,7 +100,7 @@ pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
                         .collections
                         .push(sub_collection);
                 } else if entry_abspath.is_file() {
-                    let req = request::parse_req(&entry_abspath, space_abspath, &spacebuf_lock);
+                    let req = request::parse_req(&entry_abspath, space_abspath, &sbf_store_mtx);
                     if let Some(req) = req {
                         collection_rc_refcell.borrow_mut().requests.push(req);
                     }

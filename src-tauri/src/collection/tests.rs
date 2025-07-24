@@ -10,22 +10,10 @@ use crate::{
     error::Error,
     models::SanitizedSegment,
     request::{self, models::CreateRequestDto},
-    space::{self, models::CreateSpaceDto},
     state::SharedState,
+    store::{self, UserSettingsStore},
     utils,
 };
-
-fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
-    let dto = CreateSpaceDto {
-        name: "Col Space".to_string(),
-        location: tmp_path.to_string_lossy().to_string(),
-    };
-
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).expect("Failed to create test space");
-
-    sharedstate
-}
 
 #[test]
 fn parse_root_collection_should_match_created_structure() {
@@ -177,7 +165,8 @@ fn parse_root_collection_should_match_created_structure() {
     ]);
 
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     for col_dto in &collections_dto {
@@ -343,7 +332,8 @@ fn colname_set_if_missing_does_not_overwrite_existing() {
 #[test]
 fn create_parent_collections_if_missing_basic() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     let location_relpath = Path::new("");
@@ -375,7 +365,8 @@ fn create_parent_collections_if_missing_basic() {
 #[test]
 fn create_parent_collections_if_missing_single_segment() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Single Col 1";
@@ -394,7 +385,8 @@ fn create_parent_collections_if_missing_single_segment() {
 #[test]
 fn create_parent_collections_if_missing_duplicate_should_not_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Duplicate Col 1/Duplicate Col 2";
@@ -422,7 +414,8 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
 #[test]
 fn create_parent_collections_if_missing_special_chars_only_should_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1/!@#$%/Grand Child Col 1";
@@ -438,7 +431,8 @@ fn create_parent_collections_if_missing_special_chars_only_should_fail() {
 #[test]
 fn create_collection_basic() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
@@ -463,7 +457,8 @@ fn create_collection_basic() {
 #[test]
 fn create_collection_empty_fsname_should_fail() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
 
     let col_segment = SanitizedSegment {
         name: "Empty Col 1".to_string(),
@@ -482,7 +477,17 @@ fn create_collection_missing_space_should_fail() {
         fsname: "child-col-1".to_string(),
     };
 
-    let mut sharedstate = SharedState::default();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let ust_store_abspath = store::utils::ust_store_abspath(tmp_dir.path());
+    let user_settings = UserSettingsStore::get(&ust_store_abspath)
+        .expect("Failed to init user settings")
+        .into_inner();
+
+    let mut sharedstate = SharedState {
+        space: None,
+        spacerefs: Vec::new(),
+        user_settings,
+    };
     let result =
         collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate);
     assert!(matches!(result, Err(Error::FileNotFound(_))));
@@ -491,7 +496,8 @@ fn create_collection_missing_space_should_fail() {
 #[test]
 fn create_collection_unicode_path_should_succeed() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
@@ -516,7 +522,8 @@ fn create_collection_unicode_path_should_succeed() {
 #[test]
 fn create_collection_should_save_colname() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
@@ -547,7 +554,8 @@ fn create_collection_should_save_colname() {
 #[test]
 fn create_collection_integrated_flow() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (mut sharedstate, _store, _space_ref) =
+        store::utils::tmp_space("Col Space", tmp_dir.path());
     let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
 
     let location_relpath = Path::new("");

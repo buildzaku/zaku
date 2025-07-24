@@ -7,7 +7,7 @@ use url::Url;
 
 use crate::{
     space::models::SpaceCookie,
-    store::ReqBuf,
+    store::ReqBuffer,
     utils::{from_indexmap, to_indexmap},
 };
 
@@ -73,7 +73,7 @@ pub struct ReqToml {
 }
 
 impl ReqToml {
-    pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
+    pub fn from_reqbuf(req_buf: &ReqBuffer) -> Self {
         let meta = ReqTomlMeta {
             name: req_buf.meta.name.clone(),
         };
@@ -109,7 +109,7 @@ pub struct HttpReq {
 }
 
 impl HttpReq {
-    pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
+    pub fn from_reqbuf(req_buf: &ReqBuffer) -> Self {
         let meta = ReqMeta {
             fsname: req_buf.meta.fsname.clone(),
             name: req_buf.meta.name.clone(),

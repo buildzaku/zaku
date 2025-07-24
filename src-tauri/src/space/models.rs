@@ -21,7 +21,7 @@ pub struct SpaceConfigFile {
     pub meta: SpaceMeta,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Space {
     pub abspath: String,
     pub meta: SpaceMeta,
