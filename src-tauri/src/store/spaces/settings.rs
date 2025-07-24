@@ -94,6 +94,16 @@ impl SpaceSettings {
         Self::init(space_abspath)
     }
 
+    /// Updates space settings using a mutator function and persists changes to filesystem
+    ///
+    /// Loads the current space settings, applies the mutator function to modify settings
+    /// and writes the changes to the filesystem. Each update operation is atomic
+    /// and ensures data consistency.
+    ///
+    /// - `space_abspath`: Absolute path to the space directory
+    /// - `mutator`: Function that receives mutable settings and applies modifications
+    ///
+    /// Returns a `Result<SpaceSettings>` containing the updated settings
     pub fn update<F>(space_abspath: &Path, mutator: F) -> Result<SpaceSettings>
     where
         F: FnOnce(&mut SpaceSettings),

@@ -71,6 +71,15 @@ impl Store {
         Self::init()
     }
 
+    /// Updates the main store using a mutator function and persists changes to filesystem
+    ///
+    /// Loads the current store, applies the mutator function to modify store data
+    /// and writes the changes to the filesystem. Each update operation is atomic
+    /// and ensures data consistency.
+    ///
+    /// - `mutator`: Function that receives mutable store and applies modifications
+    ///
+    /// Returns a `Result<Store>` containing the updated store
     pub fn update<F>(mutator: F) -> Result<Store>
     where
         F: FnOnce(&mut Store),

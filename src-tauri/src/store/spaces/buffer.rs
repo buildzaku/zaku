@@ -90,6 +90,16 @@ impl SpaceBuf {
         Self::init(space_abspath)
     }
 
+    /// Updates space buffer using a mutator function and persists changes to filesystem
+    ///
+    /// Acquires an exclusive lock to ensure thread-safe updates, loads the current buffer,
+    /// applies the mutator function and writes the changes to the filesystem.
+    /// The update operation is serialized across all concurrent calls for the same space.
+    ///
+    /// - `space_abspath`: Absolute path to the space directory
+    /// - `mutator`: Function that receives the buffer and applies modifications
+    ///
+    /// Returns a `Result<Arc<Mutex<SpaceBuf>>>` containing the updated buffer
     pub fn update<F>(space_abspath: &Path, mutator: F) -> Result<Arc<Mutex<SpaceBuf>>>
     where
         F: FnOnce(&Arc<Mutex<SpaceBuf>>),

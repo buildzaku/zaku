@@ -73,6 +73,16 @@ impl SpaceCookies {
         Self::init(space_abspath)
     }
 
+    /// Updates space cookies using a mutator function and persists changes to filesystem
+    ///
+    /// Loads the current cookie store, applies the mutator function to modify cookies
+    /// and writes the changes to the filesystem. Each update operation is atomic
+    /// and ensures data consistency.
+    ///
+    /// - `space_abspath`: Absolute path to the space directory
+    /// - `mutator`: Function that receives the cookie store and applies modifications
+    ///
+    /// Returns a `Result<Arc<CookieStoreMutex>>` containing the updated cookie store
     pub fn update<F>(space_abspath: &Path, mutator: F) -> Result<Arc<CookieStoreMutex>>
     where
         F: FnOnce(&Arc<CookieStoreMutex>),
