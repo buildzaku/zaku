@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::{path::PathBuf, sync::Mutex};
-use tauri::{App, Manager};
+use std::path::PathBuf;
 
 use crate::{
     error::Result,
@@ -18,40 +17,28 @@ pub struct SharedState {
     pub spacerefs: Vec<SpaceReference>,
 }
 
-pub fn initialize(app: &mut App) -> Result<()> {
-    let spaceref = store::get_spaceref().or_else(space::first_valid_spaceref);
+pub fn load_sharedstate() -> Result<SharedState> {
+    let spaceref = store::get_spaceref();
+    let fallback_spaceref = space::first_valid_spaceref();
     let spacerefs = store::get_spacerefs();
-    let sharedstate_mtx = app.app_handle().state::<Mutex<SharedState>>();
-    let mut sharedstate = sharedstate_mtx.lock().unwrap();
 
-    if let Some(spaceref) = spaceref {
-        let spacepath = PathBuf::from(spaceref.path);
-
-        space::parse_space(&spacepath)
-            .map(|space| {
-                sharedstate.space = Some(space);
+    let parsed_space = spaceref
+        .or(fallback_spaceref.clone())
+        .map(|spaceref| PathBuf::from(spaceref.path))
+        .and_then(|space_abspath| {
+            space::parse_space(&space_abspath).ok().or_else(|| {
+                fallback_spaceref.as_ref().and_then(|space_ref| {
+                    if let Err(e) = store::set_spaceref(space_ref.clone()) {
+                        eprintln!("Failed to set spaceref: {e}");
+                    }
+                    let space_abspath = PathBuf::from(&space_ref.path);
+                    space::parse_space(&space_abspath).ok()
+                })
             })
-            .or_else(|_| {
-                if let Some(valid_space_reference) = space::first_valid_spaceref() {
-                    store::set_spaceref(valid_space_reference.clone())?;
+        });
 
-                    let valid_space_path = PathBuf::from(&valid_space_reference.path);
-                    space::parse_space(&valid_space_path)
-                        .map(|valid_space| {
-                            sharedstate.space = Some(valid_space);
-                        })
-                        .map_err(|e| {
-                            eprintln!("Error parsing space: {e}");
-
-                            e
-                        })
-                } else {
-                    Ok(())
-                }
-            })?;
-    }
-
-    sharedstate.spacerefs = spacerefs;
-
-    Ok(())
+    Ok(SharedState {
+        space: parsed_space,
+        spacerefs,
+    })
 }
