@@ -72,12 +72,12 @@ export const commands = {
     },
     async saveSpaceSettings(
         spaceAbspath: string,
-        settings: SpaceSettings,
+        spaceSettings: SpaceSettings,
     ): Promise<Result<null, CmdErr>> {
         try {
             return {
                 status: "ok",
-                data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, settings }),
+                data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, spaceSettings }),
             };
         } catch (e) {
             if (e instanceof Error) throw e;
