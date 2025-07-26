@@ -13,8 +13,8 @@ env:
     PNPM_VERSION: 10.13.1
 
 jobs:
-    build_release_assets:
-        name: "Build App (${{ matrix.name }})"
+    build_artifacts:
+        name: "Build Artifacts (${{ matrix.name }})"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
@@ -174,7 +174,7 @@ jobs:
 
     create_release:
         name: "Create Release"
-        needs: [build_release_assets]
+        needs: [build_artifacts]
         if: github.repository == 'buildzaku/zaku'
         permissions:
             contents: "write"
@@ -182,6 +182,8 @@ jobs:
         steps:
             - name: "Checkout repository"
               uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
 
             - name: "Extract version from latest tag"
               id: version
@@ -224,9 +226,9 @@ jobs:
                   tag_name: "v${{ steps.version.outputs.value }}"
                   name: "v${{ steps.version.outputs.value }}"
                   files: |
-                      artifacts/zaku-aarch64-apple-darwin/zaku-aarch64-apple-darwin.dmg
-                      artifacts/zaku-x86_64-apple-darwin/zaku-x86_64-apple-darwin.dmg
-                      artifacts/zaku-x86_64-unknown-linux-gnu/zaku-x86_64-unknown-linux-gnu.deb
+                      artifacts/zaku-aarch64-apple-darwin/dmg/zaku-aarch64-apple-darwin.dmg
+                      artifacts/zaku-x86_64-apple-darwin/dmg/zaku-x86_64-apple-darwin.dmg
+                      artifacts/zaku-x86_64-unknown-linux-gnu/deb/zaku-x86_64-unknown-linux-gnu.deb
                       artifacts/zaku-x86_64-pc-windows-msvc-msi/zaku-x86_64-pc-windows-msvc.msi
                       artifacts/zaku-x86_64-pc-windows-msvc-exe/zaku-x86_64-pc-windows-msvc.exe
               env:
