@@ -61,6 +61,7 @@ pub fn parse_req(
             Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, fsname)),
             Err(_) => {
                 eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
+
                 None
             }
         }

@@ -446,7 +446,6 @@ fn create_collection_missing_space_should_fail() {
     let space_abspath = tmp_dir.path();
     let result =
         collection::create_collection(Path::new("parent-col-1"), &col_segment, space_abspath);
-    println!("Result: {result:?}");
     assert!(matches!(result, Err(Error::Io(_))));
 }
 
