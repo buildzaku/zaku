@@ -2,7 +2,7 @@
 "zaku": patch
 ---
 
-Improve release workflow
+Improve CI release workflow
 
 - Use matrix strategy for all platform builds
 - Defer artifact uploads until all builds succeed
