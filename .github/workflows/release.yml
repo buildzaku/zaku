@@ -135,7 +135,7 @@ jobs:
                       cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg/
                       mv *.dmg ${{ matrix.artifact_name }}
                   else
-                      cd src-tauri/target/release/bundle/deb/
+                      cd src-tauri/target/${{ matrix.target }}/release/bundle/deb/
                       mv *.deb ${{ matrix.artifact_name }}
                   fi
 
@@ -143,7 +143,7 @@ jobs:
               if: matrix.platform == 'windows-latest'
               shell: bash
               run: |
-                  cd src-tauri/target/release/bundle/msi/
+                  cd src-tauri/target/${{ matrix.target }}/release/bundle/msi/
                   mv *.msi zaku-x86_64-pc-windows-msvc.msi
                   cd ../nsis/
                   mv *.exe zaku-x86_64-pc-windows-msvc.exe
@@ -155,7 +155,7 @@ jobs:
                   name: ${{ matrix.artifact_id }}
                   path: |
                       src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${{ matrix.artifact_name }}
-                      src-tauri/target/release/bundle/deb/${{ matrix.artifact_name }}
+                      src-tauri/target/${{ matrix.target }}/release/bundle/deb/${{ matrix.artifact_name }}
 
             - name: "Upload Snap artifact"
               if: matrix.bundle == 'snap'
@@ -169,14 +169,14 @@ jobs:
               uses: actions/upload-artifact@v4
               with:
                   name: zaku-x86_64-pc-windows-msvc-msi
-                  path: src-tauri/target/release/bundle/msi/zaku-x86_64-pc-windows-msvc.msi
+                  path: src-tauri/target/${{ matrix.target }}/release/bundle/msi/zaku-x86_64-pc-windows-msvc.msi
 
             - name: "Upload EXE artifact (Windows)"
               if: matrix.platform == 'windows-latest'
               uses: actions/upload-artifact@v4
               with:
                   name: zaku-x86_64-pc-windows-msvc-exe
-                  path: src-tauri/target/release/bundle/nsis/zaku-x86_64-pc-windows-msvc.exe
+                  path: src-tauri/target/${{ matrix.target }}/release/bundle/nsis/zaku-x86_64-pc-windows-msvc.exe
 
     create_release:
         name: "Create Release"
