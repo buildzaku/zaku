@@ -5,12 +5,6 @@ on:
         tags:
             - "v*"
     workflow_dispatch:
-        inputs:
-            force_build_and_release:
-                description: "Force run build_release_assets and create_release jobs"
-                type: boolean
-                default: false
-                required: false
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -21,7 +15,7 @@ env:
 jobs:
     build_release_assets:
         name: "Build App (${{ matrix.name }})"
-        if: ${{ github.repository == 'buildzaku/zaku' || github.event.inputs.force_build_and_release == 'true' }}
+        if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
             matrix:
@@ -181,7 +175,7 @@ jobs:
     create_release:
         name: "Create Release"
         needs: [build_release_assets]
-        if: ${{ github.repository == 'buildzaku/zaku' || github.event.inputs.force_build_and_release == 'true' }}
+        if: github.repository == 'buildzaku/zaku'
         permissions:
             contents: "write"
         runs-on: ubuntu-latest
@@ -216,7 +210,7 @@ jobs:
               env:
                   SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
               with:
-                  snap: artifacts/zaku-snap/*.snap
+                  snap: artifacts/zaku-snap/zaku_${{ steps.version.outputs.value }}_amd64.snap
                   release: ${{ steps.snap_channel.outputs.channel }}
 
             - name: "Create GitHub Release with assets"
