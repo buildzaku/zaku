@@ -149,10 +149,16 @@
 
     $effect(() => {
         // Important hack to keep the effect deeply reactive
-        JSON.stringify(explorerState.openRequest);
-
+        // Only watch config and metadata changes, not response/status
         const spaceSnapshot = sharedState.space;
         const openReqSnapshot = explorerState.openRequest;
+        if (openReqSnapshot) {
+            JSON.stringify({
+                meta: openReqSnapshot.self.meta,
+                config: openReqSnapshot.self.config,
+            });
+        }
+
         if (!spaceSnapshot || !openReqSnapshot) {
             return;
         }
@@ -176,8 +182,8 @@
         ]);
 
         if (prevOpenReqRelPath && prevOpenReqRelPath === openReqRelPath) {
-            debounced.saveReqToSpaceBuffer(spaceSnapshot.abspath, openReqSnapshot);
             openReqSnapshot.self.meta.has_unsaved_changes = true;
+            debounced.saveReqToSpaceBuffer(spaceSnapshot.abspath, openReqSnapshot);
         } else {
             prevOpenReqRelPath = openReqRelPath;
         }
