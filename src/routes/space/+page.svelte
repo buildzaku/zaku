@@ -168,7 +168,7 @@
             prevActiveReqRelPath &&
             prevActiveReqRelPath === openReqRelPath
         ) {
-            debounced.saveRequestToBuffer(spaceSnapshot.abspath, openReqSnapshot);
+            debounced.saveReqToSpaceBuffer(spaceSnapshot.abspath, openReqSnapshot);
             openReqSnapshot.self.meta.has_unsaved_changes = true;
         } else {
             prevActiveReqRelPath = openReqRelPath;
