@@ -1,5 +1,12 @@
 # zaku
 
+## 0.9.2
+
+### Patch Changes
+
+- Use fine-grained reactivity for buffer writes - [`5c29ca9`](https://github.com/buildzaku/zaku/commit/5c29ca9435158b19403a9dbc77b3623ae5dc0ad6) [#67](https://github.com/buildzaku/zaku/pull/67)
+    - Resolve HTTP status/response triggering space buffer writes
+
 ## 0.9.1
 
 ### Patch Changes
