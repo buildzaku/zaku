@@ -40,6 +40,7 @@ impl SpaceCookieStore {
                 Ok(Self::new(sck_store_abspath.to_path_buf(), cookies))
             }
             Err(_) => {
+                // corrupt JSON, use default
                 let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
                 let sck_store = Self::new(sck_store_abspath.to_path_buf(), default_cookies);
                 sck_store.fswrite()?;

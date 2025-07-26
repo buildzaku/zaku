@@ -93,6 +93,7 @@ impl SpaceCollectionsMetadataStore {
                 abspath: file_abspath,
             }),
             Err(_) => {
+                // corrupt JSON, use default
                 let store = Self::new(space_abspath);
                 store.fswrite()?;
 

@@ -67,6 +67,7 @@ impl SpaceBufferStore {
                 abspath: sbf_store_abspath.to_path_buf(),
             },
             Err(_) => {
+                // corrupt JSON, use default
                 let default_buffer = Self::new(sbf_store_abspath.to_path_buf());
                 let buffer_arc = Arc::new(Mutex::new(default_buffer));
                 Self::fswrite(&buffer_arc)?;

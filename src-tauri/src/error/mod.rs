@@ -7,6 +7,7 @@ use std::{fmt, io};
 pub enum Error {
     FileNotFound(String),
     FileReadError(String),
+    FileConflict(String),
     LockError(String),
     InvalidPath(String),
     InvalidName(String),

@@ -29,7 +29,7 @@ pub fn create_space(dto: CreateSpaceDto, state_store: &mut StateStore) -> Result
     let space_dirname = utils::to_fsname(&dto.name)?;
     let space_abspath = location.join(&space_dirname);
     if space_abspath.exists() {
-        return Err(Error::FileNotFound(format!(
+        return Err(Error::FileConflict(format!(
             "Directory with this name already exists: {}",
             space_abspath.to_string_lossy()
         )));

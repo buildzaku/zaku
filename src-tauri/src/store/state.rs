@@ -99,6 +99,7 @@ impl StateStore {
                 abspath: state_store_abspath.to_path_buf(),
             }),
             Err(_) => {
+                // corrupt JSON, use default
                 let default_store = Self::new(state_store_abspath.to_path_buf());
                 default_store.fswrite()?;
 

@@ -81,6 +81,7 @@ impl SpaceSettingsStore {
                 abspath: sst_store_abspath.to_path_buf(),
             }),
             Err(_) => {
+                // corrupt JSON, use default
                 let sst_store = Self::new(sst_store_abspath.to_path_buf());
                 sst_store.fswrite()?;
 

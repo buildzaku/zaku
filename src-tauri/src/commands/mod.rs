@@ -486,19 +486,17 @@ pub fn set_space(space_reference: SpaceReference) -> CmdResult<()> {
     }
 
     let state_store_abspath = store::utils::state_store_abspath(&datadir_abspath());
-    let temp_state_store = StateStore::get(&state_store_abspath).map_err(|e| CmdErr {
+    let mut state_store = StateStore::get(&state_store_abspath).map_err(|e| CmdErr {
         kind: ErrorKind::FileReadError,
         message: "Unable to load state store for validation".to_string(),
         details: Some(e.to_string()),
     })?;
 
-    space::parse_space(space_abspath, &temp_state_store).map_err(|err| CmdErr {
+    space::parse_space(space_abspath, &state_store).map_err(|err| CmdErr {
         kind: ErrorKind::ParseError,
         message: "Unable to load space".to_string(),
         details: Some(err.to_string()),
     })?;
-
-    let mut state_store = temp_state_store;
 
     state_store
         .update(|state| {
