@@ -231,4 +231,4 @@ jobs:
                       artifacts/zaku-x86_64-pc-windows-msvc-msi/zaku-x86_64-pc-windows-msvc.msi
                       artifacts/zaku-x86_64-pc-windows-msvc-exe/zaku-x86_64-pc-windows-msvc.exe
               env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GITHUB_TOKEN: ${{ secrets.GH_PAT }}
