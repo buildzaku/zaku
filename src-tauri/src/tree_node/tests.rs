@@ -2,60 +2,45 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
-use tempfile;
 
 use crate::{
     collection,
     error::Error,
     models::SanitizedSegment,
     request,
-    space::{self, models::CreateSpaceDto},
-    state::SharedState,
+    store::{self},
     tree_node::{self, MoveTreeNodeDto, NodeType},
 };
-
-fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
-    let dto = CreateSpaceDto {
-        name: "Tree Space".to_string(),
-        location: tmp_path.to_string_lossy().to_string(),
-    };
-
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).expect("Failed to create test space");
-
-    sharedstate
-}
-
 #[test]
 fn find_collection_returns_root_for_empty_path() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space = sharedstate.space.unwrap();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
 
-    let result = tree_node::find_collection(&space.root_collection, Path::new(""));
+    let result = tree_node::find_collection(&space, Path::new(""));
     assert!(result.is_ok());
     assert_eq!(result.unwrap().meta.fsname, "tree-space".to_string());
 }
 
 #[test]
 fn find_collection_finds_direct_child() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create collection");
 
-    let space = sharedstate.space.unwrap();
-    let result = tree_node::find_collection(&space.root_collection, Path::new("parent-col-1"));
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let result = tree_node::find_collection(&space, Path::new("parent-col-1"));
     assert!(result.is_ok());
     let collection = result.unwrap();
     assert_eq!(collection.meta.name, Some("Parent Col 1".to_string()));
@@ -64,24 +49,24 @@ fn find_collection_finds_direct_child() {
 
 #[test]
 fn find_collection_finds_nested_child() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1/Child Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create nested collection");
 
-    let space = sharedstate.space.unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
     let nested_path = PathBuf::from("parent-col-1").join("child-col-1");
-    let result = tree_node::find_collection(&space.root_collection, &nested_path);
+    let result = tree_node::find_collection(&space, &nested_path);
     assert!(result.is_ok());
     let collection = result.unwrap();
     assert_eq!(collection.meta.name, Some("Child Col 1".to_string()));
@@ -90,11 +75,11 @@ fn find_collection_finds_nested_child() {
 
 #[test]
 fn find_collection_fails_for_nonexistent_path() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space = sharedstate.space.unwrap();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
 
-    let result = tree_node::find_collection(&space.root_collection, Path::new("nonexistent-col-1"));
+    let result = tree_node::find_collection(&space, Path::new("nonexistent-col-1"));
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => {
@@ -106,24 +91,24 @@ fn find_collection_fails_for_nonexistent_path() {
 
 #[test]
 fn find_collection_fails_for_partially_invalid_path() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
-    let space = sharedstate.space.unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
     let invalid_path = PathBuf::from("parent-col-1").join("missing-child-col-1");
-    let result = tree_node::find_collection(&space.root_collection, &invalid_path);
+    let result = tree_node::find_collection(&space, &invalid_path);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => {
@@ -135,7 +120,8 @@ fn find_collection_fails_for_partially_invalid_path() {
 
 #[test]
 fn move_tree_node_fails_with_no_space() {
-    let mut sharedstate = SharedState::default();
+    let (_tmp_datadir, tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let tmp_nonexistent_space_abspath = tmp_spacedir.path().join("nonexistent");
 
     let dest_relpath = PathBuf::from("parent-col-2").join("parent-col-1");
     let dto = MoveTreeNodeDto {
@@ -144,18 +130,18 @@ fn move_tree_node_fails_with_no_space() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_nonexistent_space_abspath, &state_store);
     assert!(result.is_err());
     match result.unwrap_err() {
-        Error::InvalidPath(msg) => assert_eq!(msg, "No space found"),
-        _ => panic!("Expected InvalidPath error"),
+        Error::FileNotFound(_) => {}
+        _ => panic!("Expected FileNotFound error"),
     }
 }
 
 #[test]
 fn move_tree_node_fails_with_invalid_src_relpath() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let dest_relpath = PathBuf::from("parent-col-1").join("child-col-1");
     let dto = MoveTreeNodeDto {
@@ -164,7 +150,7 @@ fn move_tree_node_fails_with_invalid_src_relpath() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Invalid source path"),
@@ -174,19 +160,19 @@ fn move_tree_node_fails_with_invalid_src_relpath() {
 
 #[test]
 fn move_tree_node_fails_when_dropping_to_same_parent() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create collection");
 
     let dto = MoveTreeNodeDto {
@@ -195,7 +181,7 @@ fn move_tree_node_fails_when_dropping_to_same_parent() {
         dest_relpath: "parent-col-2".to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Cannot drop to same parent"),
@@ -205,19 +191,19 @@ fn move_tree_node_fails_when_dropping_to_same_parent() {
 
 #[test]
 fn move_tree_node_fails_when_moving_collection_into_itself() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
     let dest_relpath = PathBuf::from("parent-col-1").join("parent-col-1");
@@ -227,7 +213,7 @@ fn move_tree_node_fails_when_moving_collection_into_itself() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Cannot move collection into itself"),
@@ -237,19 +223,19 @@ fn move_tree_node_fails_when_moving_collection_into_itself() {
 
 #[test]
 fn move_tree_node_fails_when_destination_already_exists() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create source collection");
 
     let location_relpath = Path::new("");
@@ -257,11 +243,11 @@ fn move_tree_node_fails_when_destination_already_exists() {
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create existing collection");
 
     let conflicting_segment = SanitizedSegment {
@@ -272,7 +258,7 @@ fn move_tree_node_fails_when_destination_already_exists() {
     collection::create_collection(
         Path::new("parent-col-2"),
         &conflicting_segment,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create conflicting collection");
 
@@ -283,7 +269,7 @@ fn move_tree_node_fails_when_destination_already_exists() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert!(msg.contains("already exists")),
@@ -293,19 +279,19 @@ fn move_tree_node_fails_when_destination_already_exists() {
 
 #[test]
 fn move_tree_node_fails_when_source_not_found() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
     let dest_relpath = PathBuf::from("parent-col-1").join("nonexistent-col-1");
@@ -315,7 +301,7 @@ fn move_tree_node_fails_when_source_not_found() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert!(msg.contains("not found")),
@@ -325,19 +311,19 @@ fn move_tree_node_fails_when_source_not_found() {
 
 #[test]
 fn move_tree_node_successfully_moves_collection() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create source collection");
 
     let location_relpath = Path::new("");
@@ -345,11 +331,11 @@ fn move_tree_node_successfully_moves_collection() {
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
     let dest_relpath = PathBuf::from("parent-col-2").join("parent-col-1");
@@ -359,12 +345,11 @@ fn move_tree_node_successfully_moves_collection() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_ok());
 
-    let space = sharedstate.space.unwrap();
-    let parent_col =
-        tree_node::find_collection(&space.root_collection, Path::new("parent-col-2")).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let parent_col = tree_node::find_collection(&space, Path::new("parent-col-2")).unwrap();
     let moved_collection = parent_col
         .collections
         .iter()
@@ -373,9 +358,8 @@ fn move_tree_node_successfully_moves_collection() {
     assert_eq!(moved_collection.meta.name, Some("Parent Col 1".to_string()));
     assert_eq!(moved_collection.meta.fsname, "parent-col-1");
 
-    let space_path = Path::new(&space.abspath);
-    assert!(!space_path.join("parent-col-1").exists());
-    assert!(space_path
+    assert!(!&tmp_space_abspath.join("parent-col-1").exists());
+    assert!(&tmp_space_abspath
         .join("parent-col-2")
         .join("parent-col-1")
         .exists());
@@ -383,15 +367,15 @@ fn move_tree_node_successfully_moves_collection() {
 
 #[test]
 fn move_tree_node_successfully_moves_request() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let req_segment = SanitizedSegment {
         name: "Parent Req 1".to_string(),
         fsname: "parent-req-1".to_string(),
     };
 
-    request::create_req(Path::new(""), &req_segment, &mut sharedstate)
+    request::create_req(Path::new(""), &req_segment, &tmp_space_abspath)
         .expect("Failed to create request");
 
     let location_relpath = Path::new("");
@@ -399,11 +383,11 @@ fn move_tree_node_successfully_moves_request() {
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
     let dest_relpath = PathBuf::from("parent-col-1").join("parent-req-1.toml");
@@ -413,12 +397,11 @@ fn move_tree_node_successfully_moves_request() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_ok());
 
-    let space = sharedstate.space.unwrap();
-    let parent_col =
-        tree_node::find_collection(&space.root_collection, Path::new("parent-col-1")).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let parent_col = tree_node::find_collection(&space, Path::new("parent-col-1")).unwrap();
     let moved_request = parent_col
         .requests
         .iter()
@@ -427,9 +410,8 @@ fn move_tree_node_successfully_moves_request() {
     assert_eq!(moved_request.meta.name, "Parent Req 1");
     assert_eq!(moved_request.meta.fsname, "parent-req-1.toml");
 
-    let space_path = Path::new(&space.abspath);
-    assert!(!space_path.join("parent-req-1.toml").exists());
-    assert!(space_path
+    assert!(!&tmp_space_abspath.join("parent-req-1.toml").exists());
+    assert!(&tmp_space_abspath
         .join("parent-col-1")
         .join("parent-req-1.toml")
         .exists());
@@ -437,19 +419,19 @@ fn move_tree_node_successfully_moves_request() {
 
 #[test]
 fn move_tree_node_fails_with_missing_destination_parent_directory() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create source collection");
 
     let location_relpath = Path::new("");
@@ -457,16 +439,16 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
-    let space = sharedstate.space.as_ref().unwrap();
-    let space_path = Path::new(&space.abspath);
-    fs::remove_dir_all(space_path.join("parent-col-2")).expect("Failed to remove parent directory");
+    let _space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    fs::remove_dir_all(tmp_space_abspath.join("parent-col-2"))
+        .expect("Failed to remove parent directory");
 
     let dest_relpath = PathBuf::from("parent-col-2").join("parent-col-1");
     let dto = MoveTreeNodeDto {
@@ -475,31 +457,31 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => {
-            assert!(msg.contains("Destination parent directory does not exist"))
+            assert!(msg.contains("Collection not found"))
         }
-        _ => panic!("Expected InvalidPath error about missing destination parent directory"),
+        _ => panic!("Expected InvalidPath error about collection not found"),
     }
 }
 
 #[test]
 fn move_tree_node_successfully_moves_collection_to_parent() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Grand Parent Col 1/Parent Col 1/Child Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create nested collection");
 
     let src_relpath = PathBuf::from("grand-parent-col-1")
@@ -512,13 +494,12 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_ok());
 
-    let space = sharedstate.space.unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
     let grandparent_col =
-        tree_node::find_collection(&space.root_collection, Path::new("grand-parent-col-1"))
-            .unwrap();
+        tree_node::find_collection(&space, Path::new("grand-parent-col-1")).unwrap();
     let moved_collection = grandparent_col
         .collections
         .iter()
@@ -528,19 +509,18 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
     assert_eq!(moved_collection.meta.fsname, "child-col-1");
 
     let parent_path = PathBuf::from("grand-parent-col-1").join("parent-col-1");
-    let parent_col = tree_node::find_collection(&space.root_collection, &parent_path).unwrap();
+    let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
     assert!(!parent_col
         .collections
         .iter()
         .any(|c| c.meta.fsname == "child-col-1"));
 
-    let space_path = Path::new(&space.abspath);
-    assert!(!space_path
+    assert!(!&tmp_space_abspath
         .join("grand-parent-col-1")
         .join("parent-col-1")
         .join("child-col-1")
         .exists());
-    assert!(space_path
+    assert!(&tmp_space_abspath
         .join("grand-parent-col-1")
         .join("child-col-1")
         .exists());
@@ -548,19 +528,19 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
 
 #[test]
 fn move_tree_node_successfully_moves_request_to_parent() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Grand Parent Col 1/Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create nested collection");
 
     let req_segment = SanitizedSegment {
@@ -569,7 +549,7 @@ fn move_tree_node_successfully_moves_request_to_parent() {
     };
 
     let req_parent_path = PathBuf::from("grand-parent-col-1").join("parent-col-1");
-    request::create_req(&req_parent_path, &req_segment, &mut sharedstate)
+    request::create_req(&req_parent_path, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request");
 
     let src_relpath = PathBuf::from("grand-parent-col-1")
@@ -582,13 +562,12 @@ fn move_tree_node_successfully_moves_request_to_parent() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_ok());
 
-    let space = sharedstate.space.unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
     let grandparent_col =
-        tree_node::find_collection(&space.root_collection, Path::new("grand-parent-col-1"))
-            .unwrap();
+        tree_node::find_collection(&space, Path::new("grand-parent-col-1")).unwrap();
     let moved_request = grandparent_col
         .requests
         .iter()
@@ -598,19 +577,18 @@ fn move_tree_node_successfully_moves_request_to_parent() {
     assert_eq!(moved_request.meta.fsname, "grand-child-req-1.toml");
 
     let parent_path = PathBuf::from("grand-parent-col-1").join("parent-col-1");
-    let parent_col = tree_node::find_collection(&space.root_collection, &parent_path).unwrap();
+    let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
     assert!(!parent_col
         .requests
         .iter()
         .any(|r| r.meta.fsname == "grand-child-req-1.toml"));
 
-    let space_path = Path::new(&space.abspath);
-    assert!(!space_path
+    assert!(!&tmp_space_abspath
         .join("grand-parent-col-1")
         .join("parent-col-1")
         .join("grand-child-req-1.toml")
         .exists());
-    assert!(space_path
+    assert!(&tmp_space_abspath
         .join("grand-parent-col-1")
         .join("grand-child-req-1.toml")
         .exists());
@@ -618,19 +596,19 @@ fn move_tree_node_successfully_moves_request_to_parent() {
 
 #[test]
 fn move_tree_node_successfully_moves_collection_to_grandparent() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create deeply nested collection");
 
     let src_relpath = PathBuf::from("great-grand-parent-col-1")
@@ -646,13 +624,12 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_ok());
 
-    let space = sharedstate.space.unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
     let grandparent_path = PathBuf::from("great-grand-parent-col-1").join("grand-parent-col-1");
-    let grandparent_col =
-        tree_node::find_collection(&space.root_collection, &grandparent_path).unwrap();
+    let grandparent_col = tree_node::find_collection(&space, &grandparent_path).unwrap();
     let moved_collection = grandparent_col
         .collections
         .iter()
@@ -664,20 +641,19 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
     let parent_path = PathBuf::from("great-grand-parent-col-1")
         .join("grand-parent-col-1")
         .join("parent-col-1");
-    let parent_col = tree_node::find_collection(&space.root_collection, &parent_path).unwrap();
+    let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
     assert!(!parent_col
         .collections
         .iter()
         .any(|c| c.meta.fsname == "child-col-1"));
 
-    let space_path = Path::new(&space.abspath);
-    assert!(!space_path
+    assert!(!&tmp_space_abspath
         .join("great-grand-parent-col-1")
         .join("grand-parent-col-1")
         .join("parent-col-1")
         .join("child-col-1")
         .exists());
-    assert!(space_path
+    assert!(&tmp_space_abspath
         .join("great-grand-parent-col-1")
         .join("grand-parent-col-1")
         .join("child-col-1")
@@ -686,19 +662,19 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
 
 #[test]
 fn move_tree_node_successfully_moves_request_to_grandparent() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create nested collection");
 
     let req_segment = SanitizedSegment {
@@ -709,7 +685,7 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
     let req_parent_path = PathBuf::from("great-grand-parent-col-1")
         .join("grand-parent-col-1")
         .join("parent-col-1");
-    request::create_req(&req_parent_path, &req_segment, &mut sharedstate)
+    request::create_req(&req_parent_path, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request");
 
     let src_relpath = PathBuf::from("great-grand-parent-col-1")
@@ -724,15 +700,12 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
         dest_relpath: dest_relpath.to_string_lossy().to_string(),
     };
 
-    let result = tree_node::move_tree_node(&dto, &mut sharedstate);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_ok());
 
-    let space = sharedstate.space.unwrap();
-    let great_grandparent_col = tree_node::find_collection(
-        &space.root_collection,
-        Path::new("great-grand-parent-col-1"),
-    )
-    .unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let great_grandparent_col =
+        tree_node::find_collection(&space, Path::new("great-grand-parent-col-1")).unwrap();
     let moved_request = great_grandparent_col
         .requests
         .iter()
@@ -744,20 +717,19 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
     let parent_path = PathBuf::from("great-grand-parent-col-1")
         .join("grand-parent-col-1")
         .join("parent-col-1");
-    let parent_col = tree_node::find_collection(&space.root_collection, &parent_path).unwrap();
+    let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
     assert!(!parent_col
         .requests
         .iter()
         .any(|r| r.meta.fsname == "great-grand-child-req-1.toml"));
 
-    let space_path = Path::new(&space.abspath);
-    assert!(!space_path
+    assert!(!&tmp_space_abspath
         .join("great-grand-parent-col-1")
         .join("grand-parent-col-1")
         .join("parent-col-1")
         .join("great-grand-child-req-1.toml")
         .exists());
-    assert!(space_path
+    assert!(&tmp_space_abspath
         .join("great-grand-parent-col-1")
         .join("great-grand-child-req-1.toml")
         .exists());

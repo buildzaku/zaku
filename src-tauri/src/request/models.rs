@@ -6,8 +6,8 @@ use specta::Type;
 use url::Url;
 
 use crate::{
-    space::models::SpaceCookie,
-    store::ReqBuf,
+    space::models::SerializedCookie,
+    store::ReqBuffer,
     utils::{from_indexmap, to_indexmap},
 };
 
@@ -73,7 +73,7 @@ pub struct ReqToml {
 }
 
 impl ReqToml {
-    pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
+    pub fn from_reqbuf(req_buf: &ReqBuffer) -> Self {
         let meta = ReqTomlMeta {
             name: req_buf.meta.name.clone(),
         };
@@ -109,7 +109,7 @@ pub struct HttpReq {
 }
 
 impl HttpReq {
-    pub fn from_reqbuf(req_buf: &ReqBuf) -> Self {
+    pub fn from_reqbuf(req_buf: &ReqBuffer) -> Self {
         let meta = ReqMeta {
             fsname: req_buf.meta.fsname.clone(),
             name: req_buf.meta.name.clone(),
@@ -187,7 +187,7 @@ pub struct HttpRes {
     pub headers: Vec<(String, String)>,
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub cookies: Vec<SpaceCookie>,
+    pub cookies: Vec<SerializedCookie>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u32>,

@@ -1,8 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::Mutex;
-use tauri::Manager;
-
 pub mod collection;
 pub mod commands;
 pub mod error;
@@ -12,7 +9,6 @@ pub mod platform;
 pub mod request;
 pub mod shortcuts;
 pub mod space;
-pub mod state;
 pub mod store;
 pub mod tree_node;
 pub mod utils;
@@ -43,9 +39,6 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             shortcuts::initialize(app)?;
-
-            let shared_state = state::load_sharedstate()?;
-            app.manage(Mutex::new(shared_state));
 
             Ok(())
         })

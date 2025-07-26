@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 use time::format_description::well_known::Rfc3339;
 
 use crate::{collection::models::Collection, store::SpaceSettings};
@@ -21,23 +21,23 @@ pub struct SpaceConfigFile {
     pub meta: SpaceMeta,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Space {
     pub abspath: String,
     pub meta: SpaceMeta,
     pub root_collection: Collection,
-    pub cookies: HashMap<String, Vec<SpaceCookie>>,
+    pub cookies: HashMap<String, Vec<SerializedCookie>>,
     pub settings: SpaceSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct SpaceReference {
-    pub path: String,
+    pub abspath: PathBuf,
     pub name: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
-pub struct SpaceCookie {
+pub struct SerializedCookie {
     pub name: String,
     pub value: String,
     pub domain: String,
@@ -48,7 +48,7 @@ pub struct SpaceCookie {
     pub expires: Option<String>,
 }
 
-impl SpaceCookie {
+impl SerializedCookie {
     pub fn from_cookie_store(ck: &cookie_store::Cookie) -> Self {
         Self {
             name: ck.name().to_string(),

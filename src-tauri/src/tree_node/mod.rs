@@ -6,9 +6,10 @@ use std::{
 };
 
 use crate::{
-    collection::models::Collection,
+    collection::models::{Collection, SpaceCollectionsMetadataStore},
     error::{Error, Result},
-    state::SharedState,
+    space,
+    store::StateStore,
 };
 
 #[cfg(test)]
@@ -55,32 +56,6 @@ pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a C
             cur_collection = cur_collection
                 .collections
                 .iter()
-                .find(|col| col.meta.fsname == segment_str)
-                .ok_or_else(|| {
-                    Error::InvalidPath(format!("Collection not found: {segment_str}"))
-                })?;
-        }
-    }
-
-    Ok(cur_collection)
-}
-
-/// Same as `find_collection` but returns a mutable reference to allow
-/// modifications to the found collection.
-///
-/// - `root`: Root collection to start the search from
-/// - `relpath`: Relative path to the target collection
-///
-/// Returns a `Result` containing a mutable reference to the found collection
-fn find_collection_mut<'a>(root: &'a mut Collection, relpath: &Path) -> Result<&'a mut Collection> {
-    let mut cur_collection = root;
-
-    for component in relpath.components() {
-        if let path::Component::Normal(segment) = component {
-            let segment_str = segment.to_string_lossy();
-            cur_collection = cur_collection
-                .collections
-                .iter_mut()
                 .find(|col| col.meta.fsname == segment_str)
                 .ok_or_else(|| {
                     Error::InvalidPath(format!("Collection not found: {segment_str}"))
@@ -188,14 +163,15 @@ fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -
 /// the filesystem entry.
 ///
 /// - `dto`: Contains node type and source/destination relative paths
-/// - `sharedstate`: Shared state containing the space and collection tree
+/// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result` indicating success or failure of the drop operation
-pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> Result<()> {
-    let space = sharedstate
-        .space
-        .as_mut()
-        .ok_or_else(|| Error::InvalidPath("No space found".to_string()))?;
+pub fn move_tree_node(
+    dto: &MoveTreeNodeDto,
+    space_abspath: &Path,
+    state_store: &StateStore,
+) -> Result<()> {
+    let space = space::parse_space(space_abspath, state_store)?;
 
     let src_fsname = Path::new(&dto.src_relpath)
         .file_name()
@@ -239,49 +215,19 @@ pub fn move_tree_node(dto: &MoveTreeNodeDto, sharedstate: &mut SharedState) -> R
         )));
     }
 
-    match dto.node_type {
-        NodeType::Collection => {
-            let src_parent_col =
-                find_collection_mut(&mut space.root_collection, src_parent_relpath)?;
-            let node_idx = src_parent_col
-                .collections
-                .iter()
-                .position(|c| c.meta.fsname == src_fsname)
-                .unwrap();
-            let collection = src_parent_col.collections.remove(node_idx);
+    let src_abspath = space_abspath.join(&dto.src_relpath);
+    let dest_abspath = space_abspath.join(&dto.dest_relpath);
 
-            let dest_parent_col =
-                find_collection_mut(&mut space.root_collection, dest_parent_relpath)?;
-            dest_parent_col.collections.push(collection);
-            dest_parent_col.collections.sort_by(|a, b| {
-                a.meta
-                    .fsname
-                    .to_lowercase()
-                    .cmp(&b.meta.fsname.to_lowercase())
-            });
-        }
-        NodeType::Request => {
-            let src_parent_col =
-                find_collection_mut(&mut space.root_collection, src_parent_relpath)?;
-            let node_idx = src_parent_col
-                .requests
-                .iter()
-                .position(|r| r.meta.fsname == src_fsname)
-                .unwrap();
-            let request = src_parent_col.requests.remove(node_idx);
-
-            let dest_parent_col =
-                find_collection_mut(&mut space.root_collection, dest_parent_relpath)?;
-            dest_parent_col.requests.push(request);
-            dest_parent_col
-                .requests
-                .sort_by(|a, b| a.meta.fsname.cmp(&b.meta.fsname));
-        }
-    }
-
-    let src_abspath = Path::new(&space.abspath).join(&dto.src_relpath);
-    let dest_abspath = Path::new(&space.abspath).join(&dto.dest_relpath);
     fsmove(&src_abspath, &dest_abspath)?;
+
+    if dto.node_type == NodeType::Collection {
+        let mut scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
+        scmt_store.update(|metadata| {
+            if let Some(name) = metadata.mappings.remove(&dto.src_relpath) {
+                metadata.mappings.insert(dto.dest_relpath.clone(), name);
+            }
+        })?;
+    }
 
     Ok(())
 }

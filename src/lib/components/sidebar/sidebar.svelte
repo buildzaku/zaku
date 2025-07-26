@@ -32,7 +32,7 @@
     } from "$lib/components/primitives/accordion";
     import { Badge } from "$lib/components/primitives/badge";
     import { commands } from "$lib/bindings";
-    import type { Space, SpaceCookie } from "$lib/bindings";
+    import type { Space, SerializedCookie } from "$lib/bindings";
     import { toast } from "svelte-sonner";
     import { Checkbox } from "$lib/components/primitives/checkbox";
     import { Label } from "$lib/components/primitives/label";
@@ -112,7 +112,7 @@
     </Dialog>
 {/snippet}
 
-{#snippet cookiesContent(space: Space, domain: string, cookies: SpaceCookie[])}
+{#snippet cookiesContent(space: Space, domain: string, cookies: SerializedCookie[])}
     <div class="flex gap-1.5">
         {#each cookies as ck, idx (idx)}
             <Badge variant="outline" class="p-1">

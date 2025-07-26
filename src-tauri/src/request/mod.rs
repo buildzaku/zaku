@@ -1,7 +1,7 @@
 use std::{
     fs::{self, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     sync::MutexGuard,
 };
 use toml;
@@ -11,9 +11,7 @@ use crate::{
     error::{Error, Result},
     models::SanitizedSegment,
     request::models::{HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
-    space,
-    state::SharedState,
-    store::SpaceBuf,
+    store::SpaceBufferStore,
 };
 
 pub mod models;
@@ -30,13 +28,13 @@ pub mod tests;
 ///
 /// - `entry_abspath`: Absolute path to the request file
 /// - `space_abspath`: Absolute path of the space
-/// - `spacebuf_rlock`: Read lock guard for the space buffer
+/// - `sbf_store_mtx`: Mutex lock for the space buffer
 ///
 /// Returns an `Option<HttpReq>` containing the parsed request
 pub fn parse_req(
     entry_abspath: &Path,
     space_abspath: &Path,
-    spacebuf_lock: &MutexGuard<'_, SpaceBuf>,
+    sbf_store_mtx: &MutexGuard<'_, SpaceBufferStore>,
 ) -> Option<HttpReq> {
     let is_file = entry_abspath.is_file();
     let is_toml = entry_abspath.extension().and_then(|e| e.to_str()) == Some("toml");
@@ -50,7 +48,7 @@ pub fn parse_req(
         .to_string_lossy()
         .into_owned();
 
-    if let Some(req_buf) = spacebuf_lock.requests.get(&relpath) {
+    if let Some(req_buf) = sbf_store_mtx.requests.get(&relpath) {
         Some(HttpReq::from_reqbuf(req_buf))
     } else {
         let fsname = entry_abspath
@@ -63,6 +61,7 @@ pub fn parse_req(
             Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, fsname)),
             Err(_) => {
                 eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
+
                 None
             }
         }
@@ -76,25 +75,19 @@ pub fn parse_req(
 ///
 /// - `parent_relpath`: Relative path to the parent collection directory
 /// - `req_segment`: Sanitized segment containing the request name and filesystem name
-/// - `sharedstate`: Mutable reference to the application's shared state
+/// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result<CreateNewRequest>` containing the created request's paths
 pub fn create_req(
     parent_relpath: &Path,
     req_segment: &SanitizedSegment,
-    sharedstate: &mut SharedState,
+    space_abspath: &Path,
 ) -> Result<CreateNewRequest> {
     if req_segment.fsname.trim().is_empty() {
-        return Err(Error::FileNotFound(
+        return Err(Error::InvalidName(
             "Cannot create a request without name".to_string(),
         ));
     }
-
-    let space = sharedstate
-        .space
-        .clone()
-        .ok_or_else(|| Error::FileNotFound("Active space not found".to_string()))?;
-    let space_abspath = PathBuf::from(&space.abspath);
 
     let reqfile_abspath = space_abspath.join(parent_relpath).join(&req_segment.fsname);
     let reqfile_relpath = parent_relpath.join(format!("{}.toml", &req_segment.fsname));
@@ -105,8 +98,6 @@ pub fn create_req(
         parent_relpath: parent_relpath.to_string_lossy().to_string(),
         relpath: reqfile_relpath.to_string_lossy().to_string(),
     };
-
-    sharedstate.space = Some(space::parse_space(&space_abspath)?);
 
     Ok(created)
 }
