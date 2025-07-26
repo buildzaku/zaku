@@ -10,7 +10,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{error::Result, request::models::HttpReq};
+use crate::{error::Result, request::models::HttpReq, store};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct CollectionMeta {
@@ -66,10 +66,7 @@ impl Deref for SpaceCollectionsMetadataStore {
 
 impl SpaceCollectionsMetadataStore {
     fn new(space_abspath: &Path) -> Self {
-        let file_abspath = space_abspath
-            .join(".zaku")
-            .join("collections")
-            .join("name.toml");
+        let file_abspath = store::utils::scmt_store_abspath(space_abspath);
 
         Self {
             metadata: SpaceCollectionsMetadata {
@@ -80,10 +77,7 @@ impl SpaceCollectionsMetadataStore {
     }
 
     fn init(space_abspath: &Path) -> Result<Self> {
-        let file_abspath = space_abspath
-            .join(".zaku")
-            .join("collections")
-            .join("name.toml");
+        let file_abspath = store::utils::scmt_store_abspath(space_abspath);
         if !file_abspath.exists() {
             let store = Self::new(space_abspath);
             store.fswrite()?;

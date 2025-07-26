@@ -42,6 +42,14 @@ pub fn sst_store_abspath(datadir_abspath: &Path, space_abspath: &Path) -> PathBu
         .join("settings.json")
 }
 
+/// Returns `SpaceCollectionsMetadataStore`'s absolute path on the filesystem for a given space.
+pub fn scmt_store_abspath(space_abspath: &Path) -> PathBuf {
+    space_abspath
+        .join(".zaku")
+        .join("collections")
+        .join("name.toml")
+}
+
 #[cfg(test)]
 /// Creates a temporary space for testing purposes.
 /// Returns the temp directories and state store

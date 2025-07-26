@@ -248,10 +248,7 @@ fn collections_metadata_reads_existing_data() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
-    let toml_path = tmp_space_abspath
-        .join(".zaku")
-        .join("collections")
-        .join("name.toml");
+    let toml_path = store::utils::scmt_store_abspath(&tmp_space_abspath);
 
     std::fs::create_dir_all(toml_path.parent().unwrap()).unwrap();
     let toml_content = format!(
@@ -275,10 +272,7 @@ fn collections_metadata_invalid_toml_creates_default_store() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
-    let scmt_abspath = tmp_space_abspath
-        .join(".zaku")
-        .join("collections")
-        .join("name.toml");
+    let scmt_abspath = store::utils::scmt_store_abspath(&tmp_space_abspath);
     fs::create_dir_all(scmt_abspath.parent().unwrap()).unwrap();
 
     let invalid_toml = "[mappings\n\"parent-col-1/child-col-1\" = \"Child Col 1\"";
@@ -300,10 +294,7 @@ fn collections_metadata_creates_file_if_missing() {
     let name = scmt_store.mappings.get("any-path");
     assert_eq!(name, None);
 
-    let scmt_abspath = tmp_space_abspath
-        .join(".zaku")
-        .join("collections")
-        .join("name.toml");
+    let scmt_abspath = store::utils::scmt_store_abspath(&tmp_space_abspath);
     assert!(scmt_abspath.exists());
 
     let content = fs::read_to_string(scmt_abspath).unwrap();
