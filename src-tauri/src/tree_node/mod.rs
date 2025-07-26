@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    collection::models::Collection,
+    collection::models::{Collection, SpaceCollectionsMetadataStore},
     error::{Error, Result},
     space,
     store::StateStore,
@@ -221,7 +221,6 @@ pub fn move_tree_node(
     fsmove(&src_abspath, &dest_abspath)?;
 
     if dto.node_type == NodeType::Collection {
-        use crate::collection::models::SpaceCollectionsMetadataStore;
         let mut scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
         scmt_store.update(|metadata| {
             if let Some(name) = metadata.mappings.remove(&dto.src_relpath) {
