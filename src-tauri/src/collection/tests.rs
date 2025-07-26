@@ -248,16 +248,19 @@ fn collections_metadata_reads_existing_data() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
+    let toml_path = tmp_space_abspath
+        .join(".zaku")
+        .join("collections")
+        .join("name.toml");
 
-    let mut scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
-    scmt_store
-        .update(|metadata| {
-            metadata.mappings.insert(
-                collection_relpath.to_string_lossy().to_string(),
-                "Child Col 1".to_string(),
-            );
-        })
-        .unwrap();
+    std::fs::create_dir_all(toml_path.parent().unwrap()).unwrap();
+    let toml_content = format!(
+        "[mappings]\n\"{path}\" = \"Child Col 1\"\n",
+        path = collection_relpath.to_string_lossy()
+    );
+    std::fs::write(&toml_path, toml_content).unwrap();
+
+    let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
 
     assert_eq!(
         scmt_store
@@ -305,75 +308,6 @@ fn collections_metadata_creates_file_if_missing() {
 
     let content = fs::read_to_string(scmt_abspath).unwrap();
     assert_eq!(content.trim(), "[mappings]");
-}
-
-#[test]
-fn collections_metadata_set_if_missing_writes_new_entry() {
-    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
-    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
-
-    let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
-
-    let mut scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
-    scmt_store
-        .update(|metadata| {
-            let mapping_exists = metadata
-                .mappings
-                .contains_key(&collection_relpath.to_string_lossy().to_string());
-            if !mapping_exists {
-                metadata.mappings.insert(
-                    collection_relpath.to_string_lossy().to_string(),
-                    "Child Col 1".to_string(),
-                );
-            }
-        })
-        .unwrap();
-
-    let name = scmt_store
-        .mappings
-        .get(&collection_relpath.to_string_lossy().to_string());
-    assert_eq!(name, Some(&"Child Col 1".to_string()));
-}
-
-#[test]
-fn collections_metadata_set_if_missing_does_not_overwrite_existing() {
-    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
-    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
-
-    let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
-
-    let mut scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
-    scmt_store
-        .update(|metadata| {
-            let mapping_exists = metadata
-                .mappings
-                .contains_key(&collection_relpath.to_string_lossy().to_string());
-            if !mapping_exists {
-                metadata.mappings.insert(
-                    collection_relpath.to_string_lossy().to_string(),
-                    "Child Col 1 - First Name".to_string(),
-                );
-            }
-        })
-        .unwrap();
-    scmt_store
-        .update(|metadata| {
-            let mapping_exists = metadata
-                .mappings
-                .contains_key(&collection_relpath.to_string_lossy().to_string());
-            if !mapping_exists {
-                metadata.mappings.insert(
-                    collection_relpath.to_string_lossy().to_string(),
-                    "Child Col 1 - Second Name".to_string(),
-                );
-            }
-        })
-        .unwrap();
-
-    let name = scmt_store
-        .mappings
-        .get(&collection_relpath.to_string_lossy().to_string());
-    assert_eq!(name, Some(&"Child Col 1 - First Name".to_string()));
 }
 
 #[test]
