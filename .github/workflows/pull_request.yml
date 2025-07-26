@@ -108,20 +108,27 @@ jobs:
               run: cargo fmt --all -- --check
 
     rust_lint:
-        name: "Rust Lint"
+        name: "Rust Lint (${{ matrix.name }})"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - platform: "macos-latest"
-                      arch: "aarch64-apple-darwin"
-                    - platform: "macos-latest"
-                      arch: "x86_64-apple-darwin"
-                    - platform: "ubuntu-latest"
-                      arch: null
-                    - platform: "windows-latest"
-                      arch: null
+                    - name: "macOS ARM64"
+                      platform: "macos-latest"
+                      target: "aarch64-apple-darwin"
+
+                    - name: "macOS x86_64"
+                      platform: "macos-latest"
+                      target: "x86_64-apple-darwin"
+
+                    - name: "Linux x86_64"
+                      platform: "ubuntu-latest"
+                      target: null
+
+                    - name: "Windows x86_64"
+                      platform: "windows-latest"
+                      target: null
         runs-on: ${{ matrix.platform }}
         defaults:
             run:
@@ -134,7 +141,7 @@ jobs:
               uses: dtolnay/rust-toolchain@stable
               with:
                   components: clippy
-                  targets: ${{ matrix.arch }}
+                  targets: ${{ matrix.target }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
@@ -151,20 +158,27 @@ jobs:
               run: cargo clippy --all-targets --all-features -- -D warnings
 
     rust_test:
-        name: "Rust Test"
+        name: "Rust Test (${{ matrix.name }})"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - platform: "macos-latest"
-                      arch: "aarch64-apple-darwin"
-                    - platform: "macos-latest"
-                      arch: "x86_64-apple-darwin"
-                    - platform: "ubuntu-latest"
-                      arch: null
-                    - platform: "windows-latest"
-                      arch: null
+                    - name: "macOS ARM64"
+                      platform: "macos-latest"
+                      target: "aarch64-apple-darwin"
+
+                    - name: "macOS x86_64"
+                      platform: "macos-latest"
+                      target: "x86_64-apple-darwin"
+
+                    - name: "Linux x86_64"
+                      platform: "ubuntu-latest"
+                      target: null
+
+                    - name: "Windows x86_64"
+                      platform: "windows-latest"
+                      target: null
         runs-on: ${{ matrix.platform }}
         defaults:
             run:
@@ -176,7 +190,7 @@ jobs:
             - name: "Setup Rust"
               uses: dtolnay/rust-toolchain@stable
               with:
-                  targets: ${{ matrix.arch }}
+                  targets: ${{ matrix.target }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
@@ -193,24 +207,36 @@ jobs:
               run: cargo test --all
 
     build_app:
-        name: "Build App"
+        name: "Build App (${{ matrix.name }})"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - platform: "macos-latest"
-                      arch: "aarch64-apple-darwin"
-                      args: "--ci --verbose --bundles dmg --target aarch64-apple-darwin"
-                    - platform: "macos-latest"
-                      arch: "x86_64-apple-darwin"
-                      args: "--ci --verbose --bundles dmg --target x86_64-apple-darwin"
-                    - platform: "ubuntu-latest"
-                      arch: null
-                      args: "--ci --verbose --bundles deb"
-                    - platform: "windows-latest"
-                      arch: null
-                      args: "--ci --verbose --bundles msi"
+                    - name: "macOS ARM64"
+                      platform: macos-latest
+                      target: aarch64-apple-darwin
+                      bundle: dmg
+
+                    - name: "macOS x86_64"
+                      platform: macos-latest
+                      target: x86_64-apple-darwin
+                      bundle: dmg
+
+                    - name: "Linux x86_64"
+                      platform: ubuntu-latest
+                      target: x86_64-unknown-linux-gnu
+                      bundle: deb
+
+                    - name: "Windows x86_64"
+                      platform: windows-latest
+                      target: x86_64-pc-windows-msvc
+                      bundle: msi,nsis
+
+                    - name: "Linux Snap"
+                      platform: ubuntu-latest
+                      target: x86_64-unknown-linux-gnu
+                      bundle: snap
         runs-on: ${{ matrix.platform }}
         steps:
             - name: "Checkout repository"
@@ -242,7 +268,7 @@ jobs:
             - name: "Setup Rust"
               uses: dtolnay/rust-toolchain@stable
               with:
-                  targets: ${{ matrix.arch }}
+                  targets: ${{ matrix.target }}
 
             - name: "Setup Rust cache"
               uses: swatinem/rust-cache@v2
@@ -259,66 +285,21 @@ jobs:
               run: pnpm install
 
             - name: "Build application"
-              uses: tauri-apps/tauri-action@v0
-              with:
-                  args: ${{ matrix.args }}
+              if: matrix.bundle != 'snap'
+              run: pnpm tauri build --bundles ${{ matrix.bundle }} --target ${{ matrix.target }}
 
-    build_snap_package:
-        name: "Build Snap Package"
-        if: github.repository == 'buildzaku/zaku'
-        runs-on: ubuntu-latest
-        steps:
-            - name: "Checkout repository"
-              uses: actions/checkout@v4
-
-            - name: "Setup pnpm"
-              uses: pnpm/action-setup@v4
-              with:
-                  version: ${{ env.PNPM_VERSION }}
-
-            - name: "Setup Node.js"
-              uses: actions/setup-node@v4
-              with:
-                  node-version: ${{ env.NODE_VERSION }}
-                  cache: pnpm
-
-            - name: "Get pnpm store directory"
-              id: pnpm_cache
-              shell: bash
-              run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-            - name: "Setup pnpm cache"
-              uses: actions/cache@v4
-              with:
-                  path: ${{ steps.pnpm_cache.outputs.pnpm_cache_dir }}
-                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-                  restore-keys: ${{ runner.os }}-pnpm-store-
-
-            - name: "Setup Rust"
-              uses: dtolnay/rust-toolchain@stable
-
-            - name: "Setup Rust cache"
-              uses: swatinem/rust-cache@v2
-              with:
-                  workspaces: "./src-tauri -> target"
-
-            - name: "Install system dependencies"
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
-
-            - name: "Install frontend dependencies"
-              run: pnpm install
-
-            - name: "Build application"
+            - name: "Build application for Snap"
+              if: matrix.bundle == 'snap'
               run: pnpm tauri build --bundles deb
 
             - name: "Extract .deb to snap-stage/"
+              if: matrix.bundle == 'snap'
               run: |
                   mkdir -p snap-stage
                   dpkg -x src-tauri/target/release/bundle/deb/*.deb snap-stage/
                   sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage/usr/share/applications/Zaku.desktop
 
             - name: "Build Snap package"
+              if: matrix.bundle == 'snap'
               uses: snapcore/action-build@v1
-              id: build
+              id: build_snap
