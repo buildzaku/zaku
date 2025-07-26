@@ -2,8 +2,8 @@ name: "Release"
 
 on:
     push:
-        branches:
-            - main
+        tags:
+            - "v*"
     workflow_dispatch:
         inputs:
             force_build_and_release:
@@ -19,81 +19,9 @@ env:
     PNPM_VERSION: 10.13.1
 
 jobs:
-    version_bump:
-        name: "Version Bump"
-        if: github.repository == 'buildzaku/zaku'
-        permissions:
-            contents: "write"
-            pull-requests: "write"
-        runs-on: ubuntu-latest
-        outputs:
-            create_release: ${{ steps.changesets.outputs.published }}
-            version: ${{ steps.new_version.outputs.value }}
-        steps:
-            - name: "Checkout repository"
-              uses: actions/checkout@v4
-
-            - name: "Setup pnpm"
-              uses: pnpm/action-setup@v4
-              with:
-                  version: ${{ env.PNPM_VERSION }}
-
-            - name: "Setup Node.js"
-              uses: actions/setup-node@v4
-              with:
-                  node-version: ${{ env.NODE_VERSION }}
-                  cache: pnpm
-
-            - name: "Get pnpm store directory"
-              id: pnpm_cache
-              shell: bash
-              run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-            - name: "Setup pnpm cache"
-              uses: actions/cache@v4
-              with:
-                  path: ${{ steps.pnpm_cache.outputs.pnpm_cache_dir }}
-                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-                  restore-keys: ${{ runner.os }}-pnpm-store-
-
-            - name: "Setup Rust"
-              uses: dtolnay/rust-toolchain@stable
-
-            - name: "Setup Rust cache"
-              uses: swatinem/rust-cache@v2
-              with:
-                  workspaces: "./scripts/sync-metadata -> target"
-
-            - name: "Install system dependencies"
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
-
-            - name: "Install frontend dependencies"
-              run: pnpm install
-
-            - name: "Get new version"
-              id: new_version
-              run: |
-                  pnpm changeset status --output=changeset-status.json
-                  NEW_VERSION=$(jq --raw-output '.releases[0].newVersion' changeset-status.json)
-                  rm changeset-status.json
-                  echo "value=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-            - name: "Create a release pull request"
-              id: changesets
-              uses: changesets/action@v1
-              with:
-                  commit: "chore(release): v${{ steps.new_version.outputs.value }}"
-                  title: "chore(release): v${{ steps.new_version.outputs.value }}"
-                  version: pnpm changeset-version
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
     build_release_assets:
         name: "Build App (${{ matrix.name }})"
-        needs: [version_bump]
-        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_bump.outputs.create_release == 'true' || github.event.inputs.force_build_and_release == 'true') }}
+        if: ${{ github.repository == 'buildzaku/zaku' || github.event.inputs.force_build_and_release == 'true' }}
         strategy:
             fail-fast: false
             matrix:
@@ -252,37 +180,26 @@ jobs:
 
     create_release:
         name: "Create Release"
-        needs: [version_bump, build_release_assets]
-        if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_bump.outputs.create_release == 'true' || github.event.inputs.force_build_and_release == 'true') }}
+        needs: [build_release_assets]
+        if: ${{ github.repository == 'buildzaku/zaku' || github.event.inputs.force_build_and_release == 'true' }}
         permissions:
             contents: "write"
         runs-on: ubuntu-latest
         steps:
+            - name: "Extract version from tag"
+              id: version
+              run: echo "value=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
             - name: "Download all artifacts"
               uses: actions/download-artifact@v4
               with:
                   path: artifacts
 
-            - name: "Create git tag"
-              run: |
-                  TAG_NAME="v${{ needs.version_bump.outputs.version }}"
-                  TAG_EXISTS=$(git rev-parse "$TAG_NAME" >/dev/null 2>&1 && echo "true" || echo "false")
-
-                  if [ "$TAG_EXISTS" = "false" ]; then
-                      echo "Creating new tag: $TAG_NAME"
-                      git tag "$TAG_NAME"
-                      git push origin "$TAG_NAME"
-                  else
-                      echo "Tag $TAG_NAME already exists, skipping tag creation"
-                  fi
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
             - name: "Set Snap release channel"
               id: snap_channel
               shell: bash
               run: |
-                  VERSION="${{ needs.version_bump.outputs.version }}"
+                  VERSION="${{ steps.version.outputs.value }}"
 
                   if [[ "$VERSION" == *"-alpha."* ]]; then
                       echo "channel=edge" >> $GITHUB_OUTPUT
@@ -305,8 +222,8 @@ jobs:
             - name: "Create GitHub Release with assets"
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: "v${{ needs.version_bump.outputs.version }}"
-                  name: "v${{ needs.version_bump.outputs.version }}"
+                  tag_name: "v${{ steps.version.outputs.value }}"
+                  name: "v${{ steps.version.outputs.value }}"
                   files: |
                       artifacts/zaku-aarch64-apple-darwin/zaku-aarch64-apple-darwin.dmg
                       artifacts/zaku-x86_64-apple-darwin/zaku-x86_64-apple-darwin.dmg

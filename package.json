@@ -22,6 +22,7 @@
         "changeset-add": "changeset add",
         "changeset-status": "changeset status --verbose",
         "changeset-version": "changeset version && pnpm run sync-metadata && pnpm run format",
+        "changeset-tag": "changeset tag",
         "tauri": "tauri",
         "checks": "./scripts/checks.sh"
     },
