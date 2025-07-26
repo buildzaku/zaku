@@ -113,7 +113,7 @@ impl HttpReq {
         let meta = ReqMeta {
             fsname: req_buf.meta.fsname.clone(),
             name: req_buf.meta.name.clone(),
-            has_unsaved_changes: req_buf.meta.has_unsaved_changes.clone(),
+            has_unsaved_changes: req_buf.meta.has_unsaved_changes,
         };
 
         Self {
