@@ -78,5 +78,6 @@ jobs:
                   title: "chore(release): v${{ steps.new_version.outputs.value }}"
                   version: pnpm changeset-version
                   publish: pnpm changeset-tag
+                  commitMode: github-api
               env:
                   GITHUB_TOKEN: ${{ secrets.GH_PAT }}
