@@ -67,7 +67,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
         dispatch_notif,
         create_collection,
         create_req,
-        write_req_to_reqtoml,
+        write_req_to_space_buffer,
         write_reqbuf_to_reqtoml,
         http_req,
         move_tree_node
@@ -259,7 +259,7 @@ pub async fn create_req(dto: CreateRequestDto) -> CmdResult<CreateNewRequest> {
 
 #[specta::specta]
 #[tauri::command]
-pub async fn write_req_to_reqtoml(
+pub async fn write_req_to_space_buffer(
     space_abspath: &str,
     relpath: &str,
     request: HttpReq,

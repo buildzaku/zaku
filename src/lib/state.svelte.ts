@@ -5,7 +5,7 @@ import { version } from "$app/environment";
 import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
-import { joinPaths } from "$lib/components/tree-node/utils.svelte";
+import { pathJoin } from "$lib/components/tree-node/utils.svelte";
 import { emitCmdError } from "$lib/utils";
 
 class SharedState {
@@ -83,16 +83,8 @@ class Debounced {
     #state: Map<AbsoluteRequestPath, DebouncedState> = new Map();
     #DELAY = 1500;
 
-    async #invokeSaveReqToBuf(absoluteSpacePath: string, openRequest: OpenRequest) {
-        // TODO - handle cmd error, is the wrapper even needed anymore?
-        await commands.writeReqToReqtoml(
-            absoluteSpacePath,
-            openRequest.parentRelpath,
-            openRequest.self,
-        );
-    }
-    public saveRequestToBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
-        const absoluteRequestPath = joinPaths([
+    public saveReqToSpaceBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
+        const absoluteRequestPath = pathJoin([
             absoluteSpacePath,
             openRequest.parentRelpath,
             openRequest.self.meta.fsname,
@@ -104,7 +96,12 @@ class Debounced {
         }
 
         const timer = setTimeout(() => {
-            this.#invokeSaveReqToBuf(absoluteSpacePath, openRequest);
+            commands.writeReqToSpaceBuffer(
+                absoluteSpacePath,
+                openRequest.parentRelpath,
+                openRequest.self,
+            );
+
             this.#state.delete(absoluteRequestPath);
         }, this.#DELAY);
 
@@ -121,14 +118,22 @@ class Debounced {
         const currentState = this.#state.get(absoluteRequestPath);
         if (currentState) {
             const { timer, absoluteSpacePath, openRequest } = currentState;
-            await this.#invokeSaveReqToBuf(absoluteSpacePath, openRequest);
+            await commands.writeReqToSpaceBuffer(
+                absoluteSpacePath,
+                openRequest.parentRelpath,
+                openRequest.self,
+            );
             this.#state.delete(absoluteRequestPath);
             clearTimeout(timer);
         }
     }
     public async flushAll(): Promise<void> {
         for (const { timer, absoluteSpacePath, openRequest } of this.#state.values()) {
-            await this.#invokeSaveReqToBuf(absoluteSpacePath, openRequest);
+            commands.writeReqToSpaceBuffer(
+                absoluteSpacePath,
+                openRequest.parentRelpath,
+                openRequest.self,
+            );
             clearTimeout(timer);
         }
     }

@@ -35,7 +35,7 @@ export function pathSegments(path: string) {
     return path.split("/").filter(segment => segment !== "");
 }
 
-export function joinPaths(paths: string[]) {
+export function pathJoin(paths: string[]) {
     return paths.filter(segment => segment !== "").join("/");
 }
 
