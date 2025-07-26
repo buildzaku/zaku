@@ -10,7 +10,7 @@
     import { Badge } from "$lib/components/primitives/badge";
     import { HTTP_STATUS_DESCRIPTION } from "$lib/utils/constants";
     import type { OpenRequest } from "$lib/models";
-    import type { HttpRes, SpaceCookie } from "$lib/bindings";
+    import type { HttpRes, SerializedCookie } from "$lib/bindings";
     import { prettyJson, formatSize, formatElapsed } from "$lib/utils";
 
     type Props = {
@@ -62,7 +62,7 @@
     </div>
 {/snippet}
 
-{#snippet cookiesTable(cookies: SpaceCookie[])}
+{#snippet cookiesTable(cookies: SerializedCookie[])}
     <div class="m-3 h-full max-h-[calc(100%-1.5rem)]">
         <div class="bg-card flex h-full flex-col overflow-hidden rounded border">
             <div class="bg-accent/25 flex border-b font-semibold">

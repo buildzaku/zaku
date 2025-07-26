@@ -1,31 +1,20 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs,
     path::{Path, PathBuf},
 };
-use tempfile;
 
 use crate::{
-    collection::{self, models::CreateCollectionDto, ColName},
+    collection::{
+        self,
+        models::{CreateCollectionDto, SpaceCollectionsMetadata, SpaceCollectionsMetadataStore},
+    },
     error::Error,
     models::SanitizedSegment,
     request::{self, models::CreateRequestDto},
-    space::{self, models::CreateSpaceDto},
-    state::SharedState,
+    store::{self},
     utils,
 };
-
-fn tmp_space_sharedstate(tmp_path: &Path) -> SharedState {
-    let dto = CreateSpaceDto {
-        name: "Col Space".to_string(),
-        location: tmp_path.to_string_lossy().to_string(),
-    };
-
-    let mut sharedstate = SharedState::default();
-    space::create_space(dto, &mut sharedstate).expect("Failed to create test space");
-
-    sharedstate
-}
 
 #[test]
 fn parse_root_collection_should_match_created_structure() {
@@ -176,9 +165,8 @@ fn parse_root_collection_should_match_created_structure() {
         ),
     ]);
 
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     for col_dto in &collections_dto {
         let location_relpath = Path::new(&col_dto.location_relpath);
@@ -186,11 +174,11 @@ fn parse_root_collection_should_match_created_structure() {
         let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
             location_relpath,
             relpath,
-            &mut sharedstate,
+            &tmp_space_abspath,
         )
         .expect("Failed to create parent collections");
 
-        collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+        collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
             .expect("Failed to create collection");
     }
 
@@ -200,16 +188,16 @@ fn parse_root_collection_should_match_created_structure() {
         let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
             location_relpath,
             relpath,
-            &mut sharedstate,
+            &tmp_space_abspath,
         )
         .expect("Failed to create parent collections");
 
-        request::create_req(&parent_relpath, &req_segment, &mut sharedstate)
+        request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
             .expect("Failed to create request");
     }
 
-    let root_collection =
-        collection::parse_root_collection(&space_abspath).expect("Failed to parse root collection");
+    let root_collection = collection::parse_root_collection(&tmp_space_abspath, &state_store)
+        .expect("Failed to parse root collection");
 
     let mut stack = vec![(&root_collection, String::new())];
 
@@ -255,103 +243,76 @@ fn parse_root_collection_should_match_created_structure() {
 }
 
 #[test]
-fn colname_reads_existing_data() {
-    let tmp_dir = tempfile::tempdir().expect("Failed to create temporary directory");
-    let space_abspath = tmp_dir.path();
+fn collections_metadata_reads_existing_data() {
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
+    let toml_path = store::utils::scmt_store_abspath(&tmp_space_abspath);
 
-    let mut colnames = ColName::load(space_abspath).unwrap();
-    colnames.set(&collection_relpath, "Child Col 1").unwrap();
+    std::fs::create_dir_all(toml_path.parent().unwrap()).unwrap();
+    let collection_relpath_str = collection_relpath.to_string_lossy().to_string();
+
+    let mut mappings = BTreeMap::new();
+    mappings.insert(collection_relpath_str.clone(), "Child Col 1".to_string());
+
+    let metadata = SpaceCollectionsMetadata { mappings };
+    let toml_content = toml::to_string_pretty(&metadata).unwrap();
+    std::fs::write(&toml_path, toml_content).unwrap();
+
+    let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
 
     assert_eq!(
-        colnames.get(&collection_relpath),
-        Some("Child Col 1".to_string())
+        scmt_store.mappings.get(&collection_relpath_str),
+        Some(&"Child Col 1".to_string())
     );
 }
 
 #[test]
-fn colname_invalid_toml_should_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let space_abspath = tmp_dir.path();
+fn collections_metadata_invalid_toml_creates_default_store() {
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
-    let colname_filepath = space_abspath
-        .join(".zaku")
-        .join("collections")
-        .join("name.toml");
-    fs::create_dir_all(colname_filepath.parent().unwrap()).unwrap();
+    let scmt_abspath = store::utils::scmt_store_abspath(&tmp_space_abspath);
+    fs::create_dir_all(scmt_abspath.parent().unwrap()).unwrap();
 
     let invalid_toml = "[mappings\n\"parent-col-1/child-col-1\" = \"Child Col 1\"";
-    fs::write(&colname_filepath, invalid_toml).unwrap();
+    fs::write(&scmt_abspath, invalid_toml).unwrap();
 
-    let result = ColName::load(space_abspath);
-    assert!(result.is_err());
+    let result = SpaceCollectionsMetadataStore::get(&tmp_space_abspath);
+    assert!(result.is_ok());
+    // Should create default store when invalid TOML is encountered
+    let store = result.unwrap();
+    assert!(store.mappings.is_empty());
 }
 
 #[test]
-fn colname_creates_file_if_missing() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let space_abspath = tmp_dir.path();
+fn collections_metadata_creates_file_if_missing() {
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
-    let colnames = ColName::load(space_abspath).unwrap();
-    let name = colnames.get(&PathBuf::from("any-path"));
+    let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
+    let name = scmt_store.mappings.get("any-path");
     assert_eq!(name, None);
 
-    let file_path = space_abspath
-        .join(".zaku")
-        .join("collections")
-        .join("name.toml");
-    assert!(file_path.exists());
+    let scmt_abspath = store::utils::scmt_store_abspath(&tmp_space_abspath);
+    assert!(scmt_abspath.exists());
 
-    let content = fs::read_to_string(file_path).unwrap();
+    let content = fs::read_to_string(scmt_abspath).unwrap();
     assert_eq!(content.trim(), "[mappings]");
 }
 
 #[test]
-fn colname_set_if_missing_writes_new_entry() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let space_abspath = tmp_dir.path();
-
-    let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
-
-    let mut colnames = ColName::load(space_abspath).unwrap();
-    colnames.set(&collection_relpath, "Child Col 1").unwrap();
-
-    let name = colnames.get(&collection_relpath);
-    assert_eq!(name, Some("Child Col 1".to_string()));
-}
-
-#[test]
-fn colname_set_if_missing_does_not_overwrite_existing() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let space_abspath = tmp_dir.path();
-
-    let collection_relpath = PathBuf::from("parent-col-1").join("child-col-1");
-
-    let mut colnames = ColName::load(space_abspath).unwrap();
-    colnames
-        .set(&collection_relpath, "Child Col 1 - First Name")
-        .unwrap();
-    colnames
-        .set(&collection_relpath, "Child Col 1 - Second Name")
-        .unwrap();
-
-    let name = colnames.get(&collection_relpath);
-    assert_eq!(name, Some("Child Col 1 - First Name".to_string()));
-}
-
-#[test]
 fn create_parent_collections_if_missing_basic() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1/Child Col 1/Grand Child Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
@@ -360,12 +321,12 @@ fn create_parent_collections_if_missing_basic() {
     assert_eq!(col_segment.name, "Grand Child Col 1");
     assert_eq!(col_segment.fsname, "grand-child-col-1");
 
-    assert!(space_abspath.join("parent-col-1").exists());
-    assert!(space_abspath
+    assert!(tmp_space_abspath.join("parent-col-1").exists());
+    assert!(tmp_space_abspath
         .join("parent-col-1")
         .join("child-col-1")
         .exists());
-    assert!(!space_abspath
+    assert!(!tmp_space_abspath
         .join("parent-col-1")
         .join("child-col-1")
         .join("grand-child-col-1")
@@ -374,15 +335,15 @@ fn create_parent_collections_if_missing_basic() {
 
 #[test]
 fn create_parent_collections_if_missing_single_segment() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Single Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
@@ -393,15 +354,15 @@ fn create_parent_collections_if_missing_single_segment() {
 
 #[test]
 fn create_parent_collections_if_missing_duplicate_should_not_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Duplicate Col 1/Duplicate Col 2";
     let (parent_relpath1, col_segment1) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections first time");
 
@@ -410,7 +371,7 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
     let (parent_relpath2, col_segment2) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections second time");
 
@@ -421,15 +382,15 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
 
 #[test]
 fn create_parent_collections_if_missing_special_chars_only_should_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1/!@#$%/Grand Child Col 1";
     let result = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     );
 
     assert!(matches!(result, Err(Error::SanitizationError(_))));
@@ -437,11 +398,10 @@ fn create_parent_collections_if_missing_special_chars_only_should_fail() {
 
 #[test]
 fn create_collection_basic() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
-    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
+    fs::create_dir_all(tmp_space_abspath.join("parent-col-1")).unwrap();
 
     let col_segment = SanitizedSegment {
         name: "Child Col 1".to_string(),
@@ -449,12 +409,12 @@ fn create_collection_basic() {
     };
 
     let result =
-        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate)
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &tmp_space_abspath)
             .expect("Failed to create collection");
 
     let expected_relpath = PathBuf::from("parent-col-1").join("child-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
-    assert!(space_abspath
+    assert!(tmp_space_abspath
         .join("parent-col-1")
         .join("child-col-1")
         .exists());
@@ -462,8 +422,8 @@ fn create_collection_basic() {
 
 #[test]
 fn create_collection_empty_fsname_should_fail() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let col_segment = SanitizedSegment {
         name: "Empty Col 1".to_string(),
@@ -471,8 +431,8 @@ fn create_collection_empty_fsname_should_fail() {
     };
 
     let result =
-        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate);
-    assert!(matches!(result, Err(Error::FileNotFound(_))));
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &tmp_space_abspath);
+    assert!(matches!(result, Err(Error::InvalidName(_))));
 }
 
 #[test]
@@ -482,19 +442,19 @@ fn create_collection_missing_space_should_fail() {
         fsname: "child-col-1".to_string(),
     };
 
-    let mut sharedstate = SharedState::default();
+    let tmp_dir = tempfile::tempdir().unwrap();
+    let space_abspath = tmp_dir.path();
     let result =
-        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate);
-    assert!(matches!(result, Err(Error::FileNotFound(_))));
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, space_abspath);
+    assert!(matches!(result, Err(Error::Io(_))));
 }
 
 #[test]
 fn create_collection_unicode_path_should_succeed() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
-    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
+    fs::create_dir_all(tmp_space_abspath.join("parent-col-1")).unwrap();
 
     let col_segment = SanitizedSegment {
         name: "ザク Unicode Col 1".to_string(),
@@ -502,24 +462,23 @@ fn create_collection_unicode_path_should_succeed() {
     };
 
     let result =
-        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate)
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &tmp_space_abspath)
             .expect("Failed to create collection");
 
     let expected_relpath = PathBuf::from("parent-col-1").join("ザク-unicode-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
-    assert!(space_abspath
+    assert!(tmp_space_abspath
         .join("parent-col-1")
         .join("ザク-unicode-col-1")
         .exists());
 }
 
 #[test]
-fn create_collection_should_save_colname() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+fn create_collection_should_save_collections_metadata() {
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
-    fs::create_dir_all(space_abspath.join("parent-col-1")).unwrap();
+    fs::create_dir_all(tmp_space_abspath.join("parent-col-1")).unwrap();
 
     let col_segment = SanitizedSegment {
         name: "Child Col 1".to_string(),
@@ -527,18 +486,20 @@ fn create_collection_should_save_colname() {
     };
 
     let result =
-        collection::create_collection(Path::new("parent-col-1"), &col_segment, &mut sharedstate)
+        collection::create_collection(Path::new("parent-col-1"), &col_segment, &tmp_space_abspath)
             .expect("Failed to create collection");
 
-    let colnames = ColName::load(&space_abspath).unwrap();
+    let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
     let expected_relpath = PathBuf::from("parent-col-1").join("child-col-1");
 
     assert_eq!(
-        colnames.get(&expected_relpath),
-        Some("Child Col 1".to_string())
+        scmt_store
+            .mappings
+            .get(&expected_relpath.to_string_lossy().to_string()),
+        Some(&"Child Col 1".to_string())
     );
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
-    assert!(space_abspath
+    assert!(tmp_space_abspath
         .join("parent-col-1")
         .join("child-col-1")
         .exists());
@@ -546,20 +507,19 @@ fn create_collection_should_save_colname() {
 
 #[test]
 fn create_collection_integrated_flow() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let mut sharedstate = tmp_space_sharedstate(tmp_dir.path());
-    let space_abspath = PathBuf::from(&sharedstate.space.as_ref().unwrap().abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = Path::new("");
     let relpath = "Parent Col 1/Child Col 1/Grand Child Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         location_relpath,
         relpath,
-        &mut sharedstate,
+        &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = collection::create_collection(&parent_relpath, &col_segment, &mut sharedstate)
+    let result = collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create collection");
 
     let expected_relpath = PathBuf::from("parent-col-1")
@@ -567,18 +527,18 @@ fn create_collection_integrated_flow() {
         .join("grand-child-col-1");
     assert_eq!(result.relpath, expected_relpath.to_string_lossy());
 
-    assert!(space_abspath.join("parent-col-1").exists());
-    assert!(space_abspath
+    assert!(tmp_space_abspath.join("parent-col-1").exists());
+    assert!(tmp_space_abspath
         .join("parent-col-1")
         .join("child-col-1")
         .exists());
-    assert!(space_abspath
+    assert!(tmp_space_abspath
         .join("parent-col-1")
         .join("child-col-1")
         .join("grand-child-col-1")
         .exists());
 
-    let colnames = ColName::load(&space_abspath).unwrap();
+    let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
 
     let parent_relpath = PathBuf::from("parent-col-1");
     let child_relpath = PathBuf::from("parent-col-1").join("child-col-1");
@@ -587,15 +547,21 @@ fn create_collection_integrated_flow() {
         .join("grand-child-col-1");
 
     assert_eq!(
-        colnames.get(&parent_relpath),
-        Some("Parent Col 1".to_string())
+        scmt_store
+            .mappings
+            .get(&parent_relpath.to_string_lossy().to_string()),
+        Some(&"Parent Col 1".to_string())
     );
     assert_eq!(
-        colnames.get(&child_relpath),
-        Some("Child Col 1".to_string())
+        scmt_store
+            .mappings
+            .get(&child_relpath.to_string_lossy().to_string()),
+        Some(&"Child Col 1".to_string())
     );
     assert_eq!(
-        colnames.get(&grandchild_relpath),
-        Some("Grand Child Col 1".to_string())
+        scmt_store
+            .mappings
+            .get(&grandchild_relpath.to_string_lossy().to_string()),
+        Some(&"Grand Child Col 1".to_string())
     );
 }
