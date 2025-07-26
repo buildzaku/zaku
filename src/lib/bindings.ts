@@ -59,7 +59,7 @@ export const commands = {
     },
     async getSpaceCookies(
         spaceAbspath: string,
-    ): Promise<Result<Partial<{ [key in string]: SpaceCookie[] }>, CmdErr>> {
+    ): Promise<Result<Partial<{ [key in string]: SerializedCookie[] }>, CmdErr>> {
         try {
             return {
                 status: "ok",
@@ -72,12 +72,12 @@ export const commands = {
     },
     async saveSpaceSettings(
         spaceAbspath: string,
-        settings: SpaceSettings,
+        spaceSettings: SpaceSettings,
     ): Promise<Result<null, CmdErr>> {
         try {
             return {
                 status: "ok",
-                data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, settings }),
+                data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, spaceSettings }),
             };
         } catch (e) {
             if (e instanceof Error) throw e;
@@ -234,7 +234,7 @@ export type HttpRes = {
     status?: number;
     data: string;
     headers: [string, string][];
-    cookies: SpaceCookie[];
+    cookies: SerializedCookie[];
     size_bytes?: number;
     elapsed_ms?: number;
 };
@@ -259,15 +259,7 @@ export type ReqUrl = {
     host?: string;
     path?: string;
 };
-export type SharedState = { space: Space | null; spacerefs: SpaceReference[] };
-export type Space = {
-    abspath: string;
-    meta: SpaceMeta;
-    root_collection: Collection;
-    cookies: Partial<{ [key in string]: SpaceCookie[] }>;
-    settings: SpaceSettings;
-};
-export type SpaceCookie = {
+export type SerializedCookie = {
     name: string;
     value: string;
     domain: string;
@@ -277,10 +269,23 @@ export type SpaceCookie = {
     same_site: string | null;
     expires: string | null;
 };
+export type SharedState = {
+    space: Space | null;
+    spacerefs: SpaceReference[];
+    user_settings: UserSettings;
+};
+export type Space = {
+    abspath: string;
+    meta: SpaceMeta;
+    root_collection: Collection;
+    cookies: Partial<{ [key in string]: SerializedCookie[] }>;
+    settings: SpaceSettings;
+};
 export type SpaceMeta = { name: string };
-export type SpaceReference = { path: string; name: string };
+export type SpaceReference = { abspath: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
 export type Theme = "System" | "Light" | "Dark";
+export type UserSettings = { default_theme: Theme };
 
 /** tauri-specta globals **/
 

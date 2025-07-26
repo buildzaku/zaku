@@ -97,7 +97,7 @@
                     <p>Switch Space</p>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent class="w-[185px]" sideOffset={4}>
-                    {#each sharedState.spaceRefs as spaceRef (spaceRef.path)}
+                    {#each sharedState.spaceRefs as spaceRef (spaceRef.abspath)}
                         <DropdownMenuItem
                             class="text-small flex h-7 justify-between rounded-md px-2"
                             onclick={async () => {
@@ -109,7 +109,7 @@
                             <div class="flex items-center overflow-hidden">
                                 <span class="truncate">{spaceRef.name}</span>
                             </div>
-                            {#if spaceRef.path === sharedState.space.abspath}
+                            {#if spaceRef.abspath === sharedState.space.abspath}
                                 <CheckIcon size={14} class="max-h-[14px] max-w-[14px]" />
                             {/if}
                         </DropdownMenuItem>
