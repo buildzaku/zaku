@@ -1,5 +1,25 @@
 # zaku
 
+## 0.9.0
+
+### Minor Changes
+
+- Redesign store architecture - [`f8fad8a`](https://github.com/buildzaku/zaku/commit/f8fad8a25d7c77fb4579fef7a9ec97755c49b187) [#61](https://github.com/buildzaku/zaku/pull/61)
+    - Replace `RwLock` with `Mutex`
+    - Add `update` function with automatic persistence for all store types
+    - Replace global static caches with `OnceLock`
+    - Add tests for concurrent `SpaceBuf` operations
+
+- Improve store architecture with scoped stores - [`13d6163`](https://github.com/buildzaku/zaku/commit/13d616396922775c7e14743728524c0529d8f86c) [#63](https://github.com/buildzaku/zaku/pull/63)
+    - Fix tests polluting app data directory
+    - Move from `SpaceBuf`/`SpaceCookies`/`SpaceSettings` to typed store pattern
+    - Replace managed `tauri::AppHandle` state with custom state implementation
+    - Consolidate store utilities and improve path management
+
+### Patch Changes
+
+- Prevent space buffer contamination when switching spaces - [`120390b`](https://github.com/buildzaku/zaku/commit/120390bea205510b0a5d4e6428058cb14774fca7) [#64](https://github.com/buildzaku/zaku/pull/64)
+
 ## 0.8.0
 
 ### Minor Changes
