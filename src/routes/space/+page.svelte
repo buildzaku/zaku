@@ -14,7 +14,7 @@
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import { explorerState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
-    import { joinPaths } from "$lib/components/tree-node/utils.svelte";
+    import { pathJoin } from "$lib/components/tree-node/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
     import type { HttpReq, ReqUrl } from "$lib/bindings";
@@ -120,7 +120,7 @@
         if ((event.metaKey || event.ctrlKey) && event.key === "s") {
             event.preventDefault();
 
-            const absoluteReqPath = joinPaths([
+            const absoluteReqPath = pathJoin([
                 spaceSnapshot.abspath,
                 openReqSnapshot.parentRelpath,
                 openReqSnapshot.self.meta.fsname,
@@ -129,22 +129,23 @@
             await debounced.flush(absoluteReqPath);
             const writeReqbufToReqtomlResult = await commands.writeReqbufToReqtoml(
                 spaceSnapshot.abspath,
-                joinPaths([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname]),
+                pathJoin([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname]),
             );
             if (writeReqbufToReqtomlResult.status !== "ok") {
                 return emitCmdError(writeReqbufToReqtomlResult.error);
             }
 
-            isActiveReqSavedToFs = true;
+            isOpenReqSavedToFs = true;
             openReqSnapshot.self.meta.has_unsaved_changes = false;
         }
     }
 
-    const spaceSnapshot = explorerState.openRequest;
-    let isActiveReqSavedToFs = false;
-    let prevActiveReqRelPath = spaceSnapshot
-        ? `${spaceSnapshot.parentRelpath}/${spaceSnapshot.self.meta.fsname}`
+    const openReqSnapshot = explorerState.openRequest;
+    let isOpenReqSavedToFs = false;
+    let prevOpenReqRelPath = openReqSnapshot
+        ? pathJoin([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname])
         : null;
+    let prevSpaceAbspath = sharedState.space ? sharedState.space.abspath : null;
 
     $effect(() => {
         // Important hack to keep the effect deeply reactive
@@ -152,26 +153,33 @@
 
         const spaceSnapshot = sharedState.space;
         const openReqSnapshot = explorerState.openRequest;
-
-        if (isActiveReqSavedToFs) {
-            isActiveReqSavedToFs = false;
+        if (!spaceSnapshot || !openReqSnapshot) {
             return;
         }
 
-        const openReqRelPath = openReqSnapshot
-            ? `${openReqSnapshot.parentRelpath}/${openReqSnapshot.self.meta.fsname}`
-            : null;
+        if (isOpenReqSavedToFs) {
+            isOpenReqSavedToFs = false;
 
-        if (
-            spaceSnapshot &&
-            openReqSnapshot &&
-            prevActiveReqRelPath &&
-            prevActiveReqRelPath === openReqRelPath
-        ) {
+            return;
+        }
+
+        if (spaceSnapshot.abspath !== prevSpaceAbspath) {
+            prevSpaceAbspath = spaceSnapshot.abspath;
+            prevOpenReqRelPath = null;
+
+            return;
+        }
+
+        const openReqRelPath = pathJoin([
+            openReqSnapshot.parentRelpath,
+            openReqSnapshot.self.meta.fsname,
+        ]);
+
+        if (prevOpenReqRelPath && prevOpenReqRelPath === openReqRelPath) {
             debounced.saveReqToSpaceBuffer(spaceSnapshot.abspath, openReqSnapshot);
             openReqSnapshot.self.meta.has_unsaved_changes = true;
         } else {
-            prevActiveReqRelPath = openReqRelPath;
+            prevOpenReqRelPath = openReqRelPath;
         }
     });
 </script>

@@ -5,7 +5,7 @@ import { version } from "$app/environment";
 import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
-import { joinPaths } from "$lib/components/tree-node/utils.svelte";
+import { pathJoin } from "$lib/components/tree-node/utils.svelte";
 import { emitCmdError } from "$lib/utils";
 
 class SharedState {
@@ -84,7 +84,7 @@ class Debounced {
     #DELAY = 1500;
 
     public saveReqToSpaceBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
-        const absoluteRequestPath = joinPaths([
+        const absoluteRequestPath = pathJoin([
             absoluteSpacePath,
             openRequest.parentRelpath,
             openRequest.self.meta.fsname,
