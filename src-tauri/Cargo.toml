@@ -1,6 +1,6 @@
 [package]
 name = "zaku"
-version = "0.8.0"
+version = "0.9.0"
 description = "Fast, open-source API client with fangs"
 license = "MIT"
 authors = ["Mayank Verma <errmayank@gmail.com>"]
