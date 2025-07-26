@@ -140,7 +140,7 @@ export const commands = {
             else return { status: "error", error: e as any };
         }
     },
-    async writeReqToReqtoml(
+    async writeReqToSpaceBuffer(
         spaceAbspath: string,
         relpath: string,
         request: HttpReq,
@@ -148,7 +148,7 @@ export const commands = {
         try {
             return {
                 status: "ok",
-                data: await TAURI_INVOKE("write_req_to_reqtoml", {
+                data: await TAURI_INVOKE("write_req_to_space_buffer", {
                     spaceAbspath,
                     relpath,
                     request,
