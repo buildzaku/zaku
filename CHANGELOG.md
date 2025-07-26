@@ -1,5 +1,15 @@
 # zaku
 
+## 0.9.1
+
+### Patch Changes
+
+- Improve CI release workflow - [`2d6152f`](https://github.com/buildzaku/zaku/commit/2d6152f35d07ff7d58e1af4e22c07384ac70d2a1) [#65](https://github.com/buildzaku/zaku/pull/65)
+    - Standardize build artifact naming with platform identifiers
+    - Use matrix strategy for all platform builds
+    - Defer artifact uploads until all builds succeed
+    - Graceful git tag creation
+
 ## 0.9.0
 
 ### Minor Changes
