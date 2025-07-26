@@ -91,7 +91,7 @@ jobs:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     build_release_assets:
-        name: "Build ${{ matrix.name }}"
+        name: "Build App (${{ matrix.name }})"
         needs: [version_bump]
         if: ${{ github.repository == 'buildzaku/zaku' && (needs.version_bump.outputs.create_release == 'true' || github.event.inputs.force_build_and_release == 'true') }}
         strategy:

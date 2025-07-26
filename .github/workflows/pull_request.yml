@@ -108,22 +108,26 @@ jobs:
               run: cargo fmt --all -- --check
 
     rust_lint:
-        name: "Rust Lint"
+        name: "Rust Lint (${{ matrix.name }})"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - platform: "macos-latest"
+                    - name: "macOS ARM64"
+                      platform: "macos-latest"
                       target: "aarch64-apple-darwin"
 
-                    - platform: "macos-latest"
+                    - name: "macOS x86_64"
+                      platform: "macos-latest"
                       target: "x86_64-apple-darwin"
 
-                    - platform: "ubuntu-latest"
+                    - name: "Linux x86_64"
+                      platform: "ubuntu-latest"
                       target: null
 
-                    - platform: "windows-latest"
+                    - name: "Windows x86_64"
+                      platform: "windows-latest"
                       target: null
         runs-on: ${{ matrix.platform }}
         defaults:
@@ -154,22 +158,26 @@ jobs:
               run: cargo clippy --all-targets --all-features -- -D warnings
 
     rust_test:
-        name: "Rust Test"
+        name: "Rust Test (${{ matrix.name }})"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    - platform: "macos-latest"
+                    - name: "macOS ARM64"
+                      platform: "macos-latest"
                       target: "aarch64-apple-darwin"
 
-                    - platform: "macos-latest"
+                    - name: "macOS x86_64"
+                      platform: "macos-latest"
                       target: "x86_64-apple-darwin"
 
-                    - platform: "ubuntu-latest"
+                    - name: "Linux x86_64"
+                      platform: "ubuntu-latest"
                       target: null
 
-                    - platform: "windows-latest"
+                    - name: "Windows x86_64"
+                      platform: "windows-latest"
                       target: null
         runs-on: ${{ matrix.platform }}
         defaults:
@@ -199,7 +207,7 @@ jobs:
               run: cargo test --all
 
     build_app:
-        name: "Build ${{ matrix.name }}"
+        name: "Build App (${{ matrix.name }})"
         if: github.repository == 'buildzaku/zaku'
         strategy:
             fail-fast: false
