@@ -98,6 +98,8 @@ impl SpaceBufferStore {
         Self::init(sbf_store_abspath)
     }
 
+    /// Updates the store using the provided mutator function and
+    /// persists changes to the filesystem
     pub fn update<F>(sbf_store: &Arc<Mutex<SpaceBufferStore>>, mutator: F) -> Result<()>
     where
         F: FnOnce(&Arc<Mutex<SpaceBufferStore>>),

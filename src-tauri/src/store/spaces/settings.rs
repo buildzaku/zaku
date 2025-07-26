@@ -105,6 +105,8 @@ impl SpaceSettingsStore {
         Self::init(sst_store_abspath)
     }
 
+    /// Updates the store using the provided mutator function and
+    /// persists changes to the filesystem
     pub fn update<F>(&mut self, mutator: F) -> Result<()>
     where
         F: FnOnce(&mut SpaceSettings),

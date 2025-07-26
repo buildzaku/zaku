@@ -10,19 +10,20 @@ use crate::{
 };
 
 #[test]
-fn store_get_creates_default_when_file_doesnt_exist() {
+fn state_store_get_creates_default_when_file_doesnt_exist() {
     let tmp_dir = tempfile::tempdir().unwrap();
-    let store_abspath = store::utils::state_store_abspath(tmp_dir.path());
+    let state_store_abspath = store::utils::state_store_abspath(tmp_dir.path());
 
-    let state_store = StateStore::get(&store_abspath).unwrap();
+    let state_store = StateStore::get(&state_store_abspath).unwrap();
 
     assert!(state_store.spaceref.is_none());
     assert!(state_store.spacerefs.is_empty());
-    assert!(store_abspath.exists());
+    assert_eq!(state_store.user_settings.default_theme, Theme::System);
+    assert!(state_store_abspath.exists());
 }
 
 #[test]
-fn store_get_loads_existing_store_from_filesystem() {
+fn state_store_get_loads_existing_store_from_filesystem() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let store_abspath = store::utils::state_store_abspath(tmp_dir.path());
 
@@ -64,7 +65,7 @@ fn store_get_loads_existing_store_from_filesystem() {
 }
 
 #[test]
-fn store_update_persists_changes_to_filesystem() {
+fn state_store_update_persists_changes_to_filesystem() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let store_abspath = store::utils::state_store_abspath(tmp_dir.path());
 
@@ -83,6 +84,7 @@ fn store_update_persists_changes_to_filesystem() {
             state.spaceref = Some(space_ref_1.clone());
             state.spacerefs.push(space_ref_1);
             state.spacerefs.push(space_ref_2);
+            state.user_settings.default_theme = Theme::Light;
         })
         .unwrap();
 
@@ -95,11 +97,12 @@ fn store_update_persists_changes_to_filesystem() {
         fresh_state_store.spaceref.as_ref().unwrap().abspath,
         PathBuf::from("/test/space-1")
     );
+    assert_eq!(fresh_state_store.user_settings.default_theme, Theme::Light);
     assert_eq!(fresh_state_store.spacerefs.len(), 2);
 }
 
 #[test]
-fn store_handles_corrupt_json_by_overwriting_with_defaults() {
+fn state_store_handles_corrupt_json_by_overwriting_with_defaults() {
     let tmp_dir = tempfile::tempdir().unwrap();
     let store_abspath = store::utils::state_store_abspath(tmp_dir.path());
 
@@ -114,17 +117,6 @@ fn store_handles_corrupt_json_by_overwriting_with_defaults() {
     assert!(parsed["spaceref"].is_null());
     assert!(parsed["spacerefs"].is_array());
     assert_eq!(parsed["spacerefs"].as_array().unwrap().len(), 0);
-}
-
-#[test]
-fn state_store_get_creates_default_when_file_doesnt_exist() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let state_store_abspath = store::utils::state_store_abspath(tmp_dir.path());
-
-    let state_store = StateStore::get(&state_store_abspath).unwrap();
-
-    assert_eq!(state_store.user_settings.default_theme, Theme::System);
-    assert!(state_store_abspath.exists());
 }
 
 #[test]
@@ -148,24 +140,6 @@ fn state_store_get_loads_existing_settings_from_filesystem() {
     let state_store = StateStore::get(&state_store_abspath).unwrap();
 
     assert_eq!(state_store.user_settings.default_theme, Theme::Dark);
-}
-
-#[test]
-fn state_store_update_persists_changes_to_filesystem() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let state_store_abspath = store::utils::state_store_abspath(tmp_dir.path());
-
-    let mut state_store = StateStore::get(&state_store_abspath).unwrap();
-    state_store
-        .update(|state| {
-            state.user_settings.default_theme = Theme::Light;
-        })
-        .unwrap();
-
-    assert_eq!(state_store.user_settings.default_theme, Theme::Light);
-
-    let fresh_state_store = StateStore::get(&state_store_abspath).unwrap();
-    assert_eq!(fresh_state_store.user_settings.default_theme, Theme::Light);
 }
 
 #[test]
