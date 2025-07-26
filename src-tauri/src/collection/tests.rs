@@ -251,18 +251,22 @@ fn collections_metadata_reads_existing_data() {
     let toml_path = store::utils::scmt_store_abspath(&tmp_space_abspath);
 
     std::fs::create_dir_all(toml_path.parent().unwrap()).unwrap();
+    let collection_relpath_str = collection_relpath.to_string_lossy().to_string();
+    eprintln!("DEBUG: collection_relpath_str = '{}'", collection_relpath_str);
+    
     let toml_content = format!(
         "[mappings]\n\"{path}\" = \"Child Col 1\"\n",
-        path = collection_relpath.to_string_lossy()
+        path = collection_relpath_str
     );
+    eprintln!("DEBUG: toml_content = '{}'", toml_content);
     std::fs::write(&toml_path, toml_content).unwrap();
 
     let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
+    eprintln!("DEBUG: scmt_store.mappings keys: {:?}", scmt_store.mappings.keys().collect::<Vec<_>>());
+    eprintln!("DEBUG: looking for key: '{}'", collection_relpath_str);
 
     assert_eq!(
-        scmt_store
-            .mappings
-            .get(&collection_relpath.to_string_lossy().to_string()),
+        scmt_store.mappings.get(&collection_relpath_str),
         Some(&"Child Col 1".to_string())
     );
 }
