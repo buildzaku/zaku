@@ -1,5 +1,12 @@
 # zaku
 
+## 0.9.3
+
+### Patch Changes
+
+- Avoid state reactivity triggers when double-clicking same request - [`81c7630`](https://github.com/buildzaku/zaku/commit/81c7630f8a10c8ba22cc48fc8198b007278f3231) [#69](https://github.com/buildzaku/zaku/pull/69)
+    - Resolves unwanted buffer writes
+
 ## 0.9.2
 
 ### Patch Changes

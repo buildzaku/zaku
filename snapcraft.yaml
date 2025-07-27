@@ -1,6 +1,6 @@
 name: zaku
 base: core24
-version: 0.9.2
+version: 0.9.3
 summary: Fast, open-source API client with fangs
 description: |
     Fast, open-source API client with fangs
