@@ -62,6 +62,27 @@ class ExplorerState {
     public openRequest: OpenRequest | null = $state(null);
     public backgroundRequests: HttpReq[] = $state([]);
 
+    public setFocussedNode(node: FocussedTreeNode) {
+        if (this.focussedNode.relativePath !== node.relativePath) {
+            this.focussedNode = node;
+        }
+    }
+
+    public setOpenRequest(openRequest: OpenRequest) {
+        const currentRelpath = this.openRequest 
+            ? pathJoin([this.openRequest.parentRelpath, this.openRequest.self.meta.fsname])
+            : null;
+        const newRelpath = pathJoin([openRequest.parentRelpath, openRequest.self.meta.fsname]);
+        
+        if (currentRelpath !== newRelpath) {
+            this.openRequest = openRequest;
+            
+            if (!this.backgroundRequests.includes(openRequest.self)) {
+                this.backgroundRequests.push(openRequest.self);
+            }
+        }
+    }
+
     public reset() {
         this.focussedNode = this.#rootNode;
         this.openRequest = null;

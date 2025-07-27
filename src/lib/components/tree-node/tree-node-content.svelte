@@ -17,6 +17,7 @@
         buildPath,
         isCol,
         isReq,
+        pathJoin,
     } from "$lib/components/tree-node/utils.svelte";
 
     type Props = {
@@ -56,29 +57,25 @@
         if (isCol(node)) {
             node.meta.is_expanded = !node.meta.is_expanded;
 
-            explorerState.focussedNode = {
+            explorerState.setFocussedNode({
                 type: "collection",
                 parentRelativePath: parentRelpath,
                 relativePath: relpath,
-            };
+            });
         } else if (isReq(node)) {
-            explorerState.focussedNode = {
+            explorerState.setFocussedNode({
                 type: "request",
                 parentRelativePath: parentRelpath,
                 relativePath: relpath,
-            };
+            });
 
-            explorerState.openRequest = {
+            explorerState.setOpenRequest({
                 parentRelpath: parentRelpath,
                 parentNames,
                 self: node,
-            };
-
-            if (!explorerState.backgroundRequests.includes(node)) {
-                explorerState.backgroundRequests.push(node);
-            }
+            });
         } else {
-            toast.error("Something went wrong while trying to focus on item");
+            toast.error("Something went wrong while trying to focus on the node");
         }
     }
 </script>
