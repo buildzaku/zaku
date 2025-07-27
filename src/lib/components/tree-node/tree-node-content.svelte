@@ -17,7 +17,6 @@
         buildPath,
         isCol,
         isReq,
-        pathJoin,
     } from "$lib/components/tree-node/utils.svelte";
 
     type Props = {

@@ -69,14 +69,14 @@ class ExplorerState {
     }
 
     public setOpenRequest(openRequest: OpenRequest) {
-        const currentRelpath = this.openRequest 
+        const currentRelpath = this.openRequest
             ? pathJoin([this.openRequest.parentRelpath, this.openRequest.self.meta.fsname])
             : null;
         const newRelpath = pathJoin([openRequest.parentRelpath, openRequest.self.meta.fsname]);
-        
+
         if (currentRelpath !== newRelpath) {
             this.openRequest = openRequest;
-            
+
             if (!this.backgroundRequests.includes(openRequest.self)) {
                 this.backgroundRequests.push(openRequest.self);
             }
