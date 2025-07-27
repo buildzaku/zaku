@@ -45,11 +45,11 @@
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
                 root.meta.is_expanded = !root.meta.is_expanded;
-                explorerState.focussedNode = {
+                explorerState.setFocussedNode({
                     type: "collection",
                     relativePath: RELATIVE_SPACE_ROOT,
                     parentRelativePath: RELATIVE_SPACE_ROOT,
-                };
+                });
             }
         }}
         class={cn(
@@ -57,11 +57,11 @@
         )}
         onclick={() => {
             root.meta.is_expanded = !root.meta.is_expanded;
-            explorerState.focussedNode = {
+            explorerState.setFocussedNode({
                 type: "collection",
                 relativePath: RELATIVE_SPACE_ROOT,
                 parentRelativePath: RELATIVE_SPACE_ROOT,
-            };
+            });
         }}
     >
         <div class="flex h-full items-center gap-1 pl-1.5">
