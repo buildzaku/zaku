@@ -50,11 +50,11 @@
             inputRelpath = "";
             await sharedState.synchronize();
 
-            explorerState.focussedNode = {
+            explorerState.setFocussedNode({
                 type: "collection",
                 parentRelativePath: createCollectionResult.data.parent_relpath,
                 relativePath: createCollectionResult.data.relpath,
-            };
+            });
 
             const createdCollection = document.querySelector(
                 `[data-current-path="${createCollectionResult.data.relpath}"]`,
@@ -74,11 +74,11 @@
             inputRelpath = "";
             await sharedState.synchronize();
 
-            explorerState.focussedNode = {
+            explorerState.setFocussedNode({
                 type: "request",
                 parentRelativePath: createReqResult.data.parent_relpath,
                 relativePath: createReqResult.data.relpath,
-            };
+            });
 
             const createdRequest = document.querySelector(
                 `[data-current-path="${createReqResult.data.relpath}"]`,
