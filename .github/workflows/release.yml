@@ -28,7 +28,6 @@ jobs:
         runs-on: ubuntu-latest
         outputs:
             is_published: ${{ steps.changesets.outputs.published }}
-            published_version: ${{ steps.new_version.outputs.value }}
         steps:
             - name: "Checkout repository"
               uses: actions/checkout@v4
@@ -262,17 +261,25 @@ jobs:
         steps:
             - name: "Checkout repository"
               uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
 
             - name: "Download all artifacts"
               uses: actions/download-artifact@v4
               with:
                   path: artifacts
 
+            - name: "Extract version from latest Git tag"
+              id: version
+              run: |
+                  VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//')
+                  echo "value=$VERSION" >> $GITHUB_OUTPUT
+
             - name: "Set Snap release channel"
               id: snap_channel
               shell: bash
               run: |
-                  VERSION="${{ needs.version.outputs.published_version }}"
+                  VERSION="${{ steps.version.outputs.value }}"
 
                   if [[ "$VERSION" == *"-alpha."* ]]; then
                       echo "channel=edge" >> $GITHUB_OUTPUT
@@ -289,14 +296,14 @@ jobs:
               env:
                   SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
               with:
-                  snap: artifacts/zaku-snap/zaku_${{ needs.version.outputs.published_version }}_amd64.snap
+                  snap: artifacts/zaku-snap/zaku_${{ steps.version.outputs.value }}_amd64.snap
                   release: ${{ steps.snap_channel.outputs.channel }}
 
             - name: "Create GitHub Release with assets"
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: "v${{ needs.version.outputs.published_version }}"
-                  name: "v${{ needs.version.outputs.published_version }}"
+                  tag_name: "v${{ steps.version.outputs.value }}"
+                  name: "v${{ steps.version.outputs.value }}"
                   files: |
                       artifacts/zaku-aarch64-apple-darwin/dmg/zaku-aarch64-apple-darwin.dmg
                       artifacts/zaku-x86_64-apple-darwin/dmg/zaku-x86_64-apple-darwin.dmg
