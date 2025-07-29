@@ -95,7 +95,7 @@ export const explorerState = new ExplorerState();
 type AbsoluteRequestPath = string;
 
 type DebouncedState = {
-    timer: NodeJS.Timeout;
+    timer: number;
     absoluteSpacePath: string;
     openRequest: OpenRequest;
 };
