@@ -15,14 +15,14 @@ filter_unconventional = false
 split_commits = false
 
 commit_parsers = [
-    { message = "^feat!", group = "BREAKING CHANGES" },
-    { message = "^feat", group = "Features" },
-    { message = "^fix", group = "Bug Fixes" },
-    { message = "^perf", group = "Performance" },
-    { message = "^ui", group = "UI" },
-    { message = "^ux", group = "UX" },
-    { message = "^docs", group = "Documentation" },
-    { message = "^refactor", group = "Refactor" },
+    { message = "^feat!", group = "<!-- 0 -->Breaking Changes" },
+    { message = "^feat", group = "<!-- 1 -->Features" },
+    { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
+    { message = "^perf", group = "<!-- 3 -->Performance" },
+    { message = "^ui", group = "<!-- 4 -->UI/UX" },
+    { message = "^ux", group = "<!-- 4 -->UI/UX" },
+    { message = "^refactor", group = "<!-- 5 -->Refactor" },
+    { message = "^docs", group = "<!-- 6 -->Documentation" },
     { message = "^release", skip = true },
     { message = "^style", skip = true },
     { message = "^test", skip = true },
