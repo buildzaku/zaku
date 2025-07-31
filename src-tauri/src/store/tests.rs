@@ -31,18 +31,21 @@ fn state_store_get_loads_existing_store_from_filesystem() {
         fs::create_dir_all(parent).unwrap();
     }
 
+    let test_space_1_path = PathBuf::from("test").join("space-1");
+    let test_space_2_path = PathBuf::from("test").join("space-2");
+
     let json_content = serde_json::json!({
         "spaceref": {
-            "abspath": "/test/space-1",
+            "abspath": test_space_1_path,
             "name": "Test Space 1"
         },
         "spacerefs": [
             {
-                "abspath": "/test/space-1",
+                "abspath": test_space_1_path,
                 "name": "Test Space 1"
             },
             {
-                "abspath": "/test/space-2",
+                "abspath": test_space_2_path,
                 "name": "Test Space 2"
             }
         ],
@@ -57,7 +60,7 @@ fn state_store_get_loads_existing_store_from_filesystem() {
     assert!(loaded_state_store.spaceref.is_some());
     assert_eq!(
         loaded_state_store.spaceref.as_ref().unwrap().abspath,
-        PathBuf::from("/test/space-1")
+        test_space_1_path
     );
     assert_eq!(loaded_state_store.spacerefs.len(), 2);
     assert_eq!(loaded_state_store.spacerefs[0].name, "Test Space 1");
@@ -70,11 +73,11 @@ fn state_store_update_persists_changes_to_filesystem() {
     let store_abspath = store::utils::state_store_abspath(tmp_dir.path());
 
     let space_ref_1 = SpaceReference {
-        abspath: PathBuf::from("/test/space-1"),
+        abspath: PathBuf::from("test").join("space-1"),
         name: "Test Space 1".to_string(),
     };
     let space_ref_2 = SpaceReference {
-        abspath: PathBuf::from("/test/space-2"),
+        abspath: PathBuf::from("test").join("space-2"),
         name: "Test Space 2".to_string(),
     };
 
@@ -95,7 +98,7 @@ fn state_store_update_persists_changes_to_filesystem() {
     assert!(fresh_state_store.spaceref.is_some());
     assert_eq!(
         fresh_state_store.spaceref.as_ref().unwrap().abspath,
-        PathBuf::from("/test/space-1")
+        PathBuf::from("test").join("space-1")
     );
     assert_eq!(fresh_state_store.user_settings.default_theme, Theme::Light);
     assert_eq!(fresh_state_store.spacerefs.len(), 2);
@@ -189,6 +192,7 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
             fsname: "test-req.toml".to_string(),
             name: "Test Req".to_string(),
             has_unsaved_changes: true,
+            relpath: PathBuf::from("test-req.toml"),
         },
         config: ReqCfg {
             method: "GET".to_string(),
@@ -210,18 +214,22 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
         let mut sbf_store_mtx = sbf_store.lock().unwrap();
         sbf_store_mtx
             .requests
-            .insert("test-req.toml".to_string(), req_buf);
+            .insert(PathBuf::from("test-req.toml"), req_buf);
     })
     .unwrap();
 
     assert!(sbf_store_abspath.exists());
 
     let sbf_store_mtx = sbf_store.lock().unwrap();
-    assert!(sbf_store_mtx.requests.contains_key("test-req.toml"));
+    assert!(sbf_store_mtx
+        .requests
+        .contains_key(&PathBuf::from("test-req.toml")));
 
     let fresh_sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let fresh_lock = fresh_sbf_store.lock().unwrap();
-    assert!(fresh_lock.requests.contains_key("test-req.toml"));
+    assert!(fresh_lock
+        .requests
+        .contains_key(&PathBuf::from("test-req.toml")));
 }
 
 #[test]
@@ -237,15 +245,16 @@ fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
     let handles: Vec<_> = (0..10)
         .map(|idx| {
             let sbf_store = Arc::clone(&sbf_store);
-            let key = format!("concurrent-req-{idx}.toml");
+            let req_fsname = format!("concurrent-req-{idx}.toml");
 
             thread::spawn(move || {
                 let mut sbf_store_mtx = sbf_store.lock().unwrap();
                 let req_buf = ReqBuffer {
                     meta: ReqMeta {
-                        fsname: key.clone(),
+                        fsname: req_fsname.clone(),
                         name: format!("Concurrent Req {idx}"),
                         has_unsaved_changes: false,
+                        relpath: PathBuf::from(req_fsname.clone()),
                     },
                     config: ReqCfg {
                         method: "GET".to_string(),
@@ -261,7 +270,9 @@ fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
                         body: None,
                     },
                 };
-                sbf_store_mtx.requests.insert(key, req_buf);
+                sbf_store_mtx
+                    .requests
+                    .insert(PathBuf::from(req_fsname), req_buf);
             })
         })
         .collect();
@@ -274,8 +285,8 @@ fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
     assert_eq!(sbf_store_mtx.requests.len(), 10);
 
     for idx in 0..10 {
-        let key = format!("concurrent-req-{idx}.toml");
-        assert!(sbf_store_mtx.requests.contains_key(&key));
+        let req_relpath = PathBuf::from(format!("concurrent-req-{idx}.toml"));
+        assert!(sbf_store_mtx.requests.contains_key(&req_relpath));
     }
 }
 
@@ -291,6 +302,7 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
             fsname: "persistent-req.toml".to_string(),
             name: "Persistent Req".to_string(),
             has_unsaved_changes: false,
+            relpath: PathBuf::from("persistent-req.toml"),
         },
         config: ReqCfg {
             method: "POST".to_string(),
@@ -312,15 +324,20 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
         let mut sbf_store_mtx = sbf_store.lock().unwrap();
         sbf_store_mtx
             .requests
-            .insert("persistent-req.toml".to_string(), req_buf);
+            .insert(PathBuf::from("persistent-req.toml"), req_buf);
     })
     .unwrap();
 
     let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let sbf_store_mtx = sbf_store.lock().unwrap();
-    assert!(sbf_store_mtx.requests.contains_key("persistent-req.toml"));
+    assert!(sbf_store_mtx
+        .requests
+        .contains_key(&PathBuf::from("persistent-req.toml")));
 
-    let persisted_req = sbf_store_mtx.requests.get("persistent-req.toml").unwrap();
+    let persisted_req = sbf_store_mtx
+        .requests
+        .get(&PathBuf::from("persistent-req.toml"))
+        .unwrap();
     assert_eq!(persisted_req.meta.name, "Persistent Req");
     assert_eq!(persisted_req.config.method, "POST");
 }
@@ -344,6 +361,7 @@ fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
                         fsname: format!("update-req-{idx}.toml"),
                         name: format!("Update Req {idx}"),
                         has_unsaved_changes: true,
+                        relpath: PathBuf::from(format!("update-req-{idx}.toml")),
                     },
                     config: ReqCfg {
                         method: "PUT".to_string(),
@@ -362,8 +380,8 @@ fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
 
                 SpaceBufferStore::update(&sbf_store, |sbf_store| {
                     let mut sbf_store_mtx = sbf_store.lock().unwrap();
-                    let key = format!("update-req-{idx}.toml");
-                    sbf_store_mtx.requests.insert(key, req_buf);
+                    let req_relpath = PathBuf::from(format!("update-req-{idx}.toml"));
+                    sbf_store_mtx.requests.insert(req_relpath, req_buf);
                 })
                 .unwrap();
             })
@@ -378,10 +396,10 @@ fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
     assert_eq!(sbf_store_mtx.requests.len(), 10);
 
     for idx in 0..10 {
-        let key = format!("update-req-{idx}.toml");
-        assert!(sbf_store_mtx.requests.contains_key(&key));
+        let req_relpath = PathBuf::from(format!("update-req-{idx}.toml"));
+        assert!(sbf_store_mtx.requests.contains_key(&req_relpath));
 
-        let req = sbf_store_mtx.requests.get(&key).unwrap();
+        let req = sbf_store_mtx.requests.get(&req_relpath).unwrap();
         assert_eq!(req.meta.name, format!("Update Req {idx}"));
         assert_eq!(req.config.method, "PUT");
         assert!(req.meta.has_unsaved_changes);

@@ -60,7 +60,7 @@ pub fn temp_space(space_name: &str) -> (tempfile::TempDir, tempfile::TempDir, St
     let state_store_abspath = state_store_abspath(tmp_datadir.path());
     let dto = CreateSpaceDto {
         name: space_name.to_string(),
-        location: tmp_spacedir.path().to_string_lossy().to_string(),
+        location: tmp_spacedir.path().to_path_buf(),
     };
     let mut state_store =
         StateStore::get(&state_store_abspath).expect("Failed to init state store");

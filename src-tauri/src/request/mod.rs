@@ -42,23 +42,12 @@ pub fn parse_req(
         return None;
     }
 
-    let relpath = entry_abspath
-        .strip_prefix(space_abspath)
-        .unwrap()
-        .to_string_lossy()
-        .into_owned();
-
-    if let Some(req_buf) = sbf_store_mtx.requests.get(&relpath) {
+    let relpath = entry_abspath.strip_prefix(space_abspath).ok()?;
+    if let Some(req_buf) = sbf_store_mtx.requests.get(relpath) {
         Some(HttpReq::from_reqbuf(req_buf))
     } else {
-        let fsname = entry_abspath
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-
         match parse_reqtoml(entry_abspath) {
-            Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, fsname)),
+            Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, relpath)),
             Err(_) => {
                 eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
 
@@ -95,8 +84,8 @@ pub fn create_req(
     create_reqtoml(&reqfile_abspath, &req_segment.name)?;
 
     let created = CreateNewRequest {
-        parent_relpath: parent_relpath.to_string_lossy().to_string(),
-        relpath: reqfile_relpath.to_string_lossy().to_string(),
+        parent_relpath: parent_relpath.to_path_buf(),
+        relpath: reqfile_relpath,
     };
 
     Ok(created)

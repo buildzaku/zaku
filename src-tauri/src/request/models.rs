@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,9 @@ pub struct ReqMeta {
     pub fsname: String,
     pub name: String,
     pub has_unsaved_changes: bool,
+    pub relpath: PathBuf,
 }
+
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqUrl {
@@ -114,6 +116,7 @@ impl HttpReq {
             fsname: req_buf.meta.fsname.clone(),
             name: req_buf.meta.name.clone(),
             has_unsaved_changes: req_buf.meta.has_unsaved_changes,
+            relpath: req_buf.meta.relpath.clone(),
         };
 
         Self {
@@ -124,11 +127,18 @@ impl HttpReq {
         }
     }
 
-    pub fn from_reqtoml(req_toml: &ReqToml, fsname: String) -> Self {
+    pub fn from_reqtoml(req_toml: &ReqToml, relpath: &Path) -> Self {
+        let fsname = relpath
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+            
         let meta = ReqMeta {
             fsname,
             name: req_toml.meta.name.clone(),
             has_unsaved_changes: false,
+            relpath: relpath.to_path_buf(),
         };
 
         let cfg = &req_toml.config;
@@ -173,7 +183,7 @@ impl HttpReq {
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateRequestDto {
     pub location_relpath: PathBuf,
-    pub relpath: String,
+    pub relpath: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]

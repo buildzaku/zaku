@@ -105,11 +105,12 @@ pub fn to_fsname(name: &str) -> Result<String> {
     Ok(sanitized)
 }
 
-pub fn to_sanitized_segments(relpath: &str) -> Result<Vec<SanitizedSegment>> {
-    let relpath_no_bslashes = relpath.replace('\\', "-");
+pub fn to_sanitized_segments(relpath: &Path) -> Result<Vec<SanitizedSegment>> {
+    let relpath_str = relpath.to_string_lossy();
+    let relpath_no_bslashes = relpath_str.replace('\\', "-");
     let mut segments = Vec::new();
 
-    for component in Path::new(&relpath_no_bslashes).components() {
+    for component in PathBuf::from(&relpath_no_bslashes).components() {
         if let path::Component::Normal(os_str) = component {
             let name = os_str.to_string_lossy().trim().to_string();
             if !name.is_empty() {

@@ -128,11 +128,11 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const src_relpath = buildPath(
+    const from_relpath = buildPath(
         explorerActionsState.dragPayload.parentRelativePath,
         explorerActionsState.dragPayload.node.meta.fsname,
     );
-    const dest_relpath = buildPath(
+    const to_relpath = buildPath(
         explorerActionsState.dropTargetPath,
         explorerActionsState.dragPayload.node.meta.fsname,
     );
@@ -140,8 +140,8 @@ export async function handleDrop(event: DragEvent) {
 
     const moveTreeNodeResult = await commands.moveTreeNode({
         node_type,
-        src_relpath,
-        dest_relpath,
+        from_relpath,
+        to_relpath,
     });
     if (moveTreeNodeResult.status !== "ok") {
         return emitCmdError(moveTreeNodeResult.error);

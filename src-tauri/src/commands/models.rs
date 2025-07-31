@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -14,6 +16,6 @@ pub struct DispatchNotificationOptions {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateNewRequest {
-    pub parent_relpath: String,
-    pub relpath: String,
+    pub parent_relpath: PathBuf,
+    pub relpath: PathBuf,
 }

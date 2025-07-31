@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use crate::{
@@ -18,16 +18,15 @@ use crate::{
 pub mod models;
 
 pub fn create_space(dto: CreateSpaceDto, state_store: &mut StateStore) -> Result<SpaceReference> {
-    let location = PathBuf::from(dto.location.as_str());
-    if !location.exists() {
+    if !dto.location.exists() {
         return Err(Error::FileNotFound(format!(
             "Location does not exist: {}",
-            dto.location
+            dto.location.display()
         )));
     }
 
     let space_dirname = utils::to_fsname(&dto.name)?;
-    let space_abspath = location.join(&space_dirname);
+    let space_abspath = dto.location.join(&space_dirname);
     if space_abspath.exists() {
         return Err(Error::FileConflict(format!(
             "Directory with this name already exists: {}",
@@ -60,7 +59,7 @@ pub fn create_space(dto: CreateSpaceDto, state_store: &mut StateStore) -> Result
     config_file.write_all(toml::to_string_pretty(&config)?.as_bytes())?;
 
     let spaceref = SpaceReference {
-        abspath: space_abspath.to_path_buf(),
+        abspath: space_abspath,
         name: dto.name,
     };
 
@@ -73,7 +72,6 @@ pub fn create_space(dto: CreateSpaceDto, state_store: &mut StateStore) -> Result
 }
 
 pub fn parse_space(space_abspath: &Path, state_store: &StateStore) -> Result<Space> {
-    let space_abspath_str = space_abspath.to_string_lossy();
     let root_collection = collection::parse_root_collection(space_abspath, state_store)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
 
@@ -96,7 +94,7 @@ pub fn parse_space(space_abspath: &Path, state_store: &StateStore) -> Result<Spa
     let space_settings = SpaceSettingsStore::get(&sst_store_abspath)?.into_inner();
 
     Ok(Space {
-        abspath: space_abspath_str.into_owned(),
+        abspath: space_abspath.to_path_buf(),
         meta: space_config_file.meta,
         root_collection,
         cookies: cookies_by_domain,
@@ -105,7 +103,7 @@ pub fn parse_space(space_abspath: &Path, state_store: &StateStore) -> Result<Spa
 }
 
 pub fn parse_spacecfg(space_abspath: &Path) -> Result<SpaceConfigFile> {
-    let path = space_abspath.join(".zaku/config.toml");
+    let path = space_abspath.join(".zaku").join("config.toml");
     let content =
         fs::read_to_string(&path).map_err(|_| Error::FileNotFound(path.display().to_string()))?;
     let config = toml::from_str(&content)
@@ -118,9 +116,7 @@ pub fn first_valid_spaceref(state_store: &StateStore) -> Option<SpaceReference> 
     let spacerefs = state_store.spacerefs.clone();
 
     spacerefs.into_iter().find_map(|space_reference| {
-        let space_abspath = &space_reference.abspath;
-
-        match parse_spacecfg(space_abspath) {
+        match parse_spacecfg(&space_reference.abspath) {
             Ok(_) => Some(space_reference),
             Err(_) => None,
         }

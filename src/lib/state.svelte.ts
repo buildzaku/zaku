@@ -69,10 +69,8 @@ class ExplorerState {
     }
 
     public setOpenRequest(openRequest: OpenRequest) {
-        const currentRelpath = this.openRequest
-            ? pathJoin([this.openRequest.parentRelpath, this.openRequest.self.meta.fsname])
-            : null;
-        const newRelpath = pathJoin([openRequest.parentRelpath, openRequest.self.meta.fsname]);
+        const currentRelpath = this.openRequest ? this.openRequest.self.meta.relpath : null;
+        const newRelpath = openRequest.self.meta.relpath;
 
         if (currentRelpath !== newRelpath) {
             this.openRequest = openRequest;
@@ -105,11 +103,7 @@ class Debounced {
     #DELAY = 1500;
 
     public saveReqToSpaceBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
-        const absoluteRequestPath = pathJoin([
-            absoluteSpacePath,
-            openRequest.parentRelpath,
-            openRequest.self.meta.fsname,
-        ]);
+        const absoluteRequestPath = pathJoin([absoluteSpacePath, openRequest.self.meta.relpath]);
 
         const current = this.#state.get(absoluteRequestPath);
         if (current) {
@@ -117,11 +111,7 @@ class Debounced {
         }
 
         const timer = setTimeout(() => {
-            commands.writeReqToSpaceBuffer(
-                absoluteSpacePath,
-                openRequest.parentRelpath,
-                openRequest.self,
-            );
+            commands.writeReqToSpaceBuffer(absoluteSpacePath, openRequest.self);
 
             this.#state.delete(absoluteRequestPath);
         }, this.#DELAY);
@@ -139,22 +129,14 @@ class Debounced {
         const currentState = this.#state.get(absoluteRequestPath);
         if (currentState) {
             const { timer, absoluteSpacePath, openRequest } = currentState;
-            await commands.writeReqToSpaceBuffer(
-                absoluteSpacePath,
-                openRequest.parentRelpath,
-                openRequest.self,
-            );
+            await commands.writeReqToSpaceBuffer(absoluteSpacePath, openRequest.self);
             this.#state.delete(absoluteRequestPath);
             clearTimeout(timer);
         }
     }
     public async flushAll(): Promise<void> {
         for (const { timer, absoluteSpacePath, openRequest } of this.#state.values()) {
-            commands.writeReqToSpaceBuffer(
-                absoluteSpacePath,
-                openRequest.parentRelpath,
-                openRequest.self,
-            );
+            commands.writeReqToSpaceBuffer(absoluteSpacePath, openRequest.self);
             clearTimeout(timer);
         }
     }

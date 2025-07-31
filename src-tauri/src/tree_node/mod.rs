@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::{
     fmt, fs,
-    path::{self, Path},
+    path::{self, Path, PathBuf},
 };
 
 use crate::{
@@ -34,8 +34,8 @@ impl fmt::Display for NodeType {
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct MoveTreeNodeDto {
     pub node_type: NodeType,
-    pub src_relpath: String,
-    pub dest_relpath: String,
+    pub from_relpath: PathBuf,
+    pub to_relpath: PathBuf,
 }
 
 /// Finds a collection within the collection tree by traversing the relative path
@@ -173,18 +173,15 @@ pub fn move_tree_node(
 ) -> Result<()> {
     let space = space::parse_space(space_abspath, state_store)?;
 
-    let src_fsname = Path::new(&dto.src_relpath)
+    let src_fsname = dto
+        .from_relpath
         .file_name()
         .ok_or_else(|| Error::InvalidPath("Invalid source path".to_string()))?
         .to_string_lossy()
         .to_string();
 
-    let src_parent_relpath = Path::new(&dto.src_relpath)
-        .parent()
-        .unwrap_or_else(|| Path::new(""));
-    let dest_parent_relpath = Path::new(&dto.dest_relpath)
-        .parent()
-        .unwrap_or_else(|| Path::new(""));
+    let src_parent_relpath = dto.from_relpath.parent().unwrap_or_else(|| Path::new(""));
+    let dest_parent_relpath = dto.to_relpath.parent().unwrap_or_else(|| Path::new(""));
 
     if src_parent_relpath == dest_parent_relpath {
         return Err(Error::InvalidPath("Cannot drop to same parent".into()));
@@ -215,16 +212,16 @@ pub fn move_tree_node(
         )));
     }
 
-    let src_abspath = space_abspath.join(&dto.src_relpath);
-    let dest_abspath = space_abspath.join(&dto.dest_relpath);
+    let src_abspath = space_abspath.join(&dto.from_relpath);
+    let dest_abspath = space_abspath.join(&dto.to_relpath);
 
     fsmove(&src_abspath, &dest_abspath)?;
 
     if dto.node_type == NodeType::Collection {
         let mut scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
         scmt_store.update(|metadata| {
-            if let Some(name) = metadata.mappings.remove(&dto.src_relpath) {
-                metadata.mappings.insert(dto.dest_relpath.clone(), name);
+            if let Some(name) = metadata.mappings.remove(&dto.from_relpath) {
+                metadata.mappings.insert(dto.to_relpath.clone(), name);
             }
         })?;
     }

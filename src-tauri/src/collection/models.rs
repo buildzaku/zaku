@@ -17,6 +17,7 @@ pub struct CollectionMeta {
     pub fsname: String,
     pub name: Option<String>,
     pub is_expanded: bool,
+    pub relpath: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
@@ -29,13 +30,13 @@ pub struct Collection {
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateCollectionDto {
     pub location_relpath: PathBuf,
-    pub relpath: String,
+    pub relpath: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateNewCollection {
-    pub parent_relpath: String,
-    pub relpath: String,
+    pub parent_relpath: PathBuf,
+    pub relpath: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -47,7 +48,7 @@ pub struct CollectionRcRefCell {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SpaceCollectionsMetadata {
-    pub mappings: BTreeMap<String, String>,
+    pub mappings: BTreeMap<PathBuf, String>,
 }
 
 #[derive(Debug)]

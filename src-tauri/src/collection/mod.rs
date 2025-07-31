@@ -30,7 +30,7 @@ pub fn parse_root_collection(space_abspath: &Path, state_store: &StateStore) -> 
         .unwrap_or(space_abspath.as_os_str())
         .to_string_lossy()
         .into_owned();
-    let relative_space_root = "".to_string();
+    let spaceroot_relpath = PathBuf::from("");
     let scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
 
     let sbf_store_abspath =
@@ -46,16 +46,14 @@ pub fn parse_root_collection(space_abspath: &Path, state_store: &StateStore) -> 
             fsname: space_dirname,
             name: space_config.map(|config| config.meta.name),
             is_expanded: true,
+            relpath: spaceroot_relpath.clone(),
         },
         requests: Vec::new(),
         collections: Vec::new(),
     }));
 
     let mut stack: Vec<(PathBuf, Rc<RefCell<CollectionRcRefCell>>)> = Vec::new();
-    stack.push((
-        PathBuf::from(&relative_space_root),
-        Rc::clone(&root_collection_ref_cell),
-    ));
+    stack.push((spaceroot_relpath, Rc::clone(&root_collection_ref_cell)));
 
     while let Some((path, collection_rc_refcell)) = stack.pop() {
         if let Ok(entries) = fs::read_dir(space_abspath.join(&path)) {
@@ -83,22 +81,19 @@ pub fn parse_root_collection(space_abspath: &Path, state_store: &StateStore) -> 
                         continue;
                     }
 
-                    let relpath = entry_abspath.strip_prefix(space_abspath).unwrap();
-
+                    let relpath = entry_abspath.strip_prefix(space_abspath)?.to_path_buf();
                     let sub_collection = Rc::new(RefCell::new(CollectionRcRefCell {
                         meta: CollectionMeta {
                             fsname: name,
-                            name: scmt_store
-                                .mappings
-                                .get(&relpath.to_string_lossy().to_string())
-                                .cloned(),
+                            name: scmt_store.mappings.get(&relpath).cloned(),
                             is_expanded: true,
+                            relpath: relpath.clone(),
                         },
                         requests: Vec::new(),
                         collections: Vec::new(),
                     }));
 
-                    stack.push((relpath.to_path_buf(), Rc::clone(&sub_collection)));
+                    stack.push((relpath, Rc::clone(&sub_collection)));
                     collection_rc_refcell
                         .borrow_mut()
                         .collections
@@ -201,14 +196,13 @@ pub fn parse_root_collection(space_abspath: &Path, state_store: &StateStore) -> 
 /// Returns a `Result<(PathBuf, SanitizedSegment)>` with the final parent path and target segment
 pub fn create_parent_collections_if_missing(
     location_relpath: &Path,
-    relpath: &str,
+    relpath: &Path,
     space_abspath: &Path,
 ) -> Result<(PathBuf, SanitizedSegment)> {
     let segments = utils::to_sanitized_segments(relpath)?;
     let (last_segment, relpath_segments) = segments.split_last().unwrap();
 
     let mut current_parent = location_relpath.to_path_buf();
-
     for segment in relpath_segments {
         let target_path = current_parent.join(&segment.fsname);
         let dir_abspath = space_abspath.join(&target_path);
@@ -243,27 +237,24 @@ pub fn create_collection(
         ));
     }
 
-    let dir_abspath = space_abspath.join(parent_relpath).join(&col_segment.fsname);
-    let dir_relpath = parent_relpath.join(&col_segment.fsname);
+    let col_abspath = space_abspath.join(parent_relpath).join(&col_segment.fsname);
+    let col_relpath = parent_relpath.join(&col_segment.fsname);
 
-    fs::create_dir(&dir_abspath)?;
+    fs::create_dir(&col_abspath)?;
 
     let mut scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
     scmt_store.update(|metadata| {
-        let mapping_exists = metadata
-            .mappings
-            .contains_key(&dir_relpath.to_string_lossy().to_string());
+        let mapping_exists = metadata.mappings.contains_key(&col_relpath);
         if !mapping_exists {
-            metadata.mappings.insert(
-                dir_relpath.to_string_lossy().to_string(),
-                col_segment.name.clone(),
-            );
+            metadata
+                .mappings
+                .insert(col_relpath.clone(), col_segment.name.clone());
         }
     })?;
 
     let create_new_collection = CreateNewCollection {
-        parent_relpath: parent_relpath.to_string_lossy().to_string(),
-        relpath: dir_relpath.to_string_lossy().to_string(),
+        parent_relpath: parent_relpath.to_path_buf(),
+        relpath: col_relpath,
     };
 
     Ok(create_new_collection)

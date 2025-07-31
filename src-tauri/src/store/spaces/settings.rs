@@ -42,7 +42,7 @@ impl Deref for SpaceSettingsStore {
 }
 
 impl SpaceSettingsStore {
-    fn new(sst_store_abspath: PathBuf) -> Self {
+    fn new(sst_store_abspath: &Path) -> Self {
         let datadir_abspath = sst_store_abspath
             .parent()
             .and_then(|p| p.parent())
@@ -61,13 +61,13 @@ impl SpaceSettingsStore {
                     },
                 },
             },
-            abspath: sst_store_abspath,
+            abspath: sst_store_abspath.to_path_buf(),
         }
     }
 
     fn init(sst_store_abspath: &Path) -> Result<Self> {
         if !sst_store_abspath.exists() {
-            let sst_store = Self::new(sst_store_abspath.to_path_buf());
+            let sst_store = Self::new(sst_store_abspath);
             sst_store.fswrite()?;
 
             return Ok(sst_store);
@@ -82,7 +82,7 @@ impl SpaceSettingsStore {
             }),
             Err(_) => {
                 // corrupt JSON, use default
-                let sst_store = Self::new(sst_store_abspath.to_path_buf());
+                let sst_store = Self::new(sst_store_abspath);
                 sst_store.fswrite()?;
 
                 Ok(sst_store)
