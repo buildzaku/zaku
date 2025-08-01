@@ -21,6 +21,20 @@ export class Path {
         return instance;
     }
 
+    parent(): Path | null {
+        if (this.#segments.length === 0) {
+            return null;
+        }
+        if (this.#segments.length === 1) {
+            return Path.from("");
+        }
+
+        const instance = new Path();
+        instance.#segments = this.#segments.slice(0, -1);
+
+        return instance;
+    }
+
     isEmpty(): boolean {
         return this.#segments.length === 0;
     }
