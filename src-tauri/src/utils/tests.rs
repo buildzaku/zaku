@@ -3,10 +3,9 @@ use std::path::PathBuf;
 
 #[test]
 fn to_sanitized_segments_basic() {
-    let segments = utils::to_sanitized_segments(
-        &PathBuf::from("Parent Col 1/Child Col 1/Grand Child Col 1"),
-    )
-    .unwrap();
+    let segments =
+        utils::to_sanitized_segments(&PathBuf::from("Parent Col 1/Child Col 1/Grand Child Col 1"))
+            .unwrap();
 
     assert_eq!(segments.len(), 3);
 
@@ -40,16 +39,15 @@ fn to_sanitized_segments_with_whitespace_segments() {
 
 #[test]
 fn to_sanitized_segments_with_only_empty_segments() {
-    let segments =
-        utils::to_sanitized_segments(&PathBuf::from("   /   /   ")).unwrap();
+    let segments = utils::to_sanitized_segments(&PathBuf::from("   /   /   ")).unwrap();
     assert!(segments.is_empty());
 }
 
 #[test]
 fn to_sanitized_segments_special_characters() {
-    let segments = utils::to_sanitized_segments(
-        &PathBuf::from("Special@Chars Col 1/Unicode# Col 2/🔥 Emoji Col 3"),
-    )
+    let segments = utils::to_sanitized_segments(&PathBuf::from(
+        "Special@Chars Col 1/Unicode# Col 2/🔥 Emoji Col 3",
+    ))
     .unwrap();
 
     assert_eq!(segments.len(), 3);
@@ -66,10 +64,9 @@ fn to_sanitized_segments_special_characters() {
 
 #[test]
 fn to_sanitized_segments_unicode() {
-    let segments = utils::to_sanitized_segments(
-        &PathBuf::from("ザク Unicode Col 1/設定 Unicode Col 2"),
-    )
-    .unwrap();
+    let segments =
+        utils::to_sanitized_segments(&PathBuf::from("ザク Unicode Col 1/設定 Unicode Col 2"))
+            .unwrap();
 
     assert_eq!(segments.len(), 2);
 
@@ -82,10 +79,9 @@ fn to_sanitized_segments_unicode() {
 
 #[test]
 fn to_sanitized_segments_invalid_characters() {
-    let segments = utils::to_sanitized_segments(
-        &PathBuf::from("Parent|Invalid/Child::Col/Grand?Child*"),
-    )
-    .unwrap();
+    let segments =
+        utils::to_sanitized_segments(&PathBuf::from("Parent|Invalid/Child::Col/Grand?Child*"))
+            .unwrap();
 
     assert_eq!(segments.len(), 3);
     assert_eq!(segments[0].name, "Parent|Invalid");
