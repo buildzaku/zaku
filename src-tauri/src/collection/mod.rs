@@ -200,7 +200,6 @@ pub fn create_parent_collections_if_missing(
     space_abspath: &Path,
 ) -> Result<(PathBuf, SanitizedSegment)> {
     let segments = utils::to_sanitized_segments(relpath)?;
-    eprintln!("{:?}", segments);
     let (last_segment, relpath_segments) = segments.split_last().unwrap();
 
     let mut current_parent = location_relpath.to_path_buf();
