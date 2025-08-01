@@ -213,7 +213,9 @@ fn move_tree_node_fails_when_moving_into_own_subtree() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from("parent-col-1"),
-        to_relpath: PathBuf::from("parent-col-1/child-col/parent-col-1"),
+        to_relpath: PathBuf::from("parent-col-1")
+            .join("child-col")
+            .join("parent-col-1"),
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
