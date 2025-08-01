@@ -108,7 +108,7 @@ pub async fn create_collection(dto: CreateCollectionDto) -> CmdResult<CreateNewC
         .abspath
         .clone();
 
-    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, col_segment) = collection::create_parent_collections_if_missing(
         &dto.location_relpath,
         &dto.relpath,
         &space_abspath,
@@ -119,7 +119,7 @@ pub async fn create_collection(dto: CreateCollectionDto) -> CmdResult<CreateNewC
         details: Some(err.to_string()),
     })?;
 
-    collection::create_collection(&parent_relpath, &col_segment, &space_abspath).map_err(|err| {
+    collection::create_collection(&location_relpath, &col_segment, &space_abspath).map_err(|err| {
         CmdErr {
             kind: ErrorKind::FileWriteError,
             message: "Unable to create collection".to_string(),
@@ -231,7 +231,7 @@ pub async fn create_req(dto: CreateRequestDto) -> CmdResult<CreateNewRequest> {
         .abspath
         .clone();
 
-    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &dto.location_relpath,
         &dto.relpath,
         &space_abspath,
@@ -242,7 +242,7 @@ pub async fn create_req(dto: CreateRequestDto) -> CmdResult<CreateNewRequest> {
         details: Some(err.to_string()),
     })?;
 
-    request::create_req(&parent_relpath, &req_segment, &space_abspath).map_err(|err| CmdErr {
+    request::create_req(&location_relpath, &req_segment, &space_abspath).map_err(|err| CmdErr {
         kind: ErrorKind::FileWriteError,
         message: "Unable to create request".to_string(),
         details: Some(err.to_string()),

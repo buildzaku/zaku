@@ -34,8 +34,8 @@ impl fmt::Display for NodeType {
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct MoveTreeNodeDto {
     pub node_type: NodeType,
-    pub from_relpath: PathBuf,
-    pub to_relpath: PathBuf,
+    pub cur_relpath: PathBuf,
+    pub nxt_relpath: PathBuf,
 }
 
 /// Finds a collection within the collection tree by traversing the relative path
@@ -72,35 +72,35 @@ pub fn find_collection<'a>(root: &'a Collection, relpath: &Path) -> Result<&'a C
 /// directories exists before moving. Throws an error if any of these conditions
 /// are not met.
 ///
-/// - `src_abspath`: Absolute path of the source file/directory
-/// - `dest_abspath`: Absolute path of the destination file/directory
+/// - `cur_abspath`: Absolute path of the source file/directory
+/// - `nxt_abspath`: Absolute path of the destination file/directory
 ///
 /// Returns a `Result` indicating success or failure of the move operation
-fn fsmove(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
-    if !src_abspath.exists() {
+fn fsmove(cur_abspath: &Path, nxt_abspath: &Path) -> Result<()> {
+    if !cur_abspath.exists() {
         return Err(Error::FileNotFound(format!(
             "Source does not exist: {}",
-            src_abspath.display()
+            cur_abspath.display()
         )));
     }
 
-    if dest_abspath.exists() {
+    if nxt_abspath.exists() {
         return Err(Error::InvalidPath(format!(
             "Destination already exists: {}",
-            dest_abspath.display()
+            nxt_abspath.display()
         )));
     }
 
-    if let Some(dest_dir) = dest_abspath.parent() {
-        if !dest_dir.exists() {
+    if let Some(nxt_dir) = nxt_abspath.parent() {
+        if !nxt_dir.exists() {
             return Err(Error::InvalidPath(format!(
                 "Destination parent directory does not exist: {}",
-                dest_dir.display()
+                nxt_dir.display()
             )));
         }
     }
 
-    fs::rename(src_abspath, dest_abspath)?;
+    fs::rename(cur_abspath, nxt_abspath)?;
 
     Ok(())
 }
@@ -110,18 +110,18 @@ fn fsmove(src_abspath: &Path, dest_abspath: &Path) -> Result<()> {
 /// Searches through the appropriate collection (collections or requests) based
 /// on the node type to determine if a node with the same filesystem name exists.
 ///
-/// - `dest_parent_col`: Collection to check for existing nodes
+/// - `nxt_parent_col`: Collection to check for existing nodes
 /// - `node_type`: Type of node to check for (Collection or Request)
 /// - `fsname`: Filesystem name to search for
 ///
 /// Returns `true` if a node with the same name exists, `false` otherwise
-fn node_exists_at_dest(dest_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
+fn node_exists_at_dest(nxt_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
     match node_type {
-        NodeType::Collection => dest_parent_col
+        NodeType::Collection => nxt_parent_col
             .collections
             .iter()
             .any(|c| c.meta.fsname == fsname),
-        NodeType::Request => dest_parent_col
+        NodeType::Request => nxt_parent_col
             .requests
             .iter()
             .any(|r| r.meta.fsname == fsname),
@@ -133,18 +133,18 @@ fn node_exists_at_dest(dest_parent_col: &Collection, node_type: &NodeType, fsnam
 /// Verifies that the node being moved actually exists in the source collection
 /// before attempting the move operation.
 ///
-/// - `src_parent_col`: Collection to check for the source node
+/// - `cur_parent_col`: Collection to check for the source node
 /// - `node_type`: Type of node to check for (Collection or Request)
 /// - `fsname`: Filesystem name to search for
 ///
 /// Returns `true` if the source node exists, `false` otherwise
-fn src_exists(src_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
+fn cur_exists(cur_parent_col: &Collection, node_type: &NodeType, fsname: &str) -> bool {
     match node_type {
-        NodeType::Collection => src_parent_col
+        NodeType::Collection => cur_parent_col
             .collections
             .iter()
             .any(|c| c.meta.fsname == fsname),
-        NodeType::Request => src_parent_col
+        NodeType::Request => cur_parent_col
             .requests
             .iter()
             .any(|r| r.meta.fsname == fsname),
@@ -173,55 +173,55 @@ pub fn move_tree_node(
 ) -> Result<()> {
     let space = space::parse_space(space_abspath, state_store)?;
 
-    let src_fsname = dto
-        .from_relpath
+    let cur_fsname = dto
+        .cur_relpath
         .file_name()
         .ok_or_else(|| Error::InvalidPath("Invalid source path".to_string()))?
         .to_string_lossy()
         .to_string();
 
-    let src_parent_relpath = dto.from_relpath.parent().unwrap_or_else(|| Path::new(""));
-    let dest_parent_relpath = dto.to_relpath.parent().unwrap_or_else(|| Path::new(""));
+    let cur_parent_relpath = dto.cur_relpath.parent().unwrap_or_else(|| Path::new(""));
+    let nxt_parent_relpath = dto.nxt_relpath.parent().unwrap_or_else(|| Path::new(""));
 
-    if src_parent_relpath == dest_parent_relpath {
+    if cur_parent_relpath == nxt_parent_relpath {
         return Err(Error::InvalidPath("Cannot drop to same parent".into()));
     }
 
     if dto.node_type == NodeType::Collection {
-        let collection_path = src_parent_relpath.join(&src_fsname);
-        if dest_parent_relpath.starts_with(&collection_path) {
+        let collection_path = cur_parent_relpath.join(&cur_fsname);
+        if nxt_parent_relpath.starts_with(&collection_path) {
             return Err(Error::InvalidPath(
                 "Cannot move collection into itself".into(),
             ));
         }
     }
 
-    let dest_parent_col = find_collection(&space.root_collection, dest_parent_relpath)?;
-    if node_exists_at_dest(dest_parent_col, &dto.node_type, &src_fsname) {
+    let nxt_parent_col = find_collection(&space.root_collection, nxt_parent_relpath)?;
+    if node_exists_at_dest(nxt_parent_col, &dto.node_type, &cur_fsname) {
         return Err(Error::InvalidPath(format!(
             "{} '{}' already exists",
-            dto.node_type, src_fsname
+            dto.node_type, cur_fsname
         )));
     }
 
-    let src_parent_col = find_collection(&space.root_collection, src_parent_relpath)?;
-    if !src_exists(src_parent_col, &dto.node_type, &src_fsname) {
+    let cur_parent_col = find_collection(&space.root_collection, cur_parent_relpath)?;
+    if !cur_exists(cur_parent_col, &dto.node_type, &cur_fsname) {
         return Err(Error::InvalidPath(format!(
             "{} '{}' not found",
-            dto.node_type, src_fsname
+            dto.node_type, cur_fsname
         )));
     }
 
-    let src_abspath = space_abspath.join(&dto.from_relpath);
-    let dest_abspath = space_abspath.join(&dto.to_relpath);
+    let cur_abspath = space_abspath.join(&dto.cur_relpath);
+    let nxt_abspath = space_abspath.join(&dto.nxt_relpath);
 
-    fsmove(&src_abspath, &dest_abspath)?;
+    fsmove(&cur_abspath, &nxt_abspath)?;
 
     if dto.node_type == NodeType::Collection {
         let mut scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
         scmt_store.update(|metadata| {
-            if let Some(name) = metadata.mappings.remove(&dto.from_relpath) {
-                metadata.mappings.insert(dto.to_relpath.clone(), name);
+            if let Some(name) = metadata.mappings.remove(&dto.cur_relpath) {
+                metadata.mappings.insert(dto.nxt_relpath.clone(), name);
             }
         })?;
     }

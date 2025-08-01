@@ -35,7 +35,7 @@ pub struct CreateCollectionDto {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateNewCollection {
-    pub parent_relpath: PathBuf,
+    pub location_relpath: PathBuf,
     pub relpath: PathBuf,
 }
 

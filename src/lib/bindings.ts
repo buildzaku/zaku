@@ -202,8 +202,8 @@ export type CollectionMeta = {
     relpath: string;
 };
 export type CreateCollectionDto = { location_relpath: string; relpath: string };
-export type CreateNewCollection = { parent_relpath: string; relpath: string };
-export type CreateNewRequest = { parent_relpath: string; relpath: string };
+export type CreateNewCollection = { location_relpath: string; relpath: string };
+export type CreateNewRequest = { location_relpath: string; relpath: string };
 export type CreateRequestDto = { location_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
@@ -238,7 +238,7 @@ export type HttpRes = {
     size_bytes?: number;
     elapsed_ms?: number;
 };
-export type MoveTreeNodeDto = { node_type: NodeType; from_relpath: string; to_relpath: string };
+export type MoveTreeNodeDto = { node_type: NodeType; cur_relpath: string; nxt_relpath: string };
 export type NodeType = "collection" | "request";
 export type NotificationSettings = { audio: AudioNotification };
 export type OpenDirDialogOpt = { title: string | null };

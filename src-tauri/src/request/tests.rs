@@ -191,14 +191,14 @@ fn create_req_with_nested_collections() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Grand Parent Col 1/Parent Col 1/Child Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+    let result = request::create_req(&location_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with nested collections");
 
     assert_eq!(
@@ -229,14 +229,14 @@ fn create_req_with_nested_collections_and_backslash() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Grand Parent Col 1\\Parent Col 1\\Child Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+    let result = request::create_req(&location_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with nested collections");
 
     assert_eq!(
@@ -768,14 +768,14 @@ fn create_req_creates_parent_collections_with_proper_hierarchy() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+    let result = request::create_req(&location_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with deep hierarchy");
 
     assert_eq!(
@@ -848,14 +848,14 @@ fn create_req_with_trailing_slash_in_relpath() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Parent Col 1/Child Col 1/Trailing Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+    let result = request::create_req(&location_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with trailing slash");
 
     assert_eq!(
@@ -932,14 +932,14 @@ fn create_req_with_multiple_slashes_in_relpath() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Parent Col 1/Child Col 1/Multiple Slash Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+    let result = request::create_req(&location_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with multiple slashes");
 
     assert_eq!(
@@ -956,14 +956,14 @@ fn create_req_integrated_flow() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Parent Col 1/Child Col 1/Grand Child Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+    let result = request::create_req(&location_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request");
 
     assert_eq!(

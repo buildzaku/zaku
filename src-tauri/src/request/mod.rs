@@ -62,13 +62,13 @@ pub fn parse_req(
 /// Creates a new TOML request file in the parent collection directory and updates
 /// the shared state
 ///
-/// - `parent_relpath`: Relative path to the parent collection directory
+/// - `location_relpath`: Relative path of location where request needs to be created
 /// - `req_segment`: Sanitized segment containing the request name and filesystem name
 /// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result<CreateNewRequest>` containing the created request's paths
 pub fn create_req(
-    parent_relpath: &Path,
+    location_relpath: &Path,
     req_segment: &SanitizedSegment,
     space_abspath: &Path,
 ) -> Result<CreateNewRequest> {
@@ -78,13 +78,15 @@ pub fn create_req(
         ));
     }
 
-    let reqfile_abspath = space_abspath.join(parent_relpath).join(&req_segment.fsname);
-    let reqfile_relpath = parent_relpath.join(format!("{}.toml", &req_segment.fsname));
+    let reqfile_abspath = space_abspath
+        .join(location_relpath)
+        .join(&req_segment.fsname);
+    let reqfile_relpath = location_relpath.join(format!("{}.toml", &req_segment.fsname));
 
     create_reqtoml(&reqfile_abspath, &req_segment.name)?;
 
     let created = CreateNewRequest {
-        parent_relpath: parent_relpath.to_path_buf(),
+        location_relpath: location_relpath.to_path_buf(),
         relpath: reqfile_relpath,
     };
 

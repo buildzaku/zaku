@@ -16,6 +16,6 @@ pub struct DispatchNotificationOptions {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateNewRequest {
-    pub parent_relpath: PathBuf,
+    pub location_relpath: PathBuf,
     pub relpath: PathBuf,
 }

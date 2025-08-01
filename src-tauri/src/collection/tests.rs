@@ -168,27 +168,27 @@ fn parse_root_collection_should_match_created_structure() {
 
     for col_dto in &collections_dto {
         let location_relpath = PathBuf::from(&col_dto.location_relpath);
-        let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        let (location_relpath, col_segment) = collection::create_parent_collections_if_missing(
             &location_relpath,
             &col_dto.relpath,
             &tmp_space_abspath,
         )
         .expect("Failed to create parent collections");
 
-        collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
+        collection::create_collection(&location_relpath, &col_segment, &tmp_space_abspath)
             .expect("Failed to create collection");
     }
 
     for req_dto in &requests_dto {
         let location_relpath = PathBuf::from(&req_dto.location_relpath);
-        let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        let (location_relpath, req_segment) = collection::create_parent_collections_if_missing(
             &location_relpath,
             &req_dto.relpath,
             &tmp_space_abspath,
         )
         .expect("Failed to create parent collections");
 
-        request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+        request::create_req(&location_relpath, &req_segment, &tmp_space_abspath)
             .expect("Failed to create request");
     }
 
@@ -303,7 +303,7 @@ fn create_parent_collections_if_missing_basic() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, col_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Parent Col 1/Child Col 1/Grand Child Col 1"),
         &tmp_space_abspath,
@@ -311,7 +311,7 @@ fn create_parent_collections_if_missing_basic() {
     .expect("Failed to create parent collections");
 
     assert_eq!(
-        parent_relpath,
+        location_relpath,
         PathBuf::from("parent-col-1").join("child-col-1")
     );
     assert_eq!(col_segment.name, "Grand Child Col 1");
@@ -338,14 +338,14 @@ fn create_parent_collections_if_missing_with_nested_backslash() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
-    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, col_segment) = collection::create_parent_collections_if_missing(
         &PathBuf::from(""),
         &PathBuf::from("Parent Col 1/Child Col 1\\Grand Child Col 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    assert_eq!(parent_relpath, PathBuf::from("parent-col-1"));
+    assert_eq!(location_relpath, PathBuf::from("parent-col-1"));
     assert_eq!(col_segment.name, "Child Col 1-Grand Child Col 1");
     assert_eq!(col_segment.fsname, "child-col-1-grand-child-col-1");
 
@@ -358,14 +358,14 @@ fn create_parent_collections_if_missing_single_segment() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, col_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Single Col 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    assert_eq!(parent_relpath, PathBuf::from(""));
+    assert_eq!(location_relpath, PathBuf::from(""));
     assert_eq!(col_segment.name, "Single Col 1");
     assert_eq!(col_segment.fsname, "single-col-1");
 }
@@ -376,7 +376,7 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath1, col_segment1) = collection::create_parent_collections_if_missing(
+    let (location_relpath1, col_segment1) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Duplicate Col 1/Duplicate Col 2"),
         &tmp_space_abspath,
@@ -384,14 +384,14 @@ fn create_parent_collections_if_missing_duplicate_should_not_fail() {
     .expect("Failed to create parent collections first time");
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath2, col_segment2) = collection::create_parent_collections_if_missing(
+    let (location_relpath2, col_segment2) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Duplicate Col 1/Duplicate Col 2"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections second time");
 
-    assert_eq!(parent_relpath1, parent_relpath2);
+    assert_eq!(location_relpath1, location_relpath2);
     assert_eq!(col_segment1.name, col_segment2.name);
     assert_eq!(col_segment1.fsname, col_segment2.fsname);
 }
@@ -546,14 +546,14 @@ fn create_collection_integrated_flow() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+    let (location_relpath, col_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
         &PathBuf::from("Parent Col 1/Child Col 1/Grand Child Col 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
 
-    let result = collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
+    let result = collection::create_collection(&location_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create collection");
 
     assert_eq!(
@@ -580,12 +580,12 @@ fn create_collection_integrated_flow() {
 
     let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
 
-    let parent_relpath = PathBuf::from("parent-col-1");
+    let location_relpath = PathBuf::from("parent-col-1");
     let child_relpath = PathBuf::from("parent-col-1/child-col-1");
     let grandchild_relpath = PathBuf::from("parent-col-1/child-col-1/grand-child-col-1");
 
     assert_eq!(
-        scmt_store.mappings.get(&parent_relpath),
+        scmt_store.mappings.get(&location_relpath),
         Some(&"Parent Col 1".to_string())
     );
     assert_eq!(

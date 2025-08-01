@@ -202,32 +202,32 @@ pub fn create_parent_collections_if_missing(
     let segments = utils::to_sanitized_segments(relpath)?;
     let (last_segment, relpath_segments) = segments.split_last().unwrap();
 
-    let mut current_parent = location_relpath.to_path_buf();
+    let mut location_relpath = location_relpath.to_path_buf();
     for segment in relpath_segments {
-        let target_path = current_parent.join(&segment.fsname);
+        let target_path = location_relpath.join(&segment.fsname);
         let dir_abspath = space_abspath.join(&target_path);
 
         if !dir_abspath.exists() {
-            create_collection(&current_parent, segment, space_abspath)?;
+            create_collection(&location_relpath, segment, space_abspath)?;
         }
 
-        current_parent = target_path;
+        location_relpath = target_path;
     }
 
-    Ok((current_parent, last_segment.clone()))
+    Ok((location_relpath, last_segment.clone()))
 }
 
 /// Creates a new collection directory in the specified parent path
 ///
 /// Creates a new directory for the collection and saves the collection name mapping
 ///
-/// - `parent_relpath`: Relative path to the parent directory
+/// - `location_relpath`: Relative path of location where collection needs to be created
 /// - `col_segment`: Sanitized segment containing the collection name and filesystem name
 /// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result<CreateNewCollection>` containing the created collection's paths
 pub fn create_collection(
-    parent_relpath: &Path,
+    location_relpath: &Path,
     col_segment: &SanitizedSegment,
     space_abspath: &Path,
 ) -> Result<CreateNewCollection> {
@@ -237,8 +237,10 @@ pub fn create_collection(
         ));
     }
 
-    let col_abspath = space_abspath.join(parent_relpath).join(&col_segment.fsname);
-    let col_relpath = parent_relpath.join(&col_segment.fsname);
+    let col_abspath = space_abspath
+        .join(location_relpath)
+        .join(&col_segment.fsname);
+    let col_relpath = location_relpath.join(&col_segment.fsname);
 
     fs::create_dir(&col_abspath)?;
 
@@ -253,7 +255,7 @@ pub fn create_collection(
     })?;
 
     let create_new_collection = CreateNewCollection {
-        parent_relpath: parent_relpath.to_path_buf(),
+        location_relpath: location_relpath.to_path_buf(),
         relpath: col_relpath,
     };
 
