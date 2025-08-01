@@ -244,13 +244,7 @@
                             />
                         {/if}
                         {#each spaceSnapshot.root_collection.requests as request (request.meta.fsname)}
-                            <TreeNodeContent
-                                parentRelpath={RELATIVE_SPACE_ROOT}
-                                parentNames={[]}
-                                currentPath={request.meta.fsname}
-                                node={request}
-                                level={1}
-                            />
+                            <TreeNodeContent parents={[]} node={request} level={1} />
                         {/each}
 
                         {#if shouldRenderCreateNewCollectionInput}
@@ -261,13 +255,7 @@
                             />
                         {/if}
                         {#each spaceSnapshot.root_collection.collections as collection (collection.meta.fsname)}
-                            <TreeNodeContent
-                                parentRelpath={RELATIVE_SPACE_ROOT}
-                                parentNames={[]}
-                                currentPath={collection.meta.fsname}
-                                node={collection}
-                                level={1}
-                            />
+                            <TreeNodeContent parents={[]} node={collection} level={1} />
                         {/each}
                     </TreeNodeRoot>
                 </div>

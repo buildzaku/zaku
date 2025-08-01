@@ -209,13 +209,13 @@
             {@const openReqSnapshot = explorerState.openRequest}
             {#if openReqSnapshot}
                 {@const MAX_PARENTS_TO_SHOW = 2}
-                {@const parentsOverflow = openReqSnapshot.parentNames.length > MAX_PARENTS_TO_SHOW}
+                {@const parentsOverflow = openReqSnapshot.parents.length > MAX_PARENTS_TO_SHOW}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
                         <div class="mb-3 flex items-center gap-0.5">
-                            {#if openReqSnapshot.parentNames.length > 0}
+                            {#if openReqSnapshot.parents.length > 0}
                                 <span class="cursor-default select-text">
-                                    {openReqSnapshot.parentNames[0]}
+                                    {openReqSnapshot.parents[0]}
                                 </span>
                                 <ChevronRightIcon size={12} class="mx-0.5" />
 
@@ -224,7 +224,7 @@
                                     <ChevronRightIcon size={12} class="mx-0.5" />
                                 {/if}
 
-                                {#each openReqSnapshot.parentNames.slice(parentsOverflow ? -1 : 1) as parentName, idx (idx)}
+                                {#each openReqSnapshot.parents.slice(parentsOverflow ? -1 : 1) as parentName, idx (idx)}
                                     <span class="cursor-default select-text">{parentName}</span>
                                     <ChevronRightIcon size={12} class="mx-0.5" />
                                 {/each}

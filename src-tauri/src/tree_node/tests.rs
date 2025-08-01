@@ -153,7 +153,7 @@ fn move_tree_node_fails_with_invalid_from_relpath() {
 }
 
 #[test]
-fn move_tree_node_fails_when_dropping_to_same_parent() {
+fn move_tree_node_fails_when_moving_to_self() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
@@ -171,15 +171,53 @@ fn move_tree_node_fails_when_dropping_to_same_parent() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from("parent-col-1"),
-        to_relpath: PathBuf::from("parent-col-2"),
+        to_relpath: PathBuf::from("parent-col-1"),
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
     assert!(result.is_err());
-    match result.unwrap_err() {
-        Error::InvalidPath(msg) => assert_eq!(msg, "Cannot drop to same parent"),
-        _ => panic!("Expected InvalidPath error"),
-    }
+}
+
+#[test]
+fn move_tree_node_fails_when_moving_into_own_subtree() {
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
+
+    let location_relpath = PathBuf::from("");
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        &location_relpath,
+        &PathBuf::from("Parent Col 1"),
+        &tmp_space_abspath,
+    )
+    .expect("Failed to create parent collections");
+
+    collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
+        .expect("Failed to create collection");
+
+    let child_location = PathBuf::from("parent-col-1");
+    let (child_parent_relpath, child_col_segment) =
+        collection::create_parent_collections_if_missing(
+            &child_location,
+            &PathBuf::from("Child Col"),
+            &tmp_space_abspath,
+        )
+        .expect("Failed to create child collections");
+
+    collection::create_collection(
+        &child_parent_relpath,
+        &child_col_segment,
+        &tmp_space_abspath,
+    )
+    .expect("Failed to create child collection");
+
+    let dto = MoveTreeNodeDto {
+        node_type: NodeType::Collection,
+        from_relpath: PathBuf::from("parent-col-1"),
+        to_relpath: PathBuf::from("parent-col-1/child-col/parent-col-1"),
+    };
+
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    assert!(result.is_err());
 }
 
 #[test]

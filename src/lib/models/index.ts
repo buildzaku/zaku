@@ -30,6 +30,6 @@ export type FocussedTreeNode =
       };
 
 export type OpenRequest = {
-    parentNames: string[];
+    parents: string[];
     self: HttpReq;
 };

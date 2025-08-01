@@ -1,24 +1,26 @@
 export class Path {
     #segments: string[];
+    static readonly separator = "/";
 
-    private constructor() {
-        this.#segments = [];
+    constructor(path?: string) {
+        this.#segments = path ? Path.toSegments(path) : [];
     }
 
     static from(path: string): Path {
-        const instance = new Path();
-        instance.#segments = path === "" ? [] : path.split("/").filter(segment => segment !== "");
-
-        return instance;
+        return new Path(path);
     }
 
-    join(segment: string): Path {
-        if (segment === "") return this;
+    static toSegments(path: string): string[] {
+        return path === "" ? [] : path.split(Path.separator).filter(segment => segment !== "");
+    }
 
-        const instance = new Path();
-        instance.#segments = [...this.#segments, segment];
+    join(path: string): Path {
+        if (path === "") return this;
 
-        return instance;
+        const newPath = new Path();
+        newPath.#segments = [...this.#segments, ...Path.toSegments(path)];
+
+        return newPath;
     }
 
     parent(): Path | null {
@@ -26,36 +28,27 @@ export class Path {
             return null;
         }
         if (this.#segments.length === 1) {
-            return Path.from("");
+            return new Path("");
         }
 
-        const instance = new Path();
-        instance.#segments = this.#segments.slice(0, -1);
+        const parentPath = new Path();
+        parentPath.#segments = this.#segments.slice(0, -1);
 
-        return instance;
+        return parentPath;
+    }
+
+    startsWith(prefix: Path): boolean {
+        return (
+            this.#segments.length >= prefix.#segments.length &&
+            prefix.#segments.every((segment, index) => segment === this.#segments[index])
+        );
     }
 
     isEmpty(): boolean {
         return this.#segments.length === 0;
     }
 
-    isChild(targetPath: string | Path): boolean {
-        const targetSegments =
-            typeof targetPath === "string"
-                ? Path.from(targetPath).toSegments()
-                : targetPath.toSegments();
-
-        return (
-            this.#segments.length <= targetSegments.length &&
-            this.#segments.every((segment, index) => segment === targetSegments[index])
-        );
-    }
-
-    toSegments(): string[] {
-        return [...this.#segments];
-    }
-
     toString(): string {
-        return this.#segments.join("/");
+        return this.#segments.join(Path.separator);
     }
 }

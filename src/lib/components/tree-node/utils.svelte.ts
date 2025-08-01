@@ -111,18 +111,14 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const from_relpath = Path.from(explorerActionsState.dragPayload.parentRelativePath)
-        .join(explorerActionsState.dragPayload.node.meta.fsname)
-        .toString();
-    const to_relpath = Path.from(explorerActionsState.dropTargetPath)
-        .join(explorerActionsState.dragPayload.node.meta.fsname)
-        .toString();
-    const node_type = isCol(explorerActionsState.dragPayload.node) ? "collection" : "request";
-
     const moveTreeNodeResult = await commands.moveTreeNode({
-        node_type,
-        from_relpath,
-        to_relpath,
+        node_type: isCol(explorerActionsState.dragPayload.node) ? "collection" : "request",
+        from_relpath: Path.from(explorerActionsState.dragPayload.parentRelativePath)
+            .join(explorerActionsState.dragPayload.node.meta.fsname)
+            .toString(),
+        to_relpath: Path.from(explorerActionsState.dropTargetPath)
+            .join(explorerActionsState.dragPayload.node.meta.fsname)
+            .toString(),
     });
     if (moveTreeNodeResult.status !== "ok") {
         return emitCmdError(moveTreeNodeResult.error);
