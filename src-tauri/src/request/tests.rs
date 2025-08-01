@@ -743,10 +743,7 @@ fn create_req_creates_parent_collections_with_proper_hierarchy() {
     let location_relpath = PathBuf::from("");
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
-        &PathBuf::from("Great Grand Parent Col 1")
-            .join("Grand Parent Col 1")
-            .join("Parent Col 1")
-            .join("Child Req 1"),
+        &PathBuf::from("Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1/Child Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
