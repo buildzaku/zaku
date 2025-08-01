@@ -224,8 +224,8 @@
                                     <ChevronRightIcon size={12} class="mx-0.5" />
                                 {/if}
 
-                                {#each openReqSnapshot.trail.slice(trailOverflow ? -1 : 1) as parentName, idx (idx)}
-                                    <span class="cursor-default select-text">{parentName}</span>
+                                {#each openReqSnapshot.trail.slice(trailOverflow ? -1 : 1) as trail, idx (idx)}
+                                    <span class="cursor-default select-text">{trail}</span>
                                     <ChevronRightIcon size={12} class="mx-0.5" />
                                 {/each}
                             {/if}
