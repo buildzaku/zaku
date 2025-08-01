@@ -146,12 +146,6 @@ class Debounced {
             clearTimeout(timer);
         }
     }
-    public async flushAll(): Promise<void> {
-        for (const { timer, spaceAbspath, openRequest } of this.#state.values()) {
-            commands.writeReqToSpaceBuffer(spaceAbspath, openRequest.self);
-            clearTimeout(timer);
-        }
-    }
 }
 
 export const debounced = new Debounced();
