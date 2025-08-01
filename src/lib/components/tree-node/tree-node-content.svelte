@@ -69,7 +69,6 @@
             });
 
             explorerState.setOpenRequest({
-                parentRelpath: parentRelpath,
                 parentNames,
                 self: node,
             });

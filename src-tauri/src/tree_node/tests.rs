@@ -121,7 +121,7 @@ fn move_tree_node_fails_with_no_space() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from("parent-col-1"),
-        to_relpath: to_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_nonexistent_space_abspath, &state_store);
@@ -141,7 +141,7 @@ fn move_tree_node_fails_with_invalid_from_relpath() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from(""),
-        to_relpath: to_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -202,7 +202,7 @@ fn move_tree_node_fails_when_moving_collection_into_itself() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from("parent-col-1"),
-        to_relpath: to_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -258,7 +258,7 @@ fn move_tree_node_fails_when_destination_already_exists() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from("parent-col-1"),
-        to_relpath: to_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -290,7 +290,7 @@ fn move_tree_node_fails_when_source_not_found() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from("nonexistent-col-1"),
-        to_relpath: to_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -385,7 +385,7 @@ fn move_tree_node_successfully_moves_request() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
         from_relpath: PathBuf::from("parent-req-1.toml"),
-        to_relpath: to_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -445,7 +445,7 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath: PathBuf::from("parent-col-1"),
-        to_relpath: to_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -481,8 +481,8 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
     let to_relpath = PathBuf::from("grand-parent-col-1").join("child-col-1");
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
-        from_relpath: from_relpath,
-        to_relpath: to_relpath,
+        from_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -549,8 +549,8 @@ fn move_tree_node_successfully_moves_request_to_parent() {
     let to_relpath = PathBuf::from("grand-parent-col-1").join("grand-child-req-1.toml");
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
-        from_relpath: from_relpath,
-        to_relpath: to_relpath,
+        from_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -611,8 +611,8 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
         .join("child-col-1");
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
-        from_relpath: from_relpath,
-        to_relpath: to_relpath,
+        from_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
@@ -686,8 +686,8 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
     let to_relpath = PathBuf::from("great-grand-parent-col-1").join("great-grand-child-req-1.toml");
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
-        from_relpath: from_relpath,
-        to_relpath: to_relpath,
+        from_relpath,
+        to_relpath,
     };
 
     let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);

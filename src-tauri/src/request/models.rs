@@ -19,7 +19,6 @@ pub struct ReqMeta {
     pub relpath: PathBuf,
 }
 
-
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqUrl {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -128,12 +127,8 @@ impl HttpReq {
     }
 
     pub fn from_reqtoml(req_toml: &ReqToml, relpath: &Path) -> Self {
-        let fsname = relpath
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-            
+        let fsname = relpath.file_name().unwrap().to_string_lossy().into_owned();
+
         let meta = ReqMeta {
             fsname,
             name: req_toml.meta.name.clone(),

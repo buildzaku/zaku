@@ -122,14 +122,13 @@
 
             const absoluteReqPath = pathJoin([
                 spaceSnapshot.abspath,
-                openReqSnapshot.parentRelpath,
-                openReqSnapshot.self.meta.fsname,
+                openReqSnapshot.self.meta.relpath,
             ]);
 
             await debounced.flush(absoluteReqPath);
             const writeReqbufToReqtomlResult = await commands.writeReqbufToReqtoml(
                 spaceSnapshot.abspath,
-                pathJoin([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname]),
+                openReqSnapshot.self.meta.relpath,
             );
             if (writeReqbufToReqtomlResult.status !== "ok") {
                 return emitCmdError(writeReqbufToReqtomlResult.error);
@@ -142,9 +141,7 @@
 
     const openReqSnapshot = explorerState.openRequest;
     let isOpenReqSavedToFs = false;
-    let prevOpenReqRelPath = openReqSnapshot
-        ? pathJoin([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname])
-        : null;
+    let prevOpenReqRelPath = openReqSnapshot ? openReqSnapshot.self.meta.relpath : null;
     let prevSpaceAbspath = sharedState.space ? sharedState.space.abspath : null;
 
     $effect(() => {
@@ -176,16 +173,11 @@
             return;
         }
 
-        const openReqRelPath = pathJoin([
-            openReqSnapshot.parentRelpath,
-            openReqSnapshot.self.meta.fsname,
-        ]);
-
-        if (prevOpenReqRelPath && prevOpenReqRelPath === openReqRelPath) {
+        if (prevOpenReqRelPath && prevOpenReqRelPath === openReqSnapshot.self.meta.relpath) {
             openReqSnapshot.self.meta.has_unsaved_changes = true;
             debounced.saveReqToSpaceBuffer(spaceSnapshot.abspath, openReqSnapshot);
         } else {
-            prevOpenReqRelPath = openReqRelPath;
+            prevOpenReqRelPath = openReqSnapshot.self.meta.relpath;
         }
     });
 </script>
