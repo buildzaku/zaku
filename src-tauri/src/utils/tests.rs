@@ -30,16 +30,13 @@ fn to_sanitized_segments_empty_relpath() {
 
 #[test]
 fn to_sanitized_segments_with_whitespace_segments() {
-    let segments = utils::to_sanitized_segments(
-        &PathBuf::from("  ")
-            .join("Whitespace Child  Col 1       ")
-            .join("   "),
-    )
-    .unwrap();
+    let segments =
+        utils::to_sanitized_segments(&PathBuf::from("  /Whitespace Child    Col 1       /   "))
+            .unwrap();
 
     assert_eq!(segments.len(), 1);
 
-    assert_eq!(segments[0].name, "Whitespace Child  Col 1");
+    assert_eq!(segments[0].name, "Whitespace Child Col 1");
     assert_eq!(segments[0].fsname, "whitespace-child-col-1");
 }
 
@@ -126,4 +123,33 @@ fn to_sanitized_segments_backslash() {
     assert_eq!(segments.len(), 1);
     assert_eq!(segments[0].name, "Path-With-Backslashes");
     assert_eq!(segments[0].fsname, "path-with-backslashes");
+}
+
+#[test]
+fn to_sanitized_segments_backslash_at_ends() {
+    let segments =
+        utils::to_sanitized_segments(&PathBuf::from("\\Path\\With\\Backslashes\\At\\Ends\\"))
+            .unwrap();
+
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].name, "Path-With-Backslashes-At-Ends");
+    assert_eq!(segments[0].fsname, "path-with-backslashes-at-ends");
+}
+
+#[test]
+fn to_sanitized_segments_multiple_consecutive_backslashes() {
+    let segments = utils::to_sanitized_segments(&PathBuf::from(
+        "\\Path\\With\\\\\\\\Multiple\\Consecutive\\\\\\\\Backslashes",
+    ))
+    .unwrap();
+
+    assert_eq!(segments.len(), 1);
+    assert_eq!(
+        segments[0].name,
+        "Path-With-Multiple-Consecutive-Backslashes"
+    );
+    assert_eq!(
+        segments[0].fsname,
+        "path-with-multiple-consecutive-backslashes"
+    );
 }

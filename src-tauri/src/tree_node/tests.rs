@@ -719,10 +719,9 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let location_relpath = PathBuf::from("");
-    let relpath = "Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1";
     let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
-        &PathBuf::from(relpath),
+        &PathBuf::from("Great Grand Parent Col 1/Grand Parent Col 1/Parent Col 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
