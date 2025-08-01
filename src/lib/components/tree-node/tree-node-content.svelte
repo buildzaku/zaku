@@ -3,74 +3,40 @@
     import { toast } from "svelte-sonner";
 
     import { TreeNodeContent, TreeNodeCreate } from ".";
-    import type { TreeNode, DragOverDto } from "$lib/models";
+    import type { TreeNode } from "$lib/models";
     import { explorerActionsState, explorerState } from "$lib/state.svelte";
     import { cn, requestColors } from "$lib/utils/style";
     import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
-        isCurrentCollectionOrAnyOfItsChildFocussed,
         isDropAllowed,
         handleDragStart,
         handleDragOver,
         handleDrop,
         handleDragEnd,
-        buildPath,
         isCol,
         isReq,
     } from "$lib/components/tree-node/utils.svelte";
+    import { Path } from "$lib/utils/path";
 
-    type Props = {
-        parentRelpath: string;
-        parentNames: string[];
-        currentPath: string;
-        node: TreeNode;
-        level: number;
-        class?: string;
-    };
+    type Props = { trail: string[]; node: TreeNode; level: number; class?: string };
+    let { trail, node, level, class: className }: Props = $props();
 
-    let {
-        parentRelpath,
-        parentNames,
-        currentPath,
-        node,
-        level,
-        class: className,
-    }: Props = $props();
+    const relpath = Path.from(node.meta.relpath);
 
-    let shouldRenderCreateNewRequestInput = $derived(
-        explorerActionsState.createNewNode === "request" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
-    );
-    let shouldRenderCreateNewCollectionInput = $derived(
-        explorerActionsState.createNewNode === "collection" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(currentPath),
-    );
-    let shouldHighlight = $derived(isDropAllowed(currentPath));
-
-    const dragOverDto: DragOverDto = isCol(node)
-        ? { type: "collection", relativePath: currentPath }
-        : { type: "request", parentRelativePath: parentRelpath };
-
-    type TreeNodeFocusParams = { node: TreeNode; parentRelpath: string; relpath: string };
-    function handleTreeItemFocus({ node, parentRelpath, relpath }: TreeNodeFocusParams) {
+    function handleTreeItemFocus(node: TreeNode) {
         if (isCol(node)) {
             node.meta.is_expanded = !node.meta.is_expanded;
-
             explorerState.setFocussedNode({
                 type: "collection",
-                parentRelativePath: parentRelpath,
-                relativePath: relpath,
+                relpath: relpath,
             });
         } else if (isReq(node)) {
             explorerState.setFocussedNode({
                 type: "request",
-                parentRelativePath: parentRelpath,
-                relativePath: relpath,
+                relpath: relpath,
             });
-
             explorerState.setOpenRequest({
-                parentRelpath: parentRelpath,
-                parentNames,
+                trail,
                 self: node,
             });
         } else {
@@ -80,9 +46,13 @@
 </script>
 
 <div
-    data-parent-path={parentRelpath}
-    data-current-path={currentPath}
-    class={cn("relative min-w-full", shouldHighlight ? "bg-accent/75" : "", className)}
+    data-parent-path={relpath.parent()?.toString() ?? ""}
+    data-current-path={node.meta.relpath}
+    class={cn(
+        "relative min-w-full",
+        isDropAllowed(node.meta.relpath) ? "bg-accent/75" : "",
+        className,
+    )}
 >
     {#if level > 1}
         <div
@@ -96,29 +66,34 @@
         aria-grabbed="false"
         draggable="true"
         ondragstart={event => {
-            handleDragStart(event, { parentRelativePath: parentRelpath, node });
+            handleDragStart(event, node);
         }}
-        ondragover={event => handleDragOver(event, dragOverDto)}
+        ondragover={event => {
+            handleDragOver(event, {
+                type: isCol(node) ? "collection" : "request",
+                relpath: relpath,
+            });
+        }}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
         onkeydown={keyboardEvent => {
             if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                 keyboardEvent.preventDefault();
 
-                handleTreeItemFocus({ node, parentRelpath: parentRelpath, relpath: currentPath });
+                handleTreeItemFocus(node);
             }
         }}
         style="padding-left: {level * 8}px"
         class={cn(
             "focus-visible:ring-ring flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none",
-            explorerState.focussedNode.relativePath === currentPath
+            explorerState.focussedNode.relpath.toString() === node.meta.relpath
                 ? "bg-accent"
                 : "hover:bg-accent/75",
         )}
         onclick={() => {
             explorerActionsState.createNewNode = null;
 
-            handleTreeItemFocus({ node, parentRelpath: parentRelpath, relpath: currentPath });
+            handleTreeItemFocus(node);
         }}
     >
         <div class="flex size-full items-center gap-1 pl-1.5">
@@ -156,31 +131,27 @@
     </div>
 
     {#if isCol(node)}
-        {#if shouldRenderCreateNewRequestInput}
-            <TreeNodeCreate type="request" parentRelativePath={currentPath} level={level + 1} />
+        {#if explorerActionsState.createNewNode === "request" && explorerState.isCreateNewNodeParent(relpath)}
+            <TreeNodeCreate type="request" locationRelpath={relpath} level={level + 1} />
         {/if}
 
         {#if node.meta.is_expanded}
-            {#each node.requests as request (buildPath(currentPath, request.meta.fsname))}
+            {#each node.requests as request (relpath.join(request.meta.fsname).toString())}
                 <TreeNodeContent
-                    parentRelpath={currentPath}
-                    parentNames={[...parentNames, node.meta.name ?? node.meta.fsname]}
-                    currentPath={buildPath(currentPath, request.meta.fsname)}
+                    trail={[...trail, node.meta.name ?? node.meta.fsname]}
                     node={request}
                     level={level + 1}
                 />
             {/each}
         {/if}
 
-        {#if shouldRenderCreateNewCollectionInput}
-            <TreeNodeCreate type="collection" parentRelativePath={currentPath} level={level + 1} />
+        {#if explorerActionsState.createNewNode === "collection" && explorerState.isCreateNewNodeParent(relpath)}
+            <TreeNodeCreate type="collection" locationRelpath={relpath} level={level + 1} />
         {/if}
         {#if node.meta.is_expanded}
-            {#each node.collections as collection (buildPath(currentPath, collection.meta.fsname))}
+            {#each node.collections as collection (relpath.join(collection.meta.fsname).toString())}
                 <TreeNodeContent
-                    parentRelpath={currentPath}
-                    parentNames={[...parentNames, node.meta.name ?? node.meta.fsname]}
-                    currentPath={buildPath(currentPath, collection.meta.fsname)}
+                    trail={[...trail, node.meta.name ?? node.meta.fsname]}
                     node={collection}
                     level={level + 1}
                 />

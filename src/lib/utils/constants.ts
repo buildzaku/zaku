@@ -19,8 +19,6 @@ export const REQUEST_BODY_TYPES = {
     PlainText: "text/plain",
 } as const;
 
-export const RELATIVE_SPACE_ROOT = "";
-
 export const HTTP_STATUS_DESCRIPTION: Record<number, string> = {
     100: "Continue",
     101: "Switching Protocols",

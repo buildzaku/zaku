@@ -14,12 +14,12 @@
     import { ResponsePane } from "$lib/components/response-pane";
     import { cn } from "$lib/utils/style";
     import { explorerState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
-    import { pathJoin } from "$lib/components/tree-node/utils.svelte";
     import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
     import { commands } from "$lib/bindings";
     import type { HttpReq, ReqUrl } from "$lib/bindings";
     import { ChevronRightIcon, EllipsisIcon } from "@lucide/svelte";
     import { emitCmdError } from "$lib/utils";
+    import { Path } from "$lib/utils/path";
 
     let leftPane: PaneAPI | undefined = $state();
     let isLeftPaneCollapsed = $state(false);
@@ -120,16 +120,14 @@
         if ((event.metaKey || event.ctrlKey) && event.key === "s") {
             event.preventDefault();
 
-            const absoluteReqPath = pathJoin([
-                spaceSnapshot.abspath,
-                openReqSnapshot.parentRelpath,
-                openReqSnapshot.self.meta.fsname,
-            ]);
+            const absoluteReqPath = Path.from(spaceSnapshot.abspath).join(
+                openReqSnapshot.self.meta.relpath,
+            );
 
-            await debounced.flush(absoluteReqPath);
+            await debounced.flush(absoluteReqPath.toString());
             const writeReqbufToReqtomlResult = await commands.writeReqbufToReqtoml(
                 spaceSnapshot.abspath,
-                pathJoin([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname]),
+                openReqSnapshot.self.meta.relpath,
             );
             if (writeReqbufToReqtomlResult.status !== "ok") {
                 return emitCmdError(writeReqbufToReqtomlResult.error);
@@ -141,16 +139,15 @@
     }
 
     const openReqSnapshot = explorerState.openRequest;
+    const spaceSnapshot = $state.snapshot(sharedState.space);
     let isOpenReqSavedToFs = false;
-    let prevOpenReqRelPath = openReqSnapshot
-        ? pathJoin([openReqSnapshot.parentRelpath, openReqSnapshot.self.meta.fsname])
-        : null;
+    let prevOpenReqRelPath = openReqSnapshot ? openReqSnapshot.self.meta.relpath : null;
     let prevSpaceAbspath = sharedState.space ? sharedState.space.abspath : null;
 
+    // Be very carefull when adding reactive state variables to this
     $effect(() => {
         // Important hack to keep the effect deeply reactive
         // Only watch config and metadata changes, not response/status
-        const spaceSnapshot = sharedState.space;
         const openReqSnapshot = explorerState.openRequest;
         if (openReqSnapshot) {
             JSON.stringify({
@@ -176,16 +173,11 @@
             return;
         }
 
-        const openReqRelPath = pathJoin([
-            openReqSnapshot.parentRelpath,
-            openReqSnapshot.self.meta.fsname,
-        ]);
-
-        if (prevOpenReqRelPath && prevOpenReqRelPath === openReqRelPath) {
+        if (prevOpenReqRelPath && prevOpenReqRelPath === openReqSnapshot.self.meta.relpath) {
             openReqSnapshot.self.meta.has_unsaved_changes = true;
             debounced.saveReqToSpaceBuffer(spaceSnapshot.abspath, openReqSnapshot);
         } else {
-            prevOpenReqRelPath = openReqRelPath;
+            prevOpenReqRelPath = openReqSnapshot.self.meta.relpath;
         }
     });
 </script>
@@ -216,24 +208,24 @@
             <ResizableHandle withHandle class="absolute z-10 h-full" />
             {@const openReqSnapshot = explorerState.openRequest}
             {#if openReqSnapshot}
-                {@const MAX_PARENTS_TO_SHOW = 2}
-                {@const parentsOverflow = openReqSnapshot.parentNames.length > MAX_PARENTS_TO_SHOW}
+                {@const MAX_TRAIL_TO_SHOW = 2}
+                {@const trailOverflow = openReqSnapshot.trail.length > MAX_TRAIL_TO_SHOW}
                 <ResizablePaneGroup direction="vertical" class="size-full">
                     <div class="p-3">
                         <div class="mb-3 flex items-center gap-0.5">
-                            {#if openReqSnapshot.parentNames.length > 0}
+                            {#if openReqSnapshot.trail.length > 0}
                                 <span class="cursor-default select-text">
-                                    {openReqSnapshot.parentNames[0]}
+                                    {openReqSnapshot.trail[0]}
                                 </span>
                                 <ChevronRightIcon size={12} class="mx-0.5" />
 
-                                {#if parentsOverflow}
+                                {#if trailOverflow}
                                     <EllipsisIcon size={12} />
                                     <ChevronRightIcon size={12} class="mx-0.5" />
                                 {/if}
 
-                                {#each openReqSnapshot.parentNames.slice(parentsOverflow ? -1 : 1) as parentName, idx (idx)}
-                                    <span class="cursor-default select-text">{parentName}</span>
+                                {#each openReqSnapshot.trail.slice(trailOverflow ? -1 : 1) as trail, idx (idx)}
+                                    <span class="cursor-default select-text">{trail}</span>
                                     <ChevronRightIcon size={12} class="mx-0.5" />
                                 {/each}
                             {/if}

@@ -42,23 +42,12 @@ pub fn parse_req(
         return None;
     }
 
-    let relpath = entry_abspath
-        .strip_prefix(space_abspath)
-        .unwrap()
-        .to_string_lossy()
-        .into_owned();
-
-    if let Some(req_buf) = sbf_store_mtx.requests.get(&relpath) {
+    let relpath = entry_abspath.strip_prefix(space_abspath).ok()?;
+    if let Some(req_buf) = sbf_store_mtx.requests.get(relpath) {
         Some(HttpReq::from_reqbuf(req_buf))
     } else {
-        let fsname = entry_abspath
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-
         match parse_reqtoml(entry_abspath) {
-            Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, fsname)),
+            Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, relpath)),
             Err(_) => {
                 eprintln!("Invalid request TOML: '{}'", entry_abspath.display());
 
@@ -73,13 +62,13 @@ pub fn parse_req(
 /// Creates a new TOML request file in the parent collection directory and updates
 /// the shared state
 ///
-/// - `parent_relpath`: Relative path to the parent collection directory
+/// - `location_relpath`: Relative path of location where request needs to be created
 /// - `req_segment`: Sanitized segment containing the request name and filesystem name
 /// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result<CreateNewRequest>` containing the created request's paths
 pub fn create_req(
-    parent_relpath: &Path,
+    location_relpath: &Path,
     req_segment: &SanitizedSegment,
     space_abspath: &Path,
 ) -> Result<CreateNewRequest> {
@@ -89,14 +78,16 @@ pub fn create_req(
         ));
     }
 
-    let reqfile_abspath = space_abspath.join(parent_relpath).join(&req_segment.fsname);
-    let reqfile_relpath = parent_relpath.join(format!("{}.toml", &req_segment.fsname));
+    let reqfile_abspath = space_abspath
+        .join(location_relpath)
+        .join(&req_segment.fsname);
+    let reqfile_relpath = location_relpath.join(format!("{}.toml", &req_segment.fsname));
 
     create_reqtoml(&reqfile_abspath, &req_segment.name)?;
 
     let created = CreateNewRequest {
-        parent_relpath: parent_relpath.to_string_lossy().to_string(),
-        relpath: reqfile_relpath.to_string_lossy().to_string(),
+        location_relpath: location_relpath.to_path_buf(),
+        relpath: reqfile_relpath,
     };
 
     Ok(created)

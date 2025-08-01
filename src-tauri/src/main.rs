@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::path::PathBuf;
+
 pub mod collection;
 pub mod commands;
 pub mod error;
@@ -13,7 +15,12 @@ pub mod store;
 pub mod tree_node;
 pub mod utils;
 
-const BINDINGS_PATH: &str = "./../src/lib/bindings.ts";
+fn ts_bindings_path() -> PathBuf {
+    PathBuf::from("..")
+        .join("src")
+        .join("lib")
+        .join("bindings.ts")
+}
 
 fn main() {
     #[cfg(target_os = "linux")]
@@ -24,12 +31,12 @@ fn main() {
         .error_handling(tauri_specta::ErrorHandlingMode::Result);
 
     if std::env::var("GEN_BINDINGS").is_ok() {
-        use specta_typescript::{formatter, Typescript};
+        use specta_typescript::{Typescript, formatter};
 
         builder
             .export(
                 Typescript::default().formatter(formatter::prettier),
-                BINDINGS_PATH,
+                ts_bindings_path(),
             )
             .expect("Failed to export typescript bindings");
     }

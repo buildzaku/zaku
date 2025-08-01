@@ -68,13 +68,13 @@ pub fn hashed_filename(abspath: &Path) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-pub fn to_fsname(name: &str) -> Result<String> {
+pub fn to_sanitized_fsname(name: &str) -> Result<String> {
     const WINDOWS_RESERVED: [&str; 22] = [
         "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
         "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
     ];
 
-    let sanitized = name
+    let sanitized_fsname = name
         .to_lowercase()
         .chars()
         .map(|char| {
@@ -90,30 +90,50 @@ pub fn to_fsname(name: &str) -> Result<String> {
         .collect::<Vec<_>>()
         .join("-");
 
-    if sanitized.is_empty() {
+    if sanitized_fsname.is_empty() {
         return Err(Error::SanitizationError(
             "Empty name after sanitization".to_string(),
         ));
     }
 
-    if WINDOWS_RESERVED.contains(&sanitized.as_str()) {
+    if WINDOWS_RESERVED.contains(&sanitized_fsname.as_str()) {
         return Err(Error::SanitizationError(format!(
-            "Reserved name not allowed: {sanitized}"
+            "Reserved name not allowed: {sanitized_fsname}"
         )));
     }
 
-    Ok(sanitized)
+    Ok(sanitized_fsname)
 }
 
-pub fn to_sanitized_segments(relpath: &str) -> Result<Vec<SanitizedSegment>> {
-    let relpath_no_bslashes = relpath.replace('\\', "-");
+pub fn to_sanitized_name(name: &str) -> Result<String> {
+    let sanitized_name = name
+        .trim_matches(|char| char == '-' || char == ' ')
+        .chars()
+        .fold(String::new(), |mut acc, char| {
+            match (char, acc.chars().last()) {
+                ('-', Some('-')) => acc,
+                (' ', Some(' ')) => acc,
+                _ => {
+                    acc.push(char);
+
+                    acc
+                }
+            }
+        });
+
+    Ok(sanitized_name)
+}
+
+pub fn to_sanitized_segments(relpath: &Path) -> Result<Vec<SanitizedSegment>> {
+    let relpath_str = relpath.to_string_lossy();
+    let relpath_no_bslashes = relpath_str.replace('\\', "-");
     let mut segments = Vec::new();
 
-    for component in Path::new(&relpath_no_bslashes).components() {
+    for component in PathBuf::from(&relpath_no_bslashes).components() {
         if let path::Component::Normal(os_str) = component {
-            let name = os_str.to_string_lossy().trim().to_string();
+            let name = to_sanitized_name(&os_str.to_string_lossy())?;
             if !name.is_empty() {
-                let fsname = to_fsname(&name)?;
+                let fsname = to_sanitized_fsname(&name)?;
                 segments.push(SanitizedSegment { name, fsname });
             }
         }

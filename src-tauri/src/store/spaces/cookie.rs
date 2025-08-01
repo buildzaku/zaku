@@ -15,17 +15,17 @@ pub struct SpaceCookieStore {
 }
 
 impl SpaceCookieStore {
-    fn new(sck_store_abspath: PathBuf, cookies: Arc<CookieStoreMutex>) -> Self {
+    fn new(sck_store_abspath: &Path, cookies: Arc<CookieStoreMutex>) -> Self {
         Self {
             cookies,
-            abspath: sck_store_abspath,
+            abspath: sck_store_abspath.to_path_buf(),
         }
     }
 
     fn init(sck_store_abspath: &Path) -> Result<SpaceCookieStore> {
         if !sck_store_abspath.exists() {
             let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
-            let sck_store = Self::new(sck_store_abspath.to_path_buf(), default_cookies);
+            let sck_store = Self::new(sck_store_abspath, default_cookies);
             sck_store.fswrite()?;
 
             return Ok(sck_store);
@@ -37,12 +37,12 @@ impl SpaceCookieStore {
             Ok(cookie_store) => {
                 let cookies = Arc::new(CookieStoreMutex::new(cookie_store));
 
-                Ok(Self::new(sck_store_abspath.to_path_buf(), cookies))
+                Ok(Self::new(sck_store_abspath, cookies))
             }
             Err(_) => {
                 // corrupt JSON, use default
                 let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
-                let sck_store = Self::new(sck_store_abspath.to_path_buf(), default_cookies);
+                let sck_store = Self::new(sck_store_abspath, default_cookies);
                 sck_store.fswrite()?;
 
                 Ok(sck_store)

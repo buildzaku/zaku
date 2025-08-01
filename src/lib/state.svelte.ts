@@ -2,10 +2,10 @@ import { tick } from "svelte";
 
 import { version } from "$app/environment";
 
-import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
+import type { OpenRequest, FocussedTreeNode, TreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
-import { pathJoin } from "$lib/components/tree-node/utils.svelte";
+import { Path } from "$lib/utils/path";
 import { emitCmdError } from "$lib/utils";
 
 class SharedState {
@@ -38,13 +38,15 @@ class SharedState {
 export const sharedState = new SharedState();
 
 class ExplorerActionsState {
-    public dragPayload: DragPayload | null = $state(null);
-    public dropTargetPath: string | null = $state(null);
+    public dragNode: TreeNode | null = $state(null);
+    public dragNodePath: Path | null = $state(null);
+    public dropNodePath: Path | null = $state(null);
     public createNewNode: NodeType | null = $state(null);
 
     public reset() {
-        this.dragPayload = null;
-        this.dropTargetPath = null;
+        this.dragNode = null;
+        this.dragNodePath = null;
+        this.dropNodePath = null;
         this.createNewNode = null;
     }
 }
@@ -54,25 +56,22 @@ export const explorerActionsState = new ExplorerActionsState();
 class ExplorerState {
     #rootNode: FocussedTreeNode = {
         type: "collection",
-        relativePath: "",
-        parentRelativePath: "",
+        relpath: Path.from(""),
     };
 
     public focussedNode: FocussedTreeNode = $state(this.#rootNode);
     public openRequest: OpenRequest | null = $state(null);
     public backgroundRequests: HttpReq[] = $state([]);
 
-    public setFocussedNode(node: FocussedTreeNode) {
-        if (this.focussedNode.relativePath !== node.relativePath) {
-            this.focussedNode = node;
+    public setFocussedNode(focussedNode: FocussedTreeNode) {
+        if (this.focussedNode.relpath.toString() !== focussedNode.relpath.toString()) {
+            this.focussedNode = focussedNode;
         }
     }
 
     public setOpenRequest(openRequest: OpenRequest) {
-        const currentRelpath = this.openRequest
-            ? pathJoin([this.openRequest.parentRelpath, this.openRequest.self.meta.fsname])
-            : null;
-        const newRelpath = pathJoin([openRequest.parentRelpath, openRequest.self.meta.fsname]);
+        const currentRelpath = this.openRequest ? this.openRequest.self.meta.relpath : null;
+        const newRelpath = openRequest.self.meta.relpath;
 
         if (currentRelpath !== newRelpath) {
             this.openRequest = openRequest;
@@ -81,6 +80,17 @@ class ExplorerState {
                 this.backgroundRequests.push(openRequest.self);
             }
         }
+    }
+
+    public isCreateNewNodeParent(relpath: Path): boolean {
+        const isCurCollectionFocussed =
+            this.focussedNode.type === "collection" &&
+            this.focussedNode.relpath.toString() === relpath.toString();
+        const isCurCollectionReqFocussed =
+            this.focussedNode.type === "request" &&
+            this.focussedNode.relpath.parent()?.toString() === relpath.toString();
+
+        return isCurCollectionFocussed || isCurCollectionReqFocussed;
     }
 
     public reset() {
@@ -96,7 +106,7 @@ type AbsoluteRequestPath = string;
 
 type DebouncedState = {
     timer: number;
-    absoluteSpacePath: string;
+    spaceAbspath: string;
     openRequest: OpenRequest;
 };
 
@@ -104,57 +114,35 @@ class Debounced {
     #state: Map<AbsoluteRequestPath, DebouncedState> = new Map();
     #DELAY = 1500;
 
-    public saveReqToSpaceBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
-        const absoluteRequestPath = pathJoin([
-            absoluteSpacePath,
-            openRequest.parentRelpath,
-            openRequest.self.meta.fsname,
-        ]);
+    public saveReqToSpaceBuffer(spaceAbspath: string, openRequest: OpenRequest): void {
+        const reqAbspath = Path.from(spaceAbspath).join(openRequest.self.meta.relpath).toString();
 
-        const current = this.#state.get(absoluteRequestPath);
+        const current = this.#state.get(reqAbspath);
         if (current) {
             clearTimeout(current.timer);
         }
 
         const timer = setTimeout(() => {
-            commands.writeReqToSpaceBuffer(
-                absoluteSpacePath,
-                openRequest.parentRelpath,
-                openRequest.self,
-            );
+            commands.writeReqToSpaceBuffer(spaceAbspath, openRequest.self);
 
-            this.#state.delete(absoluteRequestPath);
+            this.#state.delete(reqAbspath);
         }, this.#DELAY);
 
-        this.#state.set(absoluteRequestPath, {
+        this.#state.set(reqAbspath, {
             timer,
-            absoluteSpacePath,
+            spaceAbspath,
             openRequest,
         });
     }
-    public isPending(absoluteRequestPath: string): boolean {
-        return this.#state.has(absoluteRequestPath);
+    public isPending(reqAbspath: string): boolean {
+        return this.#state.has(reqAbspath);
     }
-    public async flush(absoluteRequestPath: string): Promise<void> {
-        const currentState = this.#state.get(absoluteRequestPath);
+    public async flush(reqAbspath: string): Promise<void> {
+        const currentState = this.#state.get(reqAbspath);
         if (currentState) {
-            const { timer, absoluteSpacePath, openRequest } = currentState;
-            await commands.writeReqToSpaceBuffer(
-                absoluteSpacePath,
-                openRequest.parentRelpath,
-                openRequest.self,
-            );
-            this.#state.delete(absoluteRequestPath);
-            clearTimeout(timer);
-        }
-    }
-    public async flushAll(): Promise<void> {
-        for (const { timer, absoluteSpacePath, openRequest } of this.#state.values()) {
-            commands.writeReqToSpaceBuffer(
-                absoluteSpacePath,
-                openRequest.parentRelpath,
-                openRequest.self,
-            );
+            const { timer, spaceAbspath, openRequest } = currentState;
+            await commands.writeReqToSpaceBuffer(spaceAbspath, openRequest.self);
+            this.#state.delete(reqAbspath);
             clearTimeout(timer);
         }
     }

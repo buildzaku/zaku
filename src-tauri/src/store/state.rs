@@ -70,7 +70,7 @@ impl Deref for StateStore {
 }
 
 impl StateStore {
-    pub fn new(state_store_abspath: PathBuf) -> Self {
+    pub fn new(state_store_abspath: &Path) -> Self {
         Self {
             state: State {
                 spaceref: None,
@@ -79,13 +79,13 @@ impl StateStore {
                     default_theme: Theme::System,
                 },
             },
-            abspath: state_store_abspath,
+            abspath: state_store_abspath.to_path_buf(),
         }
     }
 
     fn init(state_store_abspath: &Path) -> Result<StateStore> {
         if !state_store_abspath.exists() {
-            let default_store = Self::new(state_store_abspath.to_path_buf());
+            let default_store = Self::new(state_store_abspath);
             default_store.fswrite()?;
 
             return Ok(default_store);
@@ -100,7 +100,7 @@ impl StateStore {
             }),
             Err(_) => {
                 // corrupt JSON, use default
-                let default_store = Self::new(state_store_abspath.to_path_buf());
+                let default_store = Self::new(state_store_abspath);
                 default_store.fswrite()?;
 
                 Ok(default_store)

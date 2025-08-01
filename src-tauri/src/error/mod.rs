@@ -48,6 +48,9 @@ pub enum Error {
 
     #[from]
     ShortcutPlugin(tauri_plugin_global_shortcut::Error),
+
+    #[from]
+    StripPrefix(std::path::StripPrefixError),
 }
 
 impl fmt::Display for Error {

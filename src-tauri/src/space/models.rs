@@ -8,7 +8,7 @@ use crate::{collection::models::Collection, store::SpaceSettings};
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct CreateSpaceDto {
     pub name: String,
-    pub location: String,
+    pub location: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
@@ -23,7 +23,7 @@ pub struct SpaceConfigFile {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct Space {
-    pub abspath: String,
+    pub abspath: PathBuf,
     pub meta: SpaceMeta,
     pub root_collection: Collection,
     pub cookies: HashMap<String, Vec<SerializedCookie>>,

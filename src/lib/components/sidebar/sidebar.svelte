@@ -13,8 +13,8 @@
         TooltipContent,
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
-    import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-node/utils.svelte";
+    import { Path } from "$lib/utils/path";
+    import { explorerState } from "$lib/state.svelte";
     import {
         Dialog,
         DialogTrigger,
@@ -45,17 +45,10 @@
 
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
+    const rootRelpath = Path.from("");
+
     let spaceSettingsStr: string = $state(
         sharedState.space ? JSON.stringify(sharedState.space.settings) : String(),
-    );
-
-    let shouldRenderCreateNewRequestInput = $derived(
-        explorerActionsState.createNewNode === "request" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
-    );
-    let shouldRenderCreateNewCollectionInput = $derived(
-        explorerActionsState.createNewNode === "collection" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
     );
 </script>
 
@@ -211,10 +204,7 @@
                     <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger
                             class={cn(
-                                buttonVariants({
-                                    variant: "ghost",
-                                    size: "icon",
-                                }),
+                                buttonVariants({ variant: "ghost", size: "icon" }),
                                 "my-1.5 flex-shrink-0",
                             )}
                             onclick={() => {
@@ -232,42 +222,27 @@
                     <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
-                    <TreeNodeRoot
-                        currentPath={RELATIVE_SPACE_ROOT}
-                        root={spaceSnapshot.root_collection}
-                    >
-                        {#if shouldRenderCreateNewRequestInput}
+                    <TreeNodeRoot root={spaceSnapshot.root_collection}>
+                        {#if explorerActionsState.createNewNode === "request" && explorerState.isCreateNewNodeParent(rootRelpath)}
                             <TreeNodeCreate
                                 type="request"
-                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                locationRelpath={rootRelpath}
                                 level={1}
                             />
                         {/if}
                         {#each spaceSnapshot.root_collection.requests as request (request.meta.fsname)}
-                            <TreeNodeContent
-                                parentRelpath={RELATIVE_SPACE_ROOT}
-                                parentNames={[]}
-                                currentPath={request.meta.fsname}
-                                node={request}
-                                level={1}
-                            />
+                            <TreeNodeContent trail={[]} node={request} level={1} />
                         {/each}
 
-                        {#if shouldRenderCreateNewCollectionInput}
+                        {#if explorerActionsState.createNewNode === "collection" && explorerState.isCreateNewNodeParent(rootRelpath)}
                             <TreeNodeCreate
                                 type="collection"
-                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                locationRelpath={rootRelpath}
                                 level={1}
                             />
                         {/if}
                         {#each spaceSnapshot.root_collection.collections as collection (collection.meta.fsname)}
-                            <TreeNodeContent
-                                parentRelpath={RELATIVE_SPACE_ROOT}
-                                parentNames={[]}
-                                currentPath={collection.meta.fsname}
-                                node={collection}
-                                level={1}
-                            />
+                            <TreeNodeContent trail={[]} node={collection} level={1} />
                         {/each}
                     </TreeNodeRoot>
                 </div>

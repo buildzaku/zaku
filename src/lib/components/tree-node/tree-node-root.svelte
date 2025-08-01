@@ -13,32 +13,35 @@
         TooltipContent,
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
-    import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
+    import { Path } from "$lib/utils/path";
     import {
         handleDragEnd,
         handleDragOver,
         handleDrop,
+        isCol,
         isDropAllowed,
     } from "$lib/components/tree-node/utils.svelte";
 
-    type Props = { currentPath: string; root: Collection; children: Snippet; class?: string };
+    type Props = { root: Collection; children: Snippet; class?: string };
 
-    let { currentPath, root, children, class: className }: Props = $props();
-
-    let shouldHighlight = $derived(isDropAllowed(currentPath));
+    let { root, children, class: className }: Props = $props();
 </script>
 
 <div
-    data-current-path={currentPath}
-    class={cn("min-w-full", shouldHighlight ? "bg-accent/75" : "", className)}
+    data-current-path={root.meta.relpath}
+    class={cn("min-w-full", isDropAllowed(root.meta.relpath) ? "bg-accent/75" : "", className)}
 >
     <div
         tabindex={0}
         role="button"
         aria-grabbed="false"
         draggable="false"
-        ondragover={event =>
-            handleDragOver(event, { type: "collection", relativePath: currentPath })}
+        ondragover={event => {
+            handleDragOver(event, {
+                type: isCol(root) ? "collection" : "request",
+                relpath: Path.from(root.meta.relpath),
+            });
+        }}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
         onkeydown={keyboardEvent => {
@@ -47,8 +50,7 @@
                 root.meta.is_expanded = !root.meta.is_expanded;
                 explorerState.setFocussedNode({
                     type: "collection",
-                    relativePath: RELATIVE_SPACE_ROOT,
-                    parentRelativePath: RELATIVE_SPACE_ROOT,
+                    relpath: Path.from(root.meta.relpath),
                 });
             }
         }}
@@ -59,8 +61,7 @@
             root.meta.is_expanded = !root.meta.is_expanded;
             explorerState.setFocussedNode({
                 type: "collection",
-                relativePath: RELATIVE_SPACE_ROOT,
-                parentRelativePath: RELATIVE_SPACE_ROOT,
+                relpath: Path.from(root.meta.relpath),
             });
         }}
     >
@@ -151,11 +152,12 @@
                 role="button"
                 aria-grabbed="false"
                 draggable="false"
-                ondragover={event =>
+                ondragover={event => {
                     handleDragOver(event, {
-                        type: "collection",
-                        relativePath: currentPath,
-                    })}
+                        type: isCol(root) ? "collection" : "request",
+                        relpath: Path.from(root.meta.relpath),
+                    });
+                }}
                 ondrop={handleDrop}
                 ondragend={handleDragEnd}
             ></div>

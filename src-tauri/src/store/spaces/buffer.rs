@@ -17,7 +17,7 @@ static SBF_STORE_UPDATE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
 pub struct SpaceBuffer {
-    pub requests: HashMap<String, ReqBuffer>,
+    pub requests: HashMap<PathBuf, ReqBuffer>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,18 +41,18 @@ impl DerefMut for SpaceBufferStore {
 }
 
 impl SpaceBufferStore {
-    fn new(sbf_store_abspath: PathBuf) -> Self {
+    fn new(sbf_store_abspath: &Path) -> Self {
         Self {
             buffer: SpaceBuffer {
-                requests: HashMap::new(),
+                requests: HashMap::<PathBuf, ReqBuffer>::new(),
             },
-            abspath: sbf_store_abspath,
+            abspath: sbf_store_abspath.to_path_buf(),
         }
     }
 
     fn init(sbf_store_abspath: &Path) -> Result<Arc<Mutex<SpaceBufferStore>>> {
         if !sbf_store_abspath.exists() {
-            let default_buffer = Arc::new(Mutex::new(Self::new(sbf_store_abspath.to_path_buf())));
+            let default_buffer = Arc::new(Mutex::new(Self::new(sbf_store_abspath)));
             Self::fswrite(&default_buffer)?;
 
             return Ok(default_buffer);
@@ -68,7 +68,7 @@ impl SpaceBufferStore {
             },
             Err(_) => {
                 // corrupt JSON, use default
-                let default_buffer = Self::new(sbf_store_abspath.to_path_buf());
+                let default_buffer = Self::new(sbf_store_abspath);
                 let buffer_arc = Arc::new(Mutex::new(default_buffer));
                 Self::fswrite(&buffer_arc)?;
 
@@ -130,6 +130,7 @@ impl ReqBuffer {
             fsname: req.meta.fsname.clone(),
             name: req.meta.name.clone(),
             has_unsaved_changes: true,
+            relpath: req.meta.relpath.clone(),
         };
 
         let config = ReqCfg {
