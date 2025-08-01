@@ -139,14 +139,15 @@
     }
 
     const openReqSnapshot = explorerState.openRequest;
+    const spaceSnapshot = $state.snapshot(sharedState.space);
     let isOpenReqSavedToFs = false;
     let prevOpenReqRelPath = openReqSnapshot ? openReqSnapshot.self.meta.relpath : null;
     let prevSpaceAbspath = sharedState.space ? sharedState.space.abspath : null;
 
+    // Be very carefull when adding reactive state variables to this
     $effect(() => {
         // Important hack to keep the effect deeply reactive
         // Only watch config and metadata changes, not response/status
-        const spaceSnapshot = sharedState.space;
         const openReqSnapshot = explorerState.openRequest;
         if (openReqSnapshot) {
             JSON.stringify({
