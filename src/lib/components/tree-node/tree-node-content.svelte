@@ -22,9 +22,6 @@
     let { trail, node, level, class: className }: Props = $props();
 
     const relpath = Path.from(node.meta.relpath);
-    let shouldHighlight = $derived(isDropAllowed(node.meta.relpath));
-
-    const parentRelpath = relpath.parent()?.toString() ?? "";
 
     function handleTreeItemFocus(node: TreeNode) {
         if (isCol(node)) {
@@ -49,9 +46,13 @@
 </script>
 
 <div
-    data-parent-path={parentRelpath}
+    data-parent-path={relpath.parent()?.toString() ?? ""}
     data-current-path={node.meta.relpath}
-    class={cn("relative min-w-full", shouldHighlight ? "bg-accent/75" : "", className)}
+    class={cn(
+        "relative min-w-full",
+        isDropAllowed(node.meta.relpath) ? "bg-accent/75" : "",
+        className,
+    )}
 >
     {#if level > 1}
         <div
