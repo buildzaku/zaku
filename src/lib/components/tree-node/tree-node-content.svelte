@@ -21,29 +21,22 @@
     type Props = { trail: string[]; node: TreeNode; level: number; class?: string };
     let { trail, node, level, class: className }: Props = $props();
 
-    let shouldRenderCreateNewRequestInput = $derived(
-        explorerActionsState.createNewNode === "request" &&
-            explorerState.focussedNode.relpath.startsWith(Path.from(node.meta.relpath)),
-    );
-    let shouldRenderCreateNewCollectionInput = $derived(
-        explorerActionsState.createNewNode === "collection" &&
-            explorerState.focussedNode.relpath.startsWith(Path.from(node.meta.relpath)),
-    );
+    const relpath = Path.from(node.meta.relpath);
     let shouldHighlight = $derived(isDropAllowed(node.meta.relpath));
 
-    const parentRelpath = Path.from(node.meta.relpath).parent()?.toString() ?? "";
+    const parentRelpath = relpath.parent()?.toString() ?? "";
 
     function handleTreeItemFocus(node: TreeNode) {
         if (isCol(node)) {
             node.meta.is_expanded = !node.meta.is_expanded;
             explorerState.setFocussedNode({
                 type: "collection",
-                relpath: Path.from(node.meta.relpath),
+                relpath: relpath,
             });
         } else if (isReq(node)) {
             explorerState.setFocussedNode({
                 type: "request",
-                relpath: Path.from(node.meta.relpath),
+                relpath: relpath,
             });
             explorerState.setOpenRequest({
                 trail,
@@ -77,7 +70,7 @@
         ondragover={event => {
             handleDragOver(event, {
                 type: isCol(node) ? "collection" : "request",
-                relpath: Path.from(node.meta.relpath),
+                relpath: relpath,
             });
         }}
         ondrop={handleDrop}
@@ -137,18 +130,12 @@
     </div>
 
     {#if isCol(node)}
-        {#if shouldRenderCreateNewRequestInput}
-            <TreeNodeCreate
-                type="request"
-                parentRelativePath={node.meta.relpath}
-                level={level + 1}
-            />
+        {#if explorerActionsState.createNewNode === "request" && explorerState.isCreateNewNodeParent(relpath)}
+            <TreeNodeCreate type="request" locationRelpath={relpath} level={level + 1} />
         {/if}
 
         {#if node.meta.is_expanded}
-            {#each node.requests as request (Path.from(node.meta.relpath)
-                .join(request.meta.fsname)
-                .toString())}
+            {#each node.requests as request (relpath.join(request.meta.fsname).toString())}
                 <TreeNodeContent
                     trail={[...trail, node.meta.name ?? node.meta.fsname]}
                     node={request}
@@ -157,17 +144,11 @@
             {/each}
         {/if}
 
-        {#if shouldRenderCreateNewCollectionInput}
-            <TreeNodeCreate
-                type="collection"
-                parentRelativePath={node.meta.relpath}
-                level={level + 1}
-            />
+        {#if explorerActionsState.createNewNode === "collection" && explorerState.isCreateNewNodeParent(relpath)}
+            <TreeNodeCreate type="collection" locationRelpath={relpath} level={level + 1} />
         {/if}
         {#if node.meta.is_expanded}
-            {#each node.collections as collection (Path.from(node.meta.relpath)
-                .join(collection.meta.fsname)
-                .toString())}
+            {#each node.collections as collection (relpath.join(collection.meta.fsname).toString())}
                 <TreeNodeContent
                     trail={[...trail, node.meta.name ?? node.meta.fsname]}
                     node={collection}

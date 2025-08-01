@@ -82,6 +82,17 @@ class ExplorerState {
         }
     }
 
+    public isCreateNewNodeParent(relpath: Path): boolean {
+        const isCurCollectionFocussed =
+            this.focussedNode.type === "collection" &&
+            this.focussedNode.relpath.toString() === relpath.toString();
+        const isCurCollectionReqFocussed =
+            this.focussedNode.type === "request" &&
+            this.focussedNode.relpath.parent()?.toString() === relpath.toString();
+
+        return isCurCollectionFocussed || isCurCollectionReqFocussed;
+    }
+
     public reset() {
         this.focussedNode = this.#rootNode;
         this.openRequest = null;

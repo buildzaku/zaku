@@ -13,7 +13,6 @@
         TooltipContent,
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
-    import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
     import { Path } from "$lib/utils/path";
     import { explorerState } from "$lib/state.svelte";
     import {
@@ -46,17 +45,10 @@
 
     let { pane, isCollapsed = $bindable() }: Props = $props();
 
+    const rootRelpath = Path.from("");
+
     let spaceSettingsStr: string = $state(
         sharedState.space ? JSON.stringify(sharedState.space.settings) : String(),
-    );
-
-    let shouldRenderCreateNewRequestInput = $derived(
-        explorerActionsState.createNewNode === "request" &&
-            explorerState.focussedNode.relpath.startsWith(Path.from(RELATIVE_SPACE_ROOT)),
-    );
-    let shouldRenderCreateNewCollectionInput = $derived(
-        explorerActionsState.createNewNode === "collection" &&
-            explorerState.focussedNode.relpath.startsWith(Path.from(RELATIVE_SPACE_ROOT)),
     );
 </script>
 
@@ -212,10 +204,7 @@
                     <Tooltip delayDuration={500} disableHoverableContent>
                         <TooltipTrigger
                             class={cn(
-                                buttonVariants({
-                                    variant: "ghost",
-                                    size: "icon",
-                                }),
+                                buttonVariants({ variant: "ghost", size: "icon" }),
                                 "my-1.5 flex-shrink-0",
                             )}
                             onclick={() => {
@@ -234,10 +223,10 @@
                         Explorer
                     </p>
                     <TreeNodeRoot root={spaceSnapshot.root_collection}>
-                        {#if shouldRenderCreateNewRequestInput}
+                        {#if explorerActionsState.createNewNode === "request" && explorerState.isCreateNewNodeParent(rootRelpath)}
                             <TreeNodeCreate
                                 type="request"
-                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                locationRelpath={rootRelpath}
                                 level={1}
                             />
                         {/if}
@@ -245,10 +234,10 @@
                             <TreeNodeContent trail={[]} node={request} level={1} />
                         {/each}
 
-                        {#if shouldRenderCreateNewCollectionInput}
+                        {#if explorerActionsState.createNewNode === "collection" && explorerState.isCreateNewNodeParent(rootRelpath)}
                             <TreeNodeCreate
                                 type="collection"
-                                parentRelativePath={RELATIVE_SPACE_ROOT}
+                                locationRelpath={rootRelpath}
                                 level={1}
                             />
                         {/if}

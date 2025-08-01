@@ -11,13 +11,13 @@
     import { emitCmdError } from "$lib/utils";
 
     type Props = {
-        parentRelativePath: string;
+        locationRelpath: Path;
         type: "collection" | "request";
         level: number;
         class?: string;
     };
 
-    let { parentRelativePath, type, level, class: className }: Props = $props();
+    let { locationRelpath, type, level, class: className }: Props = $props();
 
     let inputRelpath: string = $state("");
     let inputElement: HTMLElement | null = $state(null);
@@ -41,7 +41,7 @@
     async function handleCreateRequestOrCollection() {
         if (type === "collection") {
             const createCollectionResult = await commands.createCollection({
-                location_relpath: parentRelativePath,
+                location_relpath: locationRelpath.toString(),
                 relpath: inputRelpath,
             });
             if (createCollectionResult.status !== "ok") {
@@ -64,7 +64,7 @@
             }
         } else {
             const createReqResult = await commands.createReq({
-                location_relpath: parentRelativePath,
+                location_relpath: locationRelpath.toString(),
                 relpath: inputRelpath,
             });
             if (createReqResult.status !== "ok") {
