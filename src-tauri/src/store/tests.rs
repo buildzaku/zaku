@@ -73,11 +73,11 @@ fn state_store_update_persists_changes_to_filesystem() {
     let store_abspath = store::utils::state_store_abspath(tmp_dir.path());
 
     let space_ref_1 = SpaceReference {
-        abspath: PathBuf::from("test").join("space-1"),
+        abspath: PathBuf::from("test/space-1"),
         name: "Test Space 1".to_string(),
     };
     let space_ref_2 = SpaceReference {
-        abspath: PathBuf::from("test").join("space-2"),
+        abspath: PathBuf::from("test/space-2"),
         name: "Test Space 2".to_string(),
     };
 

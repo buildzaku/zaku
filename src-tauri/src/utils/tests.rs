@@ -4,9 +4,7 @@ use std::path::PathBuf;
 #[test]
 fn to_sanitized_segments_basic() {
     let segments = utils::to_sanitized_segments(
-        &PathBuf::from("Parent Col 1")
-            .join("Child Col 1")
-            .join("Grand Child Col 1"),
+        &PathBuf::from("Parent Col 1/Child Col 1/Grand Child Col 1"),
     )
     .unwrap();
 
@@ -43,16 +41,14 @@ fn to_sanitized_segments_with_whitespace_segments() {
 #[test]
 fn to_sanitized_segments_with_only_empty_segments() {
     let segments =
-        utils::to_sanitized_segments(&PathBuf::from("   ").join("   ").join("   ")).unwrap();
+        utils::to_sanitized_segments(&PathBuf::from("   /   /   ")).unwrap();
     assert!(segments.is_empty());
 }
 
 #[test]
 fn to_sanitized_segments_special_characters() {
     let segments = utils::to_sanitized_segments(
-        &PathBuf::from("Special@Chars Col 1")
-            .join("Unicode# Col 2")
-            .join("🔥 Emoji Col 3"),
+        &PathBuf::from("Special@Chars Col 1/Unicode# Col 2/🔥 Emoji Col 3"),
     )
     .unwrap();
 
@@ -71,7 +67,7 @@ fn to_sanitized_segments_special_characters() {
 #[test]
 fn to_sanitized_segments_unicode() {
     let segments = utils::to_sanitized_segments(
-        &PathBuf::from("ザク Unicode Col 1").join("設定 Unicode Col 2"),
+        &PathBuf::from("ザク Unicode Col 1/設定 Unicode Col 2"),
     )
     .unwrap();
 
@@ -87,9 +83,7 @@ fn to_sanitized_segments_unicode() {
 #[test]
 fn to_sanitized_segments_invalid_characters() {
     let segments = utils::to_sanitized_segments(
-        &PathBuf::from("Parent|Invalid")
-            .join("Child::Col")
-            .join("Grand?Child*"),
+        &PathBuf::from("Parent|Invalid/Child::Col/Grand?Child*"),
     )
     .unwrap();
 
@@ -106,7 +100,7 @@ fn to_sanitized_segments_invalid_characters() {
 
 #[test]
 fn to_sanitized_segments_reserved_names_should_be_handled() {
-    let result = utils::to_sanitized_segments(&PathBuf::from("NUL").join("Child Col 1"));
+    let result = utils::to_sanitized_segments(&PathBuf::from("NUL/Child Col 1"));
 
     match result {
         Err(Error::SanitizationError(msg)) => {

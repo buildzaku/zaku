@@ -170,10 +170,9 @@ fn create_req_basic() {
     )
     .expect("Failed to create request");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("child-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1").join("child-req-1.toml")
     );
 
     let expected_reqfile_abspath = tmp_space_abspath
@@ -194,9 +193,7 @@ fn create_req_with_nested_collections() {
     let location_relpath = PathBuf::from("");
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
-        &PathBuf::from("Grand Parent Col 1")
-            .join("Parent Col 1")
-            .join("Child Req 1"),
+        &PathBuf::from("Grand Parent Col 1/Parent Col 1/Child Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
@@ -204,20 +201,19 @@ fn create_req_with_nested_collections() {
     let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with nested collections");
 
-    let expected_reqfile_relpath = PathBuf::from("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("child-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("child-req-1.toml")
     );
-
-    let expected_reqfile_abspath = tmp_space_abspath
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("child-req-1.toml");
-    assert!(expected_reqfile_abspath.exists());
-
+    assert!(
+        tmp_space_abspath
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("child-req-1.toml")
+            .exists()
+    );
     assert!(tmp_space_abspath.join("grand-parent-col-1").exists());
     assert!(
         tmp_space_abspath
@@ -281,10 +277,9 @@ fn create_req_sanitizes_filename() {
     )
     .expect("Failed to create request with special characters");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("special-chars-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1").join("special-chars-req-1.toml")
     );
 
     let expected_reqfile_abspath = tmp_space_abspath
@@ -315,10 +310,9 @@ fn create_req_with_unicode_characters() {
     )
     .expect("Failed to create request with unicode characters");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("ザク-unicode-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1").join("ザク-unicode-req-1.toml")
     );
 
     let expected_reqfile_abspath = tmp_space_abspath
@@ -349,16 +343,16 @@ fn create_req_with_whitespace_handling() {
     )
     .expect("Failed to create request with whitespace");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("multiple-spaces-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1").join("multiple-spaces-req-1.toml")
     );
-
-    let expected_reqfile_abspath = tmp_space_abspath
-        .join("parent-col-1")
-        .join("multiple-spaces-req-1.toml");
-    assert!(expected_reqfile_abspath.exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("multiple-spaces-req-1.toml")
+            .exists()
+    );
 }
 
 #[test]
@@ -760,13 +754,12 @@ fn create_req_creates_parent_collections_with_proper_hierarchy() {
     let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with deep hierarchy");
 
-    let expected_reqfile_relpath = PathBuf::from("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("child-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("great-grand-parent-col-1")
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("child-req-1.toml")
     );
 
     assert!(tmp_space_abspath.join("great-grand-parent-col-1").exists());
@@ -811,11 +804,9 @@ fn create_req_handles_mixed_invalid_characters_and_unicode() {
     )
     .expect("Failed to create request with mixed characters");
 
-    let expected_reqfile_relpath =
-        PathBuf::from("parent-col-1").join("ザク-special-chars-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1/ザク-special-chars-req-1.toml")
     );
 
     let expected_reqfile_abspath = tmp_space_abspath
@@ -835,9 +826,7 @@ fn create_req_with_trailing_slash_in_relpath() {
     let location_relpath = PathBuf::from("");
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
-        &PathBuf::from("Parent Col 1")
-            .join("Child Col 1")
-            .join("Trailing Req 1"),
+        &PathBuf::from("Parent Col 1/Child Col 1/Trailing Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
@@ -845,12 +834,11 @@ fn create_req_with_trailing_slash_in_relpath() {
     let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with trailing slash");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1")
-        .join("child-col-1")
-        .join("trailing-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1")
+            .join("child-col-1")
+            .join("trailing-req-1.toml")
     );
 }
 
@@ -900,10 +888,9 @@ fn create_req_with_backslash_characters() {
     )
     .expect("Failed to create request with backslash");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1").join("back-slash-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1/back-slash-req-1.toml")
     );
 
     let expected_reqfile_abspath = tmp_space_abspath
@@ -923,9 +910,7 @@ fn create_req_with_multiple_slashes_in_relpath() {
     let location_relpath = PathBuf::from("");
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
-        &PathBuf::from("Parent Col 1")
-            .join("Child Col 1")
-            .join("Multiple Slash Req 1"),
+        &PathBuf::from("Parent Col 1/Child Col 1/Multiple Slash Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
@@ -933,12 +918,11 @@ fn create_req_with_multiple_slashes_in_relpath() {
     let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request with multiple slashes");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1")
-        .join("child-col-1")
-        .join("multiple-slash-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1")
+            .join("child-col-1")
+            .join("multiple-slash-req-1.toml")
     );
 }
 
@@ -950,9 +934,7 @@ fn create_req_integrated_flow() {
     let location_relpath = PathBuf::from("");
     let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
         &location_relpath,
-        &PathBuf::from("Parent Col 1")
-            .join("Child Col 1")
-            .join("Grand Child Req 1"),
+        &PathBuf::from("Parent Col 1/Child Col 1/Grand Child Req 1"),
         &tmp_space_abspath,
     )
     .expect("Failed to create parent collections");
@@ -960,12 +942,11 @@ fn create_req_integrated_flow() {
     let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request");
 
-    let expected_reqfile_relpath = PathBuf::from("parent-col-1")
-        .join("child-col-1")
-        .join("grand-child-req-1.toml");
     assert_eq!(
-        result.relpath.to_string_lossy().to_string(),
-        expected_reqfile_relpath.to_string_lossy().to_string()
+        result.relpath,
+        PathBuf::from("parent-col-1")
+            .join("child-col-1")
+            .join("grand-child-req-1.toml")
     );
 
     assert!(tmp_space_abspath.join("parent-col-1").exists());
@@ -983,10 +964,7 @@ fn create_req_integrated_flow() {
             .exists()
     );
 
-    let req_toml_path = tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .join("grand-child-req-1.toml");
+    let req_toml_path = tmp_space_abspath.join("parent-col-1/child-col-1/grand-child-req-1.toml");
     let req_toml = request::parse_reqtoml(&req_toml_path).unwrap();
     assert_eq!(req_toml.meta.name, "Grand Child Req 1");
 }
