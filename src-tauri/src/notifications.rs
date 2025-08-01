@@ -1,6 +1,6 @@
 use rodio::{Decoder, OutputStream, Sink};
 use std::{fs::File, io::BufReader, path::PathBuf};
-use tauri::{path::BaseDirectory, AppHandle, Manager};
+use tauri::{AppHandle, Manager, path::BaseDirectory};
 
 use crate::error::{Error, Result};
 

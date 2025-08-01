@@ -320,15 +320,19 @@ fn create_parent_collections_if_missing_basic() {
     assert_eq!(col_segment.fsname, "grand-child-col-1");
 
     assert!(tmp_space_abspath.join("parent-col-1").exists());
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .exists());
-    assert!(!tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .join("grand-child-col-1")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
+    assert!(
+        !tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .join("grand-child-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -416,10 +420,12 @@ fn create_collection_basic() {
         result.relpath.to_string_lossy().to_string(),
         expected_relpath.to_string_lossy().to_string()
     );
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -478,10 +484,12 @@ fn create_collection_unicode_path_should_succeed() {
         result.relpath.to_string_lossy().to_string(),
         expected_relpath.to_string_lossy().to_string()
     );
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("ザク-unicode-col-1")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("ザク-unicode-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -514,10 +522,12 @@ fn create_collection_should_save_collections_metadata() {
         result.relpath.to_string_lossy().to_string(),
         expected_relpath.to_string_lossy().to_string()
     );
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -547,15 +557,19 @@ fn create_collection_integrated_flow() {
     );
 
     assert!(tmp_space_abspath.join("parent-col-1").exists());
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .exists());
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .join("grand-child-col-1")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .join("grand-child-col-1")
+            .exists()
+    );
 
     let scmt_store = SpaceCollectionsMetadataStore::get(&tmp_space_abspath).unwrap();
 

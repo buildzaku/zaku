@@ -6,7 +6,7 @@ use crate::store::{self, StateStore};
 use crate::{
     request::models::{ReqCfg, ReqMeta, ReqUrl},
     space::models::SpaceReference,
-    store::{state::Theme, ReqBuffer, SpaceBufferStore},
+    store::{ReqBuffer, SpaceBufferStore, state::Theme},
 };
 
 #[test]
@@ -221,15 +221,19 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
     assert!(sbf_store_abspath.exists());
 
     let sbf_store_mtx = sbf_store.lock().unwrap();
-    assert!(sbf_store_mtx
-        .requests
-        .contains_key(&PathBuf::from("test-req.toml")));
+    assert!(
+        sbf_store_mtx
+            .requests
+            .contains_key(&PathBuf::from("test-req.toml"))
+    );
 
     let fresh_sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let fresh_lock = fresh_sbf_store.lock().unwrap();
-    assert!(fresh_lock
-        .requests
-        .contains_key(&PathBuf::from("test-req.toml")));
+    assert!(
+        fresh_lock
+            .requests
+            .contains_key(&PathBuf::from("test-req.toml"))
+    );
 }
 
 #[test]
@@ -330,9 +334,11 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
 
     let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let sbf_store_mtx = sbf_store.lock().unwrap();
-    assert!(sbf_store_mtx
-        .requests
-        .contains_key(&PathBuf::from("persistent-req.toml")));
+    assert!(
+        sbf_store_mtx
+            .requests
+            .contains_key(&PathBuf::from("persistent-req.toml"))
+    );
 
     let persisted_req = sbf_store_mtx
         .requests

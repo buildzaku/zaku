@@ -8,7 +8,7 @@ use crate::{
         self,
         models::{HttpReq, ReqCfg, ReqMeta, ReqToml, ReqTomlConfig, ReqTomlMeta, ReqUrl},
     },
-    store::{self, spaces::buffer::SpaceBufferStore, ReqBuffer},
+    store::{self, ReqBuffer, spaces::buffer::SpaceBufferStore},
 };
 
 #[test]
@@ -219,10 +219,12 @@ fn create_req_with_nested_collections() {
     assert!(expected_reqfile_abspath.exists());
 
     assert!(tmp_space_abspath.join("grand-parent-col-1").exists());
-    assert!(tmp_space_abspath
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -768,21 +770,27 @@ fn create_req_creates_parent_collections_with_proper_hierarchy() {
     );
 
     assert!(tmp_space_abspath.join("great-grand-parent-col-1").exists());
-    assert!(tmp_space_abspath
-        .join("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .exists());
-    assert!(tmp_space_abspath
-        .join("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .exists());
-    assert!(tmp_space_abspath
-        .join("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("child-req-1.toml")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("great-grand-parent-col-1")
+            .join("grand-parent-col-1")
+            .exists()
+    );
+    assert!(
+        tmp_space_abspath
+            .join("great-grand-parent-col-1")
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .exists()
+    );
+    assert!(
+        tmp_space_abspath
+            .join("great-grand-parent-col-1")
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("child-req-1.toml")
+            .exists()
+    );
 }
 
 #[test]
@@ -865,10 +873,12 @@ fn create_req_updates_shared_state() {
     )
     .expect("Failed to create request");
 
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("state-update-req-1.toml")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("state-update-req-1.toml")
+            .exists()
+    );
 }
 
 #[test]
@@ -959,15 +969,19 @@ fn create_req_integrated_flow() {
     );
 
     assert!(tmp_space_abspath.join("parent-col-1").exists());
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .exists());
-    assert!(tmp_space_abspath
-        .join("parent-col-1")
-        .join("child-col-1")
-        .join("grand-child-req-1.toml")
-        .exists());
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
+    assert!(
+        tmp_space_abspath
+            .join("parent-col-1")
+            .join("child-col-1")
+            .join("grand-child-req-1.toml")
+            .exists()
+    );
 
     let req_toml_path = tmp_space_abspath
         .join("parent-col-1")

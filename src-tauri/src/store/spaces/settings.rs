@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     error::Result,
-    store::{self, state::Theme, StateStore},
+    store::{self, StateStore, state::Theme},
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]

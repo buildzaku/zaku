@@ -390,10 +390,12 @@ fn move_tree_node_successfully_moves_collection() {
     assert_eq!(moved_collection.meta.fsname, "parent-col-1");
 
     assert!(!&tmp_space_abspath.join("parent-col-1").exists());
-    assert!(&tmp_space_abspath
-        .join("parent-col-2")
-        .join("parent-col-1")
-        .exists());
+    assert!(
+        &tmp_space_abspath
+            .join("parent-col-2")
+            .join("parent-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -442,10 +444,12 @@ fn move_tree_node_successfully_moves_request() {
     assert_eq!(moved_request.meta.fsname, "parent-req-1.toml");
 
     assert!(!&tmp_space_abspath.join("parent-req-1.toml").exists());
-    assert!(&tmp_space_abspath
-        .join("parent-col-1")
-        .join("parent-req-1.toml")
-        .exists());
+    assert!(
+        &tmp_space_abspath
+            .join("parent-col-1")
+            .join("parent-req-1.toml")
+            .exists()
+    );
 }
 
 #[test]
@@ -541,20 +545,26 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
 
     let parent_path = PathBuf::from("grand-parent-col-1").join("parent-col-1");
     let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
-    assert!(!parent_col
-        .collections
-        .iter()
-        .any(|c| c.meta.fsname == "child-col-1"));
+    assert!(
+        !parent_col
+            .collections
+            .iter()
+            .any(|c| c.meta.fsname == "child-col-1")
+    );
 
-    assert!(!&tmp_space_abspath
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("child-col-1")
-        .exists());
-    assert!(&tmp_space_abspath
-        .join("grand-parent-col-1")
-        .join("child-col-1")
-        .exists());
+    assert!(
+        !&tmp_space_abspath
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
+    assert!(
+        &tmp_space_abspath
+            .join("grand-parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -609,20 +619,26 @@ fn move_tree_node_successfully_moves_request_to_parent() {
 
     let parent_path = PathBuf::from("grand-parent-col-1").join("parent-col-1");
     let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
-    assert!(!parent_col
-        .requests
-        .iter()
-        .any(|r| r.meta.fsname == "grand-child-req-1.toml"));
+    assert!(
+        !parent_col
+            .requests
+            .iter()
+            .any(|r| r.meta.fsname == "grand-child-req-1.toml")
+    );
 
-    assert!(!&tmp_space_abspath
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("grand-child-req-1.toml")
-        .exists());
-    assert!(&tmp_space_abspath
-        .join("grand-parent-col-1")
-        .join("grand-child-req-1.toml")
-        .exists());
+    assert!(
+        !&tmp_space_abspath
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("grand-child-req-1.toml")
+            .exists()
+    );
+    assert!(
+        &tmp_space_abspath
+            .join("grand-parent-col-1")
+            .join("grand-child-req-1.toml")
+            .exists()
+    );
 }
 
 #[test]
@@ -673,22 +689,28 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
         .join("grand-parent-col-1")
         .join("parent-col-1");
     let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
-    assert!(!parent_col
-        .collections
-        .iter()
-        .any(|c| c.meta.fsname == "child-col-1"));
+    assert!(
+        !parent_col
+            .collections
+            .iter()
+            .any(|c| c.meta.fsname == "child-col-1")
+    );
 
-    assert!(!&tmp_space_abspath
-        .join("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("child-col-1")
-        .exists());
-    assert!(&tmp_space_abspath
-        .join("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("child-col-1")
-        .exists());
+    assert!(
+        !&tmp_space_abspath
+            .join("great-grand-parent-col-1")
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
+    assert!(
+        &tmp_space_abspath
+            .join("great-grand-parent-col-1")
+            .join("grand-parent-col-1")
+            .join("child-col-1")
+            .exists()
+    );
 }
 
 #[test]
@@ -748,19 +770,25 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
         .join("grand-parent-col-1")
         .join("parent-col-1");
     let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
-    assert!(!parent_col
-        .requests
-        .iter()
-        .any(|r| r.meta.fsname == "great-grand-child-req-1.toml"));
+    assert!(
+        !parent_col
+            .requests
+            .iter()
+            .any(|r| r.meta.fsname == "great-grand-child-req-1.toml")
+    );
 
-    assert!(!&tmp_space_abspath
-        .join("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("great-grand-child-req-1.toml")
-        .exists());
-    assert!(&tmp_space_abspath
-        .join("great-grand-parent-col-1")
-        .join("great-grand-child-req-1.toml")
-        .exists());
+    assert!(
+        !&tmp_space_abspath
+            .join("great-grand-parent-col-1")
+            .join("grand-parent-col-1")
+            .join("parent-col-1")
+            .join("great-grand-child-req-1.toml")
+            .exists()
+    );
+    assert!(
+        &tmp_space_abspath
+            .join("great-grand-parent-col-1")
+            .join("great-grand-child-req-1.toml")
+            .exists()
+    );
 }

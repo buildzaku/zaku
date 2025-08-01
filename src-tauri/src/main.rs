@@ -31,7 +31,7 @@ fn main() {
         .error_handling(tauri_specta::ErrorHandlingMode::Result);
 
     if std::env::var("GEN_BINDINGS").is_ok() {
-        use specta_typescript::{formatter, Typescript};
+        use specta_typescript::{Typescript, formatter};
 
         builder
             .export(
