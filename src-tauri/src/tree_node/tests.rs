@@ -658,13 +658,9 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
     collection::create_collection(&parent_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create deeply nested collection");
 
-    let from_relpath = PathBuf::from("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("child-col-1");
-    let to_relpath = PathBuf::from("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("child-col-1");
+    let from_relpath =
+        PathBuf::from("great-grand-parent-col-1/grand-parent-col-1/parent-col-1/child-col-1");
+    let to_relpath = PathBuf::from("great-grand-parent-col-1/grand-parent-col-1/child-col-1");
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Collection,
         from_relpath,
@@ -685,9 +681,7 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
     assert_eq!(moved_collection.meta.name, Some("Child Col 1".to_string()));
     assert_eq!(moved_collection.meta.fsname, "child-col-1");
 
-    let parent_path = PathBuf::from("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1");
+    let parent_path = PathBuf::from("great-grand-parent-col-1/grand-parent-col-1/parent-col-1");
     let parent_col = tree_node::find_collection(&space, &parent_path).unwrap();
     assert!(
         !parent_col
@@ -734,17 +728,14 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
         fsname: "great-grand-child-req-1".to_string(),
     };
 
-    let req_parent_path = PathBuf::from("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1");
+    let req_parent_path = PathBuf::from("great-grand-parent-col-1/grand-parent-col-1/parent-col-1");
     request::create_req(&req_parent_path, &req_segment, &tmp_space_abspath)
         .expect("Failed to create request");
 
-    let from_relpath = PathBuf::from("great-grand-parent-col-1")
-        .join("grand-parent-col-1")
-        .join("parent-col-1")
-        .join("great-grand-child-req-1.toml");
-    let to_relpath = PathBuf::from("great-grand-parent-col-1").join("great-grand-child-req-1.toml");
+    let from_relpath = PathBuf::from(
+        "great-grand-parent-col-1/grand-parent-col-1/parent-col-1/great-grand-child-req-1.toml",
+    );
+    let to_relpath = PathBuf::from("great-grand-parent-col-1/great-grand-child-req-1.toml");
     let dto = MoveTreeNodeDto {
         node_type: NodeType::Request,
         from_relpath,
