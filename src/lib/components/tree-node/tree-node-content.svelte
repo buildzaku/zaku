@@ -14,10 +14,10 @@
         handleDragOver,
         handleDrop,
         handleDragEnd,
-        buildPath,
         isCol,
         isReq,
     } from "$lib/components/tree-node/utils.svelte";
+    import { Path } from "$lib/utils/path";
 
     type Props = {
         parentRelpath: string;
@@ -160,11 +160,14 @@
         {/if}
 
         {#if node.meta.is_expanded}
-            {#each node.requests as request (buildPath(currentPath, request.meta.fsname))}
+            {#each node.requests as request (Path.from(currentPath)
+                .join(request.meta.fsname)
+                .toString())}
+                {@const relpath = Path.from(currentPath).join(request.meta.fsname).toString()}
                 <TreeNodeContent
                     parentRelpath={currentPath}
                     parentNames={[...parentNames, node.meta.name ?? node.meta.fsname]}
-                    currentPath={buildPath(currentPath, request.meta.fsname)}
+                    currentPath={relpath}
                     node={request}
                     level={level + 1}
                 />

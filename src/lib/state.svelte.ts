@@ -5,7 +5,7 @@ import { version } from "$app/environment";
 import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
-import { pathJoin } from "$lib/components/tree-node/utils.svelte";
+import { Path } from "$lib/utils/path";
 import { emitCmdError } from "$lib/utils";
 
 class SharedState {
@@ -94,7 +94,7 @@ type AbsoluteRequestPath = string;
 
 type DebouncedState = {
     timer: number;
-    absoluteSpacePath: string;
+    spaceAbspath: string;
     openRequest: OpenRequest;
 };
 
@@ -102,41 +102,41 @@ class Debounced {
     #state: Map<AbsoluteRequestPath, DebouncedState> = new Map();
     #DELAY = 1500;
 
-    public saveReqToSpaceBuffer(absoluteSpacePath: string, openRequest: OpenRequest): void {
-        const absoluteRequestPath = pathJoin([absoluteSpacePath, openRequest.self.meta.relpath]);
+    public saveReqToSpaceBuffer(spaceAbspath: string, openRequest: OpenRequest): void {
+        const reqAbspath = Path.from(spaceAbspath).join(openRequest.self.meta.relpath).toString();
 
-        const current = this.#state.get(absoluteRequestPath);
+        const current = this.#state.get(reqAbspath);
         if (current) {
             clearTimeout(current.timer);
         }
 
         const timer = setTimeout(() => {
-            commands.writeReqToSpaceBuffer(absoluteSpacePath, openRequest.self);
+            commands.writeReqToSpaceBuffer(spaceAbspath, openRequest.self);
 
-            this.#state.delete(absoluteRequestPath);
+            this.#state.delete(reqAbspath);
         }, this.#DELAY);
 
-        this.#state.set(absoluteRequestPath, {
+        this.#state.set(reqAbspath, {
             timer,
-            absoluteSpacePath,
+            spaceAbspath,
             openRequest,
         });
     }
-    public isPending(absoluteRequestPath: string): boolean {
-        return this.#state.has(absoluteRequestPath);
+    public isPending(reqAbspath: string): boolean {
+        return this.#state.has(reqAbspath);
     }
-    public async flush(absoluteRequestPath: string): Promise<void> {
-        const currentState = this.#state.get(absoluteRequestPath);
+    public async flush(reqAbspath: string): Promise<void> {
+        const currentState = this.#state.get(reqAbspath);
         if (currentState) {
-            const { timer, absoluteSpacePath, openRequest } = currentState;
-            await commands.writeReqToSpaceBuffer(absoluteSpacePath, openRequest.self);
-            this.#state.delete(absoluteRequestPath);
+            const { timer, spaceAbspath, openRequest } = currentState;
+            await commands.writeReqToSpaceBuffer(spaceAbspath, openRequest.self);
+            this.#state.delete(reqAbspath);
             clearTimeout(timer);
         }
     }
     public async flushAll(): Promise<void> {
-        for (const { timer, absoluteSpacePath, openRequest } of this.#state.values()) {
-            commands.writeReqToSpaceBuffer(absoluteSpacePath, openRequest.self);
+        for (const { timer, spaceAbspath, openRequest } of this.#state.values()) {
+            commands.writeReqToSpaceBuffer(spaceAbspath, openRequest.self);
             clearTimeout(timer);
         }
     }

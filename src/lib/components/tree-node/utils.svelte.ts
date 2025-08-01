@@ -4,7 +4,7 @@ import { toast } from "svelte-sonner";
 import { TreeNodePreview } from "$lib/components/tree-node";
 import { sharedState, explorerActionsState, explorerState } from "$lib/state.svelte";
 import type { DragOverDto, DragPayload, TreeNode } from "$lib/models";
-import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
+import { Path } from "$lib/utils/path";
 import { commands } from "$lib/bindings";
 import type { Collection, HttpReq } from "$lib/bindings";
 import { emitCmdError } from "$lib/utils";
@@ -21,22 +21,8 @@ export function isReq(treeNode: TreeNode): treeNode is HttpReq {
     );
 }
 
-export function isSubPath(currentPath: string, targetPath: string): boolean {
-    const currentSegments = pathSegments(currentPath);
-    const targetPathSegments = pathSegments(targetPath);
-
-    return (
-        currentSegments.length <= targetPathSegments.length &&
-        currentSegments.every((segment, index) => segment === targetPathSegments[index])
-    );
-}
-
-export function pathSegments(path: string) {
-    return path.split("/").filter(segment => segment !== "");
-}
-
 export function pathJoin(paths: string[]) {
-    return paths.filter(segment => segment !== "").join("/");
+    return paths.reduce((acc, segment) => Path.from(acc).join(segment).toString(), "");
 }
 
 export function isDropAllowed(path: string): boolean {
@@ -50,14 +36,11 @@ export function isDropAllowed(path: string): boolean {
 
         if (isCol(explorerActionsState.dragPayload.node)) {
             const dirName = explorerActionsState.dragPayload.node.meta.fsname;
-            const relativePath =
-                explorerActionsState.dragPayload.parentRelativePath === RELATIVE_SPACE_ROOT
-                    ? explorerActionsState.dragPayload.parentRelativePath.concat(dirName)
-                    : explorerActionsState.dragPayload.parentRelativePath
-                          .concat("/")
-                          .concat(dirName);
+            const relativePath = Path.from(explorerActionsState.dragPayload.parentRelativePath)
+                .join(dirName)
+                .toString();
 
-            if (isSubPath(relativePath, explorerActionsState.dropTargetPath)) {
+            if (Path.from(relativePath).isChild(explorerActionsState.dropTargetPath)) {
                 return false;
             }
 
@@ -128,14 +111,12 @@ export async function handleDrop(event: DragEvent) {
         return;
     }
 
-    const from_relpath = buildPath(
-        explorerActionsState.dragPayload.parentRelativePath,
-        explorerActionsState.dragPayload.node.meta.fsname,
-    );
-    const to_relpath = buildPath(
-        explorerActionsState.dropTargetPath,
-        explorerActionsState.dragPayload.node.meta.fsname,
-    );
+    const from_relpath = Path.from(explorerActionsState.dragPayload.parentRelativePath)
+        .join(explorerActionsState.dragPayload.node.meta.fsname)
+        .toString();
+    const to_relpath = Path.from(explorerActionsState.dropTargetPath)
+        .join(explorerActionsState.dragPayload.node.meta.fsname)
+        .toString();
     const node_type = isCol(explorerActionsState.dragPayload.node) ? "collection" : "request";
 
     const moveTreeNodeResult = await commands.moveTreeNode({
@@ -169,10 +150,6 @@ export function handleDragEnd(event: DragEvent) {
     }
 
     explorerActionsState.dropTargetPath = null;
-}
-
-export function buildPath(currentPath: string, treeNodeName: string) {
-    return currentPath === RELATIVE_SPACE_ROOT ? treeNodeName : `${currentPath}/${treeNodeName}`;
 }
 
 export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string): boolean {
