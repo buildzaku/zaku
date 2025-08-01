@@ -334,6 +334,25 @@ fn create_parent_collections_if_missing_basic() {
 }
 
 #[test]
+fn create_parent_collections_if_missing_with_nested_backslash() {
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
+
+    let (parent_relpath, col_segment) = collection::create_parent_collections_if_missing(
+        &PathBuf::from(""),
+        &PathBuf::from("Parent Col 1/Child Col 1\\Grand Child Col 1"),
+        &tmp_space_abspath,
+    )
+    .expect("Failed to create parent collections");
+
+    assert_eq!(parent_relpath, PathBuf::from("parent-col-1"));
+    assert_eq!(col_segment.name, "Child Col 1-Grand Child Col 1");
+    assert_eq!(col_segment.fsname, "child-col-1-grand-child-col-1");
+
+    assert!(tmp_space_abspath.join("parent-col-1").exists());
+}
+
+#[test]
 fn create_parent_collections_if_missing_single_segment() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Col Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();

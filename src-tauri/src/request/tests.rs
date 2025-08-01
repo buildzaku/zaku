@@ -224,6 +224,33 @@ fn create_req_with_nested_collections() {
 }
 
 #[test]
+fn create_req_with_nested_collections_and_backslash() {
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Req Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
+
+    let location_relpath = PathBuf::from("");
+    let (parent_relpath, req_segment) = collection::create_parent_collections_if_missing(
+        &location_relpath,
+        &PathBuf::from("Grand Parent Col 1\\Parent Col 1\\Child Req 1"),
+        &tmp_space_abspath,
+    )
+    .expect("Failed to create parent collections");
+
+    let result = request::create_req(&parent_relpath, &req_segment, &tmp_space_abspath)
+        .expect("Failed to create request with nested collections");
+
+    assert_eq!(
+        result.relpath,
+        PathBuf::from("grand-parent-col-1-parent-col-1-child-req-1.toml")
+    );
+    assert!(
+        tmp_space_abspath
+            .join("grand-parent-col-1-parent-col-1-child-req-1.toml")
+            .exists()
+    );
+}
+
+#[test]
 fn create_req_empty_fsname_should_fail() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Req Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
