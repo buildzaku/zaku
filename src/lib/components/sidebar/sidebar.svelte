@@ -14,7 +14,8 @@
         TooltipProvider,
     } from "$lib/components/primitives/tooltip";
     import { RELATIVE_SPACE_ROOT } from "$lib/utils/constants";
-    import { isCurrentCollectionOrAnyOfItsChildFocussed } from "$lib/components/tree-node/utils.svelte";
+    import { Path } from "$lib/utils/path";
+    import { explorerState } from "$lib/state.svelte";
     import {
         Dialog,
         DialogTrigger,
@@ -51,11 +52,11 @@
 
     let shouldRenderCreateNewRequestInput = $derived(
         explorerActionsState.createNewNode === "request" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
+            explorerState.focussedNode.relpath.startsWith(Path.from(RELATIVE_SPACE_ROOT)),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
         explorerActionsState.createNewNode === "collection" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(RELATIVE_SPACE_ROOT),
+            explorerState.focussedNode.relpath.startsWith(Path.from(RELATIVE_SPACE_ROOT)),
     );
 </script>
 
@@ -232,10 +233,7 @@
                     <p class="text-muted-foreground flex h-[36px] items-center px-[22px]">
                         Explorer
                     </p>
-                    <TreeNodeRoot
-                        currentPath={RELATIVE_SPACE_ROOT}
-                        root={spaceSnapshot.root_collection}
-                    >
+                    <TreeNodeRoot root={spaceSnapshot.root_collection}>
                         {#if shouldRenderCreateNewRequestInput}
                             <TreeNodeCreate
                                 type="request"
@@ -244,7 +242,7 @@
                             />
                         {/if}
                         {#each spaceSnapshot.root_collection.requests as request (request.meta.fsname)}
-                            <TreeNodeContent parents={[]} node={request} level={1} />
+                            <TreeNodeContent trail={[]} node={request} level={1} />
                         {/each}
 
                         {#if shouldRenderCreateNewCollectionInput}
@@ -255,7 +253,7 @@
                             />
                         {/if}
                         {#each spaceSnapshot.root_collection.collections as collection (collection.meta.fsname)}
-                            <TreeNodeContent parents={[]} node={collection} level={1} />
+                            <TreeNodeContent trail={[]} node={collection} level={1} />
                         {/each}
                     </TreeNodeRoot>
                 </div>

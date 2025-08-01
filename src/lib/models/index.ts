@@ -1,35 +1,19 @@
 import type { Collection, HttpReq } from "$lib/bindings";
+import { Path } from "$lib/utils/path";
 
 export type TreeNode = Collection | HttpReq;
 
-export type DragPayload = {
-    parentRelativePath: string;
-    node: TreeNode;
+export type DragOverDto = {
+    type: "collection" | "request";
+    relpath: Path;
 };
 
-export type DragOverDto =
-    | {
-          type: "collection";
-          relativePath: string;
-      }
-    | {
-          type: "request";
-          parentRelativePath: string;
-      };
-
-export type FocussedTreeNode =
-    | {
-          type: "collection";
-          parentRelativePath: string;
-          relativePath: string;
-      }
-    | {
-          type: "request";
-          parentRelativePath: string;
-          relativePath: string;
-      };
+export type FocussedTreeNode = {
+    type: "collection" | "request";
+    relpath: Path;
+};
 
 export type OpenRequest = {
-    parents: string[];
+    trail: string[];
     self: HttpReq;
 };

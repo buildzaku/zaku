@@ -2,8 +2,8 @@ import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { TreeNodePreview } from "$lib/components/tree-node";
-import { sharedState, explorerActionsState, explorerState } from "$lib/state.svelte";
-import type { DragOverDto, DragPayload, TreeNode } from "$lib/models";
+import { sharedState, explorerActionsState } from "$lib/state.svelte";
+import type { DragOverDto, TreeNode } from "$lib/models";
 import { Path } from "$lib/utils/path";
 import { commands } from "$lib/bindings";
 import type { Collection, HttpReq } from "$lib/bindings";
@@ -21,38 +21,32 @@ export function isReq(treeNode: TreeNode): treeNode is HttpReq {
     );
 }
 
-export function pathJoin(paths: string[]) {
-    return paths.reduce((acc, segment) => Path.from(acc).join(segment).toString(), "");
-}
-
 export function isDropAllowed(path: string): boolean {
-    if (explorerActionsState.dropTargetPath !== null && explorerActionsState.dragPayload !== null) {
-        if (
-            explorerActionsState.dropTargetPath ===
-            explorerActionsState.dragPayload.parentRelativePath
-        ) {
+    if (
+        explorerActionsState.dropNodePath !== null &&
+        explorerActionsState.dragNode !== null &&
+        explorerActionsState.dragNodePath !== null
+    ) {
+        const dragParentPath = explorerActionsState.dragNodePath.parent() ?? Path.from("");
+
+        if (explorerActionsState.dropNodePath.toString() === dragParentPath.toString()) {
             return false;
         }
 
-        if (isCol(explorerActionsState.dragPayload.node)) {
-            const dirName = explorerActionsState.dragPayload.node.meta.fsname;
-            const relativePath = Path.from(explorerActionsState.dragPayload.parentRelativePath)
-                .join(dirName)
-                .toString();
-
-            if (Path.from(relativePath).isChild(explorerActionsState.dropTargetPath)) {
+        if (isCol(explorerActionsState.dragNode)) {
+            if (explorerActionsState.dropNodePath.startsWith(explorerActionsState.dragNodePath)) {
                 return false;
             }
 
             return (
-                explorerActionsState.dropTargetPath === path &&
-                explorerActionsState.dropTargetPath !== relativePath
+                explorerActionsState.dropNodePath.toString() === path &&
+                explorerActionsState.dropNodePath.toString() !==
+                    explorerActionsState.dragNodePath.toString()
             );
         } else {
             return (
-                explorerActionsState.dropTargetPath === path &&
-                explorerActionsState.dropTargetPath !==
-                    explorerActionsState.dragPayload.parentRelativePath
+                explorerActionsState.dropNodePath.toString() === path &&
+                explorerActionsState.dropNodePath.toString() !== dragParentPath.toString()
             );
         }
     }
@@ -60,10 +54,11 @@ export function isDropAllowed(path: string): boolean {
     return false;
 }
 
-export function handleDragStart(event: DragEvent, payload: DragPayload) {
+export function handleDragStart(event: DragEvent, node: TreeNode) {
     event.stopImmediatePropagation();
 
-    explorerActionsState.dragPayload = payload;
+    explorerActionsState.dragNode = node;
+    explorerActionsState.dragNodePath = Path.from(node.meta.relpath);
 
     if (event.dataTransfer) {
         const previewContainer = document.createElement("div");
@@ -72,9 +67,9 @@ export function handleDragStart(event: DragEvent, payload: DragPayload) {
         previewContainer.style.left = "-1000px";
         document.body.appendChild(previewContainer);
 
-        const previewTitle = isCol(payload.node)
-            ? (payload.node.meta.name ?? payload.node.meta.fsname)
-            : (payload.node.meta.name ?? payload.node.meta.fsname);
+        const previewTitle = isCol(node)
+            ? (node.meta.name ?? node.meta.fsname)
+            : (node.meta.name ?? node.meta.fsname);
 
         const treeNodePreview = mount(TreeNodePreview, {
             target: previewContainer,
@@ -102,22 +97,24 @@ export async function handleDrop(event: DragEvent) {
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    if (explorerActionsState.dragPayload === null) {
-        toast.error("Drag payload not found");
+    if (explorerActionsState.dragNode === null) {
+        toast.error("Drag node not found");
         return;
     }
-    if (explorerActionsState.dropTargetPath === null) {
+    if (explorerActionsState.dragNodePath === null) {
+        toast.error("Drag node path not found");
+        return;
+    }
+    if (explorerActionsState.dropNodePath === null) {
         toast.error("Drop target path not found");
         return;
     }
 
     const moveTreeNodeResult = await commands.moveTreeNode({
-        node_type: isCol(explorerActionsState.dragPayload.node) ? "collection" : "request",
-        from_relpath: Path.from(explorerActionsState.dragPayload.parentRelativePath)
-            .join(explorerActionsState.dragPayload.node.meta.fsname)
-            .toString(),
-        to_relpath: Path.from(explorerActionsState.dropTargetPath)
-            .join(explorerActionsState.dragPayload.node.meta.fsname)
+        node_type: isCol(explorerActionsState.dragNode) ? "collection" : "request",
+        from_relpath: explorerActionsState.dragNodePath.toString(),
+        to_relpath: explorerActionsState.dropNodePath
+            .join(explorerActionsState.dragNode.meta.fsname)
             .toString(),
     });
     if (moveTreeNodeResult.status !== "ok") {
@@ -132,9 +129,9 @@ export function handleDragOver(event: DragEvent, dragOverDto: DragOverDto) {
     event.stopImmediatePropagation();
 
     if (dragOverDto.type === "collection") {
-        explorerActionsState.dropTargetPath = dragOverDto.relativePath;
+        explorerActionsState.dropNodePath = dragOverDto.relpath;
     } else {
-        explorerActionsState.dropTargetPath = dragOverDto.parentRelativePath;
+        explorerActionsState.dropNodePath = dragOverDto.relpath.parent() ?? Path.from("");
     }
 }
 
@@ -145,16 +142,5 @@ export function handleDragEnd(event: DragEvent) {
         event.currentTarget.setAttribute("aria-grabbed", "false");
     }
 
-    explorerActionsState.dropTargetPath = null;
-}
-
-export function isCurrentCollectionOrAnyOfItsChildFocussed(currentPath: string): boolean {
-    const isCurrentCollectionFocussed =
-        explorerState.focussedNode.type === "collection" &&
-        explorerState.focussedNode.relativePath === currentPath;
-    const isCurrentCollectionChildFocussed =
-        explorerState.focussedNode.type === "request" &&
-        explorerState.focussedNode.parentRelativePath === currentPath;
-
-    return isCurrentCollectionFocussed || isCurrentCollectionChildFocussed;
+    explorerActionsState.dropNodePath = null;
 }

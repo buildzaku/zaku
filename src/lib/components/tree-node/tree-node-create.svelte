@@ -7,6 +7,7 @@
     import { cn, requestColors } from "$lib/utils/style";
     import { CollectionIcon } from "$lib/components/icons";
     import { commands } from "$lib/bindings";
+    import { Path } from "$lib/utils/path";
     import { emitCmdError } from "$lib/utils";
 
     type Props = {
@@ -52,8 +53,7 @@
 
             explorerState.setFocussedNode({
                 type: "collection",
-                parentRelativePath: createCollectionResult.data.parent_relpath,
-                relativePath: createCollectionResult.data.relpath,
+                relpath: Path.from(createCollectionResult.data.relpath),
             });
 
             const createdCollection = document.querySelector(
@@ -76,8 +76,7 @@
 
             explorerState.setFocussedNode({
                 type: "request",
-                parentRelativePath: createReqResult.data.parent_relpath,
-                relativePath: createReqResult.data.relpath,
+                relpath: Path.from(createReqResult.data.relpath),
             });
 
             const createdRequest = document.querySelector(

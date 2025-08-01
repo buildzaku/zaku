@@ -3,12 +3,11 @@
     import { toast } from "svelte-sonner";
 
     import { TreeNodeContent, TreeNodeCreate } from ".";
-    import type { TreeNode, DragOverDto } from "$lib/models";
+    import type { TreeNode } from "$lib/models";
     import { explorerActionsState, explorerState } from "$lib/state.svelte";
     import { cn, requestColors } from "$lib/utils/style";
     import { CollectionIcon, DotIcon } from "$lib/components/icons";
     import {
-        isCurrentCollectionOrAnyOfItsChildFocussed,
         isDropAllowed,
         handleDragStart,
         handleDragOver,
@@ -19,46 +18,35 @@
     } from "$lib/components/tree-node/utils.svelte";
     import { Path } from "$lib/utils/path";
 
-    type Props = { parents: string[]; node: TreeNode; level: number; class?: string };
-    let { parents, node, level, class: className }: Props = $props();
+    type Props = { trail: string[]; node: TreeNode; level: number; class?: string };
+    let { trail, node, level, class: className }: Props = $props();
 
     let shouldRenderCreateNewRequestInput = $derived(
         explorerActionsState.createNewNode === "request" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(node.meta.relpath),
+            explorerState.focussedNode.relpath.startsWith(Path.from(node.meta.relpath)),
     );
     let shouldRenderCreateNewCollectionInput = $derived(
         explorerActionsState.createNewNode === "collection" &&
-            isCurrentCollectionOrAnyOfItsChildFocussed(node.meta.relpath),
+            explorerState.focussedNode.relpath.startsWith(Path.from(node.meta.relpath)),
     );
     let shouldHighlight = $derived(isDropAllowed(node.meta.relpath));
 
     const parentRelpath = Path.from(node.meta.relpath).parent()?.toString() ?? "";
 
-    const dragOverDto: DragOverDto = isCol(node)
-        ? { type: "collection", relativePath: node.meta.relpath }
-        : {
-              type: "request",
-              parentRelativePath: Path.from(node.meta.relpath).parent()?.toString() ?? "",
-          };
-
     function handleTreeItemFocus(node: TreeNode) {
         if (isCol(node)) {
             node.meta.is_expanded = !node.meta.is_expanded;
-
             explorerState.setFocussedNode({
                 type: "collection",
-                parentRelativePath: parentRelpath,
-                relativePath: node.meta.relpath,
+                relpath: Path.from(node.meta.relpath),
             });
         } else if (isReq(node)) {
             explorerState.setFocussedNode({
                 type: "request",
-                parentRelativePath: parentRelpath,
-                relativePath: node.meta.relpath,
+                relpath: Path.from(node.meta.relpath),
             });
-
             explorerState.setOpenRequest({
-                parents,
+                trail,
                 self: node,
             });
         } else {
@@ -84,9 +72,14 @@
         aria-grabbed="false"
         draggable="true"
         ondragstart={event => {
-            handleDragStart(event, { parentRelativePath: parentRelpath, node });
+            handleDragStart(event, node);
         }}
-        ondragover={event => handleDragOver(event, dragOverDto)}
+        ondragover={event => {
+            handleDragOver(event, {
+                type: isCol(node) ? "collection" : "request",
+                relpath: Path.from(node.meta.relpath),
+            });
+        }}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
         onkeydown={keyboardEvent => {
@@ -99,7 +92,7 @@
         style="padding-left: {level * 8}px"
         class={cn(
             "focus-visible:ring-ring flex h-[22px] w-full items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus-visible:ring-1 focus-visible:outline-none",
-            explorerState.focussedNode.relativePath === node.meta.relpath
+            explorerState.focussedNode.relpath.toString() === node.meta.relpath
                 ? "bg-accent"
                 : "hover:bg-accent/75",
         )}
@@ -156,9 +149,8 @@
             {#each node.requests as request (Path.from(node.meta.relpath)
                 .join(request.meta.fsname)
                 .toString())}
-                {@const relpath = Path.from(node.meta.relpath).join(request.meta.fsname).toString()}
                 <TreeNodeContent
-                    parents={[...parents, node.meta.name ?? node.meta.fsname]}
+                    trail={[...trail, node.meta.name ?? node.meta.fsname]}
                     node={request}
                     level={level + 1}
                 />
@@ -177,7 +169,7 @@
                 .join(collection.meta.fsname)
                 .toString())}
                 <TreeNodeContent
-                    parents={[...parents, node.meta.name ?? node.meta.fsname]}
+                    trail={[...trail, node.meta.name ?? node.meta.fsname]}
                     node={collection}
                     level={level + 1}
                 />

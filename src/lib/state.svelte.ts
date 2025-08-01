@@ -2,7 +2,7 @@ import { tick } from "svelte";
 
 import { version } from "$app/environment";
 
-import type { OpenRequest, DragPayload, FocussedTreeNode } from "$lib/models";
+import type { OpenRequest, FocussedTreeNode, TreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
 import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
 import { Path } from "$lib/utils/path";
@@ -38,13 +38,15 @@ class SharedState {
 export const sharedState = new SharedState();
 
 class ExplorerActionsState {
-    public dragPayload: DragPayload | null = $state(null);
-    public dropTargetPath: string | null = $state(null);
+    public dragNode: TreeNode | null = $state(null);
+    public dragNodePath: Path | null = $state(null);
+    public dropNodePath: Path | null = $state(null);
     public createNewNode: NodeType | null = $state(null);
 
     public reset() {
-        this.dragPayload = null;
-        this.dropTargetPath = null;
+        this.dragNode = null;
+        this.dragNodePath = null;
+        this.dropNodePath = null;
         this.createNewNode = null;
     }
 }
@@ -54,17 +56,16 @@ export const explorerActionsState = new ExplorerActionsState();
 class ExplorerState {
     #rootNode: FocussedTreeNode = {
         type: "collection",
-        relativePath: "",
-        parentRelativePath: "",
+        relpath: Path.from(""),
     };
 
     public focussedNode: FocussedTreeNode = $state(this.#rootNode);
     public openRequest: OpenRequest | null = $state(null);
     public backgroundRequests: HttpReq[] = $state([]);
 
-    public setFocussedNode(node: FocussedTreeNode) {
-        if (this.focussedNode.relativePath !== node.relativePath) {
-            this.focussedNode = node;
+    public setFocussedNode(focussedNode: FocussedTreeNode) {
+        if (this.focussedNode.relpath.toString() !== focussedNode.relpath.toString()) {
+            this.focussedNode = focussedNode;
         }
     }
 
