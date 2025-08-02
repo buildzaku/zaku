@@ -38,9 +38,12 @@
         if (!validProtocol.test(openReqSnapshot.self.config.url.raw ?? "")) {
             openReqSnapshot.self.status = "Error";
             openReqSnapshot.self.response = {
+                status: null,
                 data: "Invalid or missing protocol",
                 headers: [],
                 cookies: [],
+                size_bytes: null,
+                elapsed_ms: null,
             };
             return;
         }
@@ -89,9 +92,12 @@
         if (httpReqResult.status !== "ok") {
             openReqSnapshot.self.status = "Error";
             openReqSnapshot.self.response = {
+                status: null,
                 data: httpReqResult.error.message,
                 headers: [],
                 cookies: [],
+                size_bytes: null,
+                elapsed_ms: null,
             };
 
             return emitCmdError(httpReqResult.error);

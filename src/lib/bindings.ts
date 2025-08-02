@@ -231,12 +231,12 @@ export type HttpReq = {
     response: HttpRes | null;
 };
 export type HttpRes = {
-    status?: number;
+    status: number | null;
     data: string;
     headers: [string, string][];
     cookies: SerializedCookie[];
-    size_bytes?: number;
-    elapsed_ms?: number;
+    size_bytes: number | null;
+    elapsed_ms: number | null;
 };
 export type MoveTreeNodeDto = { node_type: NodeType; cur_relpath: string; nxt_relpath: string };
 export type NodeType = "collection" | "request";
@@ -248,8 +248,8 @@ export type ReqCfg = {
     url: ReqUrl;
     headers: [boolean, string, string][];
     parameters: [boolean, string, string][];
-    content_type?: string;
-    body?: string;
+    content_type: string | null;
+    body: string | null;
 };
 export type ReqMeta = {
     fsname: string;
@@ -259,10 +259,10 @@ export type ReqMeta = {
 };
 export type ReqStatus = "Idle" | "Pending" | "Success" | "Error";
 export type ReqUrl = {
-    raw?: string;
-    protocol?: string;
-    host?: string;
-    path?: string;
+    raw: string | null;
+    protocol: string | null;
+    host: string | null;
+    path: string | null;
 };
 export type SerializedCookie = {
     name: string;

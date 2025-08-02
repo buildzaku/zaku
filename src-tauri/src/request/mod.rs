@@ -44,7 +44,7 @@ pub fn parse_req(
 
     let relpath = entry_abspath.strip_prefix(space_abspath).ok()?;
     if let Some(req_buf) = sbf_store_mtx.requests.get(relpath) {
-        Some(HttpReq::from_reqbuf(req_buf))
+        Some(HttpReq::from_reqbuf(req_buf, relpath))
     } else {
         match parse_reqtoml(entry_abspath) {
             Ok(req_toml) => Some(HttpReq::from_reqtoml(&req_toml, relpath)),

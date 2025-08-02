@@ -10,7 +10,8 @@ use std::{
 
 use crate::{
     error::{Error, Result},
-    request::models::{HttpReq, ReqCfg, ReqMeta},
+    macros::is_string_none_or_empty,
+    request::models::HttpReq,
 };
 
 static SBF_STORE_UPDATE_LOCK: Mutex<()> = Mutex::new(());
@@ -119,23 +120,63 @@ impl SpaceBufferStore {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct ReqBufferMeta {
+    pub fsname: String,
+    pub name: String,
+    pub has_unsaved_changes: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct ReqBufferUrl {
+    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    pub raw: Option<String>,
+
+    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    pub protocol: Option<String>,
+
+    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    pub host: Option<String>,
+
+    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    pub path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+pub struct ReqBufferCfg {
+    pub method: String,
+    pub url: ReqBufferUrl,
+    pub headers: Vec<(bool, String, String)>,
+    pub parameters: Vec<(bool, String, String)>,
+
+    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    pub content_type: Option<String>,
+
+    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    pub body: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqBuffer {
-    pub meta: ReqMeta,
-    pub config: ReqCfg,
+    pub meta: ReqBufferMeta,
+    pub config: ReqBufferCfg,
 }
 
 impl ReqBuffer {
     pub fn from_req(req: &HttpReq) -> Self {
-        let meta = ReqMeta {
+        let meta = ReqBufferMeta {
             fsname: req.meta.fsname.clone(),
             name: req.meta.name.clone(),
             has_unsaved_changes: true,
-            relpath: req.meta.relpath.clone(),
         };
 
-        let config = ReqCfg {
+        let config = ReqBufferCfg {
             method: req.config.method.clone(),
-            url: req.config.url.clone(),
+            url: ReqBufferUrl {
+                raw: req.config.url.raw.clone(),
+                protocol: req.config.url.protocol.clone(),
+                host: req.config.url.host.clone(),
+                path: req.config.url.path.clone(),
+            },
             headers: req.config.headers.clone(),
             parameters: req.config.parameters.clone(),
             content_type: req.config.content_type.clone(),
