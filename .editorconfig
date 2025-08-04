@@ -11,3 +11,11 @@ insert_final_newline = true
 [*.{yaml,yml}]
 indent_style = space
 indent_size = 2
+
+[*.{sh,bash}]
+shell_variant = bash
+indent_style = space
+indent_size = 2
+switch_case_indent = true
+space_redirects = true
+function_next_line = true

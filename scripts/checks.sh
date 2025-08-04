@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo_title() {
-    local label="$1"
-    local total_width=36
-    local label_len padding extra left right
+echo_title()
+{
+  local label="$1"
+  local total_width=36
+  local label_len padding extra left right
 
-    label_len=${#label}
-    padding=$(((total_width - label_len - 2) / 2))
-    extra=$(((total_width - label_len - 2) % 2))
+  label_len=${#label}
+  padding=$(((total_width - label_len - 2) / 2))
+  extra=$(((total_width - label_len - 2) % 2))
 
-    left=$(printf '=%.0s' $(seq 1 "$padding"))
-    right=$(printf '=%.0s' $(seq 1 $((padding + extra))))
+  left=$(printf '=%.0s' $(seq 1 "$padding"))
+  right=$(printf '=%.0s' $(seq 1 $((padding + extra))))
 
-    echo -e "\n${left} ${label} ${right}"
+  echo -e "\n${left} ${label} ${right}"
 }
 
 echo_title "Svelte Check"
