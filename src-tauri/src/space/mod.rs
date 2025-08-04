@@ -11,7 +11,7 @@ use crate::{
     space::models::{
         CreateSpaceDto, SerializedCookie, Space, SpaceConfigFile, SpaceMeta, SpaceReference,
     },
-    store::{self, SpaceCookieStore, SpaceSettingsStore, StateStore},
+    store::{SpaceCookieStore, SpaceSettingsStore, StateStore},
     utils,
 };
 
@@ -71,13 +71,11 @@ pub fn create_space(dto: CreateSpaceDto, state_store: &mut StateStore) -> Result
     Ok(spaceref)
 }
 
-pub fn parse_space(space_abspath: &Path, state_store: &StateStore) -> Result<Space> {
-    let root_collection = collection::parse_root_collection(space_abspath, state_store)?;
+pub fn parse_space(space_abspath: &Path) -> Result<Space> {
+    let root_collection = collection::parse_root_collection(space_abspath)?;
     let space_config_file = parse_spacecfg(space_abspath)?;
 
-    let sck_store_abspath =
-        store::utils::sck_store_abspath(state_store.datadir_abspath(), space_abspath);
-    let sck_store = SpaceCookieStore::get(&sck_store_abspath)?;
+    let sck_store = SpaceCookieStore::get(space_abspath)?;
     let sck_store_mtx = sck_store.cookies.lock().unwrap();
     let cookies: Vec<SerializedCookie> = sck_store_mtx
         .iter_any()
@@ -89,9 +87,7 @@ pub fn parse_space(space_abspath: &Path, state_store: &StateStore) -> Result<Spa
             acc
         });
 
-    let sst_store_abspath =
-        store::utils::sst_store_abspath(state_store.datadir_abspath(), space_abspath);
-    let space_settings = SpaceSettingsStore::get(&sst_store_abspath)?.into_inner();
+    let space_settings = SpaceSettingsStore::get(space_abspath)?.into_inner();
 
     Ok(Space {
         abspath: space_abspath.to_path_buf(),

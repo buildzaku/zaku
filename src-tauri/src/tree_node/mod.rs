@@ -6,10 +6,10 @@ use std::{
 };
 
 use crate::{
-    collection::models::{Collection, SpaceCollectionsMetadataStore},
+    collection::models::Collection,
     error::{Error, Result},
     space,
-    store::StateStore,
+    store::collection::SpaceCollectionsMetadataStore,
 };
 
 #[cfg(test)]
@@ -166,12 +166,8 @@ fn cur_exists(cur_parent_col: &Collection, node_type: &NodeType, fsname: &str) -
 /// - `space_abspath`: Absolute path to the space directory
 ///
 /// Returns a `Result` indicating success or failure of the drop operation
-pub fn move_tree_node(
-    dto: &MoveTreeNodeDto,
-    space_abspath: &Path,
-    state_store: &StateStore,
-) -> Result<()> {
-    let space = space::parse_space(space_abspath, state_store)?;
+pub fn move_tree_node(dto: &MoveTreeNodeDto, space_abspath: &Path) -> Result<()> {
+    let space = space::parse_space(space_abspath)?;
 
     let cur_fsname = dto
         .cur_relpath

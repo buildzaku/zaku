@@ -12,7 +12,7 @@ use crate::{
 fn find_collection_returns_root_for_empty_path() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
 
     let result = tree_node::find_collection(&space, &PathBuf::from(""));
     assert!(result.is_ok());
@@ -34,7 +34,7 @@ fn find_collection_finds_direct_child() {
     collection::create_collection(&location_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create collection");
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let result = tree_node::find_collection(&space, &PathBuf::from("parent-col-1"));
     assert!(result.is_ok());
     let collection = result.unwrap();
@@ -57,7 +57,7 @@ fn find_collection_finds_nested_child() {
     collection::create_collection(&location_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create nested collection");
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let nested_path = PathBuf::from("parent-col-1/child-col-1");
     let result = tree_node::find_collection(&space, &nested_path);
     assert!(result.is_ok());
@@ -70,7 +70,7 @@ fn find_collection_finds_nested_child() {
 fn find_collection_fails_for_nonexistent_path() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
 
     let result = tree_node::find_collection(&space, &PathBuf::from("nonexistent-col-1"));
     assert!(result.is_err());
@@ -97,7 +97,7 @@ fn find_collection_fails_for_partially_invalid_path() {
     collection::create_collection(&location_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let invalid_path = PathBuf::from("parent-col-1/missing-child-col-1");
     let result = tree_node::find_collection(&space, &invalid_path);
     assert!(result.is_err());
@@ -111,7 +111,7 @@ fn find_collection_fails_for_partially_invalid_path() {
 
 #[test]
 fn move_tree_node_fails_with_no_space() {
-    let (_tmp_datadir, tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
     let tmp_nonexistent_space_abspath = tmp_spacedir.path().join("nonexistent");
 
     let dto = MoveTreeNodeDto {
@@ -120,7 +120,7 @@ fn move_tree_node_fails_with_no_space() {
         nxt_relpath: PathBuf::from("parent-col-2/parent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_nonexistent_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_nonexistent_space_abspath);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::FileNotFound(_) => {}
@@ -139,7 +139,7 @@ fn move_tree_node_fails_with_invalid_cur_relpath() {
         nxt_relpath: PathBuf::from("parent-col-1/child-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Invalid source path"),
@@ -168,7 +168,7 @@ fn move_tree_node_fails_when_moving_to_self() {
         nxt_relpath: PathBuf::from("parent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_err());
 }
 
@@ -209,7 +209,7 @@ fn move_tree_node_fails_when_moving_into_own_subtree() {
         nxt_relpath: PathBuf::from("parent-col-1/child-col/parent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_err());
 }
 
@@ -234,7 +234,7 @@ fn move_tree_node_fails_when_moving_collection_into_itself() {
         nxt_relpath: PathBuf::from("parent-col-1/parent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert_eq!(msg, "Cannot move collection into itself"),
@@ -287,7 +287,7 @@ fn move_tree_node_fails_when_destination_already_exists() {
         nxt_relpath: PathBuf::from("parent-col-2/parent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert!(msg.contains("already exists")),
@@ -317,7 +317,7 @@ fn move_tree_node_fails_when_source_not_found() {
         nxt_relpath: PathBuf::from("parent-col-1/nonexistent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => assert!(msg.contains("not found")),
@@ -358,10 +358,10 @@ fn move_tree_node_successfully_moves_collection() {
         nxt_relpath: PathBuf::from("parent-col-2/parent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_ok());
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let parent_col = tree_node::find_collection(&space, &PathBuf::from("parent-col-2")).unwrap();
     let moved_collection = parent_col
         .collections
@@ -410,10 +410,10 @@ fn move_tree_node_successfully_moves_request() {
         nxt_relpath: PathBuf::from("parent-col-1/parent-req-1.toml"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_ok());
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let parent_col = tree_node::find_collection(&space, &PathBuf::from("parent-col-1")).unwrap();
     let moved_request = parent_col
         .requests
@@ -459,7 +459,7 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
     collection::create_collection(&location_relpath, &col_segment, &tmp_space_abspath)
         .expect("Failed to create parent collection");
 
-    let _space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let _space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     fs::remove_dir_all(tmp_space_abspath.join("parent-col-2"))
         .expect("Failed to remove parent directory");
 
@@ -469,7 +469,7 @@ fn move_tree_node_fails_with_missing_destination_parent_directory() {
         nxt_relpath: PathBuf::from("parent-col-2/parent-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_err());
     match result.unwrap_err() {
         Error::InvalidPath(msg) => {
@@ -501,10 +501,10 @@ fn move_tree_node_successfully_moves_collection_to_parent() {
         nxt_relpath: PathBuf::from("grand-parent-col-1/child-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_ok());
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let grandparent_col =
         tree_node::find_collection(&space, &PathBuf::from("grand-parent-col-1")).unwrap();
     let moved_collection = grandparent_col
@@ -570,10 +570,10 @@ fn move_tree_node_successfully_moves_request_to_parent() {
         nxt_relpath: PathBuf::from("grand-parent-col-1/grand-child-req-1.toml"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_ok());
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let grandparent_col =
         tree_node::find_collection(&space, &PathBuf::from("grand-parent-col-1")).unwrap();
     let moved_request = grandparent_col
@@ -632,10 +632,10 @@ fn move_tree_node_successfully_moves_collection_to_grandparent() {
         nxt_relpath: PathBuf::from("great-grand-parent-col-1/grand-parent-col-1/child-col-1"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_ok());
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let grandparent_path = PathBuf::from("great-grand-parent-col-1/grand-parent-col-1");
     let grandparent_col = tree_node::find_collection(&space, &grandparent_path).unwrap();
     let moved_collection = grandparent_col
@@ -704,10 +704,10 @@ fn move_tree_node_successfully_moves_request_to_grandparent() {
         nxt_relpath: PathBuf::from("great-grand-parent-col-1/great-grand-child-req-1.toml"),
     };
 
-    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath, &state_store);
+    let result = tree_node::move_tree_node(&dto, &tmp_space_abspath);
     assert!(result.is_ok());
 
-    let space = collection::parse_root_collection(&tmp_space_abspath, &state_store).unwrap();
+    let space = collection::parse_root_collection(&tmp_space_abspath).unwrap();
     let great_grandparent_col =
         tree_node::find_collection(&space, &PathBuf::from("great-grand-parent-col-1")).unwrap();
     let moved_request = great_grandparent_col

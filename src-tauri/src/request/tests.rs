@@ -16,13 +16,13 @@ use crate::{
 
 #[test]
 fn parse_req_returns_none_for_non_toml_file() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_space_abspath = tmp_dir.path();
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = tmp_spacedir.path();
 
     let txt_file_abspath = tmp_space_abspath.join("parent-req-1.txt");
     fs::write(&txt_file_abspath, "not a toml file").unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_dir.path(), tmp_space_abspath);
+    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
     let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
@@ -35,13 +35,13 @@ fn parse_req_returns_none_for_non_toml_file() {
 
 #[test]
 fn parse_req_returns_none_for_directory() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_space_abspath = tmp_dir.path();
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = tmp_spacedir.path();
 
     let dir_abspath = tmp_space_abspath.join("parent-col-1");
     fs::create_dir_all(&dir_abspath).unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_dir.path(), tmp_space_abspath);
+    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
     let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
@@ -54,13 +54,13 @@ fn parse_req_returns_none_for_directory() {
 
 #[test]
 fn parse_req_successfully_parses_valid_toml_file() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_space_abspath = tmp_dir.path();
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = tmp_spacedir.path();
 
     let reqfile_abspath = tmp_space_abspath.join("parent-req-1");
     request::create_reqtoml(&reqfile_abspath, "Parent Req 1").unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_dir.path(), tmp_space_abspath);
+    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
     let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
@@ -79,14 +79,14 @@ fn parse_req_successfully_parses_valid_toml_file() {
 
 #[test]
 fn parse_req_returns_none_for_invalid_toml() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_space_abspath = tmp_dir.path();
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = tmp_spacedir.path();
 
     let reqfile_abspath = tmp_space_abspath.join("invalid-req-1.toml");
     let invalid_toml = "[meta\nname = \"Invalid Req 1\"";
     fs::write(&reqfile_abspath, invalid_toml).unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_dir.path(), tmp_space_abspath);
+    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
     let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
@@ -99,13 +99,13 @@ fn parse_req_returns_none_for_invalid_toml() {
 
 #[test]
 fn parse_req_returns_buffered_request_when_available() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_space_abspath = tmp_dir.path();
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = tmp_spacedir.path();
 
     let reqfile_abspath = tmp_space_abspath.join("buffered-req-1.toml");
     request::create_reqtoml(&reqfile_abspath.with_extension(""), "Buffered Req 1").unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_dir.path(), tmp_space_abspath);
+    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
     let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
     {
         let mut sbf_store_mtx = sbf_store
@@ -276,8 +276,8 @@ fn create_req_missing_space_should_fail() {
         fsname: "child-req-1".to_string(),
     };
 
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let tmp_space_abspath = tmp_dir.path();
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = tmp_spacedir.path();
     let result = request::create_req(
         &PathBuf::from("parent-col-1"),
         &req_segment,
@@ -413,8 +413,8 @@ fn create_req_duplicate_name_should_fail() {
 
 #[test]
 fn create_reqtoml_creates_valid_file() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("child-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("child-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Child Req 1").expect("Failed to create TOML file");
 
@@ -433,8 +433,8 @@ fn create_reqtoml_creates_valid_file() {
 
 #[test]
 fn create_reqtoml_skips_serializing_empty_optional_fields() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("empty-fields-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("empty-fields-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Empty Fields Req 1")
         .expect("Failed to create TOML file");
@@ -451,8 +451,8 @@ fn create_reqtoml_skips_serializing_empty_optional_fields() {
 
 #[test]
 fn create_reqtoml_with_special_characters_in_name() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("special-chars-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("special-chars-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Special*Chars<>|Req 1")
         .expect("Failed to create TOML file");
@@ -464,8 +464,8 @@ fn create_reqtoml_with_special_characters_in_name() {
 
 #[test]
 fn create_reqtoml_with_unicode_name() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("unicode-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("unicode-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "ザク Unicode Req 1")
         .expect("Failed to create TOML file");
@@ -477,8 +477,8 @@ fn create_reqtoml_with_unicode_name() {
 
 #[test]
 fn parse_reqtoml_successfully_parses_valid_file() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("parent-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("parent-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Parent Req 1").expect("Failed to create TOML");
 
@@ -491,8 +491,8 @@ fn parse_reqtoml_successfully_parses_valid_file() {
 
 #[test]
 fn parse_reqtoml_with_custom_config() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("custom-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("custom-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Custom Req 1").expect("Failed to create TOML");
 
@@ -524,8 +524,8 @@ fn parse_reqtoml_with_custom_config() {
 
 #[test]
 fn parse_reqtoml_fails_for_invalid_toml() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("invalid-req-1.toml");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("invalid-req-1.toml");
 
     let invalid_toml = "[meta\nname = \"Invalid Req 1\"";
     fs::write(&reqfile_abspath, invalid_toml).unwrap();
@@ -536,8 +536,8 @@ fn parse_reqtoml_fails_for_invalid_toml() {
 
 #[test]
 fn parse_reqtoml_fails_for_nonexistent_file() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let nonexistent_reqfile_abspath = tmp_dir.path().join("nonexistent-req-1.toml");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let nonexistent_reqfile_abspath = tmp_spacedir.path().join("nonexistent-req-1.toml");
 
     let result = request::parse_reqtoml(&nonexistent_reqfile_abspath);
     assert!(result.is_err());
@@ -545,8 +545,8 @@ fn parse_reqtoml_fails_for_nonexistent_file() {
 
 #[test]
 fn update_reqtoml_successfully_updates_existing_file() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("update-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("update-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Update Req 1").unwrap();
     let toml_file = reqfile_abspath.with_extension("toml");
@@ -579,8 +579,8 @@ fn update_reqtoml_successfully_updates_existing_file() {
 
 #[test]
 fn update_reqtoml_fails_for_nonexistent_file() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let nonexistent_reqfile_abspath = tmp_dir.path().join("nonexistent-req-1.toml");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let nonexistent_reqfile_abspath = tmp_spacedir.path().join("nonexistent-req-1.toml");
 
     let req_toml = ReqToml {
         meta: ReqTomlMeta {
@@ -602,8 +602,8 @@ fn update_reqtoml_fails_for_nonexistent_file() {
 
 #[test]
 fn update_reqtoml_with_headers_and_parameters() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("headers-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("headers-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Headers Req 1").unwrap();
     let toml_file = reqfile_abspath.with_extension("toml");
@@ -648,8 +648,8 @@ fn update_reqtoml_with_headers_and_parameters() {
 
 #[test]
 fn update_reqtoml_skips_serializing_empty_fields() {
-    let tmp_dir = tempfile::tempdir().unwrap();
-    let reqfile_abspath = tmp_dir.path().join("empty-update-req-1");
+    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
+    let reqfile_abspath = tmp_spacedir.path().join("empty-update-req-1");
 
     request::create_reqtoml(&reqfile_abspath, "Empty Update Req 1").unwrap();
     let toml_file = reqfile_abspath.with_extension("toml");

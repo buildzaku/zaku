@@ -61,10 +61,7 @@ export const commands = {
     spaceAbspath: string,
   ): Promise<Result<Partial<{ [key in string]: SerializedCookie[] }>, CmdErr>> {
     try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("get_space_cookies", { spaceAbspath }),
-      };
+      return { status: "ok", data: await TAURI_INVOKE("get_space_cookies", { spaceAbspath }) };
     } catch (e) {
       if (e instanceof Error) throw e;
       else return { status: "error", error: e as any };

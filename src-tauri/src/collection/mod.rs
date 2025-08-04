@@ -12,19 +12,16 @@ pub mod models;
 pub mod tests;
 
 use crate::{
-    collection::models::{
-        Collection, CollectionMeta, CollectionRcRefCell, CreateNewCollection,
-        SpaceCollectionsMetadataStore,
-    },
+    collection::models::{Collection, CollectionMeta, CollectionRcRefCell, CreateNewCollection},
     error::{Error, Result},
     models::SanitizedSegment,
     request::{self, models::HttpReq},
     space::parse_spacecfg,
-    store::{self, SpaceBufferStore, StateStore},
+    store::{SpaceBufferStore, collection::SpaceCollectionsMetadataStore},
     utils,
 };
 
-pub fn parse_root_collection(space_abspath: &Path, state_store: &StateStore) -> Result<Collection> {
+pub fn parse_root_collection(space_abspath: &Path) -> Result<Collection> {
     let space_dirname = space_abspath
         .file_name()
         .unwrap_or(space_abspath.as_os_str())
@@ -33,9 +30,7 @@ pub fn parse_root_collection(space_abspath: &Path, state_store: &StateStore) -> 
     let spaceroot_relpath = PathBuf::from("");
     let scmt_store = SpaceCollectionsMetadataStore::get(space_abspath)?;
 
-    let sbf_store_abspath =
-        store::utils::sbf_store_abspath(state_store.datadir_abspath(), space_abspath);
-    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath)?;
+    let sbf_store = SpaceBufferStore::get(space_abspath)?;
     let sbf_store_mtx = sbf_store
         .lock()
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))?;

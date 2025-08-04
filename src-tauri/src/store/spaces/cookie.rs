@@ -7,7 +7,10 @@ use std::{
     sync::Arc,
 };
 
-use crate::error::{Error, Result};
+use crate::{
+    error::{Error, Result},
+    store,
+};
 
 pub struct SpaceCookieStore {
     pub cookies: Arc<CookieStoreMutex>,
@@ -15,34 +18,38 @@ pub struct SpaceCookieStore {
 }
 
 impl SpaceCookieStore {
-    fn new(sck_store_abspath: &Path, cookies: Arc<CookieStoreMutex>) -> Self {
+    fn new(space_abspath: &Path, cookies: Arc<CookieStoreMutex>) -> Self {
+        let sck_store_abspath = store::utils::sck_store_abspath(space_abspath);
+
         Self {
             cookies,
-            abspath: sck_store_abspath.to_path_buf(),
+            abspath: sck_store_abspath,
         }
     }
 
-    fn init(sck_store_abspath: &Path) -> Result<SpaceCookieStore> {
+    fn init(space_abspath: &Path) -> Result<SpaceCookieStore> {
+        let sck_store_abspath = store::utils::sck_store_abspath(space_abspath);
+
         if !sck_store_abspath.exists() {
             let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
-            let sck_store = Self::new(sck_store_abspath, default_cookies);
+            let sck_store = Self::new(space_abspath, default_cookies);
             sck_store.fswrite()?;
 
             return Ok(sck_store);
         }
 
-        let file = fs::File::open(sck_store_abspath).map(BufReader::new)?;
+        let file = fs::File::open(&sck_store_abspath).map(BufReader::new)?;
 
         match cookie_json::load(file) {
             Ok(cookie_store) => {
                 let cookies = Arc::new(CookieStoreMutex::new(cookie_store));
 
-                Ok(Self::new(sck_store_abspath, cookies))
+                Ok(Self::new(space_abspath, cookies))
             }
             Err(_) => {
                 // corrupt JSON, use default
                 let default_cookies = Arc::new(CookieStoreMutex::new(CookieStore::default()));
-                let sck_store = Self::new(sck_store_abspath, default_cookies);
+                let sck_store = Self::new(space_abspath, default_cookies);
                 sck_store.fswrite()?;
 
                 Ok(sck_store)
@@ -66,8 +73,8 @@ impl SpaceCookieStore {
         Ok(())
     }
 
-    pub fn get(sck_store_abspath: &Path) -> Result<SpaceCookieStore> {
-        Self::init(sck_store_abspath)
+    pub fn get(space_abspath: &Path) -> Result<SpaceCookieStore> {
+        Self::init(space_abspath)
     }
 
     /// Updates the store using the provided mutator function and
