@@ -123,7 +123,6 @@ impl SpaceBufferStore {
 pub struct ReqBufferMeta {
     pub fsname: String,
     pub name: String,
-    pub has_unsaved_changes: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -170,7 +169,6 @@ impl ReqBuffer {
         let meta = ReqBufferMeta {
             fsname: req.meta.fsname.clone(),
             name: req.meta.name.clone(),
-            has_unsaved_changes: true,
         };
 
         let config = ReqBufferCfg {

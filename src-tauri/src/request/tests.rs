@@ -117,7 +117,6 @@ fn parse_req_returns_buffered_request_when_available() {
             meta: ReqBufferMeta {
                 fsname: "buffered-req-1.toml".to_string(),
                 name: "Modified Buffered Req 1".to_string(),
-                has_unsaved_changes: true,
             },
             config: ReqBufferCfg {
                 method: "POST".to_string(),
@@ -739,7 +738,6 @@ fn http_req_from_reqbuf_has_unsaved_changes() {
         meta: ReqBufferMeta {
             fsname: "buffer-req-1.toml".to_string(),
             name: "Buffer Req 1".to_string(),
-            has_unsaved_changes: true,
         },
         config: ReqBufferCfg {
             method: "POST".to_string(),

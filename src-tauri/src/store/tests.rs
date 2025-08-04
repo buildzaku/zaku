@@ -191,7 +191,6 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
         meta: ReqBufferMeta {
             fsname: "test-req.toml".to_string(),
             name: "Test Req".to_string(),
-            has_unsaved_changes: true,
         },
         config: ReqBufferCfg {
             method: "GET".to_string(),
@@ -256,7 +255,6 @@ fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
                     meta: ReqBufferMeta {
                         fsname: req_fsname.clone(),
                         name: format!("Concurrent Req {idx}"),
-                        has_unsaved_changes: false,
                     },
                     config: ReqBufferCfg {
                         method: "GET".to_string(),
@@ -303,7 +301,6 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
         meta: ReqBufferMeta {
             fsname: "persistent-req.toml".to_string(),
             name: "Persistent Req".to_string(),
-            has_unsaved_changes: false,
         },
         config: ReqBufferCfg {
             method: "POST".to_string(),
@@ -363,7 +360,6 @@ fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
                     meta: ReqBufferMeta {
                         fsname: format!("update-req-{idx}.toml"),
                         name: format!("Update Req {idx}"),
-                        has_unsaved_changes: true,
                     },
                     config: ReqBufferCfg {
                         method: "PUT".to_string(),
@@ -401,10 +397,9 @@ fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
         let req_relpath = PathBuf::from(format!("update-req-{idx}.toml"));
         assert!(sbf_store_mtx.requests.contains_key(&req_relpath));
 
-        let req = sbf_store_mtx.requests.get(&req_relpath).unwrap();
-        assert_eq!(req.meta.name, format!("Update Req {idx}"));
-        assert_eq!(req.config.method, "PUT");
-        assert!(req.meta.has_unsaved_changes);
+        let req_buf = sbf_store_mtx.requests.get(&req_relpath).unwrap();
+        assert_eq!(req_buf.meta.name, format!("Update Req {idx}"));
+        assert_eq!(req_buf.config.method, "PUT");
     }
 }
 
