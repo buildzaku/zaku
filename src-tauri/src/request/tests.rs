@@ -6,9 +6,12 @@ use crate::{
     models::SanitizedSegment,
     request::{
         self,
-        models::{HttpReq, ReqCfg, ReqMeta, ReqToml, ReqTomlConfig, ReqTomlMeta, ReqUrl},
+        models::{HttpReq, ReqToml, ReqTomlConfig, ReqTomlMeta},
     },
-    store::{self, ReqBuffer, spaces::buffer::SpaceBufferStore},
+    store::{
+        self, ReqBuffer,
+        spaces::buffer::{ReqBufferCfg, ReqBufferMeta, ReqBufferUrl, SpaceBufferStore},
+    },
 };
 
 #[test]
@@ -111,15 +114,13 @@ fn parse_req_returns_buffered_request_when_available() {
             .unwrap();
 
         let req_buf = ReqBuffer {
-            meta: ReqMeta {
+            meta: ReqBufferMeta {
                 fsname: "buffered-req-1.toml".to_string(),
                 name: "Modified Buffered Req 1".to_string(),
-                has_unsaved_changes: true,
-                relpath: PathBuf::from("buffered-req-1.toml"),
             },
-            config: ReqCfg {
+            config: ReqBufferCfg {
                 method: "POST".to_string(),
-                url: ReqUrl {
+                url: ReqBufferUrl {
                     raw: Some("https://zaku.app/buffered-req-1".to_string()),
                     protocol: Some("https".to_string()),
                     host: Some("zaku.app".to_string()),
@@ -734,15 +735,13 @@ fn http_req_from_reqtoml_handles_invalid_url() {
 #[test]
 fn http_req_from_reqbuf_has_unsaved_changes() {
     let req_buf = ReqBuffer {
-        meta: ReqMeta {
+        meta: ReqBufferMeta {
             fsname: "buffer-req-1.toml".to_string(),
             name: "Buffer Req 1".to_string(),
-            has_unsaved_changes: true,
-            relpath: PathBuf::from("buffer-req-1.toml"),
         },
-        config: ReqCfg {
+        config: ReqBufferCfg {
             method: "POST".to_string(),
-            url: ReqUrl {
+            url: ReqBufferUrl {
                 raw: Some("https://zaku.app/buffer-req-1".to_string()),
                 protocol: Some("https".to_string()),
                 host: Some("zaku.app".to_string()),
@@ -755,7 +754,7 @@ fn http_req_from_reqbuf_has_unsaved_changes() {
         },
     };
 
-    let http_req = HttpReq::from_reqbuf(&req_buf);
+    let http_req = HttpReq::from_reqbuf(&req_buf, &PathBuf::from("buffer-req-1.toml"));
 
     assert!(http_req.meta.has_unsaved_changes);
     assert_eq!(http_req.meta.name, "Buffer Req 1");

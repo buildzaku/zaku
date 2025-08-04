@@ -117,7 +117,10 @@
 {:else if currentTab === "body"}
     <div class="flex h-9 items-center justify-start gap-3 border-b px-3">
         <span>Content Type</span>
-        <Select type="single" bind:value={config.content_type}>
+        <Select
+            type="single"
+            bind:value={() => config.content_type ?? "", value => (config.content_type = value)}
+        >
             <SelectTrigger class="w-fit">
                 <span class="pr-3">
                     {!config.content_type ? REQUEST_BODY_TYPES.None : config.content_type}
@@ -136,7 +139,7 @@
     {#if config.content_type && config.content_type !== "None"}
         <CodeBlock
             bind:language
-            bind:value={config.body}
+            bind:value={() => config.body ?? "", value => (config.body = value)}
             class="bg-card h-full max-h-[calc(100%-2rem-2.25rem)] overflow-auto"
         />
     {/if}

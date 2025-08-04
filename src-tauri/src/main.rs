@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use specta_typescript::{Typescript, formatter};
 use std::path::PathBuf;
 
 pub mod collection;
@@ -30,16 +31,13 @@ fn main() {
         .commands(commands::collect())
         .error_handling(tauri_specta::ErrorHandlingMode::Result);
 
-    if std::env::var("GEN_BINDINGS").is_ok() {
-        use specta_typescript::{Typescript, formatter};
-
-        builder
-            .export(
-                Typescript::default().formatter(formatter::prettier),
-                ts_bindings_path(),
-            )
-            .expect("Failed to export typescript bindings");
-    }
+    #[cfg(debug_assertions)]
+    builder
+        .export(
+            Typescript::default().formatter(formatter::prettier),
+            ts_bindings_path(),
+        )
+        .expect("Failed to export typescript bindings");
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())

@@ -1,4 +1,8 @@
-use crate::{error::Error, utils};
+use crate::{
+    error::Error,
+    store::spaces::buffer::{ReqBuffer, ReqBufferCfg, ReqBufferMeta, ReqBufferUrl},
+    utils,
+};
 use std::path::PathBuf;
 
 #[test]
@@ -142,4 +146,76 @@ fn to_sanitized_segments_multiple_consecutive_backslashes() {
         segments[0].fsname,
         "path-with-multiple-consecutive-backslashes"
     );
+}
+
+#[test]
+fn is_string_none_or_empty_serialization_every_value() {
+    let req_buffer = ReqBuffer {
+        meta: ReqBufferMeta {
+            fsname: "test".to_string(),
+            name: "Test Request".to_string(),
+        },
+        config: ReqBufferCfg {
+            method: "POST".to_string(),
+            url: ReqBufferUrl {
+                raw: Some("https://api.example.com/users".to_string()),
+                protocol: Some("https".to_string()),
+                host: Some("api.example.com".to_string()),
+                path: Some("/users".to_string()),
+            },
+            headers: vec![(
+                true,
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )],
+            parameters: vec![(true, "limit".to_string(), "10".to_string())],
+            content_type: Some("application/json".to_string()),
+            body: Some("{\"name\":\"test\"}".to_string()),
+        },
+    };
+
+    let json_content = serde_json::to_string(&req_buffer).unwrap();
+
+    assert!(json_content.contains("\"raw\":\"https://api.example.com/users\""));
+    assert!(json_content.contains("\"protocol\":\"https\""));
+    assert!(json_content.contains("\"host\":\"api.example.com\""));
+    assert!(json_content.contains("\"path\":\"/users\""));
+    assert!(json_content.contains("\"content_type\":\"application/json\""));
+    assert!(json_content.contains("\"body\":\"{\\\"name\\\":\\\"test\\\"}\""));
+}
+
+#[test]
+fn is_string_none_or_empty_serialization_with_some_values() {
+    let req_buffer = ReqBuffer {
+        meta: ReqBufferMeta {
+            fsname: "test".to_string(),
+            name: "Test Request".to_string(),
+        },
+        config: ReqBufferCfg {
+            method: "POST".to_string(),
+            url: ReqBufferUrl {
+                raw: None,
+                protocol: Some("".to_string()),
+                host: Some("api.example.com".to_string()),
+                path: Some("   ".to_string()),
+            },
+            headers: vec![(
+                true,
+                "Content-Type".to_string(),
+                "application/json".to_string(),
+            )],
+            parameters: vec![],
+            content_type: Some("application/json".to_string()),
+            body: None,
+        },
+    };
+
+    let json_content = serde_json::to_string(&req_buffer).unwrap();
+
+    assert!(!json_content.contains("\"raw\""));
+    assert!(!json_content.contains("\"protocol\""));
+    assert!(json_content.contains("\"host\":\"api.example.com\""));
+    assert!(json_content.contains("\"path\":\"   \""));
+    assert!(json_content.contains("\"content_type\":\"application/json\""));
+    assert!(!json_content.contains("\"body\""));
 }

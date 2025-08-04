@@ -21,16 +21,9 @@ pub struct ReqMeta {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqUrl {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub raw: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
 
@@ -38,17 +31,9 @@ pub struct ReqUrl {
 pub struct ReqCfg {
     pub method: String,
     pub url: ReqUrl,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(bool, String, String)>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<(bool, String, String)>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
 }
 
@@ -110,17 +95,29 @@ pub struct HttpReq {
 }
 
 impl HttpReq {
-    pub fn from_reqbuf(req_buf: &ReqBuffer) -> Self {
+    pub fn from_reqbuf(req_buf: &ReqBuffer, relpath: &Path) -> Self {
         let meta = ReqMeta {
             fsname: req_buf.meta.fsname.clone(),
             name: req_buf.meta.name.clone(),
-            has_unsaved_changes: req_buf.meta.has_unsaved_changes,
-            relpath: req_buf.meta.relpath.clone(),
+            has_unsaved_changes: true,
+            relpath: relpath.to_path_buf(),
         };
 
         Self {
             meta,
-            config: req_buf.config.clone(),
+            config: ReqCfg {
+                method: req_buf.config.method.clone(),
+                url: ReqUrl {
+                    raw: req_buf.config.url.raw.clone(),
+                    protocol: req_buf.config.url.protocol.clone(),
+                    host: req_buf.config.url.host.clone(),
+                    path: req_buf.config.url.path.clone(),
+                },
+                headers: req_buf.config.headers.clone(),
+                parameters: req_buf.config.parameters.clone(),
+                content_type: req_buf.config.content_type.clone(),
+                body: req_buf.config.body.clone(),
+            },
             status: ReqStatus::Idle,
             response: None,
         }
@@ -183,20 +180,10 @@ pub struct CreateRequestDto {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct HttpRes {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<u16>,
-
     pub data: String,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(String, String)>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cookies: Vec<SerializedCookie>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u32>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub elapsed_ms: Option<u32>,
 }
