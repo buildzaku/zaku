@@ -1,11 +1,13 @@
 [changelog]
 body = """{% for group, commits in commits | group_by(attribute="group") -%}
+{% if not loop.first %}
+{% endif -%}
 ### {{ group | striptags | trim | upper_first }}
 
 {% for commit in commits -%}
     - {{ commit.message | upper_first }} - [`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/buildzaku/zaku/commit/{{ commit.id }})
-{% endfor -%}
-{% endfor -%}"""
+{% endfor %}
+{%- endfor %}"""
 
 trim = true
 
@@ -23,13 +25,13 @@ commit_parsers = [
     { message = "^ux", group = "<!-- 4 -->UI/UX" },
     { message = "^refactor", group = "<!-- 5 -->Refactor" },
     { message = "^docs", group = "<!-- 6 -->Documentation" },
+    { message = "^test", group = "<!-- 7 -->Testing" },
+    { message = "^revert", group = "<!-- 8 -->Reverts" },
     { message = "^release", skip = true },
     { message = "^style", skip = true },
-    { message = "^test", skip = true },
     { message = "^ci", skip = true },
     { message = "^chore", skip = true },
     { message = "^build", skip = true },
-    { message = "^revert", skip = true },
 ]
 
 protect_breaking_commits = true
