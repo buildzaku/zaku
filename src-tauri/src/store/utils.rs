@@ -14,7 +14,7 @@ use crate::{space, space::models::CreateSpaceDto, store::StateStore};
 pub const SPACES_STORE_FSNAME: &str = "spaces";
 
 #[cfg(not(test))]
-pub static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+pub static DATADIR_ABSPATH: LazyLock<PathBuf> = LazyLock::new(|| {
     dirs::data_dir()
         .expect("Unable to get data directory")
         .join("Zaku")
@@ -22,19 +22,19 @@ pub static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
 
 #[cfg(test)]
 thread_local! {
-    pub static DATA_DIR: RefCell<PathBuf> = RefCell::new(PathBuf::from("/tmp"));
+    pub static DATADIR_ABSPATH: RefCell<PathBuf> = RefCell::new(PathBuf::from("/tmp"));
 }
 
 /// Returns `StateStore`'s absolute path on the filesystem.
 pub fn state_store_abspath() -> PathBuf {
     #[cfg(not(test))]
     {
-        DATA_DIR.join("state.json")
+        DATADIR_ABSPATH.join("state.json")
     }
 
     #[cfg(test)]
     {
-        DATA_DIR.with(|path| path.borrow().join("state.json"))
+        DATADIR_ABSPATH.with(|path| path.borrow().join("state.json"))
     }
 }
 
@@ -44,7 +44,7 @@ pub fn sbf_store_abspath(space_abspath: &Path) -> PathBuf {
 
     #[cfg(not(test))]
     {
-        DATA_DIR
+        DATADIR_ABSPATH
             .join(SPACES_STORE_FSNAME)
             .join(hsh)
             .join("buffer.json")
@@ -52,7 +52,7 @@ pub fn sbf_store_abspath(space_abspath: &Path) -> PathBuf {
 
     #[cfg(test)]
     {
-        DATA_DIR.with(|path| {
+        DATADIR_ABSPATH.with(|path| {
             path.borrow()
                 .join(SPACES_STORE_FSNAME)
                 .join(hsh)
@@ -67,7 +67,7 @@ pub fn sck_store_abspath(space_abspath: &Path) -> PathBuf {
 
     #[cfg(not(test))]
     {
-        DATA_DIR
+        DATADIR_ABSPATH
             .join(SPACES_STORE_FSNAME)
             .join(hsh)
             .join("cookies.json")
@@ -75,7 +75,7 @@ pub fn sck_store_abspath(space_abspath: &Path) -> PathBuf {
 
     #[cfg(test)]
     {
-        DATA_DIR.with(|path| {
+        DATADIR_ABSPATH.with(|path| {
             path.borrow()
                 .join(SPACES_STORE_FSNAME)
                 .join(hsh)
@@ -90,7 +90,7 @@ pub fn sst_store_abspath(space_abspath: &Path) -> PathBuf {
 
     #[cfg(not(test))]
     {
-        DATA_DIR
+        DATADIR_ABSPATH
             .join(SPACES_STORE_FSNAME)
             .join(hsh)
             .join("settings.json")
@@ -98,7 +98,7 @@ pub fn sst_store_abspath(space_abspath: &Path) -> PathBuf {
 
     #[cfg(test)]
     {
-        DATA_DIR.with(|path| {
+        DATADIR_ABSPATH.with(|path| {
             path.borrow()
                 .join(SPACES_STORE_FSNAME)
                 .join(hsh)
@@ -122,7 +122,7 @@ pub fn temp_space(space_name: &str) -> (tempfile::TempDir, tempfile::TempDir, St
     let tmp_datadir = tempfile::tempdir().unwrap();
     let tmp_spacedir = tempfile::tempdir().unwrap();
 
-    DATA_DIR.with(|dir| {
+    DATADIR_ABSPATH.with(|dir| {
         *dir.borrow_mut() = tmp_datadir.path().to_path_buf();
     });
 
