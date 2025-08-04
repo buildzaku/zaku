@@ -1,69 +1,69 @@
 <script lang="ts">
-    import { PlusIcon, Trash2Icon } from "@lucide/svelte";
+  import { PlusIcon, Trash2Icon } from "@lucide/svelte";
 
-    import { Input } from "$lib/components/primitives/input";
-    import { Button } from "$lib/components/primitives/button";
-    import { Checkbox } from "$lib/components/primitives/checkbox";
-    import type { ReqCfg } from "$lib/bindings";
+  import { Input } from "$lib/components/primitives/input";
+  import { Button } from "$lib/components/primitives/button";
+  import { Checkbox } from "$lib/components/primitives/checkbox";
+  import type { ReqCfg } from "$lib/bindings";
 
-    type Props = {
-        config: ReqCfg;
-    };
+  type Props = {
+    config: ReqCfg;
+  };
 
-    let { config = $bindable() }: Props = $props();
+  let { config = $bindable() }: Props = $props();
 
-    function addParam(config: ReqCfg) {
-        if (!config.parameters) {
-            config.parameters = [];
-        }
-
-        config.parameters.push([true, "", ""]);
+  function addParam(config: ReqCfg) {
+    if (!config.parameters) {
+      config.parameters = [];
     }
 
-    function deleteParam(config: ReqCfg, index: number) {
-        if (!config.parameters) return;
-        config.parameters = config.parameters.filter((_, idx) => idx !== index);
-    }
+    config.parameters.push([true, "", ""]);
+  }
+
+  function deleteParam(config: ReqCfg, index: number) {
+    if (!config.parameters) return;
+    config.parameters = config.parameters.filter((_, idx) => idx !== index);
+  }
 </script>
 
 <div class="flex flex-col gap-3">
-    {#each config.parameters ?? [] as pair, idx (idx)}
-        <div class="flex gap-2">
-            <div class="flex size-6 items-center justify-center">
-                <Checkbox
-                    checked={pair[0]}
-                    onCheckedChange={() => {
-                        pair[0] = !pair[0];
-                    }}
-                />
-            </div>
-            <Input
-                type="text"
-                disabled={!pair[0]}
-                bind:value={pair[1]}
-                placeholder="Key"
-                class="font-mono text-xs"
-            />
-            <Input
-                type="text"
-                disabled={!pair[0]}
-                bind:value={pair[2]}
-                placeholder="Value"
-                class="font-mono text-xs"
-            />
-            <Button
-                variant="outline"
-                class="hover:bg-muted/40 hover:text-destructive bg-transparent p-[7px]"
-                onclick={() => {
-                    deleteParam(config, idx);
-                }}
-            >
-                <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
-            </Button>
-        </div>
-    {/each}
-    <Button variant="ghost" onclick={() => addParam(config)} class="h-6 w-fit gap-1 border px-2">
-        <PlusIcon size={14} class="max-h-[14px] max-w-[14px]" />
-        <span class="text-small">Add Parameter</span>
-    </Button>
+  {#each config.parameters ?? [] as pair, idx (idx)}
+    <div class="flex gap-2">
+      <div class="flex size-6 items-center justify-center">
+        <Checkbox
+          checked={pair[0]}
+          onCheckedChange={() => {
+            pair[0] = !pair[0];
+          }}
+        />
+      </div>
+      <Input
+        type="text"
+        disabled={!pair[0]}
+        bind:value={pair[1]}
+        placeholder="Key"
+        class="font-mono text-xs"
+      />
+      <Input
+        type="text"
+        disabled={!pair[0]}
+        bind:value={pair[2]}
+        placeholder="Value"
+        class="font-mono text-xs"
+      />
+      <Button
+        variant="outline"
+        class="hover:bg-muted/40 hover:text-destructive bg-transparent p-[7px]"
+        onclick={() => {
+          deleteParam(config, idx);
+        }}
+      >
+        <Trash2Icon size={14} class="max-h-[14px] max-w-[14px]" />
+      </Button>
+    </div>
+  {/each}
+  <Button variant="ghost" onclick={() => addParam(config)} class="h-6 w-fit gap-1 border px-2">
+    <PlusIcon size={14} class="max-h-[14px] max-w-[14px]" />
+    <span class="text-small">Add Parameter</span>
+  </Button>
 </div>

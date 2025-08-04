@@ -4,16 +4,16 @@ import { Path } from "$lib/utils/path";
 export type TreeNode = Collection | HttpReq;
 
 export type DragOverDto = {
-    type: "collection" | "request";
-    relpath: Path;
+  type: "collection" | "request";
+  relpath: Path;
 };
 
 export type FocussedTreeNode = {
-    type: "collection" | "request";
-    relpath: Path;
+  type: "collection" | "request";
+  relpath: Path;
 };
 
 export type OpenRequest = {
-    trail: string[];
-    self: HttpReq;
+  trail: string[];
+  self: HttpReq;
 };

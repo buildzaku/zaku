@@ -3,22 +3,22 @@ base: core24
 version: 0.7.0
 summary: Fast, open-source API client with fangs
 description: |
-    Fast, open-source API client with fangs
+  Fast, open-source API client with fangs
 grade: stable
 confinement: strict
 platforms:
-    amd64: null
+  amd64: null
 apps:
-    zaku:
-        command: usr/bin/zaku
-        desktop: usr/share/applications/Zaku.desktop
-        plugs:
-            - network
+  zaku:
+    command: usr/bin/zaku
+    desktop: usr/share/applications/Zaku.desktop
+    plugs:
+      - network
 parts:
-    app:
-        plugin: dump
-        source: snap-stage
-        stage-packages:
-            - libwebkit2gtk-4.1-0
-            - libayatana-appindicator3-1
-            - libasound2
+  app:
+    plugin: dump
+    source: snap-stage
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libayatana-appindicator3-1
+      - libasound2

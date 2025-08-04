@@ -1,252 +1,252 @@
 name: "Release"
 
 on:
-    push:
-        tags:
-            - "*.*.*"
-    workflow_dispatch:
-        inputs:
-            force_release:
-                description: "Force run build and release jobs"
-                type: boolean
-                default: false
-                required: false
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: "Force run build and release jobs"
+        type: boolean
+        default: false
+        required: false
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 env:
-    NODE_VERSION: 22.17.0
-    PNPM_VERSION: 10.13.1
+  NODE_VERSION: 22.17.0
+  PNPM_VERSION: 10.13.1
 
 jobs:
-    build_artifacts:
-        name: "Build Artifacts (${{ matrix.name }})"
-        if: github.repository == 'buildzaku/zaku' || github.event.inputs.force_release == 'true'
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - name: "macOS ARM64"
-                      platform: macos-latest
-                      target: aarch64-apple-darwin
-                      bundle: dmg
-                      artifact_name: zaku-aarch64-apple-darwin.dmg
-                      artifact_id: zaku-aarch64-apple-darwin
+  build_artifacts:
+    name: "Build Artifacts (${{ matrix.name }})"
+    if: github.repository == 'buildzaku/zaku' || github.event.inputs.force_release == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "macOS ARM64"
+            platform: macos-latest
+            target: aarch64-apple-darwin
+            bundle: dmg
+            artifact_name: zaku-aarch64-apple-darwin.dmg
+            artifact_id: zaku-aarch64-apple-darwin
 
-                    - name: "macOS x86_64"
-                      platform: macos-latest
-                      target: x86_64-apple-darwin
-                      bundle: dmg
-                      artifact_name: zaku-x86_64-apple-darwin.dmg
-                      artifact_id: zaku-x86_64-apple-darwin
+          - name: "macOS x86_64"
+            platform: macos-latest
+            target: x86_64-apple-darwin
+            bundle: dmg
+            artifact_name: zaku-x86_64-apple-darwin.dmg
+            artifact_id: zaku-x86_64-apple-darwin
 
-                    - name: "Linux x86_64"
-                      platform: ubuntu-latest
-                      target: x86_64-unknown-linux-gnu
-                      bundle: deb
-                      artifact_name: zaku-x86_64-unknown-linux-gnu.deb
-                      artifact_id: zaku-x86_64-unknown-linux-gnu
+          - name: "Linux x86_64"
+            platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bundle: deb
+            artifact_name: zaku-x86_64-unknown-linux-gnu.deb
+            artifact_id: zaku-x86_64-unknown-linux-gnu
 
-                    - name: "Windows x86_64"
-                      platform: windows-latest
-                      target: x86_64-pc-windows-msvc
-                      bundle: msi,nsis
-                      artifact_name: null
-                      artifact_id: zaku-x86_64-pc-windows-msvc
+          - name: "Windows x86_64"
+            platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: msi,nsis
+            artifact_name: null
+            artifact_id: zaku-x86_64-pc-windows-msvc
 
-                    - name: "Linux Snap"
-                      platform: ubuntu-latest
-                      target: x86_64-unknown-linux-gnu
-                      bundle: snap
-                      artifact_name: null
-                      artifact_id: zaku-snap
-        runs-on: ${{ matrix.platform }}
-        steps:
-            - name: "Checkout repository"
-              uses: actions/checkout@v4
+          - name: "Linux Snap"
+            platform: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bundle: snap
+            artifact_name: null
+            artifact_id: zaku-snap
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
 
-            - name: "Setup pnpm"
-              uses: pnpm/action-setup@v4
-              with:
-                  version: ${{ env.PNPM_VERSION }}
+      - name: "Setup pnpm"
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
 
-            - name: "Setup Node.js"
-              uses: actions/setup-node@v4
-              with:
-                  node-version: ${{ env.NODE_VERSION }}
-                  cache: pnpm
+      - name: "Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
 
-            - name: "Get pnpm store directory"
-              id: pnpm_cache
-              shell: bash
-              run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
+      - name: "Get pnpm store directory"
+        id: pnpm_cache
+        shell: bash
+        run: echo "pnpm_cache_dir=$(pnpm store path)" >> $GITHUB_OUTPUT
 
-            - name: "Setup pnpm cache"
-              uses: actions/cache@v4
-              with:
-                  path: ${{ steps.pnpm_cache.outputs.pnpm_cache_dir }}
-                  key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-                  restore-keys: ${{ runner.os }}-pnpm-store-
+      - name: "Setup pnpm cache"
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm_cache.outputs.pnpm_cache_dir }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
 
-            - name: "Setup Rust"
-              uses: dtolnay/rust-toolchain@stable
-              with:
-                  targets: ${{ matrix.target }}
+      - name: "Setup Rust"
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-            - name: "Setup Rust cache"
-              uses: swatinem/rust-cache@v2
-              with:
-                  workspaces: "./src-tauri -> target"
+      - name: "Setup Rust cache"
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
 
-            - name: "Install linux dependencies"
-              if: matrix.platform == 'ubuntu-latest'
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
+      - name: "Install linux dependencies"
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
-            - name: "Install frontend dependencies"
-              run: pnpm install
+      - name: "Install frontend dependencies"
+        run: pnpm install
 
-            - name: "Build application"
-              if: matrix.bundle != 'snap'
-              run: pnpm tauri build --bundles ${{ matrix.bundle }} --target ${{ matrix.target }}
+      - name: "Build application"
+        if: matrix.bundle != 'snap'
+        run: pnpm tauri build --bundles ${{ matrix.bundle }} --target ${{ matrix.target }}
 
-            - name: "Build application for Snap"
-              if: matrix.bundle == 'snap'
-              run: pnpm tauri build --bundles deb
+      - name: "Build application for Snap"
+        if: matrix.bundle == 'snap'
+        run: pnpm tauri build --bundles deb
 
-            - name: "Extract .deb to snap-stage/"
-              if: matrix.bundle == 'snap'
-              run: |
-                  mkdir -p snap-stage
-                  dpkg -x src-tauri/target/release/bundle/deb/*.deb snap-stage/
-                  sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage/usr/share/applications/Zaku.desktop
+      - name: "Extract .deb to snap-stage/"
+        if: matrix.bundle == 'snap'
+        run: |
+          mkdir -p snap-stage
+          dpkg -x src-tauri/target/release/bundle/deb/*.deb snap-stage/
+          sed -i -e "s|Icon=zaku|Icon=/usr/share/icons/hicolor/32x32/apps/zaku.png|g" snap-stage/usr/share/applications/Zaku.desktop
 
-            - name: "Build Snap package"
-              if: matrix.bundle == 'snap'
-              uses: snapcore/action-build@v1
-              id: build_snap
+      - name: "Build Snap package"
+        if: matrix.bundle == 'snap'
+        uses: snapcore/action-build@v1
+        id: build_snap
 
-            - name: "Rename artifacts (Unix)"
-              if: matrix.platform != 'windows-latest' && matrix.bundle != 'snap'
-              shell: bash
-              run: |
-                  if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
-                      cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg/
-                      mv *.dmg ${{ matrix.artifact_name }}
-                  else
-                      cd src-tauri/target/${{ matrix.target }}/release/bundle/deb/
-                      mv *.deb ${{ matrix.artifact_name }}
-                  fi
+      - name: "Rename artifacts (Unix)"
+        if: matrix.platform != 'windows-latest' && matrix.bundle != 'snap'
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
+              cd src-tauri/target/${{ matrix.target }}/release/bundle/dmg/
+              mv *.dmg ${{ matrix.artifact_name }}
+          else
+              cd src-tauri/target/${{ matrix.target }}/release/bundle/deb/
+              mv *.deb ${{ matrix.artifact_name }}
+          fi
 
-            - name: "Rename artifacts (Windows)"
-              if: matrix.platform == 'windows-latest'
-              shell: bash
-              run: |
-                  cd src-tauri/target/${{ matrix.target }}/release/bundle/msi/
-                  mv *.msi zaku-x86_64-pc-windows-msvc.msi
-                  cd ../nsis/
-                  mv *.exe zaku-x86_64-pc-windows-msvc.exe
+      - name: "Rename artifacts (Windows)"
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          cd src-tauri/target/${{ matrix.target }}/release/bundle/msi/
+          mv *.msi zaku-x86_64-pc-windows-msvc.msi
+          cd ../nsis/
+          mv *.exe zaku-x86_64-pc-windows-msvc.exe
 
-            - name: "Upload artifact (Unix)"
-              if: matrix.platform != 'windows-latest' && matrix.bundle != 'snap'
-              uses: actions/upload-artifact@v4
-              with:
-                  name: ${{ matrix.artifact_id }}
-                  path: |
-                      src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${{ matrix.artifact_name }}
-                      src-tauri/target/${{ matrix.target }}/release/bundle/deb/${{ matrix.artifact_name }}
+      - name: "Upload artifact (Unix)"
+        if: matrix.platform != 'windows-latest' && matrix.bundle != 'snap'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_id }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${{ matrix.artifact_name }}
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/${{ matrix.artifact_name }}
 
-            - name: "Upload Snap artifact"
-              if: matrix.bundle == 'snap'
-              uses: actions/upload-artifact@v4
-              with:
-                  name: ${{ matrix.artifact_id }}
-                  path: ${{ steps.build_snap.outputs.snap }}
+      - name: "Upload Snap artifact"
+        if: matrix.bundle == 'snap'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_id }}
+          path: ${{ steps.build_snap.outputs.snap }}
 
-            - name: "Upload MSI artifact (Windows)"
-              if: matrix.platform == 'windows-latest'
-              uses: actions/upload-artifact@v4
-              with:
-                  name: zaku-x86_64-pc-windows-msvc-msi
-                  path: src-tauri/target/${{ matrix.target }}/release/bundle/msi/zaku-x86_64-pc-windows-msvc.msi
+      - name: "Upload MSI artifact (Windows)"
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaku-x86_64-pc-windows-msvc-msi
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/msi/zaku-x86_64-pc-windows-msvc.msi
 
-            - name: "Upload EXE artifact (Windows)"
-              if: matrix.platform == 'windows-latest'
-              uses: actions/upload-artifact@v4
-              with:
-                  name: zaku-x86_64-pc-windows-msvc-exe
-                  path: src-tauri/target/${{ matrix.target }}/release/bundle/nsis/zaku-x86_64-pc-windows-msvc.exe
+      - name: "Upload EXE artifact (Windows)"
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zaku-x86_64-pc-windows-msvc-exe
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/nsis/zaku-x86_64-pc-windows-msvc.exe
 
-    create_release:
-        name: "Create Release"
-        needs: [build_artifacts]
-        if: github.repository == 'buildzaku/zaku' || github.event.inputs.force_release == 'true'
-        permissions:
-            contents: "write"
-        runs-on: ubuntu-latest
-        steps:
-            - name: "Checkout repository"
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+  create_release:
+    name: "Create Release"
+    needs: [build_artifacts]
+    if: github.repository == 'buildzaku/zaku' || github.event.inputs.force_release == 'true'
+    permissions:
+      contents: "write"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-            - name: "Get release version"
-              id: version
-              run: |
-                  VERSION=${GITHUB_REF#refs/tags/}
-                  echo "value=$VERSION" >> $GITHUB_OUTPUT
+      - name: "Get release version"
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "value=$VERSION" >> $GITHUB_OUTPUT
 
-            - name: "Generate release notes"
-              uses: orhun/git-cliff-action@v4
-              with:
-                  config: cliff.toml
-                  args: --latest --strip all
-              env:
-                  OUTPUT: RELEASE_NOTES.md
+      - name: "Generate release notes"
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip all
+        env:
+          OUTPUT: RELEASE_NOTES.md
 
-            - name: "Set Snap release channel"
-              id: snap_channel
-              shell: bash
-              run: |
-                  VERSION="${{ steps.version.outputs.value }}"
+      - name: "Set Snap release channel"
+        id: snap_channel
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.value }}"
 
-                  if [[ "$VERSION" == *"-alpha."* ]]; then
-                      echo "channel=edge" >> $GITHUB_OUTPUT
-                  elif [[ "$VERSION" == *"-beta."* ]]; then
-                      echo "channel=beta" >> $GITHUB_OUTPUT
-                  elif [[ "$VERSION" == *"-rc."* ]]; then
-                      echo "channel=candidate" >> $GITHUB_OUTPUT
-                  else
-                      echo "channel=stable" >> $GITHUB_OUTPUT
-                  fi
+          if [[ "$VERSION" == *"-alpha."* ]]; then
+              echo "channel=edge" >> $GITHUB_OUTPUT
+          elif [[ "$VERSION" == *"-beta."* ]]; then
+              echo "channel=beta" >> $GITHUB_OUTPUT
+          elif [[ "$VERSION" == *"-rc."* ]]; then
+              echo "channel=candidate" >> $GITHUB_OUTPUT
+          else
+              echo "channel=stable" >> $GITHUB_OUTPUT
+          fi
 
-            - name: "Download all artifacts"
-              uses: actions/download-artifact@v4
-              with:
-                  path: artifacts
+      - name: "Download all artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-            - name: "Publish to Snap Store"
-              uses: snapcore/action-publish@v1
-              env:
-                  SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
-              with:
-                  snap: artifacts/zaku-snap/zaku_${{ steps.version.outputs.value }}_amd64.snap
-                  release: ${{ steps.snap_channel.outputs.channel }}
+      - name: "Publish to Snap Store"
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
+        with:
+          snap: artifacts/zaku-snap/zaku_${{ steps.version.outputs.value }}_amd64.snap
+          release: ${{ steps.snap_channel.outputs.channel }}
 
-            - name: "Create GitHub Release with assets"
-              uses: softprops/action-gh-release@v2
-              with:
-                  tag_name: "${{ steps.version.outputs.value }}"
-                  name: "Zaku ${{ steps.version.outputs.value }}"
-                  body_path: RELEASE_NOTES.md
-                  draft: false
-                  make_latest: true
-                  files: |
-                      artifacts/zaku-aarch64-apple-darwin/dmg/zaku-aarch64-apple-darwin.dmg
-                      artifacts/zaku-x86_64-apple-darwin/dmg/zaku-x86_64-apple-darwin.dmg
-                      artifacts/zaku-x86_64-unknown-linux-gnu/deb/zaku-x86_64-unknown-linux-gnu.deb
-                      artifacts/zaku-x86_64-pc-windows-msvc-msi/zaku-x86_64-pc-windows-msvc.msi
-                      artifacts/zaku-x86_64-pc-windows-msvc-exe/zaku-x86_64-pc-windows-msvc.exe
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: "Create GitHub Release with assets"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "${{ steps.version.outputs.value }}"
+          name: "Zaku ${{ steps.version.outputs.value }}"
+          body_path: RELEASE_NOTES.md
+          draft: false
+          make_latest: true
+          files: |
+            artifacts/zaku-aarch64-apple-darwin/dmg/zaku-aarch64-apple-darwin.dmg
+            artifacts/zaku-x86_64-apple-darwin/dmg/zaku-x86_64-apple-darwin.dmg
+            artifacts/zaku-x86_64-unknown-linux-gnu/deb/zaku-x86_64-unknown-linux-gnu.deb
+            artifacts/zaku-x86_64-pc-windows-msvc-msi/zaku-x86_64-pc-windows-msvc.msi
+            artifacts/zaku-x86_64-pc-windows-msvc-exe/zaku-x86_64-pc-windows-msvc.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

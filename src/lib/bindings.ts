@@ -3,187 +3,187 @@
 /** user-defined commands **/
 
 export const commands = {
-    async getSharedState(): Promise<Result<SharedState, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("get_shared_state") };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async createSpace(createSpaceDto: CreateSpaceDto): Promise<Result<SpaceReference, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("create_space", { createSpaceDto }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async setSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("set_space", { spaceReference }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async removeSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("remove_space", { spaceReference }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async getSpaceref(path: string): Promise<Result<SpaceReference, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("get_spaceref", { path }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async removeCookie(
-        spaceAbspath: string,
-        rmCookieDto: RemoveCookieDto,
-    ): Promise<Result<boolean, CmdErr>> {
-        try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("remove_cookie", { spaceAbspath, rmCookieDto }),
-            };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async getSpaceCookies(
-        spaceAbspath: string,
-    ): Promise<Result<Partial<{ [key in string]: SerializedCookie[] }>, CmdErr>> {
-        try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("get_space_cookies", { spaceAbspath }),
-            };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async saveSpaceSettings(
-        spaceAbspath: string,
-        spaceSettings: SpaceSettings,
-    ): Promise<Result<null, CmdErr>> {
-        try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, spaceSettings }),
-            };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async showMainWindow(): Promise<Result<null, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("show_main_window") };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async openDirDialog(options: OpenDirDialogOpt | null): Promise<Result<string | null, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("open_dir_dialog", { options }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async isNotifEnabled(): Promise<Result<boolean, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("is_notif_enabled") };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async requestNotifAccess(): Promise<Result<boolean, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("request_notif_access") };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async dispatchNotif(options: DispatchNotificationOptions): Promise<Result<null, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("dispatch_notif", { options }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async createCollection(dto: CreateCollectionDto): Promise<Result<CreateNewCollection, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("create_collection", { dto }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async createReq(dto: CreateRequestDto): Promise<Result<CreateNewRequest, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("create_req", { dto }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async writeReqToSpaceBuffer(
-        spaceAbspath: string,
-        request: HttpReq,
-    ): Promise<Result<null, CmdErr>> {
-        try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("write_req_to_space_buffer", { spaceAbspath, request }),
-            };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async writeReqbufToReqtoml(
-        spaceAbspath: string,
-        reqRelpath: string,
-    ): Promise<Result<null, CmdErr>> {
-        try {
-            return {
-                status: "ok",
-                data: await TAURI_INVOKE("write_reqbuf_to_reqtoml", { spaceAbspath, reqRelpath }),
-            };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async httpReq(req: HttpReq): Promise<Result<HttpRes, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("http_req", { req }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
-    async moveTreeNode(dto: MoveTreeNodeDto): Promise<Result<null, CmdErr>> {
-        try {
-            return { status: "ok", data: await TAURI_INVOKE("move_tree_node", { dto }) };
-        } catch (e) {
-            if (e instanceof Error) throw e;
-            else return { status: "error", error: e as any };
-        }
-    },
+  async getSharedState(): Promise<Result<SharedState, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_shared_state") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async createSpace(createSpaceDto: CreateSpaceDto): Promise<Result<SpaceReference, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("create_space", { createSpaceDto }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async setSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("set_space", { spaceReference }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async removeSpace(spaceReference: SpaceReference): Promise<Result<null, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("remove_space", { spaceReference }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getSpaceref(path: string): Promise<Result<SpaceReference, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("get_spaceref", { path }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async removeCookie(
+    spaceAbspath: string,
+    rmCookieDto: RemoveCookieDto,
+  ): Promise<Result<boolean, CmdErr>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("remove_cookie", { spaceAbspath, rmCookieDto }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async getSpaceCookies(
+    spaceAbspath: string,
+  ): Promise<Result<Partial<{ [key in string]: SerializedCookie[] }>, CmdErr>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("get_space_cookies", { spaceAbspath }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async saveSpaceSettings(
+    spaceAbspath: string,
+    spaceSettings: SpaceSettings,
+  ): Promise<Result<null, CmdErr>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, spaceSettings }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async showMainWindow(): Promise<Result<null, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("show_main_window") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async openDirDialog(options: OpenDirDialogOpt | null): Promise<Result<string | null, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("open_dir_dialog", { options }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async isNotifEnabled(): Promise<Result<boolean, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("is_notif_enabled") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async requestNotifAccess(): Promise<Result<boolean, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("request_notif_access") };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async dispatchNotif(options: DispatchNotificationOptions): Promise<Result<null, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("dispatch_notif", { options }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async createCollection(dto: CreateCollectionDto): Promise<Result<CreateNewCollection, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("create_collection", { dto }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async createReq(dto: CreateRequestDto): Promise<Result<CreateNewRequest, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("create_req", { dto }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async writeReqToSpaceBuffer(
+    spaceAbspath: string,
+    request: HttpReq,
+  ): Promise<Result<null, CmdErr>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("write_req_to_space_buffer", { spaceAbspath, request }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async writeReqbufToReqtoml(
+    spaceAbspath: string,
+    reqRelpath: string,
+  ): Promise<Result<null, CmdErr>> {
+    try {
+      return {
+        status: "ok",
+        data: await TAURI_INVOKE("write_reqbuf_to_reqtoml", { spaceAbspath, reqRelpath }),
+      };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async httpReq(req: HttpReq): Promise<Result<HttpRes, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("http_req", { req }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async moveTreeNode(dto: MoveTreeNodeDto): Promise<Result<null, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("move_tree_node", { dto }) };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
 };
 
 /** user-defined events **/
@@ -196,10 +196,10 @@ export type AudioNotification = { on_req_finish: boolean };
 export type CmdErr = { kind: ErrorKind; message: string; details: string | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
 export type CollectionMeta = {
-    fsname: string;
-    name: string | null;
-    is_expanded: boolean;
-    relpath: string;
+  fsname: string;
+  name: string | null;
+  is_expanded: boolean;
+  relpath: string;
 };
 export type CreateCollectionDto = { location_relpath: string; relpath: string };
 export type CreateNewCollection = { location_relpath: string; relpath: string };
@@ -208,35 +208,35 @@ export type CreateRequestDto = { location_relpath: string; relpath: string };
 export type CreateSpaceDto = { name: string; location: string };
 export type DispatchNotificationOptions = { title: string; body: string };
 export type ErrorKind =
-    | "SpaceNotFoundError"
-    | "FileNotFoundError"
-    | "FileReadError"
-    | "FileWriteError"
-    | "LockError"
-    | "DialogOpenError"
-    | "NotificationDispatchError"
-    | "NotificationPermissionError"
-    | "InvalidUrlError"
-    | "InvalidPathError"
-    | "InvalidNameError"
-    | "SanitizationError"
-    | "NetworkError"
-    | "ParseError"
-    | "CookieError"
-    | "InternalError";
+  | "SpaceNotFoundError"
+  | "FileNotFoundError"
+  | "FileReadError"
+  | "FileWriteError"
+  | "LockError"
+  | "DialogOpenError"
+  | "NotificationDispatchError"
+  | "NotificationPermissionError"
+  | "InvalidUrlError"
+  | "InvalidPathError"
+  | "InvalidNameError"
+  | "SanitizationError"
+  | "NetworkError"
+  | "ParseError"
+  | "CookieError"
+  | "InternalError";
 export type HttpReq = {
-    meta: ReqMeta;
-    config: ReqCfg;
-    status: ReqStatus;
-    response: HttpRes | null;
+  meta: ReqMeta;
+  config: ReqCfg;
+  status: ReqStatus;
+  response: HttpRes | null;
 };
 export type HttpRes = {
-    status: number | null;
-    data: string;
-    headers: [string, string][];
-    cookies: SerializedCookie[];
-    size_bytes: number | null;
-    elapsed_ms: number | null;
+  status: number | null;
+  data: string;
+  headers: [string, string][];
+  cookies: SerializedCookie[];
+  size_bytes: number | null;
+  elapsed_ms: number | null;
 };
 export type MoveTreeNodeDto = { node_type: NodeType; cur_relpath: string; nxt_relpath: string };
 export type NodeType = "collection" | "request";
@@ -244,47 +244,47 @@ export type NotificationSettings = { audio: AudioNotification };
 export type OpenDirDialogOpt = { title: string | null };
 export type RemoveCookieDto = { domain: string; path: string; name: string };
 export type ReqCfg = {
-    method: string;
-    url: ReqUrl;
-    headers: [boolean, string, string][];
-    parameters: [boolean, string, string][];
-    content_type: string | null;
-    body: string | null;
+  method: string;
+  url: ReqUrl;
+  headers: [boolean, string, string][];
+  parameters: [boolean, string, string][];
+  content_type: string | null;
+  body: string | null;
 };
 export type ReqMeta = {
-    fsname: string;
-    name: string;
-    has_unsaved_changes: boolean;
-    relpath: string;
+  fsname: string;
+  name: string;
+  has_unsaved_changes: boolean;
+  relpath: string;
 };
 export type ReqStatus = "Idle" | "Pending" | "Success" | "Error";
 export type ReqUrl = {
-    raw: string | null;
-    protocol: string | null;
-    host: string | null;
-    path: string | null;
+  raw: string | null;
+  protocol: string | null;
+  host: string | null;
+  path: string | null;
 };
 export type SerializedCookie = {
-    name: string;
-    value: string;
-    domain: string;
-    path: string;
-    secure: boolean;
-    http_only: boolean;
-    same_site: string | null;
-    expires: string | null;
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure: boolean;
+  http_only: boolean;
+  same_site: string | null;
+  expires: string | null;
 };
 export type SharedState = {
-    space: Space | null;
-    spacerefs: SpaceReference[];
-    user_settings: UserSettings;
+  space: Space | null;
+  spacerefs: SpaceReference[];
+  user_settings: UserSettings;
 };
 export type Space = {
-    abspath: string;
-    meta: SpaceMeta;
-    root_collection: Collection;
-    cookies: Partial<{ [key in string]: SerializedCookie[] }>;
-    settings: SpaceSettings;
+  abspath: string;
+  meta: SpaceMeta;
+  root_collection: Collection;
+  cookies: Partial<{ [key in string]: SerializedCookie[] }>;
+  settings: SpaceSettings;
 };
 export type SpaceMeta = { name: string };
 export type SpaceReference = { abspath: string; name: string };
@@ -299,44 +299,44 @@ import * as TAURI_API_EVENT from "@tauri-apps/api/event";
 import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 
 type __EventObj__<T> = {
-    listen: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-    once: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
-    emit: null extends T
-        ? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
-        : (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
+  listen: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+  once: (cb: TAURI_API_EVENT.EventCallback<T>) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+  emit: null extends T
+    ? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
+    : (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
 export type Result<T, E> = { status: "ok"; data: T } | { status: "error"; error: E };
 
 function __makeEvents__<T extends Record<string, any>>(mappings: Record<keyof T, string>) {
-    return new Proxy(
-        {} as unknown as {
-            [K in keyof T]: __EventObj__<T[K]> & {
-                (handle: __WebviewWindow__): __EventObj__<T[K]>;
-            };
-        },
-        {
-            get: (_, event) => {
-                const name = mappings[event as keyof T];
+  return new Proxy(
+    {} as unknown as {
+      [K in keyof T]: __EventObj__<T[K]> & {
+        (handle: __WebviewWindow__): __EventObj__<T[K]>;
+      };
+    },
+    {
+      get: (_, event) => {
+        const name = mappings[event as keyof T];
 
-                return new Proxy((() => {}) as any, {
-                    apply: (_, __, [window]: [__WebviewWindow__]) => ({
-                        listen: (arg: any) => window.listen(name, arg),
-                        once: (arg: any) => window.once(name, arg),
-                        emit: (arg: any) => window.emit(name, arg),
-                    }),
-                    get: (_, command: keyof __EventObj__<any>) => {
-                        switch (command) {
-                            case "listen":
-                                return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-                            case "once":
-                                return (arg: any) => TAURI_API_EVENT.once(name, arg);
-                            case "emit":
-                                return (arg: any) => TAURI_API_EVENT.emit(name, arg);
-                        }
-                    },
-                });
-            },
-        },
-    );
+        return new Proxy((() => {}) as any, {
+          apply: (_, __, [window]: [__WebviewWindow__]) => ({
+            listen: (arg: any) => window.listen(name, arg),
+            once: (arg: any) => window.once(name, arg),
+            emit: (arg: any) => window.emit(name, arg),
+          }),
+          get: (_, command: keyof __EventObj__<any>) => {
+            switch (command) {
+              case "listen":
+                return (arg: any) => TAURI_API_EVENT.listen(name, arg);
+              case "once":
+                return (arg: any) => TAURI_API_EVENT.once(name, arg);
+              case "emit":
+                return (arg: any) => TAURI_API_EVENT.emit(name, arg);
+            }
+          },
+        });
+      },
+    },
+  );
 }

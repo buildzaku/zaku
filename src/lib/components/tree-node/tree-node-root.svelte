@@ -1,166 +1,163 @@
 <script lang="ts">
-    import type { Snippet } from "svelte";
-    import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
+  import type { Snippet } from "svelte";
+  import { ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
 
-    import type { Collection } from "$lib/bindings";
-    import { explorerActionsState, explorerState } from "$lib/state.svelte";
-    import { cn } from "$lib/utils/style";
-    import { buttonVariants } from "$lib/components/primitives/button";
-    import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
-    import {
-        Tooltip,
-        TooltipTrigger,
-        TooltipContent,
-        TooltipProvider,
-    } from "$lib/components/primitives/tooltip";
-    import { Path } from "$lib/utils/path";
-    import {
-        handleDragEnd,
-        handleDragOver,
-        handleDrop,
-        isCol,
-        isDropAllowed,
-    } from "$lib/components/tree-node/utils.svelte";
+  import type { Collection } from "$lib/bindings";
+  import { explorerActionsState, explorerState } from "$lib/state.svelte";
+  import { cn } from "$lib/utils/style";
+  import { buttonVariants } from "$lib/components/primitives/button";
+  import { FilePlusIcon, FolderPlusIcon } from "$lib/components/icons";
+  import {
+    Tooltip,
+    TooltipTrigger,
+    TooltipContent,
+    TooltipProvider,
+  } from "$lib/components/primitives/tooltip";
+  import { Path } from "$lib/utils/path";
+  import {
+    handleDragEnd,
+    handleDragOver,
+    handleDrop,
+    isCol,
+    isDropAllowed,
+  } from "$lib/components/tree-node/utils.svelte";
 
-    type Props = { root: Collection; children: Snippet; class?: string };
+  type Props = { root: Collection; children: Snippet; class?: string };
 
-    let { root, children, class: className }: Props = $props();
+  let { root, children, class: className }: Props = $props();
 </script>
 
 <div
-    data-current-path={root.meta.relpath}
-    class={cn("min-w-full", isDropAllowed(root.meta.relpath) ? "bg-accent/75" : "", className)}
+  data-current-path={root.meta.relpath}
+  class={cn("min-w-full", isDropAllowed(root.meta.relpath) ? "bg-accent/75" : "", className)}
 >
+  <div
+    tabindex={0}
+    role="button"
+    aria-grabbed="false"
+    draggable="false"
+    ondragover={event => {
+      handleDragOver(event, {
+        type: isCol(root) ? "collection" : "request",
+        relpath: Path.from(root.meta.relpath),
+      });
+    }}
+    ondrop={handleDrop}
+    ondragend={handleDragEnd}
+    onkeydown={keyboardEvent => {
+      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+        keyboardEvent.preventDefault();
+        root.meta.is_expanded = !root.meta.is_expanded;
+        explorerState.setFocussedNode({
+          type: "collection",
+          relpath: Path.from(root.meta.relpath),
+        });
+      }
+    }}
+    class={cn(
+      "focus:ring-ring flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:ring-1 focus:outline-none",
+    )}
+    onclick={() => {
+      root.meta.is_expanded = !root.meta.is_expanded;
+      explorerState.setFocussedNode({
+        type: "collection",
+        relpath: Path.from(root.meta.relpath),
+      });
+    }}
+  >
+    <div class="flex h-full items-center gap-1 pl-1.5">
+      {#if root.meta.is_expanded}
+        <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
+      {:else}
+        <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
+      {/if}
+      <span class="text-small truncate">
+        {root.meta.name ?? root.meta.fsname}
+      </span>
+    </div>
+
+    {#if root.meta.is_expanded}
+      <div
+        role="button"
+        tabindex={-1}
+        onclick={event => {
+          event.stopImmediatePropagation();
+        }}
+        onkeydown={keyboardEvent => {
+          keyboardEvent.stopImmediatePropagation();
+        }}
+        class="hidden h-full items-center gap-1 px-1.5 group-hover/explorer:flex"
+      >
+        <TooltipProvider>
+          <Tooltip delayDuration={500} disableHoverableContent>
+            <TooltipTrigger
+              data-create-tree-node-button
+              class={cn(
+                buttonVariants({
+                  variant: "ghost",
+                  size: "icon",
+                }),
+                "flex size-5 max-h-5 min-h-5 max-w-5 min-w-5 items-center justify-center",
+              )}
+              onclick={event => {
+                event.stopImmediatePropagation();
+                explorerActionsState.createNewNode = "request";
+              }}
+            >
+              <FilePlusIcon size={13} class="size-[13px] max-h-[13px] max-w-[13px]" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>New Request</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <TooltipProvider>
+          <Tooltip delayDuration={500} disableHoverableContent>
+            <TooltipTrigger
+              data-create-tree-node-button
+              class={cn(
+                buttonVariants({
+                  variant: "ghost",
+                  size: "icon",
+                }),
+                "flex size-5 max-h-5 min-h-5 max-w-5 min-w-5 items-center justify-center",
+              )}
+              onclick={event => {
+                event.stopImmediatePropagation();
+                explorerActionsState.createNewNode = "collection";
+              }}
+            >
+              <FolderPlusIcon size={13} class="size-[13px] max-h-[13px] max-w-[13px]" />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>New Collection</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    {/if}
+  </div>
+
+  {#if root.meta.is_expanded}
     <div
-        tabindex={0}
+      class="flex h-[calc(100dvh-36px-35px-36px-22px-37px)] max-h-[calc(100dvh-36px-35px-36px-22px-37px)] w-full flex-1 flex-col overflow-y-auto"
+    >
+      {@render children()}
+      <div
+        class="min-h-8 w-full flex-grow cursor-default"
+        tabindex={-1}
         role="button"
         aria-grabbed="false"
         draggable="false"
         ondragover={event => {
-            handleDragOver(event, {
-                type: isCol(root) ? "collection" : "request",
-                relpath: Path.from(root.meta.relpath),
-            });
+          handleDragOver(event, {
+            type: isCol(root) ? "collection" : "request",
+            relpath: Path.from(root.meta.relpath),
+          });
         }}
         ondrop={handleDrop}
         ondragend={handleDragEnd}
-        onkeydown={keyboardEvent => {
-            if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-                keyboardEvent.preventDefault();
-                root.meta.is_expanded = !root.meta.is_expanded;
-                explorerState.setFocussedNode({
-                    type: "collection",
-                    relpath: Path.from(root.meta.relpath),
-                });
-            }
-        }}
-        class={cn(
-            "focus:ring-ring flex h-[22px] w-full items-center justify-between gap-2 overflow-hidden text-ellipsis whitespace-nowrap ring-inset focus:ring-1 focus:outline-none",
-        )}
-        onclick={() => {
-            root.meta.is_expanded = !root.meta.is_expanded;
-            explorerState.setFocussedNode({
-                type: "collection",
-                relpath: Path.from(root.meta.relpath),
-            });
-        }}
-    >
-        <div class="flex h-full items-center gap-1 pl-1.5">
-            {#if root.meta.is_expanded}
-                <ChevronDownIcon size={12} class="min-h-[12px] min-w-[12px]" />
-            {:else}
-                <ChevronRightIcon size={12} class="min-h-[12px] min-w-[12px]" />
-            {/if}
-            <span class="text-small truncate">
-                {root.meta.name ?? root.meta.fsname}
-            </span>
-        </div>
-
-        {#if root.meta.is_expanded}
-            <div
-                role="button"
-                tabindex={-1}
-                onclick={event => {
-                    event.stopImmediatePropagation();
-                }}
-                onkeydown={keyboardEvent => {
-                    keyboardEvent.stopImmediatePropagation();
-                }}
-                class="hidden h-full items-center gap-1 px-1.5 group-hover/explorer:flex"
-            >
-                <TooltipProvider>
-                    <Tooltip delayDuration={500} disableHoverableContent>
-                        <TooltipTrigger
-                            data-create-tree-node-button
-                            class={cn(
-                                buttonVariants({
-                                    variant: "ghost",
-                                    size: "icon",
-                                }),
-                                "flex size-5 max-h-5 min-h-5 max-w-5 min-w-5 items-center justify-center",
-                            )}
-                            onclick={event => {
-                                event.stopImmediatePropagation();
-                                explorerActionsState.createNewNode = "request";
-                            }}
-                        >
-                            <FilePlusIcon size={13} class="size-[13px] max-h-[13px] max-w-[13px]" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>New Request</p>
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
-                <TooltipProvider>
-                    <Tooltip delayDuration={500} disableHoverableContent>
-                        <TooltipTrigger
-                            data-create-tree-node-button
-                            class={cn(
-                                buttonVariants({
-                                    variant: "ghost",
-                                    size: "icon",
-                                }),
-                                "flex size-5 max-h-5 min-h-5 max-w-5 min-w-5 items-center justify-center",
-                            )}
-                            onclick={event => {
-                                event.stopImmediatePropagation();
-                                explorerActionsState.createNewNode = "collection";
-                            }}
-                        >
-                            <FolderPlusIcon
-                                size={13}
-                                class="size-[13px] max-h-[13px] max-w-[13px]"
-                            />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>New Collection</p>
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
-            </div>
-        {/if}
+      ></div>
     </div>
-
-    {#if root.meta.is_expanded}
-        <div
-            class="flex h-[calc(100dvh-36px-35px-36px-22px-37px)] max-h-[calc(100dvh-36px-35px-36px-22px-37px)] w-full flex-1 flex-col overflow-y-auto"
-        >
-            {@render children()}
-            <div
-                class="min-h-8 w-full flex-grow cursor-default"
-                tabindex={-1}
-                role="button"
-                aria-grabbed="false"
-                draggable="false"
-                ondragover={event => {
-                    handleDragOver(event, {
-                        type: isCol(root) ? "collection" : "request",
-                        relpath: Path.from(root.meta.relpath),
-                    });
-                }}
-                ondrop={handleDrop}
-                ondragend={handleDragEnd}
-            ></div>
-        </div>
-    {/if}
+  {/if}
 </div>
