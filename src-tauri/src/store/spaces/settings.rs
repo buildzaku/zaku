@@ -42,15 +42,9 @@ impl Deref for SpaceSettingsStore {
 }
 
 impl SpaceSettingsStore {
-    fn new(sst_store_abspath: &Path) -> Self {
-        let datadir_abspath = sst_store_abspath
-            .parent()
-            .and_then(|p| p.parent())
-            .and_then(|p| p.parent())
-            .expect("Invalid spacesettings path structure");
-
-        let state_store_abspath = store::utils::state_store_abspath(datadir_abspath);
-        let state_store = StateStore::get(&state_store_abspath).expect("Failed to get StateStore");
+    fn new(space_abspath: &Path) -> Self {
+        let state_store = StateStore::get().expect("Failed to get StateStore");
+        let sst_store_abspath = store::utils::sst_store_abspath(space_abspath);
 
         Self {
             settings: SpaceSettings {
@@ -61,28 +55,30 @@ impl SpaceSettingsStore {
                     },
                 },
             },
-            abspath: sst_store_abspath.to_path_buf(),
+            abspath: sst_store_abspath,
         }
     }
 
-    fn init(sst_store_abspath: &Path) -> Result<Self> {
+    fn init(space_abspath: &Path) -> Result<Self> {
+        let sst_store_abspath = store::utils::sst_store_abspath(space_abspath);
+
         if !sst_store_abspath.exists() {
-            let sst_store = Self::new(sst_store_abspath);
+            let sst_store = Self::new(space_abspath);
             sst_store.fswrite()?;
 
             return Ok(sst_store);
         }
 
-        let file_content = fs::read_to_string(sst_store_abspath)?;
+        let file_content = fs::read_to_string(&sst_store_abspath)?;
 
         match serde_json::from_str::<SpaceSettings>(&file_content) {
             Ok(space_settings) => Ok(Self {
                 settings: space_settings,
-                abspath: sst_store_abspath.to_path_buf(),
+                abspath: sst_store_abspath,
             }),
             Err(_) => {
                 // corrupt JSON, use default
-                let sst_store = Self::new(sst_store_abspath);
+                let sst_store = Self::new(space_abspath);
                 sst_store.fswrite()?;
 
                 Ok(sst_store)
@@ -101,8 +97,8 @@ impl SpaceSettingsStore {
         Ok(())
     }
 
-    pub fn get(sst_store_abspath: &Path) -> Result<SpaceSettingsStore> {
-        Self::init(sst_store_abspath)
+    pub fn get(space_abspath: &Path) -> Result<SpaceSettingsStore> {
+        Self::init(space_abspath)
     }
 
     /// Updates the store using the provided mutator function and

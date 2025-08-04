@@ -1,3 +1,4 @@
+pub mod collection;
 pub mod spaces;
 pub mod state;
 pub mod utils;

@@ -1,10 +1,6 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::{
-    fs,
-    ops::Deref,
-    path::{Path, PathBuf},
-};
+use std::{fs, ops::Deref, path::PathBuf};
 
 use crate::{
     error::Result,
@@ -12,6 +8,7 @@ use crate::{
         self,
         models::{Space, SpaceReference},
     },
+    store,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type)]
@@ -36,7 +33,7 @@ pub struct SharedState {
 impl SharedState {
     pub fn from_state_store(state_store: &StateStore) -> Result<Self> {
         let parsed_space = match &state_store.spaceref {
-            Some(spaceref) => Some(space::parse_space(&spaceref.abspath, state_store)?),
+            Some(spaceref) => Some(space::parse_space(&spaceref.abspath)?),
             None => None,
         };
 
@@ -69,8 +66,14 @@ impl Deref for StateStore {
     }
 }
 
+impl Default for StateStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StateStore {
-    pub fn new(state_store_abspath: &Path) -> Self {
+    pub fn new() -> Self {
         Self {
             state: State {
                 spaceref: None,
@@ -79,28 +82,30 @@ impl StateStore {
                     default_theme: Theme::System,
                 },
             },
-            abspath: state_store_abspath.to_path_buf(),
+            abspath: store::utils::state_store_abspath(),
         }
     }
 
-    fn init(state_store_abspath: &Path) -> Result<StateStore> {
+    fn init() -> Result<StateStore> {
+        let state_store_abspath = store::utils::state_store_abspath();
+
         if !state_store_abspath.exists() {
-            let default_store = Self::new(state_store_abspath);
+            let default_store = Self::new();
             default_store.fswrite()?;
 
             return Ok(default_store);
         }
 
-        let state_content = fs::read_to_string(state_store_abspath)?;
+        let state_content = fs::read_to_string(&state_store_abspath)?;
 
         match serde_json::from_str::<State>(&state_content) {
             Ok(state) => Ok(Self {
                 state,
-                abspath: state_store_abspath.to_path_buf(),
+                abspath: state_store_abspath,
             }),
             Err(_) => {
                 // corrupt JSON, use default
-                let default_store = Self::new(state_store_abspath);
+                let default_store = Self::new();
                 default_store.fswrite()?;
 
                 Ok(default_store)
@@ -119,8 +124,8 @@ impl StateStore {
         Ok(())
     }
 
-    pub fn get(state_store_abspath: &Path) -> Result<StateStore> {
-        Self::init(state_store_abspath)
+    pub fn get() -> Result<StateStore> {
+        Self::init()
     }
 
     /// Updates the store using the provided mutator function and
@@ -136,12 +141,5 @@ impl StateStore {
     /// Consumes the store and returns the inner `State`
     pub fn into_inner(self) -> State {
         self.state
-    }
-
-    /// Returns the data directory, which is the parent directory of the state store file
-    pub fn datadir_abspath(&self) -> &Path {
-        self.abspath
-            .parent()
-            .expect("StateStore abspath should have a parent directory")
     }
 }

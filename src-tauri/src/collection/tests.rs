@@ -5,14 +5,14 @@ use std::{
 };
 
 use crate::{
-    collection::{
-        self,
-        models::{CreateCollectionDto, SpaceCollectionsMetadata, SpaceCollectionsMetadataStore},
-    },
+    collection::{self, models::CreateCollectionDto},
     error::Error,
     models::SanitizedSegment,
     request::{self, models::CreateRequestDto},
-    store::{self},
+    store::{
+        self,
+        collection::{SpaceCollectionsMetadata, SpaceCollectionsMetadataStore},
+    },
     utils,
 };
 
@@ -192,7 +192,7 @@ fn parse_root_collection_should_match_created_structure() {
             .expect("Failed to create request");
     }
 
-    let root_collection = collection::parse_root_collection(&tmp_space_abspath, &state_store)
+    let root_collection = collection::parse_root_collection(&tmp_space_abspath)
         .expect("Failed to parse root collection");
 
     let mut stack = vec![(&root_collection, String::new())];

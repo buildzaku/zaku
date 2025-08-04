@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use std::{
     collections::HashMap,
     fs,
@@ -11,12 +10,12 @@ use std::{
 use crate::{
     error::{Error, Result},
     request::models::HttpReq,
-    utils,
+    store, utils,
 };
 
 static SBF_STORE_UPDATE_LOCK: Mutex<()> = Mutex::new(());
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpaceBuffer {
     pub requests: HashMap<PathBuf, ReqBuffer>,
 }
@@ -42,34 +41,38 @@ impl DerefMut for SpaceBufferStore {
 }
 
 impl SpaceBufferStore {
-    fn new(sbf_store_abspath: &Path) -> Self {
+    fn new(space_abspath: &Path) -> Self {
+        let sbf_store_abspath = store::utils::sbf_store_abspath(space_abspath);
+
         Self {
             buffer: SpaceBuffer {
                 requests: HashMap::<PathBuf, ReqBuffer>::new(),
             },
-            abspath: sbf_store_abspath.to_path_buf(),
+            abspath: sbf_store_abspath,
         }
     }
 
-    fn init(sbf_store_abspath: &Path) -> Result<Arc<Mutex<SpaceBufferStore>>> {
+    fn init(space_abspath: &Path) -> Result<Arc<Mutex<SpaceBufferStore>>> {
+        let sbf_store_abspath = store::utils::sbf_store_abspath(space_abspath);
+
         if !sbf_store_abspath.exists() {
-            let default_buffer = Arc::new(Mutex::new(Self::new(sbf_store_abspath)));
+            let default_buffer = Arc::new(Mutex::new(Self::new(space_abspath)));
             Self::fswrite(&default_buffer)?;
 
             return Ok(default_buffer);
         }
 
-        let content = fs::read_to_string(sbf_store_abspath)
+        let content = fs::read_to_string(&sbf_store_abspath)
             .map_err(|_| Error::FileReadError("Failed to read from space buffer".into()))?;
 
         let sbf_store = match serde_json::from_str::<SpaceBuffer>(&content) {
             Ok(buffer) => Self {
                 buffer,
-                abspath: sbf_store_abspath.to_path_buf(),
+                abspath: sbf_store_abspath,
             },
             Err(_) => {
                 // corrupt JSON, use default
-                let default_buffer = Self::new(sbf_store_abspath);
+                let default_buffer = Self::new(space_abspath);
                 let buffer_arc = Arc::new(Mutex::new(default_buffer));
                 Self::fswrite(&buffer_arc)?;
 
@@ -95,8 +98,8 @@ impl SpaceBufferStore {
         Ok(())
     }
 
-    pub fn get(sbf_store_abspath: &Path) -> Result<Arc<Mutex<SpaceBufferStore>>> {
-        Self::init(sbf_store_abspath)
+    pub fn get(space_abspath: &Path) -> Result<Arc<Mutex<SpaceBufferStore>>> {
+        Self::init(space_abspath)
     }
 
     /// Updates the store using the provided mutator function and
@@ -119,13 +122,13 @@ impl SpaceBufferStore {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReqBufferMeta {
     pub fsname: String,
     pub name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReqBufferUrl {
     #[serde(skip_serializing_if = "utils::is_string_none_or_empty")]
     pub raw: Option<String>,
@@ -140,7 +143,7 @@ pub struct ReqBufferUrl {
     pub path: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReqBufferCfg {
     pub method: String,
     pub url: ReqBufferUrl,
@@ -158,7 +161,7 @@ pub struct ReqBufferCfg {
     pub body: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReqBuffer {
     pub meta: ReqBufferMeta,
     pub config: ReqBufferCfg,
