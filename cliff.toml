@@ -16,6 +16,11 @@ conventional_commits = true
 filter_unconventional = false
 split_commits = false
 
+commit_preprocessors = [
+  { pattern = '\((closes?|fixes?|resolves?)\s+#([0-9]+)\)', replace = "([${1} #${2}](https://github.com/buildzaku/zaku/issues/${2}))" },
+  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/buildzaku/zaku/pull/${1}))" },
+]
+
 commit_parsers = [
     { message = "^feat!", group = "<!-- 0 -->Breaking Changes" },
     { message = "^feat", group = "<!-- 1 -->Features" },
