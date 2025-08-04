@@ -6,7 +6,6 @@ use std::path::PathBuf;
 pub mod collection;
 pub mod commands;
 pub mod error;
-pub mod macros;
 pub mod models;
 pub mod notifications;
 pub mod platform;

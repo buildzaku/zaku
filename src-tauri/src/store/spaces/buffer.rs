@@ -10,8 +10,8 @@ use std::{
 
 use crate::{
     error::{Error, Result},
-    macros::is_string_none_or_empty,
     request::models::HttpReq,
+    utils,
 };
 
 static SBF_STORE_UPDATE_LOCK: Mutex<()> = Mutex::new(());
@@ -127,16 +127,16 @@ pub struct ReqBufferMeta {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
 pub struct ReqBufferUrl {
-    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    #[serde(skip_serializing_if = "utils::is_string_none_or_empty")]
     pub raw: Option<String>,
 
-    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    #[serde(skip_serializing_if = "utils::is_string_none_or_empty")]
     pub protocol: Option<String>,
 
-    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    #[serde(skip_serializing_if = "utils::is_string_none_or_empty")]
     pub host: Option<String>,
 
-    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    #[serde(skip_serializing_if = "utils::is_string_none_or_empty")]
     pub path: Option<String>,
 }
 
@@ -151,10 +151,10 @@ pub struct ReqBufferCfg {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<(bool, String, String)>,
 
-    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    #[serde(skip_serializing_if = "utils::is_string_none_or_empty")]
     pub content_type: Option<String>,
 
-    #[serde(skip_serializing_if = "is_string_none_or_empty")]
+    #[serde(skip_serializing_if = "utils::is_string_none_or_empty")]
     pub body: Option<String>,
 }
 
