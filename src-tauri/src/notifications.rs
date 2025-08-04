@@ -1,12 +1,12 @@
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::{Decoder, OutputStreamBuilder, Sink};
 use std::{fs::File, io::BufReader, path::PathBuf};
 use tauri::{AppHandle, Manager, path::BaseDirectory};
 
 use crate::error::{Error, Result};
 
 pub fn play_finish(app_handle: &AppHandle) -> Result<()> {
-    let (_stream, stream_handle) = OutputStream::try_default()?;
-    let sink = Sink::try_new(&stream_handle)?;
+    let stream_handle = OutputStreamBuilder::open_default_stream()?;
+    let sink = Sink::connect_new(stream_handle.mixer());
     let sound_filepath = app_handle
         .path()
         .resolve(

@@ -5,7 +5,7 @@ use {
     wgpu::{
         BackendOptions, Backends, DeviceType, Dx12BackendOptions, Dx12Compiler, GlBackendOptions,
         GlFenceBehavior, Gles3MinorVersion, Instance, InstanceDescriptor, InstanceFlags,
-        NoopBackendOptions,
+        MemoryBudgetThresholds, NoopBackendOptions,
     },
 };
 
@@ -23,8 +23,9 @@ fn has_nvidia_gpu() -> bool {
     const NVIDIA_VENDOR_ID: u32 = 0x10DE;
 
     let instance_descriptor = InstanceDescriptor {
-        flags: InstanceFlags::empty(),
         backends: Backends::VULKAN | Backends::GL,
+        flags: InstanceFlags::empty(),
+        memory_budget_thresholds: MemoryBudgetThresholds::default(),
         backend_options: BackendOptions {
             gl: GlBackendOptions {
                 gles_minor_version: Gles3MinorVersion::Automatic,

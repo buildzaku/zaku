@@ -9,34 +9,34 @@ homepage = "https://zaku.app"
 edition = "2024"
 
 [build-dependencies]
-tauri-build = { version = "2.2.0", features = [] }
+tauri-build = { version = "2.3.1", features = [] }
 
 [dev-dependencies]
-tempfile = "3.20.0"
+tempfile = { version = "3.20.0" }
 
 [dependencies]
 cookie = { version = "0.18.1" }
 cookie_store = { version = "0.21.1" }
 derive_more = { version = "2.0.1", features = ["from"] }
 dirs = { version = "6.0.0" }
-indexmap = { version = "2.9.0", features = ["serde"] }
+indexmap = { version = "2.10.0", features = ["serde"] }
 reqwest = { version = "0.12.22", features = ["json", "multipart", "cookies"] }
-reqwest_cookie_store = { version = "0.8.0" }
-rodio = { version = "0.20.1" }
+reqwest_cookie_store = { version = "0.8.2" }
+rodio = { version = "0.21.1" }
 serde = { version = "1.0.219", features = ["derive"] }
-serde_json = { version = "1.0.140" }
+serde_json = { version = "1.0.142" }
 sha2 = { version = "0.10.8" }
 specta = { version = "=2.0.0-rc.22" }
 specta-typescript = { version = "0.0.9" }
-tauri = { version = "2.5.1", features = ["devtools"] }
-tauri-plugin-dialog = { version = "2.2.1" }
-tauri-plugin-global-shortcut = { version = "2.2.0" }
-tauri-plugin-notification = { version = "2.2.2" }
+tauri = { version = "2.7.0", features = ["devtools"] }
+tauri-plugin-dialog = { version = "2.3.2" }
+tauri-plugin-global-shortcut = { version = "2.3.0" }
+tauri-plugin-notification = { version = "2.3.0" }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 time = { version = "0.3.41" }
-tokio = { version = "1.46.1" }
-toml = { version = "0.8.20", features = ["preserve_order"] }
+tokio = { version = "1.47.1" }
+toml = { version = "0.9.4", features = ["preserve_order"] }
 url = { version = "2.5.4" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-wgpu = { version = "25.0.0", default-features = false }
+wgpu = { version = "26.0.1", default-features = false }
