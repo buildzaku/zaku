@@ -145,7 +145,11 @@ pub struct ReqBufferUrl {
 pub struct ReqBufferCfg {
     pub method: String,
     pub url: ReqBufferUrl,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<(bool, String, String)>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub parameters: Vec<(bool, String, String)>,
 
     #[serde(skip_serializing_if = "is_string_none_or_empty")]
