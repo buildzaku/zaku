@@ -12,6 +12,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum Theme {
     System,
     Light,
@@ -24,20 +25,20 @@ pub struct UserSettings {
 }
 
 #[derive(Debug, Serialize, Deserialize, Type)]
-pub struct SharedState {
+pub struct AppState {
     pub space: Option<Space>,
     pub spacerefs: Vec<SpaceReference>,
     pub user_settings: UserSettings,
 }
 
-impl SharedState {
+impl AppState {
     pub fn from_state_store(state_store: &StateStore) -> Result<Self> {
         let parsed_space = match &state_store.spaceref {
             Some(spaceref) => Some(space::parse_space(&spaceref.abspath)?),
             None => None,
         };
 
-        Ok(SharedState {
+        Ok(AppState {
             space: parsed_space,
             spacerefs: state_store.spacerefs.clone(),
             user_settings: state_store.user_settings.clone(),

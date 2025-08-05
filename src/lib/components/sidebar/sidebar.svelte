@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { sharedState, explorerActionsState } from "$lib/state.svelte";
+  import { appStateRx, explorerActionsState } from "$lib/state.svelte";
   import { Button, buttonVariants } from "$lib/components/primitives/button";
   import { CookieIcon, SettingsIcon, ChevronsLeftIcon, CompassIcon, XIcon } from "@lucide/svelte";
   import type { PaneAPI } from "paneforge";
@@ -22,7 +22,6 @@
     DialogTitle,
     DialogDescription,
     DialogContent,
-    DialogFooter,
   } from "$lib/components/primitives/dialog";
   import {
     Accordion,
@@ -33,72 +32,14 @@
   import { Badge } from "$lib/components/primitives/badge";
   import { commands } from "$lib/bindings";
   import type { Space, SerializedCookie } from "$lib/bindings";
-  import { toast } from "svelte-sonner";
-  import { Checkbox } from "$lib/components/primitives/checkbox";
-  import { Label } from "$lib/components/primitives/label";
   import { emitCmdError } from "$lib/utils";
+  import { SettingsDialog } from "$lib/components/settings-dialog";
 
-  type Props = {
-    pane: PaneAPI;
-    isCollapsed: boolean;
-  };
-
+  type Props = { pane: PaneAPI; isCollapsed: boolean };
   let { pane, isCollapsed = $bindable() }: Props = $props();
 
   const rootRelpath = Path.from("");
-
-  let spaceSettingsStr: string = $state(
-    sharedState.space ? JSON.stringify(sharedState.space.settings) : String(),
-  );
 </script>
-
-{#snippet settingsButton(space: Space)}
-  <Dialog>
-    <DialogTrigger
-      class={buttonVariants({
-        variant: "ghost",
-        size: "icon",
-      })}
-    >
-      <SettingsIcon strokeWidth={1.25} size={16} />
-      <span class="sr-only">Settings</span>
-    </DialogTrigger>
-    <DialogContent class="flex h-[80%] max-h-[80%] w-[80%] max-w-[80%] flex-col">
-      <DialogHeader>
-        <DialogTitle>Settings</DialogTitle>
-        <DialogDescription>Manage space settings</DialogDescription>
-      </DialogHeader>
-      <div class="flex h-full max-h-[calc(100%-1.5rem)] flex-col overflow-y-auto">
-        <h3 class="text-medium mb-3 leading-none font-semibold tracking-tight">Notifications</h3>
-        <div class="flex items-center gap-1.5">
-          <Checkbox
-            id="settings.notifications.audio.on_req_finish"
-            bind:checked={space.settings.notifications.audio.on_req_finish}
-          />
-          <Label for="settings.notifications.audio.on_req_finish">
-            Play sound when a request finishes
-          </Label>
-        </div>
-      </div>
-      <DialogFooter>
-        <Button
-          disabled={spaceSettingsStr === JSON.stringify(space.settings)}
-          onclick={async () => {
-            const saveSpaceResult = await commands.saveSpaceSettings(space.abspath, space.settings);
-            if (saveSpaceResult.status !== "ok") {
-              return emitCmdError(saveSpaceResult.error);
-            }
-
-            spaceSettingsStr = JSON.stringify(space.settings);
-            toast.success(`Changes saved to space settings`);
-          }}
-        >
-          Save
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-{/snippet}
 
 {#snippet cookiesContent(space: Space, domain: string, cookies: SerializedCookie[])}
   <div class="flex gap-1.5">
@@ -167,8 +108,8 @@
   </Dialog>
 {/snippet}
 
-{#if sharedState.space}
-  {@const spaceSnapshot = sharedState.space}
+{#if appStateRx.space}
+  {@const spaceSnapshot = appStateRx.space}
   <div class="flex size-full flex-col justify-between">
     <!-- align-marker: matches ResizablePane's mt-px -->
     <div class="flex w-full items-center justify-center gap-1.5 border-b p-1.5 pt-px">
@@ -234,11 +175,23 @@
     {#if isCollapsed}
       <div class="flex flex-col items-center justify-between gap-1.5 border-t p-1.5">
         {@render cookiesButton(spaceSnapshot)}
-        {@render settingsButton(spaceSnapshot)}
+        <Dialog>
+          <DialogTrigger class={buttonVariants({ variant: "ghost", size: "icon" })}>
+            <SettingsIcon strokeWidth={1.25} size={16} />
+            <span class="sr-only">Settings</span>
+          </DialogTrigger>
+          <SettingsDialog />
+        </Dialog>
       </div>
     {:else}
       <div class="flex items-center justify-between gap-1.5 border-t p-1.5">
-        {@render settingsButton(spaceSnapshot)}
+        <Dialog>
+          <DialogTrigger class={buttonVariants({ variant: "ghost", size: "icon" })}>
+            <SettingsIcon strokeWidth={1.25} size={16} />
+            <span class="sr-only">Settings</span>
+          </DialogTrigger>
+          <SettingsDialog />
+        </Dialog>
         {@render cookiesButton(spaceSnapshot)}
       </div>
     {/if}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from "$lib/components/primitives/button";
   import { goto } from "$app/navigation";
-  import { sharedState } from "$lib/state.svelte";
+  import { appStateRx } from "$lib/state.svelte";
   import { SpaceCreateDialog } from "$lib/components/space";
   import { commands } from "$lib/bindings";
   import { emitCmdError } from "$lib/utils";
@@ -24,7 +24,7 @@
       return emitCmdError(getSpaceRefResult.error);
     }
 
-    await sharedState.setSpace(getSpaceRefResult.data);
+    await appStateRx.setSpace(getSpaceRefResult.data);
     await goto("/space");
   }
 </script>

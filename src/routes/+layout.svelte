@@ -4,12 +4,14 @@
   import { dev } from "$app/environment";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
-  import { ModeWatcher } from "mode-watcher";
+  import { ModeWatcher, setMode } from "mode-watcher";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import type { UnlistenFn } from "@tauri-apps/api/event";
 
   import "../app.css";
   import { Toaster } from "$lib/components/primitives/sonner";
   import { TitleBar } from "$lib/components/title-bar";
-  import { sharedState } from "$lib/state.svelte";
+  import { appStateRx } from "$lib/state.svelte";
   import { commands } from "$lib/bindings";
 
   let { children }: { children: Snippet } = $props();
@@ -18,13 +20,21 @@
     event.preventDefault();
   };
 
+  let unlistenThemeChange: UnlistenFn;
+
   onMount(async () => {
+    unlistenThemeChange = await getCurrentWindow().onThemeChanged(({ payload: theme }) => {
+      if (appStateRx.space?.settings.theme === "system") {
+        setMode(theme);
+      }
+    });
+
     if (!dev) {
       document.addEventListener("contextmenu", disableContextMenu);
     }
-    await sharedState.synchronize();
+    await appStateRx.synchronize();
 
-    if (sharedState.space !== null) {
+    if (appStateRx.space !== null) {
       await goto("/space");
     } else if (page.url.pathname !== "/") {
       await goto("/");
@@ -35,7 +45,7 @@
   });
 
   $effect(() => {
-    if (sharedState.space === null) {
+    if (appStateRx.space === null) {
       goto("/");
     }
   });
@@ -44,10 +54,12 @@
     if (!dev) {
       document.removeEventListener("contextmenu", disableContextMenu);
     }
+
+    unlistenThemeChange();
   });
 </script>
 
-<ModeWatcher defaultMode="dark" track={false} />
+<ModeWatcher defaultMode="system" track={false} />
 <Toaster />
 <main class="bg-background">
   <TitleBar class="h-[36px]" />

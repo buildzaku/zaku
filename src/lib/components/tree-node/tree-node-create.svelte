@@ -3,7 +3,7 @@
   import { listen, TauriEvent } from "@tauri-apps/api/event";
   import type { UnlistenFn } from "@tauri-apps/api/event";
 
-  import { sharedState, explorerActionsState, explorerState } from "$lib/state.svelte";
+  import { appStateRx, explorerActionsState, explorerState } from "$lib/state.svelte";
   import { cn, requestColors } from "$lib/utils/style";
   import { CollectionIcon } from "$lib/components/icons";
   import { commands } from "$lib/bindings";
@@ -49,7 +49,7 @@
       }
 
       inputRelpath = "";
-      await sharedState.synchronize();
+      await appStateRx.synchronize();
 
       explorerState.setFocussedNode({
         type: "collection",
@@ -72,7 +72,7 @@
       }
 
       inputRelpath = "";
-      await sharedState.synchronize();
+      await appStateRx.synchronize();
 
       explorerState.setFocussedNode({
         type: "request",

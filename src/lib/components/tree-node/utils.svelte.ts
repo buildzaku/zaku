@@ -2,7 +2,7 @@ import { mount, unmount } from "svelte";
 import { toast } from "svelte-sonner";
 
 import { TreeNodePreview } from "$lib/components/tree-node";
-import { sharedState, explorerActionsState } from "$lib/state.svelte";
+import { appStateRx, explorerActionsState } from "$lib/state.svelte";
 import type { DragOverDto, TreeNode } from "$lib/models";
 import { Path } from "$lib/utils/path";
 import { commands } from "$lib/bindings";
@@ -121,7 +121,7 @@ export async function handleDrop(event: DragEvent) {
     return emitCmdError(moveTreeNodeResult.error);
   }
 
-  await sharedState.synchronize();
+  await appStateRx.synchronize();
 }
 
 export function handleDragOver(event: DragEvent, dragOverDto: DragOverDto) {

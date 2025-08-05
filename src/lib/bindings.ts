@@ -3,9 +3,9 @@
 /** user-defined commands **/
 
 export const commands = {
-  async getSharedState(): Promise<Result<SharedState, CmdErr>> {
+  async getAppState(): Promise<Result<AppState, CmdErr>> {
     try {
-      return { status: "ok", data: await TAURI_INVOKE("get_shared_state") };
+      return { status: "ok", data: await TAURI_INVOKE("get_app_state") };
     } catch (e) {
       if (e instanceof Error) throw e;
       else return { status: "error", error: e as any };
@@ -76,6 +76,14 @@ export const commands = {
         status: "ok",
         data: await TAURI_INVOKE("save_space_settings", { spaceAbspath, spaceSettings }),
       };
+    } catch (e) {
+      if (e instanceof Error) throw e;
+      else return { status: "error", error: e as any };
+    }
+  },
+  async saveUserSettings(userSettings: UserSettings): Promise<Result<null, CmdErr>> {
+    try {
+      return { status: "ok", data: await TAURI_INVOKE("save_user_settings", { userSettings }) };
     } catch (e) {
       if (e instanceof Error) throw e;
       else return { status: "error", error: e as any };
@@ -189,6 +197,11 @@ export const commands = {
 
 /** user-defined types **/
 
+export type AppState = {
+  space: Space | null;
+  spacerefs: SpaceReference[];
+  user_settings: UserSettings;
+};
 export type AudioNotification = { on_req_finish: boolean };
 export type CmdErr = { kind: ErrorKind; message: string; details: string | null };
 export type Collection = { meta: CollectionMeta; requests: HttpReq[]; collections: Collection[] };
@@ -271,11 +284,6 @@ export type SerializedCookie = {
   same_site: string | null;
   expires: string | null;
 };
-export type SharedState = {
-  space: Space | null;
-  spacerefs: SpaceReference[];
-  user_settings: UserSettings;
-};
 export type Space = {
   abspath: string;
   meta: SpaceMeta;
@@ -286,7 +294,7 @@ export type Space = {
 export type SpaceMeta = { name: string };
 export type SpaceReference = { abspath: string; name: string };
 export type SpaceSettings = { theme: Theme; notifications: NotificationSettings };
-export type Theme = "System" | "Light" | "Dark";
+export type Theme = "system" | "light" | "dark";
 export type UserSettings = { default_theme: Theme };
 
 /** tauri-specta globals **/
