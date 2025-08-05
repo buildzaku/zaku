@@ -1,8 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use specta_typescript::{Typescript, formatter};
-use std::path::PathBuf;
-
 pub mod collection;
 pub mod commands;
 pub mod error;
@@ -16,13 +13,6 @@ pub mod store;
 pub mod tree_node;
 pub mod utils;
 
-fn ts_bindings_path() -> PathBuf {
-    PathBuf::from("..")
-        .join("src")
-        .join("lib")
-        .join("bindings.ts")
-}
-
 fn main() {
     #[cfg(target_os = "linux")]
     platform::linux::initialize().expect("Failed to initialize linux platform");
@@ -32,12 +22,20 @@ fn main() {
         .error_handling(tauri_specta::ErrorHandlingMode::Result);
 
     #[cfg(debug_assertions)]
-    builder
-        .export(
-            Typescript::default().formatter(formatter::prettier),
-            ts_bindings_path(),
-        )
-        .expect("Failed to export typescript bindings");
+    {
+        use specta_typescript::{Typescript, formatter};
+        use std::path::PathBuf;
+
+        builder
+            .export(
+                Typescript::default().formatter(formatter::prettier),
+                PathBuf::from("..")
+                    .join("src")
+                    .join("lib")
+                    .join("bindings.ts"),
+            )
+            .expect("Failed to export typescript bindings");
+    }
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
