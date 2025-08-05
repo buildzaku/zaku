@@ -21,9 +21,9 @@ use crate::{
         models::{CreateSpaceDto, RemoveCookieDto, SerializedCookie, SpaceReference},
     },
     store::{
-        ReqBuffer, SpaceCookieStore, SpaceSettings, StateStore,
+        ReqBuffer, SpaceCookieStore, SpaceSettings, StateStore, UserSettings,
         spaces::{buffer::SpaceBufferStore, settings::SpaceSettingsStore},
-        state::SharedState,
+        state::AppState,
     },
     tree_node::{self, MoveTreeNodeDto},
 };
@@ -32,7 +32,7 @@ pub mod models;
 
 pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
     tauri_specta::collect_commands![
-        get_shared_state,
+        get_app_state,
         create_space,
         set_space,
         remove_space,
@@ -40,6 +40,7 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
         remove_cookie,
         get_space_cookies,
         save_space_settings,
+        save_user_settings,
         show_main_window,
         open_dir_dialog,
         is_notif_enabled,
@@ -56,20 +57,20 @@ pub fn collect() -> tauri_specta::Commands<tauri::Wry> {
 
 #[specta::specta]
 #[tauri::command]
-pub fn get_shared_state() -> CmdResult<SharedState> {
+pub fn get_app_state() -> CmdResult<AppState> {
     let state_store = StateStore::get().map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Unable to load state store".to_string(),
+        message: "Unable to load application state".to_string(),
         details: Some(err.to_string()),
     })?;
 
-    let shared_state = SharedState::from_state_store(&state_store).map_err(|err| CmdErr {
+    let app_state = AppState::from_state_store(&state_store).map_err(|err| CmdErr {
         kind: ErrorKind::ParseError,
         message: "Unable to parse space".to_string(),
         details: Some(err.to_string()),
     })?;
 
-    Ok(shared_state)
+    Ok(app_state)
 }
 
 #[specta::specta]
@@ -77,7 +78,7 @@ pub fn get_shared_state() -> CmdResult<SharedState> {
 pub async fn create_collection(dto: CreateCollectionDto) -> CmdResult<CreateNewCollection> {
     let state_store = StateStore::get().map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Unable to load state store".to_string(),
+        message: "Unable to load application state".to_string(),
         details: Some(err.to_string()),
     })?;
 
@@ -199,7 +200,7 @@ pub fn dispatch_notif(
 pub async fn create_req(dto: CreateRequestDto) -> CmdResult<CreateNewRequest> {
     let state_store = StateStore::get().map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Unable to load state store".to_string(),
+        message: "Unable to load application state".to_string(),
         details: Some(err.to_string()),
     })?;
 
@@ -423,7 +424,7 @@ pub async fn http_req(req: HttpReq, app_handle: tauri::AppHandle) -> CmdResult<H
 pub async fn create_space(create_space_dto: CreateSpaceDto) -> CmdResult<SpaceReference> {
     let mut state_store = StateStore::get().map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Unable to load state store".to_string(),
+        message: "Unable to load application state".to_string(),
         details: Some(err.to_string()),
     })?;
 
@@ -451,7 +452,7 @@ pub fn set_space(space_reference: SpaceReference) -> CmdResult<()> {
 
     let mut state_store = StateStore::get().map_err(|e| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Unable to load state store for validation".to_string(),
+        message: "Unable to load application state for validation".to_string(),
         details: Some(e.to_string()),
     })?;
 
@@ -488,7 +489,7 @@ pub fn set_space(space_reference: SpaceReference) -> CmdResult<()> {
 pub fn remove_space(space_reference: SpaceReference) -> CmdResult<()> {
     let mut state_store = StateStore::get().map_err(|e| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Unable to load state store".to_string(),
+        message: "Unable to load application state".to_string(),
         details: Some(e.to_string()),
     })?;
 
@@ -636,6 +637,28 @@ pub async fn save_space_settings(
 
 #[specta::specta]
 #[tauri::command]
+pub async fn save_user_settings(user_settings: UserSettings) -> CmdResult<()> {
+    let mut state_store = StateStore::get().map_err(|err| CmdErr {
+        kind: ErrorKind::FileReadError,
+        message: "Unable to load application state".to_string(),
+        details: Some(err.to_string()),
+    })?;
+
+    state_store
+        .update(|cur_state| {
+            cur_state.user_settings = user_settings;
+        })
+        .map_err(|err| CmdErr {
+            kind: ErrorKind::FileWriteError,
+            message: "Unable to save user settings".to_string(),
+            details: Some(err.to_string()),
+        })?;
+
+    Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
 pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
     window.get_webview_window("main").unwrap().show().unwrap();
 
@@ -647,7 +670,7 @@ pub fn show_main_window(window: tauri::Window) -> CmdResult<()> {
 pub async fn move_tree_node(dto: MoveTreeNodeDto) -> CmdResult<()> {
     let state_store = StateStore::get().map_err(|err| CmdErr {
         kind: ErrorKind::FileReadError,
-        message: "Unable to load state store".to_string(),
+        message: "Unable to load application state".to_string(),
         details: Some(err.to_string()),
     })?;
 

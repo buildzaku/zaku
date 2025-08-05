@@ -2,7 +2,7 @@
   import { goto } from "$app/navigation";
   import { ChevronDownIcon, CheckIcon, PyramidIcon } from "@lucide/svelte";
 
-  import { explorerActionsState, explorerState, sharedState } from "$lib/state.svelte";
+  import { explorerActionsState, explorerState, appStateRx } from "$lib/state.svelte";
   import { buttonVariants } from "$lib/components/primitives/button";
   import {
     DropdownMenu,
@@ -41,13 +41,13 @@
       return emitCmdError(getSpaceRefResult.error);
     }
 
-    await sharedState.setSpace(getSpaceRefResult.data);
+    await appStateRx.setSpace(getSpaceRefResult.data);
     await goto("/space");
   }
 
   async function handleDeleteSpace() {
-    if (sharedState.space) {
-      const getSpaceRefResult = await commands.getSpaceref(sharedState.space.abspath);
+    if (appStateRx.space) {
+      const getSpaceRefResult = await commands.getSpaceref(appStateRx.space.abspath);
       if (getSpaceRefResult.status !== "ok") {
         return emitCmdError(getSpaceRefResult.error);
       }
@@ -56,14 +56,14 @@
       if (removeSpaceResult.status !== "ok") {
         return emitCmdError(removeSpaceResult.error);
       }
-      await sharedState.synchronize();
+      await appStateRx.synchronize();
 
       return;
     }
   }
 </script>
 
-{#if sharedState.space}
+{#if appStateRx.space}
   <DropdownMenu>
     <DropdownMenuTrigger
       class={cn(
@@ -79,7 +79,7 @@
       {#if !isSidebarCollapsed}
         <div class="flex min-w-0 grow items-center justify-between">
           <span class="min-w-0 truncate overflow-hidden pr-0.5 text-ellipsis whitespace-nowrap">
-            {sharedState.space.meta.name}
+            {appStateRx.space.meta.name}
           </span>
           <ChevronDownIcon size={14} class="max-h-[14px] max-w-[14px]" />
         </div>
@@ -95,11 +95,11 @@
           <p>Switch Space</p>
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent class="w-[185px]" sideOffset={4}>
-          {#each sharedState.spaceRefs as spaceRef (spaceRef.abspath)}
+          {#each appStateRx.spacerefs as spaceRef (spaceRef.abspath)}
             <DropdownMenuItem
               class="text-small flex h-7 justify-between rounded-md px-2"
               onclick={async () => {
-                await sharedState.setSpace(spaceRef);
+                await appStateRx.setSpace(spaceRef);
                 explorerActionsState.reset();
                 explorerState.reset();
               }}
@@ -107,7 +107,7 @@
               <div class="flex items-center overflow-hidden">
                 <span class="truncate">{spaceRef.name}</span>
               </div>
-              {#if spaceRef.abspath === sharedState.space.abspath}
+              {#if spaceRef.abspath === appStateRx.space.abspath}
                 <CheckIcon size={14} class="max-h-[14px] max-w-[14px]" />
               {/if}
             </DropdownMenuItem>

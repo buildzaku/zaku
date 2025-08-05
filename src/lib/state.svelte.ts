@@ -4,22 +4,24 @@ import { version } from "$app/environment";
 
 import type { OpenRequest, FocussedTreeNode, TreeNode } from "$lib/models";
 import { commands } from "$lib/bindings";
-import type { SpaceReference, Space, HttpReq, NodeType } from "$lib/bindings";
+import type { SpaceReference, Space, HttpReq, NodeType, UserSettings } from "$lib/bindings";
 import { Path } from "$lib/utils/path";
 import { emitCmdError } from "$lib/utils";
 
-class SharedState {
+class AppStateRx {
   public space: Space | null = $state(null);
-  public spaceRefs: SpaceReference[] = $state([]);
+  public spacerefs: SpaceReference[] = $state([]);
+  public userSettings: UserSettings | null = $state(null);
 
   public async synchronize() {
-    const getSharedStateResult = await commands.getSharedState();
+    const getSharedStateResult = await commands.getAppState();
     if (getSharedStateResult.status !== "ok") {
       return emitCmdError(getSharedStateResult.error);
     }
 
     this.space = getSharedStateResult.data.space;
-    this.spaceRefs = getSharedStateResult.data.spacerefs;
+    this.spacerefs = getSharedStateResult.data.spacerefs;
+    this.userSettings = getSharedStateResult.data.user_settings;
 
     explorerActionsState.reset();
     await tick();
@@ -35,7 +37,7 @@ class SharedState {
   }
 }
 
-export const sharedState = new SharedState();
+export const appStateRx = new AppStateRx();
 
 class ExplorerActionsState {
   public dragNode: TreeNode | null = $state(null);

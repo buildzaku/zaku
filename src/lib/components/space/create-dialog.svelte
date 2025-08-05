@@ -11,7 +11,7 @@
   import { Label } from "$lib/components/primitives/label";
   import { Input } from "$lib/components/primitives/input";
   import { tick } from "svelte";
-  import { sharedState } from "$lib/state.svelte";
+  import { appStateRx } from "$lib/state.svelte";
   import { commands } from "$lib/bindings";
   import { emitCmdError } from "$lib/utils";
 
@@ -53,7 +53,7 @@
       return emitCmdError(createSpaceResult.error);
     }
 
-    await sharedState.setSpace(createSpaceResult.data);
+    await appStateRx.setSpace(createSpaceResult.data);
     isOpen = false;
 
     await onCreate();

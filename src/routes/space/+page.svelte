@@ -13,7 +13,7 @@
   import { ConfigurationPane } from "$lib/components/configuration-pane";
   import { ResponsePane } from "$lib/components/response-pane";
   import { cn } from "$lib/utils/style";
-  import { explorerState, debounced, sharedState, baseRequestHeaders } from "$lib/state.svelte";
+  import { explorerState, debounced, appStateRx, baseRequestHeaders } from "$lib/state.svelte";
   import { REQUEST_BODY_TYPES } from "$lib/utils/constants";
   import { commands } from "$lib/bindings";
   import type { HttpReq, ReqUrl } from "$lib/bindings";
@@ -29,7 +29,7 @@
   let isResPaneCollapsed = $state(false);
 
   async function handleSend() {
-    const spaceSnapshot = sharedState.space;
+    const spaceSnapshot = appStateRx.space;
     const openReqSnapshot = explorerState.openRequest;
     if (!spaceSnapshot || !openReqSnapshot) return;
 
@@ -119,7 +119,7 @@
   }
 
   async function handleSave(event: KeyboardEvent) {
-    const spaceSnapshot = sharedState.space;
+    const spaceSnapshot = appStateRx.space;
     const openReqSnapshot = explorerState.openRequest;
     if (!spaceSnapshot || !openReqSnapshot) return;
 
@@ -145,10 +145,10 @@
   }
 
   const openReqSnapshot = explorerState.openRequest;
-  const spaceSnapshot = $state.snapshot(sharedState.space);
+  const spaceSnapshot = $state.snapshot(appStateRx.space);
   let isOpenReqSavedToFs = false;
   let prevOpenReqRelPath = openReqSnapshot ? openReqSnapshot.self.meta.relpath : null;
-  let prevSpaceAbspath = sharedState.space ? sharedState.space.abspath : null;
+  let prevSpaceAbspath = appStateRx.space ? appStateRx.space.abspath : null;
 
   // Be very carefull when adding reactive state variables to this
   $effect(() => {

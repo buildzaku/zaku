@@ -48,7 +48,7 @@ fn state_store_get_loads_existing_store_from_filesystem() {
             }
         ],
         "user_settings": {
-            "default_theme": "System"
+            "default_theme": "system"
         }
     });
     fs::write(&store_abspath, json_content.to_string()).unwrap();
@@ -134,7 +134,7 @@ fn state_store_get_loads_existing_settings_from_filesystem() {
         "spaceref": null,
         "spacerefs": [],
         "user_settings": {
-            "default_theme": "Dark"
+            "default_theme": "dark"
         }
     });
     fs::write(&state_store_abspath, json_content.to_string()).unwrap();
@@ -163,7 +163,7 @@ fn state_store_handles_corrupt_json_by_using_default() {
     assert_eq!(state_store.user_settings.default_theme, Theme::System);
 
     let content = fs::read_to_string(&state_store_abspath).unwrap();
-    assert!(content.contains("System"));
+    assert!(content.contains("system"));
 }
 
 #[test]
@@ -533,7 +533,7 @@ fn sst_store_get_loads_existing_settings_from_filesystem() {
     }
 
     let settings_json = serde_json::json!({
-        "theme": "Dark",
+        "theme": "dark",
         "notifications": {
             "audio": {
                 "on_req_finish": true
