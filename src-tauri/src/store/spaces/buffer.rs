@@ -8,7 +8,10 @@ use std::{
 };
 
 use crate::{
-    error::{Error, Result}, request::models::HttpReq, space::{self, models::SpaceReference}, store, utils
+    error::{Error, Result},
+    request::models::HttpReq,
+    space::{self, models::SpaceReference},
+    store, utils,
 };
 
 static SBF_STORE_UPDATE_LOCK: Mutex<()> = Mutex::new(());

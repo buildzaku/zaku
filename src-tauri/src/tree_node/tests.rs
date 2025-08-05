@@ -109,7 +109,6 @@ fn find_collection_fails_for_partially_invalid_path() {
     }
 }
 
-
 #[test]
 fn move_tree_node_fails_with_invalid_cur_relpath() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");

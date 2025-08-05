@@ -169,7 +169,9 @@ fn state_store_handles_corrupt_json_by_using_default() {
 #[test]
 fn sbf_store_get_creates_empty_buffer_when_file_doesnt_exist() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -185,7 +187,9 @@ fn sbf_store_get_creates_empty_buffer_when_file_doesnt_exist() {
 #[test]
 fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -240,7 +244,9 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
 #[test]
 fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -296,7 +302,9 @@ fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
 #[test]
 fn sbf_store_maintains_persistence_across_separate_get_calls() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -348,7 +356,9 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
 #[test]
 fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -409,7 +419,9 @@ fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
 #[test]
 fn sck_store_get_creates_default_when_file_doesnt_exist() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let sck_store_abspath = store::utils::sck_store_abspath(&tmp_space_abspath);
@@ -424,7 +436,9 @@ fn sck_store_get_creates_default_when_file_doesnt_exist() {
 #[test]
 fn sck_store_get_loads_existing_store_from_filesystem() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let sck_store_abspath = store::utils::sck_store_abspath(&tmp_space_abspath);
@@ -468,7 +482,9 @@ fn sck_store_get_loads_existing_store_from_filesystem() {
 #[test]
 fn sck_store_handles_corrupt_cookie_json_by_using_default() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let sck_store_abspath = store::utils::sck_store_abspath(&tmp_space_abspath);
@@ -489,7 +505,9 @@ fn sck_store_handles_corrupt_cookie_json_by_using_default() {
 #[test]
 fn sst_store_get_creates_default_when_file_doesnt_exist() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
@@ -503,7 +521,9 @@ fn sst_store_get_creates_default_when_file_doesnt_exist() {
 #[test]
 fn sst_store_get_loads_existing_settings_from_filesystem() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
@@ -531,7 +551,9 @@ fn sst_store_get_loads_existing_settings_from_filesystem() {
 #[test]
 fn sst_store_update_persists_changes_to_filesystem() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
@@ -554,7 +576,9 @@ fn sst_store_update_persists_changes_to_filesystem() {
 #[test]
 fn sst_store_handles_corrupt_json_by_using_default() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
@@ -575,7 +599,9 @@ fn sst_store_handles_corrupt_json_by_using_default() {
 #[test]
 fn sst_store_inherits_theme_from_state_store() {
     let (_tmp_datadir, _tmp_spacedir, mut state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     state_store

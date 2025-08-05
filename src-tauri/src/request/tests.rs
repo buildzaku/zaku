@@ -17,7 +17,9 @@ use crate::{
 #[test]
 fn parse_req_returns_none_for_non_toml_file() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -37,7 +39,9 @@ fn parse_req_returns_none_for_non_toml_file() {
 #[test]
 fn parse_req_returns_none_for_directory() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -57,7 +61,9 @@ fn parse_req_returns_none_for_directory() {
 #[test]
 fn parse_req_successfully_parses_valid_toml_file() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -83,7 +89,9 @@ fn parse_req_successfully_parses_valid_toml_file() {
 #[test]
 fn parse_req_returns_none_for_invalid_toml() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -257,7 +265,9 @@ fn create_req_with_nested_collections_and_backslash() {
 #[test]
 fn create_req_empty_fsname_should_fail() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Req Space");
-    let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
 
@@ -282,7 +292,9 @@ fn create_req_missing_space_should_fail() {
     };
 
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
-        let tmp_space_abspath = state_store.spaceref.as_ref()
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
         .map(|sr| sr.abspath.clone())
         .unwrap();
     let result = request::create_req(
