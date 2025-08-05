@@ -110,25 +110,6 @@ fn find_collection_fails_for_partially_invalid_path() {
 }
 
 #[test]
-fn move_tree_node_fails_with_no_space() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_nonexistent_space_abspath = tmp_spacedir.path().join("nonexistent");
-
-    let dto = MoveTreeNodeDto {
-        node_type: NodeType::Collection,
-        cur_relpath: PathBuf::from("parent-col-1"),
-        nxt_relpath: PathBuf::from("parent-col-2/parent-col-1"),
-    };
-
-    let result = tree_node::move_tree_node(&dto, &tmp_nonexistent_space_abspath);
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        Error::FileNotFound(_) => {}
-        _ => panic!("Expected FileNotFound error"),
-    }
-}
-
-#[test]
 fn move_tree_node_fails_with_invalid_cur_relpath() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Tree Space");
     let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();

@@ -10,6 +10,7 @@ use std::{
 use crate::{
     error::{Error, Result},
     request::models::HttpReq,
+    space::{self, models::SpaceReference},
     store, utils,
 };
 
@@ -17,6 +18,7 @@ static SBF_STORE_UPDATE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpaceBuffer {
+    spaceref: SpaceReference,
     pub requests: HashMap<PathBuf, ReqBuffer>,
 }
 
@@ -43,9 +45,14 @@ impl DerefMut for SpaceBufferStore {
 impl SpaceBufferStore {
     fn new(space_abspath: &Path) -> Self {
         let sbf_store_abspath = store::utils::sbf_store_abspath(space_abspath);
+        let space_cfg = space::parse_spacecfg(space_abspath).expect("Unable to parse space config");
 
         Self {
             buffer: SpaceBuffer {
+                spaceref: SpaceReference {
+                    name: space_cfg.meta.name,
+                    abspath: space_abspath.to_path_buf(),
+                },
                 requests: HashMap::<PathBuf, ReqBuffer>::new(),
             },
             abspath: sbf_store_abspath,

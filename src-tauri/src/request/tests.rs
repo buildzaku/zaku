@@ -16,59 +16,68 @@ use crate::{
 
 #[test]
 fn parse_req_returns_none_for_non_toml_file() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
     let txt_file_abspath = tmp_space_abspath.join("parent-req-1.txt");
     fs::write(&txt_file_abspath, "not a toml file").unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
-    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&txt_file_abspath, tmp_space_abspath, &sbf_store_mtx);
+    let result = request::parse_req(&txt_file_abspath, &tmp_space_abspath, &sbf_store_mtx);
     assert!(result.is_none());
 }
 
 #[test]
 fn parse_req_returns_none_for_directory() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
     let dir_abspath = tmp_space_abspath.join("parent-col-1");
     fs::create_dir_all(&dir_abspath).unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
-    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&dir_abspath, tmp_space_abspath, &sbf_store_mtx);
+    let result = request::parse_req(&dir_abspath, &tmp_space_abspath, &sbf_store_mtx);
     assert!(result.is_none());
 }
 
 #[test]
 fn parse_req_successfully_parses_valid_toml_file() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
     let reqfile_abspath = tmp_space_abspath.join("parent-req-1");
     request::create_reqtoml(&reqfile_abspath, "Parent Req 1").unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
-    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
     let toml_file = reqfile_abspath.with_extension("toml");
-    let result = request::parse_req(&toml_file, tmp_space_abspath, &sbf_store_mtx);
+    let result = request::parse_req(&toml_file, &tmp_space_abspath, &sbf_store_mtx);
     assert!(result.is_some());
 
     let http_req = result.unwrap();
@@ -79,34 +88,36 @@ fn parse_req_successfully_parses_valid_toml_file() {
 
 #[test]
 fn parse_req_returns_none_for_invalid_toml() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
     let reqfile_abspath = tmp_space_abspath.join("invalid-req-1.toml");
     let invalid_toml = "[meta\nname = \"Invalid Req 1\"";
     fs::write(&reqfile_abspath, invalid_toml).unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
-    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let sbf_store_mtx = sbf_store
         .lock()
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&reqfile_abspath, tmp_space_abspath, &sbf_store_mtx);
+    let result = request::parse_req(&reqfile_abspath, &tmp_space_abspath, &sbf_store_mtx);
     assert!(result.is_none());
 }
 
 #[test]
 fn parse_req_returns_buffered_request_when_available() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
 
     let reqfile_abspath = tmp_space_abspath.join("buffered-req-1.toml");
     request::create_reqtoml(&reqfile_abspath.with_extension(""), "Buffered Req 1").unwrap();
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
-    let sbf_store = SpaceBufferStore::get(&sbf_store_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     {
         let mut sbf_store_mtx = sbf_store
             .lock()
@@ -143,7 +154,7 @@ fn parse_req_returns_buffered_request_when_available() {
         .map_err(|_| Error::LockError("Failed to acquire mutex lock".into()))
         .unwrap();
 
-    let result = request::parse_req(&reqfile_abspath, tmp_space_abspath, &sbf_store_mtx);
+    let result = request::parse_req(&reqfile_abspath, &tmp_space_abspath, &sbf_store_mtx);
     assert!(result.is_some());
 
     let http_req = result.unwrap();
@@ -254,7 +265,11 @@ fn create_req_with_nested_collections_and_backslash() {
 #[test]
 fn create_req_empty_fsname_should_fail() {
     let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Req Space");
-    let tmp_space_abspath = state_store.spaceref.as_ref().unwrap().abspath.clone();
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
     let req_segment = SanitizedSegment {
         name: "Empty Req 1".to_string(),
@@ -276,12 +291,16 @@ fn create_req_missing_space_should_fail() {
         fsname: "child-req-1".to_string(),
     };
 
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+    let tmp_space_abspath = state_store
+        .spaceref
+        .as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
     let result = request::create_req(
         &PathBuf::from("parent-col-1"),
         &req_segment,
-        tmp_space_abspath,
+        &tmp_space_abspath,
     );
     assert!(matches!(result, Err(Error::Io(_))));
 }
