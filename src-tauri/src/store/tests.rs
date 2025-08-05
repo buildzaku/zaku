@@ -168,22 +168,26 @@ fn state_store_handles_corrupt_json_by_using_default() {
 
 #[test]
 fn sbf_store_get_creates_empty_buffer_when_file_doesnt_exist() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
-    let sbf_store = SpaceBufferStore::get(tmp_space_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let sbf_store_mtx = sbf_store.lock().unwrap();
 
     assert!(sbf_store_mtx.requests.is_empty());
 
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
+    let sbf_store_abspath = store::utils::sbf_store_abspath(&tmp_space_abspath);
     assert!(sbf_store_abspath.exists());
 }
 
 #[test]
 fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
     let req_buf = ReqBuffer {
         meta: ReqBufferMeta {
@@ -205,8 +209,8 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
         },
     };
 
-    let sbf_store = SpaceBufferStore::get(tmp_space_abspath).unwrap();
-    let sbf_store_abspath = store::utils::sbf_store_abspath(tmp_space_abspath);
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
+    let sbf_store_abspath = store::utils::sbf_store_abspath(&tmp_space_abspath);
     SpaceBufferStore::update(&sbf_store, |sbf_store| {
         let mut sbf_store_mtx = sbf_store.lock().unwrap();
         sbf_store_mtx
@@ -224,7 +228,7 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
             .contains_key(&PathBuf::from("test-req.toml"))
     );
 
-    let fresh_sbf_store = SpaceBufferStore::get(tmp_space_abspath).unwrap();
+    let fresh_sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let fresh_lock = fresh_sbf_store.lock().unwrap();
     assert!(
         fresh_lock
@@ -235,10 +239,12 @@ fn sbf_store_update_persists_changes_to_filesystem_and_returns_updated_buffer() 
 
 #[test]
 fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
-    let sbf_store = SpaceBufferStore::get(tmp_space_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let sbf_store_clone = Arc::clone(&sbf_store);
 
     let handles: Vec<_> = (0..10)
@@ -289,8 +295,10 @@ fn sbf_store_handles_concurrent_access_to_same_buffer_instance() {
 
 #[test]
 fn sbf_store_maintains_persistence_across_separate_get_calls() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
     let req_buf = ReqBuffer {
         meta: ReqBufferMeta {
@@ -312,7 +320,7 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
         },
     };
 
-    let sbf_store = SpaceBufferStore::get(tmp_space_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     SpaceBufferStore::update(&sbf_store, |sbf_store| {
         let mut sbf_store_mtx = sbf_store.lock().unwrap();
         sbf_store_mtx
@@ -321,7 +329,7 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
     })
     .unwrap();
 
-    let sbf_store = SpaceBufferStore::get(tmp_space_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
     let sbf_store_mtx = sbf_store.lock().unwrap();
     assert!(
         sbf_store_mtx
@@ -339,10 +347,12 @@ fn sbf_store_maintains_persistence_across_separate_get_calls() {
 
 #[test]
 fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
 
-    let sbf_store = SpaceBufferStore::get(tmp_space_abspath).unwrap();
+    let sbf_store = SpaceBufferStore::get(&tmp_space_abspath).unwrap();
 
     let handles: Vec<_> = (0..10)
         .map(|idx| {
@@ -398,11 +408,13 @@ fn sbf_store_serializes_concurrent_update_calls_without_data_loss() {
 
 #[test]
 fn sck_store_get_creates_default_when_file_doesnt_exist() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
-    let sck_store_abspath = store::utils::sck_store_abspath(tmp_space_abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
+    let sck_store_abspath = store::utils::sck_store_abspath(&tmp_space_abspath);
 
-    let sck_store = store::SpaceCookieStore::get(tmp_space_abspath).unwrap();
+    let sck_store = store::SpaceCookieStore::get(&tmp_space_abspath).unwrap();
     let sck_store_mtx = sck_store.cookies.lock().unwrap();
 
     assert!(sck_store_mtx.iter_any().count() == 0);
@@ -411,9 +423,11 @@ fn sck_store_get_creates_default_when_file_doesnt_exist() {
 
 #[test]
 fn sck_store_get_loads_existing_store_from_filesystem() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
-    let sck_store_abspath = store::utils::sck_store_abspath(tmp_space_abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
+    let sck_store_abspath = store::utils::sck_store_abspath(&tmp_space_abspath);
 
     if let Some(parent) = sck_store_abspath.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -444,7 +458,7 @@ fn sck_store_get_loads_existing_store_from_filesystem() {
     ]);
     fs::write(&sck_store_abspath, cookie_json.to_string()).unwrap();
 
-    let sck_store = store::SpaceCookieStore::get(tmp_space_abspath).unwrap();
+    let sck_store = store::SpaceCookieStore::get(&tmp_space_abspath).unwrap();
     let sck_store_mtx = sck_store.cookies.lock().unwrap();
 
     assert!(sck_store_mtx.iter_any().count() == 2);
@@ -453,9 +467,11 @@ fn sck_store_get_loads_existing_store_from_filesystem() {
 
 #[test]
 fn sck_store_handles_corrupt_cookie_json_by_using_default() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
-    let sck_store_abspath = store::utils::sck_store_abspath(tmp_space_abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
+    let sck_store_abspath = store::utils::sck_store_abspath(&tmp_space_abspath);
 
     if let Some(parent) = sck_store_abspath.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -463,7 +479,7 @@ fn sck_store_handles_corrupt_cookie_json_by_using_default() {
 
     fs::write(&sck_store_abspath, "invalid json {").unwrap();
 
-    let sck_store = store::SpaceCookieStore::get(tmp_space_abspath).unwrap();
+    let sck_store = store::SpaceCookieStore::get(&tmp_space_abspath).unwrap();
     let sck_store_mtx = sck_store.cookies.lock().unwrap();
 
     assert!(sck_store_mtx.iter_any().count() == 0);
@@ -472,10 +488,12 @@ fn sck_store_handles_corrupt_cookie_json_by_using_default() {
 
 #[test]
 fn sst_store_get_creates_default_when_file_doesnt_exist() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
-    let sst_store_abspath = store::utils::sst_store_abspath(tmp_space_abspath);
-    let sst_store = store::SpaceSettingsStore::get(tmp_space_abspath).unwrap();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
+    let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
+    let sst_store = store::SpaceSettingsStore::get(&tmp_space_abspath).unwrap();
 
     assert_eq!(sst_store.theme, Theme::System);
     assert!(!sst_store.notifications.audio.on_req_finish);
@@ -484,9 +502,11 @@ fn sst_store_get_creates_default_when_file_doesnt_exist() {
 
 #[test]
 fn sst_store_get_loads_existing_settings_from_filesystem() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
-    let sst_store_abspath = store::utils::sst_store_abspath(tmp_space_abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
+    let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
 
     if let Some(parent) = sst_store_abspath.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -502,7 +522,7 @@ fn sst_store_get_loads_existing_settings_from_filesystem() {
     });
     fs::write(&sst_store_abspath, settings_json.to_string()).unwrap();
 
-    let sst_store = store::SpaceSettingsStore::get(tmp_space_abspath).unwrap();
+    let sst_store = store::SpaceSettingsStore::get(&tmp_space_abspath).unwrap();
 
     assert_eq!(sst_store.theme, Theme::Dark);
     assert!(sst_store.notifications.audio.on_req_finish);
@@ -510,10 +530,12 @@ fn sst_store_get_loads_existing_settings_from_filesystem() {
 
 #[test]
 fn sst_store_update_persists_changes_to_filesystem() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
-    let sst_store_abspath = store::utils::sst_store_abspath(tmp_space_abspath);
-    let mut sst_store = store::SpaceSettingsStore::get(tmp_space_abspath).unwrap();
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
+    let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
+    let mut sst_store = store::SpaceSettingsStore::get(&tmp_space_abspath).unwrap();
 
     sst_store
         .update(|settings| {
@@ -524,16 +546,18 @@ fn sst_store_update_persists_changes_to_filesystem() {
 
     assert!(sst_store_abspath.exists());
 
-    let fresh_sst_store = store::SpaceSettingsStore::get(tmp_space_abspath).unwrap();
+    let fresh_sst_store = store::SpaceSettingsStore::get(&tmp_space_abspath).unwrap();
     assert_eq!(fresh_sst_store.theme, Theme::Light);
     assert!(fresh_sst_store.notifications.audio.on_req_finish);
 }
 
 #[test]
 fn sst_store_handles_corrupt_json_by_using_default() {
-    let (_tmp_datadir, tmp_spacedir, _state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
-    let sst_store_abspath = store::utils::sst_store_abspath(tmp_space_abspath);
+    let (_tmp_datadir, _tmp_spacedir, state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
+    let sst_store_abspath = store::utils::sst_store_abspath(&tmp_space_abspath);
 
     if let Some(parent) = sst_store_abspath.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -541,7 +565,7 @@ fn sst_store_handles_corrupt_json_by_using_default() {
 
     fs::write(&sst_store_abspath, "invalid json {").unwrap();
 
-    let sst_store = store::SpaceSettingsStore::get(tmp_space_abspath).unwrap();
+    let sst_store = store::SpaceSettingsStore::get(&tmp_space_abspath).unwrap();
 
     assert_eq!(sst_store.theme, Theme::System);
     assert!(!sst_store.notifications.audio.on_req_finish);
@@ -550,15 +574,17 @@ fn sst_store_handles_corrupt_json_by_using_default() {
 
 #[test]
 fn sst_store_inherits_theme_from_state_store() {
-    let (_tmp_datadir, tmp_spacedir, mut state_store) = store::utils::temp_space("Test Space");
-    let tmp_space_abspath = tmp_spacedir.path();
+    let (_tmp_datadir, _tmp_spacedir, mut state_store) = store::utils::temp_space("Test Space");
+        let tmp_space_abspath = state_store.spaceref.as_ref()
+        .map(|sr| sr.abspath.clone())
+        .unwrap();
     state_store
         .update(|state| {
             state.user_settings.default_theme = Theme::Light;
         })
         .unwrap();
 
-    let sst_store = store::SpaceSettingsStore::get(tmp_space_abspath).unwrap();
+    let sst_store = store::SpaceSettingsStore::get(&tmp_space_abspath).unwrap();
 
     assert_eq!(sst_store.theme, Theme::Light);
 }
