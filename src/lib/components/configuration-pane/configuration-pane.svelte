@@ -106,7 +106,11 @@
         class="hover:bg-transparent"
       >
         <span class="pr-1.5 text-xs font-medium">Configuration</span>
-        <ChevronUpIcon size={14} />
+        {#if isCollapsed}
+          <ChevronDownIcon size={14} />
+        {:else}
+          <ChevronUpIcon size={14} />
+        {/if}
       </Button>
     </div>
   </div>
