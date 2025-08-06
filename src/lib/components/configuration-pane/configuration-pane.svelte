@@ -16,6 +16,7 @@
   } from "$lib/components/primitives/select";
   import { Tabs, TabsList, TabsTrigger, TabsContent } from "$lib/components/primitives/tabs";
   import { CodeBlock } from "$lib/components/code-block";
+  import { cn } from "$lib/utils/style";
   import type { ValueOf } from "$lib/utils";
   import type { ReqCfg } from "$lib/bindings";
   import { Headers, Parameters } from ".";
@@ -59,91 +60,99 @@
   }
 </script>
 
-{#if isCollapsed}
+<Tabs
+  value="parameters"
+  class="size-full"
+  onValueChange={() => {
+    if (isCollapsed) {
+      pane.expand();
+      pane.resize(35);
+    }
+  }}
+>
   <div
-    class="bg-accent/30 flex h-8 w-full items-center justify-between border-y border-b-transparent"
+    class={cn(
+      "bg-accent/30 border-border flex h-8 w-full items-center justify-between border-y",
+      isCollapsed ? "border-b-transparent" : "border-b-border",
+    )}
   >
+    <div class="px-1.5">
+      <TabsList class="grid auto-cols-min grid-flow-col justify-start gap-2 p-0">
+        {#each reqCfgTabs as tab (tab.value)}
+          <TabsTrigger
+            value={tab.value}
+            onclick={() => {
+              if (isCollapsed) {
+                pane.expand();
+                pane.resize(35);
+              }
+            }}
+            class="text-xs">{tab.label}</TabsTrigger
+          >
+        {/each}
+      </TabsList>
+    </div>
     <div class="flex size-full items-center justify-end pr-1">
       <Button
         variant="ghost"
         onclick={() => {
-          pane.expand();
-          pane.resize(40);
+          if (isCollapsed) {
+            pane.expand();
+            pane.resize(35);
+          } else {
+            pane.collapse();
+          }
         }}
         class="hover:bg-transparent"
       >
         <span class="pr-1.5 text-xs font-medium">Configuration</span>
-        <ChevronDownIcon size={14} />
+        <ChevronUpIcon size={14} />
       </Button>
     </div>
   </div>
-{:else}
-  <Tabs value="parameters" class="size-full">
-    <div class="bg-accent/30 flex h-8 w-full items-center justify-between border-y">
-      <div class="px-1.5">
-        <TabsList class="grid auto-cols-min grid-flow-col justify-start gap-2 p-0">
-          {#each reqCfgTabs as tab (tab.value)}
-            <TabsTrigger value={tab.value} class="text-xs">{tab.label}</TabsTrigger>
-          {/each}
-        </TabsList>
+
+  <div class="bg-background flex h-[calc(100%-32px)] w-full">
+    <TabsContent hidden={isCollapsed} value="parameters" class="m-0 size-full">
+      <div class="bg-card h-full overflow-auto px-4 py-3">
+        <p class="mb-3">Query Parameters</p>
+        <Parameters bind:config />
       </div>
-      <div class="flex size-full items-center justify-end pr-1">
-        <Button
-          variant="ghost"
-          onclick={() => {
-            pane.collapse();
-          }}
-          class="hover:bg-transparent"
+    </TabsContent>
+    <TabsContent hidden={isCollapsed} value="headers" class="m-0 size-full">
+      <div class="bg-card h-full overflow-auto px-4 py-3">
+        <p class="mb-3">Headers</p>
+        <Headers bind:config />
+      </div>
+    </TabsContent>
+    <TabsContent hidden={isCollapsed} value="body" class="m-0 size-full">
+      <div class="bg-card flex h-9 items-center justify-start gap-3 border-b px-3">
+        <span>Content Type</span>
+        <Select
+          type="single"
+          bind:value={() => config.content_type ?? "", value => (config.content_type = value)}
         >
-          <span class="pr-1.5 text-xs font-medium">Configuration</span>
-          <ChevronUpIcon size={14} />
-        </Button>
+          <SelectTrigger class="w-fit">
+            <span class="pr-3">
+              {!config.content_type ? REQUEST_BODY_TYPES.None : config.content_type}
+            </span>
+          </SelectTrigger>
+          <SelectContent align="start">
+            {#each Object.values(REQUEST_BODY_TYPES) as BODY_TYPE (BODY_TYPE)}
+              <SelectItem value={BODY_TYPE} disabled={isBodyTypeDisabled(BODY_TYPE)}>
+                {BODY_TYPE}
+              </SelectItem>
+            {/each}
+          </SelectContent>
+        </Select>
       </div>
-    </div>
 
-    <div class="bg-background flex h-[calc(100%-32px)] w-full">
-      <TabsContent value="parameters" class="m-0 size-full">
-        <div class="bg-card h-full overflow-auto px-4 py-3">
-          <p class="mb-3">Query Parameters</p>
-          <Parameters bind:config />
-        </div>
-      </TabsContent>
-      <TabsContent value="headers" class="m-0 size-full">
-        <div class="bg-card h-full overflow-auto px-4 py-3">
-          <p class="mb-3">Headers</p>
-          <Headers bind:config />
-        </div>
-      </TabsContent>
-      <TabsContent value="body" class="m-0 size-full">
-        <div class="bg-card flex h-9 items-center justify-start gap-3 border-b px-3">
-          <span>Content Type</span>
-          <Select
-            type="single"
-            bind:value={() => config.content_type ?? "", value => (config.content_type = value)}
-          >
-            <SelectTrigger class="w-fit">
-              <span class="pr-3">
-                {!config.content_type ? REQUEST_BODY_TYPES.None : config.content_type}
-              </span>
-            </SelectTrigger>
-            <SelectContent align="start">
-              {#each Object.values(REQUEST_BODY_TYPES) as BODY_TYPE (BODY_TYPE)}
-                <SelectItem value={BODY_TYPE} disabled={isBodyTypeDisabled(BODY_TYPE)}>
-                  {BODY_TYPE}
-                </SelectItem>
-              {/each}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {#if config.content_type && config.content_type !== "None"}
-          <CodeBlock
-            bind:language
-            bind:value={() => config.body ?? "", value => (config.body = value)}
-            class="bg-card h-full max-h-[calc(100%-2.25rem)] overflow-auto"
-          />
-        {/if}
-      </TabsContent>
-    </div>
-  </Tabs>
-{/if}
+      {#if config.content_type && config.content_type !== "None"}
+        <CodeBlock
+          bind:language
+          bind:value={() => config.body ?? "", value => (config.body = value)}
+          class="bg-card h-full max-h-[calc(100%-2.25rem)] overflow-auto"
+        />
+      {/if}
+    </TabsContent>
+  </div>
+</Tabs>
