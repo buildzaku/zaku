@@ -257,7 +257,7 @@
           </div>
           <ResizablePane
             bind:this={cfgPane}
-            defaultSize={25}
+            defaultSize={35}
             minSize={20}
             collapsedSize={5.5}
             collapsible={true}
@@ -278,7 +278,7 @@
           <ResizableHandle withHandle />
           <ResizablePane
             bind:this={resPane}
-            defaultSize={75}
+            defaultSize={65}
             minSize={20}
             collapsedSize={5}
             collapsible={true}

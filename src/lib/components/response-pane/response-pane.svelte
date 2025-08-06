@@ -114,7 +114,7 @@
     onclick={() => {
       if (isCollapsed) {
         pane.expand();
-        pane.resize(60);
+        pane.resize(65);
       } else {
         pane.collapse();
       }
