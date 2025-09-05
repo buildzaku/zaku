@@ -25,23 +25,62 @@
 > [!WARNING]
 > Zaku is in early stages of development, expect breaking changes.
 
-## Test it out
+<h2>Installation</h2>
 
-If you want to give Zaku a try, download it from the [release assets](https://github.com/buildzaku/zaku/releases/latest) based on your operating system.
+<h4>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/apple-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/apple-light.svg">
+    <img src="./assets/apple-light.svg" width="20px" align="top">
+  </picture>
+  <span>macOS</span>
+</h4>
 
-### macOS Users
+Download for [Arm (Apple Silicon)](https://github.com/buildzaku/zaku/releases/latest/download/zaku-aarch64-apple-darwin.dmg) or [x86 (Intel)](https://github.com/buildzaku/zaku/releases/latest/download/zaku-x86_64-apple-darwin.dmg)
 
-Zaku is not code signed yet, so you'll see this warning
-
-![Screenshot 2024-07-26 at 20 52 06](https://github.com/user-attachments/assets/b8da8f66-6fa1-4cb2-bec4-71e75a98402a)
-
-To work around this you need to remove the quarantine attribute flagged by Apple, read more about it [here](https://discussions.apple.com/thread/253714860).
-
-<b>TL;DR:</b> After installing Zaku, run this command from your terminal
+After installing Zaku, run this command from your terminal:
 
 ```sh
 xattr -c /Applications/Zaku.app
 ```
+
+This is required because Zaku is not code signed yet. [Read more](https://discussions.apple.com/thread/253714860)
+
+<h4>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/linux-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/linux-light.svg">
+    <img src="./assets/linux-light.svg" width="20px" align="top">
+  </picture>
+  <span>Linux</span>
+</h4>
+
+Download the [.deb package](https://github.com/buildzaku/zaku/releases/latest/download/zaku-x86_64-unknown-linux-gnu.deb) for x86 Ubuntu/Debian
+
+From your terminal, navigate to the download location and run:
+
+```sh
+sudo apt install ./zaku-x86_64-unknown-linux-gnu.deb
+```
+
+Or install via Snap:
+
+```sh
+sudo snap install zaku
+```
+
+<h4>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/microsoft-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/microsoft-light.svg">
+    <img src="./assets/microsoft-light.svg" width="20px" align="top">
+  </picture>
+  <span>Windows</span>
+</h4>
+
+Download the [.exe file](https://github.com/buildzaku/zaku/releases/latest/download/zaku-x86_64-pc-windows-msvc.exe) or [MSI package](https://github.com/buildzaku/zaku/releases/latest/download/zaku-x86_64-pc-windows-msvc.msi)
+
+Launch the installer and follow the prompts.
 
 ## Contributing
 
