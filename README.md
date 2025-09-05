@@ -22,6 +22,10 @@
     <a href="https://github.com/buildzaku/zaku/blob/main/LICENSE.md" target="_blank"><img alt="License" src="https://img.shields.io/github/license/buildzaku/zaku?style=flat&labelColor=%2324292e&color=%2354d024"></a>
 </p>
 
+<p align="center">
+  <img alt="Zaku application" width="100%" src="./assets/interface.png">
+</p>
+
 > [!WARNING]
 > Zaku is in early stages of development, expect breaking changes.
 
@@ -38,7 +42,7 @@
 
 Download for [Arm (Apple Silicon)](https://github.com/buildzaku/zaku/releases/latest/download/zaku-aarch64-apple-darwin.dmg) or [x86 (Intel)](https://github.com/buildzaku/zaku/releases/latest/download/zaku-x86_64-apple-darwin.dmg)
 
-After installing Zaku, run this command from your terminal:
+After installing, run this command from your terminal:
 
 ```sh
 xattr -c /Applications/Zaku.app
