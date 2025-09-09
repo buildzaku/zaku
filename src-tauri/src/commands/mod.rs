@@ -499,10 +499,10 @@ pub fn remove_space(space_reference: SpaceReference) -> CmdResult<()> {
                 .spacerefs
                 .retain(|r| r.abspath != space_reference.abspath);
 
-            if let Some(spaceref) = &state.spaceref {
-                if spaceref.abspath == space_reference.abspath {
-                    state.spaceref = None;
-                }
+            if let Some(spaceref) = &state.spaceref
+                && spaceref.abspath == space_reference.abspath
+            {
+                state.spaceref = None;
             }
         })
         .map_err(|e| CmdErr {
@@ -511,18 +511,18 @@ pub fn remove_space(space_reference: SpaceReference) -> CmdResult<()> {
             details: Some(e.to_string()),
         })?;
 
-    if state_store.spaceref.is_none() {
-        if let Some(valid_space_reference) = space::first_valid_spaceref(&state_store) {
-            state_store
-                .update(|state| {
-                    state.spaceref = Some(valid_space_reference.clone());
-                })
-                .map_err(|e| CmdErr {
-                    kind: ErrorKind::FileWriteError,
-                    message: "Unable to set fallback space".to_string(),
-                    details: Some(e.to_string()),
-                })?;
-        }
+    if state_store.spaceref.is_none()
+        && let Some(valid_space_reference) = space::first_valid_spaceref(&state_store)
+    {
+        state_store
+            .update(|state| {
+                state.spaceref = Some(valid_space_reference.clone());
+            })
+            .map_err(|e| CmdErr {
+                kind: ErrorKind::FileWriteError,
+                message: "Unable to set fallback space".to_string(),
+                details: Some(e.to_string()),
+            })?;
     }
 
     Ok(())

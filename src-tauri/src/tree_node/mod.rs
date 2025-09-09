@@ -91,13 +91,13 @@ fn fsmove(cur_abspath: &Path, nxt_abspath: &Path) -> Result<()> {
         )));
     }
 
-    if let Some(nxt_dir) = nxt_abspath.parent() {
-        if !nxt_dir.exists() {
-            return Err(Error::InvalidPath(format!(
-                "Destination parent directory does not exist: {}",
-                nxt_dir.display()
-            )));
-        }
+    if let Some(nxt_dir) = nxt_abspath.parent()
+        && !nxt_dir.exists()
+    {
+        return Err(Error::InvalidPath(format!(
+            "Destination parent directory does not exist: {}",
+            nxt_dir.display()
+        )));
     }
 
     fs::rename(cur_abspath, nxt_abspath)?;
