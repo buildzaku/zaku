@@ -39,4 +39,4 @@ toml = { version = "0.9.4", features = ["preserve_order"] }
 url = { version = "2.5.4" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-wgpu = { version = "26.0.1", default-features = false }
+wgpu = { version = "26.0.1", default-features = true }
