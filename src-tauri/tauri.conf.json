@@ -1,4 +1,5 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Zaku",
   "identifier": "app.zaku",
   "build": {
@@ -41,7 +42,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["assets/**/*"]
+    "resources": ["assets/**/*"],
+    "category": "DeveloperTool"
   },
   "plugins": {}
 }
