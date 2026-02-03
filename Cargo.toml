@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/comet"]
+members = ["crates/comet", "crates/workspace"]
 
 [workspace.package]
 version = "0.0.0"
@@ -10,5 +10,8 @@ edition = "2024"
 publish = false
 
 [workspace.dependencies]
-core-text = { version = "=21.0.0" }
+################### External crates ###################
+core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issues/47168
 gpui = { git = "https://github.com/zed-industries/zed" }
+############### Workspace member crates ###############
+workspace = { path = "crates/workspace" }

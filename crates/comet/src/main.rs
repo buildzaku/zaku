@@ -1,26 +1,11 @@
 use gpui::{
-    App, Application, Bounds, Context, FontWeight, KeyBinding, Window, WindowBounds, WindowOptions,
-    actions, div, prelude::*, px, rgb, size,
+    App, Application, Bounds, KeyBinding, WindowBounds, WindowOptions, actions, prelude::*, px,
+    size,
 };
 
+use workspace::Workspace;
+
 actions!(comet, [Quit]);
-
-struct Comet {}
-
-impl Render for Comet {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .bg(rgb(0x141414))
-            .size_full()
-            .justify_center()
-            .items_center()
-            .text_2xl()
-            .text_color(rgb(0xffffff))
-            .font_weight(FontWeight::MEDIUM)
-            .child("Welcome to Comet!".to_string())
-    }
-}
 
 fn main() {
     Application::new().run(|cx: &mut App| {
@@ -46,7 +31,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            |_, cx| cx.new(|_| Comet {}),
+            |_, cx| cx.new(Workspace::new),
         )
         .unwrap();
     });
