@@ -5,18 +5,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use gpui::{
-    actions, App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId,
-    ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
-    GlobalElementId, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    PaintQuad, Pixels, Point, Render, ShapedLine, SharedString, Subscription, TextRun,
-    UnderlineStyle, UTF16Selection, Window, div, fill, point, prelude::*, px, rgba, rgb, size,
+    App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
+    Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, KeyBinding,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, Render,
+    ShapedLine, SharedString, Subscription, TextRun, UTF16Selection, UnderlineStyle, Window,
+    actions, div, fill, point, prelude::*, px, rgb, rgba, size,
 };
-use text::{
-    Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaId, TransactionId,
-};
+use text::{Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaId, TransactionId};
 use unicode_segmentation::UnicodeSegmentation;
 
-use input::{ErasedEditor, ErasedEditorEvent, ERASED_EDITOR_FACTORY};
+use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 
 actions!(
     input,
@@ -24,6 +22,8 @@ actions!(
         Backspace,
         Copy,
         Cut,
+        DeleteToBeginningOfLine,
+        DeleteToEndOfLine,
         Delete,
         DeleteToNextWordEnd,
         DeleteToPreviousWordStart,
@@ -32,12 +32,16 @@ actions!(
         Left,
         MoveToNextWord,
         MoveToPreviousWord,
+        MoveToBeginningOfLine,
+        MoveToEndOfLine,
         Paste,
         Redo,
         Right,
         SelectAll,
         SelectLeft,
         SelectRight,
+        SelectToBeginningOfLine,
+        SelectToEndOfLine,
         Undo,
     ]
 );
@@ -69,13 +73,39 @@ pub fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-right", MoveToNextWord, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-backspace", DeleteToPreviousWordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-backspace", DeleteToBeginningOfLine, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-backspace", DeleteToPreviousWordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-backspace",
+            DeleteToPreviousWordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-delete", DeleteToNextWordEnd, Some(KEY_CONTEXT)),
+        KeyBinding::new("cmd-delete", DeleteToEndOfLine, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-delete", DeleteToNextWordEnd, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-left", MoveToBeginningOfLine, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-right", MoveToEndOfLine, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-left", SelectToBeginningOfLine, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-right", SelectToEndOfLine, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-up", Home, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-down", End, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new(
+            "alt-backspace",
+            DeleteToPreviousWordStart,
+            Some(KEY_CONTEXT),
+        ),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-w", DeleteToPreviousWordStart, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("alt-delete", DeleteToNextWordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-a", SelectAll, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
@@ -261,8 +291,7 @@ impl Editor {
 
     fn previous_boundary(&self, offset: usize) -> usize {
         let text = self.snapshot().text();
-        text
-            .grapheme_indices(true)
+        text.grapheme_indices(true)
             .rev()
             .find_map(|(index, _)| (index < offset).then_some(index))
             .unwrap_or(0)
@@ -270,8 +299,7 @@ impl Editor {
 
     fn next_boundary(&self, offset: usize) -> usize {
         let text = self.snapshot().text();
-        text
-            .grapheme_indices(true)
+        text.grapheme_indices(true)
             .find_map(|(index, _)| (index > offset).then_some(index))
             .unwrap_or(text.len())
     }
@@ -311,6 +339,34 @@ impl Editor {
         }
 
         full_text.len()
+    }
+
+    fn line_indent_offset(&self) -> usize {
+        let text = self.snapshot().text();
+        for (index, character) in text.char_indices() {
+            if !character.is_whitespace() {
+                return index;
+            }
+        }
+        text.len()
+    }
+
+    fn line_beginning_offset(&self, stop_at_indent: bool) -> usize {
+        if !stop_at_indent {
+            return 0;
+        }
+
+        let indent = self.line_indent_offset();
+        let cursor = self.cursor_offset();
+        if cursor > indent || cursor == 0 {
+            indent
+        } else {
+            0
+        }
+    }
+
+    fn line_end_offset(&self) -> usize {
+        self.snapshot().len()
     }
 
     fn replace_range(&mut self, range: Range<usize>, new_text: &str, cx: &mut Context<Self>) {
@@ -419,9 +475,7 @@ impl Editor {
         let start = snapshot
             .offset_to_offset_utf16(range.start.min(text.len()))
             .0;
-        let end = snapshot
-            .offset_to_offset_utf16(range.end.min(text.len()))
-            .0;
+        let end = snapshot.offset_to_offset_utf16(range.end.min(text.len())).0;
         start..end
     }
 
@@ -568,15 +622,94 @@ impl Editor {
         cx.notify();
     }
 
+    fn move_to_beginning_of_line(
+        &mut self,
+        _: &MoveToBeginningOfLine,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.line_beginning_offset(true);
+        self.move_to(offset, cx);
+    }
+
+    fn select_to_beginning_of_line(
+        &mut self,
+        _: &SelectToBeginningOfLine,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.line_beginning_offset(true);
+        self.select_to(offset, cx);
+    }
+
+    fn delete_to_beginning_of_line(
+        &mut self,
+        _: &DeleteToBeginningOfLine,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_range.is_empty() {
+            let cursor = self.cursor_offset();
+            if cursor == 0 {
+                return;
+            }
+            self.selected_range = 0..cursor;
+            self.selection_reversed = false;
+        }
+
+        self.replace_selection("", cx);
+    }
+
     fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(0, cx);
+        let offset = self.line_beginning_offset(true);
+        self.move_to(offset, cx);
+    }
+
+    fn move_to_end_of_line(&mut self, _: &MoveToEndOfLine, _: &mut Window, cx: &mut Context<Self>) {
+        let offset = self.line_end_offset();
+        self.move_to(offset, cx);
+    }
+
+    fn select_to_end_of_line(
+        &mut self,
+        _: &SelectToEndOfLine,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.line_end_offset();
+        self.select_to(offset, cx);
+    }
+
+    fn delete_to_end_of_line(
+        &mut self,
+        _: &DeleteToEndOfLine,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_range.is_empty() {
+            let cursor = self.cursor_offset();
+            let end = self.line_end_offset();
+            if cursor == end {
+                return;
+            }
+            self.selected_range = cursor..end;
+            self.selection_reversed = false;
+        }
+
+        self.replace_selection("", cx);
     }
 
     fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-        self.move_to(self.snapshot().len(), cx);
+        let offset = self.line_end_offset();
+        self.move_to(offset, cx);
     }
 
-    fn move_to_previous_word(&mut self, _: &MoveToPreviousWord, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_to_previous_word(
+        &mut self,
+        _: &MoveToPreviousWord,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.previous_word_start(self.cursor_offset());
         self.move_to(offset, cx);
     }
@@ -865,8 +998,14 @@ impl EntityInputHandler for Editor {
         let display_end = self.display_offset_for_text_offset(range.end);
 
         Some(Bounds::from_corners(
-            point(bounds.left() + last_layout.x_for_index(display_start), bounds.top()),
-            point(bounds.left() + last_layout.x_for_index(display_end), bounds.bottom()),
+            point(
+                bounds.left() + last_layout.x_for_index(display_start),
+                bounds.top(),
+            ),
+            point(
+                bounds.left() + last_layout.x_for_index(display_end),
+                bounds.bottom(),
+            ),
         ))
     }
 
@@ -882,7 +1021,11 @@ impl EntityInputHandler for Editor {
         let display_index = last_layout.index_for_x(point.x - line_point.x)?;
         let text_offset = self.text_offset_for_display_offset(display_index);
         let snapshot = self.snapshot();
-        Some(snapshot.offset_to_offset_utf16(text_offset.min(snapshot.len())).0)
+        Some(
+            snapshot
+                .offset_to_offset_utf16(text_offset.min(snapshot.len()))
+                .0,
+        )
     }
 }
 
@@ -1009,10 +1152,16 @@ impl Element for TextElement {
         } else {
             Some(fill(
                 Bounds::from_corners(
-                    point(bounds.left() + line.x_for_index(display_start), bounds.top()),
-                    point(bounds.left() + line.x_for_index(display_end), bounds.bottom()),
+                    point(
+                        bounds.left() + line.x_for_index(display_start),
+                        bounds.top(),
+                    ),
+                    point(
+                        bounds.left() + line.x_for_index(display_end),
+                        bounds.bottom(),
+                    ),
                 ),
-                rgba(0x3355ff40),
+                rgba(0x77777740),
             ))
         };
 
@@ -1103,11 +1252,19 @@ impl Render for Editor {
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::undo))
             .on_action(cx.listener(Self::redo))
+            .on_action(cx.listener(Self::move_to_beginning_of_line))
+            .on_action(cx.listener(Self::move_to_end_of_line))
+            .on_action(cx.listener(Self::select_to_beginning_of_line))
+            .on_action(cx.listener(Self::select_to_end_of_line))
+            .on_action(cx.listener(Self::delete_to_beginning_of_line))
+            .on_action(cx.listener(Self::delete_to_end_of_line))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
-            .child(TextElement { editor: cx.entity() })
+            .child(TextElement {
+                editor: cx.entity(),
+            })
     }
 }
 
@@ -1228,11 +1385,7 @@ fn clamp_offset_to_char_boundary(text: &str, offset: usize) -> usize {
 fn clamp_range_to_char_boundaries(text: &str, range: Range<usize>) -> Range<usize> {
     let start = clamp_offset_to_char_boundary(text, range.start);
     let end = clamp_offset_to_char_boundary(text, range.end);
-    if end < start {
-        end..start
-    } else {
-        start..end
-    }
+    if end < start { end..start } else { start..end }
 }
 
 fn byte_offset_from_char_count(text: &str, char_count: usize) -> usize {
