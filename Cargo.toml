@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/comet", "crates/workspace"]
+members = ["crates/assets", "crates/comet", "crates/workspace"]
 
 [workspace.package]
 version = "0.0.0"
@@ -11,7 +11,10 @@ publish = false
 
 [workspace.dependencies]
 ################### External crates ###################
-core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issues/47168
+anyhow = { version = "1.0" }
+core-text = { version = "=21.0.0" }                          # https://github.com/zed-industries/zed/issues/47168
 gpui = { git = "https://github.com/zed-industries/zed" }
+rust-embed = { version = "8.0", features = ["debug-embed"] }
 ############### Workspace member crates ###############
+assets = { path = "crates/assets" }
 workspace = { path = "crates/workspace" }
