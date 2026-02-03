@@ -1,5 +1,5 @@
 [package]
-name = "workspace"
+name = "editor"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,10 +10,11 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "workspace"
-path = "src/workspace.rs"
+name = "editor"
+path = "src/editor.rs"
 
 [dependencies]
 gpui = { workspace = true }
 input = { workspace = true }
-ui = { workspace = true }
+text = { workspace = true }
+unicode-segmentation = { workspace = true }

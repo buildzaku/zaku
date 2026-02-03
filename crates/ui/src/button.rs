@@ -1,6 +1,6 @@
 use gpui::{
-    App, ClickEvent, DefiniteLength, Div, ElementId, Hsla, Rems, SharedString, Window, div,
-    prelude::*, relative, rgb,
+    App, ClickEvent, DefiniteLength, Div, ElementId, FontWeight, Hsla, Rems, SharedString, Window,
+    div, prelude::*, relative, rgb,
 };
 
 use icons::IconName;
@@ -19,6 +19,7 @@ pub enum ButtonVariant {
     #[default]
     Subtle,
     Solid,
+    Accent,
     Outline,
     Ghost,
 }
@@ -37,6 +38,12 @@ impl ButtonVariant {
                 text: rgb(0xffffff).into(),
                 hover_bg: rgb(0x292929).into(),
                 active_bg: rgb(0x404040).into(),
+            },
+            ButtonVariant::Accent => ButtonColor {
+                bg: rgb(0x33dde6).into(),
+                text: rgb(0x043f58).into(),
+                hover_bg: rgb(0x33dde6).into(),
+                active_bg: rgb(0x33dde6).into(),
             },
             ButtonVariant::Outline => ButtonColor {
                 bg: gpui::transparent_black(),
@@ -95,6 +102,7 @@ pub struct Button {
     disabled: bool,
     icon: Option<IconName>,
     icon_position: Option<IconPosition>,
+    font_weight: Option<FontWeight>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
@@ -111,6 +119,7 @@ impl Button {
             disabled: false,
             icon: None,
             icon_position: None,
+            font_weight: None,
             on_click: None,
         }
     }
@@ -127,6 +136,11 @@ impl Button {
 
     pub fn icon_position(mut self, icon_position: impl Into<Option<IconPosition>>) -> Self {
         self.icon_position = icon_position.into();
+        self
+    }
+
+    pub fn font_weight(mut self, font_weight: FontWeight) -> Self {
+        self.font_weight = Some(font_weight);
         self
     }
 }
@@ -201,9 +215,10 @@ impl RenderOnce for Button {
             .h(self.height.unwrap_or(self.size.rems().into()))
             .when_some(self.width, |this, width| this.w(width).justify_center())
             .px(padding_x)
-            .rounded_sm()
+            .rounded_md()
             .bg(colors.bg)
             .text_color(colors.text)
+            .when_some(self.font_weight, |this, weight| this.font_weight(weight))
             .when(self.disabled, |this| this.opacity(0.4).cursor_not_allowed())
             .when(!self.disabled, |this| {
                 this.cursor_pointer()

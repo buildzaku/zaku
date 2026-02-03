@@ -1,5 +1,6 @@
 use gpui::{
-    App, Bounds, DragMoveEvent, Entity, Pixels, Point, Window, canvas, div, prelude::*, px, rgb,
+    App, Bounds, DragMoveEvent, Entity, MouseButton, MouseDownEvent, Pixels, Point, Window, canvas,
+    div, prelude::*, px, rgb,
 };
 
 use crate::{dock::Dock, pane::Pane, status_bar::StatusBar};
@@ -109,6 +110,9 @@ impl Render for Workspace {
                     }
                 }),
             )
+            .on_mouse_down(MouseButton::Left, cx.listener(|_, _: &MouseDownEvent, window, _| {
+                window.blur();
+            }))
             .child(
                 div()
                     .flex()
