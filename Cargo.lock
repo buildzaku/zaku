@@ -5235,6 +5235,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "icons",
+ "smallvec",
+]
+
+[[package]]
 name = "unicase"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6138,6 +6147,7 @@ name = "workspace"
 version = "0.0.0"
 dependencies = [
  "gpui",
+ "ui",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 [package]
-name = "icons"
+name = "ui"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,10 +10,10 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "icons"
-path = "src/icons.rs"
+name = "ui"
+path = "src/ui.rs"
 
 [dependencies]
 gpui = { workspace = true }
-serde = { workspace = true }
-strum = { workspace = true }
+icons = { workspace = true }
+smallvec = { workspace = true }
