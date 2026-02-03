@@ -40,10 +40,10 @@ impl ButtonVariant {
                 active_bg: rgb(0x404040).into(),
             },
             ButtonVariant::Accent => ButtonColor {
-                bg: rgb(0x33dde6).into(),
+                bg: rgb(0x41d4dc).into(),
                 text: rgb(0x043f58).into(),
-                hover_bg: rgb(0x33dde6).into(),
-                active_bg: rgb(0x33dde6).into(),
+                hover_bg: rgb(0x3dc9d1).into(),
+                active_bg: rgb(0x3dc9d1).into(),
             },
             ButtonVariant::Outline => ButtonColor {
                 bg: gpui::transparent_black(),

@@ -145,7 +145,7 @@ impl Render for InputField {
             icon_color: rgb(0x8a8a8a).into(),
             background_color: rgb(0x1a1a1a).into(),
             border_color: rgb(0x2a2a2a).into(),
-            border_focused: rgb(0x33dde6).into(),
+            border_focused: rgb(0x41d4dc).into(),
         };
 
         let focus_handle = self.editor.focus_handle(cx);
