@@ -1,0 +1,8 @@
+[package]
+name = "comet"
+version = "0.0.0"
+authors = ["Mayank Verma <errmayank@gmail.com>"]
+edition = "2024"
+publish = false
+
+[dependencies]
