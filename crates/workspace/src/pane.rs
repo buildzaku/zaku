@@ -1,4 +1,4 @@
-use gpui::{Context, IntoElement, Render, Styled, Window, div, rgb};
+use gpui::{Window, div, prelude::*, rgb};
 
 pub struct Pane {}
 

@@ -1,28 +1,34 @@
 use gpui::{
-    AppContext, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-    MouseUpEvent, ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Window,
-    deferred, div, px, rgb,
+    MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Window, deferred, div, prelude::*, px, rgb,
 };
 
 use crate::{DockPosition, DraggedDock};
 
+const DEFAULT_DOCK_SIZE: Pixels = px(250.0);
 const RESIZE_HANDLE_SIZE: Pixels = px(6.0);
 
 pub struct Dock {
     size: Pixels,
     position: DockPosition,
+    visible: bool,
 }
 
 impl Dock {
     pub fn new(_cx: &mut Context<Self>) -> Self {
         Self {
-            size: px(250.0),
+            size: DEFAULT_DOCK_SIZE,
             position: DockPosition::Left,
+            visible: true,
         }
     }
 
     pub fn set_size(&mut self, size: Pixels, _window: &mut Window, cx: &mut Context<Self>) {
         self.size = size.round();
+        cx.notify();
+    }
+
+    pub fn toggle_visibility(&mut self, cx: &mut Context<Self>) {
+        self.visible = !self.visible;
         cx.notify();
     }
 }
@@ -78,13 +84,15 @@ impl Render for Dock {
         div()
             .flex()
             .flex_col()
-            .w(self.size)
             .h_full()
-            .bg(rgb(0x141414))
-            .border_r_1()
-            .border_color(rgb(0x2a2a2a))
             .overflow_hidden()
-            .child(div().min_w(self.size).h_full())
-            .child(create_resize_handle())
+            .when(self.visible, |this| {
+                this.w(self.size)
+                    .bg(rgb(0x141414))
+                    .border_r_1()
+                    .border_color(rgb(0x2a2a2a))
+                    .child(div().min_w(self.size).h_full())
+                    .child(create_resize_handle())
+            })
     }
 }

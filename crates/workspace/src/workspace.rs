@@ -1,6 +1,5 @@
 use gpui::{
-    App, AppContext, Bounds, Context, DragMoveEvent, Entity, InteractiveElement, IntoElement,
-    ParentElement, Pixels, Point, Render, Styled, Window, canvas, div, px, rgb,
+    App, Bounds, DragMoveEvent, Entity, Pixels, Point, Window, canvas, div, prelude::*, px, rgb,
 };
 
 use crate::{dock::Dock, pane::Pane, status_bar::StatusBar};
@@ -37,10 +36,12 @@ impl Render for DraggedDock {
 
 impl Workspace {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        let workspace = cx.entity();
+
         Self {
             dock: cx.new(Dock::new),
             pane: cx.new(Pane::new),
-            status_bar: cx.new(StatusBar::new),
+            status_bar: cx.new(|cx| StatusBar::new(workspace, cx)),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
         }
@@ -53,6 +54,11 @@ impl Workspace {
         self.dock.update(cx, |dock, cx| {
             dock.set_size(size, window, cx);
         });
+    }
+
+    fn toggle_dock(&mut self, cx: &mut Context<Self>) {
+        self.dock.update(cx, |dock, cx| dock.toggle_visibility(cx));
+        cx.notify();
     }
 }
 
