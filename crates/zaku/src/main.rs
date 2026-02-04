@@ -11,6 +11,7 @@ fn main() {
     Application::new()
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
+            editor::init(cx);
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
             cx.on_action(|_: &Quit, cx: &mut App| {
                 cx.quit();
@@ -33,7 +34,10 @@ fn main() {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |_, cx| cx.new(Workspace::new),
+                |window, cx| {
+                    window.set_rem_size(px(14.0));
+                    cx.new(Workspace::new)
+                },
             )
             .unwrap();
         });
