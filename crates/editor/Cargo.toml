@@ -20,3 +20,8 @@ schemars = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }
 unicode-segmentation = { workspace = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+pretty_assertions = { workspace = true }
+util = { workspace = true, features = ["test-support"] }

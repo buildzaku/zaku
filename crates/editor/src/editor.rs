@@ -7,10 +7,9 @@ use std::time::Instant;
 
 use gpui::{
     App, Bounds, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle,
-    Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, Render, ShapedLine, SharedString, Subscription, TextStyle,
-    UTF16Selection, WeakEntity, Window, point, relative, rems, rgb,
-    prelude::*,
+    Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
+    Point, Render, ShapedLine, SharedString, Subscription, TextStyle, UTF16Selection, WeakEntity,
+    Window, point, prelude::*, relative, rems, rgb,
 };
 use text::{Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaId, TransactionId};
 use unicode_segmentation::UnicodeSegmentation;
@@ -74,15 +73,27 @@ pub fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-right", MoveToNextWordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-shift-left", SelectToPreviousWordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "alt-shift-left",
+            SelectToPreviousWordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-shift-left", SelectToPreviousWordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-shift-left",
+            SelectToPreviousWordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("alt-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-left", MoveToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-left",
+            MoveToPreviousSubwordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("ctrl-alt-right", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
@@ -90,21 +101,49 @@ pub fn init(cx: &mut App) {
         #[cfg(target_os = "macos")]
         KeyBinding::new("ctrl-alt-f", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-shift-left", SelectToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-shift-left",
+            SelectToPreviousSubwordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-shift-right", SelectToNextSubwordEnd, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-shift-right",
+            SelectToNextSubwordEnd,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-shift-b", SelectToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-shift-b",
+            SelectToPreviousSubwordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-shift-f", SelectToNextSubwordEnd, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-shift-f",
+            SelectToNextSubwordEnd,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-alt-left", MoveToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-left",
+            MoveToPreviousSubwordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-alt-right", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-alt-shift-left", SelectToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-shift-left",
+            SelectToPreviousSubwordStart,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-alt-shift-right", SelectToNextSubwordEnd, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-alt-shift-right",
+            SelectToNextSubwordEnd,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
         KeyBinding::new(
             "cmd-backspace",
@@ -120,7 +159,11 @@ pub fn init(cx: &mut App) {
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-delete", DeleteToEndOfLine, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-delete", DeleteToNextWordEnd::default(), Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-delete",
+            DeleteToNextWordEnd::default(),
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
         KeyBinding::new(
             "cmd-left",
@@ -166,9 +209,17 @@ pub fn init(cx: &mut App) {
             Some(KEY_CONTEXT),
         ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-w", DeleteToPreviousWordStart::default(), Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-w",
+            DeleteToPreviousWordStart::default(),
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-delete", DeleteToNextWordEnd::default(), Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "alt-delete",
+            DeleteToNextWordEnd::default(),
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-a", SelectAll, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
@@ -245,11 +296,6 @@ impl EditorMode {
     pub fn is_single_line(&self) -> bool {
         matches!(self, Self::SingleLine { .. })
     }
-
-    #[inline]
-    fn is_minimap(&self) -> bool {
-        matches!(self, Self::Minimap { .. })
-    }
 }
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
@@ -298,7 +344,6 @@ enum SelectionHistoryMode {
     Normal,
     Undoing,
     Redoing,
-    Skipping,
 }
 
 #[derive(Default)]
@@ -324,7 +369,6 @@ impl SelectionHistory {
             }
             SelectionHistoryMode::Undoing => self.push_redo(entry),
             SelectionHistoryMode::Redoing => self.push_undo(entry),
-            SelectionHistoryMode::Skipping => {}
         }
     }
 
@@ -332,7 +376,7 @@ impl SelectionHistory {
         let should_push = self
             .undo_stack
             .back()
-            .map_or(true, |last| last.state != entry.state);
+            .is_none_or(|last| last.state != entry.state);
         if should_push {
             self.undo_stack.push_back(entry);
             if self.undo_stack.len() > MAX_SELECTION_HISTORY_LEN {
@@ -345,7 +389,7 @@ impl SelectionHistory {
         let should_push = self
             .redo_stack
             .back()
-            .map_or(true, |last| last.state != entry.state);
+            .is_none_or(|last| last.state != entry.state);
         if should_push {
             self.redo_stack.push_back(entry);
             if self.redo_stack.len() > MAX_SELECTION_HISTORY_LEN {
@@ -488,8 +532,9 @@ impl Editor {
     }
 
     fn record_selection_history(&mut self) {
-        self.selection_history
-            .push(SelectionHistoryEntry { state: self.selection_state() });
+        self.selection_history.push(SelectionHistoryEntry {
+            state: self.selection_state(),
+        });
     }
 
     fn cursor_offset(&self) -> usize {
@@ -752,8 +797,7 @@ impl Editor {
             return offset;
         }
 
-        let char_count = text.get(..offset).unwrap_or("").chars().count();
-        char_count
+        text.get(..offset).unwrap_or("").chars().count()
     }
 
     fn text_offset_for_display_offset(&self, display_offset: usize) -> usize {
@@ -812,7 +856,7 @@ impl Editor {
 
     fn clear(&mut self, cx: &mut Context<Self>) {
         let snapshot = self.snapshot();
-        if snapshot.len() == 0 {
+        if snapshot.is_empty() {
             return;
         }
 
@@ -984,7 +1028,12 @@ impl Editor {
         self.move_to(offset, cx);
     }
 
-    fn select_to_beginning(&mut self, _: &SelectToBeginning, _: &mut Window, cx: &mut Context<Self>) {
+    fn select_to_beginning(
+        &mut self,
+        _: &SelectToBeginning,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.select_to(0, cx);
     }
 
@@ -1627,7 +1676,7 @@ impl CharClassifier {
     }
 
     fn is_word_char(&self, character: char) -> bool {
-        self.word_chars.iter().any(|word_char| *word_char == character)
+        self.word_chars.contains(&character)
     }
 
     fn kind(&self, character: char) -> CharKind {
@@ -1782,3 +1831,6 @@ fn byte_offset_from_char_count(text: &str, char_count: usize) -> usize {
         .map(|(index, _)| index)
         .unwrap_or_else(|| text.len())
 }
+
+#[cfg(test)]
+mod tests;

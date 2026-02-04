@@ -3,8 +3,8 @@ use std::any::TypeId;
 use gpui::{
     Action, App, Bounds, Context, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, ShapedLine, TextRun,
-    UnderlineStyle, Window, fill, point, prelude::*, px, rgb, rgba, size, Style,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, ShapedLine, Style, TextRun,
+    UnderlineStyle, Window, fill, point, prelude::*, px, rgb, rgba, size,
 };
 
 use crate::{Editor, EditorStyle, HandleInput};
@@ -60,9 +60,13 @@ impl EditorElement {
         register_action(editor, window, Editor::select_to_end_of_line);
         register_action(editor, window, Editor::delete_to_beginning_of_line);
         register_action(editor, window, Editor::delete_to_end_of_line);
-        register_action(editor, window, |editor, action: &HandleInput, window, cx| {
-            editor.handle_input(&action.0, window, cx);
-        });
+        register_action(
+            editor,
+            window,
+            |editor, action: &HandleInput, window, cx| {
+                editor.handle_input(&action.0, window, cx);
+            },
+        );
     }
 }
 
@@ -103,7 +107,11 @@ impl Element for EditorElement {
     ) -> (gpui::LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
         style.size.width = gpui::relative(1.).into();
-        style.size.height = self.style.text.line_height_in_pixels(window.rem_size()).into();
+        style.size.height = self
+            .style
+            .text
+            .line_height_in_pixels(window.rem_size())
+            .into();
         (window.request_layout(style, [], cx), ())
     }
 
@@ -299,10 +307,10 @@ impl Element for EditorElement {
         )
         .ok();
 
-        if focus_handle.is_focused(window) {
-            if let Some(cursor) = prepaint.cursor.take() {
-                window.paint_quad(cursor);
-            }
+        if focus_handle.is_focused(window)
+            && let Some(cursor) = prepaint.cursor.take()
+        {
+            window.paint_quad(cursor);
         }
 
         self.editor.update(cx, |editor, _cx| {

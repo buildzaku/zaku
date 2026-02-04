@@ -110,9 +110,12 @@ impl Render for Workspace {
                     }
                 }),
             )
-            .on_mouse_down(MouseButton::Left, cx.listener(|_, _: &MouseDownEvent, window, _| {
-                window.blur();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_, _: &MouseDownEvent, window, _| {
+                    window.blur();
+                }),
+            )
             .child(
                 div()
                     .flex()

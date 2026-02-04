@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
-use gpui::{App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, div, prelude::*, px, rgb};
+use gpui::{
+    App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, div, prelude::*, px, rgb,
+};
 
-use ui::{h_flex, v_flex, Icon, IconName, IconSize};
+use ui::{Icon, IconName, IconSize, h_flex, v_flex};
 
 use crate::ErasedEditor;
 
