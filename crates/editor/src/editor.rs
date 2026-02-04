@@ -30,8 +30,10 @@ actions!(
         End,
         Home,
         Left,
-        MoveToNextWord,
-        MoveToPreviousWord,
+        MoveToNextWordEnd,
+        MoveToNextSubwordEnd,
+        MoveToPreviousWordStart,
+        MoveToPreviousSubwordStart,
         MoveToBeginningOfLine,
         MoveToEndOfLine,
         Paste,
@@ -42,6 +44,10 @@ actions!(
         SelectRight,
         SelectToBeginningOfLine,
         SelectToEndOfLine,
+        SelectToNextWordEnd,
+        SelectToNextSubwordEnd,
+        SelectToPreviousWordStart,
+        SelectToPreviousSubwordStart,
         Undo,
     ]
 );
@@ -65,13 +71,45 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("home", Home, Some(KEY_CONTEXT)),
         KeyBinding::new("end", End, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-left", MoveToPreviousWord, Some(KEY_CONTEXT)),
+        KeyBinding::new("alt-left", MoveToPreviousWordStart, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-left", MoveToPreviousWord, Some(KEY_CONTEXT)),
+        KeyBinding::new("ctrl-left", MoveToPreviousWordStart, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-right", MoveToNextWord, Some(KEY_CONTEXT)),
+        KeyBinding::new("alt-right", MoveToNextWordEnd, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-right", MoveToNextWord, Some(KEY_CONTEXT)),
+        KeyBinding::new("ctrl-right", MoveToNextWordEnd, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("alt-shift-left", SelectToPreviousWordStart, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-shift-left", SelectToPreviousWordStart, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("alt-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-left", MoveToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-right", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-b", MoveToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-f", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-shift-left", SelectToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-shift-right", SelectToNextSubwordEnd, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-shift-b", SelectToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-alt-shift-f", SelectToNextSubwordEnd, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-alt-left", MoveToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-alt-right", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-alt-shift-left", SelectToPreviousSubwordStart, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-alt-shift-right", SelectToNextSubwordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-backspace", DeleteToBeginningOfLine, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
@@ -305,40 +343,61 @@ impl Editor {
     }
 
     fn previous_word_start(&self, offset: usize) -> usize {
-        if offset == 0 {
-            return 0;
-        }
+        let text = self.snapshot().text();
+        let classifier = CharClassifier::default();
+        let mut is_first_iteration = true;
 
-        let full_text = self.snapshot().text();
-        let offset = clamp_offset_to_char_boundary(&full_text, offset);
-        let text = full_text.get(..offset).unwrap_or("");
-        let mut segments = text.split_word_bound_indices().collect::<Vec<_>>();
-        while let Some((start, segment)) = segments.pop() {
-            if segment.chars().all(|character| character.is_whitespace()) {
-                continue;
+        find_preceding_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
+            if is_first_iteration
+                && classifier.is_punctuation(right)
+                && !classifier.is_punctuation(left)
+                && left != '\n'
+            {
+                is_first_iteration = false;
+                return false;
             }
-            return start;
-        }
+            is_first_iteration = false;
 
-        0
+            (classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(right))
+                || left == '\n'
+        })
     }
 
     fn next_word_end(&self, offset: usize) -> usize {
-        let full_text = self.snapshot().text();
-        if offset >= full_text.len() {
-            return full_text.len();
-        }
+        let text = self.snapshot().text();
+        let classifier = CharClassifier::default();
+        let mut is_first_iteration = true;
 
-        let offset = clamp_offset_to_char_boundary(&full_text, offset);
-        let text = full_text.get(offset..).unwrap_or("");
-        for (start, segment) in text.split_word_bound_indices() {
-            if segment.chars().all(|character| character.is_whitespace()) {
-                continue;
+        find_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
+            if is_first_iteration
+                && classifier.is_punctuation(left)
+                && !classifier.is_punctuation(right)
+                && right != '\n'
+            {
+                is_first_iteration = false;
+                return false;
             }
-            return offset + start + segment.len();
-        }
+            is_first_iteration = false;
 
-        full_text.len()
+            (classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(left))
+                || right == '\n'
+        })
+    }
+
+    fn previous_subword_start(&self, offset: usize) -> usize {
+        let text = self.snapshot().text();
+        let classifier = CharClassifier::default();
+        find_preceding_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
+            is_subword_start(left, right, &classifier) || left == '\n'
+        })
+    }
+
+    fn next_subword_end(&self, offset: usize) -> usize {
+        let text = self.snapshot().text();
+        let classifier = CharClassifier::default();
+        find_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
+            is_subword_end(left, right, &classifier) || right == '\n'
+        })
     }
 
     fn line_indent_offset(&self) -> usize {
@@ -704,9 +763,9 @@ impl Editor {
         self.move_to(offset, cx);
     }
 
-    fn move_to_previous_word(
+    fn move_to_previous_word_start(
         &mut self,
-        _: &MoveToPreviousWord,
+        _: &MoveToPreviousWordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -714,9 +773,74 @@ impl Editor {
         self.move_to(offset, cx);
     }
 
-    fn move_to_next_word(&mut self, _: &MoveToNextWord, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_to_previous_subword_start(
+        &mut self,
+        _: &MoveToPreviousSubwordStart,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.previous_subword_start(self.cursor_offset());
+        self.move_to(offset, cx);
+    }
+
+    fn move_to_next_word_end(
+        &mut self,
+        _: &MoveToNextWordEnd,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.next_word_end(self.cursor_offset());
         self.move_to(offset, cx);
+    }
+
+    fn move_to_next_subword_end(
+        &mut self,
+        _: &MoveToNextSubwordEnd,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.next_subword_end(self.cursor_offset());
+        self.move_to(offset, cx);
+    }
+
+    fn select_to_previous_word_start(
+        &mut self,
+        _: &SelectToPreviousWordStart,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.previous_word_start(self.cursor_offset());
+        self.select_to(offset, cx);
+    }
+
+    fn select_to_next_word_end(
+        &mut self,
+        _: &SelectToNextWordEnd,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.next_word_end(self.cursor_offset());
+        self.select_to(offset, cx);
+    }
+
+    fn select_to_previous_subword_start(
+        &mut self,
+        _: &SelectToPreviousSubwordStart,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.previous_subword_start(self.cursor_offset());
+        self.select_to(offset, cx);
+    }
+
+    fn select_to_next_subword_end(
+        &mut self,
+        _: &SelectToNextSubwordEnd,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let offset = self.next_subword_end(self.cursor_offset());
+        self.select_to(offset, cx);
     }
 
     fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
@@ -1243,8 +1367,14 @@ impl Render for Editor {
             .on_action(cx.listener(Self::select_all))
             .on_action(cx.listener(Self::home))
             .on_action(cx.listener(Self::end))
-            .on_action(cx.listener(Self::move_to_previous_word))
-            .on_action(cx.listener(Self::move_to_next_word))
+            .on_action(cx.listener(Self::move_to_previous_word_start))
+            .on_action(cx.listener(Self::move_to_next_word_end))
+            .on_action(cx.listener(Self::move_to_previous_subword_start))
+            .on_action(cx.listener(Self::move_to_next_subword_end))
+            .on_action(cx.listener(Self::select_to_previous_word_start))
+            .on_action(cx.listener(Self::select_to_next_word_end))
+            .on_action(cx.listener(Self::select_to_previous_subword_start))
+            .on_action(cx.listener(Self::select_to_next_subword_end))
             .on_action(cx.listener(Self::delete_to_previous_word_start))
             .on_action(cx.listener(Self::delete_to_next_word_end))
             .on_action(cx.listener(Self::copy))
@@ -1346,6 +1476,119 @@ fn sanitize_single_line(text: &str) -> String {
         }
     }
     sanitized
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CharKind {
+    Whitespace,
+    Punctuation,
+    Word,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct CharClassifier;
+
+impl CharClassifier {
+    fn kind(&self, character: char) -> CharKind {
+        if character.is_alphanumeric() || character == '_' {
+            return CharKind::Word;
+        }
+        if character.is_whitespace() {
+            return CharKind::Whitespace;
+        }
+        CharKind::Punctuation
+    }
+
+    fn is_whitespace(&self, character: char) -> bool {
+        self.kind(character) == CharKind::Whitespace
+    }
+
+    fn is_word(&self, character: char) -> bool {
+        self.kind(character) == CharKind::Word
+    }
+
+    fn is_punctuation(&self, character: char) -> bool {
+        self.kind(character) == CharKind::Punctuation
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FindRange {
+    SingleLine,
+    MultiLine,
+}
+
+fn find_preceding_boundary_offset(
+    text: &str,
+    from: usize,
+    find_range: FindRange,
+    mut is_boundary: impl FnMut(char, char) -> bool,
+) -> usize {
+    let mut prev_ch = None;
+    let mut offset = clamp_offset_to_char_boundary(text, from);
+
+    for ch in text[..offset].chars().rev() {
+        if find_range == FindRange::SingleLine && ch == '\n' {
+            break;
+        }
+        if let Some(prev_ch) = prev_ch
+            && is_boundary(ch, prev_ch)
+        {
+            break;
+        }
+
+        offset -= ch.len_utf8();
+        prev_ch = Some(ch);
+    }
+
+    offset
+}
+
+fn find_boundary_offset(
+    text: &str,
+    from: usize,
+    find_range: FindRange,
+    mut is_boundary: impl FnMut(char, char) -> bool,
+) -> usize {
+    let mut offset = clamp_offset_to_char_boundary(text, from);
+    let mut prev_ch = None;
+
+    for ch in text[offset..].chars() {
+        if find_range == FindRange::SingleLine && ch == '\n' {
+            break;
+        }
+        if let Some(prev_ch) = prev_ch
+            && is_boundary(prev_ch, ch)
+        {
+            break;
+        }
+
+        offset += ch.len_utf8();
+        prev_ch = Some(ch);
+    }
+
+    offset
+}
+
+fn is_subword_start(left: char, right: char, classifier: &CharClassifier) -> bool {
+    let is_word_start =
+        classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(right);
+    let is_subword_start = classifier.is_word('-') && left == '-' && right != '-'
+        || left == '_' && right != '_'
+        || left.is_lowercase() && right.is_uppercase();
+    is_word_start || is_subword_start
+}
+
+fn is_subword_end(left: char, right: char, classifier: &CharClassifier) -> bool {
+    let is_word_end =
+        classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(left);
+    is_word_end || is_subword_boundary_end(left, right, classifier)
+}
+
+fn is_subword_boundary_end(left: char, right: char, classifier: &CharClassifier) -> bool {
+    classifier.is_word('-') && left != '-' && right == '-'
+        || left != '_' && right == '_'
+        || left.is_lowercase() && right.is_uppercase()
 }
 
 fn utf8_offset_from_utf16(text: &str, utf16_offset: usize) -> usize {
