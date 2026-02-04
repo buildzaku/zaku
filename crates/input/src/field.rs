@@ -1,8 +1,7 @@
-use std::sync::Arc;
-
 use gpui::{
     App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, div, prelude::*, px, rgb,
 };
+use std::sync::Arc;
 
 use ui::{Icon, IconName, IconSize, h_flex, v_flex};
 
