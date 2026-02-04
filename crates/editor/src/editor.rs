@@ -1,59 +1,41 @@
-use std::collections::HashMap;
+use std::any::TypeId;
+use std::collections::{HashMap, VecDeque};
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use gpui::{
-    App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId, ElementInputHandler,
-    Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, KeyBinding,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, Render,
-    ShapedLine, SharedString, Subscription, TextRun, UTF16Selection, UnderlineStyle, Window,
-    actions, div, fill, point, prelude::*, px, rgb, rgba, size,
+    App, Bounds, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle,
+    Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, Render, ShapedLine, SharedString, Subscription, TextStyle,
+    UTF16Selection, WeakEntity, Window, point, relative, rems, rgb,
+    prelude::*,
 };
 use text::{Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaId, TransactionId};
 use unicode_segmentation::UnicodeSegmentation;
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 
-actions!(
-    input,
-    [
-        Backspace,
-        Copy,
-        Cut,
-        DeleteToBeginningOfLine,
-        DeleteToEndOfLine,
-        Delete,
-        DeleteToNextWordEnd,
-        DeleteToPreviousWordStart,
-        End,
-        Home,
-        Left,
-        MoveToNextWordEnd,
-        MoveToNextSubwordEnd,
-        MoveToPreviousWordStart,
-        MoveToPreviousSubwordStart,
-        MoveToBeginningOfLine,
-        MoveToEndOfLine,
-        Paste,
-        Redo,
-        Right,
-        SelectAll,
-        SelectLeft,
-        SelectRight,
-        SelectToBeginningOfLine,
-        SelectToEndOfLine,
-        SelectToNextWordEnd,
-        SelectToNextSubwordEnd,
-        SelectToPreviousWordStart,
-        SelectToPreviousSubwordStart,
-        Undo,
-    ]
-);
+mod actions;
+mod element;
 
-const KEY_CONTEXT: &str = "Input";
+pub use actions::*;
+pub use element::EditorElement;
+
+pub(crate) const KEY_CONTEXT: &str = "Editor";
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Addons allow storing per-editor state in other crates (e.g. Vim).
+pub trait Addon: 'static {
+    fn extend_key_context(&self, _: &mut KeyContext, _: &App) {}
+
+    fn to_any(&self) -> &dyn std::any::Any;
+
+    fn to_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        None
+    }
+}
 
 fn next_buffer_id() -> BufferId {
     let id = NEXT_BUFFER_ID.fetch_add(1, Ordering::Relaxed);
@@ -64,12 +46,25 @@ pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("backspace", Backspace, Some(KEY_CONTEXT)),
         KeyBinding::new("delete", Delete, Some(KEY_CONTEXT)),
-        KeyBinding::new("left", Left, Some(KEY_CONTEXT)),
-        KeyBinding::new("right", Right, Some(KEY_CONTEXT)),
+        KeyBinding::new("left", MoveLeft, Some(KEY_CONTEXT)),
+        KeyBinding::new("right", MoveRight, Some(KEY_CONTEXT)),
         KeyBinding::new("shift-left", SelectLeft, Some(KEY_CONTEXT)),
         KeyBinding::new("shift-right", SelectRight, Some(KEY_CONTEXT)),
-        KeyBinding::new("home", Home, Some(KEY_CONTEXT)),
-        KeyBinding::new("end", End, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "home",
+            MoveToBeginningOfLine {
+                stop_at_soft_wraps: true,
+                stop_at_indent: true,
+            },
+            Some(KEY_CONTEXT),
+        ),
+        KeyBinding::new(
+            "end",
+            MoveToEndOfLine {
+                stop_at_soft_wraps: true,
+            },
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("alt-left", MoveToPreviousWordStart, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
@@ -111,39 +106,69 @@ pub fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-alt-shift-right", SelectToNextSubwordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-backspace", DeleteToBeginningOfLine, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "cmd-backspace",
+            DeleteToBeginningOfLine::default(),
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new(
             "ctrl-backspace",
-            DeleteToPreviousWordStart,
+            DeleteToPreviousWordStart::default(),
             Some(KEY_CONTEXT),
         ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-delete", DeleteToEndOfLine, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-delete", DeleteToNextWordEnd, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-left", MoveToBeginningOfLine, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-right", MoveToEndOfLine, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-shift-left", SelectToBeginningOfLine, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-shift-right", SelectToEndOfLine, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-up", Home, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-down", End, Some(KEY_CONTEXT)),
+        KeyBinding::new("ctrl-delete", DeleteToNextWordEnd::default(), Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new(
-            "alt-backspace",
-            DeleteToPreviousWordStart,
+            "cmd-left",
+            MoveToBeginningOfLine {
+                stop_at_soft_wraps: true,
+                stop_at_indent: true,
+            },
             Some(KEY_CONTEXT),
         ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-w", DeleteToPreviousWordStart, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "cmd-right",
+            MoveToEndOfLine {
+                stop_at_soft_wraps: true,
+            },
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-delete", DeleteToNextWordEnd, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "cmd-shift-left",
+            SelectToBeginningOfLine {
+                stop_at_soft_wraps: true,
+                stop_at_indent: true,
+            },
+            Some(KEY_CONTEXT),
+        ),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new(
+            "cmd-shift-right",
+            SelectToEndOfLine {
+                stop_at_soft_wraps: true,
+            },
+            Some(KEY_CONTEXT),
+        ),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-up", MoveToBeginning, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-down", MoveToEnd, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new(
+            "alt-backspace",
+            DeleteToPreviousWordStart::default(),
+            Some(KEY_CONTEXT),
+        ),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-w", DeleteToPreviousWordStart::default(), Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("alt-delete", DeleteToNextWordEnd::default(), Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-a", SelectAll, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
@@ -170,13 +195,11 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("ctrl-y", Redo, Some(KEY_CONTEXT)),
     ]);
 
-    ERASED_EDITOR_FACTORY
-        .set(|window, cx| {
-            Arc::new(ErasedEditorImpl(
-                cx.new(|cx| Editor::single_line(window, cx)),
-            )) as Arc<dyn ErasedEditor>
-        })
-        .expect("ErasedEditorFactory to be initialized");
+    _ = ERASED_EDITOR_FACTORY.set(|window, cx| {
+        Arc::new(ErasedEditorImpl(
+            cx.new(|cx| Editor::single_line(window, cx)),
+        )) as Arc<dyn ErasedEditor>
+    });
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,7 +208,74 @@ pub enum EditorEvent {
     Blurred,
 }
 
-#[derive(Clone, Debug)]
+const MAX_SELECTION_HISTORY_LEN: usize = 1024;
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum EditorMode {
+    SingleLine,
+    AutoHeight {
+        min_lines: usize,
+        max_lines: Option<usize>,
+    },
+    Full {
+        scale_ui_elements_with_buffer_font_size: bool,
+        show_active_line_background: bool,
+        sizing_behavior: SizingBehavior,
+    },
+    Minimap {
+        parent: WeakEntity<Editor>,
+    },
+}
+
+impl EditorMode {
+    pub fn full() -> Self {
+        Self::Full {
+            scale_ui_elements_with_buffer_font_size: true,
+            show_active_line_background: true,
+            sizing_behavior: SizingBehavior::Default,
+        }
+    }
+
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        matches!(self, Self::Full { .. })
+    }
+
+    #[inline]
+    pub fn is_single_line(&self) -> bool {
+        matches!(self, Self::SingleLine { .. })
+    }
+
+    #[inline]
+    fn is_minimap(&self) -> bool {
+        matches!(self, Self::Minimap { .. })
+    }
+}
+
+#[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
+pub enum SizingBehavior {
+    #[default]
+    Default,
+    ExcludeOverscrollMargin,
+    SizeByContent,
+}
+
+#[derive(Clone)]
+pub struct EditorStyle {
+    pub background: Hsla,
+    pub text: TextStyle,
+}
+
+impl Default for EditorStyle {
+    fn default() -> Self {
+        Self {
+            background: Hsla::transparent_black(),
+            text: TextStyle::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct SelectionState {
     range: Range<usize>,
     reversed: bool,
@@ -193,22 +283,111 @@ struct SelectionState {
 
 #[derive(Clone, Debug)]
 struct SelectionHistoryEntry {
+    state: SelectionState,
+}
+
+#[derive(Clone, Debug)]
+struct SelectionTransactionEntry {
     before: SelectionState,
     after: SelectionState,
+}
+
+#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+enum SelectionHistoryMode {
+    #[default]
+    Normal,
+    Undoing,
+    Redoing,
+    Skipping,
+}
+
+#[derive(Default)]
+struct SelectionHistory {
+    selections_by_transaction: HashMap<TransactionId, SelectionTransactionEntry>,
+    mode: SelectionHistoryMode,
+    undo_stack: VecDeque<SelectionHistoryEntry>,
+    redo_stack: VecDeque<SelectionHistoryEntry>,
+}
+
+impl SelectionHistory {
+    fn new(initial: SelectionState) -> Self {
+        let mut history = Self::default();
+        history.push(SelectionHistoryEntry { state: initial });
+        history
+    }
+
+    fn push(&mut self, entry: SelectionHistoryEntry) {
+        match self.mode {
+            SelectionHistoryMode::Normal => {
+                self.push_undo(entry);
+                self.redo_stack.clear();
+            }
+            SelectionHistoryMode::Undoing => self.push_redo(entry),
+            SelectionHistoryMode::Redoing => self.push_undo(entry),
+            SelectionHistoryMode::Skipping => {}
+        }
+    }
+
+    fn push_undo(&mut self, entry: SelectionHistoryEntry) {
+        let should_push = self
+            .undo_stack
+            .back()
+            .map_or(true, |last| last.state != entry.state);
+        if should_push {
+            self.undo_stack.push_back(entry);
+            if self.undo_stack.len() > MAX_SELECTION_HISTORY_LEN {
+                self.undo_stack.pop_front();
+            }
+        }
+    }
+
+    fn push_redo(&mut self, entry: SelectionHistoryEntry) {
+        let should_push = self
+            .redo_stack
+            .back()
+            .map_or(true, |last| last.state != entry.state);
+        if should_push {
+            self.redo_stack.push_back(entry);
+            if self.redo_stack.len() > MAX_SELECTION_HISTORY_LEN {
+                self.redo_stack.pop_front();
+            }
+        }
+    }
+
+    fn undo(&mut self) -> Option<SelectionState> {
+        if self.undo_stack.len() <= 1 {
+            return None;
+        }
+
+        let current = self.undo_stack.pop_back()?;
+        self.redo_stack.push_back(current);
+        self.undo_stack.back().map(|entry| entry.state.clone())
+    }
+
+    fn redo(&mut self) -> Option<SelectionState> {
+        let next = self.redo_stack.pop_back()?;
+        self.undo_stack.push_back(next.clone());
+        Some(next.state)
+    }
 }
 
 pub struct Editor {
     focus_handle: FocusHandle,
     buffer: TextBuffer,
+    mode: EditorMode,
     placeholder: SharedString,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
-    selection_history: HashMap<TransactionId, SelectionHistoryEntry>,
+    selection_history: SelectionHistory,
+    addons: HashMap<TypeId, Box<dyn Addon>>,
     last_layout: Option<ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
     selecting: bool,
+    input_enabled: bool,
+    selection_mark_mode: bool,
     masked: bool,
+    word_chars: Arc<[char]>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -218,6 +397,12 @@ impl Editor {
     pub fn single_line(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let buffer = TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), "");
+        let selected_range = 0..0;
+        let selection_reversed = false;
+        let selection_history = SelectionHistory::new(SelectionState {
+            range: selected_range.clone(),
+            reversed: selection_reversed,
+        });
 
         let subscriptions = vec![
             cx.on_focus(&focus_handle, window, Self::on_focus),
@@ -227,15 +412,20 @@ impl Editor {
         Self {
             focus_handle,
             buffer,
+            mode: EditorMode::SingleLine,
             placeholder: SharedString::default(),
-            selected_range: 0..0,
-            selection_reversed: false,
+            selected_range,
+            selection_reversed,
             marked_range: None,
-            selection_history: HashMap::new(),
+            selection_history,
+            addons: HashMap::new(),
             last_layout: None,
             last_bounds: None,
             selecting: false,
+            input_enabled: true,
+            selection_mark_mode: false,
             masked: false,
+            word_chars: Arc::from(Vec::new().into_boxed_slice()),
             _subscriptions: subscriptions,
         }
     }
@@ -289,11 +479,17 @@ impl Editor {
         };
 
         self.selection_history
+            .selections_by_transaction
             .entry(transaction_id)
             .and_modify(|entry| {
                 entry.after = after.clone();
             })
-            .or_insert(SelectionHistoryEntry { before, after });
+            .or_insert(SelectionTransactionEntry { before, after });
+    }
+
+    fn record_selection_history(&mut self) {
+        self.selection_history
+            .push(SelectionHistoryEntry { state: self.selection_state() });
     }
 
     fn cursor_offset(&self) -> usize {
@@ -304,11 +500,16 @@ impl Editor {
         }
     }
 
+    fn char_classifier(&self) -> CharClassifier {
+        CharClassifier::new(self.word_chars.clone())
+    }
+
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         let text_len = self.snapshot().len();
         let offset = offset.min(text_len);
         self.selected_range = offset..offset;
         self.selection_reversed = false;
+        self.record_selection_history();
         cx.notify();
     }
 
@@ -324,6 +525,7 @@ impl Editor {
             self.selected_range = self.selected_range.end..self.selected_range.start;
         }
 
+        self.record_selection_history();
         cx.notify();
     }
 
@@ -344,7 +546,7 @@ impl Editor {
 
     fn previous_word_start(&self, offset: usize) -> usize {
         let text = self.snapshot().text();
-        let classifier = CharClassifier::default();
+        let classifier = self.char_classifier();
         let mut is_first_iteration = true;
 
         find_preceding_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
@@ -365,7 +567,7 @@ impl Editor {
 
     fn next_word_end(&self, offset: usize) -> usize {
         let text = self.snapshot().text();
-        let classifier = CharClassifier::default();
+        let classifier = self.char_classifier();
         let mut is_first_iteration = true;
 
         find_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
@@ -386,7 +588,7 @@ impl Editor {
 
     fn previous_subword_start(&self, offset: usize) -> usize {
         let text = self.snapshot().text();
-        let classifier = CharClassifier::default();
+        let classifier = self.char_classifier();
         find_preceding_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
             is_subword_start(left, right, &classifier) || left == '\n'
         })
@@ -394,7 +596,7 @@ impl Editor {
 
     fn next_subword_end(&self, offset: usize) -> usize {
         let text = self.snapshot().text();
-        let classifier = CharClassifier::default();
+        let classifier = self.char_classifier();
         find_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
             is_subword_end(left, right, &classifier) || right == '\n'
         })
@@ -444,8 +646,9 @@ impl Editor {
         let transaction_id = self.buffer.start_transaction_at(now);
         if let Some(transaction_id) = transaction_id {
             self.selection_history
+                .selections_by_transaction
                 .entry(transaction_id)
-                .or_insert(SelectionHistoryEntry {
+                .or_insert(SelectionTransactionEntry {
                     before: before.clone(),
                     after: before.clone(),
                 });
@@ -456,6 +659,7 @@ impl Editor {
         self.selected_range = cursor..cursor;
         self.selection_reversed = false;
         self.marked_range = None;
+        self.record_selection_history();
         let after = self.selection_state();
         let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
         self.record_selection_transaction(transaction_id, before, after);
@@ -482,6 +686,7 @@ impl Editor {
             self.selected_range = selection;
             self.selection_reversed = false;
             self.marked_range = marked_range;
+            self.record_selection_history();
             cx.notify();
             return;
         }
@@ -491,8 +696,9 @@ impl Editor {
         let transaction_id = self.buffer.start_transaction_at(now);
         if let Some(transaction_id) = transaction_id {
             self.selection_history
+                .selections_by_transaction
                 .entry(transaction_id)
-                .or_insert(SelectionHistoryEntry {
+                .or_insert(SelectionTransactionEntry {
                     before: before.clone(),
                     after: before.clone(),
                 });
@@ -502,6 +708,7 @@ impl Editor {
         self.selected_range = selection;
         self.selection_reversed = false;
         self.marked_range = marked_range;
+        self.record_selection_history();
         let after = self.selection_state();
         let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
         self.record_selection_transaction(transaction_id, before, after);
@@ -582,8 +789,9 @@ impl Editor {
         let transaction_id = self.buffer.start_transaction_at(now);
         if let Some(transaction_id) = transaction_id {
             self.selection_history
+                .selections_by_transaction
                 .entry(transaction_id)
-                .or_insert(SelectionHistoryEntry {
+                .or_insert(SelectionTransactionEntry {
                     before: before.clone(),
                     after: before.clone(),
                 });
@@ -594,6 +802,7 @@ impl Editor {
         self.selected_range = sanitized.len()..sanitized.len();
         self.selection_reversed = false;
         self.marked_range = None;
+        self.record_selection_history();
         let after = self.selection_state();
         let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
         self.record_selection_transaction(transaction_id, before, after);
@@ -612,8 +821,9 @@ impl Editor {
         let transaction_id = self.buffer.start_transaction_at(now);
         if let Some(transaction_id) = transaction_id {
             self.selection_history
+                .selections_by_transaction
                 .entry(transaction_id)
-                .or_insert(SelectionHistoryEntry {
+                .or_insert(SelectionTransactionEntry {
                     before: before.clone(),
                     after: before.clone(),
                 });
@@ -623,6 +833,7 @@ impl Editor {
         self.selected_range = 0..0;
         self.selection_reversed = false;
         self.marked_range = None;
+        self.record_selection_history();
         let after = self.selection_state();
         let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
         self.record_selection_transaction(transaction_id, before, after);
@@ -644,14 +855,23 @@ impl Editor {
         cx.notify();
     }
 
+    pub fn set_input_enabled(&mut self, input_enabled: bool) {
+        self.input_enabled = input_enabled;
+    }
+
+    pub fn set_word_chars(&mut self, word_chars: impl Into<Arc<[char]>>) {
+        self.word_chars = word_chars.into();
+    }
+
     fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {
         let offset = self.snapshot().len();
         self.selected_range = offset..offset;
         self.selection_reversed = false;
+        self.record_selection_history();
         cx.notify();
     }
 
-    fn left(&mut self, _: &Left, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_left(&mut self, _: &MoveLeft, _: &mut Window, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.move_to(self.previous_boundary(self.cursor_offset()), cx);
         } else {
@@ -659,7 +879,7 @@ impl Editor {
         }
     }
 
-    fn right(&mut self, _: &Right, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_right(&mut self, _: &MoveRight, _: &mut Window, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
             self.move_to(self.next_boundary(self.cursor_offset()), cx);
         } else {
@@ -678,50 +898,47 @@ impl Editor {
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.selected_range = 0..self.snapshot().len();
         self.selection_reversed = false;
+        self.record_selection_history();
         cx.notify();
     }
 
     fn move_to_beginning_of_line(
         &mut self,
-        _: &MoveToBeginningOfLine,
+        action: &MoveToBeginningOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.line_beginning_offset(true);
+        let offset = self.line_beginning_offset(action.stop_at_indent);
         self.move_to(offset, cx);
     }
 
     fn select_to_beginning_of_line(
         &mut self,
-        _: &SelectToBeginningOfLine,
+        action: &SelectToBeginningOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.line_beginning_offset(true);
+        let offset = self.line_beginning_offset(action.stop_at_indent);
         self.select_to(offset, cx);
     }
 
     fn delete_to_beginning_of_line(
         &mut self,
-        _: &DeleteToBeginningOfLine,
+        action: &DeleteToBeginningOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if self.selected_range.is_empty() {
+            let offset = self.line_beginning_offset(action.stop_at_indent);
             let cursor = self.cursor_offset();
-            if cursor == 0 {
+            if cursor == offset {
                 return;
             }
-            self.selected_range = 0..cursor;
+            self.selected_range = offset..cursor;
             self.selection_reversed = false;
         }
 
         self.replace_selection("", cx);
-    }
-
-    fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.line_beginning_offset(true);
-        self.move_to(offset, cx);
     }
 
     fn move_to_end_of_line(&mut self, _: &MoveToEndOfLine, _: &mut Window, cx: &mut Context<Self>) {
@@ -758,9 +975,22 @@ impl Editor {
         self.replace_selection("", cx);
     }
 
-    fn end(&mut self, _: &End, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.line_end_offset();
+    fn move_to_beginning(&mut self, _: &MoveToBeginning, _: &mut Window, cx: &mut Context<Self>) {
+        self.move_to(0, cx);
+    }
+
+    fn move_to_end(&mut self, _: &MoveToEnd, _: &mut Window, cx: &mut Context<Self>) {
+        let offset = self.snapshot().len();
         self.move_to(offset, cx);
+    }
+
+    fn select_to_beginning(&mut self, _: &SelectToBeginning, _: &mut Window, cx: &mut Context<Self>) {
+        self.select_to(0, cx);
+    }
+
+    fn select_to_end(&mut self, _: &SelectToEnd, _: &mut Window, cx: &mut Context<Self>) {
+        let offset = self.snapshot().len();
+        self.select_to(offset, cx);
     }
 
     fn move_to_previous_word_start(
@@ -872,6 +1102,19 @@ impl Editor {
         self.replace_selection("", cx);
     }
 
+    fn delete_to_previous_subword_start(
+        &mut self,
+        _: &DeleteToPreviousSubwordStart,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_range.is_empty() {
+            let start = self.previous_subword_start(self.cursor_offset());
+            self.selected_range = start..self.cursor_offset();
+        }
+        self.replace_selection("", cx);
+    }
+
     fn delete_to_next_word_end(
         &mut self,
         _: &DeleteToNextWordEnd,
@@ -880,6 +1123,19 @@ impl Editor {
     ) {
         if self.selected_range.is_empty() {
             let end = self.next_word_end(self.cursor_offset());
+            self.selected_range = self.cursor_offset()..end;
+        }
+        self.replace_selection("", cx);
+    }
+
+    fn delete_to_next_subword_end(
+        &mut self,
+        _: &DeleteToNextSubwordEnd,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.selected_range.is_empty() {
+            let end = self.next_subword_end(self.cursor_offset());
             self.selected_range = self.cursor_offset()..end;
         }
         self.replace_selection("", cx);
@@ -928,6 +1184,14 @@ impl Editor {
         self.replace_selection(&text, cx);
     }
 
+    fn handle_input(&mut self, text: &str, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.input_enabled {
+            return;
+        }
+
+        self.replace_selection(text, cx);
+    }
+
     fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
         let transaction_id = self.buffer.undo().map(|(transaction_id, _)| transaction_id);
         let Some(transaction_id) = transaction_id else {
@@ -936,6 +1200,7 @@ impl Editor {
 
         let selection_state = self
             .selection_history
+            .selections_by_transaction
             .get(&transaction_id)
             .map(|entry| entry.before.clone());
         if let Some(selection_state) = selection_state.as_ref() {
@@ -957,6 +1222,7 @@ impl Editor {
 
         let selection_state = self
             .selection_history
+            .selections_by_transaction
             .get(&transaction_id)
             .map(|entry| entry.after.clone());
         if let Some(selection_state) = selection_state.as_ref() {
@@ -968,6 +1234,26 @@ impl Editor {
         self.marked_range = None;
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
+    }
+
+    fn undo_selection(&mut self, _: &UndoSelection, _: &mut Window, cx: &mut Context<Self>) {
+        self.selection_history.mode = SelectionHistoryMode::Undoing;
+        let state = self.selection_history.undo();
+        self.selection_history.mode = SelectionHistoryMode::Normal;
+        if let Some(state) = state {
+            self.restore_selection_state(&state);
+            cx.notify();
+        }
+    }
+
+    fn redo_selection(&mut self, _: &RedoSelection, _: &mut Window, cx: &mut Context<Self>) {
+        self.selection_history.mode = SelectionHistoryMode::Redoing;
+        let state = self.selection_history.redo();
+        self.selection_history.mode = SelectionHistoryMode::Normal;
+        if let Some(state) = state {
+            self.restore_selection_state(&state);
+            cx.notify();
+        }
     }
 
     fn on_mouse_down(
@@ -1020,6 +1306,64 @@ impl Editor {
         let display_index = line.closest_index_for_x(position.x - bounds.left());
         self.text_offset_for_display_offset(display_index)
     }
+
+    pub fn key_context(&self, window: &mut Window, cx: &mut App) -> KeyContext {
+        self.key_context_internal(window, cx)
+    }
+
+    fn key_context_internal(&self, _window: &mut Window, cx: &mut App) -> KeyContext {
+        let mut key_context = KeyContext::new_with_defaults();
+        key_context.add("Editor");
+        let mode = match self.mode {
+            EditorMode::SingleLine => "single_line",
+            EditorMode::AutoHeight { .. } => "auto_height",
+            EditorMode::Minimap { .. } => "minimap",
+            EditorMode::Full { .. } => "full",
+        };
+        key_context.set("mode", mode);
+
+        if self.selection_mark_mode {
+            key_context.add("selection_mode");
+        }
+
+        if self.mode == EditorMode::SingleLine
+            && self.selected_range.is_empty()
+            && self.selected_range.end == self.snapshot().len()
+        {
+            key_context.add("end_of_input");
+        }
+
+        for addon in self.addons.values() {
+            addon.extend_key_context(&mut key_context, cx);
+        }
+
+        key_context
+    }
+
+    pub(crate) fn create_style(&self, _cx: &App) -> EditorStyle {
+        EditorStyle::default()
+    }
+
+    pub fn register_addon<T: Addon>(&mut self, instance: T) {
+        self.addons.insert(TypeId::of::<T>(), Box::new(instance));
+    }
+
+    pub fn unregister_addon<T: Addon>(&mut self) {
+        self.addons.remove(&TypeId::of::<T>());
+    }
+
+    pub fn addon<T: Addon>(&self) -> Option<&T> {
+        self.addons
+            .get(&TypeId::of::<T>())
+            .and_then(|addon| addon.to_any().downcast_ref())
+    }
+
+    pub fn addon_mut<T: Addon>(&mut self) -> Option<&mut T> {
+        self.addons
+            .get_mut(&TypeId::of::<T>())
+            .and_then(|addon| addon.to_any_mut())
+            .and_then(|addon| addon.downcast_mut())
+    }
 }
 
 impl EntityInputHandler for Editor {
@@ -1038,10 +1382,14 @@ impl EntityInputHandler for Editor {
 
     fn selected_text_range(
         &mut self,
-        _ignore_disabled_input: bool,
+        ignore_disabled_input: bool,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
+        if !ignore_disabled_input && !self.input_enabled {
+            return None;
+        }
+
         Some(UTF16Selection {
             range: self.range_to_utf16(&self.selected_range),
             reversed: self.selection_reversed,
@@ -1069,6 +1417,10 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -1086,6 +1438,10 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -1151,250 +1507,15 @@ impl EntityInputHandler for Editor {
                 .0,
         )
     }
-}
 
-struct TextElement {
-    editor: Entity<Editor>,
-}
-
-struct PrepaintState {
-    line: Option<ShapedLine>,
-    cursor: Option<PaintQuad>,
-    selection: Option<PaintQuad>,
-}
-
-impl IntoElement for TextElement {
-    type Element = Self;
-
-    fn into_element(self) -> Self::Element {
-        self
-    }
-}
-
-impl Element for TextElement {
-    type RequestLayoutState = ();
-    type PrepaintState = PrepaintState;
-
-    fn id(&self) -> Option<ElementId> {
-        None
-    }
-
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
-        None
-    }
-
-    fn request_layout(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
-        let mut style = gpui::Style::default();
-        style.size.width = gpui::relative(1.).into();
-        style.size.height = window.line_height().into();
-        (window.request_layout(style, [], cx), ())
-    }
-
-    fn prepaint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _request_layout: &mut Self::RequestLayoutState,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self::PrepaintState {
-        let editor = self.editor.read(cx);
-        let snapshot = editor.snapshot();
-        let content = snapshot.text();
-        let selected_range = editor.selected_range.clone();
-        let cursor_offset = editor.cursor_offset();
-        let style = window.text_style();
-
-        let (display_text, text_color) = if content.is_empty() {
-            (editor.placeholder.clone(), rgb(0x8a8a8a).into())
-        } else {
-            (editor.display_text(), style.color)
-        };
-
-        let base_run = TextRun {
-            len: display_text.len(),
-            font: style.font(),
-            color: text_color,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        };
-
-        let runs = if let Some(marked_range) = editor.marked_range.as_ref() {
-            let display_start = editor.display_offset_for_text_offset(marked_range.start);
-            let display_end = editor.display_offset_for_text_offset(marked_range.end);
-            let mut composed_runs = Vec::new();
-
-            if display_start > 0 {
-                composed_runs.push(TextRun {
-                    len: display_start,
-                    ..base_run.clone()
-                });
-            }
-            if display_end > display_start {
-                composed_runs.push(TextRun {
-                    len: display_end - display_start,
-                    underline: Some(UnderlineStyle {
-                        color: Some(base_run.color),
-                        thickness: px(1.0),
-                        wavy: false,
-                    }),
-                    ..base_run.clone()
-                });
-            }
-            if display_end < display_text.len() {
-                composed_runs.push(TextRun {
-                    len: display_text.len() - display_end,
-                    ..base_run
-                });
-            }
-
-            composed_runs
-        } else {
-            vec![base_run]
-        };
-
-        let font_size = style.font_size.to_pixels(window.rem_size());
-        let line = window
-            .text_system()
-            .shape_line(display_text, font_size, &runs, None);
-
-        let display_cursor = editor.display_offset_for_text_offset(cursor_offset);
-        let cursor_pos = line.x_for_index(display_cursor);
-        let display_start = editor.display_offset_for_text_offset(selected_range.start);
-        let display_end = editor.display_offset_for_text_offset(selected_range.end);
-
-        let selection = if selected_range.is_empty() {
-            None
-        } else {
-            Some(fill(
-                Bounds::from_corners(
-                    point(
-                        bounds.left() + line.x_for_index(display_start),
-                        bounds.top(),
-                    ),
-                    point(
-                        bounds.left() + line.x_for_index(display_end),
-                        bounds.bottom(),
-                    ),
-                ),
-                rgba(0x77777740),
-            ))
-        };
-
-        let cursor = Some(fill(
-            Bounds::new(
-                point(bounds.left() + cursor_pos, bounds.top()),
-                size(px(2.), bounds.bottom() - bounds.top()),
-            ),
-            rgb(0xffffff),
-        ));
-
-        PrepaintState {
-            line: Some(line),
-            cursor,
-            selection,
-        }
-    }
-
-    fn paint(
-        &mut self,
-        _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
-        bounds: Bounds<Pixels>,
-        _request_layout: &mut Self::RequestLayoutState,
-        prepaint: &mut Self::PrepaintState,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        let focus_handle = self.editor.read(cx).focus_handle.clone();
-        window.handle_input(
-            &focus_handle,
-            ElementInputHandler::new(bounds, self.editor.clone()),
-            cx,
-        );
-
-        if let Some(selection) = prepaint.selection.take() {
-            window.paint_quad(selection)
-        }
-
-        let line = prepaint.line.take().unwrap();
-        line.paint(
-            bounds.origin,
-            window.line_height(),
-            gpui::TextAlign::Left,
-            None,
-            window,
-            cx,
-        )
-        .ok();
-
-        if focus_handle.is_focused(window)
-            && let Some(cursor) = prepaint.cursor.take()
-        {
-            window.paint_quad(cursor);
-        }
-
-        self.editor.update(cx, |editor, _cx| {
-            editor.last_layout = Some(line);
-            editor.last_bounds = Some(bounds);
-        });
+    fn accepts_text_input(&self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
+        self.input_enabled
     }
 }
 
 impl Render for Editor {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .items_center()
-            .size_full()
-            .key_context(KEY_CONTEXT)
-            .track_focus(&self.focus_handle(cx))
-            .cursor(CursorStyle::IBeam)
-            .on_action(cx.listener(Self::backspace))
-            .on_action(cx.listener(Self::delete))
-            .on_action(cx.listener(Self::left))
-            .on_action(cx.listener(Self::right))
-            .on_action(cx.listener(Self::select_left))
-            .on_action(cx.listener(Self::select_right))
-            .on_action(cx.listener(Self::select_all))
-            .on_action(cx.listener(Self::home))
-            .on_action(cx.listener(Self::end))
-            .on_action(cx.listener(Self::move_to_previous_word_start))
-            .on_action(cx.listener(Self::move_to_next_word_end))
-            .on_action(cx.listener(Self::move_to_previous_subword_start))
-            .on_action(cx.listener(Self::move_to_next_subword_end))
-            .on_action(cx.listener(Self::select_to_previous_word_start))
-            .on_action(cx.listener(Self::select_to_next_word_end))
-            .on_action(cx.listener(Self::select_to_previous_subword_start))
-            .on_action(cx.listener(Self::select_to_next_subword_end))
-            .on_action(cx.listener(Self::delete_to_previous_word_start))
-            .on_action(cx.listener(Self::delete_to_next_word_end))
-            .on_action(cx.listener(Self::copy))
-            .on_action(cx.listener(Self::cut))
-            .on_action(cx.listener(Self::paste))
-            .on_action(cx.listener(Self::undo))
-            .on_action(cx.listener(Self::redo))
-            .on_action(cx.listener(Self::move_to_beginning_of_line))
-            .on_action(cx.listener(Self::move_to_end_of_line))
-            .on_action(cx.listener(Self::select_to_beginning_of_line))
-            .on_action(cx.listener(Self::select_to_end_of_line))
-            .on_action(cx.listener(Self::delete_to_beginning_of_line))
-            .on_action(cx.listener(Self::delete_to_end_of_line))
-            .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
-            .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
-            .on_mouse_move(cx.listener(Self::on_mouse_move))
-            .child(TextElement {
-                editor: cx.entity(),
-            })
+        EditorElement::new(&cx.entity(), self.create_style(cx))
     }
 }
 
@@ -1460,7 +1581,17 @@ impl ErasedEditor for ErasedEditorImpl {
     }
 
     fn render(&self, _: &mut Window, _: &App) -> gpui::AnyElement {
-        self.0.clone().into_any_element()
+        let text_style = TextStyle {
+            font_size: rems(0.875).into(),
+            line_height: relative(1.2),
+            color: rgb(0xffffff).into(),
+            ..Default::default()
+        };
+        let editor_style = EditorStyle {
+            background: Hsla::transparent_black(),
+            text: text_style,
+        };
+        EditorElement::new(&self.0, editor_style).into_any()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -1485,12 +1616,22 @@ enum CharKind {
     Word,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct CharClassifier;
+#[derive(Clone, Debug)]
+struct CharClassifier {
+    word_chars: Arc<[char]>,
+}
 
 impl CharClassifier {
+    fn new(word_chars: Arc<[char]>) -> Self {
+        Self { word_chars }
+    }
+
+    fn is_word_char(&self, character: char) -> bool {
+        self.word_chars.iter().any(|word_char| *word_char == character)
+    }
+
     fn kind(&self, character: char) -> CharKind {
-        if character.is_alphanumeric() || character == '_' {
+        if character.is_alphanumeric() || character == '_' || self.is_word_char(character) {
             return CharKind::Word;
         }
         if character.is_whitespace() {

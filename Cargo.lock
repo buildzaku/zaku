@@ -1468,6 +1468,8 @@ version = "0.0.0"
 dependencies = [
  "gpui",
  "input",
+ "schemars",
+ "serde",
  "text",
  "unicode-segmentation",
 ]

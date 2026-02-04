@@ -16,5 +16,7 @@ path = "src/editor.rs"
 [dependencies]
 gpui = { workspace = true }
 input = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
 text = { workspace = true }
 unicode-segmentation = { workspace = true }

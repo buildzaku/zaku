@@ -1,11 +1,8 @@
 use std::sync::Arc;
 
-use gpui::{
-    App, Div, FocusHandle, Focusable, Hsla, Length, MouseButton, MouseDownEvent, SharedString,
-    Window, div, prelude::*, px, rgb,
-};
+use gpui::{App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, div, prelude::*, px, rgb};
 
-use ui::{Icon, IconName, IconSize};
+use ui::{h_flex, v_flex, Icon, IconName, IconSize};
 
 use crate::ErasedEditor;
 
@@ -158,33 +155,21 @@ impl Render for InputField {
             focus_handle
         };
 
-        div()
-            .flex()
-            .flex_col()
+        v_flex()
+            .id(self.placeholder.clone())
             .w_full()
             .gap_1()
             .when_some(self.label.clone(), |this, label| {
                 this.child(self.render_label(label, &style))
             })
             .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
+                h_flex()
                     .track_focus(&configured_handle)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|field, _: &MouseDownEvent, window, cx| {
-                            let focus_handle = field.editor.focus_handle(cx);
-                            focus_handle.focus(window, cx);
-                            cx.stop_propagation();
-                        }),
-                    )
                     .min_w(self.min_width)
-                    .h_8()
+                    .min_h_8()
                     .w_full()
-                    .pl_2()
-                    .pr_1()
+                    .px_2()
+                    .py_1p5()
                     .flex_grow()
                     .text_color(style.text_color)
                     .rounded_md()
