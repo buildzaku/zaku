@@ -21,8 +21,7 @@ pub struct EditorTestContext {
 
 impl EditorTestContext {
     pub fn new(cx: &mut TestAppContext) -> Self {
-        let window_handle = cx.add_window(|window, cx| Editor::single_line(window, cx));
-
+        let window_handle = cx.add_window(Editor::single_line);
         let window: AnyWindowHandle = window_handle.into();
         let editor_handle = window.downcast::<Editor>().expect("window to host editor");
         let mut visual_cx = VisualTestContext::from_window(window, cx);
