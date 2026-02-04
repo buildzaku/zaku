@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PRETTIER_VERSION=3.8.1
+
+if [[ "${1:-}" == "--write" ]]; then
+  MODE=(--list-different --write)
+else
+  MODE=(--check)
+fi
+
+pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,md}' "${MODE[@]}" || {
+  echo "Run: ./script/prettier --write"
+  false
+}
