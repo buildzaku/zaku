@@ -1018,7 +1018,7 @@ impl EntityInputHandler for Editor {
         let line_point = self.last_bounds?.localize(&point)?;
         let last_layout = self.last_layout.as_ref()?;
 
-        let display_index = last_layout.index_for_x(point.x - line_point.x)?;
+        let display_index = last_layout.index_for_x(line_point.x)?;
         let text_offset = self.text_offset_for_display_offset(display_index);
         let snapshot = self.snapshot();
         Some(

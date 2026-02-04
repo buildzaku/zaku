@@ -159,7 +159,6 @@ impl Render for InputField {
         };
 
         div()
-            .id(self.placeholder.clone())
             .flex()
             .flex_col()
             .w_full()
