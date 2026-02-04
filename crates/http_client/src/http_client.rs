@@ -1,8 +1,9 @@
 mod async_body;
 
-pub use anyhow::{Result, anyhow};
+use anyhow::Result;
 use futures::future::BoxFuture;
 use http::HeaderValue;
+
 pub use http::{self, Method, Request, Response, StatusCode, Uri, request::Builder};
 pub use url::Url;
 
