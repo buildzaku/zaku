@@ -90,6 +90,22 @@ fn test_undo_redo_restores_cursor(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn test_undo_redo_restores_selection(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut editor_test_context = EditorTestContext::new(cx);
+
+    editor_test_context.set_state("Hello, «worldˇ»!");
+    editor_test_context.dispatch_action(HandleInput("from Comet".to_string()));
+    editor_test_context.assert_state("Hello, from Cometˇ!");
+
+    editor_test_context.dispatch_action(Undo);
+    editor_test_context.assert_state("Hello, «worldˇ»!");
+
+    editor_test_context.dispatch_action(Redo);
+    editor_test_context.assert_state("Hello, from Cometˇ!");
+}
+
+#[gpui::test]
 fn test_undo_redo_selection(cx: &mut TestAppContext) {
     init_test(cx);
     let mut editor_test_context = EditorTestContext::new(cx);

@@ -1,9 +1,8 @@
-use std::any::TypeId;
-use std::collections::{HashMap, VecDeque};
-use std::ops::Range;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+mod actions;
+mod element;
+
+pub use actions::*;
+pub use element::EditorElement;
 
 use gpui::{
     App, Bounds, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle,
@@ -11,16 +10,20 @@ use gpui::{
     Point, Render, ShapedLine, SharedString, Subscription, TextStyle, UTF16Selection, WeakEntity,
     Window, point, prelude::*, relative, rems, rgb,
 };
+use std::{
+    any::TypeId,
+    collections::{HashMap, VecDeque},
+    ops::Range,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Instant,
+};
 use text::{Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaId, TransactionId};
 use unicode_segmentation::UnicodeSegmentation;
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
-
-mod actions;
-mod element;
-
-pub use actions::*;
-pub use element::EditorElement;
 
 pub(crate) const KEY_CONTEXT: &str = "Editor";
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
