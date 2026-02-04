@@ -1,0 +1,128 @@
+name: "Run Tests"
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.head_ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  check_style:
+    name: "Check Style"
+    if: github.repository == 'buildcomet/comet'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup pnpm"
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: "Check Prettier formatting"
+        run: ./script/prettier
+        shell: bash
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+
+      - name: "Check Rust formatting"
+        run: cargo fmt --all -- --check
+
+      - name: "Check for typos"
+        uses: crate-ci/typos@v1.43.1
+
+  run_tests_linux_x86_64:
+    name: "Test Linux x86_64"
+    if: github.repository == 'buildcomet/comet'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+
+      - name: "Run Clippy"
+        run: ./script/clippy
+        shell: bash
+
+      - name: "Install Nextest"
+        uses: taiki-e/install-action@nextest
+
+      - name: "Run tests"
+        run: cargo nextest run --workspace --no-fail-fast
+
+  run_tests_macos_arm64:
+    name: "Test macOS ARM64"
+    if: github.repository == 'buildcomet/comet'
+    runs-on: macos-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+
+      - name: "Run Clippy"
+        run: ./script/clippy
+        shell: bash
+
+      - name: "Install Nextest"
+        uses: taiki-e/install-action@nextest
+
+      - name: "Run tests"
+        run: cargo nextest run --workspace --no-fail-fast
+
+  run_tests_macos_x86_64:
+    name: "Test macOS x86_64"
+    if: github.repository == 'buildcomet/comet'
+    runs-on: macos-15-intel
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+
+      - name: "Run Clippy"
+        run: ./script/clippy
+        shell: bash
+
+      - name: "Install Nextest"
+        uses: taiki-e/install-action@nextest
+
+      - name: "Run tests"
+        run: cargo nextest run --workspace --no-fail-fast
+
+  run_tests_windows_x86_64:
+    name: "Test Windows x86_64"
+    if: github.repository == 'buildcomet/comet'
+    runs-on: windows-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+
+      - name: "Run Clippy"
+        run: ./script/clippy.ps1
+        shell: pwsh
+
+      - name: "Install Nextest"
+        uses: taiki-e/install-action@nextest
+
+      - name: "Run tests"
+        run: cargo nextest run --workspace --no-fail-fast
