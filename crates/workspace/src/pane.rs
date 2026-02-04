@@ -1,11 +1,12 @@
-use std::sync::Arc;
-
 use gpui::{Entity, SharedString, Window, div, prelude::*, rgb};
+use std::sync::Arc;
 
 use http_client::{AsyncBody, HttpClient};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth, rems_from_px};
+
+use crate::SendRequest;
 
 pub struct Pane {
     input: Option<Entity<InputField>>,
@@ -21,6 +22,47 @@ impl Pane {
             response_status: None,
         }
     }
+
+    fn send_request(&mut self, request_url: String, window: &mut Window, cx: &mut Context<Self>) {
+        let request_url = request_url.trim().to_string();
+        if request_url.is_empty() {
+            self.response_status = None;
+            cx.notify();
+            return;
+        }
+
+        let request_url =
+            if request_url.starts_with("http://") || request_url.starts_with("https://") {
+                request_url
+            } else {
+                format!("https://{request_url}")
+            };
+
+        self.response_status = Some("...".into());
+        cx.notify();
+
+        let http_client = self.http_client.clone();
+        let pane_handle = cx.weak_entity();
+
+        window
+            .spawn(cx, async move |cx| {
+                let response = http_client
+                    .get(&request_url, AsyncBody::empty(), true)
+                    .await;
+                let response_status = match response {
+                    Ok(response) => format!("Response {}", response.status().as_u16()),
+                    Err(error) => format!("Response Error: {error}"),
+                };
+
+                if let Err(error) = pane_handle.update(cx, |pane, cx| {
+                    pane.response_status = Some(response_status.into());
+                    cx.notify();
+                }) {
+                    eprintln!("failed to update pane response status: {error}");
+                }
+            })
+            .detach();
+    }
 }
 
 impl Render for Pane {
@@ -35,8 +77,7 @@ impl Render for Pane {
             .clone()
             .expect("InputField should be initialized");
         let input_handle = input.clone();
-        let http_client = self.http_client.clone();
-        let pane_handle = cx.weak_entity();
+        let input_handle_for_action = input.clone();
 
         div()
             .flex()
@@ -53,6 +94,11 @@ impl Render for Pane {
                     .w_full()
                     .py_2()
                     .gap_2()
+                    .key_context("RequestUrl")
+                    .on_action(cx.listener(move |pane, _: &SendRequest, window, cx| {
+                        let request_url = input_handle_for_action.read(cx).text(cx);
+                        pane.send_request(request_url, window, cx);
+                    }))
                     .child(div().flex_1().child(input))
                     .child(
                         Button::new("request-send", "Send")
@@ -60,60 +106,10 @@ impl Render for Pane {
                             .size(ButtonSize::Large)
                             .width(rems_from_px(68.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .on_click(move |_, window, cx| {
-                                let pane_handle = pane_handle.clone();
-                                let request_url =
-                                    input_handle.read(cx).text(cx).trim().to_string();
-                                let http_client = http_client.clone();
-
-                                if request_url.is_empty() {
-                                    if let Err(error) = pane_handle.update(cx, |pane, cx| {
-                                        pane.response_status = None;
-                                        cx.notify();
-                                    }) {
-                                        eprintln!("failed to update pane response status: {error}");
-                                    }
-                                    return;
-                                }
-
-                                let request_url = if request_url.starts_with("http://")
-                                    || request_url.starts_with("https://")
-                                {
-                                    request_url
-                                } else {
-                                    format!("https://{request_url}")
-                                };
-
-                                if let Err(error) = pane_handle.update(cx, |pane, cx| {
-                                    pane.response_status = Some("...".into());
-                                    cx.notify();
-                                }) {
-                                    eprintln!("failed to update pane response status: {error}");
-                                }
-
-                                window
-                                    .spawn(cx, async move |cx| {
-                                        let response = http_client
-                                            .get(&request_url, AsyncBody::empty(), true)
-                                            .await;
-                                        let response_status = match response {
-                                            Ok(response) => {
-                                                format!("Response {}", response.status().as_u16())
-                                            }
-                                            Err(error) => format!("Response Error: {error}"),
-                                        };
-
-                                        if let Err(error) = pane_handle.update(cx, |pane, cx| {
-                                            pane.response_status = Some(response_status.into());
-                                            cx.notify();
-                                        }) {
-                                            eprintln!(
-                                                "failed to update pane response status: {error}"
-                                            );
-                                        }
-                                    })
-                                    .detach();
-                            }),
+                            .on_click(cx.listener(move |pane, _, window, cx| {
+                                let request_url = input_handle.read(cx).text(cx);
+                                pane.send_request(request_url, window, cx);
+                            })),
                     ),
             )
             .when_some(self.response_status.clone(), |this, response_status| {

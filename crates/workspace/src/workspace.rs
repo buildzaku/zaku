@@ -1,6 +1,6 @@
 use gpui::{
-    App, Bounds, DragMoveEvent, Entity, MouseButton, MouseDownEvent, Pixels, Point, Window, canvas,
-    div, prelude::*, px, rgb,
+    App, Bounds, DragMoveEvent, Entity, KeyBinding, MouseButton, MouseDownEvent, Pixels, Point,
+    Window, actions, canvas, div, prelude::*, px, rgb,
 };
 
 use crate::{dock::Dock, pane::Pane, status_bar::StatusBar};
@@ -9,8 +9,18 @@ pub mod dock;
 pub mod pane;
 pub mod status_bar;
 
+actions!(workspace, [SendRequest]);
+
 const MIN_DOCK_WIDTH: Pixels = px(110.0);
 const MIN_PANE_WIDTH: Pixels = px(250.0);
+
+pub fn init(cx: &mut App) {
+    cx.bind_keys([KeyBinding::new(
+        "enter",
+        SendRequest,
+        Some("RequestUrl > Editor"),
+    )]);
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DockPosition {
