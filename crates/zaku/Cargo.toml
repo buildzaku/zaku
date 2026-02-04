@@ -12,7 +12,9 @@ workspace = true
 
 [dependencies]
 assets = { workspace = true }
-core-text = { workspace = true }
 editor = { workspace = true }
 gpui = { workspace = true }
 workspace = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-text = { workspace = true }
