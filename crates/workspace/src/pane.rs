@@ -62,17 +62,33 @@ impl Render for Pane {
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .on_click(move |_, window, cx| {
                                 let pane_handle = pane_handle.clone();
-                                let request_url = input_handle.read(cx).text(cx).trim().to_string();
+                                let request_url =
+                                    input_handle.read(cx).text(cx).trim().to_string();
                                 let http_client = http_client.clone();
 
                                 if request_url.is_empty() {
                                     if let Err(error) = pane_handle.update(cx, |pane, cx| {
-                                        pane.response_status = Some("Response -".into());
+                                        pane.response_status = None;
                                         cx.notify();
                                     }) {
                                         eprintln!("failed to update pane response status: {error}");
                                     }
                                     return;
+                                }
+
+                                let request_url = if request_url.starts_with("http://")
+                                    || request_url.starts_with("https://")
+                                {
+                                    request_url
+                                } else {
+                                    format!("https://{request_url}")
+                                };
+
+                                if let Err(error) = pane_handle.update(cx, |pane, cx| {
+                                    pane.response_status = Some("...".into());
+                                    cx.notify();
+                                }) {
+                                    eprintln!("failed to update pane response status: {error}");
                                 }
 
                                 window
