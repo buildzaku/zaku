@@ -1,5 +1,5 @@
 [package]
-name = "workspace"
+name = "util"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,10 +10,8 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "workspace"
-path = "src/workspace.rs"
+name = "util"
+path = "src/util.rs"
 
-[dependencies]
-gpui = { workspace = true }
-input = { workspace = true }
-ui = { workspace = true }
+[features]
+test-support = []

@@ -3,8 +3,11 @@ resolver = "3"
 members = [
   "crates/assets",
   "crates/comet",
+  "crates/editor",
   "crates/icons",
+  "crates/input",
   "crates/ui",
+  "crates/util",
   "crates/workspace",
 ]
 
@@ -21,14 +24,21 @@ type_complexity = "allow"
 [workspace.dependencies]
 ################### External crates ###################
 anyhow = { version = "1.0" }
-core-text = { version = "=21.0.0" }                          # https://github.com/zed-industries/zed/issues/47168
-gpui = { git = "https://github.com/zed-industries/zed" }
+core-text = { version = "=21.0.0" }                                        # https://github.com/zed-industries/zed/issues/47168
+gpui = { git = "https://github.com/zed-industries/zed", package = "gpui" }
+pretty_assertions = { version = "1.4" }
 rust-embed = { version = "8.0", features = ["debug-embed"] }
+schemars = { version = "1.2" }
 serde = { version = "1.0", features = ["derive"] }
 smallvec = { version = "1.15" }
 strum = { version = "0.27", features = ["derive"] }
+text = { git = "https://github.com/zed-industries/zed", package = "text" }
+unicode-segmentation = { version = "1.12" }
 ############### Workspace member crates ###############
 assets = { path = "crates/assets" }
+editor = { path = "crates/editor" }
 icons = { path = "crates/icons" }
+input = { path = "crates/input" }
 ui = { path = "crates/ui" }
+util = { path = "crates/util" }
 workspace = { path = "crates/workspace" }

@@ -18,7 +18,7 @@ impl Dock {
         Self {
             size: DEFAULT_DOCK_SIZE,
             position: DockPosition::Left,
-            visible: true,
+            visible: false,
         }
     }
 
