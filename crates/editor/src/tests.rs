@@ -3,12 +3,12 @@ mod context;
 use gpui::{ClipboardItem, TestAppContext};
 use pretty_assertions::assert_eq;
 
+use context::EditorTestContext;
+
 use crate::{
     Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, HandleInput, MoveLeft, MoveRight,
     MoveToBeginningOfLine, Paste, Redo, RedoSelection, Undo, UndoSelection,
 };
-
-use context::EditorTestContext;
 
 fn init_test(cx: &mut TestAppContext) {
     cx.update(|cx| {

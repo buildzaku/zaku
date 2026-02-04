@@ -1,7 +1,6 @@
 use std::{cmp::Ordering, collections::HashMap, ops::Range};
 
-/// Construct a string and a list of offsets within that string using a single
-/// string containing embedded position markers.
+/// Build a string and offsets from embedded position markers.
 pub fn marked_text_offsets_by(
     marked_text: &str,
     markers: Vec<char>,
@@ -21,12 +20,8 @@ pub fn marked_text_offsets_by(
     (unmarked_text, extracted_markers)
 }
 
-/// Construct a string and a list of ranges within that string using a single
-/// string containing embedded range markers, using arbitrary characters as
-/// range markers. By using multiple different range markers, you can construct
-/// ranges that overlap each other.
-///
-/// The returned ranges will be grouped by their range marking characters.
+/// Build a string and ranges from embedded range markers.
+/// Ranges are grouped by the marker characters used.
 pub fn marked_text_ranges_by(
     marked_text: &str,
     markers: Vec<TextRangeMarker>,
@@ -80,34 +75,8 @@ pub fn marked_text_ranges_by(
     (unmarked_text, range_lookup)
 }
 
-/// Construct a string and a list of ranges within that string using a single
-/// string containing embedded range markers. The characters used to mark the
-/// ranges are as follows:
-///
-/// 1. To mark a range of text, surround it with the `«` and `»` angle brackets,
-///    which can be typed on a US keyboard with the `alt-|` and `alt-shift-|` keys.
-///
-///    ```text
-///    foo «selected text» bar
-///    ```
-///
-/// 2. To mark a single position in the text, use the `ˇ` caron,
-///    which can be typed on a US keyboard with the `alt-shift-t` key.
-///
-///    ```text
-///    the cursors are hereˇ and hereˇ.
-///    ```
-///
-/// 3. To mark a range whose direction is meaningful (like a selection),
-///    put a caron character beside one of its bounds, on the inside:
-///
-///    ```text
-///    one «ˇreversed» selection and one «forwardˇ» selection
-///    ```
-///
-/// Any • characters in the input string will be replaced with spaces. This makes
-/// it easier to test cases with trailing spaces, which tend to get trimmed from the
-/// source code.
+/// Build a string and ranges from embedded markers in a single string.
+/// Supports `«»` for ranges, `ˇ` for points/direction, and replaces `•` with spaces.
 #[track_caller]
 pub fn marked_text_ranges(
     marked_text: &str,
@@ -176,6 +145,7 @@ pub fn marked_text_ranges(
     (unmarked_text, ranges)
 }
 
+/// Build a string and point offsets from embedded `ˇ` markers.
 #[track_caller]
 pub fn marked_text_offsets(marked_text: &str) -> (String, Vec<usize>) {
     let (text, ranges) = marked_text_ranges(marked_text, false);
@@ -191,6 +161,7 @@ pub fn marked_text_offsets(marked_text: &str) -> (String, Vec<usize>) {
     )
 }
 
+/// Insert markers into text based on ranges.
 pub fn generate_marked_text(
     unmarked_text: &str,
     ranges: &[Range<usize>],

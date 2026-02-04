@@ -241,9 +241,17 @@ pub fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-z", Undo, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-u", UndoSelection, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-u", UndoSelection, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-z", Redo, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-y", Redo, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-shift-u", RedoSelection, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-shift-u", RedoSelection, Some(KEY_CONTEXT)),
     ]);
 
     _ = ERASED_EDITOR_FACTORY.set(|window, cx| {

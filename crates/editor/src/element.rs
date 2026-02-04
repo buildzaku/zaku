@@ -1,11 +1,10 @@
-use std::any::TypeId;
-
 use gpui::{
     Action, App, Bounds, Context, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, ShapedLine, Style, TextRun,
     UnderlineStyle, Window, fill, point, prelude::*, px, rgb, rgba, size,
 };
+use std::any::TypeId;
 
 use crate::{Editor, EditorStyle, HandleInput};
 

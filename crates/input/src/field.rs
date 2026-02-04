@@ -44,7 +44,6 @@ pub struct InputField {
     label: Option<SharedString>,
     label_size: LabelSize,
     placeholder: SharedString,
-
     editor: Arc<dyn ErasedEditor>,
     start_icon: Option<IconName>,
     min_width: Length,
