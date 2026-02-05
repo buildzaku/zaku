@@ -1,6 +1,7 @@
 use gpui::{App, ClickEvent, DefiniteLength, Div, ElementId, Window, div, prelude::*, relative};
 
 use icons::IconName;
+use theme::ActiveTheme;
 
 use crate::{
     ButtonCommon, ButtonSize, ButtonVariant, Clickable, Disableable, FixedWidth, Icon, IconSize,
@@ -98,8 +99,9 @@ impl ButtonCommon for IconButton {
 }
 
 impl RenderOnce for IconButton {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let colors = self.variant.colors();
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme_colors = cx.theme().colors();
+        let colors = self.variant.colors(cx);
         let icon_size = match self.size {
             ButtonSize::Large => IconSize::Medium,
             ButtonSize::Medium => IconSize::Small,
@@ -113,6 +115,12 @@ impl RenderOnce for IconButton {
             ButtonSize::Default => (rems_from_px(8.), rems_from_px(4.)),
             ButtonSize::Compact => (rems_from_px(6.), rems_from_px(3.)),
             ButtonSize::None => (rems_from_px(4.), rems_from_px(2.)),
+        };
+
+        let icon_color = if self.disabled {
+            theme_colors.icon_disabled
+        } else {
+            theme_colors.icon
         };
 
         self.base
@@ -133,14 +141,14 @@ impl RenderOnce for IconButton {
             .rounded_sm()
             .bg(colors.bg)
             .text_color(colors.text)
-            .when(self.disabled, |this| this.opacity(0.4).cursor_not_allowed())
+            .when(self.disabled, |this| this.cursor_not_allowed())
             .when(!self.disabled, |this| {
                 this.cursor_pointer()
                     .hover(|style| style.bg(colors.hover_bg))
                     .active(|style| style.bg(colors.active_bg))
             })
             .when(self.variant == ButtonVariant::Outline, |this| {
-                this.border_1().border_color(gpui::rgb(0x545454))
+                this.border_1().border_color(theme_colors.border_variant)
             })
             .when_some(
                 self.on_click.filter(|_| !self.disabled),
@@ -148,6 +156,6 @@ impl RenderOnce for IconButton {
                     this.on_click(move |event, window, cx| on_click(event, window, cx))
                 },
             )
-            .child(Icon::new(self.icon).size(icon_size).color(colors.text))
+            .child(Icon::new(self.icon).size(icon_size).color(icon_color))
     }
 }

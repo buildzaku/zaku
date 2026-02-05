@@ -19,6 +19,7 @@ input = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }
+theme = { workspace = true }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]

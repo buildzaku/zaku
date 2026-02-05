@@ -1,0 +1,23 @@
+[package]
+name = "theme"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "theme"
+path = "src/theme.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+gpui = { workspace = true }
+palette = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }

@@ -1,7 +1,10 @@
 use gpui::{
     App, Bounds, DragMoveEvent, Entity, KeyBinding, MouseButton, MouseDownEvent, Pixels, Point,
-    Window, actions, canvas, div, prelude::*, px, rgb,
+    Window, actions, canvas, div, prelude::*, px,
 };
+
+use theme::ActiveTheme;
+use theme::{GlobalTheme, SystemAppearance};
 
 use crate::{dock::Dock, pane::Pane, status_bar::StatusBar};
 
@@ -34,6 +37,7 @@ pub struct Workspace {
     status_bar: Entity<StatusBar>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
+    _window_appearance_subscription: gpui::Subscription,
 }
 
 #[derive(Clone)]
@@ -46,8 +50,14 @@ impl Render for DraggedDock {
 }
 
 impl Workspace {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let workspace = cx.entity();
+        let window_appearance_subscription =
+            cx.observe_window_appearance(window, |_, window, cx| {
+                let window_appearance = window.appearance();
+                *SystemAppearance::global_mut(cx) = SystemAppearance(window_appearance.into());
+                GlobalTheme::reload_theme(cx);
+            });
 
         Self {
             dock: cx.new(Dock::new),
@@ -55,6 +65,7 @@ impl Workspace {
             status_bar: cx.new(|cx| StatusBar::new(workspace, cx)),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
+            _window_appearance_subscription: window_appearance_subscription,
         }
     }
 
@@ -75,13 +86,14 @@ impl Workspace {
 
 impl Render for Workspace {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme_colors = cx.theme().colors();
         div()
             .id("workspace")
             .relative()
             .flex()
             .flex_col()
-            .bg(rgb(0x141414))
-            .text_color(rgb(0xffffff))
+            .bg(theme_colors.background)
+            .text_color(theme_colors.text)
             .text_xs()
             .size_full()
             .child({

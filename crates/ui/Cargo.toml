@@ -17,3 +17,4 @@ path = "src/ui.rs"
 gpui = { workspace = true }
 icons = { workspace = true }
 smallvec = { workspace = true }
+theme = { workspace = true }

@@ -15,4 +15,5 @@ path = "src/input.rs"
 
 [dependencies]
 gpui = { workspace = true }
+theme = { workspace = true }
 ui = { workspace = true }

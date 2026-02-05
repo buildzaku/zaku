@@ -1,9 +1,10 @@
 use gpui::{
     App, ClickEvent, DefiniteLength, Div, ElementId, FontWeight, Hsla, Rems, SharedString, Window,
-    div, prelude::*, relative, rgb,
+    div, prelude::*, relative,
 };
 
 use icons::IconName;
+use theme::ActiveTheme;
 
 use crate::{ButtonCommon, Clickable, Disableable, FixedWidth, Icon, IconSize, rems_from_px};
 
@@ -25,35 +26,37 @@ pub enum ButtonVariant {
 }
 
 impl ButtonVariant {
-    pub fn colors(&self) -> ButtonColor {
+    pub fn colors(&self, cx: &App) -> ButtonColor {
+        let colors = cx.theme().colors();
+        let status = cx.theme().status();
         match self {
             ButtonVariant::Subtle => ButtonColor {
-                bg: gpui::transparent_black(),
-                text: rgb(0xffffff).into(),
-                hover_bg: rgb(0x292929).into(),
-                active_bg: rgb(0x404040).into(),
+                bg: colors.ghost_element_background,
+                text: colors.text,
+                hover_bg: colors.ghost_element_hover,
+                active_bg: colors.ghost_element_active,
             },
             ButtonVariant::Solid => ButtonColor {
-                bg: rgb(0x292929).into(),
-                text: rgb(0xffffff).into(),
-                hover_bg: rgb(0x292929).into(),
-                active_bg: rgb(0x404040).into(),
+                bg: colors.element_background,
+                text: colors.text,
+                hover_bg: colors.element_hover,
+                active_bg: colors.element_active,
             },
             ButtonVariant::Accent => ButtonColor {
-                bg: rgb(0x41d4dc).into(),
-                text: rgb(0x043f58).into(),
-                hover_bg: rgb(0x3dc9d1).into(),
-                active_bg: rgb(0x3dc9d1).into(),
+                bg: status.info_background,
+                text: colors.text,
+                hover_bg: status.info_background,
+                active_bg: status.info_background,
             },
             ButtonVariant::Outline => ButtonColor {
-                bg: gpui::transparent_black(),
-                text: rgb(0xffffff).into(),
-                hover_bg: rgb(0x292929).into(),
-                active_bg: rgb(0x404040).into(),
+                bg: colors.ghost_element_background,
+                text: colors.text,
+                hover_bg: colors.ghost_element_hover,
+                active_bg: colors.ghost_element_active,
             },
             ButtonVariant::Ghost => ButtonColor {
                 bg: gpui::transparent_black(),
-                text: rgb(0xffffff).into(),
+                text: colors.text,
                 hover_bg: gpui::transparent_black(),
                 active_bg: gpui::transparent_black(),
             },
@@ -188,8 +191,33 @@ impl ButtonCommon for Button {
 }
 
 impl RenderOnce for Button {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let colors = self.variant.colors();
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme_colors = cx.theme().colors();
+        let mut colors = self.variant.colors(cx);
+        if self.disabled {
+            colors = match self.variant {
+                ButtonVariant::Subtle => ButtonColor {
+                    bg: theme_colors.ghost_element_disabled,
+                    text: theme_colors.text_disabled,
+                    hover_bg: theme_colors.ghost_element_disabled,
+                    active_bg: theme_colors.ghost_element_disabled,
+                },
+                ButtonVariant::Solid | ButtonVariant::Outline | ButtonVariant::Accent => {
+                    ButtonColor {
+                        bg: theme_colors.element_disabled,
+                        text: theme_colors.text_disabled,
+                        hover_bg: theme_colors.element_disabled,
+                        active_bg: theme_colors.element_disabled,
+                    }
+                }
+                ButtonVariant::Ghost => ButtonColor {
+                    bg: gpui::transparent_black(),
+                    text: theme_colors.text_disabled,
+                    hover_bg: gpui::transparent_black(),
+                    active_bg: gpui::transparent_black(),
+                },
+            };
+        }
         let icon_size = match self.size {
             ButtonSize::Large => IconSize::Medium,
             ButtonSize::Medium => IconSize::Small,
@@ -219,7 +247,7 @@ impl RenderOnce for Button {
             .bg(colors.bg)
             .text_color(colors.text)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
-            .when(self.disabled, |this| this.opacity(0.4).cursor_not_allowed())
+            .when(self.disabled, |this| this.cursor_not_allowed())
             .when(!self.disabled, |this| {
                 this.cursor_pointer()
                     .hover(|style| style.bg(colors.hover_bg))
@@ -235,7 +263,7 @@ impl RenderOnce for Button {
                 },
             )
             .when(self.variant == ButtonVariant::Outline, |this| {
-                this.border_1().border_color(rgb(0x545454))
+                this.border_1().border_color(theme_colors.border_variant)
             })
             .when(
                 self.icon.is_some() && icon_position == IconPosition::Start,

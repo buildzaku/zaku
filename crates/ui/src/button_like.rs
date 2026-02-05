@@ -3,8 +3,9 @@ use gpui::{
     relative,
 };
 use smallvec::SmallVec;
+use theme::ActiveTheme;
 
-use crate::{ButtonSize, ButtonVariant, rems_from_px};
+use crate::{ButtonColor, ButtonSize, ButtonVariant, rems_from_px};
 
 /// A trait for elements that can be clicked.
 pub trait Clickable: Sized {
@@ -127,8 +128,9 @@ impl ParentElement for ButtonLike {
 }
 
 impl RenderOnce for ButtonLike {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let colors = self.variant.colors();
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme_colors = cx.theme().colors();
+        let mut colors = self.variant.colors(cx);
         let is_outlined = matches!(self.variant, ButtonVariant::Outline);
         let padding_x = match self.size {
             ButtonSize::Large | ButtonSize::Medium => rems_from_px(8.),
@@ -143,6 +145,31 @@ impl RenderOnce for ButtonLike {
             ButtonSize::None => rems_from_px(2.),
         };
 
+        if self.disabled {
+            colors = match self.variant {
+                ButtonVariant::Subtle => ButtonColor {
+                    bg: theme_colors.ghost_element_disabled,
+                    text: theme_colors.text_disabled,
+                    hover_bg: theme_colors.ghost_element_disabled,
+                    active_bg: theme_colors.ghost_element_disabled,
+                },
+                ButtonVariant::Solid | ButtonVariant::Outline | ButtonVariant::Accent => {
+                    ButtonColor {
+                        bg: theme_colors.element_disabled,
+                        text: theme_colors.text_disabled,
+                        hover_bg: theme_colors.element_disabled,
+                        active_bg: theme_colors.element_disabled,
+                    }
+                }
+                ButtonVariant::Ghost => ButtonColor {
+                    bg: gpui::transparent_black(),
+                    text: theme_colors.text_disabled,
+                    hover_bg: gpui::transparent_black(),
+                    active_bg: gpui::transparent_black(),
+                },
+            };
+        }
+
         self.base
             .id(self.id.clone())
             .flex()
@@ -156,11 +183,11 @@ impl RenderOnce for ButtonLike {
             .px(padding_x)
             .rounded_sm()
             .when(is_outlined, |this| {
-                this.border_1().border_color(colors.text)
+                this.border_1().border_color(theme_colors.border_variant)
             })
             .bg(colors.bg)
             .text_color(colors.text)
-            .when(self.disabled, |this| this.opacity(0.4).cursor_not_allowed())
+            .when(self.disabled, |this| this.cursor_not_allowed())
             .when(!self.disabled, |this| {
                 this.cursor_pointer()
                     .hover(|style| style.bg(colors.hover_bg))

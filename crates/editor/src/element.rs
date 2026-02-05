@@ -2,9 +2,11 @@ use gpui::{
     Action, App, Bounds, Context, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, ShapedLine, Style, TextRun,
-    UnderlineStyle, Window, fill, point, prelude::*, px, rgb, rgba, size,
+    UnderlineStyle, Window, fill, point, prelude::*, px, size,
 };
 use std::any::TypeId;
+
+use theme::ActiveTheme;
 
 use crate::{Editor, EditorStyle, HandleInput};
 
@@ -131,7 +133,10 @@ impl Element for EditorElement {
         let style = self.style.text.clone();
 
         let (display_text, text_color) = if content.is_empty() {
-            (editor.placeholder.clone(), rgb(0x8a8a8a).into())
+            (
+                editor.placeholder.clone(),
+                cx.theme().colors().text_placeholder,
+            )
         } else {
             (editor.display_text(), style.color)
         };
@@ -203,7 +208,7 @@ impl Element for EditorElement {
                         bounds.bottom(),
                     ),
                 ),
-                rgba(0x77777740),
+                cx.theme().status().info_background,
             ))
         };
 
@@ -212,7 +217,7 @@ impl Element for EditorElement {
                 point(bounds.left() + cursor_pos, bounds.top()),
                 size(px(2.), bounds.bottom() - bounds.top()),
             ),
-            rgb(0xffffff),
+            cx.theme().colors().editor_foreground,
         ));
 
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);

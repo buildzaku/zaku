@@ -1,6 +1,8 @@
 use gpui::{
-    MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Window, deferred, div, prelude::*, px, rgb,
+    MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Window, deferred, div, prelude::*, px,
 };
+
+use theme::ActiveTheme;
 
 use crate::{DockPosition, DraggedDock};
 
@@ -35,6 +37,7 @@ impl Dock {
 
 impl Render for Dock {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme_colors = cx.theme().colors();
         let position = self.position;
         let create_resize_handle = || {
             let handle = div()
@@ -88,9 +91,9 @@ impl Render for Dock {
             .overflow_hidden()
             .when(self.visible, |this| {
                 this.w(self.size)
-                    .bg(rgb(0x141414))
+                    .bg(theme_colors.panel_background)
                     .border_r_1()
-                    .border_color(rgb(0x2a2a2a))
+                    .border_color(theme_colors.border_variant)
                     .child(div().min_w(self.size).h_full())
                     .child(create_resize_handle())
             })

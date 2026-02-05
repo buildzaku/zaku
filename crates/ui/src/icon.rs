@@ -1,8 +1,7 @@
-use gpui::{
-    App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*, rgb, svg,
-};
+use gpui::{App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*, svg};
 
 use icons::IconName;
+use theme::ActiveTheme;
 
 use crate::rems_from_px;
 
@@ -39,7 +38,7 @@ enum IconSource {
 #[derive(IntoElement)]
 pub struct Icon {
     source: IconSource,
-    color: Hsla,
+    color: Option<Hsla>,
     size: Rems,
     transformation: Transformation,
 }
@@ -48,14 +47,14 @@ impl Icon {
     pub fn new(icon: IconName) -> Self {
         Self {
             source: IconSource::Embedded(icon.path().into()),
-            color: rgb(0xffffff).into(),
+            color: None,
             size: IconSize::default().rems(),
             transformation: Transformation::default(),
         }
     }
 
     pub fn color(mut self, color: Hsla) -> Self {
-        self.color = color;
+        self.color = Some(color);
         self
     }
 
@@ -66,14 +65,15 @@ impl Icon {
 }
 
 impl RenderOnce for Icon {
-    fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let color = self.color.unwrap_or_else(|| cx.theme().colors().icon);
         match self.source {
             IconSource::Embedded(path) => svg()
                 .with_transformation(self.transformation)
                 .size(self.size)
                 .flex_none()
                 .path(path)
-                .text_color(self.color)
+                .text_color(color)
                 .into_any_element(),
         }
     }

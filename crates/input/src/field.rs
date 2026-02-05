@@ -1,8 +1,9 @@
 use gpui::{
-    App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, div, prelude::*, px, rgb,
+    App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, div, prelude::*, px,
 };
 use std::sync::Arc;
 
+use theme::ActiveTheme;
 use ui::{Icon, IconName, IconSize, h_flex, v_flex};
 
 use crate::ErasedEditor;
@@ -136,13 +137,14 @@ impl Render for InputField {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let editor = self.editor.clone();
 
+        let theme_colors = cx.theme().colors();
         let style = InputFieldStyle {
-            text_color: rgb(0xffffff).into(),
-            label_color: rgb(0xb0b0b0).into(),
-            icon_color: rgb(0x8a8a8a).into(),
-            background_color: rgb(0x1a1a1a).into(),
-            border_color: rgb(0x2a2a2a).into(),
-            border_focused: rgb(0x41d4dc).into(),
+            text_color: theme_colors.text,
+            label_color: theme_colors.text_muted,
+            icon_color: theme_colors.icon_muted,
+            background_color: theme_colors.editor_background,
+            border_color: theme_colors.border_variant,
+            border_focused: theme_colors.border_focused,
         };
 
         let focus_handle = self.editor.focus_handle(cx);

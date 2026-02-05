@@ -1,9 +1,10 @@
-use gpui::{Entity, SharedString, Window, div, prelude::*, rgb};
+use gpui::{Entity, SharedString, Window, div, prelude::*};
 use std::sync::Arc;
 
 use http_client::{AsyncBody, HttpClient};
 use input::InputField;
 use reqwest_client::ReqwestClient;
+use theme::ActiveTheme;
 use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth, rems_from_px};
 
 use crate::SendRequest;
@@ -72,6 +73,7 @@ impl Render for Pane {
             self.input = Some(input);
         }
 
+        let theme_colors = cx.theme().colors();
         let input = self
             .input
             .clone()
@@ -83,7 +85,7 @@ impl Render for Pane {
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(0x1a1a1a))
+            .bg(theme_colors.panel_background)
             .p_3()
             .child("HTTP Request")
             .child(
@@ -116,7 +118,7 @@ impl Render for Pane {
                 this.child(
                     div()
                         .text_xs()
-                        .text_color(rgb(0x9a9a9a))
+                        .text_color(theme_colors.text_muted)
                         .child(response_status),
                 )
             })
