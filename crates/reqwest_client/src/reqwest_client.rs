@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::{AsyncRead, FutureExt as _, TryStreamExt as _};
+use futures::{FutureExt as _, TryStreamExt as _};
 use reqwest::redirect;
 use std::{mem, pin::Pin, sync::OnceLock, task::Poll, time::Duration};
 
@@ -91,7 +91,7 @@ impl futures::Stream for StreamReader {
             this.buffer.reserve(capacity);
         }
 
-        match poll_read_buffer(&mut reader, cx, &mut this.buffer) {
+        match poll_read_buffer(reader.as_mut(), cx, &mut this.buffer) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(error)) => {
                 self.reader = None;
@@ -110,10 +110,11 @@ impl futures::Stream for StreamReader {
     }
 }
 
-fn poll_read_buffer(
-    reader: &mut Pin<Box<dyn futures::AsyncRead + Send + Sync>>,
+// Taken from <https://docs.rs/tokio-util/0.7.18/src/tokio_util/util/poll_buf.rs.html#47>
+fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
+    reader: Pin<&mut T>,
     cx: &mut std::task::Context<'_>,
-    buffer: &mut BytesMut,
+    buffer: &mut B,
 ) -> Poll<std::io::Result<usize>> {
     if !buffer.has_remaining_mut() {
         return Poll::Ready(Ok(0));
@@ -121,18 +122,23 @@ fn poll_read_buffer(
 
     let size = {
         let destination = buffer.chunk_mut();
-        let destination =
-            unsafe { &mut *(destination as *mut _ as *mut [std::mem::MaybeUninit<u8>]) };
+
+        // Safety: `chunk_mut()` returns a `&mut UninitSlice`, and `UninitSlice` is a
+        // transparent wrapper around `[MaybeUninit<u8>]`.
+        let destination = unsafe { destination.as_uninit_slice_mut() };
         let mut buffer = tokio::io::ReadBuf::uninit(destination);
+
         let pointer = buffer.filled().as_ptr();
         let unfilled_portion = buffer.initialize_unfilled();
-        let reader_pin = unsafe { Pin::new_unchecked(reader) };
-        std::task::ready!(reader_pin.poll_read(cx, unfilled_portion)?);
+        std::task::ready!(reader.poll_read(cx, unfilled_portion)?);
 
+        // Ensure the pointer does not change from under us
         assert_eq!(pointer, buffer.filled().as_ptr());
         buffer.filled().len()
     };
 
+    // Safety: This is guaranteed to be the number of initialized (and read)
+    // bytes due to the invariants provided by `ReadBuf::filled`.
     unsafe {
         buffer.advance_mut(size);
     }

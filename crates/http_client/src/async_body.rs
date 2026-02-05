@@ -92,6 +92,7 @@ impl futures::AsyncRead for AsyncBody {
         cx: &mut std::task::Context<'_>,
         buffer: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
+        // Safety: Pinned enum projection; we never move the inner value.
         let inner = unsafe { &mut self.get_unchecked_mut().0 };
         match inner {
             Inner::Empty => Poll::Ready(Ok(0)),
