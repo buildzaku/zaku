@@ -91,7 +91,7 @@ impl Render for Dock {
             .overflow_hidden()
             .when(self.visible, |this| {
                 this.w(self.size)
-                    .bg(theme_colors.panel_background)
+                    .bg(theme_colors.surface_background)
                     .border_r_1()
                     .border_color(theme_colors.border_variant)
                     .child(div().min_w(self.size).h_full())

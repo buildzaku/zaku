@@ -43,10 +43,10 @@ impl ButtonVariant {
                 active_bg: colors.element_active,
             },
             ButtonVariant::Accent => ButtonColor {
-                bg: status.info_background,
-                text: colors.text,
-                hover_bg: status.info_background,
-                active_bg: status.info_background,
+                bg: status.info,
+                text: status.info_background,
+                hover_bg: status.info,
+                active_bg: status.info,
             },
             ButtonVariant::Outline => ButtonColor {
                 bg: colors.ghost_element_background,

@@ -17,6 +17,8 @@ pub fn comet_default_themes() -> ThemeFamily {
 pub(crate) fn fallback_dark_theme() -> Theme {
     let style = ThemeStyleContent {
         background: Some("#141414ff".to_string()),
+        surface_background: Some("#08060Dff".to_string()),
+        elevated_surface_background: Some("#1a1a1aff".to_string()),
         panel_background: Some("#1a1a1aff".to_string()),
         border: Some("#2a2a2aff".to_string()),
         border_variant: Some("#2a2a2aff".to_string()),
@@ -63,6 +65,8 @@ pub(crate) fn fallback_dark_theme() -> Theme {
 pub(crate) fn fallback_light_theme() -> Theme {
     let style = ThemeStyleContent {
         background: Some("#f7f7f7ff".to_string()),
+        surface_background: Some("#f7f7f7ff".to_string()),
+        elevated_surface_background: Some("#ffffffff".to_string()),
         panel_background: Some("#ffffffff".to_string()),
         border: Some("#d0d0d0ff".to_string()),
         border_variant: Some("#d0d0d0ff".to_string()),
@@ -110,6 +114,8 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
     let colors = match appearance {
         Appearance::Dark => ThemeColors {
             background: Hsla::transparent_black(),
+            surface_background: Hsla::transparent_black(),
+            elevated_surface_background: Hsla::transparent_black(),
             panel_background: Hsla::transparent_black(),
             border: Hsla::transparent_black(),
             border_variant: Hsla::transparent_black(),
@@ -140,6 +146,8 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
         },
         Appearance::Light => ThemeColors {
             background: gpui::rgb(0xffffff).into(),
+            surface_background: gpui::rgb(0xffffff).into(),
+            elevated_surface_background: gpui::rgb(0xffffff).into(),
             panel_background: gpui::rgb(0xffffff).into(),
             border: gpui::rgb(0xcccccc).into(),
             border_variant: gpui::rgb(0xcccccc).into(),

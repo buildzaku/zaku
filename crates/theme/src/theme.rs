@@ -120,6 +120,8 @@ pub struct ThemeStyles {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThemeColors {
     pub background: Hsla,
+    pub surface_background: Hsla,
+    pub elevated_surface_background: Hsla,
     pub panel_background: Hsla,
 
     pub border: Hsla,
@@ -188,6 +190,10 @@ pub struct ThemeContent {
 pub struct ThemeStyleContent {
     #[serde(rename = "background")]
     pub background: Option<String>,
+    #[serde(rename = "surface.background")]
+    pub surface_background: Option<String>,
+    #[serde(rename = "elevated_surface.background")]
+    pub elevated_surface_background: Option<String>,
     #[serde(rename = "panel.background")]
     pub panel_background: Option<String>,
 
@@ -262,6 +268,11 @@ impl ThemeStyleContent {
     fn to_styles(&self) -> Result<ThemeStyles> {
         let colors = ThemeColors {
             background: required_color("background", &self.background)?,
+            surface_background: required_color("surface.background", &self.surface_background)?,
+            elevated_surface_background: required_color(
+                "elevated_surface.background",
+                &self.elevated_surface_background,
+            )?,
             panel_background: required_color("panel.background", &self.panel_background)?,
             border: required_color("border", &self.border)?,
             border_variant: required_color("border.variant", &self.border_variant)?,

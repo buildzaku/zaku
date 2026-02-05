@@ -106,7 +106,7 @@ impl Render for Pane {
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
                             .size(ButtonSize::Large)
-                            .width(rems_from_px(68.))
+                            .width(rems_from_px(70.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .on_click(cx.listener(move |pane, _, window, cx| {
                                 let request_url = input_handle.read(cx).text(cx);
