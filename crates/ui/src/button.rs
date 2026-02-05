@@ -225,6 +225,15 @@ impl RenderOnce for Button {
                     .hover(|style| style.bg(colors.hover_bg))
                     .active(|style| style.bg(colors.active_bg))
             })
+            .when_some(
+                self.on_click.filter(|_| !self.disabled),
+                |this, on_click| {
+                    this.on_click(move |event, window, cx| {
+                        cx.stop_propagation();
+                        on_click(event, window, cx);
+                    })
+                },
+            )
             .when(self.variant == ButtonVariant::Outline, |this| {
                 this.border_1().border_color(rgb(0x545454))
             })

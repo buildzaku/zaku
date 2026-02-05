@@ -12,6 +12,7 @@ fn main() {
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
             editor::init(cx);
+            workspace::init(cx);
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
             cx.on_action(|_: &Quit, cx: &mut App| {
                 cx.quit();

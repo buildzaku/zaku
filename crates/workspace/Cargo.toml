@@ -15,5 +15,7 @@ path = "src/workspace.rs"
 
 [dependencies]
 gpui = { workspace = true }
+http_client = { workspace = true }
 input = { workspace = true }
+reqwest_client = { workspace = true }
 ui = { workspace = true }
