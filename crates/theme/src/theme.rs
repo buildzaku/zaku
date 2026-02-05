@@ -142,6 +142,7 @@ pub struct ThemeColors {
     pub element_hover: Hsla,
     pub element_active: Hsla,
     pub element_selected: Hsla,
+    pub element_selection_background: Hsla,
     pub element_disabled: Hsla,
 
     pub ghost_element_background: Hsla,
@@ -232,6 +233,8 @@ pub struct ThemeStyleContent {
     pub element_active: Option<String>,
     #[serde(rename = "element.selected")]
     pub element_selected: Option<String>,
+    #[serde(rename = "element.selection_background")]
+    pub element_selection_background: Option<String>,
     #[serde(rename = "element.disabled")]
     pub element_disabled: Option<String>,
 
@@ -289,6 +292,10 @@ impl ThemeStyleContent {
             element_hover: required_color("element.hover", &self.element_hover)?,
             element_active: required_color("element.active", &self.element_active)?,
             element_selected: required_color("element.selected", &self.element_selected)?,
+            element_selection_background: required_color(
+                "element.selection_background",
+                &self.element_selection_background,
+            )?,
             element_disabled: required_color("element.disabled", &self.element_disabled)?,
             ghost_element_background: required_color(
                 "ghost_element.background",

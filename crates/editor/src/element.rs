@@ -208,7 +208,7 @@ impl Element for EditorElement {
                         bounds.bottom(),
                     ),
                 ),
-                cx.theme().status().info_background,
+                cx.theme().colors().element_selection_background,
             ))
         };
 
