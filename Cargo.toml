@@ -24,7 +24,9 @@ publish = false
 type_complexity = "allow"
 
 [workspace.dependencies]
-################### External crates ###################
+##################################################
+# External crates
+##################################################
 anyhow = { version = "1.0" }
 bytes = { version = "1.11" }
 core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issues/47168
@@ -51,7 +53,9 @@ text = { git = "https://github.com/zed-industries/zed", package = "text" }
 tokio = { version = "1.49", features = ["rt", "rt-multi-thread"] }
 unicode-segmentation = { version = "1.12" }
 url = { version = "2.5" }
-############### Workspace member crates ###############
+##################################################
+# Workspace member crates
+##################################################
 assets = { path = "crates/assets" }
 editor = { path = "crates/editor" }
 http_client = { path = "crates/http_client" }

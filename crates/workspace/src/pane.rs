@@ -51,7 +51,7 @@ impl Pane {
                     .await;
                 let response_status = match response {
                     Ok(response) => format!("Response {}", response.status().as_u16()),
-                    Err(error) => format!("Response Error: {error}"),
+                    Err(error) => format!("Error: {error}"),
                 };
 
                 if let Err(error) = pane_handle.update(cx, |pane, cx| {
