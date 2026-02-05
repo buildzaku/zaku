@@ -81,10 +81,8 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
 
     ThemeRegistry::set_global(assets, cx);
 
-    if load_bundled_themes {
-        if let Err(error) = ThemeRegistry::global(cx).load_bundled_themes() {
-            eprintln!("failed to load bundled themes: {error:?}");
-        }
+    if load_bundled_themes && let Err(error) = ThemeRegistry::global(cx).load_bundled_themes() {
+        eprintln!("failed to load bundled themes: {error:?}");
     }
 
     let theme = GlobalTheme::configured_theme(cx);
