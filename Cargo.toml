@@ -4,8 +4,10 @@ members = [
   "crates/assets",
   "crates/comet",
   "crates/editor",
+  "crates/http_client",
   "crates/icons",
   "crates/input",
+  "crates/reqwest_client",
   "crates/ui",
   "crates/util",
   "crates/workspace",
@@ -22,23 +24,44 @@ publish = false
 type_complexity = "allow"
 
 [workspace.dependencies]
-################### External crates ###################
+##################################################
+# External crates
+##################################################
 anyhow = { version = "1.0" }
-core-text = { version = "=21.0.0" }                                        # https://github.com/zed-industries/zed/issues/47168
+bytes = { version = "1.11" }
+core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issues/47168
+futures = { version = "0.3" }
 gpui = { git = "https://github.com/zed-industries/zed", package = "gpui" }
+http = { version = "1.4" }
+http-body = { version = "1.0" }
 pretty_assertions = { version = "1.4" }
+reqwest = { version = "0.13", default-features = false, features = [
+  "charset",
+  "http2",
+  "multipart",
+  "rustls",
+  "socks",
+  "stream",
+  "system-proxy",
+] }
 rust-embed = { version = "8.0", features = ["debug-embed"] }
 schemars = { version = "1.2" }
 serde = { version = "1.0", features = ["derive"] }
 smallvec = { version = "1.15" }
 strum = { version = "0.27", features = ["derive"] }
 text = { git = "https://github.com/zed-industries/zed", package = "text" }
+tokio = { version = "1.49", features = ["rt", "rt-multi-thread"] }
 unicode-segmentation = { version = "1.12" }
-############### Workspace member crates ###############
+url = { version = "2.5" }
+##################################################
+# Workspace member crates
+##################################################
 assets = { path = "crates/assets" }
 editor = { path = "crates/editor" }
+http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
+reqwest_client = { path = "crates/reqwest_client" }
 ui = { path = "crates/ui" }
 util = { path = "crates/util" }
 workspace = { path = "crates/workspace" }
