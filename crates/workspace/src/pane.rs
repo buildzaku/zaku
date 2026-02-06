@@ -5,7 +5,7 @@ use http_client::{AsyncBody, HttpClient};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
-use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth, rems_from_px};
+use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth};
 
 use crate::SendRequest;
 
@@ -106,7 +106,7 @@ impl Render for Pane {
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
                             .size(ButtonSize::Large)
-                            .width(rems_from_px(70.))
+                            .width(ui::rems_from_px(70.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .on_click(cx.listener(move |pane, _, window, cx| {
                                 let request_url = input_handle.read(cx).text(cx);

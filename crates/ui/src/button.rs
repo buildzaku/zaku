@@ -6,7 +6,7 @@ use gpui::{
 use icons::IconName;
 use theme::ActiveTheme;
 
-use crate::{ButtonCommon, Clickable, Disableable, FixedWidth, Icon, IconSize, rems_from_px};
+use crate::{ButtonCommon, Clickable, Disableable, FixedWidth, Icon, IconSize};
 
 pub struct ButtonColor {
     pub bg: Hsla,
@@ -77,11 +77,11 @@ pub enum ButtonSize {
 impl ButtonSize {
     pub fn rems(self) -> Rems {
         match self {
-            ButtonSize::Large => rems_from_px(32.),
-            ButtonSize::Medium => rems_from_px(28.),
-            ButtonSize::Default => rems_from_px(22.),
-            ButtonSize::Compact => rems_from_px(18.),
-            ButtonSize::None => rems_from_px(16.),
+            ButtonSize::Large => crate::rems_from_px(32.),
+            ButtonSize::Medium => crate::rems_from_px(28.),
+            ButtonSize::Default => crate::rems_from_px(22.),
+            ButtonSize::Compact => crate::rems_from_px(18.),
+            ButtonSize::None => crate::rems_from_px(16.),
         }
     }
 }
@@ -226,11 +226,11 @@ impl RenderOnce for Button {
             ButtonSize::None => IconSize::XSmall,
         };
         let (padding_x, gap) = match self.size {
-            ButtonSize::Large => (rems_from_px(12.), rems_from_px(6.)),
-            ButtonSize::Medium => (rems_from_px(10.), rems_from_px(5.)),
-            ButtonSize::Default => (rems_from_px(8.), rems_from_px(4.)),
-            ButtonSize::Compact => (rems_from_px(6.), rems_from_px(3.)),
-            ButtonSize::None => (rems_from_px(4.), rems_from_px(2.)),
+            ButtonSize::Large => (crate::rems_from_px(12.), crate::rems_from_px(6.)),
+            ButtonSize::Medium => (crate::rems_from_px(10.), crate::rems_from_px(5.)),
+            ButtonSize::Default => (crate::rems_from_px(8.), crate::rems_from_px(4.)),
+            ButtonSize::Compact => (crate::rems_from_px(6.), crate::rems_from_px(3.)),
+            ButtonSize::None => (crate::rems_from_px(4.), crate::rems_from_px(2.)),
         };
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 

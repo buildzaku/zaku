@@ -3,8 +3,6 @@ use gpui::{App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, p
 use icons::IconName;
 use theme::ActiveTheme;
 
-use crate::rems_from_px;
-
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
     /// 12px
@@ -22,10 +20,10 @@ pub enum IconSize {
 impl IconSize {
     pub fn rems(self) -> Rems {
         match self {
-            IconSize::XSmall => rems_from_px(12.),
-            IconSize::Small => rems_from_px(14.),
-            IconSize::Medium => rems_from_px(16.),
-            IconSize::XLarge => rems_from_px(48.),
+            IconSize::XSmall => crate::rems_from_px(12.),
+            IconSize::Small => crate::rems_from_px(14.),
+            IconSize::Medium => crate::rems_from_px(16.),
+            IconSize::XLarge => crate::rems_from_px(48.),
             IconSize::Custom(size) => size,
         }
     }

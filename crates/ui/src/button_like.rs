@@ -2,7 +2,7 @@ use gpui::{AnyElement, App, ClickEvent, DefiniteLength, Div, ElementId, Rems, Wi
 use smallvec::SmallVec;
 use theme::ActiveTheme;
 
-use crate::{ButtonColor, ButtonSize, ButtonVariant, rems_from_px};
+use crate::{ButtonColor, ButtonSize, ButtonVariant};
 
 /// A trait for elements that can be clicked.
 pub trait Clickable: Sized {
@@ -130,16 +130,16 @@ impl RenderOnce for ButtonLike {
         let mut colors = self.variant.colors(cx);
         let is_outlined = matches!(self.variant, ButtonVariant::Outline);
         let padding_x = match self.size {
-            ButtonSize::Large | ButtonSize::Medium => rems_from_px(8.),
-            ButtonSize::Default | ButtonSize::Compact => rems_from_px(4.),
+            ButtonSize::Large | ButtonSize::Medium => crate::rems_from_px(8.),
+            ButtonSize::Default | ButtonSize::Compact => crate::rems_from_px(4.),
             ButtonSize::None => Rems::default(),
         };
         let gap = match self.size {
-            ButtonSize::Large => rems_from_px(6.),
-            ButtonSize::Medium => rems_from_px(5.),
-            ButtonSize::Default => rems_from_px(4.),
-            ButtonSize::Compact => rems_from_px(3.),
-            ButtonSize::None => rems_from_px(2.),
+            ButtonSize::Large => crate::rems_from_px(6.),
+            ButtonSize::Medium => crate::rems_from_px(5.),
+            ButtonSize::Default => crate::rems_from_px(4.),
+            ButtonSize::Compact => crate::rems_from_px(3.),
+            ButtonSize::None => crate::rems_from_px(2.),
         };
 
         if self.disabled {
