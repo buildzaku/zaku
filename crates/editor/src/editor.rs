@@ -8,7 +8,7 @@ use gpui::{
     App, Bounds, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle,
     Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
     Point, Render, ShapedLine, SharedString, Subscription, TextStyle, UTF16Selection, WeakEntity,
-    Window, point, prelude::*, relative, rems, rgb,
+    Window, prelude::*,
 };
 use std::{
     any::TypeId,
@@ -24,6 +24,7 @@ use text::{Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaI
 use unicode_segmentation::UnicodeSegmentation;
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
+use theme::ActiveTheme;
 
 pub(crate) const KEY_CONTEXT: &str = "Editor";
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
@@ -1400,8 +1401,12 @@ impl Editor {
         key_context
     }
 
-    pub(crate) fn create_style(&self, _cx: &App) -> EditorStyle {
-        EditorStyle::default()
+    pub(crate) fn create_style(&self, cx: &App) -> EditorStyle {
+        let mut style = EditorStyle::default();
+        let theme_colors = cx.theme().colors();
+        style.background = theme_colors.editor_background;
+        style.text.color = theme_colors.editor_foreground;
+        style
     }
 
     pub fn register_addon<T: Addon>(&mut self, instance: T) {
@@ -1538,11 +1543,11 @@ impl EntityInputHandler for Editor {
         let display_end = self.display_offset_for_text_offset(range.end);
 
         Some(Bounds::from_corners(
-            point(
+            gpui::point(
                 bounds.left() + last_layout.x_for_index(display_start),
                 bounds.top(),
             ),
-            point(
+            gpui::point(
                 bounds.left() + last_layout.x_for_index(display_end),
                 bounds.bottom(),
             ),
@@ -1640,15 +1645,16 @@ impl ErasedEditor for ErasedEditorImpl {
         })
     }
 
-    fn render(&self, _: &mut Window, _: &App) -> gpui::AnyElement {
+    fn render(&self, _: &mut Window, cx: &App) -> gpui::AnyElement {
+        let theme_colors = cx.theme().colors();
         let text_style = TextStyle {
-            font_size: rems(0.875).into(),
-            line_height: relative(1.2),
-            color: rgb(0xffffff).into(),
+            font_size: gpui::rems(0.875).into(),
+            line_height: gpui::relative(1.2),
+            color: theme_colors.editor_foreground,
             ..Default::default()
         };
         let editor_style = EditorStyle {
-            background: Hsla::transparent_black(),
+            background: theme_colors.editor_background,
             text: text_style,
         };
         EditorElement::new(&self.0, editor_style).into_any()

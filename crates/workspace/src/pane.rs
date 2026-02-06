@@ -1,10 +1,11 @@
-use gpui::{Entity, SharedString, Window, div, prelude::*, rgb};
+use gpui::{Entity, SharedString, Window, prelude::*};
 use std::sync::Arc;
 
 use http_client::{AsyncBody, HttpClient};
 use input::InputField;
 use reqwest_client::ReqwestClient;
-use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth, rems_from_px};
+use theme::ActiveTheme;
+use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth};
 
 use crate::SendRequest;
 
@@ -72,6 +73,7 @@ impl Render for Pane {
             self.input = Some(input);
         }
 
+        let theme_colors = cx.theme().colors();
         let input = self
             .input
             .clone()
@@ -79,15 +81,15 @@ impl Render for Pane {
         let input_handle = input.clone();
         let input_handle_for_action = input.clone();
 
-        div()
+        gpui::div()
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(0x1a1a1a))
+            .bg(theme_colors.panel_background)
             .p_3()
             .child("HTTP Request")
             .child(
-                div()
+                gpui::div()
                     .flex()
                     .flex_row()
                     .items_center()
@@ -99,12 +101,12 @@ impl Render for Pane {
                         let request_url = input_handle_for_action.read(cx).text(cx);
                         pane.send_request(request_url, window, cx);
                     }))
-                    .child(div().flex_1().child(input))
+                    .child(gpui::div().flex_1().child(input))
                     .child(
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
                             .size(ButtonSize::Large)
-                            .width(rems_from_px(68.))
+                            .width(ui::rems_from_px(70.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .on_click(cx.listener(move |pane, _, window, cx| {
                                 let request_url = input_handle.read(cx).text(cx);
@@ -114,12 +116,12 @@ impl Render for Pane {
             )
             .when_some(self.response_status.clone(), |this, response_status| {
                 this.child(
-                    div()
+                    gpui::div()
                         .text_xs()
-                        .text_color(rgb(0x9a9a9a))
+                        .text_color(theme_colors.text_muted)
                         .child(response_status),
                 )
             })
-            .child(div().flex_1())
+            .child(gpui::div().flex_1())
     }
 }

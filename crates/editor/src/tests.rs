@@ -12,6 +12,7 @@ use crate::{
 
 fn init_test(cx: &mut TestAppContext) {
     cx.update(|cx| {
+        theme::init(theme::LoadThemes::JustBase, cx);
         crate::init(cx);
     });
 }
