@@ -1,13 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+mod fallback;
 
 use anyhow::{Context as _, Result, anyhow};
 use gpui::{App, AssetSource, BorrowAppContext, Global, Hsla, SharedString, WindowAppearance};
 use palette::FromColor as _;
 use parking_lot::RwLock;
 use serde::Deserialize;
+use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
-
-mod fallback;
 
 pub(crate) const DEFAULT_LIGHT_THEME: &str = "Comet Light";
 pub(crate) const DEFAULT_DARK_THEME: &str = "Comet Dark";
