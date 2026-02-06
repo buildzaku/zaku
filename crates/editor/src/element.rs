@@ -2,7 +2,7 @@ use gpui::{
     Action, App, Bounds, Context, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, ShapedLine, Style, TextRun,
-    UnderlineStyle, Window, fill, point, prelude::*, px, size,
+    UnderlineStyle, Window, prelude::*,
 };
 use std::any::TypeId;
 
@@ -166,7 +166,7 @@ impl Element for EditorElement {
                     len: display_end - display_start,
                     underline: Some(UnderlineStyle {
                         color: Some(base_run.color),
-                        thickness: px(1.0),
+                        thickness: gpui::px(1.0),
                         wavy: false,
                     }),
                     ..base_run.clone()
@@ -197,13 +197,13 @@ impl Element for EditorElement {
         let selection = if selected_range.is_empty() {
             None
         } else {
-            Some(fill(
+            Some(gpui::fill(
                 Bounds::from_corners(
-                    point(
+                    gpui::point(
                         bounds.left() + line.x_for_index(display_start),
                         bounds.top(),
                     ),
-                    point(
+                    gpui::point(
                         bounds.left() + line.x_for_index(display_end),
                         bounds.bottom(),
                     ),
@@ -212,10 +212,10 @@ impl Element for EditorElement {
             ))
         };
 
-        let cursor = Some(fill(
+        let cursor = Some(gpui::fill(
             Bounds::new(
-                point(bounds.left() + cursor_pos, bounds.top()),
-                size(px(2.), bounds.bottom() - bounds.top()),
+                gpui::point(bounds.left() + cursor_pos, bounds.top()),
+                gpui::size(gpui::px(2.), bounds.bottom() - bounds.top()),
             ),
             cx.theme().colors().editor_foreground,
         ));
@@ -293,7 +293,7 @@ impl Element for EditorElement {
         });
 
         if !self.style.background.is_transparent() {
-            window.paint_quad(fill(bounds, self.style.background));
+            window.paint_quad(gpui::fill(bounds, self.style.background));
         }
 
         if let Some(selection) = prepaint.selection.take() {

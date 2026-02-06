@@ -8,7 +8,7 @@ use gpui::{
     App, Bounds, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle,
     Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
     Point, Render, ShapedLine, SharedString, Subscription, TextStyle, UTF16Selection, WeakEntity,
-    Window, point, prelude::*, relative, rems,
+    Window, prelude::*,
 };
 use std::{
     any::TypeId,
@@ -1543,11 +1543,11 @@ impl EntityInputHandler for Editor {
         let display_end = self.display_offset_for_text_offset(range.end);
 
         Some(Bounds::from_corners(
-            point(
+            gpui::point(
                 bounds.left() + last_layout.x_for_index(display_start),
                 bounds.top(),
             ),
-            point(
+            gpui::point(
                 bounds.left() + last_layout.x_for_index(display_end),
                 bounds.bottom(),
             ),
@@ -1648,8 +1648,8 @@ impl ErasedEditor for ErasedEditorImpl {
     fn render(&self, _: &mut Window, cx: &App) -> gpui::AnyElement {
         let theme_colors = cx.theme().colors();
         let text_style = TextStyle {
-            font_size: rems(0.875).into(),
-            line_height: relative(1.2),
+            font_size: gpui::rems(0.875).into(),
+            line_height: gpui::relative(1.2),
             color: theme_colors.editor_foreground,
             ..Default::default()
         };

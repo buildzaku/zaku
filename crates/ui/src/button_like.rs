@@ -1,7 +1,4 @@
-use gpui::{
-    AnyElement, App, ClickEvent, DefiniteLength, Div, ElementId, Rems, Window, div, prelude::*,
-    relative,
-};
+use gpui::{AnyElement, App, ClickEvent, DefiniteLength, Div, ElementId, Rems, Window, prelude::*};
 use smallvec::SmallVec;
 use theme::ActiveTheme;
 
@@ -56,7 +53,7 @@ pub struct ButtonLike {
 impl ButtonLike {
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
-            base: div(),
+            base: gpui::div(),
             id: id.into(),
             variant: ButtonVariant::default(),
             disabled: false,
@@ -100,7 +97,7 @@ impl FixedWidth for ButtonLike {
     }
 
     fn full_width(mut self) -> Self {
-        self.width = Some(relative(1.));
+        self.width = Some(gpui::relative(1.));
         self
     }
 }

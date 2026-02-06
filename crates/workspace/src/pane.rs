@@ -1,4 +1,4 @@
-use gpui::{Entity, SharedString, Window, div, prelude::*};
+use gpui::{Entity, SharedString, Window, prelude::*};
 use std::sync::Arc;
 
 use http_client::{AsyncBody, HttpClient};
@@ -81,7 +81,7 @@ impl Render for Pane {
         let input_handle = input.clone();
         let input_handle_for_action = input.clone();
 
-        div()
+        gpui::div()
             .flex()
             .flex_col()
             .size_full()
@@ -89,7 +89,7 @@ impl Render for Pane {
             .p_3()
             .child("HTTP Request")
             .child(
-                div()
+                gpui::div()
                     .flex()
                     .flex_row()
                     .items_center()
@@ -101,7 +101,7 @@ impl Render for Pane {
                         let request_url = input_handle_for_action.read(cx).text(cx);
                         pane.send_request(request_url, window, cx);
                     }))
-                    .child(div().flex_1().child(input))
+                    .child(gpui::div().flex_1().child(input))
                     .child(
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
@@ -116,12 +116,12 @@ impl Render for Pane {
             )
             .when_some(self.response_status.clone(), |this, response_status| {
                 this.child(
-                    div()
+                    gpui::div()
                         .text_xs()
                         .text_color(theme_colors.text_muted)
                         .child(response_status),
                 )
             })
-            .child(div().flex_1())
+            .child(gpui::div().flex_1())
     }
 }

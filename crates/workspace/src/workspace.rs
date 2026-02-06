@@ -1,6 +1,6 @@
 use gpui::{
     App, Bounds, DragMoveEvent, Entity, KeyBinding, MouseButton, MouseDownEvent, Pixels, Point,
-    Window, actions, canvas, div, prelude::*, px,
+    Window, actions, prelude::*,
 };
 
 use theme::ActiveTheme;
@@ -14,8 +14,8 @@ pub mod status_bar;
 
 actions!(workspace, [SendRequest]);
 
-const MIN_DOCK_WIDTH: Pixels = px(110.0);
-const MIN_PANE_WIDTH: Pixels = px(250.0);
+const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
+const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new(
@@ -87,7 +87,7 @@ impl Workspace {
 impl Render for Workspace {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
-        div()
+        gpui::div()
             .id("workspace")
             .relative()
             .flex()
@@ -98,7 +98,7 @@ impl Render for Workspace {
             .size_full()
             .child({
                 let this = cx.entity();
-                canvas(
+                gpui::canvas(
                     move |bounds, _window, cx| {
                         this.update(cx, |this, _cx| {
                             this.bounds = bounds;
@@ -139,12 +139,17 @@ impl Render for Workspace {
                 }),
             )
             .child(
-                div()
+                gpui::div()
                     .flex()
                     .flex_row()
                     .flex_1()
                     .overflow_hidden()
-                    .child(div().flex_none().overflow_hidden().child(self.dock.clone()))
+                    .child(
+                        gpui::div()
+                            .flex_none()
+                            .overflow_hidden()
+                            .child(self.dock.clone()),
+                    )
                     .child(self.pane.clone()),
             )
             .child(self.status_bar.clone())

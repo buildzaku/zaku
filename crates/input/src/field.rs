@@ -1,6 +1,4 @@
-use gpui::{
-    App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, div, prelude::*, px,
-};
+use gpui::{App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, prelude::*};
 use std::sync::Arc;
 
 use theme::ActiveTheme;
@@ -71,7 +69,7 @@ impl InputField {
             placeholder: SharedString::new(placeholder_text),
             editor,
             start_icon: None,
-            min_width: px(192.).into(),
+            min_width: gpui::px(192.).into(),
             tab_index: None,
             tab_stop: true,
         }
@@ -128,7 +126,7 @@ impl InputField {
     }
 
     fn render_label(&self, label: SharedString, style: &InputFieldStyle) -> Div {
-        let base = div().text_color(style.label_color).child(label);
+        let base = gpui::div().text_color(style.label_color).child(label);
         self.label_size.apply(base)
     }
 }

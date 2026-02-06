@@ -1,4 +1,4 @@
-use gpui::{Entity, Window, div, prelude::*, px};
+use gpui::{Entity, Window, prelude::*};
 
 use theme::ActiveTheme;
 use ui::{ButtonCommon, ButtonShape, ButtonSize, Clickable, IconButton, IconName};
@@ -20,12 +20,12 @@ impl Render for StatusBar {
         let workspace = self.workspace.clone();
         let theme_colors = cx.theme().colors();
 
-        div()
+        gpui::div()
             .flex()
             .flex_row()
             .items_center()
             .w_full()
-            .h(px(26.))
+            .h(gpui::px(26.))
             .px_1p5()
             .gap_2()
             .bg(theme_colors.status_bar_background)

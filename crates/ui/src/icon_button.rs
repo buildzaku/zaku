@@ -1,4 +1,4 @@
-use gpui::{App, ClickEvent, DefiniteLength, Div, ElementId, Window, div, prelude::*, relative};
+use gpui::{App, ClickEvent, DefiniteLength, Div, ElementId, Window, prelude::*};
 
 use icons::IconName;
 use theme::ActiveTheme;
@@ -34,7 +34,7 @@ impl IconButton {
         Self {
             id: id.into(),
             variant: ButtonVariant::default(),
-            base: div(),
+            base: gpui::div(),
             width: None,
             height: None,
             size: ButtonSize::default(),
@@ -77,7 +77,7 @@ impl FixedWidth for IconButton {
     }
 
     fn full_width(mut self) -> Self {
-        self.width = Some(relative(1.));
+        self.width = Some(gpui::relative(1.));
         self
     }
 }

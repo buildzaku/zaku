@@ -1,4 +1,4 @@
-use gpui::{App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*, svg};
+use gpui::{App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*};
 
 use icons::IconName;
 use theme::ActiveTheme;
@@ -68,7 +68,7 @@ impl RenderOnce for Icon {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let color = self.color.unwrap_or_else(|| cx.theme().colors().icon);
         match self.source {
-            IconSource::Embedded(path) => svg()
+            IconSource::Embedded(path) => gpui::svg()
                 .with_transformation(self.transformation)
                 .size(self.size)
                 .flex_none()

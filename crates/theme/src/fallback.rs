@@ -122,8 +122,5 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
         }
     };
 
-    ThemeStyles {
-        colors,
-        status,
-    }
+    ThemeStyles { colors, status }
 }
