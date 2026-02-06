@@ -1,5 +1,6 @@
-use gpui::{Entity, Window, div, prelude::*, px, rgb};
+use gpui::{Entity, Window, prelude::*};
 
+use theme::ActiveTheme;
 use ui::{ButtonCommon, ButtonShape, ButtonSize, Clickable, IconButton, IconName};
 
 use crate::Workspace;
@@ -15,20 +16,21 @@ impl StatusBar {
 }
 
 impl Render for StatusBar {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = self.workspace.clone();
+        let theme_colors = cx.theme().colors();
 
-        div()
+        gpui::div()
             .flex()
             .flex_row()
             .items_center()
             .w_full()
-            .h(px(26.))
+            .h(gpui::px(26.))
             .px_1p5()
             .gap_2()
-            .bg(rgb(0x141414))
+            .bg(theme_colors.status_bar_background)
             .border_t_1()
-            .border_color(rgb(0x2a2a2a))
+            .border_color(theme_colors.border_variant)
             .child(
                 IconButton::new("toggle-dock", IconName::Dock)
                     .size(ButtonSize::Compact)

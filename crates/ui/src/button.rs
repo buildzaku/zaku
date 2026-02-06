@@ -1,11 +1,12 @@
 use gpui::{
     App, ClickEvent, DefiniteLength, Div, ElementId, FontWeight, Hsla, Rems, SharedString, Window,
-    div, prelude::*, relative, rgb,
+    prelude::*,
 };
 
 use icons::IconName;
+use theme::ActiveTheme;
 
-use crate::{ButtonCommon, Clickable, Disableable, FixedWidth, Icon, IconSize, rems_from_px};
+use crate::{ButtonCommon, Clickable, Disableable, FixedWidth, Icon, IconSize};
 
 pub struct ButtonColor {
     pub bg: Hsla,
@@ -25,35 +26,37 @@ pub enum ButtonVariant {
 }
 
 impl ButtonVariant {
-    pub fn colors(&self) -> ButtonColor {
+    pub fn colors(&self, cx: &App) -> ButtonColor {
+        let colors = cx.theme().colors();
+        let status = cx.theme().status();
         match self {
             ButtonVariant::Subtle => ButtonColor {
-                bg: gpui::transparent_black(),
-                text: rgb(0xffffff).into(),
-                hover_bg: rgb(0x292929).into(),
-                active_bg: rgb(0x404040).into(),
+                bg: colors.ghost_element_background,
+                text: colors.text,
+                hover_bg: colors.ghost_element_hover,
+                active_bg: colors.ghost_element_active,
             },
             ButtonVariant::Solid => ButtonColor {
-                bg: rgb(0x292929).into(),
-                text: rgb(0xffffff).into(),
-                hover_bg: rgb(0x292929).into(),
-                active_bg: rgb(0x404040).into(),
+                bg: colors.element_background,
+                text: colors.text,
+                hover_bg: colors.element_hover,
+                active_bg: colors.element_active,
             },
             ButtonVariant::Accent => ButtonColor {
-                bg: rgb(0x41d4dc).into(),
-                text: rgb(0x043f58).into(),
-                hover_bg: rgb(0x3dc9d1).into(),
-                active_bg: rgb(0x3dc9d1).into(),
+                bg: status.info,
+                text: status.info_background,
+                hover_bg: status.info,
+                active_bg: status.info,
             },
             ButtonVariant::Outline => ButtonColor {
-                bg: gpui::transparent_black(),
-                text: rgb(0xffffff).into(),
-                hover_bg: rgb(0x292929).into(),
-                active_bg: rgb(0x404040).into(),
+                bg: colors.ghost_element_background,
+                text: colors.text,
+                hover_bg: colors.ghost_element_hover,
+                active_bg: colors.ghost_element_active,
             },
             ButtonVariant::Ghost => ButtonColor {
                 bg: gpui::transparent_black(),
-                text: rgb(0xffffff).into(),
+                text: colors.text,
                 hover_bg: gpui::transparent_black(),
                 active_bg: gpui::transparent_black(),
             },
@@ -74,11 +77,11 @@ pub enum ButtonSize {
 impl ButtonSize {
     pub fn rems(self) -> Rems {
         match self {
-            ButtonSize::Large => rems_from_px(32.),
-            ButtonSize::Medium => rems_from_px(28.),
-            ButtonSize::Default => rems_from_px(22.),
-            ButtonSize::Compact => rems_from_px(18.),
-            ButtonSize::None => rems_from_px(16.),
+            ButtonSize::Large => crate::rems_from_px(32.),
+            ButtonSize::Medium => crate::rems_from_px(28.),
+            ButtonSize::Default => crate::rems_from_px(22.),
+            ButtonSize::Compact => crate::rems_from_px(18.),
+            ButtonSize::None => crate::rems_from_px(16.),
         }
     }
 }
@@ -112,7 +115,7 @@ impl Button {
             id: id.into(),
             variant: ButtonVariant::default(),
             label: label.into(),
-            base: div(),
+            base: gpui::div(),
             width: None,
             height: None,
             size: ButtonSize::default(),
@@ -166,7 +169,7 @@ impl FixedWidth for Button {
     }
 
     fn full_width(mut self) -> Self {
-        self.width = Some(relative(1.));
+        self.width = Some(gpui::relative(1.));
         self
     }
 }
@@ -188,8 +191,33 @@ impl ButtonCommon for Button {
 }
 
 impl RenderOnce for Button {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let colors = self.variant.colors();
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let theme_colors = cx.theme().colors();
+        let mut colors = self.variant.colors(cx);
+        if self.disabled {
+            colors = match self.variant {
+                ButtonVariant::Subtle => ButtonColor {
+                    bg: theme_colors.ghost_element_disabled,
+                    text: theme_colors.text_disabled,
+                    hover_bg: theme_colors.ghost_element_disabled,
+                    active_bg: theme_colors.ghost_element_disabled,
+                },
+                ButtonVariant::Solid | ButtonVariant::Outline | ButtonVariant::Accent => {
+                    ButtonColor {
+                        bg: theme_colors.element_disabled,
+                        text: theme_colors.text_disabled,
+                        hover_bg: theme_colors.element_disabled,
+                        active_bg: theme_colors.element_disabled,
+                    }
+                }
+                ButtonVariant::Ghost => ButtonColor {
+                    bg: gpui::transparent_black(),
+                    text: theme_colors.text_disabled,
+                    hover_bg: gpui::transparent_black(),
+                    active_bg: gpui::transparent_black(),
+                },
+            };
+        }
         let icon_size = match self.size {
             ButtonSize::Large => IconSize::Medium,
             ButtonSize::Medium => IconSize::Small,
@@ -198,11 +226,11 @@ impl RenderOnce for Button {
             ButtonSize::None => IconSize::XSmall,
         };
         let (padding_x, gap) = match self.size {
-            ButtonSize::Large => (rems_from_px(12.), rems_from_px(6.)),
-            ButtonSize::Medium => (rems_from_px(10.), rems_from_px(5.)),
-            ButtonSize::Default => (rems_from_px(8.), rems_from_px(4.)),
-            ButtonSize::Compact => (rems_from_px(6.), rems_from_px(3.)),
-            ButtonSize::None => (rems_from_px(4.), rems_from_px(2.)),
+            ButtonSize::Large => (crate::rems_from_px(12.), crate::rems_from_px(6.)),
+            ButtonSize::Medium => (crate::rems_from_px(10.), crate::rems_from_px(5.)),
+            ButtonSize::Default => (crate::rems_from_px(8.), crate::rems_from_px(4.)),
+            ButtonSize::Compact => (crate::rems_from_px(6.), crate::rems_from_px(3.)),
+            ButtonSize::None => (crate::rems_from_px(4.), crate::rems_from_px(2.)),
         };
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
@@ -219,7 +247,7 @@ impl RenderOnce for Button {
             .bg(colors.bg)
             .text_color(colors.text)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
-            .when(self.disabled, |this| this.opacity(0.4).cursor_not_allowed())
+            .when(self.disabled, |this| this.cursor_not_allowed())
             .when(!self.disabled, |this| {
                 this.cursor_pointer()
                     .hover(|style| style.bg(colors.hover_bg))
@@ -235,7 +263,7 @@ impl RenderOnce for Button {
                 },
             )
             .when(self.variant == ButtonVariant::Outline, |this| {
-                this.border_1().border_color(rgb(0x545454))
+                this.border_1().border_color(theme_colors.border_variant)
             })
             .when(
                 self.icon.is_some() && icon_position == IconPosition::Start,

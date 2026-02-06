@@ -2,9 +2,11 @@ use gpui::{
     Action, App, Bounds, Context, CursorStyle, DispatchPhase, Element, ElementId,
     ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, ShapedLine, Style, TextRun,
-    UnderlineStyle, Window, fill, point, prelude::*, px, rgb, rgba, size,
+    UnderlineStyle, Window, prelude::*,
 };
 use std::any::TypeId;
+
+use theme::ActiveTheme;
 
 use crate::{Editor, EditorStyle, HandleInput};
 
@@ -131,7 +133,10 @@ impl Element for EditorElement {
         let style = self.style.text.clone();
 
         let (display_text, text_color) = if content.is_empty() {
-            (editor.placeholder.clone(), rgb(0x8a8a8a).into())
+            (
+                editor.placeholder.clone(),
+                cx.theme().colors().text_placeholder,
+            )
         } else {
             (editor.display_text(), style.color)
         };
@@ -161,7 +166,7 @@ impl Element for EditorElement {
                     len: display_end - display_start,
                     underline: Some(UnderlineStyle {
                         color: Some(base_run.color),
-                        thickness: px(1.0),
+                        thickness: gpui::px(1.0),
                         wavy: false,
                     }),
                     ..base_run.clone()
@@ -192,27 +197,27 @@ impl Element for EditorElement {
         let selection = if selected_range.is_empty() {
             None
         } else {
-            Some(fill(
+            Some(gpui::fill(
                 Bounds::from_corners(
-                    point(
+                    gpui::point(
                         bounds.left() + line.x_for_index(display_start),
                         bounds.top(),
                     ),
-                    point(
+                    gpui::point(
                         bounds.left() + line.x_for_index(display_end),
                         bounds.bottom(),
                     ),
                 ),
-                rgba(0x77777740),
+                cx.theme().colors().element_selection_background,
             ))
         };
 
-        let cursor = Some(fill(
+        let cursor = Some(gpui::fill(
             Bounds::new(
-                point(bounds.left() + cursor_pos, bounds.top()),
-                size(px(2.), bounds.bottom() - bounds.top()),
+                gpui::point(bounds.left() + cursor_pos, bounds.top()),
+                gpui::size(gpui::px(2.), bounds.bottom() - bounds.top()),
             ),
-            rgb(0xffffff),
+            cx.theme().colors().editor_foreground,
         ));
 
         let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
@@ -288,7 +293,7 @@ impl Element for EditorElement {
         });
 
         if !self.style.background.is_transparent() {
-            window.paint_quad(fill(bounds, self.style.background));
+            window.paint_quad(gpui::fill(bounds, self.style.background));
         }
 
         if let Some(selection) = prepaint.selection.take() {

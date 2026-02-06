@@ -1,10 +1,7 @@
-use gpui::{
-    App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*, rgb, svg,
-};
+use gpui::{App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*};
 
 use icons::IconName;
-
-use crate::rems_from_px;
+use theme::ActiveTheme;
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
@@ -23,10 +20,10 @@ pub enum IconSize {
 impl IconSize {
     pub fn rems(self) -> Rems {
         match self {
-            IconSize::XSmall => rems_from_px(12.),
-            IconSize::Small => rems_from_px(14.),
-            IconSize::Medium => rems_from_px(16.),
-            IconSize::XLarge => rems_from_px(48.),
+            IconSize::XSmall => crate::rems_from_px(12.),
+            IconSize::Small => crate::rems_from_px(14.),
+            IconSize::Medium => crate::rems_from_px(16.),
+            IconSize::XLarge => crate::rems_from_px(48.),
             IconSize::Custom(size) => size,
         }
     }
@@ -39,7 +36,7 @@ enum IconSource {
 #[derive(IntoElement)]
 pub struct Icon {
     source: IconSource,
-    color: Hsla,
+    color: Option<Hsla>,
     size: Rems,
     transformation: Transformation,
 }
@@ -48,14 +45,14 @@ impl Icon {
     pub fn new(icon: IconName) -> Self {
         Self {
             source: IconSource::Embedded(icon.path().into()),
-            color: rgb(0xffffff).into(),
+            color: None,
             size: IconSize::default().rems(),
             transformation: Transformation::default(),
         }
     }
 
     pub fn color(mut self, color: Hsla) -> Self {
-        self.color = color;
+        self.color = Some(color);
         self
     }
 
@@ -66,14 +63,15 @@ impl Icon {
 }
 
 impl RenderOnce for Icon {
-    fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let color = self.color.unwrap_or_else(|| cx.theme().colors().icon);
         match self.source {
-            IconSource::Embedded(path) => svg()
+            IconSource::Embedded(path) => gpui::svg()
                 .with_transformation(self.transformation)
                 .size(self.size)
                 .flex_none()
                 .path(path)
-                .text_color(self.color)
+                .text_color(color)
                 .into_any_element(),
         }
     }
