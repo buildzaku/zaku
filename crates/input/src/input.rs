@@ -7,7 +7,7 @@ use std::{
 
 use gpui::{AnyElement, App, FocusHandle, Subscription, Window};
 
-pub use field::{InputField, LabelSize};
+pub use field::InputField;
 
 pub trait ErasedEditor: 'static {
     fn text(&self, cx: &App) -> String;

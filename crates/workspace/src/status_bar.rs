@@ -1,7 +1,9 @@
 use gpui::{Entity, Window, prelude::*};
 
 use theme::ActiveTheme;
-use ui::{ButtonCommon, ButtonShape, ButtonSize, Clickable, IconButton, IconName};
+use ui::{
+    ButtonCommon, ButtonShape, ButtonSize, Clickable, IconButton, IconName, StyledTypography,
+};
 
 use crate::Workspace;
 
@@ -28,6 +30,8 @@ impl Render for StatusBar {
             .h(gpui::px(26.))
             .px_1p5()
             .gap_2()
+            .font_ui(cx)
+            .text_ui_sm(cx)
             .bg(theme_colors.status_bar_background)
             .border_t_1()
             .border_color(theme_colors.border_variant)

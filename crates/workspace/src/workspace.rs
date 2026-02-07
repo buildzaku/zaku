@@ -5,6 +5,7 @@ use gpui::{
 
 use theme::ActiveTheme;
 use theme::{GlobalTheme, SystemAppearance};
+use ui::StyledTypography;
 
 use crate::{dock::Dock, pane::Pane, status_bar::StatusBar};
 
@@ -95,7 +96,8 @@ impl Render for Workspace {
             .flex_col()
             .bg(theme_colors.background)
             .text_color(theme_colors.text)
-            .text_xs()
+            .font_ui(cx)
+            .text_ui(cx)
             .size_full()
             .child({
                 let this = cx.entity();

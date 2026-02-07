@@ -219,6 +219,7 @@ pub enum ComponentScope {
     #[strum(serialize = "Overlays & Layering")]
     Overlays,
     Status,
+    Typography,
     #[strum(serialize = "Version Control")]
     VersionControl,
 }
