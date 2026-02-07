@@ -2,6 +2,7 @@ use gpui::{
     App, Application, Bounds, KeyBinding, WindowBounds, WindowOptions, actions, prelude::*,
 };
 
+use theme::ThemeSettings;
 use workspace::Workspace;
 
 actions!(comet, [Quit]);
@@ -37,7 +38,7 @@ fn main() {
                     ..Default::default()
                 },
                 |window, cx| {
-                    window.set_rem_size(gpui::px(14.0));
+                    window.set_rem_size(ThemeSettings::get_global(cx).ui_font_size(cx));
                     cx.new(|cx| Workspace::new(window, cx))
                 },
             )

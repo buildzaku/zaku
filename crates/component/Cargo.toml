@@ -1,5 +1,5 @@
 [package]
-name = "ui"
+name = "component"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,13 +10,12 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "ui"
-path = "src/ui.rs"
+name = "component"
+path = "src/component.rs"
+doctest = false
 
 [dependencies]
-component = { workspace = true }
 gpui = { workspace = true }
-icons = { workspace = true }
-smallvec = { workspace = true }
-theme = { workspace = true }
-ui_macros = { workspace = true }
+inventory = { workspace = true }
+parking_lot = { workspace = true }
+strum = { workspace = true }

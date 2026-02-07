@@ -1,4 +1,5 @@
 mod fallback;
+mod settings;
 
 use anyhow::{Context as _, Result, anyhow};
 use gpui::{App, AssetSource, BorrowAppContext, Global, Hsla, SharedString, WindowAppearance};
@@ -7,6 +8,8 @@ use parking_lot::RwLock;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
+
+pub use settings::*;
 
 pub(crate) const DEFAULT_LIGHT_THEME: &str = "Comet Light";
 pub(crate) const DEFAULT_DARK_THEME: &str = "Comet Dark";
@@ -72,6 +75,7 @@ pub enum LoadThemes {
 
 pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     SystemAppearance::init(cx);
+    ThemeSettings::init(cx);
 
     let (assets, load_bundled_themes) = match themes_to_load {
         LoadThemes::JustBase => (Box::new(()) as Box<dyn AssetSource>, false),
