@@ -1,38 +1,17 @@
-use gpui::{App, Div, FocusHandle, Focusable, Hsla, Length, SharedString, Window, prelude::*};
+use gpui::{App, FocusHandle, Focusable, Hsla, Length, SharedString, Window, prelude::*};
 use std::sync::Arc;
 
 use theme::ActiveTheme;
-use ui::{Icon, IconName, IconSize, h_flex, v_flex};
+use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, h_flex, v_flex};
 
 use crate::ErasedEditor;
 
 pub struct InputFieldStyle {
     text_color: Hsla,
-    label_color: Hsla,
     icon_color: Hsla,
     background_color: Hsla,
     border_color: Hsla,
     border_focused: Hsla,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum LabelSize {
-    #[default]
-    Default,
-    Large,
-    Small,
-    XSmall,
-}
-
-impl LabelSize {
-    fn apply(self, element: Div) -> Div {
-        match self {
-            LabelSize::Default => element.text_sm(),
-            LabelSize::Large => element.text_base(),
-            LabelSize::Small => element.text_xs(),
-            LabelSize::XSmall => element.text_xs(),
-        }
-    }
 }
 
 /// An Input Field component that can be used to create text fields like search inputs, form fields, etc.
@@ -124,11 +103,6 @@ impl InputField {
     pub fn set_text(&self, text: &str, window: &mut Window, cx: &mut App) {
         self.editor().set_text(text, window, cx)
     }
-
-    fn render_label(&self, label: SharedString, style: &InputFieldStyle) -> Div {
-        let base = gpui::div().text_color(style.label_color).child(label);
-        self.label_size.apply(base)
-    }
 }
 
 impl Render for InputField {
@@ -138,7 +112,6 @@ impl Render for InputField {
         let theme_colors = cx.theme().colors();
         let style = InputFieldStyle {
             text_color: theme_colors.text,
-            label_color: theme_colors.text_muted,
             icon_color: theme_colors.icon_muted,
             background_color: theme_colors.editor_background,
             border_color: theme_colors.border_variant,
@@ -160,7 +133,11 @@ impl Render for InputField {
             .w_full()
             .gap_1()
             .when_some(self.label.clone(), |this, label| {
-                this.child(self.render_label(label, &style))
+                this.child(
+                    Label::new(label)
+                        .size(self.label_size)
+                        .color(Color::Default),
+                )
             })
             .child(
                 h_flex()

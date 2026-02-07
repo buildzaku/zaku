@@ -5,7 +5,7 @@ use http_client::{AsyncBody, HttpClient};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
-use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth};
+use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth, Label};
 
 use crate::SendRequest;
 
@@ -87,7 +87,7 @@ impl Render for Pane {
             .size_full()
             .bg(theme_colors.panel_background)
             .p_3()
-            .child("HTTP Request")
+            .child(Label::new("HTTP Request"))
             .child(
                 gpui::div()
                     .flex()
