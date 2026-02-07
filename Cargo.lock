@@ -6049,10 +6049,8 @@ dependencies = [
 name = "ui_macros"
 version = "0.0.0"
 dependencies = [
- "component",
  "quote",
  "syn 2.0.114",
- "ui",
 ]
 
 [[package]]
