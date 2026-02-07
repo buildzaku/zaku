@@ -1053,6 +1053,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "component"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "inventory",
+ "parking_lot",
+ "strum 0.27.2",
+]
+
+[[package]]
 name = "compression-codecs"
 version = "0.4.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6031,6 +6041,16 @@ dependencies = [
  "icons",
  "smallvec",
  "theme",
+]
+
+[[package]]
+name = "ui_macros"
+version = "0.0.0"
+dependencies = [
+ "component",
+ "quote",
+ "syn 2.0.114",
+ "ui",
 ]
 
 [[package]]
