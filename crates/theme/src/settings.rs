@@ -1,4 +1,4 @@
-use gpui::{App, Global, Pixels, px};
+use gpui::{App, Global, Pixels};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
 pub enum UiDensity {
@@ -18,7 +18,7 @@ impl Default for ThemeSettings {
     fn default() -> Self {
         Self {
             ui_density: UiDensity::Default,
-            ui_font_size: px(14.0),
+            ui_font_size: gpui::px(14.0),
         }
     }
 }

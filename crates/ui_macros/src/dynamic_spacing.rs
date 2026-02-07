@@ -65,7 +65,7 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
                 DynamicSpacingValue::Single(n) => {
                     let n = n.base10_parse::<f32>().unwrap();
                     quote! {
-                        DynamicSpacing::#variant => match ThemeSettings::get_global(cx).ui_density {
+                        DynamicSpacing::#variant => match ::theme::ThemeSettings::get_global(cx).ui_density {
                             ::theme::UiDensity::Compact => (#n - 4.0).max(0.0) / BASE_REM_SIZE_IN_PX,
                             ::theme::UiDensity::Default => #n / BASE_REM_SIZE_IN_PX,
                             ::theme::UiDensity::Comfortable => (#n + 4.0) / BASE_REM_SIZE_IN_PX,
@@ -77,7 +77,7 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
                     let b = b.base10_parse::<f32>().unwrap();
                     let c = c.base10_parse::<f32>().unwrap();
                     quote! {
-                        DynamicSpacing::#variant => match ThemeSettings::get_global(cx).ui_density {
+                        DynamicSpacing::#variant => match ::theme::ThemeSettings::get_global(cx).ui_density {
                             ::theme::UiDensity::Compact => #a / BASE_REM_SIZE_IN_PX,
                             ::theme::UiDensity::Default => #b / BASE_REM_SIZE_IN_PX,
                             ::theme::UiDensity::Comfortable => #c / BASE_REM_SIZE_IN_PX,
@@ -151,13 +151,14 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
 
             /// Returns the spacing value in rems.
             pub fn rems(&self, cx: &App) -> Rems {
-                rems(self.spacing_ratio(cx))
+                ::gpui::rems(self.spacing_ratio(cx))
             }
 
             /// Returns the spacing value in pixels.
             pub fn px(&self, cx: &App) -> Pixels {
-                let ui_font_size_f32: f32 = ThemeSettings::get_global(cx).ui_font_size(cx).into();
-                px(ui_font_size_f32 * self.spacing_ratio(cx))
+                let ui_font_size_f32: f32 =
+                    ::theme::ThemeSettings::get_global(cx).ui_font_size(cx).into();
+                ::gpui::px(ui_font_size_f32 * self.spacing_ratio(cx))
             }
         }
     };
