@@ -5,7 +5,10 @@ use http_client::{AsyncBody, HttpClient};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
-use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth, Label};
+use ui::{
+    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, FixedWidth, Label,
+    LabelCommon, LabelSize, StyledTypography,
+};
 
 use crate::SendRequest;
 
@@ -106,8 +109,8 @@ impl Render for Pane {
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
                             .size(ButtonSize::Large)
-                            .width(ui::rems_from_px(70.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .width(ui::rems_from_px(60.))
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .on_click(cx.listener(move |pane, _, window, cx| {
                                 let request_url = input_handle.read(cx).text(cx);
                                 pane.send_request(request_url, window, cx);
@@ -116,10 +119,11 @@ impl Render for Pane {
             )
             .when_some(self.response_status.clone(), |this, response_status| {
                 this.child(
-                    gpui::div()
-                        .text_xs()
-                        .text_color(theme_colors.text_muted)
-                        .child(response_status),
+                    gpui::div().font_ui(cx).text_ui_xs(cx).child(
+                        Label::new(response_status)
+                            .size(LabelSize::XSmall)
+                            .color(Color::Muted),
+                    ),
                 )
             })
             .child(gpui::div().flex_1())
