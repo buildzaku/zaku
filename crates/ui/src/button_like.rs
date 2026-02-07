@@ -1,8 +1,8 @@
-use gpui::{AnyElement, App, ClickEvent, DefiniteLength, Div, ElementId, Rems, Window, prelude::*};
+use gpui::{AnyElement, App, ClickEvent, DefiniteLength, Div, ElementId, Window, prelude::*};
 use smallvec::SmallVec;
 use theme::ActiveTheme;
 
-use crate::{ButtonColor, ButtonSize, ButtonVariant};
+use crate::{ButtonColor, ButtonSize, ButtonVariant, DynamicSpacing};
 
 /// A trait for elements that can be clicked.
 pub trait Clickable: Sized {
@@ -129,18 +129,6 @@ impl RenderOnce for ButtonLike {
         let theme_colors = cx.theme().colors();
         let mut colors = self.variant.colors(cx);
         let is_outlined = matches!(self.variant, ButtonVariant::Outline);
-        let padding_x = match self.size {
-            ButtonSize::Large | ButtonSize::Medium => crate::rems_from_px(8.),
-            ButtonSize::Default | ButtonSize::Compact => crate::rems_from_px(4.),
-            ButtonSize::None => Rems::default(),
-        };
-        let gap = match self.size {
-            ButtonSize::Large => crate::rems_from_px(6.),
-            ButtonSize::Medium => crate::rems_from_px(5.),
-            ButtonSize::Default => crate::rems_from_px(4.),
-            ButtonSize::Compact => crate::rems_from_px(3.),
-            ButtonSize::None => crate::rems_from_px(2.),
-        };
 
         if self.disabled {
             colors = match self.variant {
@@ -176,8 +164,14 @@ impl RenderOnce for ButtonLike {
             .h(self.height.unwrap_or(self.size.rems().into()))
             .when_some(self.width, |this, width| this.w(width))
             .text_center()
-            .gap(gap)
-            .px(padding_x)
+            .gap(DynamicSpacing::Base04.rems(cx))
+            .map(|this| match self.size {
+                ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base08.rems(cx)),
+                ButtonSize::Default | ButtonSize::Compact => {
+                    this.px(DynamicSpacing::Base04.rems(cx))
+                }
+                ButtonSize::None => this.px_px(),
+            })
             .rounded_sm()
             .when(is_outlined, |this| {
                 this.border_1().border_color(theme_colors.border_variant)

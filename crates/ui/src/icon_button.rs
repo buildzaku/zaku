@@ -6,7 +6,8 @@ use theme::ActiveTheme;
 use ui_macros::RegisterComponent;
 
 use crate::{
-    ButtonCommon, ButtonSize, ButtonVariant, Clickable, Disableable, FixedWidth, Icon, IconSize,
+    ButtonCommon, ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth,
+    Icon, IconSize,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
@@ -110,13 +111,6 @@ impl RenderOnce for IconButton {
             ButtonSize::Compact => IconSize::XSmall,
             ButtonSize::None => IconSize::XSmall,
         };
-        let (padding_x, gap) = match self.size {
-            ButtonSize::Large => (crate::rems_from_px(12.), crate::rems_from_px(6.)),
-            ButtonSize::Medium => (crate::rems_from_px(10.), crate::rems_from_px(5.)),
-            ButtonSize::Default => (crate::rems_from_px(8.), crate::rems_from_px(4.)),
-            ButtonSize::Compact => (crate::rems_from_px(6.), crate::rems_from_px(3.)),
-            ButtonSize::None => (crate::rems_from_px(4.), crate::rems_from_px(2.)),
-        };
 
         let icon_color = if self.disabled {
             theme_colors.icon_disabled
@@ -129,7 +123,7 @@ impl RenderOnce for IconButton {
             .flex()
             .justify_center()
             .items_center()
-            .gap(gap)
+            .gap(DynamicSpacing::Base04.rems(cx))
             .when(self.shape == ButtonShape::Square, |this| {
                 let size = self.size.rems();
                 this.w(size).h(size)
@@ -138,7 +132,13 @@ impl RenderOnce for IconButton {
                 this.h(self.height.unwrap_or(self.size.rems().into()))
                     .when_some(self.width, |this, width| this.w(width).justify_center())
             })
-            .px(padding_x)
+            .map(|this| match self.size {
+                ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base08.rems(cx)),
+                ButtonSize::Default | ButtonSize::Compact => {
+                    this.px(DynamicSpacing::Base04.rems(cx))
+                }
+                ButtonSize::None => this.px_px(),
+            })
             .rounded_sm()
             .bg(colors.bg)
             .text_color(colors.text)
