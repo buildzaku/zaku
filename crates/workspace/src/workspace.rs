@@ -18,6 +18,7 @@ const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
 const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
 
 pub fn init(cx: &mut App) {
+    component::init();
     cx.bind_keys([KeyBinding::new(
         "enter",
         SendRequest,
