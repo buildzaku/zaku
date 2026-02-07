@@ -162,9 +162,57 @@ pub struct ThemeColors {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct StatusColors {
+    pub conflict: Hsla,
+    pub conflict_background: Hsla,
+    pub conflict_border: Hsla,
+
+    pub created: Hsla,
+    pub created_background: Hsla,
+    pub created_border: Hsla,
+
+    pub deleted: Hsla,
+    pub deleted_background: Hsla,
+    pub deleted_border: Hsla,
+
+    pub error: Hsla,
+    pub error_background: Hsla,
+    pub error_border: Hsla,
+
+    pub hidden: Hsla,
+    pub hidden_background: Hsla,
+    pub hidden_border: Hsla,
+
+    pub hint: Hsla,
+    pub hint_background: Hsla,
+    pub hint_border: Hsla,
+
+    pub ignored: Hsla,
+    pub ignored_background: Hsla,
+    pub ignored_border: Hsla,
+
     pub info: Hsla,
     pub info_background: Hsla,
     pub info_border: Hsla,
+
+    pub modified: Hsla,
+    pub modified_background: Hsla,
+    pub modified_border: Hsla,
+
+    pub renamed: Hsla,
+    pub renamed_background: Hsla,
+    pub renamed_border: Hsla,
+
+    pub success: Hsla,
+    pub success_background: Hsla,
+    pub success_border: Hsla,
+
+    pub unreachable: Hsla,
+    pub unreachable_background: Hsla,
+    pub unreachable_border: Hsla,
+
+    pub warning: Hsla,
+    pub warning_background: Hsla,
+    pub warning_border: Hsla,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -260,12 +308,96 @@ pub struct ThemeStyleContent {
     #[serde(rename = "editor.foreground")]
     pub editor_foreground: Option<String>,
 
+    #[serde(rename = "conflict")]
+    pub conflict: Option<String>,
+    #[serde(rename = "conflict.background")]
+    pub conflict_background: Option<String>,
+    #[serde(rename = "conflict.border")]
+    pub conflict_border: Option<String>,
+
+    #[serde(rename = "created")]
+    pub created: Option<String>,
+    #[serde(rename = "created.background")]
+    pub created_background: Option<String>,
+    #[serde(rename = "created.border")]
+    pub created_border: Option<String>,
+
+    #[serde(rename = "deleted")]
+    pub deleted: Option<String>,
+    #[serde(rename = "deleted.background")]
+    pub deleted_background: Option<String>,
+    #[serde(rename = "deleted.border")]
+    pub deleted_border: Option<String>,
+
+    #[serde(rename = "error")]
+    pub error: Option<String>,
+    #[serde(rename = "error.background")]
+    pub error_background: Option<String>,
+    #[serde(rename = "error.border")]
+    pub error_border: Option<String>,
+
+    #[serde(rename = "hidden")]
+    pub hidden: Option<String>,
+    #[serde(rename = "hidden.background")]
+    pub hidden_background: Option<String>,
+    #[serde(rename = "hidden.border")]
+    pub hidden_border: Option<String>,
+
+    #[serde(rename = "hint")]
+    pub hint: Option<String>,
+    #[serde(rename = "hint.background")]
+    pub hint_background: Option<String>,
+    #[serde(rename = "hint.border")]
+    pub hint_border: Option<String>,
+
+    #[serde(rename = "ignored")]
+    pub ignored: Option<String>,
+    #[serde(rename = "ignored.background")]
+    pub ignored_background: Option<String>,
+    #[serde(rename = "ignored.border")]
+    pub ignored_border: Option<String>,
+
     #[serde(rename = "info")]
     pub info: Option<String>,
     #[serde(rename = "info.background")]
     pub info_background: Option<String>,
     #[serde(rename = "info.border")]
     pub info_border: Option<String>,
+
+    #[serde(rename = "modified")]
+    pub modified: Option<String>,
+    #[serde(rename = "modified.background")]
+    pub modified_background: Option<String>,
+    #[serde(rename = "modified.border")]
+    pub modified_border: Option<String>,
+
+    #[serde(rename = "renamed")]
+    pub renamed: Option<String>,
+    #[serde(rename = "renamed.background")]
+    pub renamed_background: Option<String>,
+    #[serde(rename = "renamed.border")]
+    pub renamed_border: Option<String>,
+
+    #[serde(rename = "success")]
+    pub success: Option<String>,
+    #[serde(rename = "success.background")]
+    pub success_background: Option<String>,
+    #[serde(rename = "success.border")]
+    pub success_border: Option<String>,
+
+    #[serde(rename = "unreachable")]
+    pub unreachable: Option<String>,
+    #[serde(rename = "unreachable.background")]
+    pub unreachable_background: Option<String>,
+    #[serde(rename = "unreachable.border")]
+    pub unreachable_border: Option<String>,
+
+    #[serde(rename = "warning")]
+    pub warning: Option<String>,
+    #[serde(rename = "warning.background")]
+    pub warning_background: Option<String>,
+    #[serde(rename = "warning.border")]
+    pub warning_border: Option<String>,
 }
 
 impl ThemeStyleContent {
@@ -326,9 +458,60 @@ impl ThemeStyleContent {
         };
 
         let status = StatusColors {
+            conflict: required_color("conflict", &self.conflict)?,
+            conflict_background: required_color("conflict.background", &self.conflict_background)?,
+            conflict_border: required_color("conflict.border", &self.conflict_border)?,
+
+            created: required_color("created", &self.created)?,
+            created_background: required_color("created.background", &self.created_background)?,
+            created_border: required_color("created.border", &self.created_border)?,
+
+            deleted: required_color("deleted", &self.deleted)?,
+            deleted_background: required_color("deleted.background", &self.deleted_background)?,
+            deleted_border: required_color("deleted.border", &self.deleted_border)?,
+
+            error: required_color("error", &self.error)?,
+            error_background: required_color("error.background", &self.error_background)?,
+            error_border: required_color("error.border", &self.error_border)?,
+
+            hidden: required_color("hidden", &self.hidden)?,
+            hidden_background: required_color("hidden.background", &self.hidden_background)?,
+            hidden_border: required_color("hidden.border", &self.hidden_border)?,
+
+            hint: required_color("hint", &self.hint)?,
+            hint_background: required_color("hint.background", &self.hint_background)?,
+            hint_border: required_color("hint.border", &self.hint_border)?,
+
+            ignored: required_color("ignored", &self.ignored)?,
+            ignored_background: required_color("ignored.background", &self.ignored_background)?,
+            ignored_border: required_color("ignored.border", &self.ignored_border)?,
+
             info: required_color("info", &self.info)?,
             info_background: required_color("info.background", &self.info_background)?,
             info_border: required_color("info.border", &self.info_border)?,
+
+            modified: required_color("modified", &self.modified)?,
+            modified_background: required_color("modified.background", &self.modified_background)?,
+            modified_border: required_color("modified.border", &self.modified_border)?,
+
+            renamed: required_color("renamed", &self.renamed)?,
+            renamed_background: required_color("renamed.background", &self.renamed_background)?,
+            renamed_border: required_color("renamed.border", &self.renamed_border)?,
+
+            success: required_color("success", &self.success)?,
+            success_background: required_color("success.background", &self.success_background)?,
+            success_border: required_color("success.border", &self.success_border)?,
+
+            unreachable: required_color("unreachable", &self.unreachable)?,
+            unreachable_background: required_color(
+                "unreachable.background",
+                &self.unreachable_background,
+            )?,
+            unreachable_border: required_color("unreachable.border", &self.unreachable_border)?,
+
+            warning: required_color("warning", &self.warning)?,
+            warning_background: required_color("warning.background", &self.warning_background)?,
+            warning_border: required_color("warning.border", &self.warning_border)?,
         };
 
         Ok(ThemeStyles { colors, status })
