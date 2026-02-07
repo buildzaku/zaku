@@ -1,7 +1,9 @@
 use gpui::{App, ClickEvent, DefiniteLength, Div, ElementId, Window, prelude::*};
 
+use component::{Component, ComponentScope};
 use icons::IconName;
 use theme::ActiveTheme;
+use ui_macros::RegisterComponent;
 
 use crate::{
     ButtonCommon, ButtonSize, ButtonVariant, Clickable, Disableable, FixedWidth, Icon, IconSize,
@@ -14,7 +16,7 @@ pub enum ButtonShape {
     Wide,
 }
 
-#[derive(IntoElement)]
+#[derive(IntoElement, RegisterComponent)]
 pub struct IconButton {
     id: ElementId,
     variant: ButtonVariant,
@@ -156,5 +158,15 @@ impl RenderOnce for IconButton {
                 },
             )
             .child(Icon::new(self.icon).size(icon_size).color(icon_color))
+    }
+}
+
+impl Component for IconButton {
+    fn scope() -> ComponentScope {
+        ComponentScope::Input
+    }
+
+    fn sort_name() -> &'static str {
+        "ButtonIcon"
     }
 }

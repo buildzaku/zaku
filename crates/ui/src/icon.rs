@@ -1,7 +1,9 @@
 use gpui::{App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*};
 
+use component::{Component, ComponentScope};
 use icons::IconName;
 use theme::ActiveTheme;
+use ui_macros::RegisterComponent;
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
@@ -33,7 +35,7 @@ enum IconSource {
     Embedded(SharedString),
 }
 
-#[derive(IntoElement)]
+#[derive(IntoElement, RegisterComponent)]
 pub struct Icon {
     source: IconSource,
     color: Option<Hsla>,
@@ -74,5 +76,11 @@ impl RenderOnce for Icon {
                 .text_color(color)
                 .into_any_element(),
         }
+    }
+}
+
+impl Component for Icon {
+    fn scope() -> ComponentScope {
+        ComponentScope::Images
     }
 }

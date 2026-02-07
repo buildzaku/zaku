@@ -6037,10 +6037,12 @@ dependencies = [
 name = "ui"
 version = "0.0.0"
 dependencies = [
+ "component",
  "gpui",
  "icons",
  "smallvec",
  "theme",
+ "ui_macros",
 ]
 
 [[package]]
@@ -7165,6 +7167,7 @@ checksum = "d7249219f66ced02969388cf2bb044a09756a083d0fab1e566056b04d9fbcaa5"
 name = "workspace"
 version = "0.0.0"
 dependencies = [
+ "component",
  "gpui",
  "http_client 0.0.0",
  "input",

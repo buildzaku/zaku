@@ -3,8 +3,10 @@ use gpui::{
     prelude::*,
 };
 
+use component::{Component, ComponentScope};
 use icons::IconName;
 use theme::ActiveTheme;
+use ui_macros::RegisterComponent;
 
 use crate::{ButtonCommon, Clickable, Disableable, FixedWidth, Icon, IconSize};
 
@@ -93,7 +95,7 @@ pub enum IconPosition {
     End,
 }
 
-#[derive(IntoElement)]
+#[derive(IntoElement, RegisterComponent)]
 pub struct Button {
     id: ElementId,
     variant: ButtonVariant,
@@ -284,5 +286,19 @@ impl RenderOnce for Button {
                     )
                 },
             )
+    }
+}
+
+impl Component for Button {
+    fn scope() -> ComponentScope {
+        ComponentScope::Input
+    }
+
+    fn sort_name() -> &'static str {
+        "Button"
+    }
+
+    fn description() -> Option<&'static str> {
+        Some("A button triggers an event or action.")
     }
 }
