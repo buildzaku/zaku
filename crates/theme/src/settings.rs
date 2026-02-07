@@ -18,7 +18,7 @@ impl Default for ThemeSettings {
     fn default() -> Self {
         Self {
             ui_density: UiDensity::Default,
-            ui_font_size: px(16.0),
+            ui_font_size: px(14.0),
         }
     }
 }
