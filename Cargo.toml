@@ -9,6 +9,8 @@ members = [
   "crates/icons",
   "crates/input",
   "crates/reqwest_client",
+  "crates/settings",
+  "crates/settings_macros",
   "crates/theme",
   "crates/ui",
   "crates/ui_macros",
@@ -34,6 +36,7 @@ style = { level = "allow" }
 anyhow = { version = "1.0" }
 bytes = { version = "1.11" }
 core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issues/47168
+dirs = { version = "6.0" }
 futures = { version = "0.3" }
 gpui = { git = "https://github.com/zed-industries/zed", package = "gpui" }
 http = { version = "1.4" }
@@ -74,6 +77,8 @@ http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
 reqwest_client = { path = "crates/reqwest_client" }
+settings = { path = "crates/settings" }
+settings_macros = { path = "crates/settings_macros" }
 theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }

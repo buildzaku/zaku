@@ -2,7 +2,8 @@ use gpui::{
     App, Application, Bounds, KeyBinding, WindowBounds, WindowOptions, actions, prelude::*,
 };
 
-use theme::ThemeSettings;
+use settings::LoadSettings;
+use theme::{LoadThemes, ThemeSettings};
 use workspace::Workspace;
 
 actions!(comet, [Quit]);
@@ -11,7 +12,8 @@ fn main() {
     Application::new()
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
-            theme::init(theme::LoadThemes::All(Box::new(assets::Assets)), cx);
+            settings::init(LoadSettings::User, cx);
+            theme::init(LoadThemes::All(Box::new(assets::Assets)), cx);
             editor::init(cx);
             workspace::init(cx);
 
