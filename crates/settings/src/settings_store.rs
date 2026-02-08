@@ -175,7 +175,7 @@ impl SettingsStore {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn test(_cx: &mut App) -> Self {
-        Self::new(crate::test_settings())
+        Self::new(crate::default_settings())
     }
 
     pub fn register_setting<T: Settings>(&mut self) {

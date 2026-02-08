@@ -33,11 +33,6 @@ pub fn default_user_settings() -> Cow<'static, str> {
     asset_str::<SettingsAssets>("settings/default_user.json")
 }
 
-#[cfg(any(test, feature = "test-support"))]
-pub fn test_settings() -> String {
-    default_settings().into_owned()
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ActiveSettingsProfileName(pub String);
 
