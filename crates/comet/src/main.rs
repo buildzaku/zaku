@@ -1,6 +1,6 @@
-use futures::StreamExt;
+use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{
-    App, Application, Bounds, KeyBinding, WindowBounds, WindowOptions, actions, prelude::*,
+    App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, actions, prelude::*,
 };
 
 use settings::SettingsStore;
@@ -52,8 +52,8 @@ fn main() {
 }
 
 fn handle_settings_file_changes(
-    mut user_settings_file_rx: futures::channel::mpsc::UnboundedReceiver<String>,
-    user_settings_watcher: gpui::Task<()>,
+    mut user_settings_file_rx: UnboundedReceiver<String>,
+    user_settings_watcher: Task<()>,
     cx: &mut App,
 ) {
     let user_content = match cx
