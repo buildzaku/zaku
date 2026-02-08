@@ -1,6 +1,7 @@
 mod fallible_options;
 pub mod merge_from;
 mod paths;
+mod settings_file;
 mod settings_store;
 
 use gpui::{App, BorrowAppContext, Global};
@@ -8,6 +9,7 @@ use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
 pub use paths::{config_dir, settings_file};
+pub use settings_file::watch_config_file;
 pub use settings_store::{Settings, SettingsContent, SettingsStore, UiDensity};
 use util::asset_str;
 

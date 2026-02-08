@@ -87,7 +87,8 @@ impl Workspace {
 }
 
 impl Render for Workspace {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ui_font = theme::setup_ui_font(window, cx);
         let theme_colors = cx.theme().colors();
         gpui::div()
             .id("workspace")
@@ -96,7 +97,7 @@ impl Render for Workspace {
             .flex_col()
             .bg(theme_colors.background)
             .text_color(theme_colors.text)
-            .font_ui(cx)
+            .font(ui_font)
             .text_ui(cx)
             .size_full()
             .child({

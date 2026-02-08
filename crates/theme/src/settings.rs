@@ -1,4 +1,4 @@
-use gpui::{App, Font, Pixels};
+use gpui::{App, Font, Pixels, Window};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
 pub enum UiDensity {
@@ -60,6 +60,15 @@ impl ThemeSettings {
     pub fn buffer_font_size(&self, _cx: &App) -> Pixels {
         self.buffer_font_size
     }
+}
+
+pub fn setup_ui_font(window: &mut Window, cx: &mut App) -> Font {
+    let (ui_font, ui_font_size) = {
+        let settings = ThemeSettings::get_global(cx);
+        (settings.ui_font.clone(), settings.ui_font_size(cx))
+    };
+    window.set_rem_size(ui_font_size);
+    ui_font
 }
 
 impl settings::Settings for ThemeSettings {

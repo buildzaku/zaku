@@ -19,7 +19,9 @@ test-support = []
 [dependencies]
 anyhow = { workspace = true }
 dirs = { workspace = true }
+futures = { workspace = true }
 gpui = { workspace = true }
+notify = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
