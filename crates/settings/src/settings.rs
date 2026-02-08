@@ -4,7 +4,7 @@ mod paths;
 mod settings_file;
 mod settings_store;
 
-use gpui::{App, BorrowAppContext, Global};
+use gpui::{App, Global};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -19,33 +19,10 @@ use util::asset_str;
 #[exclude = "*.DS_Store"]
 pub struct SettingsAssets;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoadSettings {
-    None,
-    Default,
-    User,
-}
-
-pub fn init(load_settings: LoadSettings, cx: &mut App) {
+pub fn init(cx: &mut App) {
     let store = SettingsStore::new(default_settings());
     cx.set_global(store);
     SettingsStore::observe_active_settings_profile_name(cx).detach();
-
-    let user_settings = match load_settings {
-        LoadSettings::None => return,
-        LoadSettings::Default => default_user_settings().into_owned(),
-        LoadSettings::User => match SettingsStore::load_settings() {
-            Ok(user_settings) => user_settings,
-            Err(error) => {
-                eprintln!("failed to load settings file: {error}");
-                default_user_settings().into_owned()
-            }
-        },
-    };
-
-    cx.update_global::<SettingsStore, _>(|store, cx| {
-        store.set_user_settings(&user_settings, cx);
-    });
 }
 
 pub fn default_settings() -> Cow<'static, str> {

@@ -3,7 +3,7 @@ use gpui::{
     App, Application, Bounds, KeyBinding, WindowBounds, WindowOptions, actions, prelude::*,
 };
 
-use settings::{LoadSettings, SettingsStore};
+use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::Workspace;
 
@@ -13,7 +13,7 @@ fn main() {
     Application::new()
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
-            settings::init(LoadSettings::None, cx);
+            settings::init(cx);
             let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
                 cx.background_executor(),
                 settings::settings_file().clone(),
