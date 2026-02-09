@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::{FutureExt as _, TryStreamExt as _};
+use futures::{FutureExt, TryStreamExt};
 use reqwest::redirect;
 use std::{mem, pin::Pin, sync::OnceLock, task::Poll, time::Duration};
 

@@ -1,8 +1,10 @@
+use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{
-    App, Application, Bounds, KeyBinding, WindowBounds, WindowOptions, actions, prelude::*,
+    App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, actions, prelude::*,
 };
 
-use theme::ThemeSettings;
+use settings::SettingsStore;
+use theme::LoadThemes;
 use workspace::Workspace;
 
 actions!(comet, [Quit]);
@@ -11,7 +13,13 @@ fn main() {
     Application::new()
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
-            theme::init(theme::LoadThemes::All(Box::new(assets::Assets)), cx);
+            settings::init(cx);
+            let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
+                cx.background_executor(),
+                settings::settings_file().clone(),
+            );
+            handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
+            theme::init(LoadThemes::All(Box::new(assets::Assets)), cx);
             editor::init(cx);
             workspace::init(cx);
 
@@ -28,20 +36,48 @@ fn main() {
 
             cx.activate(true);
 
-            let window_size = gpui::size(gpui::px(1180.0), gpui::px(760.0));
+            let window_size = gpui::size(gpui::px(1180.), gpui::px(760.));
             let mut bounds = Bounds::centered(None, window_size, cx);
-            bounds.origin.y -= gpui::px(36.0);
+            bounds.origin.y -= gpui::px(36.);
 
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |window, cx| {
-                    window.set_rem_size(ThemeSettings::get_global(cx).ui_font_size(cx));
-                    cx.new(|cx| Workspace::new(window, cx))
-                },
+                |window, cx| cx.new(|cx| Workspace::new(window, cx)),
             )
             .unwrap();
         });
+}
+
+fn handle_settings_file_changes(
+    mut user_settings_file_rx: UnboundedReceiver<String>,
+    user_settings_watcher: Task<()>,
+    cx: &mut App,
+) {
+    let user_content = match cx
+        .foreground_executor()
+        .block_on(user_settings_file_rx.next())
+    {
+        Some(content) => content,
+        None => {
+            eprintln!("failed to load settings file: settings channel closed");
+            settings::default_user_settings().into_owned()
+        }
+    };
+
+    cx.update_global::<SettingsStore, _>(|store, cx| {
+        store.set_user_settings(&user_content, cx);
+    });
+
+    cx.spawn(async move |cx| {
+        let _user_settings_watcher = user_settings_watcher;
+        while let Some(content) = user_settings_file_rx.next().await {
+            cx.update_global(|store: &mut SettingsStore, cx| {
+                store.set_user_settings(&content, cx);
+            });
+        }
+    })
+    .detach();
 }

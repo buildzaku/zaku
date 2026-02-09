@@ -187,12 +187,12 @@ impl RenderOnce for LabelLike {
                 LabelSize::XSmall => this.text_ui_xs(cx),
             })
             .when(self.line_height_style == LineHeightStyle::UiLabel, |this| {
-                this.line_height(gpui::relative(1.0))
+                this.line_height(gpui::relative(1.))
             })
             .when(self.italic, |this| this.italic())
             .when(self.underline, |mut this| {
                 this.text_style().underline = Some(UnderlineStyle {
-                    thickness: gpui::px(1.0),
+                    thickness: gpui::px(1.),
                     color: Some(cx.theme().colors().text_muted.opacity(0.4)),
                     wavy: false,
                 });

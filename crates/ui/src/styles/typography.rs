@@ -56,10 +56,10 @@ impl TextSize {
     pub fn rems(self, cx: &App) -> Rems {
         let theme_settings = ThemeSettings::get_global(cx);
         match self {
-            Self::Large => crate::rems_from_px(16.0),
-            Self::Default => crate::rems_from_px(14.0),
-            Self::Small => crate::rems_from_px(12.0),
-            Self::XSmall => crate::rems_from_px(10.0),
+            Self::Large => crate::rems_from_px(16.),
+            Self::Default => crate::rems_from_px(14.),
+            Self::Small => crate::rems_from_px(12.),
+            Self::XSmall => crate::rems_from_px(10.),
             Self::Ui => crate::rems_from_px(theme_settings.ui_font_size(cx)),
             Self::Editor => crate::rems_from_px(theme_settings.buffer_font_size(cx)),
         }
@@ -68,10 +68,10 @@ impl TextSize {
     pub fn pixels(self, cx: &App) -> Pixels {
         let theme_settings = ThemeSettings::get_global(cx);
         match self {
-            Self::Large => gpui::px(16.0),
-            Self::Default => gpui::px(14.0),
-            Self::Small => gpui::px(12.0),
-            Self::XSmall => gpui::px(10.0),
+            Self::Large => gpui::px(16.),
+            Self::Default => gpui::px(14.),
+            Self::Small => gpui::px(12.),
+            Self::XSmall => gpui::px(10.),
             Self::Ui => theme_settings.ui_font_size(cx),
             Self::Editor => theme_settings.buffer_font_size(cx),
         }

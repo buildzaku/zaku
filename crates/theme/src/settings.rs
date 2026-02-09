@@ -1,4 +1,4 @@
-use gpui::{App, Font, Global, Pixels};
+use gpui::{App, Font, Pixels, Window};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
 pub enum UiDensity {
@@ -6,6 +6,16 @@ pub enum UiDensity {
     #[default]
     Default,
     Comfortable,
+}
+
+impl From<settings::UiDensity> for UiDensity {
+    fn from(value: settings::UiDensity) -> Self {
+        match value {
+            settings::UiDensity::Compact => Self::Compact,
+            settings::UiDensity::Default => Self::Default,
+            settings::UiDensity::Comfortable => Self::Comfortable,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +29,7 @@ pub struct ThemeSettings {
 
 impl Default for ThemeSettings {
     fn default() -> Self {
-        let ui_font_size = gpui::px(14.0);
+        let ui_font_size = gpui::px(14.);
         Self {
             ui_density: UiDensity::Default,
             ui_font_size,
@@ -30,22 +40,17 @@ impl Default for ThemeSettings {
     }
 }
 
-#[derive(Default)]
-struct GlobalThemeSettings(ThemeSettings);
-
-impl Global for GlobalThemeSettings {}
-
 impl ThemeSettings {
     pub fn init(cx: &mut App) {
-        *cx.default_global::<GlobalThemeSettings>() = GlobalThemeSettings(ThemeSettings::default());
+        <Self as settings::Settings>::register(cx);
     }
 
     pub fn get_global(cx: &App) -> &Self {
-        &cx.global::<GlobalThemeSettings>().0
+        <Self as settings::Settings>::get_global(cx)
     }
 
     pub fn override_global(settings: ThemeSettings, cx: &mut App) {
-        *cx.global_mut::<GlobalThemeSettings>() = GlobalThemeSettings(settings);
+        <Self as settings::Settings>::override_global(settings, cx);
     }
 
     pub fn ui_font_size(&self, _cx: &App) -> Pixels {
@@ -54,5 +59,27 @@ impl ThemeSettings {
 
     pub fn buffer_font_size(&self, _cx: &App) -> Pixels {
         self.buffer_font_size
+    }
+}
+
+pub fn setup_ui_font(window: &mut Window, cx: &mut App) -> Font {
+    let (ui_font, ui_font_size) = {
+        let settings = ThemeSettings::get_global(cx);
+        (settings.ui_font.clone(), settings.ui_font_size(cx))
+    };
+    window.set_rem_size(ui_font_size);
+    ui_font
+}
+
+impl settings::Settings for ThemeSettings {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        let ui_font_size = content.ui_font_size();
+        Self {
+            ui_density: content.ui_density().into(),
+            ui_font_size,
+            ui_font: Font::default(),
+            buffer_font_size: content.buffer_font_size(),
+            buffer_font: Font::default(),
+        }
     }
 }

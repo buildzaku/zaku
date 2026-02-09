@@ -1,5 +1,5 @@
 [package]
-name = "theme"
+name = "settings"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,15 +10,20 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "theme"
-path = "src/theme.rs"
+name = "settings"
+path = "src/settings.rs"
+
+[features]
+test-support = []
 
 [dependencies]
 anyhow = { workspace = true }
+dirs = { workspace = true }
+futures = { workspace = true }
 gpui = { workspace = true }
-palette = { workspace = true }
-parking_lot = { workspace = true }
-settings = { workspace = true }
+notify = { workspace = true }
+rust-embed = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uuid = { workspace = true }
+settings_macros = { workspace = true }
+util = { workspace = true }
