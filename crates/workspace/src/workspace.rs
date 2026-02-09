@@ -15,8 +15,8 @@ pub mod status_bar;
 
 actions!(workspace, [SendRequest]);
 
-const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
-const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
+const MIN_DOCK_WIDTH: Pixels = gpui::px(110.);
+const MIN_PANE_WIDTH: Pixels = gpui::px(250.);
 
 pub fn init(cx: &mut App) {
     component::init();

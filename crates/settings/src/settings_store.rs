@@ -36,17 +36,17 @@ impl SettingsContent {
     }
 
     pub fn ui_font_size(&self) -> Pixels {
-        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(14.0)))
+        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(14.)))
     }
 
     pub fn buffer_font_size(&self) -> Pixels {
-        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(14.0)))
+        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(14.)))
     }
 }
 
 fn clamp_font_size(value: Pixels) -> Pixels {
-    const MIN_FONT_SIZE: Pixels = gpui::px(6.0);
-    const MAX_FONT_SIZE: Pixels = gpui::px(100.0);
+    const MIN_FONT_SIZE: Pixels = gpui::px(6.);
+    const MAX_FONT_SIZE: Pixels = gpui::px(100.);
 
     if value < MIN_FONT_SIZE {
         MIN_FONT_SIZE
@@ -89,20 +89,15 @@ impl Global for SettingsStore {}
 
 impl SettingsStore {
     pub fn new(default_settings_json: impl AsRef<str>) -> Self {
-        let (default_settings, parse_status) =
-            parse_json::<SettingsContent>(default_settings_json.as_ref());
-        let Some(default_settings) = default_settings else {
-            match parse_status {
-                ParseStatus::Failed { error } => {
-                    panic!("failed to parse default settings: {error}")
-                }
-                ParseStatus::Success => panic!("failed to parse default settings"),
+        let default_settings = match parse_json::<SettingsContent>(default_settings_json.as_ref()) {
+            ParseStatus::Ok(default_settings) => default_settings,
+            ParseStatus::OkWithErrors { error, .. } => {
+                panic!("invalid default settings: {error}");
+            }
+            ParseStatus::Err { error } => {
+                panic!("failed to parse default settings: {error}")
             }
         };
-
-        if let ParseStatus::Failed { error } = parse_status {
-            panic!("invalid default settings: {error}");
-        }
 
         let merged_settings = default_settings.clone();
 
@@ -139,35 +134,34 @@ impl SettingsStore {
     }
 
     pub fn set_default_settings(&mut self, default_settings_content: &str, cx: &mut App) {
-        let (default_settings, parse_status) =
-            parse_json::<SettingsContent>(default_settings_content);
-        let Some(default_settings) = default_settings else {
-            if let ParseStatus::Failed { error } = parse_status {
-                eprintln!("settings: failed to parse default settings: {error}");
+        let default_settings = match parse_json::<SettingsContent>(default_settings_content) {
+            ParseStatus::Ok(default_settings) => default_settings,
+            ParseStatus::OkWithErrors { value, error } => {
+                eprintln!("settings: invalid default settings: {error}");
+                value
             }
-            return;
+            ParseStatus::Err { error } => {
+                eprintln!("settings: failed to parse default settings: {error}");
+                return;
+            }
         };
-
-        if let ParseStatus::Failed { error } = parse_status {
-            eprintln!("settings: invalid default settings: {error}");
-        }
 
         self.default_settings = default_settings;
         self.recompute_values(cx);
     }
 
     pub fn set_user_settings(&mut self, user_settings_content: &str, cx: &mut App) {
-        let (user_settings, parse_status) = parse_json::<SettingsContent>(user_settings_content);
-        let Some(user_settings) = user_settings else {
-            if let ParseStatus::Failed { error } = parse_status {
-                eprintln!("settings: failed to parse user settings: {error}");
+        let user_settings = match parse_json::<SettingsContent>(user_settings_content) {
+            ParseStatus::Ok(user_settings) => user_settings,
+            ParseStatus::OkWithErrors { value, error } => {
+                eprintln!("settings: invalid user settings: {error}");
+                value
             }
-            return;
+            ParseStatus::Err { error } => {
+                eprintln!("settings: failed to parse user settings: {error}");
+                return;
+            }
         };
-
-        if let ParseStatus::Failed { error } = parse_status {
-            eprintln!("settings: invalid user settings: {error}");
-        }
 
         self.user_settings = Some(user_settings);
         self.recompute_values(cx);

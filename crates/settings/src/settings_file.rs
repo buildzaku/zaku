@@ -1,6 +1,6 @@
 use futures::channel::mpsc;
 use gpui::{BackgroundExecutor, Task};
-use notify::{RecursiveMode, Watcher as _};
+use notify::{RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 
 fn read_config_file(path: &Path) -> String {

@@ -29,7 +29,7 @@ pub struct ThemeSettings {
 
 impl Default for ThemeSettings {
     fn default() -> Self {
-        let ui_font_size = gpui::px(14.0);
+        let ui_font_size = gpui::px(14.);
         Self {
             ui_density: UiDensity::Default,
             ui_font_size,

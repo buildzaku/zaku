@@ -6,12 +6,13 @@ thread_local! {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseStatus {
-    Success,
-    Failed { error: String },
+pub enum ParseStatus<T> {
+    Ok(T),
+    OkWithErrors { value: T, error: String },
+    Err { error: String },
 }
 
-pub fn parse_json<'de, T>(json: &'de str) -> (Option<T>, ParseStatus)
+pub fn parse_json<'de, T>(json: &'de str) -> ParseStatus<T>
 where
     T: Deserialize<'de>,
 {
@@ -24,12 +25,9 @@ where
     let value = match value {
         Ok(value) => value,
         Err(error) => {
-            return (
-                None,
-                ParseStatus::Failed {
-                    error: error.to_string(),
-                },
-            );
+            return ParseStatus::Err {
+                error: error.to_string(),
+            };
         }
     };
 
@@ -40,10 +38,10 @@ where
             .flat_map(|e| ["\n".to_owned(), e])
             .skip(1)
             .collect::<String>();
-        return (Some(value), ParseStatus::Failed { error });
+        return ParseStatus::OkWithErrors { value, error };
     }
 
-    (Some(value), ParseStatus::Success)
+    ParseStatus::Ok(value)
 }
 
 pub(crate) fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>

@@ -166,7 +166,7 @@ impl Element for EditorElement {
                     len: display_end - display_start,
                     underline: Some(UnderlineStyle {
                         color: Some(base_run.color),
-                        thickness: gpui::px(1.0),
+                        thickness: gpui::px(1.),
                         wavy: false,
                     }),
                     ..base_run.clone()
