@@ -1,9 +1,9 @@
 mod fallback;
 mod settings;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use gpui::{App, AssetSource, BorrowAppContext, Global, Hsla, SharedString, WindowAppearance};
-use palette::FromColor as _;
+use palette::FromColor;
 use parking_lot::RwLock;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};

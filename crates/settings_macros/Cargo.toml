@@ -1,5 +1,5 @@
 [package]
-name = "util"
+name = "settings_macros"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,11 +10,9 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "util"
-path = "src/util.rs"
-
-[features]
-test-support = []
+proc-macro = true
+path = "src/settings_macros.rs"
 
 [dependencies]
-rust-embed = { workspace = true }
+quote = { workspace = true }
+syn = { workspace = true }

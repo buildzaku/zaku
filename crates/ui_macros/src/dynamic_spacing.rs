@@ -66,9 +66,9 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
                     let n = n.base10_parse::<f32>().unwrap();
                     quote! {
                         DynamicSpacing::#variant => match ::theme::ThemeSettings::get_global(cx).ui_density {
-                            ::theme::UiDensity::Compact => (#n - 4.0).max(0.0) / BASE_REM_SIZE_IN_PX,
+                            ::theme::UiDensity::Compact => (#n - 4.).max(0.) / BASE_REM_SIZE_IN_PX,
                             ::theme::UiDensity::Default => #n / BASE_REM_SIZE_IN_PX,
-                            ::theme::UiDensity::Comfortable => (#n + 4.0) / BASE_REM_SIZE_IN_PX,
+                            ::theme::UiDensity::Comfortable => (#n + 4.) / BASE_REM_SIZE_IN_PX,
                         }
                     }
                 }
@@ -103,7 +103,7 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
             let doc_string = match v {
                 DynamicSpacingValue::Single(n) => {
                     let n = n.base10_parse::<f32>().unwrap();
-                    let compact = (n - 4.0).max(0.0);
+                    let compact = (n - 4.).max(0.);
                     let comfortable = n + 4.0;
                     format!(
                         "`{}px`|`{}px`|`{}px (@16px/rem)` - Scales with the user's rem size.",
