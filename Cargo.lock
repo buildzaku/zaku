@@ -6180,6 +6180,7 @@ dependencies = [
  "smallvec",
  "theme",
  "ui_macros",
+ "util 0.0.0",
 ]
 
 [[package]]

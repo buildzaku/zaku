@@ -1,25 +1,23 @@
-use gpui::{Entity, Window, prelude::*};
+use gpui::{Action, Window, prelude::*};
 
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, ButtonShape, ButtonSize, Clickable, IconButton, IconName, StyledTypography,
+    Tooltip,
 };
 
-use crate::Workspace;
+use crate::ToggleLeftDock;
 
-pub struct StatusBar {
-    workspace: Entity<Workspace>,
-}
+pub struct StatusBar {}
 
 impl StatusBar {
-    pub fn new(workspace: Entity<Workspace>, _cx: &mut Context<Self>) -> Self {
-        Self { workspace }
+    pub fn new(_cx: &mut Context<Self>) -> Self {
+        Self {}
     }
 }
 
 impl Render for StatusBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let workspace = self.workspace.clone();
         let theme_colors = cx.theme().colors();
 
         gpui::div()
@@ -39,7 +37,13 @@ impl Render for StatusBar {
                 IconButton::new("toggle-dock", IconName::Dock)
                     .size(ButtonSize::Compact)
                     .shape(ButtonShape::Square)
-                    .on_click(move |_, _, cx| workspace.update(cx, |w, cx| w.toggle_dock(cx))),
+                    .tooltip(Tooltip::for_action_title(
+                        "Toggle Left Dock",
+                        &ToggleLeftDock,
+                    ))
+                    .on_click(move |_, window, cx| {
+                        window.dispatch_action(ToggleLeftDock.boxed_clone(), cx);
+                    }),
             )
     }
 }

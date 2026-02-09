@@ -20,3 +20,4 @@ icons = { workspace = true }
 smallvec = { workspace = true }
 theme = { workspace = true }
 ui_macros = { workspace = true }
+util = { workspace = true }
