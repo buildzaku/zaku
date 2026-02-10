@@ -1,5 +1,14 @@
 {
   "ui_density": "default",
-  "ui_font_size": 14,
-  "buffer_font_size": 14
+  "ui_font_size": 13,
+  "ui_font_family": "Source Code Pro",
+  "ui_font_fallbacks": null,
+  "ui_font_features": { "calt": false },
+  "ui_font_weight": 400,
+  "buffer_font_size": 13,
+  "buffer_font_family": "Source Code Pro",
+  "buffer_font_fallbacks": null,
+  "buffer_font_features": { "calt": false },
+  "buffer_font_weight": 400,
+  "buffer_line_height": "comfortable"
 }

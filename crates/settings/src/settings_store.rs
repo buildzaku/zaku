@@ -1,5 +1,9 @@
 use gpui::{App, BorrowAppContext, Global, Pixels};
-use serde::Deserialize;
+use indexmap::IndexMap;
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{MapAccess, Visitor},
+};
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
@@ -22,12 +26,134 @@ pub enum UiDensity {
     Comfortable,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, MergeFrom)]
+#[serde(transparent)]
+pub struct FontWeightContent(pub f32);
+
+impl Default for FontWeightContent {
+    fn default() -> Self {
+        Self(400.)
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum FeatureValue {
+    Bool(bool),
+    Number(serde_json::Number),
+}
+
+fn is_valid_feature_tag(tag: &str) -> bool {
+    tag.len() == 4 && tag.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+/// OpenType font features as a map of feature tag to value.
+///
+/// Values can be specified as booleans (true=1, false=0) or integers.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, MergeFrom)]
+#[serde(transparent)]
+pub struct FontFeaturesContent(pub IndexMap<String, u32>);
+
+impl FontFeaturesContent {
+    pub fn new() -> Self {
+        Self(IndexMap::default())
+    }
+}
+
+impl<'de> Deserialize<'de> for FontFeaturesContent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct FontFeaturesVisitor;
+
+        impl<'de> Visitor<'de> for FontFeaturesVisitor {
+            type Value = FontFeaturesContent;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a map of font features")
+            }
+
+            fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                let mut feature_map = IndexMap::default();
+
+                while let Some((key, value)) =
+                    access.next_entry::<String, Option<FeatureValue>>()?
+                {
+                    if !is_valid_feature_tag(&key) {
+                        eprintln!("settings: incorrect font feature tag: {key}");
+                        continue;
+                    }
+
+                    let Some(value) = value else {
+                        continue;
+                    };
+
+                    match value {
+                        FeatureValue::Bool(enable) => {
+                            feature_map.insert(key, if enable { 1 } else { 0 });
+                        }
+                        FeatureValue::Number(value) => {
+                            if let Some(value) = value.as_u64() {
+                                feature_map.insert(key, value as u32);
+                            } else {
+                                eprintln!(
+                                    "settings: incorrect font feature value {value} for feature tag {key}",
+                                );
+                            }
+                        }
+                    }
+                }
+
+                Ok(FontFeaturesContent(feature_map))
+            }
+        }
+
+        deserializer.deserialize_map(FontFeaturesVisitor)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, MergeFrom, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BufferLineHeight {
+    #[default]
+    Comfortable,
+    Standard,
+    Custom(#[serde(deserialize_with = "deserialize_line_height")] f32),
+}
+
+fn deserialize_line_height<'de, D>(deserializer: D) -> Result<f32, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = f32::deserialize(deserializer)?;
+    if value < 1. {
+        return Err(serde::de::Error::custom(
+            "buffer_line_height.custom must be at least 1.0",
+        ));
+    }
+
+    Ok(value)
+}
+
 #[with_fallible_options]
 #[derive(Clone, Default, Deserialize, MergeFrom)]
 pub struct SettingsContent {
     ui_density: Option<UiDensity>,
     ui_font_size: Option<Pixels>,
+    ui_font_family: Option<String>,
+    ui_font_fallbacks: Option<Vec<String>>,
+    ui_font_features: Option<FontFeaturesContent>,
+    ui_font_weight: Option<FontWeightContent>,
     buffer_font_size: Option<Pixels>,
+    buffer_font_family: Option<String>,
+    buffer_font_fallbacks: Option<Vec<String>>,
+    buffer_font_features: Option<FontFeaturesContent>,
+    buffer_font_weight: Option<FontWeightContent>,
+    buffer_line_height: Option<BufferLineHeight>,
 }
 
 impl SettingsContent {
@@ -41,6 +167,42 @@ impl SettingsContent {
 
     pub fn buffer_font_size(&self) -> Pixels {
         clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(14.)))
+    }
+
+    pub fn ui_font_family(&self) -> Option<&str> {
+        self.ui_font_family.as_deref()
+    }
+
+    pub fn ui_font_fallbacks(&self) -> Option<&[String]> {
+        self.ui_font_fallbacks.as_deref()
+    }
+
+    pub fn ui_font_features(&self) -> Option<&FontFeaturesContent> {
+        self.ui_font_features.as_ref()
+    }
+
+    pub fn ui_font_weight(&self) -> Option<FontWeightContent> {
+        self.ui_font_weight
+    }
+
+    pub fn buffer_font_family(&self) -> Option<&str> {
+        self.buffer_font_family.as_deref()
+    }
+
+    pub fn buffer_font_fallbacks(&self) -> Option<&[String]> {
+        self.buffer_font_fallbacks.as_deref()
+    }
+
+    pub fn buffer_font_features(&self) -> Option<&FontFeaturesContent> {
+        self.buffer_font_features.as_ref()
+    }
+
+    pub fn buffer_font_weight(&self) -> Option<FontWeightContent> {
+        self.buffer_font_weight
+    }
+
+    pub fn buffer_line_height(&self) -> BufferLineHeight {
+        self.buffer_line_height.unwrap_or_default()
     }
 }
 

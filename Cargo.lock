@@ -5184,6 +5184,7 @@ dependencies = [
  "dirs 6.0.0",
  "futures",
  "gpui",
+ "indexmap",
  "notify",
  "rust-embed",
  "serde",
