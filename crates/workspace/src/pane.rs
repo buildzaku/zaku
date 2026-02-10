@@ -1,4 +1,4 @@
-use gpui::{Entity, SharedString, Window, prelude::*};
+use gpui::{App, Entity, FocusHandle, Focusable, SharedString, Window, prelude::*};
 use std::sync::Arc;
 
 use http_client::{AsyncBody, HttpClient};
@@ -13,14 +13,16 @@ use ui::{
 use crate::SendRequest;
 
 pub struct Pane {
+    focus_handle: FocusHandle,
     input: Option<Entity<InputField>>,
     http_client: Arc<dyn HttpClient>,
     response_status: Option<SharedString>,
 }
 
 impl Pane {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
+            focus_handle: cx.focus_handle(),
             input: None,
             http_client: Arc::new(ReqwestClient::new()),
             response_status: None,
@@ -69,6 +71,12 @@ impl Pane {
     }
 }
 
+impl Focusable for Pane {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.input.is_none() {
@@ -85,6 +93,7 @@ impl Render for Pane {
         let input_handle_for_action = input.clone();
 
         gpui::div()
+            .track_focus(&self.focus_handle)
             .flex()
             .flex_col()
             .size_full()

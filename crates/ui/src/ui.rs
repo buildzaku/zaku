@@ -1,10 +1,11 @@
 mod components;
 mod icon;
-mod stack;
+pub mod prelude;
 mod styles;
+pub mod traits;
 
 pub use components::*;
 pub use icon::*;
 pub use icons::IconName;
-pub use stack::*;
 pub use styles::*;
+pub use traits::styled_ext::StyledExt;

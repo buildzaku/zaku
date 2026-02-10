@@ -1,42 +1,36 @@
-use gpui::{AnyElement, App, ClickEvent, DefiniteLength, Div, ElementId, Window, prelude::*};
+use gpui::{
+    AnyElement, AnyView, App, ClickEvent, DefiniteLength, Div, ElementId, MouseButton, Window,
+    prelude::*,
+};
 use smallvec::SmallVec;
 use theme::ActiveTheme;
 
 use crate::{ButtonColor, ButtonSize, ButtonVariant, DynamicSpacing};
 
-/// A trait for elements that can be clicked.
 pub trait Clickable: Sized {
     fn on_click(self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self;
 }
 
-/// A trait for elements that can be disabled.
 pub trait Disableable: Sized {
-    /// Sets whether the element is disabled.
     fn disabled(self, disabled: bool) -> Self;
 }
 
-/// A common set of traits all buttons must implement.
 pub trait ButtonCommon: Clickable + Disableable {
-    /// Returns the unique element ID for the button.
     fn id(&self) -> &ElementId;
 
-    /// Sets the variant of the button.
+    fn tooltip(self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self;
+
     fn variant(self, variant: ButtonVariant) -> Self;
 
-    /// Sets the size of the button.
     fn size(self, size: ButtonSize) -> Self;
 }
 
-/// A trait for elements that can have a fixed width.
 pub trait FixedWidth: Sized {
-    /// Sets a fixed width for the element.
     fn width(self, width: impl Into<DefiniteLength>) -> Self;
 
-    /// Sets the element to take full width (100%).
     fn full_width(self) -> Self;
 }
 
-/// A button-like element that can be used to create custom buttons.
 #[derive(IntoElement)]
 pub struct ButtonLike {
     base: Div,
@@ -46,6 +40,7 @@ pub struct ButtonLike {
     width: Option<DefiniteLength>,
     height: Option<DefiniteLength>,
     size: ButtonSize,
+    tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     children: SmallVec<[AnyElement; 2]>,
 }
@@ -60,6 +55,7 @@ impl ButtonLike {
             width: None,
             height: None,
             size: ButtonSize::Default,
+            tooltip: None,
             on_click: None,
             children: SmallVec::new(),
         }
@@ -105,6 +101,11 @@ impl FixedWidth for ButtonLike {
 impl ButtonCommon for ButtonLike {
     fn id(&self) -> &ElementId {
         &self.id
+    }
+
+    fn tooltip(mut self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
+        self.tooltip = Some(Box::new(tooltip));
+        self
     }
 
     fn variant(mut self, variant: ButtonVariant) -> Self {
@@ -157,6 +158,9 @@ impl RenderOnce for ButtonLike {
 
         self.base
             .id(self.id.clone())
+            .when_some(self.tooltip, |this, tooltip| {
+                this.tooltip(move |window, cx| tooltip(window, cx))
+            })
             .flex()
             .flex_row()
             .items_center()
@@ -187,7 +191,10 @@ impl RenderOnce for ButtonLike {
             .when_some(
                 self.on_click.filter(|_| !self.disabled),
                 |this, on_click| {
-                    this.on_click(move |event, window, cx| {
+                    this.on_mouse_down(MouseButton::Left, |_, window, _cx| {
+                        window.prevent_default();
+                    })
+                    .on_click(move |event, window, cx| {
                         cx.stop_propagation();
                         on_click(event, window, cx)
                     })

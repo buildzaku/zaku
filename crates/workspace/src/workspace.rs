@@ -1,6 +1,6 @@
 use gpui::{
-    App, Bounds, DragMoveEvent, Entity, KeyBinding, MouseButton, MouseDownEvent, Pixels, Point,
-    Window, actions, prelude::*,
+    App, Bounds, DragMoveEvent, Entity, FocusHandle, Focusable, KeyBinding, MouseButton,
+    MouseDownEvent, Pixels, Point, Window, actions, prelude::*,
 };
 
 use theme::ActiveTheme;
@@ -13,18 +13,21 @@ pub mod dock;
 pub mod pane;
 pub mod status_bar;
 
-actions!(workspace, [SendRequest]);
+actions!(workspace, [SendRequest, ToggleLeftDock]);
 
+const KEY_CONTEXT: &str = "Workspace";
 const MIN_DOCK_WIDTH: Pixels = gpui::px(110.);
 const MIN_PANE_WIDTH: Pixels = gpui::px(250.);
 
 pub fn init(cx: &mut App) {
     component::init();
-    cx.bind_keys([KeyBinding::new(
-        "enter",
-        SendRequest,
-        Some("RequestUrl > Editor"),
-    )]);
+    cx.bind_keys([
+        KeyBinding::new("enter", SendRequest, Some("RequestUrl > Editor")),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-b", ToggleLeftDock, Some(KEY_CONTEXT)),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-b", ToggleLeftDock, Some(KEY_CONTEXT)),
+    ]);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -53,7 +56,6 @@ impl Render for DraggedDock {
 
 impl Workspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let workspace = cx.entity();
         let window_appearance_subscription =
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
@@ -61,10 +63,14 @@ impl Workspace {
                 GlobalTheme::reload_theme(cx);
             });
 
+        let pane = cx.new(Pane::new);
+        let pane_focus_handle = pane.read(cx).focus_handle(cx);
+        window.focus(&pane_focus_handle, cx);
+
         Self {
             dock: cx.new(Dock::new),
-            pane: cx.new(Pane::new),
-            status_bar: cx.new(|cx| StatusBar::new(workspace, cx)),
+            pane,
+            status_bar: cx.new(|_| StatusBar),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
             _window_appearance_subscription: window_appearance_subscription,
@@ -90,8 +96,11 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ui_font = theme::setup_ui_font(window, cx);
         let theme_colors = cx.theme().colors();
+        let focus_handle = self.focus_handle(cx);
         gpui::div()
             .id("workspace")
+            .key_context(KEY_CONTEXT)
+            .track_focus(&focus_handle)
             .relative()
             .flex()
             .flex_col()
@@ -100,6 +109,9 @@ impl Render for Workspace {
             .font(ui_font)
             .text_ui(cx)
             .size_full()
+            .on_action(cx.listener(|workspace, _: &ToggleLeftDock, _window, cx| {
+                workspace.toggle_dock(cx);
+            }))
             .child({
                 let this = cx.entity();
                 gpui::canvas(
@@ -138,8 +150,11 @@ impl Render for Workspace {
             )
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|_, _: &MouseDownEvent, window, _| {
-                    window.blur();
+                cx.listener(|workspace, _: &MouseDownEvent, window, cx| {
+                    if !window.default_prevented() {
+                        let focus_handle = workspace.focus_handle(cx);
+                        window.focus(&focus_handle, cx);
+                    }
                 }),
             )
             .child(
@@ -157,5 +172,11 @@ impl Render for Workspace {
                     .child(self.pane.clone()),
             )
             .child(self.status_bar.clone())
+    }
+}
+
+impl Focusable for Workspace {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.pane.read(cx).focus_handle(cx)
     }
 }

@@ -1,9 +1,10 @@
-use gpui::{App, Hsla, IntoElement, Rems, SharedString, Transformation, Window, prelude::*};
+use gpui::{App, IntoElement, Rems, SharedString, Transformation, Window, prelude::*};
 
 use component::{Component, ComponentScope};
 use icons::IconName;
-use theme::ActiveTheme;
 use ui_macros::RegisterComponent;
+
+use crate::Color;
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
@@ -38,7 +39,7 @@ enum IconSource {
 #[derive(IntoElement, RegisterComponent)]
 pub struct Icon {
     source: IconSource,
-    color: Option<Hsla>,
+    color: Color,
     size: Rems,
     transformation: Transformation,
 }
@@ -47,14 +48,14 @@ impl Icon {
     pub fn new(icon: IconName) -> Self {
         Self {
             source: IconSource::Embedded(icon.path().into()),
-            color: None,
+            color: Color::default(),
             size: IconSize::default().rems(),
             transformation: Transformation::default(),
         }
     }
 
-    pub fn color(mut self, color: Hsla) -> Self {
-        self.color = Some(color);
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = color;
         self
     }
 
@@ -66,7 +67,7 @@ impl Icon {
 
 impl RenderOnce for Icon {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let color = self.color.unwrap_or_else(|| cx.theme().colors().icon);
+        let color = self.color.color(cx);
         match self.source {
             IconSource::Embedded(path) => gpui::svg()
                 .with_transformation(self.transformation)
