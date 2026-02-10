@@ -24,7 +24,7 @@ use text::{Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaI
 use unicode_segmentation::UnicodeSegmentation;
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
-use theme::ActiveTheme;
+use theme::{ActiveTheme, ThemeSettings};
 
 pub(crate) const KEY_CONTEXT: &str = "Editor";
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
@@ -1402,11 +1402,32 @@ impl Editor {
     }
 
     pub(crate) fn create_style(&self, cx: &App) -> EditorStyle {
-        let mut style = EditorStyle::default();
         let theme_colors = cx.theme().colors();
-        style.background = theme_colors.editor_background;
-        style.text.color = theme_colors.editor_foreground;
-        style
+        let theme_settings = ThemeSettings::get_global(cx);
+
+        let font_size = match self.mode {
+            EditorMode::SingleLine | EditorMode::AutoHeight { .. } => gpui::rems(0.875).into(),
+            EditorMode::Full { .. } | EditorMode::Minimap { .. } => {
+                theme_settings.buffer_font_size(cx).into()
+            }
+        };
+
+        let text_style = TextStyle {
+            color: theme_colors.editor_foreground,
+            font_family: theme_settings.buffer_font.family.clone(),
+            font_features: theme_settings.buffer_font.features.clone(),
+            font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
+            font_size,
+            font_weight: theme_settings.buffer_font.weight,
+            font_style: theme_settings.buffer_font.style,
+            line_height: gpui::relative(theme_settings.line_height()),
+            ..Default::default()
+        };
+
+        EditorStyle {
+            background: theme_colors.editor_background,
+            text: text_style,
+        }
     }
 
     pub fn register_addon<T: Addon>(&mut self, instance: T) {
@@ -1645,18 +1666,26 @@ impl ErasedEditor for ErasedEditorImpl {
         })
     }
 
-    fn render(&self, _: &mut Window, cx: &App) -> gpui::AnyElement {
+    fn render(&self, _window: &mut Window, cx: &App) -> gpui::AnyElement {
         let theme_colors = cx.theme().colors();
+        let theme_settings = ThemeSettings::get_global(cx);
+
         let text_style = TextStyle {
+            font_family: theme_settings.ui_font.family.clone(),
+            font_features: theme_settings.ui_font.features.clone(),
             font_size: gpui::rems(0.875).into(),
+            font_weight: theme_settings.buffer_font.weight,
+            font_style: gpui::FontStyle::Normal,
             line_height: gpui::relative(1.2),
-            color: theme_colors.editor_foreground,
+            color: theme_colors.text,
             ..Default::default()
         };
+
         let editor_style = EditorStyle {
-            background: theme_colors.editor_background,
+            background: theme_colors.ghost_element_background,
             text: text_style,
         };
+
         EditorElement::new(&self.0, editor_style).into_any()
     }
 

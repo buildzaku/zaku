@@ -104,7 +104,7 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
                 DynamicSpacingValue::Single(n) => {
                     let n = n.base10_parse::<f32>().unwrap();
                     let compact = (n - 4.).max(0.);
-                    let comfortable = n + 4.0;
+                    let comfortable = n + 4.;
                     format!(
                         "`{}px`|`{}px`|`{}px (@16px/rem)` - Scales with the user's rem size.",
                         compact, n, comfortable
@@ -143,7 +143,7 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
         impl DynamicSpacing {
             /// Returns the spacing ratio, should only be used internally.
             fn spacing_ratio(&self, cx: &App) -> f32 {
-                const BASE_REM_SIZE_IN_PX: f32 = 16.0;
+                const BASE_REM_SIZE_IN_PX: f32 = 16.;
                 match self {
                     #(#spacing_ratios,)*
                 }

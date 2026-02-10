@@ -10,7 +10,10 @@ use std::borrow::Cow;
 
 pub use paths::{config_dir, settings_file};
 pub use settings_file::watch_config_file;
-pub use settings_store::{Settings, SettingsContent, SettingsStore, UiDensity};
+pub use settings_store::{
+    BufferLineHeight, FontFeaturesContent, FontWeightContent, Settings, SettingsContent,
+    SettingsStore, UiDensity,
+};
 use util::asset_str;
 
 #[derive(RustEmbed)]
