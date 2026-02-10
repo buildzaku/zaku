@@ -9,3 +9,11 @@ pub fn asset_str<A: rust_embed::RustEmbed>(path: &str) -> Cow<'static, str> {
         Cow::Owned(bytes) => Cow::Owned(String::from_utf8(bytes).unwrap()),
     }
 }
+
+pub fn capitalize(str: &str) -> String {
+    let mut chars = str.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => String::new(),
+    }
+}

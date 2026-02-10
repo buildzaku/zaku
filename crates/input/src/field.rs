@@ -2,7 +2,7 @@ use gpui::{App, FocusHandle, Focusable, Hsla, Length, SharedString, Window, prel
 use std::sync::Arc;
 
 use theme::ActiveTheme;
-use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, h_flex, v_flex};
+use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, StyledExt};
 
 use crate::ErasedEditor;
 
@@ -128,7 +128,8 @@ impl Render for InputField {
             focus_handle
         };
 
-        v_flex()
+        gpui::div()
+            .v_flex()
             .id(self.placeholder.clone())
             .w_full()
             .gap_1()
@@ -140,7 +141,8 @@ impl Render for InputField {
                 )
             })
             .child(
-                h_flex()
+                gpui::div()
+                    .h_flex()
                     .track_focus(&configured_handle)
                     .min_w(self.min_width)
                     .min_h_8()
@@ -161,7 +163,7 @@ impl Render for InputField {
                         this.gap_1().child(
                             Icon::new(icon)
                                 .size(IconSize::Small)
-                                .color(style.icon_color),
+                                .color(style.icon_color.into()),
                         )
                     })
                     .child(self.editor.render(window, cx)),

@@ -1,6 +1,6 @@
 use gpui::{
-    App, ClickEvent, DefiniteLength, Div, ElementId, FontWeight, Hsla, Rems, SharedString, Window,
-    prelude::*,
+    AnyView, App, ClickEvent, DefiniteLength, Div, ElementId, FontWeight, Hsla, MouseButton, Rems,
+    SharedString, Window, prelude::*,
 };
 
 use component::{Component, ComponentScope};
@@ -108,6 +108,7 @@ pub struct Button {
     icon: Option<IconName>,
     icon_position: Option<IconPosition>,
     font_weight: Option<FontWeight>,
+    tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
@@ -125,6 +126,7 @@ impl Button {
             icon: None,
             icon_position: None,
             font_weight: None,
+            tooltip: None,
             on_click: None,
         }
     }
@@ -181,6 +183,11 @@ impl ButtonCommon for Button {
         &self.id
     }
 
+    fn tooltip(mut self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
+        self.tooltip = Some(Box::new(tooltip));
+        self
+    }
+
     fn variant(mut self, variant: ButtonVariant) -> Self {
         self.variant = variant;
         self
@@ -231,6 +238,9 @@ impl RenderOnce for Button {
 
         self.base
             .id(self.id)
+            .when_some(self.tooltip, |this, tooltip| {
+                this.tooltip(move |window, cx| tooltip(window, cx))
+            })
             .flex()
             .justify_center()
             .items_center()
@@ -257,7 +267,10 @@ impl RenderOnce for Button {
             .when_some(
                 self.on_click.filter(|_| !self.disabled),
                 |this, on_click| {
-                    this.on_click(move |event, window, cx| {
+                    this.on_mouse_down(MouseButton::Left, |_, window, _cx| {
+                        window.prevent_default();
+                    })
+                    .on_click(move |event, window, cx| {
                         cx.stop_propagation();
                         on_click(event, window, cx);
                     })
@@ -271,7 +284,7 @@ impl RenderOnce for Button {
                 |this| {
                     this.children(
                         self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(colors.text)),
+                            .map(|icon| Icon::new(icon).size(icon_size).color(colors.text.into())),
                     )
                 },
             )
@@ -281,7 +294,7 @@ impl RenderOnce for Button {
                 |this| {
                     this.children(
                         self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(colors.text)),
+                            .map(|icon| Icon::new(icon).size(icon_size).color(colors.text.into())),
                     )
                 },
             )

@@ -107,6 +107,11 @@ impl Theme {
     }
 
     #[inline(always)]
+    pub fn appearance(&self) -> Appearance {
+        self.appearance
+    }
+
+    #[inline(always)]
     pub fn status(&self) -> &StatusColors {
         &self.styles.status
     }

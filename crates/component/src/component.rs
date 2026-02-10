@@ -206,6 +206,8 @@ impl ComponentStatus {
 pub enum ComponentScope {
     #[strum(serialize = "Images & Icons")]
     Images,
+    #[strum(serialize = "Data Display")]
+    DataDisplay,
     #[strum(serialize = "Forms & Input")]
     Input,
     #[strum(serialize = "Layout & Structure")]

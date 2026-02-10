@@ -1,4 +1,6 @@
-use gpui::{App, ClickEvent, DefiniteLength, Div, ElementId, Window, prelude::*};
+use gpui::{
+    AnyView, App, ClickEvent, DefiniteLength, Div, ElementId, MouseButton, Window, prelude::*,
+};
 
 use component::{Component, ComponentScope};
 use icons::IconName;
@@ -28,6 +30,7 @@ pub struct IconButton {
     shape: ButtonShape,
     disabled: bool,
     icon: IconName,
+    tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
@@ -43,6 +46,7 @@ impl IconButton {
             shape: ButtonShape::default(),
             disabled: false,
             icon,
+            tooltip: None,
             on_click: None,
         }
     }
@@ -89,6 +93,11 @@ impl ButtonCommon for IconButton {
         &self.id
     }
 
+    fn tooltip(mut self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
+        self.tooltip = Some(Box::new(tooltip));
+        self
+    }
+
     fn variant(mut self, variant: ButtonVariant) -> Self {
         self.variant = variant;
         self
@@ -120,6 +129,9 @@ impl RenderOnce for IconButton {
 
         self.base
             .id(self.id)
+            .when_some(self.tooltip, |this, tooltip| {
+                this.tooltip(move |window, cx| tooltip(window, cx))
+            })
             .flex()
             .justify_center()
             .items_center()
@@ -154,10 +166,17 @@ impl RenderOnce for IconButton {
             .when_some(
                 self.on_click.filter(|_| !self.disabled),
                 |this, on_click| {
-                    this.on_click(move |event, window, cx| on_click(event, window, cx))
+                    this.on_mouse_down(MouseButton::Left, |_, window, _cx| {
+                        window.prevent_default();
+                    })
+                    .on_click(move |event, window, cx| on_click(event, window, cx))
                 },
             )
-            .child(Icon::new(self.icon).size(icon_size).color(icon_color))
+            .child(
+                Icon::new(self.icon)
+                    .size(icon_size)
+                    .color(icon_color.into()),
+            )
     }
 }
 

@@ -29,7 +29,7 @@ use theme::ActiveTheme;
 pub(crate) const KEY_CONTEXT: &str = "Editor";
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Addons allow storing per-editor state in other crates (e.g. Vim).
+/// Addons allow storing per-editor state in other crates
 pub trait Addon: 'static {
     fn extend_key_context(&self, _: &mut KeyContext, _: &App) {}
 
