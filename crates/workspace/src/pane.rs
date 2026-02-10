@@ -81,8 +81,6 @@ impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.input.is_none() {
             let input = cx.new(|cx| InputField::new(window, cx, "https://example.com"));
-            let input_focus_handle = input.read(cx).focus_handle(cx);
-            window.focus(&input_focus_handle, cx);
             self.input = Some(input);
         }
 
