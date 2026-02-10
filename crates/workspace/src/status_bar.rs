@@ -8,13 +8,7 @@ use ui::{
 
 use crate::ToggleLeftDock;
 
-pub struct StatusBar {}
-
-impl StatusBar {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
-        Self {}
-    }
-}
+pub struct StatusBar;
 
 impl Render for StatusBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

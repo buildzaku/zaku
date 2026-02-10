@@ -70,7 +70,7 @@ impl Workspace {
         Self {
             dock: cx.new(Dock::new),
             pane,
-            status_bar: cx.new(StatusBar::new),
+            status_bar: cx.new(|_| StatusBar),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
             _window_appearance_subscription: window_appearance_subscription,
