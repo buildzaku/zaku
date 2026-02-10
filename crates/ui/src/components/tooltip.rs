@@ -37,6 +37,12 @@ impl RenderOnce for Title {
     }
 }
 
+impl Title {
+    fn text(title: impl Into<SharedString>) -> Self {
+        Title::Str(title.into())
+    }
+}
+
 impl Tooltip {
     pub fn simple(title: impl Into<SharedString>, cx: &mut App) -> AnyView {
         cx.new(|_| Self {
@@ -117,7 +123,7 @@ impl Tooltip {
         cx: &mut App,
     ) -> AnyView {
         cx.new(|cx| Self {
-            title: title.into().into(),
+            title: Title::text(title),
             meta: None,
             key_binding: Some(KeyBinding::for_action_in(action, focus_handle, cx)),
         })
@@ -131,7 +137,7 @@ impl Tooltip {
         cx: &mut App,
     ) -> AnyView {
         cx.new(|cx| Self {
-            title: title.into().into(),
+            title: Title::text(title),
             meta: Some(meta.into()),
             key_binding: action.map(|action| KeyBinding::for_action(action, cx)),
         })
@@ -146,7 +152,7 @@ impl Tooltip {
         cx: &mut App,
     ) -> AnyView {
         cx.new(|cx| Self {
-            title: title.into().into(),
+            title: Title::text(title),
             meta: Some(meta.into()),
             key_binding: action.map(|action| KeyBinding::for_action_in(action, focus_handle, cx)),
         })
@@ -155,7 +161,7 @@ impl Tooltip {
 
     pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
-            title: title.into().into(),
+            title: Title::text(title),
             meta: None,
             key_binding: None,
         }
