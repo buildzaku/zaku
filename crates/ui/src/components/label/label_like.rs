@@ -176,7 +176,7 @@ impl RenderOnce for LabelLike {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut color = self.color.color(cx);
         if let Some(alpha) = self.alpha {
-            color.fade_out(1.0 - alpha);
+            color.fade_out(1. - alpha);
         }
 
         self.base

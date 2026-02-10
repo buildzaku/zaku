@@ -1,5 +1,4 @@
 {
-  "ui_density": "default",
-  "ui_font_size": 14,
-  "buffer_font_size": 14
+  "ui_font_size": 13,
+  "buffer_font_size": 13
 }

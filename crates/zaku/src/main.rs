@@ -20,6 +20,7 @@ fn main() {
             );
             handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
             theme::init(LoadThemes::All(Box::new(assets::Assets)), cx);
+            register_embedded_fonts(cx);
             editor::init(cx);
             workspace::init(cx);
 
@@ -80,4 +81,36 @@ fn handle_settings_file_changes(
         }
     })
     .detach();
+}
+
+fn register_embedded_fonts(cx: &App) {
+    let asset_source = cx.asset_source();
+    let font_paths = match asset_source.list("fonts") {
+        Ok(font_paths) => font_paths,
+        Err(error) => {
+            eprintln!("failed to list bundled fonts: {error:?}");
+            return;
+        }
+    };
+
+    let mut embedded_fonts = Vec::new();
+    for font_path in &font_paths {
+        if !font_path.ends_with(".ttf") {
+            continue;
+        }
+
+        match asset_source.load(font_path) {
+            Ok(Some(font_bytes)) => embedded_fonts.push(font_bytes),
+            Ok(None) => {
+                eprintln!("asset source returned None for {font_path:?}");
+            }
+            Err(error) => {
+                eprintln!("failed to load bundled font {font_path:?}: {error:?}");
+            }
+        }
+    }
+
+    if let Err(error) = cx.text_system().add_fonts(embedded_fonts) {
+        eprintln!("failed to add bundled fonts: {error:?}");
+    }
 }
