@@ -284,14 +284,4 @@ impl Component for Tooltip {
     fn scope() -> ComponentScope {
         ComponentScope::DataDisplay
     }
-
-    fn description() -> Option<&'static str> {
-        Some(
-            "A tooltip that appears when hovering over an element, optionally showing a keybinding or additional metadata.",
-        )
-    }
-
-    fn sort_name() -> &'static str {
-        "Tooltip"
-    }
 }

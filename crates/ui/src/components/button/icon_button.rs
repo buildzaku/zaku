@@ -1,16 +1,15 @@
-use gpui::{
-    AnyView, App, ClickEvent, DefiniteLength, Div, ElementId, MouseButton, Window, prelude::*,
-};
+use gpui::{AnyView, App, ClickEvent, DefiniteLength, ElementId, Window, prelude::*};
 
 use component::{Component, ComponentScope};
 use icons::IconName;
-use theme::ActiveTheme;
 use ui_macros::RegisterComponent;
 
 use crate::{
-    ButtonCommon, ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth,
-    Icon, IconSize,
+    ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color, Disableable, FixedWidth,
+    IconSize,
 };
+
+use super::styled_icon::StyledIcon;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum ButtonShape {
@@ -21,38 +20,42 @@ pub enum ButtonShape {
 
 #[derive(IntoElement, RegisterComponent)]
 pub struct IconButton {
+    base: ButtonLike,
     id: ElementId,
-    variant: ButtonVariant,
-    base: Div,
-    width: Option<DefiniteLength>,
-    height: Option<DefiniteLength>,
     size: ButtonSize,
     shape: ButtonShape,
     disabled: bool,
+    selected: bool,
     icon: IconName,
-    tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
-    on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
+    selected_icon: Option<IconName>,
+    icon_color: Color,
+    selected_icon_color: Option<Color>,
 }
 
 impl IconButton {
     pub fn new(id: impl Into<ElementId>, icon: IconName) -> Self {
+        let id = id.into();
         Self {
-            id: id.into(),
-            variant: ButtonVariant::default(),
-            base: gpui::div(),
-            width: None,
-            height: None,
+            base: ButtonLike::new(id.clone()),
+            id,
             size: ButtonSize::default(),
             shape: ButtonShape::default(),
             disabled: false,
+            selected: false,
             icon,
-            tooltip: None,
-            on_click: None,
+            selected_icon: None,
+            icon_color: Color::Default,
+            selected_icon_color: None,
         }
     }
 
+    pub fn toggle_state(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+
     pub fn height(mut self, height: DefiniteLength) -> Self {
-        self.height = Some(height);
+        self.base = self.base.height(height);
         self
     }
 
@@ -60,30 +63,46 @@ impl IconButton {
         self.shape = shape;
         self
     }
+
+    pub fn icon_color(mut self, icon_color: Color) -> Self {
+        self.icon_color = icon_color;
+        self
+    }
+
+    pub fn selected_icon_color(mut self, selected_icon_color: impl Into<Option<Color>>) -> Self {
+        self.selected_icon_color = selected_icon_color.into();
+        self
+    }
+
+    pub fn selected_icon(mut self, selected_icon: impl Into<Option<IconName>>) -> Self {
+        self.selected_icon = selected_icon.into();
+        self
+    }
 }
 
 impl Disableable for IconButton {
     fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self.base = self.base.disabled(disabled);
         self
     }
 }
 
 impl Clickable for IconButton {
     fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.base = self.base.on_click(handler);
         self
     }
 }
 
 impl FixedWidth for IconButton {
     fn width(mut self, width: impl Into<DefiniteLength>) -> Self {
-        self.width = Some(width.into());
+        self.base = self.base.width(width);
         self
     }
 
     fn full_width(mut self) -> Self {
-        self.width = Some(gpui::relative(1.));
+        self.base = self.base.full_width();
         self
     }
 }
@@ -94,25 +113,24 @@ impl ButtonCommon for IconButton {
     }
 
     fn tooltip(mut self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
-        self.tooltip = Some(Box::new(tooltip));
+        self.base = self.base.tooltip(tooltip);
         self
     }
 
     fn variant(mut self, variant: ButtonVariant) -> Self {
-        self.variant = variant;
+        self.base = self.base.variant(variant);
         self
     }
 
     fn size(mut self, size: ButtonSize) -> Self {
         self.size = size;
+        self.base = self.base.size(size);
         self
     }
 }
 
 impl RenderOnce for IconButton {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
-        let colors = self.variant.colors(cx);
+    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let icon_size = match self.size {
             ButtonSize::Large => IconSize::Medium,
             ButtonSize::Medium => IconSize::Small,
@@ -121,61 +139,22 @@ impl RenderOnce for IconButton {
             ButtonSize::None => IconSize::XSmall,
         };
 
-        let icon_color = if self.disabled {
-            theme_colors.icon_disabled
-        } else {
-            theme_colors.icon
-        };
-
         self.base
-            .id(self.id)
-            .when_some(self.tooltip, |this, tooltip| {
-                this.tooltip(move |window, cx| tooltip(window, cx))
-            })
-            .flex()
-            .justify_center()
-            .items_center()
-            .gap(DynamicSpacing::Base04.rems(cx))
-            .when(self.shape == ButtonShape::Square, |this| {
-                let size = self.size.rems();
-                this.w(size).h(size)
-            })
-            .when(self.shape == ButtonShape::Wide, |this| {
-                this.h(self.height.unwrap_or(self.size.rems().into()))
-                    .when_some(self.width, |this, width| this.w(width).justify_center())
-            })
-            .map(|this| match self.size {
-                ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base08.rems(cx)),
-                ButtonSize::Default | ButtonSize::Compact => {
-                    this.px(DynamicSpacing::Base04.rems(cx))
+            .map(|this| match self.shape {
+                ButtonShape::Square => {
+                    let size = self.size.rems();
+                    this.width(size).height(size.into())
                 }
-                ButtonSize::None => this.px_px(),
+                ButtonShape::Wide => this,
             })
-            .rounded_sm()
-            .bg(colors.bg)
-            .text_color(colors.text)
-            .when(self.disabled, |this| this.cursor_not_allowed())
-            .when(!self.disabled, |this| {
-                this.cursor_pointer()
-                    .hover(|style| style.bg(colors.hover_bg))
-                    .active(|style| style.bg(colors.active_bg))
-            })
-            .when(self.variant == ButtonVariant::Outline, |this| {
-                this.border_1().border_color(theme_colors.border_variant)
-            })
-            .when_some(
-                self.on_click.filter(|_| !self.disabled),
-                |this, on_click| {
-                    this.on_mouse_down(MouseButton::Left, |_, window, _cx| {
-                        window.prevent_default();
-                    })
-                    .on_click(move |event, window, cx| on_click(event, window, cx))
-                },
-            )
             .child(
-                Icon::new(self.icon)
+                StyledIcon::new(self.icon)
                     .size(icon_size)
-                    .color(icon_color.into()),
+                    .color(self.icon_color)
+                    .selected_icon(self.selected_icon)
+                    .selected_icon_color(self.selected_icon_color)
+                    .disabled(self.disabled)
+                    .toggle_state(self.selected),
             )
     }
 }
@@ -183,9 +162,5 @@ impl RenderOnce for IconButton {
 impl Component for IconButton {
     fn scope() -> ComponentScope {
         ComponentScope::Input
-    }
-
-    fn sort_name() -> &'static str {
-        "ButtonIcon"
     }
 }

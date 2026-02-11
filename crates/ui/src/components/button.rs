@@ -1,7 +1,8 @@
+mod base;
 mod button;
-mod button_like;
 mod icon_button;
+mod styled_icon;
 
+pub use base::*;
 pub use button::*;
-pub use button_like::*;
 pub use icon_button::*;

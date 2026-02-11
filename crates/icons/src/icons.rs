@@ -10,7 +10,11 @@ use strum::{EnumIter, EnumString, IntoStaticStr};
 #[serde(rename_all = "snake_case")]
 pub enum IconName {
     Command,
-    Dock,
+    Control,
+    Network,
+    Option,
+    Shift,
+    Tree,
 }
 
 impl IconName {
