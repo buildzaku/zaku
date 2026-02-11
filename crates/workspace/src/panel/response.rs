@@ -76,7 +76,7 @@ impl Panel for ResponsePanel {
     }
 
     fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconName> {
-        Some(ui::IconName::Network)
+        Some(ui::IconName::Response)
     }
 
     fn icon_tooltip(&self, _window: &Window, _: &App) -> Option<&'static str> {
