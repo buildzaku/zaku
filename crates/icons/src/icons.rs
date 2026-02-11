@@ -11,8 +11,8 @@ use strum::{EnumIter, EnumString, IntoStaticStr};
 pub enum IconName {
     Command,
     Control,
-    Response,
     Option,
+    Response,
     Shift,
     Tree,
 }
