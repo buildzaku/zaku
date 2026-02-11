@@ -12,7 +12,7 @@ use crate::{
 use super::styled_icon::StyledIcon;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
-pub enum ButtonShape {
+pub enum IconButtonShape {
     Square,
     #[default]
     Wide,
@@ -21,9 +21,8 @@ pub enum ButtonShape {
 #[derive(IntoElement, RegisterComponent)]
 pub struct IconButton {
     base: ButtonLike,
-    id: ElementId,
-    size: ButtonSize,
-    shape: ButtonShape,
+    shape: IconButtonShape,
+    icon_size: IconSize,
     disabled: bool,
     selected: bool,
     icon: IconName,
@@ -34,12 +33,10 @@ pub struct IconButton {
 
 impl IconButton {
     pub fn new(id: impl Into<ElementId>, icon: IconName) -> Self {
-        let id = id.into();
         Self {
-            base: ButtonLike::new(id.clone()),
-            id,
-            size: ButtonSize::default(),
-            shape: ButtonShape::default(),
+            base: ButtonLike::new(id),
+            shape: IconButtonShape::default(),
+            icon_size: IconSize::default(),
             disabled: false,
             selected: false,
             icon,
@@ -54,12 +51,17 @@ impl IconButton {
         self
     }
 
+    pub fn icon_size(mut self, icon_size: IconSize) -> Self {
+        self.icon_size = icon_size;
+        self
+    }
+
     pub fn height(mut self, height: DefiniteLength) -> Self {
         self.base = self.base.height(height);
         self
     }
 
-    pub fn shape(mut self, shape: ButtonShape) -> Self {
+    pub fn shape(mut self, shape: IconButtonShape) -> Self {
         self.shape = shape;
         self
     }
@@ -109,7 +111,7 @@ impl FixedWidth for IconButton {
 
 impl ButtonCommon for IconButton {
     fn id(&self) -> &ElementId {
-        &self.id
+        self.base.id()
     }
 
     fn tooltip(mut self, tooltip: impl Fn(&mut Window, &mut App) -> AnyView + 'static) -> Self {
@@ -123,33 +125,24 @@ impl ButtonCommon for IconButton {
     }
 
     fn size(mut self, size: ButtonSize) -> Self {
-        self.size = size;
         self.base = self.base.size(size);
         self
     }
 }
 
 impl RenderOnce for IconButton {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let icon_size = match self.size {
-            ButtonSize::Large => IconSize::Medium,
-            ButtonSize::Medium => IconSize::Small,
-            ButtonSize::Default => IconSize::Small,
-            ButtonSize::Compact => IconSize::XSmall,
-            ButtonSize::None => IconSize::XSmall,
-        };
-
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         self.base
             .map(|this| match self.shape {
-                ButtonShape::Square => {
-                    let size = self.size.rems();
+                IconButtonShape::Square => {
+                    let size = self.icon_size.square(window, cx);
                     this.width(size).height(size.into())
                 }
-                ButtonShape::Wide => this,
+                IconButtonShape::Wide => this,
             })
             .child(
                 StyledIcon::new(self.icon)
-                    .size(icon_size)
+                    .size(self.icon_size)
                     .color(self.icon_color)
                     .selected_icon(self.selected_icon)
                     .selected_icon_color(self.selected_icon_color)

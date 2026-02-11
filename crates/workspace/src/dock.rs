@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use theme::ActiveTheme;
 use ui::{
-    ButtonCommon, ButtonShape, ButtonSize, Clickable, Color, IconButton, IconName,
+    ButtonCommon, Clickable, Color, IconButton, IconButtonShape, IconName, IconSize,
     StyledTypography, Tooltip,
 };
 
@@ -385,8 +385,8 @@ impl Render for PanelButtons {
                 Some(
                     IconButton::new(format!("{name}-button-{is_active_button}"), icon)
                         .variant(ui::ButtonVariant::Subtle)
-                        .size(ButtonSize::Compact)
-                        .shape(ButtonShape::Square)
+                        .icon_size(IconSize::Small)
+                        .shape(IconButtonShape::Square)
                         .icon_color(Color::Muted)
                         .selected_icon_color(Color::Default)
                         .toggle_state(is_active_button)
