@@ -48,9 +48,17 @@ pub fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-b", ToggleLeftDock, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-r", response_panel::ToggleFocus, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "cmd-shift-r",
+            response_panel::ToggleFocus,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(not(target_os = "macos"))]
-        KeyBinding::new("ctrl-r", response_panel::ToggleFocus, Some(KEY_CONTEXT)),
+        KeyBinding::new(
+            "ctrl-shift-r",
+            response_panel::ToggleFocus,
+            Some(KEY_CONTEXT),
+        ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-e", project_panel::ToggleFocus, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
