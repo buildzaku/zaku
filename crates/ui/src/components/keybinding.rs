@@ -232,7 +232,7 @@ pub fn render_modifiers(
         [
             Modifier {
                 enabled: modifiers.function,
-                mac: KeyOrIcon::Icon(IconName::Control),
+                mac: KeyOrIcon::Key("Fn"),
                 linux: KeyOrIcon::Key("Fn"),
                 windows: KeyOrIcon::Key("Fn"),
             },
