@@ -99,7 +99,7 @@ impl Render for ResponsePanel {
             .flex()
             .flex_col()
             .size_full()
-            .bg(theme_colors.panel_background)
+            .bg(theme_colors.surface_background)
             .child(
                 gpui::div()
                     .w_full()
@@ -107,7 +107,6 @@ impl Render for ResponsePanel {
                     .px_3()
                     .flex()
                     .items_center()
-                    .bg(theme_colors.surface_background)
                     .border_b_1()
                     .border_color(theme_colors.border_variant)
                     .child(
