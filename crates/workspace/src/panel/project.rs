@@ -2,7 +2,10 @@ use gpui::{Action, App, Context, FocusHandle, Focusable, Pixels, Render, Window,
 
 use theme::ActiveTheme;
 
-use crate::{DockPosition, dock::Panel, panel::project_panel};
+use crate::{
+    DockPosition,
+    panel::{Panel, project_panel},
+};
 
 pub struct ProjectPanel {
     focus_handle: FocusHandle,

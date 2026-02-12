@@ -13,9 +13,9 @@ use theme::{GlobalTheme, SystemAppearance};
 use ui::StyledTypography;
 
 use crate::{
-    dock::{Dock, PanelButtons},
+    dock::Dock,
     pane::Pane,
-    panel::{ProjectPanel, ResponsePanel, project_panel, response_panel},
+    panel::{ProjectPanel, ResponsePanel, buttons::PanelButtons, project_panel, response_panel},
     status_bar::StatusBar,
 };
 

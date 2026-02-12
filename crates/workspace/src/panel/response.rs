@@ -5,7 +5,10 @@ use gpui::{
 use theme::ActiveTheme;
 use ui::{Color, Label, LabelCommon, LabelSize};
 
-use crate::{DockPosition, dock::Panel, panel::response_panel};
+use crate::{
+    DockPosition,
+    panel::{Panel, response_panel},
+};
 
 pub struct ResponsePanel {
     focus_handle: FocusHandle,
