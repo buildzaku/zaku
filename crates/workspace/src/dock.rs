@@ -253,7 +253,7 @@ impl Render for Dock {
 
             let create_resize_handle = || {
                 let handle = gpui::div()
-                    .id("resize-handle")
+                    .id("dock-drag-handle")
                     .on_drag(DraggedDock(position), |dock, _, _, cx| {
                         cx.stop_propagation();
                         cx.new(|_| dock.clone())
