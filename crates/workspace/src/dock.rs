@@ -1,7 +1,6 @@
 use gpui::{
-    Action, AnyView, App, Axis, Context, Entity, EntityId, FocusHandle, Focusable, KeyContext,
-    MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Render, Styled, WeakEntity, Window,
-    prelude::*,
+    Action, AnyView, App, Axis, Entity, EntityId, FocusHandle, Focusable, KeyContext, MouseButton,
+    MouseDownEvent, MouseUpEvent, Pixels, WeakEntity, Window, prelude::*,
 };
 use std::sync::Arc;
 
