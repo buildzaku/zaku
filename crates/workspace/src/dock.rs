@@ -1,99 +1,253 @@
-use gpui::{MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Window, prelude::*};
+use gpui::{
+    Action, App, Axis, Entity, EntityId, FocusHandle, Focusable, KeyContext, MouseButton,
+    MouseDownEvent, MouseUpEvent, Pixels, WeakEntity, Window, prelude::*,
+};
+use std::sync::Arc;
 
 use theme::ActiveTheme;
 
-use crate::{DockPosition, DraggedDock};
+use crate::{
+    DockPosition, DraggedDock, Workspace,
+    panel::{Panel, PanelEntry, PanelHandle},
+};
 
-const DEFAULT_DOCK_SIZE: Pixels = gpui::px(250.);
-const RESIZE_HANDLE_SIZE: Pixels = gpui::px(6.);
+pub(crate) const RESIZE_HANDLE_SIZE: Pixels = gpui::px(6.);
 
 pub struct Dock {
-    size: Pixels,
     position: DockPosition,
-    visible: bool,
+    panel_entries: Vec<PanelEntry>,
+    _workspace: WeakEntity<Workspace>,
+    is_open: bool,
+    active_panel_index: Option<usize>,
+    focus_handle: FocusHandle,
 }
 
 impl Dock {
-    pub fn new(_cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        position: DockPosition,
+        workspace: WeakEntity<Workspace>,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
-            size: DEFAULT_DOCK_SIZE,
-            position: DockPosition::Left,
-            visible: false,
+            position,
+            panel_entries: Default::default(),
+            _workspace: workspace,
+            is_open: false,
+            active_panel_index: None,
+            focus_handle: cx.focus_handle(),
         }
     }
 
-    pub fn set_size(&mut self, size: Pixels, _window: &mut Window, cx: &mut Context<Self>) {
-        self.size = size.round();
+    pub fn position(&self) -> DockPosition {
+        self.position
+    }
+
+    pub(crate) fn panel_entries(&self) -> &[PanelEntry] {
+        &self.panel_entries
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.is_open
+    }
+
+    pub fn set_open(&mut self, is_open: bool, cx: &mut Context<Self>) {
+        self.is_open = is_open;
         cx.notify();
     }
 
-    pub fn toggle_visibility(&mut self, cx: &mut Context<Self>) {
-        self.visible = !self.visible;
+    pub fn toggle_open(&mut self, cx: &mut Context<Self>) {
+        self.is_open = !self.is_open;
         cx.notify();
+    }
+
+    pub fn active_panel_index(&self) -> Option<usize> {
+        self.active_panel_index
+    }
+
+    pub fn set_active_panel_index(&mut self, index: Option<usize>, cx: &mut Context<Self>) {
+        self.active_panel_index = index;
+        cx.notify();
+    }
+
+    pub fn add_panel<T: Panel>(
+        &mut self,
+        panel: Entity<T>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let panel_handle: Arc<dyn PanelHandle> = Arc::new(panel);
+
+        if self.active_panel_index.is_none() {
+            self.active_panel_index = Some(0);
+        }
+
+        self.panel_entries.push(PanelEntry::new(panel_handle));
+
+        cx.notify();
+    }
+
+    pub fn panel_index(&self, panel_id: EntityId) -> Option<usize> {
+        self.panel_entries
+            .iter()
+            .position(|entry| entry.panel().panel_id() == panel_id)
+    }
+
+    pub fn activate_panel(&mut self, panel_id: EntityId, cx: &mut Context<Self>) {
+        let Some(index) = self.panel_index(panel_id) else {
+            return;
+        };
+
+        self.active_panel_index = Some(index);
+        self.is_open = true;
+        cx.notify();
+    }
+
+    fn active_panel_entry(&self) -> Option<&PanelEntry> {
+        let active_panel_index = self.active_panel_index?;
+        self.panel_entries.get(active_panel_index)
+    }
+
+    pub fn active_panel(&self) -> Option<&Arc<dyn PanelHandle>> {
+        let panel_entry = self.active_panel_entry()?;
+        Some(panel_entry.panel())
+    }
+
+    fn visible_entry(&self) -> Option<&PanelEntry> {
+        if self.is_open {
+            self.active_panel_entry()
+        } else {
+            None
+        }
+    }
+
+    pub fn toggle_action(&self) -> Box<dyn Action> {
+        match self.position {
+            DockPosition::Left => crate::ToggleLeftDock.boxed_clone(),
+            DockPosition::Bottom => crate::ToggleBottomDock.boxed_clone(),
+            DockPosition::Right => crate::ToggleRightDock.boxed_clone(),
+        }
+    }
+
+    fn dispatch_context() -> KeyContext {
+        let mut dispatch_context = KeyContext::new_with_defaults();
+        dispatch_context.add("Dock");
+        dispatch_context
+    }
+
+    pub fn resize_active_panel(
+        &mut self,
+        size: Option<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(entry) = self.active_panel_entry() else {
+            return;
+        };
+
+        let size = size.map(|size| size.max(RESIZE_HANDLE_SIZE).round());
+        entry.panel().set_size(size, window, cx);
+        cx.notify();
+    }
+}
+
+impl Focusable for Dock {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
     }
 }
 
 impl Render for Dock {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
-        let position = self.position;
-        let create_resize_handle = || {
-            let handle = gpui::div()
-                .id("resize-handle")
-                .on_drag(DraggedDock(position), |dock, _, _, cx| {
-                    cx.stop_propagation();
-                    cx.new(|_| dock.clone())
-                })
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(|_, _: &MouseDownEvent, _, cx| {
-                        cx.stop_propagation();
-                    }),
-                )
-                .on_mouse_up(
-                    MouseButton::Left,
-                    cx.listener(|dock, e: &MouseUpEvent, window, cx| {
-                        if e.click_count == 2 {
-                            dock.set_size(gpui::px(250.), window, cx);
-                            cx.stop_propagation();
-                        }
-                    }),
-                )
-                .occlude();
-            match position {
-                DockPosition::Left => gpui::deferred(
-                    handle
-                        .absolute()
-                        .right(-RESIZE_HANDLE_SIZE / 2.)
-                        .top(gpui::px(0.))
-                        .h_full()
-                        .w(RESIZE_HANDLE_SIZE)
-                        .cursor_col_resize(),
-                ),
-                DockPosition::Right => gpui::deferred(
-                    handle
-                        .absolute()
-                        .left(-RESIZE_HANDLE_SIZE / 2.)
-                        .top(gpui::px(0.))
-                        .h_full()
-                        .w(RESIZE_HANDLE_SIZE)
-                        .cursor_col_resize(),
-                ),
-            }
-        };
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(entry) = self.visible_entry() {
+            let size = entry.panel().size(window, cx);
+            let position = self.position;
 
-        gpui::div()
-            .flex()
-            .flex_col()
-            .h_full()
-            .overflow_hidden()
-            .when(self.visible, |this| {
-                this.w(self.size)
-                    .bg(theme_colors.surface_background)
-                    .border_r_1()
-                    .border_color(theme_colors.border_variant)
-                    .child(gpui::div().min_w(self.size).h_full())
-                    .child(create_resize_handle())
-            })
+            let create_resize_handle = || {
+                let handle = gpui::div()
+                    .id("dock-drag-handle")
+                    .on_drag(DraggedDock(position), |dock, _, _, cx| {
+                        cx.stop_propagation();
+                        cx.new(|_| dock.clone())
+                    })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|_, _: &MouseDownEvent, _, cx| {
+                            cx.stop_propagation();
+                        }),
+                    )
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |dock, e: &MouseUpEvent, window, cx| {
+                            if e.click_count == 2 {
+                                dock.resize_active_panel(None, window, cx);
+                                cx.stop_propagation();
+                            }
+                        }),
+                    )
+                    .occlude();
+
+                match position {
+                    DockPosition::Left => gpui::deferred(
+                        handle
+                            .absolute()
+                            .right(-RESIZE_HANDLE_SIZE / 2.)
+                            .top(gpui::px(0.))
+                            .h_full()
+                            .w(RESIZE_HANDLE_SIZE)
+                            .cursor_col_resize(),
+                    ),
+                    DockPosition::Bottom => gpui::deferred(
+                        handle
+                            .absolute()
+                            .top(-RESIZE_HANDLE_SIZE / 2.)
+                            .left(gpui::px(0.))
+                            .w_full()
+                            .h(RESIZE_HANDLE_SIZE)
+                            .cursor_row_resize(),
+                    ),
+                    DockPosition::Right => gpui::deferred(
+                        handle
+                            .absolute()
+                            .left(-RESIZE_HANDLE_SIZE / 2.)
+                            .top(gpui::px(0.))
+                            .h_full()
+                            .w(RESIZE_HANDLE_SIZE)
+                            .cursor_col_resize(),
+                    ),
+                }
+            };
+
+            let theme_colors = cx.theme().colors();
+
+            gpui::div()
+                .key_context(Self::dispatch_context())
+                .track_focus(&self.focus_handle)
+                .flex()
+                .bg(theme_colors.panel_background)
+                .border_color(theme_colors.border)
+                .overflow_hidden()
+                .map(|this| match position.axis() {
+                    Axis::Horizontal => this.w(size).h_full().flex_row(),
+                    Axis::Vertical => this.h(size).w_full().flex_col(),
+                })
+                .map(|this| match position {
+                    DockPosition::Left => this.border_r_1(),
+                    DockPosition::Right => this.border_l_1(),
+                    DockPosition::Bottom => this.border_t_1(),
+                })
+                .child(
+                    gpui::div()
+                        .map(|this| match position.axis() {
+                            Axis::Horizontal => this.min_w(size).h_full(),
+                            Axis::Vertical => this.min_h(size).w_full(),
+                        })
+                        .child(entry.panel().to_any()),
+                )
+                .child(create_resize_handle())
+        } else {
+            gpui::div()
+                .key_context(Self::dispatch_context())
+                .track_focus(&self.focus_handle)
+        }
     }
 }

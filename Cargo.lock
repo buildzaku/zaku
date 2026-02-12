@@ -7308,6 +7308,7 @@ name = "workspace"
 version = "0.0.0"
 dependencies = [
  "component",
+ "futures",
  "gpui",
  "http_client 0.0.0",
  "input",
