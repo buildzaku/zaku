@@ -305,12 +305,4 @@ impl Component for Button {
     fn scope() -> ComponentScope {
         ComponentScope::Input
     }
-
-    fn sort_name() -> &'static str {
-        "Button"
-    }
-
-    fn description() -> Option<&'static str> {
-        Some("A button triggers an event or action.")
-    }
 }

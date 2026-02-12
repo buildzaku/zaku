@@ -1,10 +1,10 @@
-use gpui::{App, IntoElement, Rems, SharedString, Transformation, Window, prelude::*};
+use gpui::{App, IntoElement, Pixels, Rems, SharedString, Transformation, Window, prelude::*};
 
 use component::{Component, ComponentScope};
 use icons::IconName;
 use ui_macros::RegisterComponent;
 
-use crate::Color;
+use crate::{Color, DynamicSpacing};
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
@@ -29,6 +29,28 @@ impl IconSize {
             IconSize::XLarge => crate::rems_from_px(48.),
             IconSize::Custom(size) => size,
         }
+    }
+
+    pub fn square_components(&self, window: &mut Window, cx: &mut App) -> (Pixels, Pixels) {
+        let icon_size = self.rems() * window.rem_size();
+        let padding = match self {
+            IconSize::XSmall | IconSize::Small | IconSize::Medium | IconSize::XLarge => {
+                DynamicSpacing::Base04.px(cx)
+            }
+            IconSize::Custom(size) => size.to_pixels(window.rem_size()),
+        };
+
+        (icon_size, padding)
+    }
+
+    pub fn square(&self, window: &mut Window, cx: &mut App) -> Pixels {
+        let (icon_size, padding) = self.square_components(window, cx);
+
+        let size = icon_size + padding * 2.;
+        let scale_factor = window.scale_factor();
+        let size_f32: f32 = size.into();
+
+        gpui::px((size_f32 * scale_factor).round() / scale_factor)
     }
 }
 

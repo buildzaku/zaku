@@ -238,13 +238,13 @@ pub fn render_modifiers(
             },
             Modifier {
                 enabled: modifiers.control,
-                mac: KeyOrIcon::Key("Control"),
+                mac: KeyOrIcon::Icon(IconName::Control),
                 linux: KeyOrIcon::Key("Ctrl"),
                 windows: KeyOrIcon::Key("Ctrl"),
             },
             Modifier {
                 enabled: modifiers.alt,
-                mac: KeyOrIcon::Key("Option"),
+                mac: KeyOrIcon::Icon(IconName::Option),
                 linux: KeyOrIcon::Key("Alt"),
                 windows: KeyOrIcon::Key("Alt"),
             },
@@ -256,7 +256,7 @@ pub fn render_modifiers(
             },
             Modifier {
                 enabled: modifiers.shift,
-                mac: KeyOrIcon::Key("Shift"),
+                mac: KeyOrIcon::Icon(IconName::Shift),
                 linux: KeyOrIcon::Key("Shift"),
                 windows: KeyOrIcon::Key("Shift"),
             },
@@ -461,10 +461,6 @@ fn keystroke_text(modifiers: &Modifiers, key: &str, platform_style: PlatformStyl
 impl Component for KeyBinding {
     fn scope() -> ComponentScope {
         ComponentScope::Typography
-    }
-
-    fn sort_name() -> &'static str {
-        "KeyBinding"
     }
 }
 
