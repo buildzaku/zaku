@@ -10,7 +10,7 @@ else
   MODE=(--check)
 fi
 
-pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,md}' "${MODE[@]}" || {
+pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,md,svg}' "${MODE[@]}" || {
   echo "Run: ./script/prettier --write"
   false
 }
