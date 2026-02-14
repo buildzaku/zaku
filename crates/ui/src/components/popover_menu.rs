@@ -241,10 +241,10 @@ fn show_menu<M: ManagedView>(
     let menu_clone = menu.clone();
     window
         .subscribe(&new_menu, cx, move |modal, _: &DismissEvent, window, cx| {
-            if modal.focus_handle(cx).contains_focused(window, cx) {
-                if let Some(handle) = &previous_focus_handle {
-                    window.focus(handle, cx);
-                }
+            if modal.focus_handle(cx).contains_focused(window, cx)
+                && let Some(handle) = &previous_focus_handle
+            {
+                window.focus(handle, cx);
             }
             *menu_clone.borrow_mut() = None;
             window.refresh();
