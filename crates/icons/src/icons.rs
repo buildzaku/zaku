@@ -9,8 +9,15 @@ use strum::{EnumIter, EnumString, IntoStaticStr};
 #[strum(serialize_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum IconName {
+    ArrowUpRight,
+    Check,
+    CaretDown,
+    CaretRight,
     Command,
     Control,
+    Dash,
+    File,
+    Info,
     Option,
     Response,
     Shift,
