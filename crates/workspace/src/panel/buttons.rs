@@ -1,7 +1,7 @@
 use gpui::{Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled};
 use ui::{
     ButtonCommon, Clickable, Color, IconButton, IconButtonShape, IconSize, StyledTypography,
-    Tooltip,
+    Toggleable, Tooltip,
 };
 
 use crate::{dock::Dock, status_bar::StatusItemView};

@@ -6,7 +6,7 @@ use ui_macros::RegisterComponent;
 
 use crate::{Color, Icon, IconSize};
 
-use super::base::Disableable;
+use crate::Disableable;
 
 #[derive(IntoElement, RegisterComponent)]
 pub(super) struct StyledIcon {
