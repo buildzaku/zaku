@@ -2,6 +2,7 @@ mod button;
 mod keybinding;
 mod label;
 mod popover_menu;
+mod stack;
 mod tooltip;
 
 pub use button::*;
