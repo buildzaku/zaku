@@ -13,6 +13,11 @@ impl<T: IntoElement + Clickable + Toggleable + 'static> PopoverTrigger for T {}
 
 pub struct PopoverMenuHandle<M>(Rc<RefCell<Option<PopoverMenuHandleState<M>>>>);
 
+type MenuBuilder<M> = Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static>;
+type MenuState<M> = Rc<RefCell<Option<Entity<M>>>>;
+type ChildBuilder<M> =
+    Box<dyn FnOnce(MenuState<M>, Option<MenuBuilder<M>>) -> AnyElement + 'static>;
+
 impl<M> Clone for PopoverMenuHandle<M> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
@@ -28,7 +33,7 @@ impl<M> Default for PopoverMenuHandle<M> {
 struct PopoverMenuHandleState<M> {
     menu_builder: MenuBuilder<M>,
     menu: MenuState<M>,
-    on_open: Option<OnOpenCallback>,
+    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
 }
 
 impl<M: ManagedView> PopoverMenuHandle<M> {
@@ -98,12 +103,6 @@ impl<M: ManagedView> PopoverMenuHandle<M> {
     }
 }
 
-type ChildBuilder<M> =
-    Box<dyn FnOnce(MenuState<M>, Option<MenuBuilder<M>>) -> AnyElement + 'static>;
-type MenuBuilder<M> = Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static>;
-type MenuState<M> = Rc<RefCell<Option<Entity<M>>>>;
-type OnOpenCallback = Rc<dyn Fn(&mut Window, &mut App)>;
-
 pub struct PopoverMenu<M: ManagedView> {
     id: ElementId,
     child_builder: Option<ChildBuilder<M>>,
@@ -112,7 +111,7 @@ pub struct PopoverMenu<M: ManagedView> {
     attach: Option<Corner>,
     offset: Option<Point<Pixels>>,
     trigger_handle: Option<PopoverMenuHandle<M>>,
-    on_open: Option<OnOpenCallback>,
+    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     full_width: bool,
 }
 
@@ -201,7 +200,7 @@ impl<M: ManagedView> PopoverMenu<M> {
         self
     }
 
-    pub fn on_open(mut self, on_open: OnOpenCallback) -> Self {
+    pub fn on_open(mut self, on_open: Rc<dyn Fn(&mut Window, &mut App)>) -> Self {
         self.on_open = Some(on_open);
         self
     }
@@ -229,7 +228,7 @@ impl<M: ManagedView> PopoverMenu<M> {
 fn show_menu<M: ManagedView>(
     builder: &MenuBuilder<M>,
     menu: &MenuState<M>,
-    on_open: Option<OnOpenCallback>,
+    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     window: &mut Window,
     cx: &mut App,
 ) {
