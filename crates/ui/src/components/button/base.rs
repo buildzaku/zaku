@@ -1,18 +1,17 @@
 use gpui::{
-    AnyElement, AnyView, App, ClickEvent, DefiniteLength, Div, ElementId, MouseButton, Window,
-    prelude::*,
+    AnyElement, AnyView, App, ClickEvent, CursorStyle, DefiniteLength, Div, ElementId, MouseButton,
+    Window, prelude::*,
 };
 use smallvec::SmallVec;
 use theme::ActiveTheme;
 
-use crate::{ButtonColor, ButtonSize, ButtonVariant, DynamicSpacing};
+use crate::{
+    ButtonColor, ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth,
+    Toggleable,
+};
 
-pub trait Clickable: Sized {
-    fn on_click(self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self;
-}
-
-pub trait Disableable: Sized {
-    fn disabled(self, disabled: bool) -> Self;
+pub trait SelectableButton: Toggleable {
+    fn selected_style(self, style: ButtonVariant) -> Self;
 }
 
 pub trait ButtonCommon: Clickable + Disableable {
@@ -25,18 +24,15 @@ pub trait ButtonCommon: Clickable + Disableable {
     fn size(self, size: ButtonSize) -> Self;
 }
 
-pub trait FixedWidth: Sized {
-    fn width(self, width: impl Into<DefiniteLength>) -> Self;
-
-    fn full_width(self) -> Self;
-}
-
 #[derive(IntoElement)]
 pub struct ButtonLike {
     base: Div,
     id: ElementId,
     variant: ButtonVariant,
-    disabled: bool,
+    pub(super) disabled: bool,
+    pub(super) selected: bool,
+    pub(super) selected_style: Option<ButtonVariant>,
+    cursor_style: CursorStyle,
     width: Option<DefiniteLength>,
     height: Option<DefiniteLength>,
     size: ButtonSize,
@@ -52,6 +48,9 @@ impl ButtonLike {
             id: id.into(),
             variant: ButtonVariant::default(),
             disabled: false,
+            selected: false,
+            selected_style: None,
+            cursor_style: CursorStyle::PointingHand,
             width: None,
             height: None,
             size: ButtonSize::Default,
@@ -79,9 +78,28 @@ impl Disableable for ButtonLike {
     }
 }
 
+impl Toggleable for ButtonLike {
+    fn toggle_state(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+}
+
+impl SelectableButton for ButtonLike {
+    fn selected_style(mut self, style: ButtonVariant) -> Self {
+        self.selected_style = Some(style);
+        self
+    }
+}
+
 impl Clickable for ButtonLike {
     fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Box::new(handler));
+        self
+    }
+
+    fn cursor_style(mut self, cursor_style: CursorStyle) -> Self {
+        self.cursor_style = cursor_style;
         self
     }
 }
@@ -128,11 +146,15 @@ impl ParentElement for ButtonLike {
 impl RenderOnce for ButtonLike {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
-        let mut colors = self.variant.colors(cx);
+        let variant = self
+            .selected_style
+            .filter(|_| self.selected)
+            .unwrap_or(self.variant);
+        let mut colors = variant.colors(cx);
         let is_outlined = matches!(self.variant, ButtonVariant::Outline);
 
         if self.disabled {
-            colors = match self.variant {
+            colors = match variant {
                 ButtonVariant::Subtle => ButtonColor {
                     bg: theme_colors.ghost_element_disabled,
                     text: theme_colors.text_disabled,
@@ -182,9 +204,15 @@ impl RenderOnce for ButtonLike {
             })
             .bg(colors.bg)
             .text_color(colors.text)
-            .when(self.disabled, |this| this.cursor_not_allowed())
+            .when(self.disabled, |this| {
+                if self.cursor_style == CursorStyle::PointingHand {
+                    this.cursor_not_allowed()
+                } else {
+                    this.cursor(self.cursor_style)
+                }
+            })
             .when(!self.disabled, |this| {
-                this.cursor_pointer()
+                this.cursor(self.cursor_style)
                     .hover(|style| style.bg(colors.hover_bg))
                     .active(|style| style.bg(colors.active_bg))
             })

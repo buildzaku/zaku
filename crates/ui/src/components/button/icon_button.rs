@@ -1,4 +1,4 @@
-use gpui::{AnyView, App, ClickEvent, DefiniteLength, ElementId, Window, prelude::*};
+use gpui::{AnyView, App, ClickEvent, CursorStyle, DefiniteLength, ElementId, Window, prelude::*};
 
 use component::{Component, ComponentScope};
 use icons::IconName;
@@ -6,7 +6,7 @@ use ui_macros::RegisterComponent;
 
 use crate::{
     ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color, Disableable, FixedWidth,
-    IconSize,
+    IconSize, SelectableButton, Toggleable,
 };
 
 use super::styled_icon::StyledIcon;
@@ -23,8 +23,6 @@ pub struct IconButton {
     base: ButtonLike,
     shape: IconButtonShape,
     icon_size: IconSize,
-    disabled: bool,
-    selected: bool,
     icon: IconName,
     selected_icon: Option<IconName>,
     icon_color: Color,
@@ -37,18 +35,11 @@ impl IconButton {
             base: ButtonLike::new(id),
             shape: IconButtonShape::default(),
             icon_size: IconSize::default(),
-            disabled: false,
-            selected: false,
             icon,
             selected_icon: None,
             icon_color: Color::Default,
             selected_icon_color: None,
         }
-    }
-
-    pub fn toggle_state(mut self, selected: bool) -> Self {
-        self.selected = selected;
-        self
     }
 
     pub fn icon_size(mut self, icon_size: IconSize) -> Self {
@@ -84,8 +75,21 @@ impl IconButton {
 
 impl Disableable for IconButton {
     fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
         self.base = self.base.disabled(disabled);
+        self
+    }
+}
+
+impl Toggleable for IconButton {
+    fn toggle_state(mut self, selected: bool) -> Self {
+        self.base = self.base.toggle_state(selected);
+        self
+    }
+}
+
+impl SelectableButton for IconButton {
+    fn selected_style(mut self, style: ButtonVariant) -> Self {
+        self.base = self.base.selected_style(style);
         self
     }
 }
@@ -93,6 +97,11 @@ impl Disableable for IconButton {
 impl Clickable for IconButton {
     fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.base = self.base.on_click(handler);
+        self
+    }
+
+    fn cursor_style(mut self, cursor_style: CursorStyle) -> Self {
+        self.base = self.base.cursor_style(cursor_style);
         self
     }
 }
@@ -132,6 +141,9 @@ impl ButtonCommon for IconButton {
 
 impl RenderOnce for IconButton {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let is_disabled = self.base.disabled;
+        let is_selected = self.base.selected;
+
         self.base
             .map(|this| match self.shape {
                 IconButtonShape::Square => {
@@ -146,8 +158,8 @@ impl RenderOnce for IconButton {
                     .color(self.icon_color)
                     .selected_icon(self.selected_icon)
                     .selected_icon_color(self.selected_icon_color)
-                    .disabled(self.disabled)
-                    .toggle_state(self.selected),
+                    .disabled(is_disabled)
+                    .toggle_state(is_selected),
             )
     }
 }

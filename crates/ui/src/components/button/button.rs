@@ -1,6 +1,6 @@
 use gpui::{
-    AnyView, App, ClickEvent, DefiniteLength, Div, ElementId, FontWeight, Hsla, MouseButton, Rems,
-    SharedString, Window, prelude::*,
+    AnyView, App, ClickEvent, CursorStyle, DefiniteLength, Div, ElementId, FontWeight, Hsla,
+    MouseButton, Rems, SharedString, Window, prelude::*,
 };
 
 use component::{Component, ComponentScope};
@@ -8,7 +8,10 @@ use icons::IconName;
 use theme::ActiveTheme;
 use ui_macros::RegisterComponent;
 
-use crate::{ButtonCommon, Clickable, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize};
+use crate::{
+    ButtonCommon, Clickable, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize,
+    SelectableButton, Toggleable,
+};
 
 pub struct ButtonColor {
     pub bg: Hsla,
@@ -99,8 +102,11 @@ pub enum IconPosition {
 pub struct Button {
     id: ElementId,
     variant: ButtonVariant,
+    selected: bool,
+    selected_style: Option<ButtonVariant>,
     label: SharedString,
     base: Div,
+    cursor_style: CursorStyle,
     width: Option<DefiniteLength>,
     height: Option<DefiniteLength>,
     size: ButtonSize,
@@ -117,8 +123,11 @@ impl Button {
         Self {
             id: id.into(),
             variant: ButtonVariant::default(),
+            selected: false,
+            selected_style: None,
             label: label.into(),
             base: gpui::div(),
+            cursor_style: CursorStyle::PointingHand,
             width: None,
             height: None,
             size: ButtonSize::default(),
@@ -159,9 +168,28 @@ impl Disableable for Button {
     }
 }
 
+impl Toggleable for Button {
+    fn toggle_state(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+}
+
+impl SelectableButton for Button {
+    fn selected_style(mut self, style: ButtonVariant) -> Self {
+        self.selected_style = Some(style);
+        self
+    }
+}
+
 impl Clickable for Button {
     fn on_click(mut self, handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Self {
         self.on_click = Some(Box::new(handler));
+        self
+    }
+
+    fn cursor_style(mut self, cursor_style: CursorStyle) -> Self {
+        self.cursor_style = cursor_style;
         self
     }
 }
@@ -202,9 +230,13 @@ impl ButtonCommon for Button {
 impl RenderOnce for Button {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
-        let mut colors = self.variant.colors(cx);
+        let variant = self
+            .selected_style
+            .filter(|_| self.selected)
+            .unwrap_or(self.variant);
+        let mut colors = variant.colors(cx);
         if self.disabled {
-            colors = match self.variant {
+            colors = match variant {
                 ButtonVariant::Subtle => ButtonColor {
                     bg: theme_colors.ghost_element_disabled,
                     text: theme_colors.text_disabled,
@@ -236,6 +268,14 @@ impl RenderOnce for Button {
         };
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
+        let text_color = if self.disabled {
+            colors.text
+        } else if self.selected {
+            theme_colors.text_accent
+        } else {
+            colors.text
+        };
+
         self.base
             .id(self.id)
             .when_some(self.tooltip, |this, tooltip| {
@@ -256,11 +296,17 @@ impl RenderOnce for Button {
             })
             .rounded_md()
             .bg(colors.bg)
-            .text_color(colors.text)
+            .text_color(text_color)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
-            .when(self.disabled, |this| this.cursor_not_allowed())
+            .when(self.disabled, |this| {
+                if self.cursor_style == CursorStyle::PointingHand {
+                    this.cursor_not_allowed()
+                } else {
+                    this.cursor(self.cursor_style)
+                }
+            })
             .when(!self.disabled, |this| {
-                this.cursor_pointer()
+                this.cursor(self.cursor_style)
                     .hover(|style| style.bg(colors.hover_bg))
                     .active(|style| style.bg(colors.active_bg))
             })
@@ -284,7 +330,7 @@ impl RenderOnce for Button {
                 |this| {
                     this.children(
                         self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(colors.text.into())),
+                            .map(|icon| Icon::new(icon).size(icon_size).color(text_color.into())),
                     )
                 },
             )
@@ -294,7 +340,7 @@ impl RenderOnce for Button {
                 |this| {
                     this.children(
                         self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(colors.text.into())),
+                            .map(|icon| Icon::new(icon).size(icon_size).color(text_color.into())),
                     )
                 },
             )
