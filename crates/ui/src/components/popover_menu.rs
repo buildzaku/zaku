@@ -98,23 +98,21 @@ impl<M: ManagedView> PopoverMenuHandle<M> {
     }
 }
 
+type ChildBuilder<M> =
+    Box<dyn FnOnce(MenuState<M>, Option<MenuBuilder<M>>) -> AnyElement + 'static>;
+type MenuBuilder<M> = Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static>;
+type MenuState<M> = Rc<RefCell<Option<Entity<M>>>>;
+type OnOpenCallback = Rc<dyn Fn(&mut Window, &mut App)>;
+
 pub struct PopoverMenu<M: ManagedView> {
     id: ElementId,
-    child_builder: Option<
-        Box<
-            dyn FnOnce(
-                    Rc<RefCell<Option<Entity<M>>>>,
-                    Option<Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static>>,
-                ) -> AnyElement
-                + 'static,
-        >,
-    >,
-    menu_builder: Option<Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static>>,
+    child_builder: Option<ChildBuilder<M>>,
+    menu_builder: Option<MenuBuilder<M>>,
     anchor: Corner,
     attach: Option<Corner>,
     offset: Option<Point<Pixels>>,
     trigger_handle: Option<PopoverMenuHandle<M>>,
-    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    on_open: Option<OnOpenCallback>,
     full_width: bool,
 }
 
