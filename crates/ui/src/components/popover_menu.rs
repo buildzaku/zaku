@@ -26,9 +26,9 @@ impl<M> Default for PopoverMenuHandle<M> {
 }
 
 struct PopoverMenuHandleState<M> {
-    menu_builder: Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>>>,
-    menu: Rc<RefCell<Option<Entity<M>>>>,
-    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    menu_builder: MenuBuilder<M>,
+    menu: MenuState<M>,
+    on_open: Option<OnOpenCallback>,
 }
 
 impl<M: ManagedView> PopoverMenuHandle<M> {
@@ -83,7 +83,7 @@ impl<M: ManagedView> PopoverMenuHandle<M> {
         &self,
         window: &mut Window,
         cx: &mut App,
-        new_menu_builder: Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>>>,
+        new_menu_builder: MenuBuilder<M>,
     ) {
         let show_menu = if let Some(state) = self.0.borrow_mut().as_mut() {
             state.menu_builder = new_menu_builder;
@@ -201,7 +201,7 @@ impl<M: ManagedView> PopoverMenu<M> {
         self
     }
 
-    pub fn on_open(mut self, on_open: Rc<dyn Fn(&mut Window, &mut App)>) -> Self {
+    pub fn on_open(mut self, on_open: OnOpenCallback) -> Self {
         self.on_open = Some(on_open);
         self
     }
@@ -268,7 +268,7 @@ fn show_menu<M: ManagedView>(
 }
 
 pub struct PopoverMenuElementState<M> {
-    menu: Rc<RefCell<Option<Entity<M>>>>,
+    menu: MenuState<M>,
     child_bounds: Option<Bounds<Pixels>>,
 }
 
@@ -294,7 +294,7 @@ pub struct PopoverMenuFrameState<M: ManagedView> {
     child_layout_id: Option<LayoutId>,
     child_element: Option<AnyElement>,
     menu_element: Option<AnyElement>,
-    menu_handle: Rc<RefCell<Option<Entity<M>>>>,
+    menu_handle: MenuState<M>,
 }
 
 impl<M: ManagedView> Element for PopoverMenu<M> {
