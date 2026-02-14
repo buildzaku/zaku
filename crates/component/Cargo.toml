@@ -12,7 +12,6 @@ workspace = true
 [lib]
 name = "component"
 path = "src/component.rs"
-doctest = false
 
 [dependencies]
 gpui = { workspace = true }
