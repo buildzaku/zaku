@@ -1039,6 +1039,7 @@ dependencies = [
  "editor",
  "futures",
  "gpui",
+ "menu",
  "settings",
  "theme",
  "workspace",

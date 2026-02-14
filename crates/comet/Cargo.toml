@@ -15,6 +15,7 @@ assets = { workspace = true }
 editor = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
+menu = { workspace = true }
 settings = { workspace = true }
 theme = { workspace = true }
 workspace = { workspace = true }
