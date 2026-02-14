@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, AnyView, App, Bounds, Corner, DismissEvent, DispatchPhase, ElementId, Entity,
-    Focusable, GlobalElementId, HitboxBehavior, HitboxId, LayoutId, Length, ManagedView,
-    MouseDownEvent, Pixels, Point, Style, Window, prelude::*,
+    Focusable, GlobalElementId, HitboxBehavior, HitboxId, InspectorElementId, LayoutId, Length,
+    ManagedView, MouseDownEvent, Pixels, Point, Style, Window, prelude::*,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -311,10 +311,10 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
     fn request_layout(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
+    ) -> (LayoutId, Self::RequestLayoutState) {
         window.with_element_state(
             global_id.unwrap(),
             |element_state: Option<PopoverMenuElementState<M>>, window| {
@@ -388,7 +388,7 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
     fn prepaint(
         &mut self,
         global_id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&InspectorElementId>,
         _bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
@@ -417,8 +417,8 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
-        _: Bounds<gpui::Pixels>,
+        _inspector_id: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         child_hitbox: &mut Option<HitboxId>,
         window: &mut Window,
