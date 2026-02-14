@@ -8,6 +8,7 @@ members = [
   "crates/http_client",
   "crates/icons",
   "crates/input",
+  "crates/menu",
   "crates/reqwest_client",
   "crates/settings",
   "crates/settings_macros",
@@ -78,6 +79,7 @@ editor = { path = "crates/editor" }
 http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
+menu = { path = "crates/menu" }
 reqwest_client = { path = "crates/reqwest_client" }
 settings = { path = "crates/settings" }
 settings_macros = { path = "crates/settings_macros" }

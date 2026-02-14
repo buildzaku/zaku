@@ -1,0 +1,17 @@
+[package]
+name = "menu"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "menu"
+path = "src/menu.rs"
+
+[dependencies]
+gpui = { workspace = true }
