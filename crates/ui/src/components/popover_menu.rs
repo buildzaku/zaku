@@ -227,26 +227,27 @@ impl<M: ManagedView> PopoverMenu<M> {
 }
 
 fn show_menu<M: ManagedView>(
-    builder: &Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>>>,
-    menu: &Rc<RefCell<Option<Entity<M>>>>,
-    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    builder: &MenuBuilder<M>,
+    menu: &MenuState<M>,
+    on_open: Option<OnOpenCallback>,
     window: &mut Window,
     cx: &mut App,
 ) {
     let previous_focus_handle = window.focused(cx);
-    let Some(new_menu) = (builder)(window, cx) else {
-        return;
+    let new_menu = match builder(window, cx) {
+        Some(menu) => menu,
+        None => return,
     };
-    let menu2 = menu.clone();
 
+    let menu_clone = menu.clone();
     window
         .subscribe(&new_menu, cx, move |modal, _: &DismissEvent, window, cx| {
-            if modal.focus_handle(cx).contains_focused(window, cx)
-                && let Some(previous_focus_handle) = previous_focus_handle.as_ref()
-            {
-                window.focus(previous_focus_handle, cx);
+            if modal.focus_handle(cx).contains_focused(window, cx) {
+                if let Some(handle) = &previous_focus_handle {
+                    window.focus(handle, cx);
+                }
             }
-            *menu2.borrow_mut() = None;
+            *menu_clone.borrow_mut() = None;
             window.refresh();
         })
         .detach();
@@ -257,6 +258,7 @@ fn show_menu<M: ManagedView>(
             window.focus(&focus_handle, cx);
         });
     });
+
     *menu.borrow_mut() = Some(new_menu);
     window.refresh();
 
