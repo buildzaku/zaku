@@ -51,7 +51,6 @@ impl Render for PanelButtons {
                         .icon_size(IconSize::Small)
                         .shape(IconButtonShape::Square)
                         .icon_color(Color::Muted)
-                        .selected_icon_color(Color::Default)
                         .toggle_state(is_active_button)
                         .tooltip(Tooltip::for_action_title(tooltip, action.as_ref()))
                         .on_click(move |_, window, cx| {

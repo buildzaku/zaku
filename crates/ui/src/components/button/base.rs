@@ -36,6 +36,7 @@ pub struct ButtonLike {
     width: Option<DefiniteLength>,
     height: Option<DefiniteLength>,
     size: ButtonSize,
+    tab_index: Option<isize>,
     tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     children: SmallVec<[AnyElement; 2]>,
@@ -54,6 +55,7 @@ impl ButtonLike {
             width: None,
             height: None,
             size: ButtonSize::Default,
+            tab_index: None,
             tooltip: None,
             on_click: None,
             children: SmallVec::new(),
@@ -62,6 +64,11 @@ impl ButtonLike {
 
     pub fn height(mut self, height: DefiniteLength) -> Self {
         self.height = Some(height);
+        self
+    }
+
+    pub fn tab_index(mut self, tab_index: isize) -> Self {
+        self.tab_index = Some(tab_index);
         self
     }
 
@@ -183,6 +190,7 @@ impl RenderOnce for ButtonLike {
             .when_some(self.tooltip, |this, tooltip| {
                 this.tooltip(move |window, cx| tooltip(window, cx))
             })
+            .when_some(self.tab_index, |this, tab_index| this.tab_index(tab_index))
             .flex()
             .flex_row()
             .items_center()

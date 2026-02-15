@@ -12,6 +12,7 @@ pub enum IconName {
     ArrowUpRight,
     CaretDown,
     CaretRight,
+    CaretUpDown,
     Check,
     Command,
     Control,
