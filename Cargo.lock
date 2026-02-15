@@ -1039,6 +1039,7 @@ dependencies = [
  "editor",
  "futures",
  "gpui",
+ "menu",
  "settings",
  "theme",
  "workspace",
@@ -3343,6 +3344,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "menu"
+version = "0.0.0"
+dependencies = [
+ "gpui",
 ]
 
 [[package]]
@@ -6178,6 +6186,8 @@ dependencies = [
  "component",
  "gpui",
  "icons",
+ "menu",
+ "settings",
  "smallvec",
  "theme",
  "ui_macros",

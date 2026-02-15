@@ -1,4 +1,7 @@
-use gpui::{AnyView, App, ClickEvent, CursorStyle, DefiniteLength, ElementId, Window, prelude::*};
+use gpui::{
+    AnyView, App, ClickEvent, CursorStyle, DefiniteLength, ElementId, SharedString, Window,
+    prelude::*,
+};
 
 use component::{Component, ComponentScope};
 use icons::IconName;
@@ -6,7 +9,7 @@ use ui_macros::RegisterComponent;
 
 use crate::{
     ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color, Disableable, FixedWidth,
-    IconSize, SelectableButton, Toggleable,
+    IconSize, SelectableButton, Toggleable, VisibleOnHover,
 };
 
 use super::styled_icon::StyledIcon;
@@ -135,6 +138,13 @@ impl ButtonCommon for IconButton {
 
     fn size(mut self, size: ButtonSize) -> Self {
         self.base = self.base.size(size);
+        self
+    }
+}
+
+impl VisibleOnHover for IconButton {
+    fn visible_on_hover(mut self, group_name: impl Into<SharedString>) -> Self {
+        self.base = self.base.visible_on_hover(group_name);
         self
     }
 }

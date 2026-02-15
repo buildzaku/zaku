@@ -3,6 +3,7 @@ mod icon;
 pub mod prelude;
 mod styles;
 pub mod traits;
+pub mod utils;
 
 pub use icons::IconName;
 

@@ -21,6 +21,7 @@ fn main() {
             handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
             theme::init(LoadThemes::All(Box::new(assets::Assets)), cx);
             register_embedded_fonts(cx);
+            menu::init(cx);
             editor::init(cx);
             workspace::init(cx);
 
