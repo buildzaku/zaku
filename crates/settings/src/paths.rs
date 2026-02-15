@@ -6,26 +6,26 @@ fn home_dir() -> PathBuf {
     dirs::home_dir().expect("failed to determine home directory")
 }
 
-/// Returns the path to the configuration directory used by Comet.
+/// Returns the path to the configuration directory used by Zaku.
 ///
-/// - macOS: `~/.config/comet`
-/// - Linux/FreeBSD: `$XDG_CONFIG_HOME/comet` (or `~/.config/comet`), with Flatpak override.
-/// - Windows: `%APPDATA%\\Comet`
+/// - macOS: `~/.config/zaku`
+/// - Linux/FreeBSD: `$XDG_CONFIG_HOME/zaku` (or `~/.config/zaku`), with Flatpak override.
+/// - Windows: `%APPDATA%\\Zaku`
 pub fn config_dir() -> &'static PathBuf {
     CONFIG_DIR.get_or_init(|| {
         if cfg!(target_os = "windows") {
             dirs::config_dir()
                 .expect("failed to determine RoamingAppData directory")
-                .join("Comet")
+                .join("Zaku")
         } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
             if let Ok(flatpak_xdg_config) = std::env::var("FLATPAK_XDG_CONFIG_HOME") {
                 PathBuf::from(flatpak_xdg_config)
             } else {
                 dirs::config_dir().expect("failed to determine XDG_CONFIG_HOME directory")
             }
-            .join("comet")
+            .join("zaku")
         } else {
-            home_dir().join(".config").join("comet")
+            home_dir().join(".config").join("zaku")
         }
     })
 }

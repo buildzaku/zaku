@@ -26,8 +26,8 @@ fn test_handle_input_replaces_selection(cx: &mut TestAppContext) {
     let mut editor_test_context = EditorTestContext::new(cx);
 
     editor_test_context.set_state("Hello, «worldˇ»!");
-    editor_test_context.dispatch_action(HandleInput("from Comet".to_string()));
-    editor_test_context.assert_state("Hello, from Cometˇ!");
+    editor_test_context.dispatch_action(HandleInput("from Zaku".to_string()));
+    editor_test_context.assert_state("Hello, from Zakuˇ!");
 
     editor_test_context.set_state("Lorem ˇipsum dolor sit amet");
     editor_test_context.dispatch_action(HandleInput("ips\num\r".to_string()));
@@ -99,14 +99,14 @@ fn test_undo_redo_restores_selection(cx: &mut TestAppContext) {
     let mut editor_test_context = EditorTestContext::new(cx);
 
     editor_test_context.set_state("Hello, «worldˇ»!");
-    editor_test_context.dispatch_action(HandleInput("from Comet".to_string()));
-    editor_test_context.assert_state("Hello, from Cometˇ!");
+    editor_test_context.dispatch_action(HandleInput("from Zaku".to_string()));
+    editor_test_context.assert_state("Hello, from Zakuˇ!");
 
     editor_test_context.dispatch_action(Undo);
     editor_test_context.assert_state("Hello, «worldˇ»!");
 
     editor_test_context.dispatch_action(Redo);
-    editor_test_context.assert_state("Hello, from Cometˇ!");
+    editor_test_context.assert_state("Hello, from Zakuˇ!");
 }
 
 #[gpui::test]

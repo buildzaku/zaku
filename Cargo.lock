@@ -1031,21 +1031,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "comet"
-version = "0.0.0"
-dependencies = [
- "assets",
- "core-text",
- "editor",
- "futures",
- "gpui",
- "menu",
- "settings",
- "theme",
- "workspace",
-]
-
-[[package]]
 name = "command-fds"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7478,6 +7463,21 @@ dependencies = [
  "quote",
  "syn 2.0.114",
  "synstructure",
+]
+
+[[package]]
+name = "zaku"
+version = "0.0.0"
+dependencies = [
+ "assets",
+ "core-text",
+ "editor",
+ "futures",
+ "gpui",
+ "menu",
+ "settings",
+ "theme",
+ "workspace",
 ]
 
 [[package]]

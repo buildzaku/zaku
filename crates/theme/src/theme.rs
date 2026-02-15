@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 pub use settings::*;
 
-pub(crate) const DEFAULT_LIGHT_THEME: &str = "Comet Light";
-pub(crate) const DEFAULT_DARK_THEME: &str = "Comet Dark";
+pub(crate) const DEFAULT_LIGHT_THEME: &str = "Zaku Light";
+pub(crate) const DEFAULT_DARK_THEME: &str = "Zaku Dark";
 
 #[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
 pub enum Appearance {
@@ -609,7 +609,7 @@ impl ThemeRegistry {
             assets,
         };
 
-        registry.insert_theme_family(fallback::comet_default_themes());
+        registry.insert_theme_family(fallback::zaku_default_themes());
 
         registry
     }

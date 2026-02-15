@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
   "crates/assets",
-  "crates/comet",
   "crates/editor",
   "crates/http_client",
   "crates/icons",
@@ -16,6 +15,7 @@ members = [
   "crates/ui_macros",
   "crates/util",
   "crates/workspace",
+  "crates/zaku",
 ]
 
 [workspace.package]

@@ -6,10 +6,10 @@ use crate::{
     ThemeFamily, ThemeStyles,
 };
 
-pub fn comet_default_themes() -> ThemeFamily {
+pub fn zaku_default_themes() -> ThemeFamily {
     ThemeFamily {
         id: Uuid::new_v4().to_string(),
-        name: "Comet (Fallback)".into(),
+        name: "Zaku (Fallback)".into(),
         themes: vec![fallback_dark_theme(), fallback_light_theme()],
     }
 }

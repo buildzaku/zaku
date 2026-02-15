@@ -1,6 +1,6 @@
 [package]
-name = "comet"
-description = "Fast, open-source API client built for focus."
+name = "zaku"
+description = "Fast, open-source API client with fangs."
 version.workspace = true
 license.workspace = true
 authors.workspace = true

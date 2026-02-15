@@ -1,3 +1,3 @@
-# Comet
+# Zaku
 
-Fast, open-source API client built for focus.
+Fast, open-source API client with fangs.

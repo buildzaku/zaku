@@ -7,7 +7,7 @@ use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::Workspace;
 
-actions!(comet, [Quit]);
+actions!(zaku, [Quit]);
 
 fn main() {
     Application::new()
