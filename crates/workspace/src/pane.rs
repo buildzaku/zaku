@@ -234,6 +234,7 @@ impl Render for Pane {
                         )
                         .style(DropdownStyle::Outlined)
                         .attach(gpui::Corner::BottomLeft)
+                        .offset(gpui::point(gpui::px(0.), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )
                     .child(gpui::div().flex_1().child(input))
