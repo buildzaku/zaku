@@ -237,8 +237,8 @@ impl RenderOnce for ListItem {
             .when_some(self.on_hover, |this, on_hover| this.on_hover(on_hover))
             .child(
                 h_flex()
-                    .id("inner_list_item")
-                    .group("list_item")
+                    .id("inner-list-item")
+                    .group("list-item")
                     .w_full()
                     .relative()
                     .gap_1()
@@ -325,7 +325,7 @@ impl RenderOnce for ListItem {
                                 .overflow_hidden()
                                 .when(self.end_hover_slot.is_some(), |this| {
                                     this.visible()
-                                        .group_hover("list_item", |this| this.invisible())
+                                        .group_hover("list-item", |this| this.invisible())
                                 })
                                 .child(end_slot),
                         )
@@ -337,7 +337,7 @@ impl RenderOnce for ListItem {
                                 .absolute()
                                 .right(DynamicSpacing::Base06.rems(cx))
                                 .top_0()
-                                .visible_on_hover("list_item")
+                                .visible_on_hover("list-item")
                                 .child(end_hover_slot),
                         )
                     }),

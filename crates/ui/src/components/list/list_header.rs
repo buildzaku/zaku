@@ -106,7 +106,7 @@ impl RenderOnce for ListHeader {
                             }))
                             .child(
                                 gpui::div()
-                                    .id("label_container")
+                                    .id("label-container")
                                     .flex()
                                     .gap(DynamicSpacing::Base04.rems(cx))
                                     .items_center()
