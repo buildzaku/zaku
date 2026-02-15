@@ -1003,7 +1003,7 @@ impl Render for ContextMenu {
                         this.w(width).overflow_x_hidden()
                     })
                     .when(self.fixed_width.is_none(), |this| {
-                        this.min_w(gpui::px(200.)).flex_1()
+                        this.min_w(gpui::px(100.)).flex_1()
                     })
                     .overflow_y_scroll()
                     .track_focus(&self.focus_handle(cx))
