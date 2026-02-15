@@ -3,7 +3,6 @@ resolver = "3"
 members = [
   "crates/assets",
   "crates/comet",
-  "crates/component",
   "crates/editor",
   "crates/http_client",
   "crates/icons",
@@ -43,7 +42,6 @@ gpui = { git = "https://github.com/zed-industries/zed", package = "gpui" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
-inventory = { version = "0.3.21" }
 notify = { version = "8.2" }
 palette = { version = "0.7.5", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12.1" }
@@ -74,7 +72,6 @@ uuid = { version = "1.1.2", features = ["v4"] }
 # Workspace member crates
 ##################################################
 assets = { path = "crates/assets" }
-component = { path = "crates/component" }
 editor = { path = "crates/editor" }
 http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }

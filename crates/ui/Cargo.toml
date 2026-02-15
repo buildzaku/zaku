@@ -14,7 +14,6 @@ name = "ui"
 path = "src/ui.rs"
 
 [dependencies]
-component = { workspace = true }
 gpui = { workspace = true }
 icons = { workspace = true }
 menu = { workspace = true }

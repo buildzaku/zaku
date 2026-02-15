@@ -1,11 +1,8 @@
 use gpui::{App, RenderOnce, SharedString, StyleRefinement, Window, prelude::*};
 
-use component::{Component, ComponentScope};
-use ui_macros::RegisterComponent;
-
 use crate::{Color, LabelCommon, LabelLike, LabelSize, LineHeightStyle};
 
-#[derive(IntoElement, RegisterComponent)]
+#[derive(IntoElement)]
 pub struct Label {
     base: LabelLike,
     label: SharedString,
@@ -105,11 +102,5 @@ impl LabelCommon for Label {
 impl RenderOnce for Label {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         self.base.child(self.label)
-    }
-}
-
-impl Component for Label {
-    fn scope() -> ComponentScope {
-        ComponentScope::Typography
     }
 }
