@@ -80,7 +80,7 @@ impl RenderOnce for ListHeader {
             .id(self.label.clone())
             .w_full()
             .relative()
-            .group("list_header")
+            .group("list-header")
             .child(
                 gpui::div()
                     .map(|this| match ui_density {
@@ -125,7 +125,7 @@ impl RenderOnce for ListHeader {
                             gpui::div()
                                 .absolute()
                                 .right_0()
-                                .visible_on_hover("list_header")
+                                .visible_on_hover("list-header")
                                 .child(end_hover_slot),
                         )
                     }),
