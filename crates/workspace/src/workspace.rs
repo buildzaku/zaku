@@ -4,7 +4,7 @@ pub mod panel;
 pub mod status_bar;
 
 use gpui::{
-    App, Axis, Bounds, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, KeyBinding,
+    Action, App, Axis, Bounds, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, KeyBinding,
     KeyContext, MouseButton, MouseDownEvent, Pixels, Point, Window, actions, prelude::*,
 };
 
@@ -126,18 +126,23 @@ impl Workspace {
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
         let dock = self.dock_at_position(position).clone();
         let was_visible = dock.read(cx).is_open();
+        if was_visible && !window.bindings_for_action(&menu::Cancel).is_empty() {
+            // Move focus to the pane first so dismissing a menu does not focus a hidden dock element.
+            let focus_handle = self.pane.read(cx).focus_handle(cx);
+            window.focus(&focus_handle, cx);
+        }
+        window.dispatch_action(menu::Cancel.boxed_clone(), cx);
+
         let mut focus_center = false;
 
         dock.update(cx, |dock, cx| {
+            if was_visible && dock.focus_handle(cx).contains_focused(window, cx) {
+                focus_center = true;
+            }
             dock.set_open(!was_visible, cx);
 
             if let Some(active_panel) = dock.active_panel() {
-                if was_visible {
-                    let focus_handle = active_panel.panel_focus_handle(cx);
-                    if focus_handle.contains_focused(window, cx) {
-                        focus_center = true;
-                    }
-                } else {
+                if !was_visible {
                     let focus_handle = active_panel.panel_focus_handle(cx);
                     window.focus(&focus_handle, cx);
                 }

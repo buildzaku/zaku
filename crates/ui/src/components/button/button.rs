@@ -113,9 +113,12 @@ pub struct Button {
     disabled: bool,
     icon: Option<IconName>,
     icon_position: Option<IconPosition>,
+    icon_size: Option<IconSize>,
+    icon_color: Option<Color>,
     font_weight: Option<FontWeight>,
     tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
+    tab_index: Option<isize>,
 }
 
 impl Button {
@@ -136,9 +139,12 @@ impl Button {
             disabled: false,
             icon: None,
             icon_position: None,
+            icon_size: None,
+            icon_color: None,
             font_weight: None,
             tooltip: None,
             on_click: None,
+            tab_index: None,
         }
     }
 
@@ -167,8 +173,23 @@ impl Button {
         self
     }
 
+    pub fn icon_size(mut self, icon_size: IconSize) -> Self {
+        self.icon_size = Some(icon_size);
+        self
+    }
+
+    pub fn icon_color(mut self, icon_color: Color) -> Self {
+        self.icon_color = Some(icon_color);
+        self
+    }
+
     pub fn font_weight(mut self, font_weight: FontWeight) -> Self {
         self.font_weight = Some(font_weight);
+        self
+    }
+
+    pub fn tab_index(mut self, tab_index: isize) -> Self {
+        self.tab_index = Some(tab_index);
         self
     }
 }
@@ -271,13 +292,13 @@ impl RenderOnce for Button {
                 },
             };
         }
-        let icon_size = match self.size {
+        let icon_size = self.icon_size.unwrap_or(match self.size {
             ButtonSize::Large => IconSize::Medium,
             ButtonSize::Medium => IconSize::Small,
             ButtonSize::Default => IconSize::Small,
             ButtonSize::Compact => IconSize::XSmall,
             ButtonSize::None => IconSize::XSmall,
-        };
+        });
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
         let text_color = if self.disabled {
@@ -298,6 +319,12 @@ impl RenderOnce for Button {
                 .unwrap_or(colors.text)
         };
 
+        let icon_color = if self.disabled || self.selected {
+            text_color.into()
+        } else {
+            self.icon_color.unwrap_or_else(|| text_color.into())
+        };
+
         let label_size = self.label_size.unwrap_or_default();
 
         self.base
@@ -305,6 +332,7 @@ impl RenderOnce for Button {
             .when_some(self.tooltip, |this, tooltip| {
                 this.tooltip(move |window, cx| tooltip(window, cx))
             })
+            .when_some(self.tab_index, |this, tab_index| this.tab_index(tab_index))
             .flex()
             .justify_center()
             .items_center()
@@ -360,7 +388,7 @@ impl RenderOnce for Button {
                 |this| {
                     this.children(
                         self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(text_color.into())),
+                            .map(|icon| Icon::new(icon).size(icon_size).color(icon_color)),
                     )
                 },
             )
@@ -370,7 +398,7 @@ impl RenderOnce for Button {
                 |this| {
                     this.children(
                         self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(text_color.into())),
+                            .map(|icon| Icon::new(icon).size(icon_size).color(icon_color)),
                     )
                 },
             )

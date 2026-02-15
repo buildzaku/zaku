@@ -1,6 +1,7 @@
 mod button;
 mod context_menu;
 mod disclosure;
+mod dropdown_menu;
 mod keybinding;
 mod label;
 mod list;
@@ -11,6 +12,7 @@ mod tooltip;
 pub use button::*;
 pub use context_menu::*;
 pub use disclosure::*;
+pub use dropdown_menu::*;
 pub use keybinding::*;
 pub use label::*;
 pub use list::*;
