@@ -2,17 +2,21 @@ use futures::io::AsyncReadExt;
 use gpui::{App, Context, Entity, EntityId, FocusHandle, Focusable, Window, prelude::*};
 use std::sync::Arc;
 
-use http_client::{AsyncBody, HttpClient};
+use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
-use ui::{Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, FixedWidth, Label};
+use ui::{
+    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, ContextMenu, DropdownMenu,
+    DropdownStyle, FixedWidth, IconPosition, Label,
+};
 
 use crate::{SendRequest, dock::Dock, panel::ResponsePanel};
 
 pub struct Pane {
     focus_handle: FocusHandle,
     input: Option<Entity<InputField>>,
+    request_method: Method,
     http_client: Arc<dyn HttpClient>,
     bottom_dock: Option<Entity<Dock>>,
     response_panel_id: Option<EntityId>,
@@ -24,6 +28,7 @@ impl Pane {
         Self {
             focus_handle: cx.focus_handle(),
             input: None,
+            request_method: Method::GET,
             http_client: Arc::new(ReqwestClient::new()),
             bottom_dock: None,
             response_panel_id: None,
@@ -43,7 +48,13 @@ impl Pane {
         cx.notify();
     }
 
-    fn send_request(&mut self, request_url: String, window: &mut Window, cx: &mut Context<Self>) {
+    fn send_request(
+        &mut self,
+        request_method: Method,
+        request_url: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let request_url = request_url.trim().to_string();
         if request_url.is_empty() {
             return;
@@ -64,6 +75,28 @@ impl Pane {
             });
         }
 
+        let request = match Builder::new()
+            .method(request_method)
+            .uri(request_url.as_str())
+            .follow_redirects(RedirectPolicy::FollowAll)
+            .body(AsyncBody::empty())
+        {
+            Ok(request) => request,
+            Err(error) => {
+                if let Some(response_panel) = self.response_panel.as_ref() {
+                    response_panel.update(cx, |panel, cx| {
+                        panel.set_response(
+                            format!("Error: {error}").into(),
+                            "Status: Error".into(),
+                            cx,
+                        );
+                    });
+                }
+                cx.notify();
+                return;
+            }
+        };
+
         if let Some(response_panel) = self.response_panel.as_ref() {
             response_panel.update(cx, |panel, cx| {
                 panel.set_response("...".into(), "Status: Sending...".into(), cx);
@@ -76,9 +109,7 @@ impl Pane {
 
         window
             .spawn(cx, async move |cx| {
-                let response = http_client
-                    .get(&request_url, AsyncBody::empty(), true)
-                    .await;
+                let response = http_client.send(request).await;
                 let (response_text, response_status) = match response {
                     Ok(mut response) => {
                         let status = response.status();
@@ -127,13 +158,51 @@ impl Render for Pane {
             self.input = Some(input);
         }
 
-        let theme_colors = cx.theme().colors();
         let input = self
             .input
             .clone()
             .expect("InputField should be initialized");
         let input_handle = input.clone();
         let input_handle_for_action = input.clone();
+        let request_method_menu = {
+            let available_request_methods = [
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::HEAD,
+                Method::OPTIONS,
+            ];
+            let selected_request_method = self.request_method.clone();
+            let pane = cx.weak_entity();
+
+            ContextMenu::build(window, cx, move |menu, _, _| {
+                let mut menu = menu;
+                for request_method in available_request_methods {
+                    let toggled = request_method == selected_request_method;
+                    let pane = pane.clone();
+                    let request_method_for_handler = request_method.clone();
+                    menu = menu.toggleable_entry(
+                        request_method.as_str().to_owned(),
+                        toggled,
+                        IconPosition::End,
+                        None,
+                        move |_, cx| {
+                            if let Err(error) = pane.update(cx, |pane, cx| {
+                                pane.request_method = request_method_for_handler.clone();
+                                cx.notify();
+                            }) {
+                                eprintln!("failed to update request method: {error:?}");
+                            }
+                        },
+                    );
+                }
+                menu
+            })
+        };
+
+        let theme_colors = cx.theme().colors();
 
         gpui::div()
             .track_focus(&self.focus_handle)
@@ -153,9 +222,20 @@ impl Render for Pane {
                     .gap_2()
                     .key_context("RequestUrl")
                     .on_action(cx.listener(move |pane, _: &SendRequest, window, cx| {
+                        let request_method = pane.request_method.clone();
                         let request_url = input_handle_for_action.read(cx).text(cx);
-                        pane.send_request(request_url, window, cx);
+                        pane.send_request(request_method, request_url, window, cx);
                     }))
+                    .child(
+                        DropdownMenu::new(
+                            "request-method",
+                            self.request_method.as_str().to_owned(),
+                            request_method_menu,
+                        )
+                        .style(DropdownStyle::Outlined)
+                        .attach(gpui::Corner::BottomLeft)
+                        .trigger_size(ButtonSize::Large),
+                    )
                     .child(gpui::div().flex_1().child(input))
                     .child(
                         Button::new("request-send", "Send")
@@ -164,8 +244,9 @@ impl Render for Pane {
                             .width(ui::rems_from_px(60.))
                             .font_weight(gpui::FontWeight::MEDIUM)
                             .on_click(cx.listener(move |pane, _, window, cx| {
+                                let request_method = pane.request_method.clone();
                                 let request_url = input_handle.read(cx).text(cx);
-                                pane.send_request(request_url, window, cx);
+                                pane.send_request(request_method, request_url, window, cx);
                             })),
                     ),
             )
