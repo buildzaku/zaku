@@ -3332,6 +3332,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "menu"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+]
+
+[[package]]
 name = "metal"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6164,6 +6171,8 @@ dependencies = [
  "component",
  "gpui",
  "icons",
+ "menu",
+ "settings",
  "smallvec",
  "theme",
  "ui_macros",
@@ -7477,6 +7486,7 @@ dependencies = [
  "editor",
  "futures",
  "gpui",
+ "menu",
  "settings",
  "theme",
  "workspace",

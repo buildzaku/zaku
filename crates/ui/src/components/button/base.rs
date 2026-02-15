@@ -1,13 +1,13 @@
 use gpui::{
     AnyElement, AnyView, App, ClickEvent, CursorStyle, DefiniteLength, Div, ElementId, MouseButton,
-    Window, prelude::*,
+    SharedString, Window, prelude::*,
 };
 use smallvec::SmallVec;
 use theme::ActiveTheme;
 
 use crate::{
     ButtonColor, ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth,
-    Toggleable,
+    Toggleable, VisibleOnHover,
 };
 
 pub trait SelectableButton: Toggleable {
@@ -229,5 +229,12 @@ impl RenderOnce for ButtonLike {
                 },
             )
             .children(self.children)
+    }
+}
+
+impl VisibleOnHover for ButtonLike {
+    fn visible_on_hover(mut self, group_name: impl Into<SharedString>) -> Self {
+        self.base = self.base.visible_on_hover(group_name);
+        self
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "component"
+name = "menu"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,11 +10,8 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "component"
-path = "src/component.rs"
+name = "menu"
+path = "src/menu.rs"
 
 [dependencies]
 gpui = { workspace = true }
-inventory = { workspace = true }
-parking_lot = { workspace = true }
-strum = { workspace = true }

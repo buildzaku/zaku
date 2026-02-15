@@ -54,13 +54,9 @@ impl IconSize {
     }
 }
 
-enum IconSource {
-    Embedded(SharedString),
-}
-
 #[derive(IntoElement, RegisterComponent)]
 pub struct Icon {
-    source: IconSource,
+    path: SharedString,
     color: Color,
     size: Rems,
     transformation: Transformation,
@@ -69,7 +65,7 @@ pub struct Icon {
 impl Icon {
     pub fn new(icon: IconName) -> Self {
         Self {
-            source: IconSource::Embedded(icon.path().into()),
+            path: icon.path().into(),
             color: Color::default(),
             size: IconSize::default().rems(),
             transformation: Transformation::default(),
@@ -90,15 +86,13 @@ impl Icon {
 impl RenderOnce for Icon {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let color = self.color.color(cx);
-        match self.source {
-            IconSource::Embedded(path) => gpui::svg()
-                .with_transformation(self.transformation)
-                .size(self.size)
-                .flex_none()
-                .path(path)
-                .text_color(color)
-                .into_any_element(),
-        }
+        gpui::svg()
+            .with_transformation(self.transformation)
+            .size(self.size)
+            .flex_none()
+            .path(self.path)
+            .text_color(color)
+            .into_any_element()
     }
 }
 
