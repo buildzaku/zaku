@@ -9,8 +9,8 @@ use theme::ActiveTheme;
 use ui_macros::RegisterComponent;
 
 use crate::{
-    ButtonCommon, Clickable, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize,
-    SelectableButton, Toggleable,
+    ButtonCommon, Clickable, Color, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize,
+    LabelSize, SelectableButton, StyledTypography, Toggleable,
 };
 
 pub struct ButtonColor {
@@ -105,6 +105,8 @@ pub struct Button {
     selected: bool,
     selected_style: Option<ButtonVariant>,
     label: SharedString,
+    label_color: Option<Color>,
+    label_size: Option<LabelSize>,
     base: Div,
     cursor_style: CursorStyle,
     width: Option<DefiniteLength>,
@@ -126,6 +128,8 @@ impl Button {
             selected: false,
             selected_style: None,
             label: label.into(),
+            label_color: None,
+            label_size: None,
             base: gpui::div(),
             cursor_style: CursorStyle::PointingHand,
             width: None,
@@ -138,6 +142,16 @@ impl Button {
             tooltip: None,
             on_click: None,
         }
+    }
+
+    pub fn color(mut self, label_color: impl Into<Option<Color>>) -> Self {
+        self.label_color = label_color.into();
+        self
+    }
+
+    pub fn label_size(mut self, label_size: impl Into<Option<LabelSize>>) -> Self {
+        self.label_size = label_size.into();
+        self
     }
 
     pub fn height(mut self, height: DefiniteLength) -> Self {
@@ -276,6 +290,18 @@ impl RenderOnce for Button {
             colors.text
         };
 
+        let label_text_color = if self.disabled {
+            colors.text
+        } else if self.selected {
+            theme_colors.text_accent
+        } else {
+            self.label_color
+                .map(|color| color.color(cx))
+                .unwrap_or(colors.text)
+        };
+
+        let label_size = self.label_size.unwrap_or_default();
+
         self.base
             .id(self.id)
             .when_some(self.tooltip, |this, tooltip| {
@@ -287,6 +313,12 @@ impl RenderOnce for Button {
             .gap(DynamicSpacing::Base04.rems(cx))
             .h(self.height.unwrap_or(self.size.rems().into()))
             .when_some(self.width, |this, width| this.w(width).justify_center())
+            .map(|this| match label_size {
+                LabelSize::Large => this.text_ui_lg(cx),
+                LabelSize::Default => this.text_ui(cx),
+                LabelSize::Small => this.text_ui_sm(cx),
+                LabelSize::XSmall => this.text_ui_xs(cx),
+            })
             .map(|this| match self.size {
                 ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base08.rems(cx)),
                 ButtonSize::Default | ButtonSize::Compact => {
@@ -296,7 +328,7 @@ impl RenderOnce for Button {
             })
             .rounded_md()
             .bg(colors.bg)
-            .text_color(text_color)
+            .text_color(label_text_color)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
             .when(self.disabled, |this| {
                 if self.cursor_style == CursorStyle::PointingHand {

@@ -6186,6 +6186,8 @@ dependencies = [
  "component",
  "gpui",
  "icons",
+ "menu",
+ "settings",
  "smallvec",
  "theme",
  "ui_macros",

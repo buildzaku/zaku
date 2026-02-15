@@ -1,3 +1,4 @@
+mod context_menu_demo;
 pub mod dock;
 pub mod pane;
 pub mod panel;
@@ -13,6 +14,7 @@ use theme::{GlobalTheme, SystemAppearance};
 use ui::StyledTypography;
 
 use crate::{
+    context_menu_demo::ContextMenuDemo,
     dock::Dock,
     pane::Pane,
     panel::{ProjectPanel, ResponsePanel, buttons::PanelButtons, project_panel, response_panel},
@@ -184,6 +186,7 @@ impl Workspace {
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
         let right_dock_buttons = cx.new(|cx| PanelButtons::new(right_dock.clone(), cx));
+        let context_menu_demo = cx.new(|cx| ContextMenuDemo::new(pane.clone(), cx));
 
         pane.update(cx, |pane, cx| {
             pane.set_response_targets(bottom_dock.clone(), response_panel.clone(), cx);
@@ -192,6 +195,7 @@ impl Workspace {
         let status_bar = cx.new(|cx| StatusBar::new(pane.clone(), cx));
         status_bar.update(cx, |status_bar, cx| {
             status_bar.add_left_item(left_dock_buttons, cx);
+            status_bar.add_right_item(context_menu_demo, cx);
             status_bar.add_right_item(bottom_dock_buttons, cx);
             status_bar.add_right_item(right_dock_buttons, cx);
         });
