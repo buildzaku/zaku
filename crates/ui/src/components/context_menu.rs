@@ -177,9 +177,9 @@ impl ContextMenu {
     pub fn build(
         window: &mut Window,
         cx: &mut App,
-        f: impl FnOnce(Self, &mut Window, &mut Context<Self>) -> Self,
+        builder: impl FnOnce(Self, &mut Window, &mut Context<Self>) -> Self,
     ) -> Entity<Self> {
-        cx.new(|cx| Self::new(window, cx, f))
+        cx.new(|cx| Self::new(window, cx, builder))
     }
 
     /// Builds a [`ContextMenu`] that will stay open instead of closing after each confirmation.
