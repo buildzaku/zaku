@@ -1,14 +1,12 @@
 use gpui::{IntoElement, RenderOnce};
 
-use component::{Component, ComponentScope};
 use icons::IconName;
-use ui_macros::RegisterComponent;
 
 use crate::{Color, Icon, IconSize};
 
 use crate::Disableable;
 
-#[derive(IntoElement, RegisterComponent)]
+#[derive(IntoElement)]
 pub(super) struct StyledIcon {
     icon: IconName,
     size: IconSize,
@@ -81,11 +79,5 @@ impl RenderOnce for StyledIcon {
         };
 
         Icon::new(icon).size(self.size).color(icon_color)
-    }
-}
-
-impl Component for StyledIcon {
-    fn scope() -> ComponentScope {
-        ComponentScope::Input
     }
 }

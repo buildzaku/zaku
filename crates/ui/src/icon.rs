@@ -1,8 +1,6 @@
 use gpui::{App, IntoElement, Pixels, Rems, SharedString, Transformation, Window, prelude::*};
 
-use component::{Component, ComponentScope};
 use icons::IconName;
-use ui_macros::RegisterComponent;
 
 use crate::{Color, DynamicSpacing};
 
@@ -54,7 +52,7 @@ impl IconSize {
     }
 }
 
-#[derive(IntoElement, RegisterComponent)]
+#[derive(IntoElement)]
 pub struct Icon {
     path: SharedString,
     color: Color,
@@ -93,11 +91,5 @@ impl RenderOnce for Icon {
             .path(self.path)
             .text_color(color)
             .into_any_element()
-    }
-}
-
-impl Component for Icon {
-    fn scope() -> ComponentScope {
-        ComponentScope::Images
     }
 }

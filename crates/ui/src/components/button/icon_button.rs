@@ -3,9 +3,7 @@ use gpui::{
     prelude::*,
 };
 
-use component::{Component, ComponentScope};
 use icons::IconName;
-use ui_macros::RegisterComponent;
 
 use crate::{
     ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color, Disableable, FixedWidth,
@@ -21,7 +19,7 @@ pub enum IconButtonShape {
     Wide,
 }
 
-#[derive(IntoElement, RegisterComponent)]
+#[derive(IntoElement)]
 pub struct IconButton {
     base: ButtonLike,
     shape: IconButtonShape,
@@ -171,11 +169,5 @@ impl RenderOnce for IconButton {
                     .disabled(is_disabled)
                     .toggle_state(is_selected),
             )
-    }
-}
-
-impl Component for IconButton {
-    fn scope() -> ComponentScope {
-        ComponentScope::Input
     }
 }

@@ -9,7 +9,6 @@ use theme::ThemeSettings;
 use crate::prelude::*;
 use crate::{Color, KeyBinding, Label, LabelCommon, LabelSize, StyledExt};
 
-#[derive(RegisterComponent)]
 pub struct Tooltip {
     title: Title,
     meta: Option<SharedString>,
@@ -277,11 +276,5 @@ impl Render for LinkPreview {
                     .color(Color::Muted),
             )
         })
-    }
-}
-
-impl Component for Tooltip {
-    fn scope() -> ComponentScope {
-        ComponentScope::DataDisplay
     }
 }

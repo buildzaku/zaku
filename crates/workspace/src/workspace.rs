@@ -36,7 +36,6 @@ const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.);
 
 pub fn init(cx: &mut App) {
-    component::init();
     cx.bind_keys([
         KeyBinding::new("enter", SendRequest, Some("RequestUrl > Editor")),
         #[cfg(target_os = "macos")]

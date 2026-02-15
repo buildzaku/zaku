@@ -40,7 +40,7 @@ impl Clone for Source {
     }
 }
 
-#[derive(Clone, Debug, IntoElement, RegisterComponent)]
+#[derive(Clone, Debug, IntoElement)]
 pub struct KeyBinding {
     source: Source,
     size: Option<AbsoluteLength>,
@@ -456,12 +456,6 @@ fn keystroke_text(modifiers: &Modifiers, key: &str, platform_style: PlatformStyl
     text.push_str(&util::capitalize(key));
 
     text
-}
-
-impl Component for KeyBinding {
-    fn scope() -> ComponentScope {
-        ComponentScope::Typography
-    }
 }
 
 #[cfg(test)]
