@@ -7,6 +7,7 @@ members = [
   "crates/icons",
   "crates/input",
   "crates/menu",
+  "crates/multi_buffer",
   "crates/reqwest_client",
   "crates/settings",
   "crates/settings_macros",
@@ -77,6 +78,7 @@ http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
 menu = { path = "crates/menu" }
+multi_buffer = { path = "crates/multi_buffer" }
 reqwest_client = { path = "crates/reqwest_client" }
 settings = { path = "crates/settings" }
 settings_macros = { path = "crates/settings_macros" }
