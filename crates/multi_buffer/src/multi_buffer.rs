@@ -1,6 +1,9 @@
 mod anchor;
 mod transaction;
 
+#[cfg(test)]
+mod tests;
+
 use gpui::{App, Context, Entity};
 use std::{
     cell::{Ref, RefCell},
