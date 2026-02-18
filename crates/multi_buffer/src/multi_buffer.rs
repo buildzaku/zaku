@@ -546,14 +546,6 @@ impl ExcerptId {
         Self(u32::MAX)
     }
 
-    pub fn to_proto(self) -> u64 {
-        self.0 as _
-    }
-
-    pub fn from_proto(proto: u64) -> Self {
-        Self(proto as _)
-    }
-
     pub fn cmp(&self, other: &Self, _: &MultiBufferSnapshot) -> cmp::Ordering {
         self.0.cmp(&other.0)
     }
