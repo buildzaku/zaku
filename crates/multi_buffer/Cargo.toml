@@ -16,3 +16,7 @@ path = "src/multi_buffer.rs"
 [dependencies]
 gpui = { workspace = true }
 text = { workspace = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+indoc = { workspace = true }
