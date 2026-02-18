@@ -1,0 +1,24 @@
+[package]
+name = "multi_buffer"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "multi_buffer"
+path = "src/multi_buffer.rs"
+
+[dependencies]
+gpui = { workspace = true }
+text = { workspace = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+indoc = { workspace = true }
+rand = { workspace = true }
+text = { workspace = true, features = ["test-support"] }
