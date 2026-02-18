@@ -49,6 +49,7 @@ palette = { version = "0.7.5", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12.1" }
 pretty_assertions = { version = "1.4" }
 quote = { version = "1.0.44" }
+rand = { version = "0.10" }
 reqwest = { version = "0.13", default-features = false, features = [
   "charset",
   "http2",
