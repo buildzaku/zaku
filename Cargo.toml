@@ -28,6 +28,7 @@ publish = false
 
 [workspace.lints.clippy]
 type_complexity = { level = "allow" }
+too_many_arguments = { level = "allow" }
 style = { level = "allow" }
 
 [workspace.dependencies]
@@ -59,6 +60,7 @@ reqwest = { version = "0.13", default-features = false, features = [
   "stream",
   "system-proxy",
 ] }
+rope = { git = "https://github.com/zed-industries/zed", package = "rope" }
 rust-embed = { version = "8.0", features = ["debug-embed"] }
 schemars = { version = "1.2" }
 serde = { version = "1.0", features = ["derive"] }

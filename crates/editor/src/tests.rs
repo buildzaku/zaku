@@ -1,6 +1,7 @@
 mod context;
 
 use gpui::{ClipboardItem, TestAppContext};
+use indoc::indoc;
 use pretty_assertions::assert_eq;
 
 use settings::SettingsStore;
@@ -29,9 +30,14 @@ fn test_handle_input_replaces_selection(cx: &mut TestAppContext) {
     editor_test_context.dispatch_action(HandleInput("from Zaku".to_string()));
     editor_test_context.assert_state("Hello, from Zakuˇ!");
 
-    editor_test_context.set_state("Lorem ˇipsum dolor sit amet");
-    editor_test_context.dispatch_action(HandleInput("ips\num\r".to_string()));
-    editor_test_context.assert_state("Lorem ipsumˇipsum dolor sit amet");
+    editor_test_context.set_state(indoc! {"
+        Lorem «ipsumˇ» dolor sit amet
+    "});
+    editor_test_context.dispatch_action(HandleInput("ips\num".to_string()));
+    editor_test_context.assert_state(indoc! {"
+        Lorem ips
+        umˇ dolor sit amet
+    "});
 }
 
 #[gpui::test]

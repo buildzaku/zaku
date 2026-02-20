@@ -1,8 +1,10 @@
 use gpui::{
-    Action, App, Context, FocusHandle, Focusable, Pixels, Render, SharedString, Window, prelude::*,
+    Action, App, Context, FocusHandle, Focusable, Hsla, Pixels, Render, SharedString, TextStyle,
+    Window, prelude::*,
 };
 
-use theme::ActiveTheme;
+use editor::{Editor, EditorElement, EditorStyle};
+use theme::{ActiveTheme, ThemeSettings};
 use ui::{Color, Label, LabelCommon, LabelSize};
 
 use crate::{
@@ -16,6 +18,7 @@ pub struct ResponsePanel {
     size: Pixels,
     response: Option<SharedString>,
     response_status: SharedString,
+    response_editor: Option<gpui::Entity<Editor>>,
 }
 
 impl ResponsePanel {
@@ -28,6 +31,7 @@ impl ResponsePanel {
             size: Self::DEFAULT_SIZE,
             response: None,
             response_status: "Status: Idle".into(),
+            response_editor: None,
         }
     }
 
@@ -39,12 +43,22 @@ impl ResponsePanel {
     ) {
         self.response = Some(response);
         self.response_status = response_status;
+
+        if let Some(response_editor) = self.response_editor.as_ref() {
+            let response = self.response.clone().unwrap_or_else(|| "".into());
+            response_editor.update(cx, |editor, cx| {
+                editor.set_text(response.as_str(), cx);
+            });
+        }
         cx.notify();
     }
 }
 
 impl Focusable for ResponsePanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        if let Some(editor) = self.response_editor.as_ref() {
+            return editor.read(_cx).focus_handle(_cx);
+        }
         self.focus_handle.clone()
     }
 }
@@ -92,13 +106,49 @@ impl Panel for ResponsePanel {
 }
 
 impl Render for ResponsePanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let response = self.response.clone().unwrap_or_else(|| "".into());
         let response_status = self.response_status.clone();
 
+        if self.response_editor.is_none() {
+            let editor = cx.new(|cx| Editor::full(window, cx));
+            editor.update(cx, |editor, cx| {
+                editor.set_text(response.as_str(), cx);
+            });
+            self.response_editor = Some(editor);
+        }
+
+        let theme_colors = cx.theme().colors();
+        let theme_settings = ThemeSettings::get_global(cx);
+
+        let Some(response_editor) = self.response_editor.clone() else {
+            return gpui::div()
+                .track_focus(&self.focus_handle)
+                .flex()
+                .flex_col()
+                .size_full()
+                .bg(cx.theme().colors().surface_background);
+        };
+
+        let font_size = theme_settings.buffer_font_size(cx).into();
+        let editor_style = EditorStyle {
+            background: Hsla::transparent_black(),
+            text: TextStyle {
+                color: theme_colors.text,
+                font_family: theme_settings.buffer_font.family.clone(),
+                font_features: theme_settings.buffer_font.features.clone(),
+                font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
+                font_size,
+                font_weight: theme_settings.buffer_font.weight,
+                font_style: theme_settings.buffer_font.style,
+                line_height: gpui::relative(theme_settings.line_height()),
+                ..Default::default()
+            },
+        };
+
+        let focus_handle = self.focus_handle(cx);
         gpui::div()
-            .track_focus(&self.focus_handle)
+            .track_focus(&focus_handle)
             .flex()
             .flex_col()
             .size_full()
@@ -124,19 +174,7 @@ impl Render for ResponsePanel {
                     .flex_col()
                     .flex_1()
                     .overflow_hidden()
-                    .p_3()
-                    .child(
-                        gpui::div()
-                            .id("response-container")
-                            .flex_1()
-                            .overflow_y_scroll()
-                            .child(
-                                Label::new(response)
-                                    .size(LabelSize::Small)
-                                    .color(Color::Default)
-                                    .buffer_font(cx),
-                            ),
-                    ),
+                    .child(EditorElement::new(&response_editor, editor_style)),
             )
     }
 }

@@ -1,4 +1,7 @@
-use gpui::{AnyWindowHandle, Context, Entity, TestAppContext, VisualTestContext, Window};
+use gpui::{
+    AnyWindowHandle, AppContext, Context, Entity, TestAppContext, VisualTestContext, Window,
+};
+use multi_buffer::MultiBuffer;
 use pretty_assertions::assert_eq;
 use std::{
     collections::BTreeMap,
@@ -11,7 +14,7 @@ use text::{Buffer as TextBuffer, ReplicaId};
 
 use util::test::{generate_marked_text, marked_text_ranges};
 
-use crate::{Editor, SelectionHistory, SelectionState, next_buffer_id};
+use crate::{DEFAULT_TAB_SIZE, Editor, SelectionHistory, SelectionState, next_buffer_id};
 
 pub struct EditorTestContext {
     pub cx: VisualTestContext,
@@ -72,8 +75,13 @@ impl EditorTestContext {
             (selection.end..selection.start, true)
         };
 
-        self.update_editor(|editor, _, _| {
-            editor.buffer = TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text.as_str());
+        self.update_editor(|editor, _, cx| {
+            let text_buffer =
+                cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text.as_str()));
+            let buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer.clone(), cx));
+            editor.buffer = buffer.clone();
+            editor.display_map =
+                cx.new(|cx| crate::display_map::DisplayMap::new(buffer, DEFAULT_TAB_SIZE, cx));
             editor.selected_range = selected_range.clone();
             editor.selection_reversed = selection_reversed;
             editor.marked_range = None;
@@ -81,8 +89,7 @@ impl EditorTestContext {
                 range: selected_range,
                 reversed: selection_reversed,
             });
-            editor.last_layout = None;
-            editor.last_bounds = None;
+            editor.last_position_map = None;
         });
 
         assertion_context
@@ -96,9 +103,9 @@ impl EditorTestContext {
         }
 
         let (actual_text, actual_selection, actual_reversed) =
-            self.editor.read_with(&self.cx, |editor, _| {
+            self.editor.read_with(&self.cx, |editor, cx| {
                 (
-                    editor.snapshot().text(),
+                    editor.snapshot(cx).text(),
                     editor.selected_range.clone(),
                     editor.selection_reversed,
                 )

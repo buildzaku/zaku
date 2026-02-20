@@ -1,33 +1,45 @@
 mod actions;
+mod display_map;
 mod element;
+mod movement;
 
 pub use actions::*;
 pub use element::EditorElement;
 
 use gpui::{
-    App, Bounds, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter, FocusHandle,
-    Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
-    Point, Render, ShapedLine, SharedString, Subscription, TextStyle, UTF16Selection, WeakEntity,
+    App, Bounds, ClipboardEntry, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter,
+    FocusHandle, Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, Render, SharedString, Subscription, TextStyle, UTF16Selection,
     Window, prelude::*,
 };
+use multi_buffer::{
+    MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow, MultiBufferSnapshot,
+};
+use serde::{Deserialize, Serialize};
 use std::{
     any::TypeId,
     collections::{HashMap, VecDeque},
-    ops::Range,
+    num::NonZeroU32,
+    ops::{Range, RangeInclusive},
+    path::PathBuf,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
     time::Instant,
 };
-use text::{Buffer as TextBuffer, BufferId, BufferSnapshot, OffsetUtf16, ReplicaId, TransactionId};
-use unicode_segmentation::UnicodeSegmentation;
+use text::{Bias, Buffer as TextBuffer, BufferId, OffsetUtf16, ReplicaId, TransactionId};
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use theme::{ActiveTheme, ThemeSettings};
 
+use crate::element::PositionMap;
+
 pub(crate) const KEY_CONTEXT: &str = "Editor";
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
+
+const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
 /// Addons allow storing per-editor state in other crates
 pub trait Addon: 'static {
@@ -49,10 +61,16 @@ pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("backspace", Backspace, Some(KEY_CONTEXT)),
         KeyBinding::new("delete", Delete, Some(KEY_CONTEXT)),
+        KeyBinding::new("enter", Newline, Some(KEY_CONTEXT)),
+        KeyBinding::new("shift-enter", Newline, Some(KEY_CONTEXT)),
         KeyBinding::new("left", MoveLeft, Some(KEY_CONTEXT)),
         KeyBinding::new("right", MoveRight, Some(KEY_CONTEXT)),
+        KeyBinding::new("up", MoveUp, Some(KEY_CONTEXT)),
+        KeyBinding::new("down", MoveDown, Some(KEY_CONTEXT)),
         KeyBinding::new("shift-left", SelectLeft, Some(KEY_CONTEXT)),
         KeyBinding::new("shift-right", SelectRight, Some(KEY_CONTEXT)),
+        KeyBinding::new("shift-up", SelectUp, Some(KEY_CONTEXT)),
+        KeyBinding::new("shift-down", SelectDown, Some(KEY_CONTEXT)),
         KeyBinding::new(
             "home",
             MoveToBeginningOfLine {
@@ -272,6 +290,18 @@ pub enum EditorEvent {
 }
 
 const MAX_SELECTION_HISTORY_LEN: usize = 1024;
+const MAX_LINE_LEN: usize = 1024;
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ClipboardSelection {
+    pub len: usize,
+    pub is_entire_line: bool,
+    pub first_line_indent: u32,
+    #[serde(default)]
+    pub file_path: Option<PathBuf>,
+    #[serde(default)]
+    pub line_range: Option<RangeInclusive<u32>>,
+}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EditorMode {
@@ -284,9 +314,6 @@ pub enum EditorMode {
         scale_ui_elements_with_buffer_font_size: bool,
         show_active_line_background: bool,
         sizing_behavior: SizingBehavior,
-    },
-    Minimap {
-        parent: WeakEntity<Editor>,
     },
 }
 
@@ -429,7 +456,8 @@ impl SelectionHistory {
 
 pub struct Editor {
     focus_handle: FocusHandle,
-    buffer: TextBuffer,
+    buffer: Entity<MultiBuffer>,
+    display_map: Entity<display_map::DisplayMap>,
     mode: EditorMode,
     placeholder: SharedString,
     selected_range: Range<usize>,
@@ -437,12 +465,12 @@ pub struct Editor {
     marked_range: Option<Range<usize>>,
     selection_history: SelectionHistory,
     addons: HashMap<TypeId, Box<dyn Addon>>,
-    last_layout: Option<ShapedLine>,
-    last_bounds: Option<Bounds<Pixels>>,
+    last_position_map: Option<Rc<PositionMap>>,
     selecting: bool,
     input_enabled: bool,
     selection_mark_mode: bool,
     masked: bool,
+    goal_display_column: Option<u32>,
     word_chars: Arc<[char]>,
     _subscriptions: Vec<Subscription>,
 }
@@ -451,8 +479,35 @@ impl EventEmitter<EditorEvent> for Editor {}
 
 impl Editor {
     pub fn single_line(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_mode(EditorMode::SingleLine, window, cx)
+    }
+
+    pub fn auto_height(
+        min_lines: usize,
+        max_lines: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new_with_mode(
+            EditorMode::AutoHeight {
+                min_lines,
+                max_lines,
+            },
+            window,
+            cx,
+        )
+    }
+
+    pub fn full(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_mode(EditorMode::full(), window, cx)
+    }
+
+    fn new_with_mode(mode: EditorMode, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let buffer = TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), "");
+        let text_buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), ""));
+        let buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer.clone(), cx));
+        let display_map =
+            cx.new(|cx| display_map::DisplayMap::new(buffer.clone(), DEFAULT_TAB_SIZE, cx));
         let selected_range = 0..0;
         let selection_reversed = false;
         let selection_history = SelectionHistory::new(SelectionState {
@@ -468,19 +523,20 @@ impl Editor {
         Self {
             focus_handle,
             buffer,
-            mode: EditorMode::SingleLine,
+            display_map,
+            mode,
             placeholder: SharedString::default(),
             selected_range,
             selection_reversed,
             marked_range: None,
             selection_history,
             addons: HashMap::new(),
-            last_layout: None,
-            last_bounds: None,
+            last_position_map: None,
             selecting: false,
             input_enabled: true,
             selection_mark_mode: false,
             masked: false,
+            goal_display_column: None,
             word_chars: Arc::from(Vec::new().into_boxed_slice()),
             _subscriptions: subscriptions,
         }
@@ -497,8 +553,13 @@ impl Editor {
         cx.notify();
     }
 
-    fn snapshot(&self) -> BufferSnapshot {
-        self.buffer.snapshot()
+    fn snapshot(&self, cx: &App) -> MultiBufferSnapshot {
+        self.buffer.read(cx).snapshot(cx)
+    }
+
+    fn display_snapshot(&self, cx: &mut Context<Self>) -> display_map::DisplaySnapshot {
+        self.display_map
+            .update(cx, |display_map, cx| display_map.snapshot(cx))
     }
 
     fn selection_state(&self) -> SelectionState {
@@ -508,10 +569,10 @@ impl Editor {
         }
     }
 
-    fn restore_selection_state(&mut self, state: &SelectionState) {
+    fn restore_selection_state(&mut self, state: &SelectionState, cx: &App) {
         self.selected_range = state.range.clone();
         self.selection_reversed = state.reversed;
-        let text_len = self.snapshot().len();
+        let text_len = self.snapshot(cx).len().0;
         self.clamp_selection(text_len);
     }
 
@@ -557,12 +618,23 @@ impl Editor {
         }
     }
 
-    fn char_classifier(&self) -> CharClassifier {
-        CharClassifier::new(self.word_chars.clone())
+    fn char_classifier(&self) -> movement::CharClassifier {
+        movement::CharClassifier::new(self.word_chars.clone())
     }
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        let text_len = self.snapshot().len();
+        self.goal_display_column = None;
+
+        let text_len = self.snapshot(cx).len().0;
+        let offset = offset.min(text_len);
+        self.selected_range = offset..offset;
+        self.selection_reversed = false;
+        self.record_selection_history();
+        cx.notify();
+    }
+
+    fn move_to_vertical(&mut self, offset: usize, cx: &mut Context<Self>) {
+        let text_len = self.snapshot(cx).len().0;
         let offset = offset.min(text_len);
         self.selected_range = offset..offset;
         self.selection_reversed = false;
@@ -571,6 +643,8 @@ impl Editor {
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
+        self.goal_display_column = None;
+
         if self.selection_reversed {
             self.selected_range.start = offset;
         } else {
@@ -586,121 +660,235 @@ impl Editor {
         cx.notify();
     }
 
-    fn previous_boundary(&self, offset: usize) -> usize {
-        let text = self.snapshot().text();
-        text.grapheme_indices(true)
-            .rev()
-            .find_map(|(index, _)| (index < offset).then_some(index))
-            .unwrap_or(0)
+    fn select_to_vertical(&mut self, offset: usize, cx: &mut Context<Self>) {
+        if self.selection_reversed {
+            self.selected_range.start = offset;
+        } else {
+            self.selected_range.end = offset;
+        }
+
+        if self.selected_range.end < self.selected_range.start {
+            self.selection_reversed = !self.selection_reversed;
+            self.selected_range = self.selected_range.end..self.selected_range.start;
+        }
+
+        self.record_selection_history();
+        cx.notify();
     }
 
-    fn next_boundary(&self, offset: usize) -> usize {
-        let text = self.snapshot().text();
-        text.grapheme_indices(true)
-            .find_map(|(index, _)| (index > offset).then_some(index))
-            .unwrap_or(text.len())
+    fn offset_for_vertical_move(&mut self, row_delta: i32, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let cursor_offset = self.cursor_offset().min(buffer_snapshot.len().0);
+        let cursor_point = buffer_snapshot.offset_to_point(MultiBufferOffset(cursor_offset));
+        let cursor_display_point =
+            display_snapshot.point_to_display_point(cursor_point, Bias::Left);
+        let max_row = buffer_snapshot.max_point().row;
+
+        let target_row = if row_delta.is_negative() {
+            cursor_display_point
+                .row()
+                .0
+                .saturating_sub(row_delta.unsigned_abs())
+        } else {
+            cursor_display_point
+                .row()
+                .0
+                .saturating_add(row_delta.unsigned_abs())
+                .min(max_row)
+        };
+
+        if target_row == cursor_display_point.row().0 {
+            return cursor_offset;
+        }
+
+        let current_display_column = if self.masked {
+            let current_line =
+                buffer_line_text(display_snapshot.buffer_snapshot(), cursor_point.row);
+            let column_bytes = (cursor_point.column as usize).min(current_line.len());
+            current_line
+                .get(..column_bytes)
+                .unwrap_or("")
+                .chars()
+                .count() as u32
+        } else {
+            cursor_display_point.column()
+        };
+
+        let goal_column = *self
+            .goal_display_column
+            .get_or_insert(current_display_column);
+
+        if self.masked {
+            let target_line = buffer_line_text(display_snapshot.buffer_snapshot(), target_row);
+            let target_column =
+                byte_offset_from_char_count(&target_line, goal_column as usize) as u32;
+
+            return buffer_snapshot
+                .point_to_offset(text::Point {
+                    row: target_row,
+                    column: target_column,
+                })
+                .0;
+        }
+
+        let target_display_point = display_snapshot.clip_point(
+            display_map::DisplayPoint::new(display_map::DisplayRow(target_row), goal_column),
+            Bias::Left,
+        );
+        let target_buffer_point =
+            display_snapshot.display_point_to_point(target_display_point, Bias::Left);
+        buffer_snapshot.point_to_offset(target_buffer_point).0
     }
 
-    fn previous_word_start(&self, offset: usize) -> usize {
-        let text = self.snapshot().text();
+    fn offset_for_horizontal_move(&self, direction: i32, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let cursor_offset = self.cursor_offset().min(buffer_snapshot.len().0);
+        let cursor_point = buffer_snapshot.offset_to_point(MultiBufferOffset(cursor_offset));
+        let display_point = display_snapshot.point_to_display_point(cursor_point, Bias::Left);
+
+        if direction < 0 {
+            let moved = movement::left(&display_snapshot, display_point);
+            moved.to_offset(&display_snapshot, Bias::Left)
+        } else {
+            let moved = movement::right(&display_snapshot, display_point);
+            moved.to_offset(&display_snapshot, Bias::Right)
+        }
+    }
+
+    fn previous_word_start(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Left,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
         let classifier = self.char_classifier();
-        let mut is_first_iteration = true;
-
-        find_preceding_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
-            if is_first_iteration
-                && classifier.is_punctuation(right)
-                && !classifier.is_punctuation(left)
-                && left != '\n'
-            {
-                is_first_iteration = false;
-                return false;
-            }
-            is_first_iteration = false;
-
-            (classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(right))
-                || left == '\n'
-        })
+        let target = movement::previous_word_start(&display_snapshot, display_point, &classifier);
+        target.to_offset(&display_snapshot, Bias::Left)
     }
 
-    fn next_word_end(&self, offset: usize) -> usize {
-        let text = self.snapshot().text();
+    fn next_word_end(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Right,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
         let classifier = self.char_classifier();
-        let mut is_first_iteration = true;
-
-        find_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
-            if is_first_iteration
-                && classifier.is_punctuation(left)
-                && !classifier.is_punctuation(right)
-                && right != '\n'
-            {
-                is_first_iteration = false;
-                return false;
-            }
-            is_first_iteration = false;
-
-            (classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(left))
-                || right == '\n'
-        })
+        let target = movement::next_word_end(&display_snapshot, display_point, &classifier);
+        target.to_offset(&display_snapshot, Bias::Right)
     }
 
-    fn previous_subword_start(&self, offset: usize) -> usize {
-        let text = self.snapshot().text();
+    fn previous_subword_start(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Left,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
         let classifier = self.char_classifier();
-        find_preceding_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
-            is_subword_start(left, right, &classifier) || left == '\n'
-        })
+        let target =
+            movement::previous_subword_start(&display_snapshot, display_point, &classifier);
+        target.to_offset(&display_snapshot, Bias::Left)
     }
 
-    fn next_subword_end(&self, offset: usize) -> usize {
-        let text = self.snapshot().text();
+    fn next_subword_end(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Right,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
         let classifier = self.char_classifier();
-        find_boundary_offset(&text, offset, FindRange::MultiLine, |left, right| {
-            is_subword_end(left, right, &classifier) || right == '\n'
-        })
+        let target = movement::next_subword_end(&display_snapshot, display_point, &classifier);
+        target.to_offset(&display_snapshot, Bias::Right)
     }
 
-    fn line_indent_offset(&self) -> usize {
-        let text = self.snapshot().text();
-        for (index, character) in text.char_indices() {
+    fn line_indent_offset(&self, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let cursor = buffer_snapshot.clip_offset(
+            MultiBufferOffset(self.cursor_offset().min(buffer_snapshot.len().0)),
+            Bias::Left,
+        );
+        let cursor_point = buffer_snapshot.offset_to_point(cursor);
+        let row = display_map::DisplayRow(cursor_point.row);
+        let line_start = buffer_snapshot.point_to_offset(text::Point::new(cursor_point.row, 0));
+        let line = buffer_line_text(display_snapshot.buffer_snapshot(), row.0);
+
+        for (index, character) in line.char_indices() {
             if !character.is_whitespace() {
-                return index;
+                return (line_start + index).0;
             }
         }
-        text.len()
+        (line_start + line.len()).0
     }
 
-    fn line_beginning_offset(&self, stop_at_indent: bool) -> usize {
+    fn line_beginning_offset(&self, stop_at_indent: bool, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let cursor = buffer_snapshot.clip_offset(
+            MultiBufferOffset(self.cursor_offset().min(buffer_snapshot.len().0)),
+            Bias::Left,
+        );
+        let cursor_point = buffer_snapshot.offset_to_point(cursor);
+        let line_start = buffer_snapshot.point_to_offset(text::Point::new(cursor_point.row, 0));
+
         if !stop_at_indent {
-            return 0;
+            return line_start.0;
         }
 
-        let indent = self.line_indent_offset();
-        let cursor = self.cursor_offset();
-        if cursor > indent || cursor == 0 {
+        let indent = self.line_indent_offset(cx);
+        if cursor.0 > indent || cursor == line_start {
             indent
         } else {
-            0
+            line_start.0
         }
     }
 
-    fn line_end_offset(&self) -> usize {
-        self.snapshot().len()
+    fn line_end_offset(&self, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let cursor = buffer_snapshot.clip_offset(
+            MultiBufferOffset(self.cursor_offset().min(buffer_snapshot.len().0)),
+            Bias::Left,
+        );
+        let cursor_point = buffer_snapshot.offset_to_point(cursor);
+        let line_start = buffer_snapshot.point_to_offset(text::Point::new(cursor_point.row, 0));
+        let line_len = buffer_snapshot.line_len(MultiBufferRow(cursor_point.row)) as usize;
+        (line_start + line_len).0
     }
 
     fn replace_range(&mut self, range: Range<usize>, new_text: &str, cx: &mut Context<Self>) {
-        let sanitized = sanitize_single_line(new_text);
-        let snapshot = self.snapshot();
-        let current_text = snapshot.text();
-        let range = clamp_range_to_char_boundaries(&current_text, range);
-        let range = range.start.min(current_text.len())..range.end.min(current_text.len());
-        let existing = current_text.get(range.clone()).unwrap_or("");
-        if existing == sanitized {
+        let snapshot = self.snapshot(cx);
+        let start = snapshot.clip_offset(
+            MultiBufferOffset(range.start.min(snapshot.len().0)),
+            Bias::Left,
+        );
+        let end = snapshot.clip_offset(
+            MultiBufferOffset(range.end.min(snapshot.len().0)),
+            Bias::Right,
+        );
+        let range = if end < start { end..start } else { start..end };
+        if range.is_empty() && new_text.is_empty() {
             return;
         }
 
         let now = Instant::now();
         let before = self.selection_state();
-        let transaction_id = self.buffer.start_transaction_at(now);
+        let transaction_id = self
+            .buffer
+            .update(cx, |buffer, cx| buffer.start_transaction_at(now, cx));
         if let Some(transaction_id) = transaction_id {
             self.selection_history
                 .selections_by_transaction
@@ -711,14 +899,20 @@ impl Editor {
                 });
         }
 
-        self.buffer.edit([(range.clone(), sanitized.as_str())]);
-        let cursor = range.start + sanitized.len();
+        let edit_range = range.start..range.end;
+        self.buffer.update(cx, |buffer, cx| {
+            buffer.edit([(edit_range.clone(), new_text)], cx);
+        });
+        let cursor = (range.start + new_text.len()).0;
         self.selected_range = cursor..cursor;
         self.selection_reversed = false;
         self.marked_range = None;
+        self.goal_display_column = None;
         self.record_selection_history();
         let after = self.selection_state();
-        let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
+        let transaction_id = self
+            .buffer
+            .update(cx, |buffer, cx| buffer.end_transaction_at(now, cx));
         self.record_selection_transaction(transaction_id, before, after);
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
@@ -732,17 +926,22 @@ impl Editor {
         marked_range: Option<Range<usize>>,
         cx: &mut Context<Self>,
     ) {
-        let sanitized = sanitize_single_line(new_text);
-        let snapshot = self.snapshot();
-        let current_text = snapshot.text();
-        let range = clamp_range_to_char_boundaries(&current_text, range);
-        let range = range.start.min(current_text.len())..range.end.min(current_text.len());
-        let existing = current_text.get(range.clone()).unwrap_or("");
+        let snapshot = self.snapshot(cx);
+        let start = snapshot.clip_offset(
+            MultiBufferOffset(range.start.min(snapshot.len().0)),
+            Bias::Left,
+        );
+        let end = snapshot.clip_offset(
+            MultiBufferOffset(range.end.min(snapshot.len().0)),
+            Bias::Right,
+        );
+        let range = if end < start { end..start } else { start..end };
 
-        if existing == sanitized {
+        if range.is_empty() && new_text.is_empty() {
             self.selected_range = selection;
             self.selection_reversed = false;
             self.marked_range = marked_range;
+            self.goal_display_column = None;
             self.record_selection_history();
             cx.notify();
             return;
@@ -750,7 +949,9 @@ impl Editor {
 
         let now = Instant::now();
         let before = self.selection_state();
-        let transaction_id = self.buffer.start_transaction_at(now);
+        let transaction_id = self
+            .buffer
+            .update(cx, |buffer, cx| buffer.start_transaction_at(now, cx));
         if let Some(transaction_id) = transaction_id {
             self.selection_history
                 .selections_by_transaction
@@ -761,13 +962,19 @@ impl Editor {
                 });
         }
 
-        self.buffer.edit([(range.clone(), sanitized.as_str())]);
+        let edit_range = range.start..range.end;
+        self.buffer.update(cx, |buffer, cx| {
+            buffer.edit([(edit_range.clone(), new_text)], cx);
+        });
         self.selected_range = selection;
         self.selection_reversed = false;
         self.marked_range = marked_range;
+        self.goal_display_column = None;
         self.record_selection_history();
         let after = self.selection_state();
-        let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
+        let transaction_id = self
+            .buffer
+            .update(cx, |buffer, cx| buffer.end_transaction_at(now, cx));
         self.record_selection_transaction(transaction_id, before, after);
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
@@ -778,103 +985,67 @@ impl Editor {
         self.replace_range(range, new_text, cx);
     }
 
-    fn text_offset_from_utf16(&self, utf16_offset: usize) -> usize {
-        let snapshot = self.snapshot();
+    fn text_offset_from_utf16(&self, utf16_offset: usize, cx: &App) -> usize {
+        let snapshot = self.snapshot(cx);
         snapshot
-            .offset_utf16_to_offset(OffsetUtf16(utf16_offset))
-            .min(snapshot.len())
+            .offset_utf16_to_offset(MultiBufferOffsetUtf16(OffsetUtf16(utf16_offset)))
+            .0
+            .min(snapshot.len().0)
     }
 
-    fn range_from_utf16(&self, range_utf16: &Range<usize>) -> Range<usize> {
-        let start = self.text_offset_from_utf16(range_utf16.start);
-        let end = self.text_offset_from_utf16(range_utf16.end);
+    fn range_from_utf16(&self, range_utf16: &Range<usize>, cx: &App) -> Range<usize> {
+        let start = self.text_offset_from_utf16(range_utf16.start, cx);
+        let end = self.text_offset_from_utf16(range_utf16.end, cx);
         start..end
     }
 
-    fn range_to_utf16(&self, range_utf8: &Range<usize>) -> Range<usize> {
-        let snapshot = self.snapshot();
-        let text = snapshot.text();
-        let range = clamp_range_to_char_boundaries(&text, range_utf8.clone());
-        let start = snapshot
-            .offset_to_offset_utf16(range.start.min(text.len()))
-            .0;
-        let end = snapshot.offset_to_offset_utf16(range.end.min(text.len())).0;
+    fn range_to_utf16(&self, range_utf8: &Range<usize>, cx: &App) -> Range<usize> {
+        let snapshot = self.snapshot(cx);
+        let start = snapshot.clip_offset(
+            MultiBufferOffset(range_utf8.start.min(snapshot.len().0)),
+            Bias::Left,
+        );
+        let end = snapshot.clip_offset(
+            MultiBufferOffset(range_utf8.end.min(snapshot.len().0)),
+            Bias::Right,
+        );
+        let range = if end < start { end..start } else { start..end };
+        let start = snapshot.offset_to_offset_utf16(range.start).0.0;
+        let end = snapshot.offset_to_offset_utf16(range.end).0.0;
         start..end
     }
 
-    fn display_offset_for_text_offset(&self, text_offset: usize) -> usize {
-        let text = self.snapshot().text();
-        let offset = clamp_offset_to_char_boundary(&text, text_offset.min(text.len()));
-        if !self.masked {
-            return offset;
-        }
-
-        text.get(..offset).unwrap_or("").chars().count()
-    }
-
-    fn text_offset_for_display_offset(&self, display_offset: usize) -> usize {
-        if !self.masked {
-            let text_len = self.snapshot().len();
-            return display_offset.min(text_len);
-        }
-
-        let char_count = display_offset;
-        let text = self.snapshot().text();
-        byte_offset_from_char_count(&text, char_count)
-    }
-
-    fn display_text(&self) -> SharedString {
-        let text = self.snapshot().text();
-        if self.masked {
-            let masked = "*".repeat(text.chars().count());
-            return masked.into();
-        }
-
-        text.into()
-    }
-
-    fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
-        let sanitized = sanitize_single_line(text);
-        let snapshot = self.snapshot();
-        if snapshot.text() == sanitized {
-            return;
-        }
-
-        let now = Instant::now();
-        let before = self.selection_state();
-        let transaction_id = self.buffer.start_transaction_at(now);
-        if let Some(transaction_id) = transaction_id {
-            self.selection_history
-                .selections_by_transaction
-                .entry(transaction_id)
-                .or_insert(SelectionTransactionEntry {
-                    before: before.clone(),
-                    after: before.clone(),
-                });
-        }
-
-        let range = 0..snapshot.len();
-        self.buffer.edit([(range, sanitized.as_str())]);
-        self.selected_range = sanitized.len()..sanitized.len();
+    pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
+        self.buffer.update(cx, |buffer, cx| {
+            buffer
+                .as_singleton()
+                .expect("set_text requires a singleton buffer");
+            buffer.set_text(text, cx);
+        });
+        self.selected_range = text.len()..text.len();
         self.selection_reversed = false;
         self.marked_range = None;
+        self.goal_display_column = None;
         self.record_selection_history();
-        let after = self.selection_state();
-        let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
-        self.record_selection_transaction(transaction_id, before, after);
+        matches!(
+            self.mode,
+            EditorMode::SingleLine | EditorMode::AutoHeight { .. }
+        );
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
     }
 
     fn clear(&mut self, cx: &mut Context<Self>) {
-        let snapshot = self.snapshot();
+        let snapshot = self.snapshot(cx);
         if snapshot.is_empty() {
             return;
         }
 
         let now = Instant::now();
         let before = self.selection_state();
-        let transaction_id = self.buffer.start_transaction_at(now);
+        let transaction_id = self
+            .buffer
+            .update(cx, |buffer, cx| buffer.start_transaction_at(now, cx));
         if let Some(transaction_id) = transaction_id {
             self.selection_history
                 .selections_by_transaction
@@ -885,13 +1056,18 @@ impl Editor {
                 });
         }
 
-        self.buffer.edit([(0..snapshot.len(), "")]);
+        self.buffer.update(cx, |buffer, cx| {
+            buffer.edit([(MultiBufferOffset::ZERO..snapshot.len(), "")], cx);
+        });
         self.selected_range = 0..0;
         self.selection_reversed = false;
         self.marked_range = None;
+        self.goal_display_column = None;
         self.record_selection_history();
         let after = self.selection_state();
-        let transaction_id = self.buffer.end_transaction_at(now).map(|(id, _)| id);
+        let transaction_id = self
+            .buffer
+            .update(cx, |buffer, cx| buffer.end_transaction_at(now, cx));
         self.record_selection_transaction(transaction_id, before, after);
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
@@ -919,17 +1095,19 @@ impl Editor {
         self.word_chars = word_chars.into();
     }
 
-    fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {
-        let offset = self.snapshot().len();
+    pub fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {
+        let offset = self.snapshot(cx).len().0;
         self.selected_range = offset..offset;
         self.selection_reversed = false;
+        self.goal_display_column = None;
         self.record_selection_history();
         cx.notify();
     }
 
     fn move_left(&mut self, _: &MoveLeft, _: &mut Window, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
-            self.move_to(self.previous_boundary(self.cursor_offset()), cx);
+            let offset = self.offset_for_horizontal_move(-1, cx);
+            self.move_to(offset, cx);
         } else {
             self.move_to(self.selected_range.start, cx)
         }
@@ -937,23 +1115,57 @@ impl Editor {
 
     fn move_right(&mut self, _: &MoveRight, _: &mut Window, cx: &mut Context<Self>) {
         if self.selected_range.is_empty() {
-            self.move_to(self.next_boundary(self.cursor_offset()), cx);
+            let offset = self.offset_for_horizontal_move(1, cx);
+            self.move_to(offset, cx);
         } else {
             self.move_to(self.selected_range.end, cx)
         }
     }
 
+    fn move_up(&mut self, _: &MoveUp, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.selected_range.is_empty() {
+            self.move_to(self.selected_range.start, cx);
+            return;
+        }
+
+        let offset = self.offset_for_vertical_move(-1, cx);
+        self.move_to_vertical(offset, cx);
+    }
+
+    fn move_down(&mut self, _: &MoveDown, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.selected_range.is_empty() {
+            self.move_to(self.selected_range.end, cx);
+            return;
+        }
+
+        let offset = self.offset_for_vertical_move(1, cx);
+        self.move_to_vertical(offset, cx);
+    }
+
     fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.previous_boundary(self.cursor_offset()), cx);
+        let offset = self.offset_for_horizontal_move(-1, cx);
+        self.select_to(offset, cx);
     }
 
     fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_to(self.next_boundary(self.cursor_offset()), cx);
+        let offset = self.offset_for_horizontal_move(1, cx);
+        self.select_to(offset, cx);
+    }
+
+    fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
+        let offset = self.offset_for_vertical_move(-1, cx);
+        self.select_to_vertical(offset, cx);
+    }
+
+    fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
+        let offset = self.offset_for_vertical_move(1, cx);
+        self.select_to_vertical(offset, cx);
     }
 
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
-        self.selected_range = 0..self.snapshot().len();
+        self.selected_range = 0..self.snapshot(cx).len().0;
         self.selection_reversed = false;
+        self.goal_display_column = None;
         self.record_selection_history();
         cx.notify();
     }
@@ -964,7 +1176,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.line_beginning_offset(action.stop_at_indent);
+        let offset = self.line_beginning_offset(action.stop_at_indent, cx);
         self.move_to(offset, cx);
     }
 
@@ -974,7 +1186,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.line_beginning_offset(action.stop_at_indent);
+        let offset = self.line_beginning_offset(action.stop_at_indent, cx);
         self.select_to(offset, cx);
     }
 
@@ -984,8 +1196,12 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
-            let offset = self.line_beginning_offset(action.stop_at_indent);
+            let offset = self.line_beginning_offset(action.stop_at_indent, cx);
             let cursor = self.cursor_offset();
             if cursor == offset {
                 return;
@@ -998,7 +1214,7 @@ impl Editor {
     }
 
     fn move_to_end_of_line(&mut self, _: &MoveToEndOfLine, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.line_end_offset();
+        let offset = self.line_end_offset(cx);
         self.move_to(offset, cx);
     }
 
@@ -1008,7 +1224,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.line_end_offset();
+        let offset = self.line_end_offset(cx);
         self.select_to(offset, cx);
     }
 
@@ -1018,9 +1234,13 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
             let cursor = self.cursor_offset();
-            let end = self.line_end_offset();
+            let end = self.line_end_offset(cx);
             if cursor == end {
                 return;
             }
@@ -1036,7 +1256,7 @@ impl Editor {
     }
 
     fn move_to_end(&mut self, _: &MoveToEnd, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.snapshot().len();
+        let offset = self.snapshot(cx).len().0;
         self.move_to(offset, cx);
     }
 
@@ -1050,7 +1270,7 @@ impl Editor {
     }
 
     fn select_to_end(&mut self, _: &SelectToEnd, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.snapshot().len();
+        let offset = self.snapshot(cx).len().0;
         self.select_to(offset, cx);
     }
 
@@ -1060,7 +1280,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.previous_word_start(self.cursor_offset());
+        let offset = self.previous_word_start(self.cursor_offset(), cx);
         self.move_to(offset, cx);
     }
 
@@ -1070,7 +1290,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.previous_subword_start(self.cursor_offset());
+        let offset = self.previous_subword_start(self.cursor_offset(), cx);
         self.move_to(offset, cx);
     }
 
@@ -1080,7 +1300,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.next_word_end(self.cursor_offset());
+        let offset = self.next_word_end(self.cursor_offset(), cx);
         self.move_to(offset, cx);
     }
 
@@ -1090,7 +1310,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.next_subword_end(self.cursor_offset());
+        let offset = self.next_subword_end(self.cursor_offset(), cx);
         self.move_to(offset, cx);
     }
 
@@ -1100,7 +1320,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.previous_word_start(self.cursor_offset());
+        let offset = self.previous_word_start(self.cursor_offset(), cx);
         self.select_to(offset, cx);
     }
 
@@ -1110,7 +1330,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.next_word_end(self.cursor_offset());
+        let offset = self.next_word_end(self.cursor_offset(), cx);
         self.select_to(offset, cx);
     }
 
@@ -1120,7 +1340,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.previous_subword_start(self.cursor_offset());
+        let offset = self.previous_subword_start(self.cursor_offset(), cx);
         self.select_to(offset, cx);
     }
 
@@ -1130,21 +1350,29 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let offset = self.next_subword_end(self.cursor_offset());
+        let offset = self.next_subword_end(self.cursor_offset(), cx);
         self.select_to(offset, cx);
     }
 
     fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
-            let start = self.previous_boundary(self.cursor_offset());
+            let start = self.offset_for_horizontal_move(-1, cx);
             self.selected_range = start..self.cursor_offset();
         }
         self.replace_selection("", cx);
     }
 
     fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
-            let end = self.next_boundary(self.cursor_offset());
+            let end = self.offset_for_horizontal_move(1, cx);
             self.selected_range = self.cursor_offset()..end;
         }
         self.replace_selection("", cx);
@@ -1156,8 +1384,12 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
-            let start = self.previous_word_start(self.cursor_offset());
+            let start = self.previous_word_start(self.cursor_offset(), cx);
             self.selected_range = start..self.cursor_offset();
         }
         self.replace_selection("", cx);
@@ -1169,8 +1401,12 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
-            let start = self.previous_subword_start(self.cursor_offset());
+            let start = self.previous_subword_start(self.cursor_offset(), cx);
             self.selected_range = start..self.cursor_offset();
         }
         self.replace_selection("", cx);
@@ -1182,8 +1418,12 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
-            let end = self.next_word_end(self.cursor_offset());
+            let end = self.next_word_end(self.cursor_offset(), cx);
             self.selected_range = self.cursor_offset()..end;
         }
         self.replace_selection("", cx);
@@ -1195,8 +1435,12 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
-            let end = self.next_subword_end(self.cursor_offset());
+            let end = self.next_subword_end(self.cursor_offset(), cx);
             self.selected_range = self.cursor_offset()..end;
         }
         self.replace_selection("", cx);
@@ -1207,7 +1451,7 @@ impl Editor {
             return;
         }
 
-        let current_text = self.snapshot().text();
+        let current_text = self.snapshot(cx).text();
         let text = current_text
             .get(self.selected_range.clone())
             .unwrap_or("")
@@ -1216,15 +1460,40 @@ impl Editor {
             return;
         }
 
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        let snapshot = self.snapshot(cx);
+        let start_offset = snapshot.clip_offset(
+            MultiBufferOffset(self.selected_range.start.min(snapshot.len().0)),
+            Bias::Left,
+        );
+        let end_offset = snapshot.clip_offset(
+            MultiBufferOffset(self.selected_range.end.min(snapshot.len().0)),
+            Bias::Right,
+        );
+        let start_row = snapshot.offset_to_point(start_offset).row;
+        let end_row = snapshot.offset_to_point(end_offset).row;
+        let selection_metadata = ClipboardSelection {
+            len: text.len(),
+            is_entire_line: false,
+            first_line_indent: 0,
+            file_path: None,
+            line_range: Some(start_row..=end_row),
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
+            text,
+            vec![selection_metadata],
+        ));
     }
 
     fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.input_enabled {
+            return;
+        }
+
         if self.selected_range.is_empty() {
             return;
         }
 
-        let current_text = self.snapshot().text();
+        let current_text = self.snapshot(cx).text();
         let text = current_text
             .get(self.selected_range.clone())
             .unwrap_or("")
@@ -1233,16 +1502,100 @@ impl Editor {
             return;
         }
 
-        cx.write_to_clipboard(ClipboardItem::new_string(text));
+        let snapshot = self.snapshot(cx);
+        let start_offset = snapshot.clip_offset(
+            MultiBufferOffset(self.selected_range.start.min(snapshot.len().0)),
+            Bias::Left,
+        );
+        let end_offset = snapshot.clip_offset(
+            MultiBufferOffset(self.selected_range.end.min(snapshot.len().0)),
+            Bias::Right,
+        );
+        let start_row = snapshot.offset_to_point(start_offset).row;
+        let end_row = snapshot.offset_to_point(end_offset).row;
+        let selection_metadata = ClipboardSelection {
+            len: text.len(),
+            is_entire_line: false,
+            first_line_indent: 0,
+            file_path: None,
+            line_range: Some(start_row..=end_row),
+        };
+        cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
+            text,
+            vec![selection_metadata],
+        ));
         self.replace_selection("", cx);
     }
 
-    fn paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+    pub fn do_paste(
+        &mut self,
+        text: &String,
+        clipboard_selections: Option<Vec<ClipboardSelection>>,
+        handle_entire_lines: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.input_enabled {
             return;
-        };
+        }
 
-        self.replace_selection(&text, cx);
+        let mut text_to_insert = text.as_str();
+        let mut is_entire_line = false;
+
+        if let Some(selection) = clipboard_selections
+            .as_ref()
+            .and_then(|selections| selections.first())
+        {
+            is_entire_line = selection.is_entire_line;
+
+            if let Some(slice) = text.get(..selection.len.min(text.len())) {
+                text_to_insert = slice;
+            }
+        }
+
+        if self.selected_range.is_empty() && handle_entire_lines && is_entire_line {
+            let snapshot = self.snapshot(cx);
+            let cursor = snapshot.clip_offset(
+                MultiBufferOffset(self.cursor_offset().min(snapshot.len().0)),
+                Bias::Left,
+            );
+            let cursor_point = snapshot.offset_to_point(cursor);
+            let line_start = snapshot.point_to_offset(text::Point::new(cursor_point.row, 0));
+            self.selected_range = line_start.0..line_start.0;
+            self.selection_reversed = false;
+        }
+
+        let _ = window;
+        self.replace_selection(text_to_insert, cx);
+    }
+
+    pub fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.input_enabled {
+            return;
+        }
+
+        if let Some(item) = cx.read_from_clipboard() {
+            let entries = item.entries();
+            match entries.first() {
+                // For now, we only support applying metadata if there's one string.
+                Some(ClipboardEntry::String(clipboard_string)) if entries.len() == 1 => {
+                    self.do_paste(
+                        clipboard_string.text(),
+                        clipboard_string.metadata_json::<Vec<ClipboardSelection>>(),
+                        true,
+                        window,
+                        cx,
+                    );
+                }
+                _ => {
+                    self.do_paste(&item.text().unwrap_or_default(), None, true, window, cx);
+                }
+            }
+        }
+    }
+
+    fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
+        self.handle_input("\n", window, cx);
     }
 
     fn handle_input(&mut self, text: &str, _: &mut Window, cx: &mut Context<Self>) {
@@ -1254,7 +1607,11 @@ impl Editor {
     }
 
     fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
-        let transaction_id = self.buffer.undo().map(|(transaction_id, _)| transaction_id);
+        if !self.input_enabled {
+            return;
+        }
+
+        let transaction_id = self.buffer.update(cx, |buffer, cx| buffer.undo(cx));
         let Some(transaction_id) = transaction_id else {
             return;
         };
@@ -1265,18 +1622,23 @@ impl Editor {
             .get(&transaction_id)
             .map(|entry| entry.before.clone());
         if let Some(selection_state) = selection_state.as_ref() {
-            self.restore_selection_state(selection_state);
+            self.restore_selection_state(selection_state, cx);
         } else {
-            let text_len = self.snapshot().len();
+            let text_len = self.snapshot(cx).len().0;
             self.clamp_selection(text_len);
         }
         self.marked_range = None;
+        self.goal_display_column = None;
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
     }
 
     fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
-        let transaction_id = self.buffer.redo().map(|(transaction_id, _)| transaction_id);
+        if !self.input_enabled {
+            return;
+        }
+
+        let transaction_id = self.buffer.update(cx, |buffer, cx| buffer.redo(cx));
         let Some(transaction_id) = transaction_id else {
             return;
         };
@@ -1287,12 +1649,13 @@ impl Editor {
             .get(&transaction_id)
             .map(|entry| entry.after.clone());
         if let Some(selection_state) = selection_state.as_ref() {
-            self.restore_selection_state(selection_state);
+            self.restore_selection_state(selection_state, cx);
         } else {
-            let text_len = self.snapshot().len();
+            let text_len = self.snapshot(cx).len().0;
             self.clamp_selection(text_len);
         }
         self.marked_range = None;
+        self.goal_display_column = None;
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
     }
@@ -1302,7 +1665,8 @@ impl Editor {
         let state = self.selection_history.undo();
         self.selection_history.mode = SelectionHistoryMode::Normal;
         if let Some(state) = state {
-            self.restore_selection_state(&state);
+            self.restore_selection_state(&state, cx);
+            self.goal_display_column = None;
             cx.notify();
         }
     }
@@ -1312,7 +1676,8 @@ impl Editor {
         let state = self.selection_history.redo();
         self.selection_history.mode = SelectionHistoryMode::Normal;
         if let Some(state) = state {
-            self.restore_selection_state(&state);
+            self.restore_selection_state(&state, cx);
+            self.goal_display_column = None;
             cx.notify();
         }
     }
@@ -1327,10 +1692,33 @@ impl Editor {
         self.focus_handle.focus(window, cx);
         self.selecting = true;
 
+        let text_len = self.snapshot(cx).len().0;
+        let offset = self
+            .index_for_mouse_position(event.position, cx)
+            .min(text_len);
+
         if event.modifiers.shift {
-            self.select_to(self.index_for_mouse_position(event.position), cx);
+            self.goal_display_column = None;
+
+            if self.selection_reversed {
+                self.selected_range.start = offset;
+            } else {
+                self.selected_range.end = offset;
+            }
+
+            if self.selected_range.end < self.selected_range.start {
+                self.selection_reversed = !self.selection_reversed;
+                self.selected_range = self.selected_range.end..self.selected_range.start;
+            }
+
+            self.record_selection_history();
+            cx.notify();
         } else {
-            self.move_to(self.index_for_mouse_position(event.position), cx);
+            self.goal_display_column = None;
+            self.selected_range = offset..offset;
+            self.selection_reversed = false;
+            self.record_selection_history();
+            cx.notify();
         }
     }
 
@@ -1340,32 +1728,75 @@ impl Editor {
 
     fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
         if self.selecting {
-            self.select_to(self.index_for_mouse_position(event.position), cx);
+            let text_len = self.snapshot(cx).len().0;
+            let offset = self
+                .index_for_mouse_position(event.position, cx)
+                .min(text_len);
+
+            self.goal_display_column = None;
+
+            if self.selection_reversed {
+                self.selected_range.start = offset;
+            } else {
+                self.selected_range.end = offset;
+            }
+
+            if self.selected_range.end < self.selected_range.start {
+                self.selection_reversed = !self.selection_reversed;
+                self.selected_range = self.selected_range.end..self.selected_range.start;
+            }
+
+            self.record_selection_history();
+            cx.notify();
         }
     }
 
-    fn index_for_mouse_position(&self, position: Point<Pixels>) -> usize {
-        let text = self.snapshot().text();
-        if text.is_empty() {
-            return 0;
-        }
-
-        let Some(bounds) = self.last_bounds else {
+    fn index_for_mouse_position(&self, position: Point<Pixels>, _cx: &mut Context<Self>) -> usize {
+        let Some(position_map) = self.last_position_map.as_ref() else {
             return 0;
         };
-        let Some(line) = self.last_layout.as_ref() else {
+        let snapshot = position_map.snapshot.buffer_snapshot();
+        if snapshot.is_empty() {
             return 0;
+        }
+
+        if position.y < position_map.bounds.top() {
+            return 0;
+        }
+        if position.y > position_map.bounds.bottom() {
+            return snapshot.len().0;
+        }
+
+        let point_for_position = position_map.point_for_position(position);
+        let offset = if position_map.masked {
+            let row = point_for_position.previous_valid.row().0;
+            let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
+            let Some(line) = position_map.line_layouts.get(line_index) else {
+                return snapshot.len().0;
+            };
+            if line.row.0 != row {
+                return snapshot.len().0;
+            }
+
+            let unclipped_column = point_for_position
+                .previous_valid
+                .column()
+                .saturating_add(point_for_position.column_overshoot_after_line_end);
+            let local_display_column =
+                unclipped_column.saturating_sub(line.line_display_column_start as u32) as usize;
+            let local_display_column = local_display_column.min(line.len);
+            let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
+            line.line_start_offset + buffer_column
+        } else {
+            let display_point = point_for_position
+                .as_valid()
+                .unwrap_or(point_for_position.previous_valid);
+            let point = position_map
+                .snapshot
+                .display_point_to_point(display_point, Bias::Left);
+            snapshot.point_to_offset(point).0
         };
-
-        if position.y < bounds.top() {
-            return 0;
-        }
-        if position.y > bounds.bottom() {
-            return text.len();
-        }
-
-        let display_index = line.closest_index_for_x(position.x - bounds.left());
-        self.text_offset_for_display_offset(display_index)
+        offset.min(snapshot.len().0)
     }
 
     pub fn key_context(&self, window: &mut Window, cx: &mut App) -> KeyContext {
@@ -1378,7 +1809,6 @@ impl Editor {
         let mode = match self.mode {
             EditorMode::SingleLine => "single_line",
             EditorMode::AutoHeight { .. } => "auto_height",
-            EditorMode::Minimap { .. } => "minimap",
             EditorMode::Full { .. } => "full",
         };
         key_context.set("mode", mode);
@@ -1389,7 +1819,7 @@ impl Editor {
 
         if self.mode == EditorMode::SingleLine
             && self.selected_range.is_empty()
-            && self.selected_range.end == self.snapshot().len()
+            && self.selected_range.end == self.snapshot(cx).len().0
         {
             key_context.add("end_of_input");
         }
@@ -1407,9 +1837,7 @@ impl Editor {
 
         let font_size = match self.mode {
             EditorMode::SingleLine | EditorMode::AutoHeight { .. } => gpui::rems(0.875).into(),
-            EditorMode::Full { .. } | EditorMode::Minimap { .. } => {
-                theme_settings.buffer_font_size(cx).into()
-            }
+            EditorMode::Full { .. } => theme_settings.buffer_font_size(cx).into(),
         };
 
         let text_style = TextStyle {
@@ -1458,26 +1886,37 @@ impl EntityInputHandler for Editor {
         range_utf16: Range<usize>,
         actual_range: &mut Option<Range<usize>>,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<String> {
-        let range = self.range_from_utf16(&range_utf16);
-        actual_range.replace(self.range_to_utf16(&range));
-        let text = self.snapshot().text();
-        Some(text.get(range).unwrap_or("").to_string())
+        let range = self.range_from_utf16(&range_utf16, cx);
+        actual_range.replace(self.range_to_utf16(&range, cx));
+        let snapshot = self.snapshot(cx);
+        let start = range.start.min(snapshot.len().0);
+        let end = range.end.min(snapshot.len().0);
+        let (start, end) = if end < start {
+            (end, start)
+        } else {
+            (start, end)
+        };
+        Some(
+            snapshot
+                .text_for_range(MultiBufferOffset(start)..MultiBufferOffset(end))
+                .collect(),
+        )
     }
 
     fn selected_text_range(
         &mut self,
         ignore_disabled_input: bool,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<UTF16Selection> {
         if !ignore_disabled_input && !self.input_enabled {
             return None;
         }
 
         Some(UTF16Selection {
-            range: self.range_to_utf16(&self.selected_range),
+            range: self.range_to_utf16(&self.selected_range, cx),
             reversed: self.selection_reversed,
         })
     }
@@ -1485,11 +1924,11 @@ impl EntityInputHandler for Editor {
     fn marked_text_range(
         &self,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<Range<usize>> {
         self.marked_range
             .as_ref()
-            .map(|range| self.range_to_utf16(range))
+            .map(|range| self.range_to_utf16(range, cx))
     }
 
     fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
@@ -1509,7 +1948,7 @@ impl EntityInputHandler for Editor {
 
         let range = range_utf16
             .as_ref()
-            .map(|range_utf16| self.range_from_utf16(range_utf16))
+            .map(|range_utf16| self.range_from_utf16(range_utf16, cx))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
 
@@ -1530,49 +1969,84 @@ impl EntityInputHandler for Editor {
 
         let range = range_utf16
             .as_ref()
-            .map(|range_utf16| self.range_from_utf16(range_utf16))
+            .map(|range_utf16| self.range_from_utf16(range_utf16, cx))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
 
-        let sanitized = sanitize_single_line(new_text);
         let selected_range = new_selected_range_utf16
             .as_ref()
-            .map(|range_utf16| range_from_utf16_in_text(&sanitized, range_utf16))
+            .map(|range_utf16| range_from_utf16_in_text(new_text, range_utf16))
             .map(|new_range| range.start + new_range.start..range.start + new_range.end)
-            .unwrap_or_else(|| range.start + sanitized.len()..range.start + sanitized.len());
+            .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
 
-        let marked_range = if sanitized.is_empty() {
+        let marked_range = if new_text.is_empty() {
             None
         } else {
-            Some(range.start..range.start + sanitized.len())
+            Some(range.start..range.start + new_text.len())
         };
 
-        self.replace_range_with_selection(range, &sanitized, selected_range, marked_range, cx);
+        self.replace_range_with_selection(range, new_text, selected_range, marked_range, cx);
     }
 
     fn bounds_for_range(
         &mut self,
         range_utf16: Range<usize>,
-        bounds: Bounds<Pixels>,
+        _bounds: Bounds<Pixels>,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<Bounds<Pixels>> {
-        let last_layout = self.last_layout.as_ref()?;
-        let range = self.range_from_utf16(&range_utf16);
+        let position_map = self.last_position_map.as_ref()?;
+        let display_snapshot = self.display_snapshot(cx);
+        let range = self.range_from_utf16(&range_utf16, cx);
+        let start_point = display_snapshot
+            .buffer_snapshot()
+            .offset_to_point(MultiBufferOffset(
+                range.start.min(display_snapshot.buffer_snapshot().len().0),
+            ));
+        let end_point = display_snapshot
+            .buffer_snapshot()
+            .offset_to_point(MultiBufferOffset(
+                range.end.min(display_snapshot.buffer_snapshot().len().0),
+            ));
 
-        let display_start = self.display_offset_for_text_offset(range.start);
-        let display_end = self.display_offset_for_text_offset(range.end);
+        let row = start_point.row;
+        let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
+        let Some(line) = position_map.line_layouts.get(line_index) else {
+            return None;
+        };
+        if line.row.0 != row {
+            return None;
+        }
 
-        Some(Bounds::from_corners(
-            gpui::point(
-                bounds.left() + last_layout.x_for_index(display_start),
-                bounds.top(),
-            ),
-            gpui::point(
-                bounds.left() + last_layout.x_for_index(display_end),
-                bounds.bottom(),
-            ),
-        ))
+        let start_display_column = display_snapshot
+            .point_to_display_point(start_point, Bias::Left)
+            .column() as usize;
+        let end_display_column = if start_point.row == end_point.row {
+            display_snapshot
+                .point_to_display_point(end_point, Bias::Right)
+                .column() as usize
+        } else {
+            let row = display_map::DisplayRow(row);
+            display_snapshot.line_len(row) as usize
+        };
+        let line_display_column_start = line.line_display_column_start;
+        let start_display_column = start_display_column
+            .saturating_sub(line_display_column_start)
+            .min(line.len);
+        let end_display_column = end_display_column
+            .saturating_sub(line_display_column_start)
+            .min(line.len);
+
+        let top_left = gpui::point(
+            line.origin.x + line.x_for_index(start_display_column),
+            line.origin.y,
+        );
+        let bottom_right = gpui::point(
+            line.origin.x + line.x_for_index(end_display_column),
+            line.origin.y + position_map.line_height,
+        );
+
+        Some(Bounds::from_corners(top_left, bottom_right))
     }
 
     fn character_index_for_point(
@@ -1581,15 +2055,41 @@ impl EntityInputHandler for Editor {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
-        let line_point = self.last_bounds?.localize(&point)?;
-        let last_layout = self.last_layout.as_ref()?;
+        let position_map = self.last_position_map.as_ref()?;
+        position_map.bounds.localize(&point)?;
+        let snapshot = position_map.snapshot.buffer_snapshot();
+        let point_for_position = position_map.point_for_position(point);
+        let offset = if position_map.masked {
+            let row = point_for_position.previous_valid.row().0;
+            let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
+            let line = position_map.line_layouts.get(line_index)?;
+            if line.row.0 != row {
+                return None;
+            }
+            let unclipped_column = point_for_position
+                .previous_valid
+                .column()
+                .saturating_add(point_for_position.column_overshoot_after_line_end);
+            let local_display_column =
+                unclipped_column.saturating_sub(line.line_display_column_start as u32) as usize;
+            let local_display_column = local_display_column.min(line.len);
+            let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
+            line.line_start_offset + buffer_column
+        } else {
+            let display_point = point_for_position
+                .as_valid()
+                .unwrap_or(point_for_position.previous_valid);
+            let point = position_map
+                .snapshot
+                .display_point_to_point(display_point, Bias::Left);
+            snapshot.point_to_offset(point).0
+        }
+        .min(snapshot.len().0);
 
-        let display_index = last_layout.index_for_x(line_point.x)?;
-        let text_offset = self.text_offset_for_display_offset(display_index);
-        let snapshot = self.snapshot();
         Some(
             snapshot
-                .offset_to_offset_utf16(text_offset.min(snapshot.len()))
+                .offset_to_offset_utf16(MultiBufferOffset(offset))
+                .0
                 .0,
         )
     }
@@ -1616,7 +2116,7 @@ struct ErasedEditorImpl(Entity<Editor>);
 
 impl ErasedEditor for ErasedEditorImpl {
     fn text(&self, cx: &App) -> String {
-        self.0.read(cx).snapshot().text()
+        self.0.read(cx).snapshot(cx).text()
     }
 
     fn set_text(&self, text: &str, _: &mut Window, cx: &mut App) {
@@ -1694,139 +2194,6 @@ impl ErasedEditor for ErasedEditorImpl {
     }
 }
 
-fn sanitize_single_line(text: &str) -> String {
-    let mut sanitized = String::with_capacity(text.len());
-    for character in text.chars() {
-        if character != '\n' && character != '\r' {
-            sanitized.push(character);
-        }
-    }
-    sanitized
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CharKind {
-    Whitespace,
-    Punctuation,
-    Word,
-}
-
-#[derive(Clone, Debug)]
-struct CharClassifier {
-    word_chars: Arc<[char]>,
-}
-
-impl CharClassifier {
-    fn new(word_chars: Arc<[char]>) -> Self {
-        Self { word_chars }
-    }
-
-    fn is_word_char(&self, character: char) -> bool {
-        self.word_chars.contains(&character)
-    }
-
-    fn kind(&self, character: char) -> CharKind {
-        if character.is_alphanumeric() || character == '_' || self.is_word_char(character) {
-            return CharKind::Word;
-        }
-        if character.is_whitespace() {
-            return CharKind::Whitespace;
-        }
-        CharKind::Punctuation
-    }
-
-    fn is_whitespace(&self, character: char) -> bool {
-        self.kind(character) == CharKind::Whitespace
-    }
-
-    fn is_word(&self, character: char) -> bool {
-        self.kind(character) == CharKind::Word
-    }
-
-    fn is_punctuation(&self, character: char) -> bool {
-        self.kind(character) == CharKind::Punctuation
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum FindRange {
-    SingleLine,
-    MultiLine,
-}
-
-fn find_preceding_boundary_offset(
-    text: &str,
-    from: usize,
-    find_range: FindRange,
-    mut is_boundary: impl FnMut(char, char) -> bool,
-) -> usize {
-    let mut prev_ch = None;
-    let mut offset = clamp_offset_to_char_boundary(text, from);
-
-    for ch in text[..offset].chars().rev() {
-        if find_range == FindRange::SingleLine && ch == '\n' {
-            break;
-        }
-        if let Some(prev_ch) = prev_ch
-            && is_boundary(ch, prev_ch)
-        {
-            break;
-        }
-
-        offset -= ch.len_utf8();
-        prev_ch = Some(ch);
-    }
-
-    offset
-}
-
-fn find_boundary_offset(
-    text: &str,
-    from: usize,
-    find_range: FindRange,
-    mut is_boundary: impl FnMut(char, char) -> bool,
-) -> usize {
-    let mut offset = clamp_offset_to_char_boundary(text, from);
-    let mut prev_ch = None;
-
-    for ch in text[offset..].chars() {
-        if find_range == FindRange::SingleLine && ch == '\n' {
-            break;
-        }
-        if let Some(prev_ch) = prev_ch
-            && is_boundary(prev_ch, ch)
-        {
-            break;
-        }
-
-        offset += ch.len_utf8();
-        prev_ch = Some(ch);
-    }
-
-    offset
-}
-
-fn is_subword_start(left: char, right: char, classifier: &CharClassifier) -> bool {
-    let is_word_start =
-        classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(right);
-    let is_subword_start = classifier.is_word('-') && left == '-' && right != '-'
-        || left == '_' && right != '_'
-        || left.is_lowercase() && right.is_uppercase();
-    is_word_start || is_subword_start
-}
-
-fn is_subword_end(left: char, right: char, classifier: &CharClassifier) -> bool {
-    let is_word_end =
-        classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(left);
-    is_word_end || is_subword_boundary_end(left, right, classifier)
-}
-
-fn is_subword_boundary_end(left: char, right: char, classifier: &CharClassifier) -> bool {
-    classifier.is_word('-') && left != '-' && right == '-'
-        || left != '_' && right == '_'
-        || left.is_lowercase() && right.is_uppercase()
-}
-
 fn utf8_offset_from_utf16(text: &str, utf16_offset: usize) -> usize {
     let mut utf8_offset = 0;
     let mut utf16_count = 0;
@@ -1848,23 +2215,10 @@ fn range_from_utf16_in_text(text: &str, range_utf16: &Range<usize>) -> Range<usi
     start..end
 }
 
-fn clamp_offset_to_char_boundary(text: &str, offset: usize) -> usize {
-    let clamped = offset.min(text.len());
-    if text.is_char_boundary(clamped) {
-        return clamped;
-    }
-
-    text.char_indices()
-        .take_while(|(index, _)| *index < clamped)
-        .map(|(index, _)| index)
-        .last()
-        .unwrap_or(0)
-}
-
-fn clamp_range_to_char_boundaries(text: &str, range: Range<usize>) -> Range<usize> {
-    let start = clamp_offset_to_char_boundary(text, range.start);
-    let end = clamp_offset_to_char_boundary(text, range.end);
-    if end < start { end..start } else { start..end }
+fn buffer_line_text(snapshot: &MultiBufferSnapshot, row: u32) -> String {
+    let line_start = snapshot.point_to_offset(text::Point::new(row, 0));
+    let line_end = line_start + snapshot.line_len(MultiBufferRow(row)) as usize;
+    snapshot.text_for_range(line_start..line_end).collect()
 }
 
 fn byte_offset_from_char_count(text: &str, char_count: usize) -> usize {
