@@ -1,13 +1,12 @@
 use std::{cmp, ops::Range};
 
-use multi_buffer::{MultiBufferChunks, MultiBufferOffset, MultiBufferSnapshot};
+use multi_buffer::{MultiBufferChunk, MultiBufferChunks, MultiBufferOffset, MultiBufferSnapshot};
 
 use super::tab_map::Chunk;
 
 pub struct RawChunks<'a> {
     buffer_chunks: MultiBufferChunks<'a>,
-    buffer_chunk: Option<&'a str>,
-    buffer_chunk_offset: usize,
+    buffer_chunk: Option<MultiBufferChunk<'a>>,
     offset: MultiBufferOffset,
     max_offset: MultiBufferOffset,
 }
@@ -21,7 +20,6 @@ impl<'a> RawChunks<'a> {
         Self {
             buffer_chunks: multibuffer_snapshot.chunks(range.start..range.end),
             buffer_chunk: None,
-            buffer_chunk_offset: 0,
             offset: range.start,
             max_offset: range.end,
         }
@@ -38,37 +36,34 @@ impl<'a> Iterator for RawChunks<'a> {
 
         loop {
             if self.buffer_chunk.is_none() {
-                self.buffer_chunk = self.buffer_chunks.next().map(|chunk| chunk.text);
-                self.buffer_chunk_offset = 0;
+                self.buffer_chunk = self.buffer_chunks.next();
             }
 
-            let chunk = self.buffer_chunk?;
-            if self.buffer_chunk_offset >= chunk.len() {
+            let chunk = self.buffer_chunk.as_mut()?;
+            if chunk.text.is_empty() {
                 self.buffer_chunk = None;
                 continue;
             }
 
-            let remaining = &chunk[self.buffer_chunk_offset..];
             let remaining_total_bytes = self.max_offset.saturating_sub(self.offset);
             if remaining_total_bytes == 0 {
                 return None;
             }
 
             let max_bytes = cmp::min(
-                remaining.len(),
+                chunk.text.len(),
                 cmp::min(rope::Chunk::MASK_BITS, remaining_total_bytes),
             );
-            let split_index = floor_char_boundary(remaining, max_bytes);
+            let split_index = floor_char_boundary(chunk.text, max_bytes);
             if split_index == 0 {
                 self.buffer_chunk = None;
                 continue;
             }
 
-            let text = &remaining[..split_index];
-            self.buffer_chunk_offset += split_index;
-            if self.buffer_chunk_offset >= chunk.len() {
+            let (text, suffix) = chunk.text.split_at(split_index);
+            chunk.text = suffix;
+            if chunk.text.is_empty() {
                 self.buffer_chunk = None;
-                self.buffer_chunk_offset = 0;
             }
             self.offset += split_index;
 
