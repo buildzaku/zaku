@@ -186,6 +186,24 @@ pub struct MultiBuffer {
     singleton: bool,
 }
 
+pub struct MultiBufferChunk<'a> {
+    pub text: &'a str,
+}
+
+pub struct MultiBufferChunks<'a> {
+    text_chunks: text::Chunks<'a>,
+}
+
+impl<'a> Iterator for MultiBufferChunks<'a> {
+    type Item = MultiBufferChunk<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.text_chunks
+            .next()
+            .map(|text| MultiBufferChunk { text })
+    }
+}
+
 impl MultiBuffer {
     pub fn singleton(buffer: Entity<TextBuffer>, cx: &mut Context<Self>) -> Self {
         let buffer_snapshot = buffer.read(cx).snapshot().clone();
@@ -516,9 +534,15 @@ impl MultiBufferSnapshot {
     }
 
     pub fn text_for_range<T: ToOffset>(&self, range: Range<T>) -> impl Iterator<Item = &str> + '_ {
+        self.chunks(range).map(|chunk| chunk.text)
+    }
+
+    pub fn chunks<T: ToOffset>(&self, range: Range<T>) -> MultiBufferChunks<'_> {
         let start = range.start.to_offset(self);
         let end = range.end.to_offset(self);
-        self.buffer.text_for_range(start.0..end.0)
+        MultiBufferChunks {
+            text_chunks: self.buffer.text_for_range(start.0..end.0),
+        }
     }
 
     pub fn text_summary(&self) -> TextSummary {

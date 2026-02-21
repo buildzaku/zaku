@@ -1,11 +1,11 @@
 use std::{cmp, ops::Range};
 
-use multi_buffer::{MultiBufferOffset, MultiBufferSnapshot};
+use multi_buffer::{MultiBufferChunks, MultiBufferOffset, MultiBufferSnapshot};
 
 use super::tab_map::Chunk;
 
 pub struct RawChunks<'a> {
-    buffer_chunks: Box<dyn Iterator<Item = &'a str> + 'a>,
+    buffer_chunks: MultiBufferChunks<'a>,
     buffer_chunk: Option<&'a str>,
     buffer_chunk_offset: usize,
     offset: MultiBufferOffset,
@@ -19,7 +19,7 @@ impl<'a> RawChunks<'a> {
     ) -> Self {
         let range = normalize_range(multibuffer_snapshot, range);
         Self {
-            buffer_chunks: Box::new(multibuffer_snapshot.text_for_range(range.start..range.end)),
+            buffer_chunks: multibuffer_snapshot.chunks(range.start..range.end),
             buffer_chunk: None,
             buffer_chunk_offset: 0,
             offset: range.start,
@@ -38,7 +38,7 @@ impl<'a> Iterator for RawChunks<'a> {
 
         loop {
             if self.buffer_chunk.is_none() {
-                self.buffer_chunk = self.buffer_chunks.next();
+                self.buffer_chunk = self.buffer_chunks.next().map(|chunk| chunk.text);
                 self.buffer_chunk_offset = 0;
             }
 
