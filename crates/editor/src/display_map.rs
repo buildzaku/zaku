@@ -76,6 +76,18 @@ impl DisplaySnapshot {
             .tab_point_to_point(point.to_tab_point(), bias)
     }
 
+    pub fn display_point_to_anchor(&self, point: DisplayPoint, bias: Bias) -> Anchor {
+        let offset = point.to_offset(self, bias);
+        match bias {
+            Bias::Left => self
+                .buffer_snapshot()
+                .anchor_before(MultiBufferOffset(offset)),
+            Bias::Right => self
+                .buffer_snapshot()
+                .anchor_after(MultiBufferOffset(offset)),
+        }
+    }
+
     pub fn max_point(&self) -> DisplayPoint {
         DisplayPoint::from_tab_point(self.tab_snapshot.max_point())
     }
@@ -99,6 +111,10 @@ impl DisplaySnapshot {
 
     pub fn line_len(&self, row: DisplayRow) -> u32 {
         self.tab_snapshot.line_len(row.0)
+    }
+
+    pub fn longest_row(&self) -> DisplayRow {
+        DisplayRow(self.buffer_snapshot().text_summary().longest_row)
     }
 }
 

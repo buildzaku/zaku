@@ -2,6 +2,7 @@ mod actions;
 mod display_map;
 mod element;
 mod movement;
+mod scroll;
 
 pub use actions::*;
 pub use element::EditorElement;
@@ -454,10 +455,17 @@ impl SelectionHistory {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ScrollbarDrag {
+    axis: gpui::Axis,
+    pointer_offset: Pixels,
+}
+
 pub struct Editor {
     focus_handle: FocusHandle,
     buffer: Entity<MultiBuffer>,
     display_map: Entity<display_map::DisplayMap>,
+    scroll_manager: scroll::ScrollManager,
     mode: EditorMode,
     placeholder: SharedString,
     selected_range: Range<usize>,
@@ -466,6 +474,7 @@ pub struct Editor {
     selection_history: SelectionHistory,
     addons: HashMap<TypeId, Box<dyn Addon>>,
     last_position_map: Option<Rc<PositionMap>>,
+    scrollbar_drag: Option<ScrollbarDrag>,
     selecting: bool,
     input_enabled: bool,
     selection_mark_mode: bool,
@@ -508,6 +517,7 @@ impl Editor {
         let buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer.clone(), cx));
         let display_map =
             cx.new(|cx| display_map::DisplayMap::new(buffer.clone(), DEFAULT_TAB_SIZE, cx));
+        let scroll_manager = scroll::ScrollManager::new();
         let selected_range = 0..0;
         let selection_reversed = false;
         let selection_history = SelectionHistory::new(SelectionState {
@@ -524,6 +534,7 @@ impl Editor {
             focus_handle,
             buffer,
             display_map,
+            scroll_manager,
             mode,
             placeholder: SharedString::default(),
             selected_range,
@@ -532,6 +543,7 @@ impl Editor {
             selection_history,
             addons: HashMap::new(),
             last_position_map: None,
+            scrollbar_drag: None,
             selecting: false,
             input_enabled: true,
             selection_mark_mode: false,
@@ -560,6 +572,23 @@ impl Editor {
     fn display_snapshot(&self, cx: &mut Context<Self>) -> display_map::DisplaySnapshot {
         self.display_map
             .update(cx, |display_map, cx| display_map.snapshot(cx))
+    }
+
+    fn scroll_position(
+        &self,
+        snapshot: &display_map::DisplaySnapshot,
+    ) -> gpui::Point<scroll::ScrollOffset> {
+        self.scroll_manager.scroll_position(snapshot)
+    }
+
+    fn set_scroll_position(
+        &mut self,
+        snapshot: &display_map::DisplaySnapshot,
+        position: gpui::Point<scroll::ScrollOffset>,
+        cx: &mut Context<Self>,
+    ) {
+        self.scroll_manager.set_scroll_position(snapshot, position);
+        cx.notify();
     }
 
     fn selection_state(&self) -> SelectionState {
@@ -630,6 +659,7 @@ impl Editor {
         self.selected_range = offset..offset;
         self.selection_reversed = false;
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
     }
 
@@ -639,6 +669,7 @@ impl Editor {
         self.selected_range = offset..offset;
         self.selection_reversed = false;
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
     }
 
@@ -657,6 +688,7 @@ impl Editor {
         }
 
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
     }
 
@@ -673,6 +705,7 @@ impl Editor {
         }
 
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
     }
 
@@ -909,6 +942,7 @@ impl Editor {
         self.marked_range = None;
         self.goal_display_column = None;
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         let after = self.selection_state();
         let transaction_id = self
             .buffer
@@ -943,6 +977,7 @@ impl Editor {
             self.marked_range = marked_range;
             self.goal_display_column = None;
             self.record_selection_history();
+            self.request_autoscroll(scroll::Autoscroll::newest(), cx);
             cx.notify();
             return;
         }
@@ -971,6 +1006,7 @@ impl Editor {
         self.marked_range = marked_range;
         self.goal_display_column = None;
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         let after = self.selection_state();
         let transaction_id = self
             .buffer
@@ -1027,10 +1063,12 @@ impl Editor {
         self.marked_range = None;
         self.goal_display_column = None;
         self.record_selection_history();
-        matches!(
+        if matches!(
             self.mode,
             EditorMode::SingleLine | EditorMode::AutoHeight { .. }
-        );
+        ) {
+            self.request_autoscroll(scroll::Autoscroll::newest(), cx);
+        }
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
     }
@@ -1064,6 +1102,7 @@ impl Editor {
         self.marked_range = None;
         self.goal_display_column = None;
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         let after = self.selection_state();
         let transaction_id = self
             .buffer
@@ -1101,6 +1140,7 @@ impl Editor {
         self.selection_reversed = false;
         self.goal_display_column = None;
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
     }
 
@@ -1167,6 +1207,7 @@ impl Editor {
         self.selection_reversed = false;
         self.goal_display_column = None;
         self.record_selection_history();
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
     }
 
@@ -1629,6 +1670,7 @@ impl Editor {
         }
         self.marked_range = None;
         self.goal_display_column = None;
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
     }
@@ -1656,6 +1698,7 @@ impl Editor {
         }
         self.marked_range = None;
         self.goal_display_column = None;
+        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
     }
@@ -1667,6 +1710,7 @@ impl Editor {
         if let Some(state) = state {
             self.restore_selection_state(&state, cx);
             self.goal_display_column = None;
+            self.request_autoscroll(scroll::Autoscroll::newest(), cx);
             cx.notify();
         }
     }
@@ -1678,6 +1722,7 @@ impl Editor {
         if let Some(state) = state {
             self.restore_selection_state(&state, cx);
             self.goal_display_column = None;
+            self.request_autoscroll(scroll::Autoscroll::newest(), cx);
             cx.notify();
         }
     }

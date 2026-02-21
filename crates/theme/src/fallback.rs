@@ -67,6 +67,12 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 status_bar_background: gpui::rgb(0x121212).into(),
                 editor_background: gpui::rgb(0x141414).into(),
                 editor_foreground: gpui::rgb(0xf1f1f1).into(),
+                scrollbar_track_background: gpui::rgb(0x141414).into(),
+                scrollbar_track_border: gpui::rgb(0x2f2f2f).into(),
+                scrollbar_thumb_background: gpui::rgb(0x3a3a40).into(),
+                scrollbar_thumb_hover_background: gpui::rgb(0x3a3a40).into(),
+                scrollbar_thumb_active_background: gpui::rgb(0x3a3a40).into(),
+                scrollbar_thumb_border: gpui::rgb(0x2f2f2f).into(),
             };
 
             let status = StatusColors {
@@ -146,6 +152,12 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 status_bar_background: gpui::rgb(0xf8f8f8).into(),
                 editor_background: gpui::rgb(0xffffff).into(),
                 editor_foreground: gpui::rgb(0x0b0b0e).into(),
+                scrollbar_track_background: gpui::rgb(0xffffff).into(),
+                scrollbar_track_border: gpui::rgb(0xd7d7dd).into(),
+                scrollbar_thumb_background: gpui::rgb(0xdcdfe0).into(),
+                scrollbar_thumb_hover_background: gpui::rgb(0xdcdfe0).into(),
+                scrollbar_thumb_active_background: gpui::rgb(0xdcdfe0).into(),
+                scrollbar_thumb_border: gpui::rgb(0xd7d7dd).into(),
             };
 
             let status = StatusColors {

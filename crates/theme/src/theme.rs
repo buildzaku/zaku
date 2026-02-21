@@ -163,6 +163,13 @@ pub struct ThemeColors {
 
     pub editor_background: Hsla,
     pub editor_foreground: Hsla,
+
+    pub scrollbar_track_background: Hsla,
+    pub scrollbar_track_border: Hsla,
+    pub scrollbar_thumb_background: Hsla,
+    pub scrollbar_thumb_hover_background: Hsla,
+    pub scrollbar_thumb_active_background: Hsla,
+    pub scrollbar_thumb_border: Hsla,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -313,6 +320,19 @@ pub struct ThemeStyleContent {
     #[serde(rename = "editor.foreground")]
     pub editor_foreground: Option<String>,
 
+    #[serde(rename = "scrollbar.track.background")]
+    pub scrollbar_track_background: Option<String>,
+    #[serde(rename = "scrollbar.track.border")]
+    pub scrollbar_track_border: Option<String>,
+    #[serde(rename = "scrollbar.thumb.background")]
+    pub scrollbar_thumb_background: Option<String>,
+    #[serde(rename = "scrollbar.thumb.hover_background")]
+    pub scrollbar_thumb_hover_background: Option<String>,
+    #[serde(rename = "scrollbar.thumb.active_background")]
+    pub scrollbar_thumb_active_background: Option<String>,
+    #[serde(rename = "scrollbar.thumb.border")]
+    pub scrollbar_thumb_border: Option<String>,
+
     #[serde(rename = "conflict")]
     pub conflict: Option<String>,
     #[serde(rename = "conflict.background")]
@@ -460,6 +480,30 @@ impl ThemeStyleContent {
             )?,
             editor_background: required_color("editor.background", &self.editor_background)?,
             editor_foreground: required_color("editor.foreground", &self.editor_foreground)?,
+            scrollbar_track_background: required_color(
+                "scrollbar.track.background",
+                &self.scrollbar_track_background,
+            )?,
+            scrollbar_track_border: required_color(
+                "scrollbar.track.border",
+                &self.scrollbar_track_border,
+            )?,
+            scrollbar_thumb_background: required_color(
+                "scrollbar.thumb.background",
+                &self.scrollbar_thumb_background,
+            )?,
+            scrollbar_thumb_hover_background: required_color(
+                "scrollbar.thumb.hover_background",
+                &self.scrollbar_thumb_hover_background,
+            )?,
+            scrollbar_thumb_active_background: required_color(
+                "scrollbar.thumb.active_background",
+                &self.scrollbar_thumb_active_background,
+            )?,
+            scrollbar_thumb_border: required_color(
+                "scrollbar.thumb.border",
+                &self.scrollbar_thumb_border,
+            )?,
         };
 
         let status = StatusColors {
