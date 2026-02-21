@@ -17,6 +17,7 @@ pub struct Chunk<'a> {
     pub text: &'a str,
     pub chars: u128,
     pub tabs: u128,
+    pub newlines: u128,
 }
 
 /// Keeps track of hard tabs in a text buffer.
@@ -433,6 +434,9 @@ impl<'a> Iterator for TabChunks<'a> {
                 self.chunk = chunk;
                 if self.inside_leading_tab {
                     self.chunk.text = &self.chunk.text[1..];
+                    self.chunk.tabs >>= 1;
+                    self.chunk.chars >>= 1;
+                    self.chunk.newlines >>= 1;
                     self.inside_leading_tab = false;
                     self.input_column += 1;
                 }
@@ -441,63 +445,82 @@ impl<'a> Iterator for TabChunks<'a> {
             }
         }
 
-        for (index, character) in self.chunk.text.char_indices() {
-            match character {
-                '\t' if index > 0 => {
-                    let (prefix, suffix) = self.chunk.text.split_at(index);
+        let first_tab_idx = if self.chunk.tabs != 0 {
+            self.chunk.tabs.trailing_zeros() as usize
+        } else {
+            self.chunk.text.len()
+        };
 
-                    let mask = 1u128.unbounded_shl(index as u32).wrapping_sub(1);
-                    let chars = self.chunk.chars & mask;
-                    let tabs = self.chunk.tabs & mask;
-                    self.chunk.tabs = self.chunk.tabs.unbounded_shr(index as u32);
-                    self.chunk.chars = self.chunk.chars.unbounded_shr(index as u32);
-                    self.chunk.text = suffix;
-                    return Some(Chunk {
-                        text: prefix,
-                        chars,
-                        tabs,
-                    });
-                }
-                '\t' => {
-                    self.chunk.text = &self.chunk.text[1..];
-                    self.chunk.tabs >>= 1;
-                    self.chunk.chars >>= 1;
-                    let tab_size = if self.input_column < self.max_expansion_column {
-                        self.tab_size.get()
-                    } else {
-                        1
-                    };
-                    let mut len = tab_size - self.column % tab_size;
-                    let next_output_position = cmp::min(
-                        self.output_position + Point::new(0, len),
-                        self.max_output_position,
-                    );
-                    len = next_output_position.column - self.output_position.column;
-                    self.column += len;
-                    self.input_column += 1;
-                    self.output_position = next_output_position;
-                    return Some(Chunk {
-                        text: unsafe { std::str::from_utf8_unchecked(&SPACES[..len as usize]) },
-                        chars: bitmask_for_len(len),
-                        tabs: 0,
-                    });
-                }
-                '\n' => {
-                    self.column = 0;
-                    self.input_column = 0;
-                    self.output_position += Point::new(1, 0);
-                }
-                _ => {
-                    self.column += 1;
-                    if !self.inside_leading_tab {
-                        self.input_column += character.len_utf8() as u32;
-                    }
-                    self.output_position.column += character.len_utf8() as u32;
-                }
-            }
+        if first_tab_idx == 0 {
+            self.chunk.text = &self.chunk.text[1..];
+            self.chunk.tabs >>= 1;
+            self.chunk.chars >>= 1;
+            self.chunk.newlines >>= 1;
+
+            let tab_size = if self.input_column < self.max_expansion_column {
+                self.tab_size.get()
+            } else {
+                1
+            };
+            let mut len = tab_size - self.column % tab_size;
+            let next_output_position = cmp::min(
+                self.output_position + Point::new(0, len),
+                self.max_output_position,
+            );
+            len = next_output_position.column - self.output_position.column;
+            self.column += len;
+            self.input_column += 1;
+            self.output_position = next_output_position;
+
+            return Some(Chunk {
+                text: unsafe { std::str::from_utf8_unchecked(&SPACES[..len as usize]) },
+                chars: bitmask_for_len(len),
+                tabs: 0,
+                newlines: 0,
+            });
         }
 
-        Some(mem::take(&mut self.chunk))
+        let prefix_len = first_tab_idx;
+        let (prefix, suffix) = self.chunk.text.split_at(prefix_len);
+
+        let mask = 1u128.unbounded_shl(prefix_len as u32).wrapping_sub(1);
+        let prefix_chars = self.chunk.chars & mask;
+        let prefix_tabs = self.chunk.tabs & mask;
+        let prefix_newlines = self.chunk.newlines & mask;
+
+        self.chunk.text = suffix;
+        self.chunk.tabs = self.chunk.tabs.unbounded_shr(prefix_len as u32);
+        self.chunk.chars = self.chunk.chars.unbounded_shr(prefix_len as u32);
+        self.chunk.newlines = self.chunk.newlines.unbounded_shr(prefix_len as u32);
+
+        let newline_count = prefix_newlines.count_ones();
+        if newline_count > 0 {
+            let last_newline_bit = 128 - prefix_newlines.leading_zeros();
+            let chars_after_last_newline =
+                prefix_chars.unbounded_shr(last_newline_bit).count_ones();
+            let bytes_after_last_newline = prefix_len as u32 - last_newline_bit;
+
+            self.column = chars_after_last_newline;
+            self.input_column = bytes_after_last_newline;
+            self.output_position = Point::new(
+                self.output_position.row + newline_count,
+                bytes_after_last_newline,
+            );
+        } else {
+            let char_count = prefix_chars.count_ones();
+            self.column += char_count;
+            if !self.inside_leading_tab {
+                self.input_column += prefix_len as u32;
+            }
+            self.output_position.column += prefix_len as u32;
+        }
+
+        Some(Chunk {
+            text: prefix,
+            chars: prefix_chars,
+            tabs: prefix_tabs,
+            newlines: prefix_newlines,
+        })
     }
 }
 

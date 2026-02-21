@@ -72,8 +72,13 @@ impl<'a> Iterator for RawChunks<'a> {
             }
             self.offset += split_index;
 
-            let (chars, tabs) = compute_bitmaps(text);
-            return Some(Chunk { text, chars, tabs });
+            let (chars, tabs, newlines) = compute_bitmaps(text);
+            return Some(Chunk {
+                text,
+                chars,
+                tabs,
+                newlines,
+            });
         }
     }
 }
@@ -103,20 +108,23 @@ fn floor_char_boundary(text: &str, mut index: usize) -> usize {
         .unwrap_or(0)
 }
 
-fn compute_bitmaps(text: &str) -> (u128, u128) {
+fn compute_bitmaps(text: &str) -> (u128, u128, u128) {
     let mut chars = 0u128;
     let mut tabs = 0u128;
+    let mut newlines = 0u128;
 
     for (index, character) in text.char_indices() {
         if let Some(mask) = bit(index as u32) {
             chars |= mask;
             if character == '\t' {
                 tabs |= mask;
+            } else if character == '\n' {
+                newlines |= mask;
             }
         }
     }
 
-    (chars, tabs)
+    (chars, tabs, newlines)
 }
 
 fn bit(shift: u32) -> Option<u128> {
