@@ -2,7 +2,9 @@ mod fallback;
 mod settings;
 
 use anyhow::{Context, Result, anyhow};
-use gpui::{App, AssetSource, BorrowAppContext, Global, Hsla, SharedString, WindowAppearance};
+use gpui::{
+    App, AssetSource, BorrowAppContext, Global, Hsla, Rgba, SharedString, WindowAppearance,
+};
 use palette::FromColor;
 use parking_lot::RwLock;
 use serde::Deserialize;
@@ -577,7 +579,7 @@ fn required_color(field: &'static str, value: &Option<String>) -> Result<Hsla> {
 }
 
 fn try_parse_color(color: &str) -> Result<Hsla> {
-    let rgba = gpui::Rgba::try_from(color)?;
+    let rgba = Rgba::try_from(color)?;
     let rgba = palette::rgb::Srgba::from_components((rgba.r, rgba.g, rgba.b, rgba.a));
     let hsla = palette::Hsla::from_color(rgba);
 

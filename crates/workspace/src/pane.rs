@@ -1,5 +1,7 @@
 use futures::io::AsyncReadExt;
-use gpui::{App, Context, Entity, EntityId, FocusHandle, Focusable, Window, prelude::*};
+use gpui::{
+    App, Context, Corner, Entity, EntityId, FocusHandle, Focusable, FontWeight, Window, prelude::*,
+};
 use std::sync::Arc;
 
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy};
@@ -233,7 +235,7 @@ impl Render for Pane {
                             request_method_menu,
                         )
                         .style(DropdownStyle::Outlined)
-                        .attach(gpui::Corner::BottomLeft)
+                        .attach(Corner::BottomLeft)
                         .offset(gpui::point(gpui::px(0.), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )
@@ -243,7 +245,7 @@ impl Render for Pane {
                             .variant(ButtonVariant::Accent)
                             .size(ButtonSize::Large)
                             .width(ui::rems_from_px(60.))
-                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |pane, _, window, cx| {
                                 let request_method = pane.request_method.clone();
                                 let request_url = input_handle.read(cx).text(cx);

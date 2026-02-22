@@ -1,4 +1,4 @@
-use gpui::{Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled};
+use gpui::{Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Window};
 use ui::{
     ButtonCommon, Clickable, Color, IconButton, IconButtonShape, IconSize, StyledTypography,
     Toggleable, Tooltip,
@@ -18,7 +18,7 @@ impl PanelButtons {
 }
 
 impl Render for PanelButtons {
-    fn render(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dock = self.dock.read(cx);
         let active_index = dock.active_panel_index();
         let is_open = dock.is_open();

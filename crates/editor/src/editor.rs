@@ -8,10 +8,10 @@ pub use actions::*;
 pub use element::EditorElement;
 
 use gpui::{
-    App, Bounds, ClipboardEntry, ClipboardItem, Context, Entity, EntityInputHandler, EventEmitter,
-    FocusHandle, Focusable, Hsla, KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, Render, SharedString, Subscription, TextStyle, UTF16Selection,
-    Window, prelude::*,
+    AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontStyle, Hsla, KeyBinding,
+    KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
+    Subscription, TextStyle, UTF16Selection, Window, prelude::*,
 };
 use multi_buffer::{
     MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow, MultiBufferSnapshot,
@@ -457,7 +457,7 @@ impl SelectionHistory {
 
 #[derive(Clone, Copy, Debug)]
 struct ScrollbarDrag {
-    axis: gpui::Axis,
+    axis: Axis,
     pointer_offset: Pixels,
 }
 
@@ -577,14 +577,14 @@ impl Editor {
     fn scroll_position(
         &self,
         snapshot: &display_map::DisplaySnapshot,
-    ) -> gpui::Point<scroll::ScrollOffset> {
+    ) -> Point<scroll::ScrollOffset> {
         self.scroll_manager.scroll_position(snapshot)
     }
 
     fn set_scroll_position(
         &mut self,
         snapshot: &display_map::DisplaySnapshot,
-        position: gpui::Point<scroll::ScrollOffset>,
+        position: Point<scroll::ScrollOffset>,
         cx: &mut Context<Self>,
     ) {
         self.scroll_manager.set_scroll_position(snapshot, position);
@@ -2211,7 +2211,7 @@ impl ErasedEditor for ErasedEditorImpl {
         })
     }
 
-    fn render(&self, _window: &mut Window, cx: &App) -> gpui::AnyElement {
+    fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
         let theme_colors = cx.theme().colors();
         let theme_settings = ThemeSettings::get_global(cx);
 
@@ -2220,7 +2220,7 @@ impl ErasedEditor for ErasedEditorImpl {
             font_features: theme_settings.ui_font.features.clone(),
             font_size: gpui::rems(0.875).into(),
             font_weight: theme_settings.buffer_font.weight,
-            font_style: gpui::FontStyle::Normal,
+            font_style: FontStyle::Normal,
             line_height: gpui::relative(1.2),
             color: theme_colors.text,
             ..Default::default()

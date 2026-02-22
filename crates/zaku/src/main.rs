@@ -1,13 +1,11 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{
-    App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, actions, prelude::*,
-};
+use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
 
 use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::Workspace;
 
-actions!(zaku, [Quit]);
+gpui::actions!(zaku, [Quit]);
 
 fn main() {
     Application::new()

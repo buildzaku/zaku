@@ -1,3 +1,5 @@
+use gpui::Pixels;
+
 pub trait MergeFrom {
     fn merge_from(&mut self, other: &Self);
 
@@ -38,7 +40,7 @@ merge_from_overwrites!(
     std::path::PathBuf,
     std::sync::Arc<str>,
     std::sync::Arc<std::path::Path>,
-    gpui::Pixels,
+    Pixels,
     crate::UiDensity,
 );
 

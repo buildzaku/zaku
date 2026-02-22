@@ -1,4 +1,4 @@
-use gpui::{App, BorrowAppContext, Global, Pixels};
+use gpui::{App, BorrowAppContext, Global, Pixels, Subscription};
 use indexmap::IndexMap;
 use serde::{
     Deserialize, Deserializer, Serialize,
@@ -276,7 +276,7 @@ impl SettingsStore {
         &self.merged_settings
     }
 
-    pub fn observe_active_settings_profile_name(cx: &mut App) -> gpui::Subscription {
+    pub fn observe_active_settings_profile_name(cx: &mut App) -> Subscription {
         cx.observe_global::<crate::ActiveSettingsProfileName>(|cx| {
             cx.update_global::<Self, _>(|store, cx| {
                 store.recompute_values(cx);

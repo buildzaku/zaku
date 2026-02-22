@@ -1,6 +1,6 @@
 use gpui::{
-    Action, App, Context, FocusHandle, Focusable, Hsla, Pixels, Render, SharedString, TextStyle,
-    Window, prelude::*,
+    Action, App, Context, Entity, FocusHandle, Focusable, Hsla, Pixels, Render, SharedString,
+    TextStyle, Window, prelude::*,
 };
 
 use editor::{Editor, EditorElement, EditorStyle};
@@ -18,7 +18,7 @@ pub struct ResponsePanel {
     size: Pixels,
     response: Option<SharedString>,
     response_status: SharedString,
-    response_editor: Option<gpui::Entity<Editor>>,
+    response_editor: Option<Entity<Editor>>,
 }
 
 impl ResponsePanel {

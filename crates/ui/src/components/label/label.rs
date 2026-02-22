@@ -1,4 +1,4 @@
-use gpui::{App, RenderOnce, SharedString, StyleRefinement, Window, prelude::*};
+use gpui::{App, FontWeight, RenderOnce, SharedString, StyleRefinement, Window, prelude::*};
 
 use crate::{Color, LabelCommon, LabelLike, LabelSize, LineHeightStyle};
 
@@ -42,7 +42,7 @@ impl LabelCommon for Label {
         self
     }
 
-    fn weight(mut self, weight: gpui::FontWeight) -> Self {
+    fn weight(mut self, weight: FontWeight) -> Self {
         self.base = self.base.weight(weight);
         self
     }

@@ -1,4 +1,4 @@
-use gpui::{Bounds, Context, Pixels, Window};
+use gpui::{Bounds, Context, Pixels, Point, Window};
 use multi_buffer::{Anchor, MultiBufferOffset};
 use std::cmp;
 
@@ -243,7 +243,7 @@ impl Editor {
         autoscroll_request: Option<(Autoscroll, bool)>,
         _window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Option<gpui::Point<ScrollOffset>> {
+    ) -> Option<Point<ScrollOffset>> {
         let (_, local) = autoscroll_request?;
 
         if em_advance == gpui::px(0.) {

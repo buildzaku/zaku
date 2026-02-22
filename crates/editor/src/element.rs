@@ -1,8 +1,9 @@
 use gpui::{
-    Action, App, Axis, Bounds, ContentMask, Context, CursorStyle, DispatchPhase, Element,
-    ElementId, ElementInputHandler, Entity, GlobalElementId, Hitbox, HitboxBehavior, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, ScrollDelta, ScrollWheelEvent,
-    ShapedLine, Style, TextAlign, TextRun, UnderlineStyle, Window, point, prelude::*, px, size,
+    Action, App, Axis, BorderStyle, Bounds, ContentMask, Context, Corners, CursorStyle,
+    DispatchPhase, Edges, Element, ElementId, ElementInputHandler, Entity, GlobalElementId, Hitbox,
+    HitboxBehavior, InspectorElementId, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, PaintQuad, Pixels, Point, ScrollDelta, ScrollWheelEvent, ShapedLine,
+    SharedString, Size, Style, TextAlign, TextRun, TextStyle, UnderlineStyle, Window, prelude::*,
 };
 use multi_buffer::{MultiBufferOffset, MultiBufferRow};
 use std::{any::TypeId, ops::Range};
@@ -10,14 +11,14 @@ use theme::ActiveTheme;
 
 use crate::{Editor, EditorMode, EditorStyle, HandleInput, MAX_LINE_LEN, SizingBehavior};
 
-const SCROLLBAR_THICKNESS: Pixels = px(15.);
-const SCROLLBAR_MIN_THUMB_LEN: Pixels = px(25.);
+const SCROLLBAR_THICKNESS: Pixels = gpui::px(15.);
+const SCROLLBAR_MIN_THUMB_LEN: Pixels = gpui::px(25.);
 
 pub(crate) struct PositionMap {
-    pub size: gpui::Size<Pixels>,
+    pub size: Size<Pixels>,
     pub bounds: Bounds<Pixels>,
     pub line_height: Pixels,
-    pub scroll_position: gpui::Point<crate::scroll::ScrollOffset>,
+    pub scroll_position: Point<crate::scroll::ScrollOffset>,
     pub em_layout_width: Pixels,
     pub line_layouts: Vec<LineWithInvisibles>,
     pub snapshot: crate::display_map::DisplaySnapshot,
@@ -45,9 +46,9 @@ impl PointForPosition {
 }
 
 impl PositionMap {
-    pub(crate) fn point_for_position(&self, position: gpui::Point<Pixels>) -> PointForPosition {
+    pub(crate) fn point_for_position(&self, position: Point<Pixels>) -> PointForPosition {
         let local_position = position - self.bounds.origin;
-        let y = local_position.y.max(px(0.)).min(self.size.height);
+        let y = local_position.y.max(gpui::px(0.)).min(self.size.height);
         let x = local_position.x + self.scroll_position.x as f32 * self.em_layout_width;
         let row = ((y / self.line_height) as f64 + self.scroll_position.y.max(0.0)) as u32;
 
@@ -63,7 +64,7 @@ impl PositionMap {
                     .line_display_column_start
                     .saturating_add(index)
                     .min(u32::MAX as usize);
-                (display_column as u32, px(0.))
+                (display_column as u32, gpui::px(0.))
             } else {
                 let display_column = line
                     .line_display_column_start
@@ -71,11 +72,11 @@ impl PositionMap {
                     .min(u32::MAX as usize);
                 (
                     display_column as u32,
-                    px(0.).max(x_relative_to_text - line.width),
+                    gpui::px(0.).max(x_relative_to_text - line.width),
                 )
             }
         } else {
-            (0, x.max(px(0.)))
+            (0, x.max(gpui::px(0.)))
         };
 
         let mut exact_unclipped =
@@ -83,7 +84,7 @@ impl PositionMap {
         let previous_valid = self.snapshot.clip_point(exact_unclipped, text::Bias::Left);
         let next_valid = self.snapshot.clip_point(exact_unclipped, text::Bias::Right);
 
-        let column_overshoot_after_line_end = if self.em_layout_width == px(0.) {
+        let column_overshoot_after_line_end = if self.em_layout_width == gpui::px(0.) {
             0
         } else {
             (x_overshoot_after_line_end / self.em_layout_width) as u32
@@ -101,7 +102,7 @@ impl PositionMap {
 
 pub(crate) struct LineWithInvisibles {
     pub row: crate::display_map::DisplayRow,
-    pub origin: gpui::Point<Pixels>,
+    pub origin: Point<Pixels>,
     pub line_start_offset: usize,
     pub line_end_offset: usize,
     pub line_display_column_start: usize,
@@ -124,9 +125,9 @@ impl LineWithInvisibles {
 
     pub fn alignment_offset(&self, text_align: TextAlign, content_width: Pixels) -> Pixels {
         match text_align {
-            TextAlign::Left => px(0.),
-            TextAlign::Center => ((content_width - self.width) / 2.).max(px(0.)),
-            TextAlign::Right => (content_width - self.width).max(px(0.)),
+            TextAlign::Left => gpui::px(0.),
+            TextAlign::Center => ((content_width - self.width) / 2.).max(gpui::px(0.)),
+            TextAlign::Right => (content_width - self.width).max(gpui::px(0.)),
         }
     }
 }
@@ -207,10 +208,10 @@ pub struct PrepaintState {
     horizontal_scrollbar: Option<ScrollbarPrepaint>,
     line_height: Pixels,
     column_width: Pixels,
-    scroll_max: gpui::Point<crate::scroll::ScrollOffset>,
+    scroll_max: Point<crate::scroll::ScrollOffset>,
     masked: bool,
     needs_scroll_clamp: bool,
-    clamped_scroll_position: gpui::Point<crate::scroll::ScrollOffset>,
+    clamped_scroll_position: Point<crate::scroll::ScrollOffset>,
 }
 
 #[derive(Clone)]
@@ -247,10 +248,10 @@ impl Element for EditorElement {
     fn request_layout(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
+    ) -> (LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
         style.size.width = gpui::relative(1.).into();
         let line_height = self.style.text.line_height_in_pixels(window.rem_size());
@@ -280,7 +281,7 @@ impl Element for EditorElement {
     fn prepaint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
@@ -353,9 +354,9 @@ impl Element for EditorElement {
             - if show_vertical_scrollbar {
                 SCROLLBAR_THICKNESS
             } else {
-                px(0.)
+                gpui::px(0.)
             })
-        .max(px(0.));
+        .max(gpui::px(0.));
 
         let longest_row = display_snapshot.longest_row();
         let content_columns = f64::from(display_snapshot.line_len(longest_row));
@@ -363,7 +364,7 @@ impl Element for EditorElement {
         let scrollable_columns = content_columns;
         let max_scroll_x = (scrollable_columns - viewport_columns).max(0.0);
 
-        let scroll_max = point(max_scroll_x, max_scroll_y);
+        let scroll_max = gpui::point(max_scroll_x, max_scroll_y);
         let scroll_width = column_width * scrollable_columns as f32;
         let (autoscroll_request, needs_horizontal_autoscroll, mut scroll_position) =
             self.editor.update(cx, |editor, cx| {
@@ -464,7 +465,7 @@ impl Element for EditorElement {
             }
         }
 
-        let clamped_scroll_position = point(
+        let clamped_scroll_position = gpui::point(
             scroll_position.x.clamp(0.0, scroll_max.x),
             scroll_position.y.clamp(0.0, scroll_max.y),
         );
@@ -535,11 +536,11 @@ impl Element for EditorElement {
                     display_end = display_end.min(line.len);
 
                     let selection_bounds = Bounds::from_corners(
-                        point(
+                        gpui::point(
                             line.origin.x + line.x_for_index(display_start),
                             line.origin.y,
                         ),
-                        point(
+                        gpui::point(
                             line.origin.x + line.x_for_index(display_end),
                             line.origin.y + line_height,
                         ),
@@ -581,7 +582,10 @@ impl Element for EditorElement {
                     }
                 };
                 cursor = Some(gpui::fill(
-                    Bounds::new(point(cursor_x, line.origin.y), size(px(2.), line_height)),
+                    Bounds::new(
+                        gpui::point(cursor_x, line.origin.y),
+                        gpui::size(gpui::px(2.), line_height),
+                    ),
                     cx.theme().colors().editor_foreground,
                 ));
             }
@@ -646,7 +650,7 @@ impl Element for EditorElement {
     fn paint(
         &mut self,
         _id: Option<&GlobalElementId>,
-        _inspector_id: Option<&gpui::InspectorElementId>,
+        _inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         prepaint: &mut Self::PrepaintState,
@@ -731,7 +735,7 @@ impl Element for EditorElement {
                         }
                     };
 
-                    let next = point(
+                    let next = gpui::point(
                         (current.x - delta_x).clamp(0.0, scroll_max.x),
                         (current.y - delta_y).clamp(0.0, scroll_max.y),
                     );
@@ -809,14 +813,14 @@ impl Element for EditorElement {
                         if let Some(thumb_bounds) = scrollbar.thumb_bounds {
                             let track_bounds = scrollbar.track_bounds;
                             let thumb_len =
-                                (thumb_bounds.bottom() - thumb_bounds.top()).max(px(0.));
+                                (thumb_bounds.bottom() - thumb_bounds.top()).max(gpui::px(0.));
                             let pointer_offset = thumb_len / 2.0;
                             let available =
                                 (track_bounds.bottom() - track_bounds.top() - thumb_len)
-                                    .max(px(0.));
+                                    .max(gpui::px(0.));
                             let desired_thumb_start = (event.position.y - thumb_len / 2.0)
                                 .clamp(track_bounds.top(), track_bounds.bottom() - thumb_len);
-                            let fraction = if available == px(0.) {
+                            let fraction = if available == gpui::px(0.) {
                                 0.0
                             } else {
                                 ((desired_thumb_start - track_bounds.top()) / available) as f64
@@ -824,7 +828,7 @@ impl Element for EditorElement {
 
                             let snapshot = editor.display_snapshot(cx);
                             let current = editor.scroll_position(&snapshot);
-                            let next = point(current.x, fraction * scrollbar.scroll_max);
+                            let next = gpui::point(current.x, fraction * scrollbar.scroll_max);
                             if next != current {
                                 editor.set_scroll_position(&snapshot, next, cx);
                             }
@@ -853,14 +857,14 @@ impl Element for EditorElement {
                         if let Some(thumb_bounds) = scrollbar.thumb_bounds {
                             let track_bounds = scrollbar.track_bounds;
                             let thumb_len =
-                                (thumb_bounds.right() - thumb_bounds.left()).max(px(0.));
+                                (thumb_bounds.right() - thumb_bounds.left()).max(gpui::px(0.));
                             let pointer_offset = thumb_len / 2.0;
                             let available =
                                 (track_bounds.right() - track_bounds.left() - thumb_len)
-                                    .max(px(0.));
+                                    .max(gpui::px(0.));
                             let desired_thumb_start = (event.position.x - thumb_len / 2.0)
                                 .clamp(track_bounds.left(), track_bounds.right() - thumb_len);
-                            let fraction = if available == px(0.) {
+                            let fraction = if available == gpui::px(0.) {
                                 0.0
                             } else {
                                 ((desired_thumb_start - track_bounds.left()) / available) as f64
@@ -868,7 +872,7 @@ impl Element for EditorElement {
 
                             let snapshot = editor.display_snapshot(cx);
                             let current = editor.scroll_position(&snapshot);
-                            let next = point(fraction * scrollbar.scroll_max, current.y);
+                            let next = gpui::point(fraction * scrollbar.scroll_max, current.y);
                             if next != current {
                                 editor.set_scroll_position(&snapshot, next, cx);
                             }
@@ -966,10 +970,10 @@ impl Element for EditorElement {
                             ),
                         };
 
-                        let available = (track_end - track_start - thumb_len).max(px(0.));
+                        let available = (track_end - track_start - thumb_len).max(gpui::px(0.));
                         let desired_thumb_start = (mouse_pos - drag.pointer_offset)
                             .clamp(track_start, track_end - thumb_len);
-                        let fraction = if available == px(0.) {
+                        let fraction = if available == gpui::px(0.) {
                             0.0
                         } else {
                             ((desired_thumb_start - track_start) / available) as f64
@@ -977,8 +981,12 @@ impl Element for EditorElement {
                         let snapshot = editor.display_snapshot(cx);
                         let current = editor.scroll_position(&snapshot);
                         let next = match drag.axis {
-                            Axis::Vertical => point(current.x, fraction * scrollbar_scroll_max),
-                            Axis::Horizontal => point(fraction * scrollbar_scroll_max, current.y),
+                            Axis::Vertical => {
+                                gpui::point(current.x, fraction * scrollbar_scroll_max)
+                            }
+                            Axis::Horizontal => {
+                                gpui::point(fraction * scrollbar_scroll_max, current.y)
+                            }
                         };
 
                         editor.set_scroll_position(&snapshot, next, cx);
@@ -992,15 +1000,15 @@ impl Element for EditorElement {
 
                     editor.on_mouse_move(event, window, cx);
 
-                    let mut scroll_delta = gpui::Point::<f32>::default();
+                    let mut scroll_delta = Point::<f32>::default();
                     let mut text_bounds = bounds;
                     if vertical_scrollbar_prepaint.is_some() {
                         text_bounds.size.width =
-                            (text_bounds.size.width - SCROLLBAR_THICKNESS).max(px(0.));
+                            (text_bounds.size.width - SCROLLBAR_THICKNESS).max(gpui::px(0.));
                     }
                     if horizontal_scrollbar_prepaint.is_some() {
                         text_bounds.size.height =
-                            (text_bounds.size.height - SCROLLBAR_THICKNESS).max(px(0.));
+                            (text_bounds.size.height - SCROLLBAR_THICKNESS).max(gpui::px(0.));
                     }
 
                     let vertical_margin = line_height.min(text_bounds.size.height / 3.0);
@@ -1033,7 +1041,7 @@ impl Element for EditorElement {
 
                     let snapshot = editor.display_snapshot(cx);
                     let current = editor.scroll_position(&snapshot);
-                    let next = point(
+                    let next = gpui::point(
                         (current.x + f64::from(scroll_delta.x)).clamp(0.0, scroll_max.x),
                         (current.y + f64::from(scroll_delta.y)).clamp(0.0, scroll_max.y),
                     );
@@ -1052,10 +1060,12 @@ impl Element for EditorElement {
 
         let mut text_bounds = bounds;
         if vertical_scrollbar_prepaint.is_some() {
-            text_bounds.size.width = (text_bounds.size.width - SCROLLBAR_THICKNESS).max(px(0.));
+            text_bounds.size.width =
+                (text_bounds.size.width - SCROLLBAR_THICKNESS).max(gpui::px(0.));
         }
         if horizontal_scrollbar_prepaint.is_some() {
-            text_bounds.size.height = (text_bounds.size.height - SCROLLBAR_THICKNESS).max(px(0.));
+            text_bounds.size.height =
+                (text_bounds.size.height - SCROLLBAR_THICKNESS).max(gpui::px(0.));
         }
 
         window.with_content_mask(
@@ -1122,9 +1132,9 @@ fn build_visible_lines(
     display_snapshot: &crate::display_map::DisplaySnapshot,
     bounds: Bounds<Pixels>,
     line_height: Pixels,
-    style: &gpui::TextStyle,
+    style: &TextStyle,
     font_size: Pixels,
-    placeholder: &gpui::SharedString,
+    placeholder: &SharedString,
     masked: bool,
     marked_range: Option<&Range<usize>>,
     max_display_row: u32,
@@ -1247,7 +1257,7 @@ fn build_visible_lines(
             line_display_column_start
         };
 
-        let (expanded, text_color): (gpui::SharedString, _) = if !has_content && row.0 == 0 {
+        let (expanded, text_color): (SharedString, _) = if !has_content && row.0 == 0 {
             (placeholder.clone(), cx.theme().colors().text_placeholder)
         } else if masked {
             (mask_line(&line_text).into(), style.color)
@@ -1256,7 +1266,7 @@ fn build_visible_lines(
         };
         let expanded_len = expanded.len();
 
-        let origin = point(
+        let origin = gpui::point(
             bounds.left() - scroll_x_pixels + em_layout_width * line_display_column_start as f32,
             first_row_origin_y + line_height * visible_row_index as f32,
         );
@@ -1318,7 +1328,7 @@ fn build_visible_lines(
                         len: display_end - display_start,
                         underline: Some(UnderlineStyle {
                             color: Some(base_run.color),
-                            thickness: px(1.),
+                            thickness: gpui::px(1.),
                             wavy: false,
                         }),
                         ..base_run.clone()
@@ -1362,7 +1372,7 @@ fn build_visible_lines(
 }
 
 fn scale_vertical_mouse_autoscroll_delta(delta: Pixels) -> f32 {
-    (delta.pow(1.2) / 100.0).min(px(3.0)).into()
+    (delta.pow(1.2) / 100.0).min(gpui::px(3.0)).into()
 }
 
 fn scale_horizontal_mouse_autoscroll_delta(delta: Pixels) -> f32 {
@@ -1385,9 +1395,9 @@ pub fn register_action<T: Action>(
     })
 }
 
-fn measure_column_width(style: &gpui::TextStyle, window: &mut Window) -> Pixels {
-    let sample_text: gpui::SharedString = " ".into();
-    let run = gpui::TextRun {
+fn measure_column_width(style: &TextStyle, window: &mut Window) -> Pixels {
+    let sample_text: SharedString = " ".into();
+    let run = TextRun {
         len: sample_text.len(),
         font: style.font(),
         color: style.color,
@@ -1402,7 +1412,11 @@ fn measure_column_width(style: &gpui::TextStyle, window: &mut Window) -> Pixels 
         .shape_line(sample_text, font_size, &[run], None);
 
     let width = shaped.x_for_index(1);
-    if width == px(0.) { px(8.) } else { width }
+    if width == gpui::px(0.) {
+        gpui::px(8.)
+    } else {
+        width
+    }
 }
 
 fn mask_line(text: &str) -> String {
@@ -1428,20 +1442,20 @@ fn prepaint_scrollbar(
 
     let track_bounds = match axis {
         Axis::Vertical => Bounds::new(
-            point(bounds.right() - thickness, bounds.top()),
-            size(thickness, bounds.size.height),
+            gpui::point(bounds.right() - thickness, bounds.top()),
+            gpui::size(thickness, bounds.size.height),
         ),
         Axis::Horizontal => {
             let width = (bounds.size.width
                 - if other_axis_present {
                     thickness
                 } else {
-                    px(0.)
+                    gpui::px(0.)
                 })
-            .max(px(0.));
+            .max(gpui::px(0.));
             Bounds::new(
-                point(bounds.left(), bounds.bottom() - thickness),
-                size(width, thickness),
+                gpui::point(bounds.left(), bounds.bottom() - thickness),
+                gpui::size(width, thickness),
             )
         }
     };
@@ -1454,27 +1468,27 @@ fn prepaint_scrollbar(
 
     let colors = cx.theme().colors();
     let scrollbar_edges = match axis {
-        Axis::Horizontal => gpui::Edges {
-            top: px(0.),
-            right: px(0.),
-            bottom: px(0.),
-            left: px(0.),
+        Axis::Horizontal => Edges {
+            top: gpui::px(0.),
+            right: gpui::px(0.),
+            bottom: gpui::px(0.),
+            left: gpui::px(0.),
         },
-        Axis::Vertical => gpui::Edges {
-            top: px(0.),
-            right: px(0.),
-            bottom: px(0.),
-            left: px(1.),
+        Axis::Vertical => Edges {
+            top: gpui::px(0.),
+            right: gpui::px(0.),
+            bottom: gpui::px(0.),
+            left: gpui::px(1.),
         },
     };
 
     let track_quad = gpui::quad(
         track_bounds,
-        gpui::Corners::default(),
+        Corners::default(),
         colors.scrollbar_track_background,
         scrollbar_edges,
         colors.scrollbar_track_border,
-        gpui::BorderStyle::Solid,
+        BorderStyle::Solid,
     );
 
     let (thumb_bounds, thumb_hitbox, thumb_quad) = if scroll_max > 0.0 {
@@ -1487,17 +1501,17 @@ fn prepaint_scrollbar(
         let thumb_len = (track_length * ratio as f32)
             .max(SCROLLBAR_MIN_THUMB_LEN)
             .min(track_length);
-        let available = (track_length - thumb_len).max(px(0.));
+        let available = (track_length - thumb_len).max(gpui::px(0.));
         let thumb_start = available * (scroll_position / scroll_max).clamp(0.0, 1.0) as f32;
 
         let thumb_bounds = match axis {
             Axis::Vertical => Bounds::new(
-                point(track_bounds.left(), track_bounds.top() + thumb_start),
-                size(thickness, thumb_len),
+                gpui::point(track_bounds.left(), track_bounds.top() + thumb_start),
+                gpui::size(thickness, thumb_len),
             ),
             Axis::Horizontal => Bounds::new(
-                point(track_bounds.left() + thumb_start, track_bounds.top()),
-                size(thumb_len, thickness),
+                gpui::point(track_bounds.left() + thumb_start, track_bounds.top()),
+                gpui::size(thumb_len, thickness),
             ),
         };
         let thumb_hitbox = window.insert_hitbox(thumb_bounds, HitboxBehavior::Normal);
@@ -1512,11 +1526,11 @@ fn prepaint_scrollbar(
 
         let thumb_quad = gpui::quad(
             thumb_bounds,
-            gpui::Corners::default(),
+            Corners::default(),
             thumb_color,
             scrollbar_edges,
             colors.scrollbar_thumb_border,
-            gpui::BorderStyle::Solid,
+            BorderStyle::Solid,
         );
 
         (Some(thumb_bounds), Some(thumb_hitbox), Some(thumb_quad))

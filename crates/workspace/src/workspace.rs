@@ -4,8 +4,9 @@ pub mod panel;
 pub mod status_bar;
 
 use gpui::{
-    Action, App, Axis, Bounds, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, KeyBinding,
-    KeyContext, MouseButton, MouseDownEvent, Pixels, Point, Window, actions, prelude::*,
+    Action, App, Axis, Bounds, DragMoveEvent, Empty, Entity, EntityId, FocusHandle, Focusable,
+    KeyBinding, KeyContext, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
+    prelude::*,
 };
 
 use theme::ActiveTheme;
@@ -19,7 +20,7 @@ use crate::{
     status_bar::StatusBar,
 };
 
-actions!(
+gpui::actions!(
     workspace,
     [
         SendRequest,
@@ -102,7 +103,7 @@ pub struct Workspace {
     status_bar: Entity<StatusBar>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
-    _window_appearance_subscription: gpui::Subscription,
+    _window_appearance_subscription: Subscription,
 }
 
 #[derive(Clone)]
@@ -110,7 +111,7 @@ pub struct DraggedDock(pub DockPosition);
 
 impl Render for DraggedDock {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        gpui::Empty
+        Empty
     }
 }
 

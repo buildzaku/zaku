@@ -1,5 +1,5 @@
 use gpui::{
-    AnyWindowHandle, AppContext, Context, Entity, TestAppContext, VisualTestContext, Window,
+    Action, AnyWindowHandle, AppContext, Context, Entity, TestAppContext, VisualTestContext, Window,
 };
 use multi_buffer::MultiBuffer;
 use pretty_assertions::assert_eq;
@@ -53,7 +53,7 @@ impl EditorTestContext {
 
     pub fn dispatch_action<A>(&mut self, action: A)
     where
-        A: gpui::Action,
+        A: Action,
     {
         self.cx.dispatch_action(action);
     }

@@ -1,4 +1,4 @@
-use gpui::{Action, actions};
+use gpui::Action;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -112,7 +112,7 @@ pub struct DeleteToPreviousSubwordStart {
     pub ignore_brackets: bool,
 }
 
-actions!(
+gpui::actions!(
     editor,
     [
         /// Deletes the character before the cursor.
