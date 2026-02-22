@@ -58,6 +58,7 @@ impl EditorTestContext {
         self.cx.dispatch_action(action);
     }
 
+    #[track_caller]
     pub fn set_state(&mut self, marked_text: &str) -> ContextHandle {
         let assertion_context = self.add_assertion_context(format!(
             "Initial Editor State: \"{}\"",
@@ -95,6 +96,7 @@ impl EditorTestContext {
         assertion_context
     }
 
+    #[track_caller]
     pub fn assert_state(&mut self, marked_text: &str) {
         let (expected_text, mut ranges) = marked_text_ranges(marked_text, true);
         let expected_selection = ranges.pop().unwrap_or(0..0);
