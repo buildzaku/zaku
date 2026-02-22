@@ -36,9 +36,9 @@ fn main() {
 
             cx.activate(true);
 
-            let window_size = gpui::size(gpui::px(1180.), gpui::px(760.));
+            let window_size = gpui::size(gpui::px(1180.0), gpui::px(760.0));
             let mut bounds = Bounds::centered(None, window_size, cx);
-            bounds.origin.y -= gpui::px(36.);
+            bounds.origin.y -= gpui::px(36.0);
 
             cx.open_window(
                 WindowOptions {

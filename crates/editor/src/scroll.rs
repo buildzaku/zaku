@@ -58,7 +58,7 @@ impl OngoingScroll {
 
     pub fn filter(&self, delta: &mut Point<Pixels>) -> Option<Axis> {
         const UNLOCK_PERCENT: f32 = 1.9;
-        const UNLOCK_LOWER_BOUND: Pixels = gpui::px(6.);
+        const UNLOCK_LOWER_BOUND: Pixels = gpui::px(6.0);
         let mut axis = self.axis;
 
         let x = delta.x.abs();
@@ -88,10 +88,10 @@ impl OngoingScroll {
 
         match axis {
             Some(Axis::Vertical) => {
-                *delta = gpui::point(gpui::px(0.), delta.y);
+                *delta = gpui::point(gpui::px(0.0), delta.y);
             }
             Some(Axis::Horizontal) => {
-                *delta = gpui::point(delta.x, gpui::px(0.));
+                *delta = gpui::point(delta.x, gpui::px(0.0));
             }
             None => {}
         }

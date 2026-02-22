@@ -236,7 +236,7 @@ impl Render for Pane {
                         )
                         .style(DropdownStyle::Outlined)
                         .attach(Corner::BottomLeft)
-                        .offset(gpui::point(gpui::px(0.), gpui::px(0.5)))
+                        .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )
                     .child(gpui::div().flex_1().child(input))
@@ -244,7 +244,7 @@ impl Render for Pane {
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
                             .size(ButtonSize::Large)
-                            .width(ui::rems_from_px(60.))
+                            .width(ui::rems_from_px(60.0))
                             .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |pane, _, window, cx| {
                                 let request_method = pane.request_method.clone();

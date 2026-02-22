@@ -32,7 +32,7 @@ pub struct FontWeightContent(pub f32);
 
 impl Default for FontWeightContent {
     fn default() -> Self {
-        Self(400.)
+        Self(400.0)
     }
 }
 
@@ -130,7 +130,7 @@ where
     D: serde::Deserializer<'de>,
 {
     let value = f32::deserialize(deserializer)?;
-    if value < 1. {
+    if value < 1.0 {
         return Err(serde::de::Error::custom(
             "buffer_line_height.custom must be at least 1.0",
         ));
@@ -162,11 +162,11 @@ impl SettingsContent {
     }
 
     pub fn ui_font_size(&self) -> Pixels {
-        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(14.)))
+        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(14.0)))
     }
 
     pub fn buffer_font_size(&self) -> Pixels {
-        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(14.)))
+        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(14.0)))
     }
 
     pub fn ui_font_family(&self) -> Option<&str> {
@@ -207,8 +207,8 @@ impl SettingsContent {
 }
 
 fn clamp_font_size(value: Pixels) -> Pixels {
-    const MIN_FONT_SIZE: Pixels = gpui::px(6.);
-    const MAX_FONT_SIZE: Pixels = gpui::px(100.);
+    const MIN_FONT_SIZE: Pixels = gpui::px(6.0);
+    const MAX_FONT_SIZE: Pixels = gpui::px(100.0);
 
     if value < MIN_FONT_SIZE {
         MIN_FONT_SIZE

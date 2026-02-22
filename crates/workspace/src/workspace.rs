@@ -31,10 +31,10 @@ gpui::actions!(
 );
 
 const KEY_CONTEXT: &str = "Workspace";
-const MIN_DOCK_WIDTH: Pixels = gpui::px(110.);
-const MIN_PANE_WIDTH: Pixels = gpui::px(250.);
-const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.);
-const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.);
+const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
+const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
+const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
+const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([

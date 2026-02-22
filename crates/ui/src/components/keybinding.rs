@@ -330,7 +330,7 @@ impl RenderOnce for Key {
             })
             .h(size)
             .text_size(size)
-            .line_height(gpui::relative(1.))
+            .line_height(gpui::relative(1.0))
             .text_color(self.color.unwrap_or(Color::Muted).color(cx))
             .child(self.key)
     }

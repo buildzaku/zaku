@@ -584,7 +584,7 @@ fn try_parse_color(color: &str) -> Result<Hsla> {
     let hsla = palette::Hsla::from_color(rgba);
 
     Ok(gpui::hsla(
-        hsla.hue.into_positive_degrees() / 360.,
+        hsla.hue.into_positive_degrees() / 360.0,
         hsla.saturation,
         hsla.lightness,
         hsla.alpha,

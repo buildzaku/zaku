@@ -246,7 +246,7 @@ impl Editor {
     ) -> Option<Point<ScrollOffset>> {
         let (_, local) = autoscroll_request?;
 
-        if em_advance == gpui::px(0.) {
+        if em_advance == gpui::px(0.0) {
             return None;
         }
 

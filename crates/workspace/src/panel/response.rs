@@ -21,7 +21,7 @@ pub struct ResponsePanel {
 }
 
 impl ResponsePanel {
-    const DEFAULT_SIZE: Pixels = gpui::px(250.);
+    const DEFAULT_SIZE: Pixels = gpui::px(250.0);
 
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let response_editor = cx.new(|cx| Editor::full(window, cx));
@@ -116,7 +116,7 @@ impl Render for ResponsePanel {
             .child(
                 gpui::div()
                     .w_full()
-                    .h(gpui::px(26.))
+                    .h(gpui::px(26.0))
                     .px_3()
                     .flex()
                     .items_center()
