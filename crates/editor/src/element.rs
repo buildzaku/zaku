@@ -273,6 +273,454 @@ impl EditorElement {
 
         (vertical_scrollbar, horizontal_scrollbar)
     }
+
+    fn paint_mouse_listeners(&mut self, prepaint: &PrepaintState, window: &mut Window) {
+        let Some(hitbox) = prepaint.hitbox.as_ref().cloned() else {
+            return;
+        };
+        let mut text_bounds = hitbox.bounds;
+        if prepaint.vertical_scrollbar.is_some() {
+            text_bounds.size.width =
+                (text_bounds.size.width - SCROLLBAR_THICKNESS).max(gpui::px(0.0));
+        }
+        if prepaint.horizontal_scrollbar.is_some() {
+            text_bounds.size.height =
+                (text_bounds.size.height - SCROLLBAR_THICKNESS).max(gpui::px(0.0));
+        }
+        let line_height = prepaint.line_height;
+        let em_width = prepaint.em_width;
+        let scroll_max = prepaint.scroll_max;
+
+        window.on_mouse_event({
+            let editor = self.editor.clone();
+            let hitbox = hitbox.clone();
+
+            move |event: &MouseDownEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+
+                if event.button != MouseButton::Left {
+                    return;
+                }
+
+                let is_inside_text_bounds = event.position.x >= text_bounds.left()
+                    && event.position.x <= text_bounds.right()
+                    && event.position.y >= text_bounds.top()
+                    && event.position.y <= text_bounds.bottom();
+                if !hitbox.is_hovered(window) || !is_inside_text_bounds {
+                    return;
+                }
+
+                editor.update(cx, |editor, cx| {
+                    editor.on_mouse_down(event, window, cx);
+                });
+            }
+        });
+
+        window.on_mouse_event({
+            let editor = self.editor.clone();
+            let hitbox = hitbox.clone();
+
+            move |event: &MouseUpEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+
+                if event.button != MouseButton::Left {
+                    return;
+                }
+
+                editor.update(cx, |editor, cx| {
+                    let is_inside_text_bounds = event.position.x >= text_bounds.left()
+                        && event.position.x <= text_bounds.right()
+                        && event.position.y >= text_bounds.top()
+                        && event.position.y <= text_bounds.bottom();
+                    if editor.selecting || (hitbox.is_hovered(window) && is_inside_text_bounds) {
+                        editor.on_mouse_up(event, window, cx);
+                    }
+                });
+            }
+        });
+
+        window.on_mouse_event({
+            let editor = self.editor.clone();
+
+            move |event: &MouseMoveEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+
+                editor.update(cx, |editor, cx| {
+                    if !editor.selecting {
+                        return;
+                    }
+
+                    editor.on_mouse_move(event, window, cx);
+
+                    let mut scroll_delta = Point::<f32>::default();
+                    let vertical_margin = line_height.min(text_bounds.size.height / 3.0);
+                    let top = text_bounds.top() + vertical_margin;
+                    let bottom = text_bounds.bottom() - vertical_margin;
+                    if event.position.y < top {
+                        scroll_delta.y =
+                            -scale_vertical_mouse_autoscroll_delta(top - event.position.y);
+                    }
+                    if event.position.y > bottom {
+                        scroll_delta.y =
+                            scale_vertical_mouse_autoscroll_delta(event.position.y - bottom);
+                    }
+
+                    let scroll_space = em_width * 5.0;
+                    let left = text_bounds.left() + scroll_space;
+                    let right = text_bounds.right() - scroll_space;
+                    if event.position.x < left {
+                        scroll_delta.x =
+                            -scale_horizontal_mouse_autoscroll_delta(left - event.position.x);
+                    }
+                    if event.position.x > right {
+                        scroll_delta.x =
+                            scale_horizontal_mouse_autoscroll_delta(event.position.x - right);
+                    }
+
+                    if scroll_delta.x == 0.0 && scroll_delta.y == 0.0 {
+                        return;
+                    }
+
+                    let snapshot = editor.display_snapshot(cx);
+                    let current = editor.scroll_position(&snapshot);
+                    let next = gpui::point(
+                        (current.x + f64::from(scroll_delta.x)).clamp(0.0, scroll_max.x),
+                        (current.y + f64::from(scroll_delta.y)).clamp(0.0, scroll_max.y),
+                    );
+
+                    if next != current {
+                        editor.set_scroll_position(&snapshot, next, cx);
+                        cx.stop_propagation();
+                    }
+                });
+            }
+        });
+    }
+
+    fn paint_scrollbars(
+        &mut self,
+        prepaint: &mut PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let editor = self.editor.clone();
+        let is_scrollbar_dragging = self.editor.read(cx).scrollbar_drag.is_some();
+        let hitbox = prepaint.hitbox.as_ref().cloned();
+        let column_width = prepaint.column_width;
+        let line_height = prepaint.line_height;
+        let scroll_max = prepaint.scroll_max;
+        let vertical_scrollbar_prepaint = prepaint.vertical_scrollbar.as_ref().cloned();
+        let horizontal_scrollbar_prepaint = prepaint.horizontal_scrollbar.as_ref().cloned();
+
+        if let Some(scrollbar) = prepaint.vertical_scrollbar.as_ref() {
+            window.set_cursor_style(CursorStyle::Arrow, &scrollbar.track_hitbox);
+            if let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref() {
+                window.set_cursor_style(CursorStyle::Arrow, thumb_hitbox);
+            }
+        }
+        if let Some(scrollbar) = prepaint.horizontal_scrollbar.as_ref() {
+            window.set_cursor_style(CursorStyle::Arrow, &scrollbar.track_hitbox);
+            if let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref() {
+                window.set_cursor_style(CursorStyle::Arrow, thumb_hitbox);
+            }
+        }
+        if is_scrollbar_dragging {
+            window.set_window_cursor_style(CursorStyle::Arrow);
+        }
+
+        if let Some(hitbox) = hitbox {
+            window.on_mouse_event({
+                let editor = editor.clone();
+
+                move |event: &ScrollWheelEvent, phase, window, cx| {
+                    if phase != DispatchPhase::Bubble {
+                        return;
+                    }
+                    if !hitbox.should_handle_scroll(window) {
+                        return;
+                    }
+
+                    editor.update(cx, |editor, cx| {
+                        let snapshot = editor.display_snapshot(cx);
+                        let current = editor.scroll_position(&snapshot);
+                        let (delta_x, delta_y) = match event.delta {
+                            ScrollDelta::Pixels(mut pixels) => {
+                                let axis =
+                                    editor.scroll_manager.ongoing_scroll().filter(&mut pixels);
+                                editor.scroll_manager.update_ongoing_scroll(axis);
+                                (
+                                    (pixels.x / column_width) as f64,
+                                    (pixels.y / line_height) as f64,
+                                )
+                            }
+                            ScrollDelta::Lines(lines) => {
+                                editor.scroll_manager.update_ongoing_scroll(None);
+                                (lines.x as f64, lines.y as f64)
+                            }
+                        };
+
+                        let next = gpui::point(
+                            (current.x - delta_x).clamp(0.0, scroll_max.x),
+                            (current.y - delta_y).clamp(0.0, scroll_max.y),
+                        );
+
+                        if next != current {
+                            editor.set_scroll_position(&snapshot, next, cx);
+                            cx.stop_propagation();
+                        }
+                    });
+                }
+            });
+        }
+
+        window.on_mouse_event({
+            let editor = editor.clone();
+            let vertical_scrollbar_prepaint = vertical_scrollbar_prepaint.clone();
+            let horizontal_scrollbar_prepaint = horizontal_scrollbar_prepaint.clone();
+
+            move |event: &MouseDownEvent, phase, window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+
+                if event.button != MouseButton::Left {
+                    return;
+                }
+
+                editor.update(cx, |editor, cx| {
+                    if let Some(scrollbar) = vertical_scrollbar_prepaint.as_ref()
+                        && let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref()
+                        && thumb_hitbox.is_hovered(window)
+                        && let Some(thumb_bounds) = scrollbar.thumb_bounds
+                    {
+                        let pointer_offset = event.position.y - thumb_bounds.top();
+                        editor.focus_handle.focus(window, cx);
+                        editor.selecting = false;
+                        editor.scrollbar_drag = Some(crate::ScrollbarDrag {
+                            axis: Axis::Vertical,
+                            pointer_offset,
+                        });
+                        cx.stop_propagation();
+                        cx.notify();
+                        return;
+                    }
+
+                    if let Some(scrollbar) = horizontal_scrollbar_prepaint.as_ref()
+                        && let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref()
+                        && thumb_hitbox.is_hovered(window)
+                        && let Some(thumb_bounds) = scrollbar.thumb_bounds
+                    {
+                        let pointer_offset = event.position.x - thumb_bounds.left();
+                        editor.focus_handle.focus(window, cx);
+                        editor.selecting = false;
+                        editor.scrollbar_drag = Some(crate::ScrollbarDrag {
+                            axis: Axis::Horizontal,
+                            pointer_offset,
+                        });
+                        cx.stop_propagation();
+                        cx.notify();
+                        return;
+                    }
+
+                    if let Some(scrollbar) = vertical_scrollbar_prepaint.as_ref()
+                        && scrollbar.track_hitbox.is_hovered(window)
+                    {
+                        let scrollbar = scrollbar.clone();
+                        editor.focus_handle.focus(window, cx);
+                        editor.selecting = false;
+                        editor.scrollbar_drag = None;
+
+                        if let Some(thumb_bounds) = scrollbar.thumb_bounds {
+                            let track_bounds = scrollbar.track_bounds;
+                            let thumb_len =
+                                (thumb_bounds.bottom() - thumb_bounds.top()).max(gpui::px(0.0));
+                            let pointer_offset = thumb_len / 2.0;
+                            let available =
+                                (track_bounds.bottom() - track_bounds.top() - thumb_len)
+                                    .max(gpui::px(0.0));
+                            let desired_thumb_start = (event.position.y - thumb_len / 2.0)
+                                .clamp(track_bounds.top(), track_bounds.bottom() - thumb_len);
+                            let fraction = if available == gpui::px(0.0) {
+                                0.0
+                            } else {
+                                ((desired_thumb_start - track_bounds.top()) / available) as f64
+                            };
+
+                            let snapshot = editor.display_snapshot(cx);
+                            let current = editor.scroll_position(&snapshot);
+                            let next = gpui::point(current.x, fraction * scrollbar.scroll_max);
+                            if next != current {
+                                editor.set_scroll_position(&snapshot, next, cx);
+                            }
+
+                            editor.scrollbar_drag = Some(crate::ScrollbarDrag {
+                                axis: Axis::Vertical,
+                                pointer_offset,
+                            });
+                        }
+
+                        cx.stop_propagation();
+                        cx.notify();
+                        return;
+                    }
+
+                    if let Some(scrollbar) = horizontal_scrollbar_prepaint.as_ref()
+                        && scrollbar.track_hitbox.is_hovered(window)
+                    {
+                        let scrollbar = scrollbar.clone();
+                        editor.focus_handle.focus(window, cx);
+                        editor.selecting = false;
+                        editor.scrollbar_drag = None;
+
+                        if let Some(thumb_bounds) = scrollbar.thumb_bounds {
+                            let track_bounds = scrollbar.track_bounds;
+                            let thumb_len =
+                                (thumb_bounds.right() - thumb_bounds.left()).max(gpui::px(0.0));
+                            let pointer_offset = thumb_len / 2.0;
+                            let available =
+                                (track_bounds.right() - track_bounds.left() - thumb_len)
+                                    .max(gpui::px(0.0));
+                            let desired_thumb_start = (event.position.x - thumb_len / 2.0)
+                                .clamp(track_bounds.left(), track_bounds.right() - thumb_len);
+                            let fraction = if available == gpui::px(0.0) {
+                                0.0
+                            } else {
+                                ((desired_thumb_start - track_bounds.left()) / available) as f64
+                            };
+
+                            let snapshot = editor.display_snapshot(cx);
+                            let current = editor.scroll_position(&snapshot);
+                            let next = gpui::point(fraction * scrollbar.scroll_max, current.y);
+                            if next != current {
+                                editor.set_scroll_position(&snapshot, next, cx);
+                            }
+
+                            editor.scrollbar_drag = Some(crate::ScrollbarDrag {
+                                axis: Axis::Horizontal,
+                                pointer_offset,
+                            });
+                        }
+
+                        cx.stop_propagation();
+                        cx.notify();
+                    }
+                });
+            }
+        });
+
+        window.on_mouse_event({
+            let editor = editor.clone();
+
+            move |event: &MouseUpEvent, phase, _window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+
+                if event.button != MouseButton::Left {
+                    return;
+                }
+
+                editor.update(cx, |editor, cx| {
+                    if editor.scrollbar_drag.is_some() {
+                        editor.scrollbar_drag = None;
+                        cx.stop_propagation();
+                        cx.notify();
+                    }
+                });
+            }
+        });
+
+        window.on_mouse_event({
+            let editor = editor.clone();
+            let vertical_scrollbar_prepaint = vertical_scrollbar_prepaint.clone();
+            let horizontal_scrollbar_prepaint = horizontal_scrollbar_prepaint.clone();
+
+            move |event: &MouseMoveEvent, phase, _window, cx| {
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
+
+                editor.update(cx, |editor, cx| {
+                    let Some(drag) = editor.scrollbar_drag else {
+                        return;
+                    };
+
+                    let (track_bounds, thumb_bounds, scrollbar_scroll_max) = match drag.axis {
+                        Axis::Vertical => {
+                            let Some(scrollbar) = vertical_scrollbar_prepaint.as_ref() else {
+                                return;
+                            };
+                            let Some(thumb_bounds) = scrollbar.thumb_bounds else {
+                                return;
+                            };
+                            (scrollbar.track_bounds, thumb_bounds, scrollbar.scroll_max)
+                        }
+                        Axis::Horizontal => {
+                            let Some(scrollbar) = horizontal_scrollbar_prepaint.as_ref() else {
+                                return;
+                            };
+                            let Some(thumb_bounds) = scrollbar.thumb_bounds else {
+                                return;
+                            };
+                            (scrollbar.track_bounds, thumb_bounds, scrollbar.scroll_max)
+                        }
+                    };
+
+                    let (track_start, track_end, thumb_len, mouse_pos) = match drag.axis {
+                        Axis::Vertical => (
+                            track_bounds.top(),
+                            track_bounds.bottom(),
+                            thumb_bounds.bottom() - thumb_bounds.top(),
+                            event.position.y,
+                        ),
+                        Axis::Horizontal => (
+                            track_bounds.left(),
+                            track_bounds.right(),
+                            thumb_bounds.right() - thumb_bounds.left(),
+                            event.position.x,
+                        ),
+                    };
+
+                    let available = (track_end - track_start - thumb_len).max(gpui::px(0.0));
+                    let desired_thumb_start =
+                        (mouse_pos - drag.pointer_offset).clamp(track_start, track_end - thumb_len);
+                    let fraction = if available == gpui::px(0.0) {
+                        0.0
+                    } else {
+                        ((desired_thumb_start - track_start) / available) as f64
+                    };
+                    let snapshot = editor.display_snapshot(cx);
+                    let current = editor.scroll_position(&snapshot);
+                    let next = match drag.axis {
+                        Axis::Vertical => gpui::point(current.x, fraction * scrollbar_scroll_max),
+                        Axis::Horizontal => gpui::point(fraction * scrollbar_scroll_max, current.y),
+                    };
+
+                    editor.set_scroll_position(&snapshot, next, cx);
+                    cx.stop_propagation();
+                });
+            }
+        });
+
+        if let Some(scrollbar) = prepaint.vertical_scrollbar.take() {
+            window.paint_quad(scrollbar.track_quad);
+            if let Some(thumb_quad) = scrollbar.thumb_quad {
+                window.paint_quad(thumb_quad);
+            }
+        }
+        if let Some(scrollbar) = prepaint.horizontal_scrollbar.take() {
+            window.paint_quad(scrollbar.track_quad);
+            if let Some(thumb_quad) = scrollbar.thumb_quad {
+                window.paint_quad(thumb_quad);
+            }
+        }
+    }
 }
 
 pub struct PrepaintState {
@@ -284,6 +732,7 @@ pub struct PrepaintState {
     vertical_scrollbar: Option<ScrollbarPrepaint>,
     horizontal_scrollbar: Option<ScrollbarPrepaint>,
     line_height: Pixels,
+    em_width: Pixels,
     column_width: Pixels,
     scroll_max: Point<ScrollOffset>,
     masked: bool,
@@ -701,6 +1150,7 @@ impl Element for EditorElement {
                 vertical_scrollbar,
                 horizontal_scrollbar,
                 line_height,
+                em_width,
                 column_width,
                 scroll_max,
                 masked,
@@ -723,7 +1173,7 @@ impl Element for EditorElement {
         let rem_size = self.rem_size(cx);
         window.with_rem_size(rem_size, |window| {
             let focus_handle = self.editor.read(cx).focus_handle.clone();
-            let hitbox = prepaint.hitbox.take().expect("hitbox to be set");
+            let hitbox = prepaint.hitbox.as_ref().cloned().expect("hitbox to be set");
 
             window.set_cursor_style(CursorStyle::IBeam, &hitbox);
             let key_context = self
@@ -738,404 +1188,26 @@ impl Element for EditorElement {
             self.register_actions(window);
 
             let line_height = prepaint.line_height;
-            let column_width = prepaint.column_width;
-            let scroll_max = prepaint.scroll_max;
             let clamped_scroll_position = prepaint.clamped_scroll_position;
-
-            let vertical_scrollbar_prepaint = prepaint.vertical_scrollbar.as_ref().cloned();
-            let horizontal_scrollbar_prepaint = prepaint.horizontal_scrollbar.as_ref().cloned();
             let rem_size = window.rem_size();
             let text_style = self.style.text.clone();
             let font_id = window.text_system().resolve_font(&text_style.font());
             let font_size = text_style.font_size.to_pixels(rem_size);
-            let em_width = window
-                .text_system()
-                .em_width(font_id, font_size)
-                .unwrap_or(column_width);
             let em_layout_width = window.text_system().em_layout_width(font_id, font_size);
-
-            if let Some(scrollbar) = vertical_scrollbar_prepaint.as_ref() {
-                window.set_cursor_style(CursorStyle::Arrow, &scrollbar.track_hitbox);
-                if let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref() {
-                    window.set_cursor_style(CursorStyle::Arrow, thumb_hitbox);
-                }
-            }
-            if let Some(scrollbar) = horizontal_scrollbar_prepaint.as_ref() {
-                window.set_cursor_style(CursorStyle::Arrow, &scrollbar.track_hitbox);
-                if let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref() {
-                    window.set_cursor_style(CursorStyle::Arrow, thumb_hitbox);
-                }
-            }
-            if self.editor.read(cx).scrollbar_drag.is_some() {
-                window.set_window_cursor_style(CursorStyle::Arrow);
-            }
-
-            window.on_mouse_event({
-                let editor = self.editor.clone();
-                let hitbox = hitbox.clone();
-
-                move |event: &ScrollWheelEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Bubble {
-                        return;
-                    }
-                    if !hitbox.should_handle_scroll(window) {
-                        return;
-                    }
-
-                    editor.update(cx, |editor, cx| {
-                        let snapshot = editor.display_snapshot(cx);
-                        let current = editor.scroll_position(&snapshot);
-                        let (delta_x, delta_y) = match event.delta {
-                            ScrollDelta::Pixels(mut pixels) => {
-                                let axis =
-                                    editor.scroll_manager.ongoing_scroll().filter(&mut pixels);
-                                editor.scroll_manager.update_ongoing_scroll(axis);
-                                (
-                                    (pixels.x / column_width) as f64,
-                                    (pixels.y / line_height) as f64,
-                                )
-                            }
-                            ScrollDelta::Lines(lines) => {
-                                editor.scroll_manager.update_ongoing_scroll(None);
-                                (lines.x as f64, lines.y as f64)
-                            }
-                        };
-
-                        let next = gpui::point(
-                            (current.x - delta_x).clamp(0.0, scroll_max.x),
-                            (current.y - delta_y).clamp(0.0, scroll_max.y),
-                        );
-
-                        if next != current {
-                            editor.set_scroll_position(&snapshot, next, cx);
-                            cx.stop_propagation();
-                        }
-                    });
-                }
-            });
-
-            window.on_mouse_event({
-                let editor = self.editor.clone();
-                let hitbox = hitbox.clone();
-                let vertical_scrollbar_prepaint = vertical_scrollbar_prepaint.clone();
-                let horizontal_scrollbar_prepaint = horizontal_scrollbar_prepaint.clone();
-
-                move |event: &MouseDownEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Bubble {
-                        return;
-                    }
-
-                    if event.button != MouseButton::Left {
-                        return;
-                    }
-
-                    if let Some(scrollbar) = vertical_scrollbar_prepaint.as_ref()
-                        && let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref()
-                        && thumb_hitbox.is_hovered(window)
-                        && let Some(thumb_bounds) = scrollbar.thumb_bounds
-                    {
-                        let pointer_offset = event.position.y - thumb_bounds.top();
-                        editor.update(cx, |editor, cx| {
-                            editor.focus_handle.focus(window, cx);
-                            editor.selecting = false;
-                            editor.scrollbar_drag = Some(crate::ScrollbarDrag {
-                                axis: Axis::Vertical,
-                                pointer_offset,
-                            });
-                            cx.stop_propagation();
-                            cx.notify();
-                        });
-                        return;
-                    }
-
-                    if let Some(scrollbar) = horizontal_scrollbar_prepaint.as_ref()
-                        && let Some(thumb_hitbox) = scrollbar.thumb_hitbox.as_ref()
-                        && thumb_hitbox.is_hovered(window)
-                        && let Some(thumb_bounds) = scrollbar.thumb_bounds
-                    {
-                        let pointer_offset = event.position.x - thumb_bounds.left();
-                        editor.update(cx, |editor, cx| {
-                            editor.focus_handle.focus(window, cx);
-                            editor.selecting = false;
-                            editor.scrollbar_drag = Some(crate::ScrollbarDrag {
-                                axis: Axis::Horizontal,
-                                pointer_offset,
-                            });
-                            cx.stop_propagation();
-                            cx.notify();
-                        });
-                        return;
-                    }
-
-                    if let Some(scrollbar) = vertical_scrollbar_prepaint.as_ref()
-                        && scrollbar.track_hitbox.is_hovered(window)
-                    {
-                        let scrollbar = scrollbar.clone();
-                        editor.update(cx, |editor, cx| {
-                            editor.focus_handle.focus(window, cx);
-                            editor.selecting = false;
-                            editor.scrollbar_drag = None;
-
-                            if let Some(thumb_bounds) = scrollbar.thumb_bounds {
-                                let track_bounds = scrollbar.track_bounds;
-                                let thumb_len =
-                                    (thumb_bounds.bottom() - thumb_bounds.top()).max(gpui::px(0.0));
-                                let pointer_offset = thumb_len / 2.0;
-                                let available =
-                                    (track_bounds.bottom() - track_bounds.top() - thumb_len)
-                                        .max(gpui::px(0.0));
-                                let desired_thumb_start = (event.position.y - thumb_len / 2.0)
-                                    .clamp(track_bounds.top(), track_bounds.bottom() - thumb_len);
-                                let fraction = if available == gpui::px(0.0) {
-                                    0.0
-                                } else {
-                                    ((desired_thumb_start - track_bounds.top()) / available) as f64
-                                };
-
-                                let snapshot = editor.display_snapshot(cx);
-                                let current = editor.scroll_position(&snapshot);
-                                let next = gpui::point(current.x, fraction * scrollbar.scroll_max);
-                                if next != current {
-                                    editor.set_scroll_position(&snapshot, next, cx);
-                                }
-
-                                editor.scrollbar_drag = Some(crate::ScrollbarDrag {
-                                    axis: Axis::Vertical,
-                                    pointer_offset,
-                                });
-                            }
-
-                            cx.stop_propagation();
-                            cx.notify();
-                        });
-                        return;
-                    }
-
-                    if let Some(scrollbar) = horizontal_scrollbar_prepaint.as_ref()
-                        && scrollbar.track_hitbox.is_hovered(window)
-                    {
-                        let scrollbar = scrollbar.clone();
-                        editor.update(cx, |editor, cx| {
-                            editor.focus_handle.focus(window, cx);
-                            editor.selecting = false;
-                            editor.scrollbar_drag = None;
-
-                            if let Some(thumb_bounds) = scrollbar.thumb_bounds {
-                                let track_bounds = scrollbar.track_bounds;
-                                let thumb_len =
-                                    (thumb_bounds.right() - thumb_bounds.left()).max(gpui::px(0.0));
-                                let pointer_offset = thumb_len / 2.0;
-                                let available =
-                                    (track_bounds.right() - track_bounds.left() - thumb_len)
-                                        .max(gpui::px(0.0));
-                                let desired_thumb_start = (event.position.x - thumb_len / 2.0)
-                                    .clamp(track_bounds.left(), track_bounds.right() - thumb_len);
-                                let fraction = if available == gpui::px(0.0) {
-                                    0.0
-                                } else {
-                                    ((desired_thumb_start - track_bounds.left()) / available) as f64
-                                };
-
-                                let snapshot = editor.display_snapshot(cx);
-                                let current = editor.scroll_position(&snapshot);
-                                let next = gpui::point(fraction * scrollbar.scroll_max, current.y);
-                                if next != current {
-                                    editor.set_scroll_position(&snapshot, next, cx);
-                                }
-
-                                editor.scrollbar_drag = Some(crate::ScrollbarDrag {
-                                    axis: Axis::Horizontal,
-                                    pointer_offset,
-                                });
-                            }
-
-                            cx.stop_propagation();
-                            cx.notify();
-                        });
-                        return;
-                    }
-
-                    if hitbox.is_hovered(window) {
-                        editor.update(cx, |editor, cx| editor.on_mouse_down(event, window, cx));
-                    }
-                }
-            });
-
-            window.on_mouse_event({
-                let editor = self.editor.clone();
-                let hitbox = hitbox.clone();
-
-                move |event: &MouseUpEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Bubble {
-                        return;
-                    }
-
-                    if event.button != MouseButton::Left {
-                        return;
-                    }
-
-                    editor.update(cx, |editor, cx| {
-                        if editor.scrollbar_drag.is_some() {
-                            editor.scrollbar_drag = None;
-                            cx.stop_propagation();
-                            cx.notify();
-                            return;
-                        }
-                        if editor.selecting || hitbox.is_hovered(window) {
-                            editor.on_mouse_up(event, window, cx);
-                        }
-                    });
-                }
-            });
-
-            window.on_mouse_event({
-                let editor = self.editor.clone();
-                let vertical_scrollbar_prepaint = vertical_scrollbar_prepaint.clone();
-                let horizontal_scrollbar_prepaint = horizontal_scrollbar_prepaint.clone();
-
-                move |event: &MouseMoveEvent, phase, window, cx| {
-                    if phase != DispatchPhase::Bubble {
-                        return;
-                    }
-
-                    editor.update(cx, |editor, cx| {
-                        if let Some(drag) = editor.scrollbar_drag {
-                            let (track_bounds, thumb_bounds, scrollbar_scroll_max) = match drag.axis
-                            {
-                                Axis::Vertical => {
-                                    let Some(scrollbar) = vertical_scrollbar_prepaint.as_ref()
-                                    else {
-                                        return;
-                                    };
-                                    let Some(thumb_bounds) = scrollbar.thumb_bounds else {
-                                        return;
-                                    };
-                                    (scrollbar.track_bounds, thumb_bounds, scrollbar.scroll_max)
-                                }
-                                Axis::Horizontal => {
-                                    let Some(scrollbar) = horizontal_scrollbar_prepaint.as_ref()
-                                    else {
-                                        return;
-                                    };
-                                    let Some(thumb_bounds) = scrollbar.thumb_bounds else {
-                                        return;
-                                    };
-                                    (scrollbar.track_bounds, thumb_bounds, scrollbar.scroll_max)
-                                }
-                            };
-
-                            let (track_start, track_end, thumb_len, mouse_pos) = match drag.axis {
-                                Axis::Vertical => (
-                                    track_bounds.top(),
-                                    track_bounds.bottom(),
-                                    thumb_bounds.bottom() - thumb_bounds.top(),
-                                    event.position.y,
-                                ),
-                                Axis::Horizontal => (
-                                    track_bounds.left(),
-                                    track_bounds.right(),
-                                    thumb_bounds.right() - thumb_bounds.left(),
-                                    event.position.x,
-                                ),
-                            };
-
-                            let available =
-                                (track_end - track_start - thumb_len).max(gpui::px(0.0));
-                            let desired_thumb_start = (mouse_pos - drag.pointer_offset)
-                                .clamp(track_start, track_end - thumb_len);
-                            let fraction = if available == gpui::px(0.0) {
-                                0.0
-                            } else {
-                                ((desired_thumb_start - track_start) / available) as f64
-                            };
-                            let snapshot = editor.display_snapshot(cx);
-                            let current = editor.scroll_position(&snapshot);
-                            let next = match drag.axis {
-                                Axis::Vertical => {
-                                    gpui::point(current.x, fraction * scrollbar_scroll_max)
-                                }
-                                Axis::Horizontal => {
-                                    gpui::point(fraction * scrollbar_scroll_max, current.y)
-                                }
-                            };
-
-                            editor.set_scroll_position(&snapshot, next, cx);
-                            cx.stop_propagation();
-                            return;
-                        }
-
-                        if !editor.selecting {
-                            return;
-                        }
-
-                        editor.on_mouse_move(event, window, cx);
-
-                        let mut scroll_delta = Point::<f32>::default();
-                        let mut text_bounds = bounds;
-                        if vertical_scrollbar_prepaint.is_some() {
-                            text_bounds.size.width =
-                                (text_bounds.size.width - SCROLLBAR_THICKNESS).max(gpui::px(0.0));
-                        }
-                        if horizontal_scrollbar_prepaint.is_some() {
-                            text_bounds.size.height =
-                                (text_bounds.size.height - SCROLLBAR_THICKNESS).max(gpui::px(0.0));
-                        }
-
-                        let vertical_margin = line_height.min(text_bounds.size.height / 3.0);
-                        let top = text_bounds.top() + vertical_margin;
-                        let bottom = text_bounds.bottom() - vertical_margin;
-                        if event.position.y < top {
-                            scroll_delta.y =
-                                -scale_vertical_mouse_autoscroll_delta(top - event.position.y);
-                        }
-                        if event.position.y > bottom {
-                            scroll_delta.y =
-                                scale_vertical_mouse_autoscroll_delta(event.position.y - bottom);
-                        }
-
-                        let scroll_space = em_width * 5.0;
-                        let left = text_bounds.left() + scroll_space;
-                        let right = text_bounds.right() - scroll_space;
-                        if event.position.x < left {
-                            scroll_delta.x =
-                                -scale_horizontal_mouse_autoscroll_delta(left - event.position.x);
-                        }
-                        if event.position.x > right {
-                            scroll_delta.x =
-                                scale_horizontal_mouse_autoscroll_delta(event.position.x - right);
-                        }
-
-                        if scroll_delta.x == 0.0 && scroll_delta.y == 0.0 {
-                            return;
-                        }
-
-                        let snapshot = editor.display_snapshot(cx);
-                        let current = editor.scroll_position(&snapshot);
-                        let next = gpui::point(
-                            (current.x + f64::from(scroll_delta.x)).clamp(0.0, scroll_max.x),
-                            (current.y + f64::from(scroll_delta.y)).clamp(0.0, scroll_max.y),
-                        );
-
-                        if next != current {
-                            editor.set_scroll_position(&snapshot, next, cx);
-                            cx.stop_propagation();
-                        }
-                    });
-                }
-            });
-
-            if !self.style.background.is_transparent() {
-                window.paint_quad(gpui::fill(bounds, self.style.background));
-            }
-
-            let mut text_bounds = bounds;
-            if vertical_scrollbar_prepaint.is_some() {
+            let mut text_bounds = hitbox.bounds;
+            if prepaint.vertical_scrollbar.is_some() {
                 text_bounds.size.width =
                     (text_bounds.size.width - SCROLLBAR_THICKNESS).max(gpui::px(0.0));
             }
-            if horizontal_scrollbar_prepaint.is_some() {
+            if prepaint.horizontal_scrollbar.is_some() {
                 text_bounds.size.height =
                     (text_bounds.size.height - SCROLLBAR_THICKNESS).max(gpui::px(0.0));
+            }
+
+            self.paint_mouse_listeners(prepaint, window);
+
+            if !self.style.background.is_transparent() {
+                window.paint_quad(gpui::fill(bounds, self.style.background));
             }
 
             window.with_content_mask(
@@ -1161,18 +1233,7 @@ impl Element for EditorElement {
                 },
             );
 
-            if let Some(scrollbar) = prepaint.vertical_scrollbar.take() {
-                window.paint_quad(scrollbar.track_quad);
-                if let Some(thumb_quad) = scrollbar.thumb_quad {
-                    window.paint_quad(thumb_quad);
-                }
-            }
-            if let Some(scrollbar) = prepaint.horizontal_scrollbar.take() {
-                window.paint_quad(scrollbar.track_quad);
-                if let Some(thumb_quad) = scrollbar.thumb_quad {
-                    window.paint_quad(thumb_quad);
-                }
-            }
+            self.paint_scrollbars(prepaint, window, cx);
 
             self.editor.update(cx, |editor, _cx| {
                 editor.last_position_map = Some(std::rc::Rc::new(PositionMap {
