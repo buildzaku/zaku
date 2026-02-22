@@ -1882,7 +1882,7 @@ impl Editor {
 
         let font_size = match self.mode {
             EditorMode::SingleLine | EditorMode::AutoHeight { .. } => gpui::rems(0.875).into(),
-            EditorMode::Full { .. } => theme_settings.buffer_font_size(cx).into(),
+            EditorMode::Full { .. } => (theme_settings.buffer_font_size(cx) * 0.875).into(),
         };
 
         let text_style = TextStyle {

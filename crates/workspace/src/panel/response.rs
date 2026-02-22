@@ -1,10 +1,10 @@
 use gpui::{
-    Action, App, Context, Entity, FocusHandle, Focusable, Hsla, Pixels, Render, SharedString,
-    TextStyle, Window, prelude::*,
+    Action, App, Context, Entity, FocusHandle, Focusable, Pixels, Render, SharedString, Window,
+    prelude::*,
 };
 
-use editor::{Editor, EditorElement, EditorStyle};
-use theme::{ActiveTheme, ThemeSettings};
+use editor::Editor;
+use theme::ActiveTheme;
 use ui::{Color, Label, LabelCommon, LabelSize};
 
 use crate::{
@@ -119,7 +119,6 @@ impl Render for ResponsePanel {
         }
 
         let theme_colors = cx.theme().colors();
-        let theme_settings = ThemeSettings::get_global(cx);
 
         let Some(response_editor) = self.response_editor.clone() else {
             return gpui::div()
@@ -128,22 +127,6 @@ impl Render for ResponsePanel {
                 .flex_col()
                 .size_full()
                 .bg(cx.theme().colors().surface_background);
-        };
-
-        let font_size = theme_settings.buffer_font_size(cx).into();
-        let editor_style = EditorStyle {
-            background: Hsla::transparent_black(),
-            text: TextStyle {
-                color: theme_colors.text,
-                font_family: theme_settings.buffer_font.family.clone(),
-                font_features: theme_settings.buffer_font.features.clone(),
-                font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
-                font_size,
-                font_weight: theme_settings.buffer_font.weight,
-                font_style: theme_settings.buffer_font.style,
-                line_height: gpui::relative(theme_settings.line_height()),
-                ..Default::default()
-            },
         };
 
         let focus_handle = self.focus_handle(cx);
@@ -168,13 +151,6 @@ impl Render for ResponsePanel {
                             .color(Color::Muted),
                     ),
             )
-            .child(
-                gpui::div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(EditorElement::new(&response_editor, editor_style)),
-            )
+            .child(response_editor)
     }
 }
