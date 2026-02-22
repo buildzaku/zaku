@@ -162,6 +162,29 @@ fn test_copy_cut_paste_actions(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn test_single_line_editor_paste_strips_newlines(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new_single_line(cx);
+
+    cx.set_state("ˇ");
+    cx.cx.write_to_clipboard(ClipboardItem::new_string(
+        "The quick\r\nbrown fox jumps over\nthe lazy dog\r".to_string(),
+    ));
+    cx.dispatch_action(Paste);
+    cx.assert_state("The quickbrown fox jumps overthe lazy dogˇ");
+}
+
+#[gpui::test]
+fn test_single_line_editor_replace_text_in_range_strips_newlines(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new_single_line(cx);
+
+    cx.set_state("Lorem «ipsumˇ»");
+    cx.dispatch_action(HandleInput("ipsum\r\ndolor sit\namet".to_string()));
+    cx.assert_state("Lorem ipsumdolor sitametˇ");
+}
+
+#[gpui::test]
 fn test_move_cursor(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);

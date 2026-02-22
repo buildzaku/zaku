@@ -19,6 +19,7 @@ use multi_buffer::{
 use serde::{Deserialize, Serialize};
 use std::{
     any::TypeId,
+    borrow::Cow,
     collections::{HashMap, VecDeque},
     num::NonZeroU32,
     ops::{Range, RangeInclusive},
@@ -40,9 +41,11 @@ use theme::{ActiveTheme, ThemeSettings};
 use crate::element::PositionMap;
 
 pub(crate) const KEY_CONTEXT: &str = "Editor";
-static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
-
+const KEY_CONTEXT_FULL: &str = "Editor && mode == full";
+const KEY_CONTEXT_AUTO_HEIGHT: &str = "Editor && mode == auto_height";
 const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
+
+static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Addons allow storing per-editor state in other crates
 pub trait Addon: 'static {
@@ -64,8 +67,10 @@ pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("backspace", Backspace, Some(KEY_CONTEXT)),
         KeyBinding::new("delete", Delete, Some(KEY_CONTEXT)),
-        KeyBinding::new("enter", Newline, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-enter", Newline, Some(KEY_CONTEXT)),
+        KeyBinding::new("enter", Newline, Some(KEY_CONTEXT_FULL)),
+        KeyBinding::new("shift-enter", Newline, Some(KEY_CONTEXT_FULL)),
+        KeyBinding::new("ctrl-enter", Newline, Some(KEY_CONTEXT_AUTO_HEIGHT)),
+        KeyBinding::new("shift-enter", Newline, Some(KEY_CONTEXT_AUTO_HEIGHT)),
         KeyBinding::new("left", MoveLeft, Some(KEY_CONTEXT)),
         KeyBinding::new("right", MoveRight, Some(KEY_CONTEXT)),
         KeyBinding::new("up", MoveUp, Some(KEY_CONTEXT)),
@@ -1637,7 +1642,20 @@ impl Editor {
         }
 
         let _ = window;
-        self.replace_selection(text_to_insert, cx);
+        let sanitized_text_to_insert = self.sanitize_to_single_line(text_to_insert);
+        self.replace_selection(sanitized_text_to_insert.as_ref(), cx);
+    }
+
+    fn sanitize_to_single_line<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        if !matches!(self.mode, EditorMode::SingleLine) || !text.contains(['\n', '\r']) {
+            return Cow::Borrowed(text);
+        }
+
+        Cow::Owned(
+            text.chars()
+                .filter(|char| !matches!(char, '\n' | '\r'))
+                .collect(),
+        )
     }
 
     pub fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
@@ -1674,7 +1692,8 @@ impl Editor {
             return;
         }
 
-        self.replace_selection(text, cx);
+        let sanitized_text = self.sanitize_to_single_line(text);
+        self.replace_selection(sanitized_text.as_ref(), cx);
     }
 
     fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
@@ -2039,7 +2058,8 @@ impl EntityInputHandler for Editor {
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
 
-        self.replace_range(range, new_text, cx);
+        let sanitized_new_text = self.sanitize_to_single_line(new_text);
+        self.replace_range(range, sanitized_new_text.as_ref(), cx);
     }
 
     fn replace_and_mark_text_in_range(
@@ -2059,20 +2079,28 @@ impl EntityInputHandler for Editor {
             .map(|range_utf16| self.range_from_utf16(range_utf16, cx))
             .or(self.marked_range.clone())
             .unwrap_or(self.selected_range.clone());
-
+        let sanitized_new_text = self.sanitize_to_single_line(new_text);
         let selected_range = new_selected_range_utf16
             .as_ref()
-            .map(|range_utf16| range_from_utf16_in_text(new_text, range_utf16))
+            .map(|range_utf16| range_from_utf16_in_text(sanitized_new_text.as_ref(), range_utf16))
             .map(|new_range| range.start + new_range.start..range.start + new_range.end)
-            .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len());
+            .unwrap_or_else(|| {
+                range.start + sanitized_new_text.len()..range.start + sanitized_new_text.len()
+            });
 
-        let marked_range = if new_text.is_empty() {
+        let marked_range = if sanitized_new_text.is_empty() {
             None
         } else {
-            Some(range.start..range.start + new_text.len())
+            Some(range.start..range.start + sanitized_new_text.len())
         };
 
-        self.replace_range_with_selection(range, new_text, selected_range, marked_range, cx);
+        self.replace_range_with_selection(
+            range,
+            sanitized_new_text.as_ref(),
+            selected_range,
+            marked_range,
+            cx,
+        );
     }
 
     fn bounds_for_range(

@@ -14,7 +14,9 @@ use text::{Buffer as TextBuffer, ReplicaId, SelectionGoal};
 
 use util::test::{generate_marked_text, marked_text_ranges};
 
-use crate::{DEFAULT_TAB_SIZE, Editor, SelectionHistory, SelectionState, next_buffer_id};
+use crate::{
+    DEFAULT_TAB_SIZE, Editor, EditorMode, SelectionHistory, SelectionState, next_buffer_id,
+};
 
 pub struct EditorTestContext {
     pub cx: VisualTestContext,
@@ -24,7 +26,16 @@ pub struct EditorTestContext {
 
 impl EditorTestContext {
     pub fn new(cx: &mut TestAppContext) -> Self {
-        let window_handle = cx.add_window(Editor::single_line);
+        Self::new_with_mode(cx, EditorMode::full())
+    }
+
+    pub fn new_single_line(cx: &mut TestAppContext) -> Self {
+        Self::new_with_mode(cx, EditorMode::SingleLine)
+    }
+
+    fn new_with_mode(cx: &mut TestAppContext, mode: EditorMode) -> Self {
+        let window_handle =
+            cx.add_window(move |window, cx| Editor::new_with_mode(mode, window, cx));
         let window: AnyWindowHandle = window_handle.into();
         let editor_handle = window.downcast::<Editor>().expect("window to host editor");
         let mut visual_cx = VisualTestContext::from_window(window, cx);
