@@ -162,11 +162,11 @@ impl SettingsContent {
     }
 
     pub fn ui_font_size(&self) -> Pixels {
-        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(14.0)))
+        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(13.0)))
     }
 
     pub fn buffer_font_size(&self) -> Pixels {
-        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(14.0)))
+        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(13.0)))
     }
 
     pub fn ui_font_family(&self) -> Option<&str> {
