@@ -7,9 +7,9 @@ use pretty_assertions::assert_eq;
 use settings::SettingsStore;
 
 use crate::{
-    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, HandleInput, MoveLeft, MoveRight,
-    MoveToBeginningOfLine, Paste, Redo, RedoSelection, Undo, UndoSelection,
-    tests::context::EditorTestContext,
+    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, HandleInput, MoveDown, MoveLeft,
+    MoveRight, MoveToBeginning, MoveToBeginningOfLine, MoveToEnd, MoveUp, Paste, Redo,
+    RedoSelection, Undo, UndoSelection, tests::context::EditorTestContext,
 };
 
 fn init_test(cx: &mut TestAppContext) {
@@ -160,4 +160,204 @@ fn test_copy_cut_paste_actions(cx: &mut TestAppContext) {
         .write_to_clipboard(ClipboardItem::new_string("hello world".to_string()));
     editor_test_context.dispatch_action(Paste);
     editor_test_context.assert_state("Hello, hello worldˇ!");
+}
+
+#[gpui::test]
+fn test_move_cursor(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut editor_test_context = EditorTestContext::new(cx);
+
+    editor_test_context.set_state(indoc! {"
+        ˇaaaaaa
+        \t\taaaaaa
+        aaaaaa\
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        aaaaaa
+        ˇ\t\taaaaaa
+        aaaaaa\
+    "});
+
+    editor_test_context.dispatch_action(MoveRight);
+    editor_test_context.assert_state(indoc! {"
+        aaaaaa
+        \tˇ\taaaaaa
+        aaaaaa\
+    "});
+
+    editor_test_context.dispatch_action(MoveLeft);
+    editor_test_context.assert_state(indoc! {"
+        aaaaaa
+        ˇ\t\taaaaaa
+        aaaaaa\
+    "});
+
+    editor_test_context.dispatch_action(MoveUp);
+    editor_test_context.assert_state(indoc! {"
+        ˇaaaaaa
+        \t\taaaaaa
+        aaaaaa\
+    "});
+
+    editor_test_context.dispatch_action(MoveToEnd);
+    editor_test_context.assert_state(indoc! {"
+        aaaaaa
+        \t\taaaaaa
+        aaaaaaˇ\
+    "});
+
+    editor_test_context.dispatch_action(MoveToBeginning);
+    editor_test_context.assert_state(indoc! {"
+        ˇaaaaaa
+        \t\taaaaaa
+        aaaaaa\
+    "});
+}
+
+#[gpui::test]
+fn test_move_cursor_multibyte(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut editor_test_context = EditorTestContext::new(cx);
+
+    editor_test_context.set_state(indoc! {"
+        ˇ🌑🌒🌓🌔🌕🌖
+        abcde
+        абвгд
+    "});
+
+    editor_test_context.dispatch_action(MoveRight);
+    editor_test_context.assert_state(indoc! {"
+        🌑ˇ🌒🌓🌔🌕🌖
+        abcde
+        абвгд
+    "});
+
+    editor_test_context.dispatch_action(MoveRight);
+    editor_test_context.assert_state(indoc! {"
+        🌑🌒ˇ🌓🌔🌕🌖
+        abcde
+        абвгд
+    "});
+
+    editor_test_context.dispatch_action(MoveRight);
+    editor_test_context.assert_state(indoc! {"
+        🌑🌒🌓ˇ🌔🌕🌖
+        abcde
+        абвгд
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        🌑🌒🌓🌔🌕🌖
+        abcdeˇ
+        абвгд
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        🌑🌒🌓🌔🌕🌖
+        abcde
+        абвгдˇ
+    "});
+
+    editor_test_context.dispatch_action(MoveLeft);
+    editor_test_context.dispatch_action(MoveLeft);
+    editor_test_context.assert_state(indoc! {"
+        🌑🌒🌓🌔🌕🌖
+        abcde
+        абвˇгд
+    "});
+
+    editor_test_context.dispatch_action(MoveUp);
+    editor_test_context.assert_state(indoc! {"
+        🌑🌒🌓🌔🌕🌖
+        abcˇde
+        абвгд
+    "});
+
+    editor_test_context.dispatch_action(MoveUp);
+    editor_test_context.assert_state(indoc! {"
+        🌑ˇ🌒🌓🌔🌕🌖
+        abcde
+        абвгд
+    "});
+}
+
+#[gpui::test]
+fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut editor_test_context = EditorTestContext::new(cx);
+
+    editor_test_context.set_state(indoc! {"
+        ⓐⓑⓒⓓⓔˇ
+        abcd
+        αβγ
+        abcd
+        ⓐⓑⓒⓓⓔ\
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        ⓐⓑⓒⓓⓔ
+        abcdˇ
+        αβγ
+        abcd
+        ⓐⓑⓒⓓⓔ\
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        ⓐⓑⓒⓓⓔ
+        abcd
+        αβγˇ
+        abcd
+        ⓐⓑⓒⓓⓔ\
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        ⓐⓑⓒⓓⓔ
+        abcd
+        αβγ
+        abcdˇ
+        ⓐⓑⓒⓓⓔ\
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        ⓐⓑⓒⓓⓔ
+        abcd
+        αβγ
+        abcd
+        ⓐⓑⓒⓓⓔˇ\
+    "});
+
+    editor_test_context.dispatch_action(MoveDown);
+    editor_test_context.assert_state(indoc! {"
+        ⓐⓑⓒⓓⓔ
+        abcd
+        αβγ
+        abcd
+        ⓐⓑⓒⓓⓔˇ\
+    "});
+
+    editor_test_context.dispatch_action(MoveUp);
+    editor_test_context.assert_state(indoc! {"
+        ⓐⓑⓒⓓⓔ
+        abcd
+        αβγ
+        abcdˇ
+        ⓐⓑⓒⓓⓔ\
+    "});
+
+    editor_test_context.dispatch_action(MoveUp);
+    editor_test_context.assert_state(indoc! {"
+        ⓐⓑⓒⓓⓔ
+        abcd
+        αβγˇ
+        abcd
+        ⓐⓑⓒⓓⓔ\
+    "});
 }
