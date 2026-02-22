@@ -3,16 +3,19 @@ mod tab_map;
 
 pub use tab_map::{TabMap, TabPoint, TabSnapshot};
 
-use gpui::{Context, Entity};
+use gpui::{Context, Entity, Pixels, TextRun};
 use serde::Deserialize;
 use std::{
     fmt::Debug,
     num::NonZeroU32,
     ops::{Add, Sub},
+    sync::Arc,
 };
 use text::{Bias, Point, subscription::Subscription as BufferSubscription};
 
 use multi_buffer::{Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferSnapshot};
+
+use crate::movement::TextLayoutDetails;
 
 pub trait ToDisplayPoint {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint;
@@ -115,6 +118,55 @@ impl DisplaySnapshot {
 
     pub fn longest_row(&self) -> DisplayRow {
         DisplayRow(self.buffer_snapshot().text_summary().longest_row)
+    }
+
+    pub fn layout_row(
+        &self,
+        display_row: DisplayRow,
+        TextLayoutDetails {
+            text_system,
+            editor_style,
+            rem_size,
+        }: &TextLayoutDetails,
+    ) -> Arc<gpui::LineLayout> {
+        let mut line = String::new();
+        for chunk in self.line_chunks(display_row) {
+            if let Some(newline_index) = chunk.find('\n') {
+                line.push_str(&chunk[..newline_index]);
+                break;
+            }
+            line.push_str(chunk);
+        }
+
+        let runs = [TextRun {
+            len: line.len(),
+            font: editor_style.text.font(),
+            color: editor_style.text.color,
+            background_color: None,
+            underline: None,
+            strikethrough: None,
+        }];
+        let font_size = editor_style.text.font_size.to_pixels(*rem_size);
+        text_system.layout_line(&line, font_size, &runs, None)
+    }
+
+    pub fn x_for_display_point(
+        &self,
+        display_point: DisplayPoint,
+        text_layout_details: &TextLayoutDetails,
+    ) -> Pixels {
+        let line = self.layout_row(display_point.row(), text_layout_details);
+        line.x_for_index(display_point.column() as usize)
+    }
+
+    pub fn display_column_for_x(
+        &self,
+        display_row: DisplayRow,
+        x: Pixels,
+        details: &TextLayoutDetails,
+    ) -> u32 {
+        let layout_line = self.layout_row(display_row, details);
+        layout_line.closest_index_for_x(x) as u32
     }
 }
 

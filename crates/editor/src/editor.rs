@@ -30,7 +30,9 @@ use std::{
     },
     time::Instant,
 };
-use text::{Bias, Buffer as TextBuffer, BufferId, OffsetUtf16, ReplicaId, TransactionId};
+use text::{
+    Bias, Buffer as TextBuffer, BufferId, OffsetUtf16, ReplicaId, SelectionGoal, TransactionId,
+};
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use theme::{ActiveTheme, ThemeSettings};
@@ -486,7 +488,7 @@ pub struct Editor {
     input_enabled: bool,
     selection_mark_mode: bool,
     masked: bool,
-    goal_display_column: Option<u32>,
+    selection_goal: SelectionGoal,
     word_chars: Arc<[char]>,
     _subscriptions: Vec<Subscription>,
 }
@@ -560,7 +562,7 @@ impl Editor {
             input_enabled: true,
             selection_mark_mode: false,
             masked: false,
-            goal_display_column: None,
+            selection_goal: SelectionGoal::None,
             word_chars: Arc::from(Vec::new().into_boxed_slice()),
             _subscriptions: subscriptions,
         }
@@ -664,7 +666,7 @@ impl Editor {
     }
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
 
         let text_len = self.snapshot(cx).len().0;
         let offset = offset.min(text_len);
@@ -686,7 +688,7 @@ impl Editor {
     }
 
     fn select_to(&mut self, offset: usize, cx: &mut Context<Self>) {
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
 
         if self.selection_reversed {
             self.selected_range.start = offset;
@@ -721,50 +723,45 @@ impl Editor {
         cx.notify();
     }
 
-    fn offset_for_vertical_move(&mut self, row_delta: i32, cx: &mut Context<Self>) -> usize {
+    fn offset_for_vertical_move(
+        &mut self,
+        row_delta: i32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> usize {
         let display_snapshot = self.display_snapshot(cx);
         let buffer_snapshot = display_snapshot.buffer_snapshot();
         let cursor_offset = self.cursor_offset().min(buffer_snapshot.len().0);
         let cursor_point = buffer_snapshot.offset_to_point(MultiBufferOffset(cursor_offset));
         let cursor_display_point =
             display_snapshot.point_to_display_point(cursor_point, Bias::Left);
-        let max_row = buffer_snapshot.max_point().row;
 
-        let target_row = if row_delta.is_negative() {
-            cursor_display_point
-                .row()
-                .0
-                .saturating_sub(row_delta.unsigned_abs())
-        } else {
-            cursor_display_point
-                .row()
-                .0
-                .saturating_add(row_delta.unsigned_abs())
-                .min(max_row)
-        };
-
-        if target_row == cursor_display_point.row().0 {
-            return cursor_offset;
-        }
-
-        let current_display_column = if self.masked {
+        if self.masked {
             let current_line =
                 buffer_line_text(display_snapshot.buffer_snapshot(), cursor_point.row);
             let column_bytes = (cursor_point.column as usize).min(current_line.len());
-            current_line
+            let current_display_column = current_line
                 .get(..column_bytes)
                 .unwrap_or("")
                 .chars()
-                .count() as u32
-        } else {
-            cursor_display_point.column()
-        };
-
-        let goal_column = *self
-            .goal_display_column
-            .get_or_insert(current_display_column);
-
-        if self.masked {
+                .count() as f64;
+            let goal_column = match self.selection_goal {
+                SelectionGoal::HorizontalPosition(x) => x,
+                SelectionGoal::HorizontalRange { end, .. } => end,
+                _ => current_display_column,
+            };
+            if matches!(self.selection_goal, SelectionGoal::None) {
+                self.selection_goal = SelectionGoal::HorizontalPosition(goal_column);
+            }
+            let row_count = row_delta.unsigned_abs();
+            let target_row = if row_delta.is_negative() {
+                cursor_point.row.saturating_sub(row_count)
+            } else {
+                cursor_point
+                    .row
+                    .saturating_add(row_count)
+                    .min(buffer_snapshot.max_point().row)
+            };
             let target_line = buffer_line_text(display_snapshot.buffer_snapshot(), target_row);
             let target_column =
                 byte_offset_from_char_count(&target_line, goal_column as usize) as u32;
@@ -777,12 +774,32 @@ impl Editor {
                 .0;
         }
 
-        let target_display_point = display_snapshot.clip_point(
-            display_map::DisplayPoint::new(display_map::DisplayRow(target_row), goal_column),
-            Bias::Left,
-        );
+        let text_layout_details = self.text_layout_details(window, cx);
+        let (target_display_point, goal) = if row_delta.is_negative() {
+            movement::up(
+                &display_snapshot,
+                cursor_display_point,
+                self.selection_goal,
+                false,
+                &text_layout_details,
+            )
+        } else {
+            movement::down(
+                &display_snapshot,
+                cursor_display_point,
+                self.selection_goal,
+                false,
+                &text_layout_details,
+            )
+        };
+        self.selection_goal = goal;
+        let bias = if row_delta.is_negative() {
+            Bias::Left
+        } else {
+            Bias::Right
+        };
         let target_buffer_point =
-            display_snapshot.display_point_to_point(target_display_point, Bias::Left);
+            display_snapshot.display_point_to_point(target_display_point, bias);
         buffer_snapshot.point_to_offset(target_buffer_point).0
     }
 
@@ -952,7 +969,7 @@ impl Editor {
         self.selected_range = cursor..cursor;
         self.selection_reversed = false;
         self.marked_range = None;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         let after = self.selection_state();
@@ -987,7 +1004,7 @@ impl Editor {
             self.selected_range = selection;
             self.selection_reversed = false;
             self.marked_range = marked_range;
-            self.goal_display_column = None;
+            self.selection_goal = SelectionGoal::None;
             self.record_selection_history();
             self.request_autoscroll(scroll::Autoscroll::newest(), cx);
             cx.notify();
@@ -1016,7 +1033,7 @@ impl Editor {
         self.selected_range = selection;
         self.selection_reversed = false;
         self.marked_range = marked_range;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         let after = self.selection_state();
@@ -1073,7 +1090,7 @@ impl Editor {
         self.selected_range = text.len()..text.len();
         self.selection_reversed = false;
         self.marked_range = None;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
         if matches!(
             self.mode,
@@ -1112,7 +1129,7 @@ impl Editor {
         self.selected_range = 0..0;
         self.selection_reversed = false;
         self.marked_range = None;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         let after = self.selection_state();
@@ -1135,6 +1152,7 @@ impl Editor {
         }
 
         self.masked = masked;
+        self.selection_goal = SelectionGoal::None;
         cx.notify();
     }
 
@@ -1150,7 +1168,7 @@ impl Editor {
         let offset = self.snapshot(cx).len().0;
         self.selected_range = offset..offset;
         self.selection_reversed = false;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
@@ -1174,23 +1192,23 @@ impl Editor {
         }
     }
 
-    fn move_up(&mut self, _: &MoveUp, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
         if !self.selected_range.is_empty() {
             self.move_to(self.selected_range.start, cx);
             return;
         }
 
-        let offset = self.offset_for_vertical_move(-1, cx);
+        let offset = self.offset_for_vertical_move(-1, window, cx);
         self.move_to_vertical(offset, cx);
     }
 
-    fn move_down(&mut self, _: &MoveDown, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
         if !self.selected_range.is_empty() {
             self.move_to(self.selected_range.end, cx);
             return;
         }
 
-        let offset = self.offset_for_vertical_move(1, cx);
+        let offset = self.offset_for_vertical_move(1, window, cx);
         self.move_to_vertical(offset, cx);
     }
 
@@ -1204,20 +1222,20 @@ impl Editor {
         self.select_to(offset, cx);
     }
 
-    fn select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.offset_for_vertical_move(-1, cx);
+    fn select_up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
+        let offset = self.offset_for_vertical_move(-1, window, cx);
         self.select_to_vertical(offset, cx);
     }
 
-    fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.offset_for_vertical_move(1, cx);
+    fn select_down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
+        let offset = self.offset_for_vertical_move(1, window, cx);
         self.select_to_vertical(offset, cx);
     }
 
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
         self.selected_range = 0..self.snapshot(cx).len().0;
         self.selection_reversed = false;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
@@ -1681,7 +1699,7 @@ impl Editor {
             self.clamp_selection(text_len);
         }
         self.marked_range = None;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
@@ -1709,7 +1727,7 @@ impl Editor {
             self.clamp_selection(text_len);
         }
         self.marked_range = None;
-        self.goal_display_column = None;
+        self.selection_goal = SelectionGoal::None;
         self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.emit(EditorEvent::BufferEdited);
         cx.notify();
@@ -1721,7 +1739,7 @@ impl Editor {
         self.selection_history.mode = SelectionHistoryMode::Normal;
         if let Some(state) = state {
             self.restore_selection_state(&state, cx);
-            self.goal_display_column = None;
+            self.selection_goal = SelectionGoal::None;
             self.request_autoscroll(scroll::Autoscroll::newest(), cx);
             cx.notify();
         }
@@ -1733,7 +1751,7 @@ impl Editor {
         self.selection_history.mode = SelectionHistoryMode::Normal;
         if let Some(state) = state {
             self.restore_selection_state(&state, cx);
-            self.goal_display_column = None;
+            self.selection_goal = SelectionGoal::None;
             self.request_autoscroll(scroll::Autoscroll::newest(), cx);
             cx.notify();
         }
@@ -1755,7 +1773,7 @@ impl Editor {
             .min(text_len);
 
         if event.modifiers.shift {
-            self.goal_display_column = None;
+            self.selection_goal = SelectionGoal::None;
 
             if self.selection_reversed {
                 self.selected_range.start = offset;
@@ -1771,7 +1789,7 @@ impl Editor {
             self.record_selection_history();
             cx.notify();
         } else {
-            self.goal_display_column = None;
+            self.selection_goal = SelectionGoal::None;
             self.selected_range = offset..offset;
             self.selection_reversed = false;
             self.record_selection_history();
@@ -1790,7 +1808,7 @@ impl Editor {
                 .index_for_mouse_position(event.position, cx)
                 .min(text_len);
 
-            self.goal_display_column = None;
+            self.selection_goal = SelectionGoal::None;
 
             if self.selection_reversed {
                 self.selected_range.start = offset;
@@ -1886,6 +1904,18 @@ impl Editor {
         }
 
         key_context
+    }
+
+    pub fn text_layout_details(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> movement::TextLayoutDetails {
+        movement::TextLayoutDetails {
+            text_system: window.text_system().clone(),
+            editor_style: self.create_style(cx),
+            rem_size: window.rem_size(),
+        }
     }
 
     pub(crate) fn create_style(&self, cx: &App) -> EditorStyle {

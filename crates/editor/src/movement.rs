@@ -1,14 +1,24 @@
 use std::sync::Arc;
 
+use gpui::{Pixels, WindowTextSystem};
 use multi_buffer::{MultiBufferOffset, MultiBufferSnapshot};
-use text::{Bias, Point};
+use text::{Bias, Point, SelectionGoal};
 
-use crate::display_map::{DisplayPoint, DisplaySnapshot, ToDisplayPoint};
+use crate::{
+    EditorStyle,
+    display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FindRange {
     SingleLine,
     MultiLine,
+}
+
+pub struct TextLayoutDetails {
+    pub(crate) text_system: Arc<WindowTextSystem>,
+    pub(crate) editor_style: EditorStyle,
+    pub(crate) rem_size: Pixels,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,6 +81,113 @@ pub fn right(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
     }
 
     map.clip_point(point, Bias::Right)
+}
+
+pub fn up(
+    map: &DisplaySnapshot,
+    start: DisplayPoint,
+    goal: SelectionGoal,
+    preserve_column_at_start: bool,
+    text_layout_details: &TextLayoutDetails,
+) -> (DisplayPoint, SelectionGoal) {
+    up_by_rows(
+        map,
+        start,
+        1,
+        goal,
+        preserve_column_at_start,
+        text_layout_details,
+    )
+}
+
+pub fn down(
+    map: &DisplaySnapshot,
+    start: DisplayPoint,
+    goal: SelectionGoal,
+    preserve_column_at_end: bool,
+    text_layout_details: &TextLayoutDetails,
+) -> (DisplayPoint, SelectionGoal) {
+    down_by_rows(
+        map,
+        start,
+        1,
+        goal,
+        preserve_column_at_end,
+        text_layout_details,
+    )
+}
+
+pub(crate) fn up_by_rows(
+    map: &DisplaySnapshot,
+    start: DisplayPoint,
+    row_count: u32,
+    goal: SelectionGoal,
+    preserve_column_at_start: bool,
+    text_layout_details: &TextLayoutDetails,
+) -> (DisplayPoint, SelectionGoal) {
+    let goal_x: Pixels = match goal {
+        SelectionGoal::HorizontalPosition(x) => x.into(),
+        SelectionGoal::HorizontalRange { end, .. } => end.into(),
+        _ => map.x_for_display_point(start, text_layout_details),
+    };
+
+    let prev_row = DisplayRow(start.row().0.saturating_sub(row_count));
+    let mut point = map.clip_point(
+        DisplayPoint::new(prev_row, map.line_len(prev_row)),
+        Bias::Left,
+    );
+    if point.row() < start.row() {
+        *point.column_mut() = map.display_column_for_x(point.row(), goal_x, text_layout_details);
+    } else if preserve_column_at_start {
+        return (start, goal);
+    } else {
+        point = DisplayPoint::new(DisplayRow(0), 0);
+    }
+
+    let mut clipped_point = map.clip_point(point, Bias::Left);
+    if clipped_point.row() < point.row() {
+        clipped_point = map.clip_point(point, Bias::Right);
+    }
+
+    (
+        clipped_point,
+        SelectionGoal::HorizontalPosition(goal_x.into()),
+    )
+}
+
+pub(crate) fn down_by_rows(
+    map: &DisplaySnapshot,
+    start: DisplayPoint,
+    row_count: u32,
+    goal: SelectionGoal,
+    preserve_column_at_end: bool,
+    text_layout_details: &TextLayoutDetails,
+) -> (DisplayPoint, SelectionGoal) {
+    let goal_x: Pixels = match goal {
+        SelectionGoal::HorizontalPosition(x) => x.into(),
+        SelectionGoal::HorizontalRange { end, .. } => end.into(),
+        _ => map.x_for_display_point(start, text_layout_details),
+    };
+
+    let new_row = DisplayRow(start.row().0 + row_count);
+    let mut point = map.clip_point(DisplayPoint::new(new_row, 0), Bias::Right);
+    if point.row() > start.row() {
+        *point.column_mut() = map.display_column_for_x(point.row(), goal_x, text_layout_details);
+    } else if preserve_column_at_end {
+        return (start, goal);
+    } else {
+        point = map.max_point();
+    }
+
+    let mut clipped_point = map.clip_point(point, Bias::Right);
+    if clipped_point.row() > point.row() {
+        clipped_point = map.clip_point(point, Bias::Left);
+    }
+
+    (
+        clipped_point,
+        SelectionGoal::HorizontalPosition(goal_x.into()),
+    )
 }
 
 pub fn previous_word_start(

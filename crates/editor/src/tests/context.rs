@@ -10,7 +10,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use text::{Buffer as TextBuffer, ReplicaId};
+use text::{Buffer as TextBuffer, ReplicaId, SelectionGoal};
 
 use util::test::{generate_marked_text, marked_text_ranges};
 
@@ -86,6 +86,7 @@ impl EditorTestContext {
             editor.selected_range = selected_range.clone();
             editor.selection_reversed = selection_reversed;
             editor.marked_range = None;
+            editor.selection_goal = SelectionGoal::None;
             editor.selection_history = SelectionHistory::new(SelectionState {
                 range: selected_range,
                 reversed: selection_reversed,
