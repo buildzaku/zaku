@@ -461,6 +461,12 @@ struct ScrollbarDrag {
     pointer_offset: Pixels,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ScrollbarAxes {
+    horizontal: bool,
+    vertical: bool,
+}
+
 pub struct Editor {
     focus_handle: FocusHandle,
     buffer: Entity<MultiBuffer>,
@@ -474,6 +480,7 @@ pub struct Editor {
     selection_history: SelectionHistory,
     addons: HashMap<TypeId, Box<dyn Addon>>,
     last_position_map: Option<Rc<PositionMap>>,
+    show_scrollbars: ScrollbarAxes,
     scrollbar_drag: Option<ScrollbarDrag>,
     selecting: bool,
     input_enabled: bool,
@@ -518,6 +525,7 @@ impl Editor {
         let display_map =
             cx.new(|cx| display_map::DisplayMap::new(buffer.clone(), DEFAULT_TAB_SIZE, cx));
         let scroll_manager = scroll::ScrollManager::new();
+        let show_scrollbars = matches!(mode, EditorMode::Full { .. });
         let selected_range = 0..0;
         let selection_reversed = false;
         let selection_history = SelectionHistory::new(SelectionState {
@@ -543,6 +551,10 @@ impl Editor {
             selection_history,
             addons: HashMap::new(),
             last_position_map: None,
+            show_scrollbars: ScrollbarAxes {
+                horizontal: show_scrollbars,
+                vertical: show_scrollbars,
+            },
             scrollbar_drag: None,
             selecting: false,
             input_enabled: true,

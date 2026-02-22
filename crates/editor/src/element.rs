@@ -10,7 +10,10 @@ use multi_buffer::{MultiBufferOffset, MultiBufferRow};
 use std::{any::TypeId, ops::Range};
 use theme::ActiveTheme;
 
-use crate::{Editor, EditorMode, EditorStyle, HandleInput, MAX_LINE_LEN, SizingBehavior};
+use crate::{
+    Editor, EditorMode, EditorStyle, HandleInput, MAX_LINE_LEN, SizingBehavior,
+    display_map::DisplaySnapshot, scroll::ScrollOffset,
+};
 
 const SCROLLBAR_THICKNESS: Pixels = gpui::px(15.0);
 const SCROLLBAR_MIN_THUMB_LEN: Pixels = gpui::px(25.0);
@@ -22,7 +25,7 @@ pub(crate) struct PositionMap {
     pub scroll_position: Point<crate::scroll::ScrollOffset>,
     pub em_layout_width: Pixels,
     pub line_layouts: Vec<LineWithInvisibles>,
-    pub snapshot: crate::display_map::DisplaySnapshot,
+    pub snapshot: DisplaySnapshot,
     pub text_align: TextAlign,
     pub content_width: Pixels,
     pub masked: bool,
@@ -218,11 +221,63 @@ impl EditorElement {
             },
         );
     }
+
+    fn layout_scrollbars(
+        bounds: Bounds<Pixels>,
+        show_vertical_scrollbar: bool,
+        show_horizontal_scrollbar: bool,
+        scrollbar_drag: Option<crate::ScrollbarDrag>,
+        clamped_scroll_position: Point<crate::scroll::ScrollOffset>,
+        max_scroll_x: crate::scroll::ScrollOffset,
+        max_scroll_y: crate::scroll::ScrollOffset,
+        viewport_columns: f64,
+        viewport_rows: f64,
+        window: &mut Window,
+        cx: &App,
+    ) -> (Option<ScrollbarPrepaint>, Option<ScrollbarPrepaint>) {
+        let is_dragging_vertical = scrollbar_drag.is_some_and(|drag| drag.axis == Axis::Vertical);
+        let is_dragging_horizontal =
+            scrollbar_drag.is_some_and(|drag| drag.axis == Axis::Horizontal);
+
+        let vertical_scrollbar = if show_vertical_scrollbar {
+            Some(prepaint_scrollbar(
+                Axis::Vertical,
+                bounds,
+                show_horizontal_scrollbar,
+                is_dragging_vertical,
+                clamped_scroll_position.y,
+                max_scroll_y,
+                viewport_rows,
+                cx,
+                window,
+            ))
+        } else {
+            None
+        };
+
+        let horizontal_scrollbar = if show_horizontal_scrollbar {
+            Some(prepaint_scrollbar(
+                Axis::Horizontal,
+                bounds,
+                show_vertical_scrollbar,
+                is_dragging_horizontal,
+                clamped_scroll_position.x,
+                max_scroll_x,
+                viewport_columns,
+                cx,
+                window,
+            ))
+        } else {
+            None
+        };
+
+        (vertical_scrollbar, horizontal_scrollbar)
+    }
 }
 
 pub struct PrepaintState {
     line_layouts: Vec<LineWithInvisibles>,
-    display_snapshot: crate::display_map::DisplaySnapshot,
+    display_snapshot: DisplaySnapshot,
     cursor: Option<PaintQuad>,
     selections: Vec<PaintQuad>,
     hitbox: Option<Hitbox>,
@@ -230,10 +285,10 @@ pub struct PrepaintState {
     horizontal_scrollbar: Option<ScrollbarPrepaint>,
     line_height: Pixels,
     column_width: Pixels,
-    scroll_max: Point<crate::scroll::ScrollOffset>,
+    scroll_max: Point<ScrollOffset>,
     masked: bool,
     needs_scroll_clamp: bool,
-    clamped_scroll_position: Point<crate::scroll::ScrollOffset>,
+    clamped_scroll_position: Point<ScrollOffset>,
 }
 
 #[derive(Clone)]
@@ -244,7 +299,7 @@ struct ScrollbarPrepaint {
     thumb_hitbox: Option<Hitbox>,
     track_quad: PaintQuad,
     thumb_quad: Option<PaintQuad>,
-    scroll_max: crate::scroll::ScrollOffset,
+    scroll_max: ScrollOffset,
 }
 
 impl IntoElement for EditorElement {
@@ -335,6 +390,7 @@ impl Element for EditorElement {
                 focus_handle,
                 placeholder,
                 mode,
+                show_scrollbars,
                 masked,
                 scrollbar_drag,
                 selection_range,
@@ -346,6 +402,7 @@ impl Element for EditorElement {
                     editor.focus_handle.clone(),
                     editor.placeholder.clone(),
                     editor.mode.clone(),
+                    editor.show_scrollbars,
                     editor.masked,
                     editor.scrollbar_drag,
                     editor.selected_range.clone(),
@@ -372,17 +429,17 @@ impl Element for EditorElement {
             } else {
                 max_row
             };
-            let viewport_rows = height_in_lines;
 
-            let show_vertical_scrollbar = matches!(mode, EditorMode::Full { .. });
-            let viewport_width = (bounds.size.width
-                - right_padding
-                - if show_vertical_scrollbar {
-                    SCROLLBAR_THICKNESS
-                } else {
-                    gpui::px(0.0)
-                })
-            .max(gpui::px(0.0));
+            let viewport_rows = height_in_lines;
+            let show_vertical_scrollbar = show_scrollbars.vertical;
+            let scrollbar_width = if show_vertical_scrollbar {
+                SCROLLBAR_THICKNESS
+            } else {
+                gpui::px(0.0)
+            };
+
+            let viewport_width =
+                (bounds.size.width - right_padding - scrollbar_width).max(gpui::px(0.0));
 
             let longest_row = display_snapshot.longest_row();
             let content_columns = f64::from(display_snapshot.line_len(longest_row));
@@ -411,8 +468,7 @@ impl Element for EditorElement {
                     )
                 });
 
-            let show_horizontal_scrollbar = max_scroll_x > 0.0;
-
+            let show_horizontal_scrollbar = show_scrollbars.horizontal && max_scroll_x > 0.0;
             let max_display_row = display_snapshot.buffer_snapshot().max_point().row;
 
             let cursor_point =
@@ -622,42 +678,19 @@ impl Element for EditorElement {
             let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
             window.set_focus_handle(&focus_handle, cx);
 
-            let is_dragging_vertical =
-                scrollbar_drag.is_some_and(|drag| drag.axis == Axis::Vertical);
-            let is_dragging_horizontal =
-                scrollbar_drag.is_some_and(|drag| drag.axis == Axis::Horizontal);
-
-            let vertical_scrollbar = if show_vertical_scrollbar {
-                Some(prepaint_scrollbar(
-                    Axis::Vertical,
-                    bounds,
-                    show_horizontal_scrollbar,
-                    is_dragging_vertical,
-                    clamped_scroll_position.y,
-                    max_scroll_y,
-                    viewport_rows,
-                    cx,
-                    window,
-                ))
-            } else {
-                None
-            };
-
-            let horizontal_scrollbar = if show_horizontal_scrollbar {
-                Some(prepaint_scrollbar(
-                    Axis::Horizontal,
-                    bounds,
-                    show_vertical_scrollbar,
-                    is_dragging_horizontal,
-                    clamped_scroll_position.x,
-                    max_scroll_x,
-                    viewport_columns,
-                    cx,
-                    window,
-                ))
-            } else {
-                None
-            };
+            let (vertical_scrollbar, horizontal_scrollbar) = Self::layout_scrollbars(
+                bounds,
+                show_vertical_scrollbar,
+                show_horizontal_scrollbar,
+                scrollbar_drag,
+                clamped_scroll_position,
+                max_scroll_x,
+                max_scroll_y,
+                viewport_columns,
+                viewport_rows,
+                window,
+                cx,
+            );
 
             PrepaintState {
                 line_layouts: lines,
