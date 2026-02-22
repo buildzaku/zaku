@@ -181,7 +181,7 @@ impl Workspace {
             left_dock.add_panel(left_dock_panel, window, cx);
         });
 
-        let response_panel = cx.new(ResponsePanel::new);
+        let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
         bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.add_panel(response_panel.clone(), window, cx);
         });

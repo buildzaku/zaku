@@ -13,25 +13,24 @@ use crate::{
 };
 
 pub struct ResponsePanel {
-    focus_handle: FocusHandle,
     position: DockPosition,
     size: Pixels,
     response: Option<SharedString>,
     response_status: SharedString,
-    response_editor: Option<Entity<Editor>>,
+    response_editor: Entity<Editor>,
 }
 
 impl ResponsePanel {
     const DEFAULT_SIZE: Pixels = gpui::px(250.);
 
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let response_editor = cx.new(|cx| Editor::full(window, cx));
         Self {
-            focus_handle: cx.focus_handle(),
             position: DockPosition::Bottom,
             size: Self::DEFAULT_SIZE,
             response: None,
             response_status: "Status: Idle".into(),
-            response_editor: None,
+            response_editor,
         }
     }
 
@@ -44,22 +43,17 @@ impl ResponsePanel {
         self.response = Some(response);
         self.response_status = response_status;
 
-        if let Some(response_editor) = self.response_editor.as_ref() {
-            let response = self.response.clone().unwrap_or_else(|| "".into());
-            response_editor.update(cx, |editor, cx| {
-                editor.set_text(response.as_str(), cx);
-            });
-        }
+        let response = self.response.clone().unwrap_or_else(|| "".into());
+        self.response_editor.update(cx, |editor, cx| {
+            editor.set_text(response.as_str(), cx);
+        });
         cx.notify();
     }
 }
 
 impl Focusable for ResponsePanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        if let Some(editor) = self.response_editor.as_ref() {
-            return editor.read(_cx).focus_handle(_cx);
-        }
-        self.focus_handle.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.response_editor.read(cx).focus_handle(cx)
     }
 }
 
@@ -106,28 +100,11 @@ impl Panel for ResponsePanel {
 }
 
 impl Render for ResponsePanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let response = self.response.clone().unwrap_or_else(|| "".into());
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let response_status = self.response_status.clone();
 
-        if self.response_editor.is_none() {
-            let editor = cx.new(|cx| Editor::full(window, cx));
-            editor.update(cx, |editor, cx| {
-                editor.set_text(response.as_str(), cx);
-            });
-            self.response_editor = Some(editor);
-        }
-
         let theme_colors = cx.theme().colors();
-
-        let Some(response_editor) = self.response_editor.clone() else {
-            return gpui::div()
-                .track_focus(&self.focus_handle)
-                .flex()
-                .flex_col()
-                .size_full()
-                .bg(cx.theme().colors().surface_background);
-        };
+        let response_editor = self.response_editor.clone();
 
         let focus_handle = self.focus_handle(cx);
         gpui::div()
