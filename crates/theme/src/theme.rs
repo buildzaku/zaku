@@ -165,6 +165,7 @@ pub struct ThemeColors {
 
     pub editor_background: Hsla,
     pub editor_foreground: Hsla,
+    pub editor_active_line_background: Hsla,
 
     pub scrollbar_track_background: Hsla,
     pub scrollbar_track_border: Hsla,
@@ -321,6 +322,8 @@ pub struct ThemeStyleContent {
     pub editor_background: Option<String>,
     #[serde(rename = "editor.foreground")]
     pub editor_foreground: Option<String>,
+    #[serde(rename = "editor.active_line_background")]
+    pub editor_active_line_background: Option<String>,
 
     #[serde(rename = "scrollbar.track.background")]
     pub scrollbar_track_background: Option<String>,
@@ -482,6 +485,10 @@ impl ThemeStyleContent {
             )?,
             editor_background: required_color("editor.background", &self.editor_background)?,
             editor_foreground: required_color("editor.foreground", &self.editor_foreground)?,
+            editor_active_line_background: required_color(
+                "editor.active_line_background",
+                &self.editor_active_line_background,
+            )?,
             scrollbar_track_background: required_color(
                 "scrollbar.track.background",
                 &self.scrollbar_track_background,

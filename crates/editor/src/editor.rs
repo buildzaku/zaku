@@ -345,6 +345,14 @@ impl EditorMode {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActiveLineHighlight {
+    None,
+    #[default]
+    Line,
+}
+
 #[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
 pub enum SizingBehavior {
     #[default]
@@ -493,6 +501,7 @@ pub struct Editor {
     input_enabled: bool,
     selection_mark_mode: bool,
     masked: bool,
+    active_line_highlight: Option<ActiveLineHighlight>,
     selection_goal: SelectionGoal,
     word_chars: Arc<[char]>,
     _subscriptions: Vec<Subscription>,
@@ -567,6 +576,7 @@ impl Editor {
             input_enabled: true,
             selection_mark_mode: false,
             masked: false,
+            active_line_highlight: None,
             selection_goal: SelectionGoal::None,
             word_chars: Arc::from(Vec::new().into_boxed_slice()),
             _subscriptions: subscriptions,
@@ -1163,6 +1173,13 @@ impl Editor {
 
     pub fn set_input_enabled(&mut self, input_enabled: bool) {
         self.input_enabled = input_enabled;
+    }
+
+    pub fn set_active_line_highlight(
+        &mut self,
+        active_line_highlight: Option<ActiveLineHighlight>,
+    ) {
+        self.active_line_highlight = active_line_highlight;
     }
 
     pub fn set_word_chars(&mut self, word_chars: impl Into<Arc<[char]>>) {

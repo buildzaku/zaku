@@ -11,8 +11,8 @@ use std::{any::TypeId, ops::Range};
 use theme::ActiveTheme;
 
 use crate::{
-    Editor, EditorMode, EditorStyle, HandleInput, MAX_LINE_LEN, SizingBehavior,
-    display_map::DisplaySnapshot, scroll::ScrollOffset,
+    ActiveLineHighlight, Editor, EditorMode, EditorStyle, HandleInput, MAX_LINE_LEN,
+    SizingBehavior, display_map::DisplaySnapshot, scroll::ScrollOffset,
 };
 
 const SCROLLBAR_THICKNESS: Pixels = gpui::px(15.0);
@@ -726,6 +726,7 @@ impl EditorElement {
 pub struct PrepaintState {
     line_layouts: Vec<LineWithInvisibles>,
     display_snapshot: DisplaySnapshot,
+    active_line_background: Option<PaintQuad>,
     cursor: Option<PaintQuad>,
     selections: Vec<PaintQuad>,
     hitbox: Option<Hitbox>,
@@ -845,6 +846,7 @@ impl Element for EditorElement {
                 selection_range,
                 marked_range,
                 cursor_offset,
+                active_line_highlight,
             ) = {
                 let editor = self.editor.read(cx);
                 (
@@ -857,6 +859,7 @@ impl Element for EditorElement {
                     editor.selected_range.clone(),
                     editor.marked_range.clone(),
                     editor.cursor_offset(),
+                    editor.active_line_highlight.unwrap_or_default(),
                 )
             };
             let display_snapshot = self
@@ -927,6 +930,18 @@ impl Element for EditorElement {
                         cursor_offset.min(display_snapshot.buffer_snapshot().len().0),
                     ));
             let cursor_row = cursor_point.row;
+            let show_active_line_background = match mode {
+                EditorMode::Full {
+                    show_active_line_background,
+                    ..
+                } => {
+                    show_active_line_background
+                        && selection_range.is_empty()
+                        && matches!(active_line_highlight, ActiveLineHighlight::Line)
+                }
+                _ => false,
+            };
+            let text_area_width = (bounds.size.width - scrollbar_width).max(gpui::px(0.0));
 
             let has_content = !display_snapshot.buffer_snapshot().is_empty();
 
@@ -1027,63 +1042,81 @@ impl Element for EditorElement {
                 );
             }
 
+            let mut active_line_background = None;
             let mut selections = Vec::new();
             let mut cursor = None;
             for line in lines.iter() {
                 let line_text = line.line_text.as_str();
                 let line_display_column_start = line.line_display_column_start;
-                if !selection_range.is_empty() {
+                let selection_offsets = if selection_range.is_empty() {
+                    None
+                } else {
                     let selection_start = selection_range.start.max(line.line_start_offset);
                     let selection_end = selection_range.end.min(line.line_end_offset);
-                    if selection_start < selection_end {
-                        let start_column = (selection_start - line.line_start_offset) as u32;
-                        let end_column = (selection_end - line.line_start_offset) as u32;
-                        let (mut display_start, mut display_end) = if masked {
-                            let start_column = (start_column as usize).min(line_text.len());
-                            let end_column = (end_column as usize).min(line_text.len());
-                            (
-                                line_text.get(..start_column).unwrap_or("").chars().count(),
-                                line_text.get(..end_column).unwrap_or("").chars().count(),
-                            )
-                        } else {
-                            (
-                                display_snapshot
-                                    .point_to_display_point(
-                                        text::Point::new(line.row.0, start_column),
-                                        text::Bias::Left,
-                                    )
-                                    .column() as usize,
-                                display_snapshot
-                                    .point_to_display_point(
-                                        text::Point::new(line.row.0, end_column),
-                                        text::Bias::Right,
-                                    )
-                                    .column() as usize,
-                            )
-                        };
-                        if !masked {
-                            display_start = display_start.saturating_sub(line_display_column_start);
-                            display_end = display_end.saturating_sub(line_display_column_start);
-                        }
-                        display_start = display_start.min(line.len);
-                        display_end = display_end.min(line.len);
+                    (selection_start < selection_end).then_some((selection_start, selection_end))
+                };
 
-                        let selection_bounds = Bounds::from_corners(
-                            gpui::point(
-                                line.origin.x + line.x_for_index(display_start),
-                                line.origin.y,
-                            ),
-                            gpui::point(
-                                line.origin.x + line.x_for_index(display_end),
-                                line.origin.y + line_height,
-                            ),
-                        );
+                if show_active_line_background
+                    && active_line_background.is_none()
+                    && cursor_row == line.row.0
+                {
+                    active_line_background = Some(gpui::fill(
+                        Bounds::new(
+                            gpui::point(bounds.left(), line.origin.y),
+                            gpui::size(text_area_width, line_height),
+                        ),
+                        cx.theme().colors().editor_active_line_background,
+                    ));
+                }
 
-                        selections.push(gpui::fill(
-                            selection_bounds,
-                            cx.theme().colors().element_selection_background,
-                        ));
+                if let Some((selection_start, selection_end)) = selection_offsets {
+                    let start_column = (selection_start - line.line_start_offset) as u32;
+                    let end_column = (selection_end - line.line_start_offset) as u32;
+                    let (mut display_start, mut display_end) = if masked {
+                        let start_column = (start_column as usize).min(line_text.len());
+                        let end_column = (end_column as usize).min(line_text.len());
+                        (
+                            line_text.get(..start_column).unwrap_or("").chars().count(),
+                            line_text.get(..end_column).unwrap_or("").chars().count(),
+                        )
+                    } else {
+                        (
+                            display_snapshot
+                                .point_to_display_point(
+                                    text::Point::new(line.row.0, start_column),
+                                    text::Bias::Left,
+                                )
+                                .column() as usize,
+                            display_snapshot
+                                .point_to_display_point(
+                                    text::Point::new(line.row.0, end_column),
+                                    text::Bias::Right,
+                                )
+                                .column() as usize,
+                        )
+                    };
+                    if !masked {
+                        display_start = display_start.saturating_sub(line_display_column_start);
+                        display_end = display_end.saturating_sub(line_display_column_start);
                     }
+                    display_start = display_start.min(line.len);
+                    display_end = display_end.min(line.len);
+
+                    let selection_bounds = Bounds::from_corners(
+                        gpui::point(
+                            line.origin.x + line.x_for_index(display_start),
+                            line.origin.y,
+                        ),
+                        gpui::point(
+                            line.origin.x + line.x_for_index(display_end),
+                            line.origin.y + line_height,
+                        ),
+                    );
+
+                    selections.push(gpui::fill(
+                        selection_bounds,
+                        cx.theme().colors().element_selection_background,
+                    ));
                 }
 
                 if cursor.is_none() && cursor_row == line.row.0 {
@@ -1144,6 +1177,7 @@ impl Element for EditorElement {
             PrepaintState {
                 line_layouts: lines,
                 display_snapshot,
+                active_line_background,
                 cursor,
                 selections,
                 hitbox: Some(hitbox),
@@ -1215,6 +1249,10 @@ impl Element for EditorElement {
                     bounds: text_bounds,
                 }),
                 |window| {
+                    if let Some(active_line_background) = prepaint.active_line_background.take() {
+                        window.paint_quad(active_line_background);
+                    }
+
                     for selection in prepaint.selections.drain(..) {
                         window.paint_quad(selection);
                     }
