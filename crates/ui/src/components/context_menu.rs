@@ -893,8 +893,10 @@ impl ContextMenu {
                                 let binding = self
                                     .action_context
                                     .as_ref()
-                                    .map(|focus| KeyBinding::for_action_in(&**action, focus, cx))
-                                    .unwrap_or_else(|| KeyBinding::for_action(&**action, cx));
+                                    .map(|focus| {
+                                        KeyBinding::for_action_in(action.as_ref(), focus, cx)
+                                    })
+                                    .unwrap_or_else(|| KeyBinding::for_action(action.as_ref(), cx));
 
                                 gpui::div().ml_4().child(binding.disabled(*disabled))
                             })),
@@ -1019,7 +1021,7 @@ impl Render for ContextMenu {
                         this.cancel(&menu::Cancel, window, cx)
                     }))
                     .when_some(self.end_slot_action.as_ref(), |el, action| {
-                        el.on_boxed_action(&**action, cx.listener(ContextMenu::end_slot))
+                        el.on_boxed_action(action.as_ref(), cx.listener(ContextMenu::end_slot))
                     })
                     .when(!self.delayed, |mut el| {
                         for item in self.items.iter() {
@@ -1030,7 +1032,7 @@ impl Render for ContextMenu {
                             }) = item
                             {
                                 el = el.on_boxed_action(
-                                    &**action,
+                                    action.as_ref(),
                                     cx.listener(ContextMenu::on_action_dispatch),
                                 );
                             }
