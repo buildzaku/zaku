@@ -7,9 +7,11 @@ use pretty_assertions::assert_eq;
 use settings::SettingsStore;
 
 use crate::{
-    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, HandleInput, MoveDown, MoveLeft,
-    MoveRight, MoveToBeginning, MoveToBeginningOfLine, MoveToEnd, MoveUp, Paste, Redo,
-    RedoSelection, Undo, UndoSelection, tests::context::EditorTestContext,
+    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine, DeleteToNextWordEnd,
+    DeleteToPreviousWordStart, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
+    MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextWordEnd, MoveToPreviousWordStart,
+    MoveUp, Paste, Redo, RedoSelection, SelectToBeginningOfLine, SelectToEndOfLine, Undo,
+    UndoSelection, tests::context::EditorTestContext,
 };
 
 fn init_test(cx: &mut TestAppContext) {
@@ -54,33 +56,236 @@ fn test_backspace_and_delete_actions(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn test_move_to_beginning_of_line_toggles_indent(cx: &mut TestAppContext) {
+fn test_move_beginning_of_line_stops_at_indent(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    cx.set_state("•••Lorem ipsum dolor sit ametˇ");
+    cx.set_state("•••The quick brown fox jumps over the lazy dogˇ");
     let move_to_beginning = MoveToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     };
 
     cx.dispatch_action(move_to_beginning.clone());
-    cx.assert_state("•••ˇLorem ipsum dolor sit amet");
+    cx.assert_state("•••ˇThe quick brown fox jumps over the lazy dog");
 
     cx.dispatch_action(move_to_beginning);
-    cx.assert_state("ˇ•••Lorem ipsum dolor sit amet");
+    cx.assert_state("ˇ•••The quick brown fox jumps over the lazy dog");
 }
 
 #[gpui::test]
-fn test_delete_to_beginning_of_line_respects_indent(cx: &mut TestAppContext) {
+fn test_delete_beginning_of_line_stops_at_indent(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    cx.set_state("•••Lorem ipsum dolor sit ametˇ");
+    cx.set_state("•••The quick brown fox jumps over the lazy dogˇ");
     cx.dispatch_action(DeleteToBeginningOfLine {
         stop_at_indent: true,
     });
     cx.assert_state("•••ˇ");
+}
+
+#[gpui::test]
+fn test_beginning_of_line(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let move_to_beginning_of_line = MoveToBeginningOfLine {
+        stop_at_soft_wraps: true,
+        stop_at_indent: true,
+    };
+
+    cx.set_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dˇog
+    "});
+
+    cx.dispatch_action(move_to_beginning_of_line.clone());
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ••ˇjumps over the lazy dog
+    "});
+
+    cx.dispatch_action(move_to_beginning_of_line.clone());
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ˇ••jumps over the lazy dog
+    "});
+
+    cx.dispatch_action(move_to_beginning_of_line.clone());
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ••ˇjumps over the lazy dog
+    "});
+
+    cx.set_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dˇog
+    "});
+    cx.dispatch_action(SelectToBeginningOfLine {
+        stop_at_soft_wraps: true,
+        stop_at_indent: true,
+    });
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ••«ˇjumps over the lazy d»og
+    "});
+
+    cx.dispatch_action(SelectToBeginningOfLine {
+        stop_at_soft_wraps: true,
+        stop_at_indent: true,
+    });
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        «ˇ••jumps over the lazy d»og
+    "});
+
+    cx.set_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dˇog
+    "});
+    cx.dispatch_action(DeleteToBeginningOfLine {
+        stop_at_indent: false,
+    });
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ˇog
+    "});
+}
+
+#[gpui::test]
+fn test_end_of_line(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dˇog
+    "});
+
+    cx.dispatch_action(MoveToEndOfLine {
+        stop_at_soft_wraps: true,
+    });
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dogˇ
+    "});
+
+    cx.dispatch_action(MoveToEndOfLine {
+        stop_at_soft_wraps: true,
+    });
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dogˇ
+    "});
+
+    cx.set_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dˇog
+    "});
+    cx.dispatch_action(SelectToEndOfLine {
+        stop_at_soft_wraps: true,
+    });
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy d«ogˇ»
+    "});
+
+    cx.set_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dˇog
+    "});
+    cx.dispatch_action(DeleteToEndOfLine);
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ••jumps over the lazy dˇ
+    "});
+}
+
+#[gpui::test]
+fn test_beginning_of_line_with_cursor_between_line_start_and_indent(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let move_to_beginning_of_line = MoveToBeginningOfLine {
+        stop_at_soft_wraps: true,
+        stop_at_indent: true,
+    };
+
+    cx.set_state(indoc! {"
+        •••ˇ•hello
+        world
+    "});
+
+    cx.dispatch_action(move_to_beginning_of_line.clone());
+    cx.assert_state(indoc! {"
+        ˇ••••hello
+        world
+    "});
+
+    cx.dispatch_action(move_to_beginning_of_line.clone());
+    cx.assert_state(indoc! {"
+        ••••ˇhello
+        world
+    "});
+
+    cx.dispatch_action(move_to_beginning_of_line);
+    cx.assert_state(indoc! {"
+        ˇ••••hello
+        world
+    "});
+}
+
+#[gpui::test]
+fn test_prev_next_word_boundary(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("one two.thˇree");
+
+    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.assert_state("one two.ˇthree");
+
+    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.assert_state("one ˇtwo.three");
+
+    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.assert_state("ˇone two.three");
+
+    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.assert_state("ˇone two.three");
+
+    cx.dispatch_action(MoveToNextWordEnd);
+    cx.assert_state("oneˇ two.three");
+
+    cx.dispatch_action(MoveToNextWordEnd);
+    cx.assert_state("one twoˇ.three");
+
+    cx.dispatch_action(MoveToNextWordEnd);
+    cx.assert_state("one two.threeˇ");
+
+    cx.dispatch_action(MoveToNextWordEnd);
+    cx.assert_state("one two.threeˇ");
+}
+
+#[gpui::test]
+fn test_delete_to_word_boundary(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("one two t«hreˇ»e four");
+    cx.dispatch_action(DeleteToPreviousWordStart {
+        ignore_newlines: false,
+        ignore_brackets: false,
+    });
+    cx.assert_state("one two tˇe four");
+
+    cx.set_state("one two te «fˇ»our");
+    cx.dispatch_action(DeleteToNextWordEnd {
+        ignore_newlines: false,
+        ignore_brackets: false,
+    });
+    cx.assert_state("one two te ˇour");
 }
 
 #[gpui::test]
