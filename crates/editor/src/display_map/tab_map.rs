@@ -236,6 +236,7 @@ impl TabSnapshot {
             max_output_position: range.end.0,
             tab_size: self.tab_size,
             chunk: Chunk {
+                // Safety: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
                 text: unsafe { std::str::from_utf8_unchecked(&SPACES[..to_next_stop as usize]) },
                 chars: bitmask_for_len(to_next_stop),
                 ..Default::default()
@@ -473,6 +474,7 @@ impl<'a> Iterator for TabChunks<'a> {
             self.output_position = next_output_position;
 
             return Some(Chunk {
+                // Safety: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
                 text: unsafe { std::str::from_utf8_unchecked(&SPACES[..len as usize]) },
                 chars: bitmask_for_len(len),
                 tabs: 0,
