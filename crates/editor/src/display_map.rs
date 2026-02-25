@@ -82,12 +82,8 @@ impl DisplaySnapshot {
     pub fn display_point_to_anchor(&self, point: DisplayPoint, bias: Bias) -> Anchor {
         let offset = point.to_offset(self, bias);
         match bias {
-            Bias::Left => self
-                .buffer_snapshot()
-                .anchor_before(MultiBufferOffset(offset)),
-            Bias::Right => self
-                .buffer_snapshot()
-                .anchor_after(MultiBufferOffset(offset)),
+            Bias::Left => self.buffer_snapshot().anchor_before(offset),
+            Bias::Right => self.buffer_snapshot().anchor_after(offset),
         }
     }
 
@@ -261,10 +257,9 @@ impl DisplayPoint {
         map.display_point_to_point(self, Bias::Left)
     }
 
-    pub fn to_offset(self, map: &DisplaySnapshot, bias: Bias) -> usize {
+    pub fn to_offset(self, map: &DisplaySnapshot, bias: Bias) -> MultiBufferOffset {
         map.buffer_snapshot()
             .point_to_offset(map.display_point_to_point(self, bias))
-            .0
     }
 
     fn to_tab_point(self) -> TabPoint {
@@ -282,6 +277,13 @@ impl ToDisplayPoint for usize {
             MultiBufferOffset((*self).min(map.buffer_snapshot().len().0)),
             Bias::Left,
         );
+        map.point_to_display_point(map.buffer_snapshot().offset_to_point(offset), Bias::Left)
+    }
+}
+
+impl ToDisplayPoint for MultiBufferOffset {
+    fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint {
+        let offset = map.buffer_snapshot().clip_offset(*self, Bias::Left);
         map.point_to_display_point(map.buffer_snapshot().offset_to_point(offset), Bias::Left)
     }
 }

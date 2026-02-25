@@ -827,10 +827,10 @@ impl Editor {
 
         if direction < 0 {
             let moved = movement::left(&display_snapshot, display_point);
-            moved.to_offset(&display_snapshot, Bias::Left)
+            moved.to_offset(&display_snapshot, Bias::Left).0
         } else {
             let moved = movement::right(&display_snapshot, display_point);
-            moved.to_offset(&display_snapshot, Bias::Right)
+            moved.to_offset(&display_snapshot, Bias::Right).0
         }
     }
 
@@ -845,7 +845,22 @@ impl Editor {
         let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
         let classifier = self.char_classifier();
         let target = movement::previous_word_start(&display_snapshot, display_point, &classifier);
-        target.to_offset(&display_snapshot, Bias::Left)
+        target.to_offset(&display_snapshot, Bias::Left).0
+    }
+
+    fn previous_word_start_or_newline(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Left,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
+        let classifier = self.char_classifier();
+        let target =
+            movement::previous_word_start_or_newline(&display_snapshot, display_point, &classifier);
+        target.to_offset(&display_snapshot, Bias::Left).0
     }
 
     fn next_word_end(&self, offset: usize, cx: &mut Context<Self>) -> usize {
@@ -859,7 +874,22 @@ impl Editor {
         let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
         let classifier = self.char_classifier();
         let target = movement::next_word_end(&display_snapshot, display_point, &classifier);
-        target.to_offset(&display_snapshot, Bias::Right)
+        target.to_offset(&display_snapshot, Bias::Right).0
+    }
+
+    fn next_word_end_or_newline(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Right,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
+        let classifier = self.char_classifier();
+        let target =
+            movement::next_word_end_or_newline(&display_snapshot, display_point, &classifier);
+        target.to_offset(&display_snapshot, Bias::Right).0
     }
 
     fn previous_subword_start(&self, offset: usize, cx: &mut Context<Self>) -> usize {
@@ -874,7 +904,25 @@ impl Editor {
         let classifier = self.char_classifier();
         let target =
             movement::previous_subword_start(&display_snapshot, display_point, &classifier);
-        target.to_offset(&display_snapshot, Bias::Left)
+        target.to_offset(&display_snapshot, Bias::Left).0
+    }
+
+    fn previous_subword_start_or_newline(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Left,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
+        let classifier = self.char_classifier();
+        let target = movement::previous_subword_start_or_newline(
+            &display_snapshot,
+            display_point,
+            &classifier,
+        );
+        target.to_offset(&display_snapshot, Bias::Left).0
     }
 
     fn next_subword_end(&self, offset: usize, cx: &mut Context<Self>) -> usize {
@@ -888,7 +936,22 @@ impl Editor {
         let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
         let classifier = self.char_classifier();
         let target = movement::next_subword_end(&display_snapshot, display_point, &classifier);
-        target.to_offset(&display_snapshot, Bias::Right)
+        target.to_offset(&display_snapshot, Bias::Right).0
+    }
+
+    fn next_subword_end_or_newline(&self, offset: usize, cx: &mut Context<Self>) -> usize {
+        let display_snapshot = self.display_snapshot(cx);
+        let buffer_snapshot = display_snapshot.buffer_snapshot();
+        let offset = buffer_snapshot.clip_offset(
+            MultiBufferOffset(offset.min(buffer_snapshot.len().0)),
+            Bias::Right,
+        );
+        let point = buffer_snapshot.offset_to_point(offset);
+        let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
+        let classifier = self.char_classifier();
+        let target =
+            movement::next_subword_end_or_newline(&display_snapshot, display_point, &classifier);
+        target.to_offset(&display_snapshot, Bias::Right).0
     }
 
     fn line_indent_offset(&self, cx: &mut Context<Self>) -> usize {
@@ -1473,7 +1536,7 @@ impl Editor {
 
     fn delete_to_previous_word_start(
         &mut self,
-        _: &DeleteToPreviousWordStart,
+        action: &DeleteToPreviousWordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1482,15 +1545,45 @@ impl Editor {
         }
 
         if self.selected_range.is_empty() {
-            let start = self.previous_word_start(self.cursor_offset(), cx);
-            self.selected_range = start..self.cursor_offset();
+            let cursor_offset = self.cursor_offset();
+            let start = if action.ignore_newlines {
+                self.previous_word_start(cursor_offset, cx)
+            } else {
+                self.previous_word_start_or_newline(cursor_offset, cx)
+            };
+
+            let display_snapshot = self.display_snapshot(cx);
+            let buffer_snapshot = display_snapshot.buffer_snapshot();
+            let cursor = buffer_snapshot.clip_offset(
+                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                Bias::Left,
+            );
+            let start = buffer_snapshot.clip_offset(
+                MultiBufferOffset(start.min(buffer_snapshot.len().0)),
+                Bias::Left,
+            );
+
+            let cursor_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Left);
+            let start_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(start), Bias::Left);
+            let start = movement::adjust_greedy_deletion(
+                &display_snapshot,
+                cursor_display_point,
+                start_display_point,
+                action.ignore_brackets,
+            )
+            .to_offset(&display_snapshot, Bias::Left)
+            .0;
+
+            self.selected_range = start..cursor_offset;
         }
         self.replace_selection("", cx);
     }
 
     fn delete_to_previous_subword_start(
         &mut self,
-        _: &DeleteToPreviousSubwordStart,
+        action: &DeleteToPreviousSubwordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1499,15 +1592,45 @@ impl Editor {
         }
 
         if self.selected_range.is_empty() {
-            let start = self.previous_subword_start(self.cursor_offset(), cx);
-            self.selected_range = start..self.cursor_offset();
+            let cursor_offset = self.cursor_offset();
+            let start = if action.ignore_newlines {
+                self.previous_subword_start(cursor_offset, cx)
+            } else {
+                self.previous_subword_start_or_newline(cursor_offset, cx)
+            };
+
+            let display_snapshot = self.display_snapshot(cx);
+            let buffer_snapshot = display_snapshot.buffer_snapshot();
+            let cursor = buffer_snapshot.clip_offset(
+                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                Bias::Left,
+            );
+            let start = buffer_snapshot.clip_offset(
+                MultiBufferOffset(start.min(buffer_snapshot.len().0)),
+                Bias::Left,
+            );
+
+            let cursor_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Left);
+            let start_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(start), Bias::Left);
+            let start = movement::adjust_greedy_deletion(
+                &display_snapshot,
+                cursor_display_point,
+                start_display_point,
+                action.ignore_brackets,
+            )
+            .to_offset(&display_snapshot, Bias::Left)
+            .0;
+
+            self.selected_range = start..cursor_offset;
         }
         self.replace_selection("", cx);
     }
 
     fn delete_to_next_word_end(
         &mut self,
-        _: &DeleteToNextWordEnd,
+        action: &DeleteToNextWordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1516,15 +1639,45 @@ impl Editor {
         }
 
         if self.selected_range.is_empty() {
-            let end = self.next_word_end(self.cursor_offset(), cx);
-            self.selected_range = self.cursor_offset()..end;
+            let cursor_offset = self.cursor_offset();
+            let end = if action.ignore_newlines {
+                self.next_word_end(cursor_offset, cx)
+            } else {
+                self.next_word_end_or_newline(cursor_offset, cx)
+            };
+
+            let display_snapshot = self.display_snapshot(cx);
+            let buffer_snapshot = display_snapshot.buffer_snapshot();
+            let cursor = buffer_snapshot.clip_offset(
+                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                Bias::Right,
+            );
+            let end = buffer_snapshot.clip_offset(
+                MultiBufferOffset(end.min(buffer_snapshot.len().0)),
+                Bias::Right,
+            );
+
+            let cursor_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Right);
+            let end_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(end), Bias::Right);
+            let end = movement::adjust_greedy_deletion(
+                &display_snapshot,
+                cursor_display_point,
+                end_display_point,
+                action.ignore_brackets,
+            )
+            .to_offset(&display_snapshot, Bias::Right)
+            .0;
+
+            self.selected_range = cursor_offset..end;
         }
         self.replace_selection("", cx);
     }
 
     fn delete_to_next_subword_end(
         &mut self,
-        _: &DeleteToNextSubwordEnd,
+        action: &DeleteToNextSubwordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1533,8 +1686,38 @@ impl Editor {
         }
 
         if self.selected_range.is_empty() {
-            let end = self.next_subword_end(self.cursor_offset(), cx);
-            self.selected_range = self.cursor_offset()..end;
+            let cursor_offset = self.cursor_offset();
+            let end = if action.ignore_newlines {
+                self.next_subword_end(cursor_offset, cx)
+            } else {
+                self.next_subword_end_or_newline(cursor_offset, cx)
+            };
+
+            let display_snapshot = self.display_snapshot(cx);
+            let buffer_snapshot = display_snapshot.buffer_snapshot();
+            let cursor = buffer_snapshot.clip_offset(
+                MultiBufferOffset(cursor_offset.min(buffer_snapshot.len().0)),
+                Bias::Right,
+            );
+            let end = buffer_snapshot.clip_offset(
+                MultiBufferOffset(end.min(buffer_snapshot.len().0)),
+                Bias::Right,
+            );
+
+            let cursor_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(cursor), Bias::Right);
+            let end_display_point = display_snapshot
+                .point_to_display_point(buffer_snapshot.offset_to_point(end), Bias::Right);
+            let end = movement::adjust_greedy_deletion(
+                &display_snapshot,
+                cursor_display_point,
+                end_display_point,
+                action.ignore_brackets,
+            )
+            .to_offset(&display_snapshot, Bias::Right)
+            .0;
+
+            self.selected_range = cursor_offset..end;
         }
         self.replace_selection("", cx);
     }

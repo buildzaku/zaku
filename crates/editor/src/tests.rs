@@ -7,7 +7,8 @@ use pretty_assertions::assert_eq;
 use settings::SettingsStore;
 
 use crate::{
-    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine, DeleteToNextWordEnd,
+    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
+    DeleteToNextSubwordEnd, DeleteToNextWordEnd, DeleteToPreviousSubwordStart,
     DeleteToPreviousWordStart, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
     MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextWordEnd, MoveToPreviousWordStart,
     MoveUp, Paste, Redo, RedoSelection, SelectToBeginningOfLine, SelectToEndOfLine, Undo,
@@ -286,6 +287,350 @@ fn test_delete_to_word_boundary(cx: &mut TestAppContext) {
         ignore_brackets: false,
     });
     cx.assert_state("one two te ˇour");
+}
+
+#[gpui::test]
+fn test_delete_to_previous_word_start_or_newline(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let delete_to_previous_word_start = DeleteToPreviousWordStart {
+        ignore_newlines: false,
+        ignore_brackets: false,
+    };
+    let delete_to_previous_word_start_ignore_newlines = DeleteToPreviousWordStart {
+        ignore_newlines: true,
+        ignore_brackets: false,
+    };
+
+    cx.set_state(indoc! {"
+        snake_case
+
+        kebab-case
+
+        camelCaseˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-case
+
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-case
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-caseˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebabˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start);
+    cx.assert_state(indoc! {"
+        snake_case
+
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start_ignore_newlines.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_word_start_ignore_newlines);
+    cx.assert_state(indoc! {"
+        ˇ
+    "});
+}
+
+#[gpui::test]
+fn test_delete_to_previous_subword_start_or_newline(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let delete_to_previous_subword_start = DeleteToPreviousSubwordStart {
+        ignore_newlines: false,
+        ignore_brackets: false,
+    };
+    let delete_to_previous_subword_start_ignore_newlines = DeleteToPreviousSubwordStart {
+        ignore_newlines: true,
+        ignore_brackets: false,
+    };
+
+    cx.set_state(indoc! {"
+        snake_case
+
+        kebab-case
+
+        camelCaseˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-case
+
+        camelˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-case
+
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-case
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-caseˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebab-ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+
+        kebabˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start);
+    cx.assert_state(indoc! {"
+        snake_case
+
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start_ignore_newlines.clone());
+    cx.assert_state(indoc! {"
+        snake_case
+        ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start_ignore_newlines.clone());
+    cx.assert_state(indoc! {"
+        snake_ˇ
+    "});
+
+    cx.dispatch_action(delete_to_previous_subword_start_ignore_newlines);
+    cx.assert_state(indoc! {"
+        ˇ
+    "});
+}
+
+#[gpui::test]
+fn test_delete_to_next_word_end_or_newline(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let delete_to_next_word_end = DeleteToNextWordEnd {
+        ignore_newlines: false,
+        ignore_brackets: false,
+    };
+    let delete_to_next_word_end_ignore_newlines = DeleteToNextWordEnd {
+        ignore_newlines: true,
+        ignore_brackets: false,
+    };
+
+    cx.set_state(indoc! {"
+        ˇsnake_case
+
+        kebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end.clone());
+    cx.assert_state(indoc! {"
+        ˇ
+
+        kebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end.clone());
+    cx.assert_state(indoc! {"
+        ˇ
+        kebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end.clone());
+    cx.assert_state(indoc! {"
+        ˇkebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end.clone());
+    cx.assert_state(indoc! {"
+        ˇ-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end.clone());
+    cx.assert_state(indoc! {"
+        ˇcase
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end);
+    cx.assert_state(indoc! {"
+        ˇ
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end_ignore_newlines.clone());
+    cx.assert_state(indoc! {"
+        ˇ
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_word_end_ignore_newlines);
+    cx.assert_state(indoc! {"
+        ˇ
+    "});
+}
+
+#[gpui::test]
+fn test_delete_to_next_subword_end_or_newline(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let delete_to_next_subword_end = DeleteToNextSubwordEnd {
+        ignore_newlines: false,
+        ignore_brackets: false,
+    };
+    let delete_to_next_subword_end_ignore_newlines = DeleteToNextSubwordEnd {
+        ignore_newlines: true,
+        ignore_brackets: false,
+    };
+
+    cx.set_state(indoc! {"
+        ˇsnake_case
+
+        kebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end.clone());
+    cx.assert_state(indoc! {"
+        ˇ_case
+
+        kebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end.clone());
+    cx.assert_state(indoc! {"
+        ˇ
+
+        kebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end.clone());
+    cx.assert_state(indoc! {"
+        ˇ
+        kebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end.clone());
+    cx.assert_state(indoc! {"
+        ˇkebab-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end.clone());
+    cx.assert_state(indoc! {"
+        ˇ-case
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end.clone());
+    cx.assert_state(indoc! {"
+        ˇcase
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end);
+    cx.assert_state(indoc! {"
+        ˇ
+
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end_ignore_newlines.clone());
+    cx.assert_state(indoc! {"
+        ˇ
+        camelCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end_ignore_newlines.clone());
+    cx.assert_state(indoc! {"
+        ˇCase
+    "});
+
+    cx.dispatch_action(delete_to_next_subword_end_ignore_newlines);
+    cx.assert_state(indoc! {"
+        ˇ
+    "});
 }
 
 #[gpui::test]

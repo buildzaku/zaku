@@ -212,6 +212,18 @@ pub fn previous_word_start(
     })
 }
 
+pub fn previous_word_start_or_newline(
+    map: &DisplaySnapshot,
+    point: DisplayPoint,
+    classifier: &CharClassifier,
+) -> DisplayPoint {
+    find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
+        (classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(right))
+            || left == '\n'
+            || right == '\n'
+    })
+}
+
 pub fn next_word_end(
     map: &DisplaySnapshot,
     point: DisplayPoint,
@@ -234,6 +246,23 @@ pub fn next_word_end(
     })
 }
 
+pub fn next_word_end_or_newline(
+    map: &DisplaySnapshot,
+    point: DisplayPoint,
+    classifier: &CharClassifier,
+) -> DisplayPoint {
+    let mut on_starting_row = true;
+    find_boundary(map, point, FindRange::MultiLine, |left, right| {
+        if left == '\n' {
+            on_starting_row = false;
+        }
+        (classifier.kind(left) != classifier.kind(right)
+            && ((on_starting_row && !left.is_whitespace())
+                || (!on_starting_row && !right.is_whitespace())))
+            || right == '\n'
+    })
+}
+
 pub fn previous_subword_start(
     map: &DisplaySnapshot,
     point: DisplayPoint,
@@ -241,6 +270,16 @@ pub fn previous_subword_start(
 ) -> DisplayPoint {
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
         is_subword_start(left, right, classifier) || left == '\n'
+    })
+}
+
+pub fn previous_subword_start_or_newline(
+    map: &DisplaySnapshot,
+    point: DisplayPoint,
+    classifier: &CharClassifier,
+) -> DisplayPoint {
+    find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
+        is_subword_start(left, right, classifier) || left == '\n' || right == '\n'
     })
 }
 
@@ -252,6 +291,90 @@ pub fn next_subword_end(
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
         is_subword_end(left, right, classifier) || right == '\n'
     })
+}
+
+pub fn next_subword_end_or_newline(
+    map: &DisplaySnapshot,
+    point: DisplayPoint,
+    classifier: &CharClassifier,
+) -> DisplayPoint {
+    let mut on_starting_row = true;
+    find_boundary(map, point, FindRange::MultiLine, |left, right| {
+        if left == '\n' {
+            on_starting_row = false;
+        }
+        ((classifier.kind(left) != classifier.kind(right)
+            || is_subword_boundary_end(left, right, classifier))
+            && ((on_starting_row && !left.is_whitespace())
+                || (!on_starting_row && !right.is_whitespace())))
+            || right == '\n'
+    })
+}
+
+pub fn adjust_greedy_deletion(
+    map: &DisplaySnapshot,
+    delete_from: DisplayPoint,
+    delete_until: DisplayPoint,
+    ignore_brackets: bool,
+) -> DisplayPoint {
+    if delete_from == delete_until {
+        return delete_until;
+    }
+    let is_backward = delete_from > delete_until;
+    let delete_range = if is_backward {
+        delete_until.to_offset(map, Bias::Left)..delete_from.to_offset(map, Bias::Right)
+    } else {
+        delete_from.to_offset(map, Bias::Left)..delete_until.to_offset(map, Bias::Right)
+    };
+
+    let trimmed_delete_range = if ignore_brackets {
+        delete_range.clone()
+    } else {
+        delete_range
+    };
+
+    let mut whitespace_sequences = Vec::new();
+    let mut current_offset = trimmed_delete_range.start;
+    let mut whitespace_sequence_length = MultiBufferOffset(0);
+    let mut whitespace_sequence_start = MultiBufferOffset(0);
+    for character in map
+        .buffer_snapshot()
+        .text_for_range(trimmed_delete_range.clone())
+        .flat_map(str::chars)
+    {
+        if character.is_whitespace() {
+            if whitespace_sequence_length == MultiBufferOffset(0) {
+                whitespace_sequence_start = current_offset;
+            }
+            whitespace_sequence_length += 1;
+        } else {
+            if whitespace_sequence_length >= MultiBufferOffset(2) {
+                whitespace_sequences.push((whitespace_sequence_start, current_offset));
+            }
+            whitespace_sequence_start = MultiBufferOffset(0);
+            whitespace_sequence_length = MultiBufferOffset(0);
+        }
+        current_offset += character.len_utf8();
+    }
+    if whitespace_sequence_length >= MultiBufferOffset(2) {
+        whitespace_sequences.push((whitespace_sequence_start, current_offset));
+    }
+
+    let closest_whitespace_end = if is_backward {
+        whitespace_sequences.last().map(|&(start, _)| start)
+    } else {
+        whitespace_sequences.first().map(|&(_, end)| end)
+    };
+
+    closest_whitespace_end
+        .unwrap_or_else(|| {
+            if is_backward {
+                trimmed_delete_range.start
+            } else {
+                trimmed_delete_range.end
+            }
+        })
+        .to_display_point(map)
 }
 
 pub fn is_subword_start(left: char, right: char, classifier: &CharClassifier) -> bool {
@@ -324,7 +447,7 @@ pub fn find_boundary_point(
     mut is_boundary: impl FnMut(char, char) -> bool,
     return_point_before_boundary: bool,
 ) -> DisplayPoint {
-    let mut offset = MultiBufferOffset(from.to_offset(map, Bias::Right));
+    let mut offset = from.to_offset(map, Bias::Right);
     let mut previous_offset = offset;
     let mut previous_character = None;
 
@@ -337,7 +460,7 @@ pub fn find_boundary_point(
             && is_boundary(previous_character, character)
         {
             if return_point_before_boundary {
-                return map.clip_point(previous_offset.0.to_display_point(map), Bias::Right);
+                return map.clip_point(previous_offset.to_display_point(map), Bias::Right);
             }
             break;
         }
@@ -347,7 +470,7 @@ pub fn find_boundary_point(
         previous_character = Some(character);
     }
 
-    map.clip_point(offset.0.to_display_point(map), Bias::Right)
+    map.clip_point(offset.to_display_point(map), Bias::Right)
 }
 
 pub fn find_boundary(
