@@ -1325,7 +1325,6 @@ impl Editor {
         self.selection_reversed = false;
         self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
-        self.request_autoscroll(scroll::Autoscroll::newest(), cx);
         cx.notify();
     }
 

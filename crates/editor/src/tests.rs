@@ -236,6 +236,69 @@ fn test_select_all(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn test_select_all_does_not_autoscroll(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let line_height = cx.update_editor(|editor, window, cx| {
+        editor.set_vertical_scroll_margin(2, cx);
+        editor
+            .create_style(cx)
+            .text
+            .line_height_in_pixels(window.rem_size())
+    });
+    let window = cx.window;
+    cx.simulate_window_resize(window, gpui::size(gpui::px(1000.0), 6.0 * line_height));
+
+    cx.set_state(indoc! {"
+        ˇone
+        two
+        three
+        four
+        five
+        six
+        seven
+        eight
+        nine
+        ten
+    "});
+
+    for _ in 0..6 {
+        cx.dispatch_action(MoveDown);
+    }
+    cx.run_until_parked();
+
+    cx.assert_state(indoc! {"
+        one
+        two
+        three
+        four
+        five
+        six
+        ˇseven
+        eight
+        nine
+        ten
+    "});
+
+    let initial_scroll_position = cx.update_editor(|editor, window, cx| {
+        let scroll_position = editor.snapshot(window, cx).scroll_position();
+        assert_eq!(scroll_position, gpui::Point::new(0.0, 3.0));
+
+        scroll_position
+    });
+
+    cx.dispatch_action(SelectAll);
+
+    let scroll_position_after_select_all =
+        cx.update_editor(|editor, window, cx| editor.snapshot(window, cx).scroll_position());
+    assert_eq!(
+        initial_scroll_position, scroll_position_after_select_all,
+        "scroll position should not change after select all",
+    );
+}
+
+#[gpui::test]
 fn test_move_beginning_of_line_stops_at_indent(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
