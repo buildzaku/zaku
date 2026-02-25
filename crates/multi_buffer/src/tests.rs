@@ -1,6 +1,7 @@
 use gpui::{App, AppContext};
 use indoc::indoc;
 use rand::{RngExt, rngs::StdRng};
+use std::time::{Duration, Instant};
 use text::{Buffer as TextBuffer, BufferId, Point, ReplicaId};
 
 use super::*;
@@ -235,4 +236,88 @@ fn test_random_multibuffer(cx: &mut App, mut rng: StdRng) {
             assert!(before.to_offset(&snapshot) <= after.to_offset(&snapshot));
         }
     }
+}
+
+#[gpui::test]
+fn test_history(cx: &mut App) {
+    let buffer_id = BufferId::new(1).unwrap();
+    let buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, "fox"));
+    assert_eq!(buffer.read(cx).remote_id(), buffer_id);
+
+    let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer.clone(), cx));
+    let mut now = Instant::now();
+
+    let first_transaction_id = multibuffer.update(cx, |multi_buffer, cx| {
+        let transaction_id = multi_buffer
+            .start_transaction_at(now, cx)
+            .expect("first transaction should start");
+        multi_buffer.edit([(MultiBufferOffset(0)..MultiBufferOffset(0), "quick ")], cx);
+        multi_buffer.edit([(MultiBufferOffset(6)..MultiBufferOffset(6), "brown ")], cx);
+        let ended_transaction_id = multi_buffer
+            .end_transaction_at(now, cx)
+            .expect("first transaction should end");
+        assert_eq!(ended_transaction_id, transaction_id);
+        transaction_id
+    });
+
+    assert_eq!(multibuffer.read(cx).snapshot(cx).text(), "quick brown fox");
+
+    now += Duration::from_secs(1);
+    let second_transaction_id = multibuffer.update(cx, |multi_buffer, cx| {
+        let transaction_id = multi_buffer
+            .start_transaction_at(now, cx)
+            .expect("second transaction should start");
+        multi_buffer.edit(
+            [(MultiBufferOffset(15)..MultiBufferOffset(15), " jumps")],
+            cx,
+        );
+        let ended_transaction_id = multi_buffer
+            .end_transaction_at(now, cx)
+            .expect("second transaction should end");
+        assert_eq!(ended_transaction_id, transaction_id);
+        transaction_id
+    });
+
+    assert_eq!(
+        multibuffer.read(cx).snapshot(cx).text(),
+        "quick brown fox jumps"
+    );
+
+    multibuffer.update(cx, |multi_buffer, cx| {
+        assert_eq!(multi_buffer.undo(cx), Some(second_transaction_id));
+        assert_eq!(multi_buffer.read(cx).text(), "quick brown fox");
+
+        assert_eq!(multi_buffer.undo(cx), Some(first_transaction_id));
+        assert_eq!(multi_buffer.read(cx).text(), "fox");
+
+        assert_eq!(multi_buffer.redo(cx), Some(first_transaction_id));
+        assert_eq!(multi_buffer.read(cx).text(), "quick brown fox");
+
+        assert_eq!(multi_buffer.redo(cx), Some(second_transaction_id));
+        assert_eq!(multi_buffer.read(cx).text(), "quick brown fox jumps");
+    });
+
+    now += Duration::from_secs(1);
+    multibuffer.update(cx, |multi_buffer, cx| {
+        assert_eq!(multi_buffer.undo(cx), Some(second_transaction_id));
+        assert_eq!(multi_buffer.read(cx).text(), "quick brown fox");
+
+        let third_transaction_id = multi_buffer
+            .start_transaction_at(now, cx)
+            .expect("third transaction should start");
+        multi_buffer.edit([(MultiBufferOffset(0)..MultiBufferOffset(0), "The ")], cx);
+        let ended_transaction_id = multi_buffer
+            .end_transaction_at(now, cx)
+            .expect("third transaction should end");
+        assert_eq!(ended_transaction_id, third_transaction_id);
+        assert_eq!(multi_buffer.read(cx).text(), "The quick brown fox");
+
+        assert_eq!(multi_buffer.redo(cx), None);
+
+        assert_eq!(multi_buffer.undo(cx), Some(third_transaction_id));
+        assert_eq!(multi_buffer.read(cx).text(), "quick brown fox");
+
+        assert_eq!(multi_buffer.undo(cx), Some(first_transaction_id));
+        assert_eq!(multi_buffer.read(cx).text(), "fox");
+    });
 }
