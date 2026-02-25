@@ -1,5 +1,4 @@
 use std::{cmp, mem, num::NonZeroU32, ops::Range};
-
 use text::{Bias, Edit as TextEdit, Point};
 
 use multi_buffer::{MultiBufferOffset, MultiBufferRow, MultiBufferSnapshot};
