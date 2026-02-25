@@ -11,8 +11,8 @@ use crate::{
     DeleteToNextSubwordEnd, DeleteToNextWordEnd, DeleteToPreviousSubwordStart,
     DeleteToPreviousWordStart, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
     MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextWordEnd, MoveToPreviousWordStart,
-    MoveUp, Paste, Redo, RedoSelection, SelectToBeginningOfLine, SelectToEndOfLine, Undo,
-    UndoSelection, tests::context::EditorTestContext,
+    MoveUp, Newline, Paste, Redo, RedoSelection, SelectAll, SelectToBeginningOfLine,
+    SelectToEndOfLine, Undo, UndoSelection, tests::context::EditorTestContext,
 };
 
 fn init_test(cx: &mut TestAppContext) {
@@ -44,16 +44,56 @@ fn test_handle_input_replaces_selection(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn test_backspace_and_delete_actions(cx: &mut TestAppContext) {
+fn test_backspace(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("Hello, woˇrld!");
     cx.dispatch_action(Backspace);
     cx.assert_state("Hello, wˇrld!");
+}
 
+#[gpui::test]
+fn test_delete(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("Hello, woˇrld!");
     cx.dispatch_action(Delete);
-    cx.assert_state("Hello, wˇld!");
+    cx.assert_state("Hello, woˇld!");
+}
+
+#[gpui::test]
+fn test_newline(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state(indoc! {"
+        The quick brown foxˇjumps over the lazy dog
+    "});
+    cx.dispatch_action(Newline);
+    cx.assert_state(indoc! {"
+        The quick brown fox
+        ˇjumps over the lazy dog
+    "});
+}
+
+#[gpui::test]
+fn test_select_all(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state(indoc! {"
+        abc
+        deˇ
+        fgh\
+    "});
+    cx.dispatch_action(SelectAll);
+    cx.assert_state(indoc! {"
+        «abc
+        de
+        fghˇ»\
+    "});
 }
 
 #[gpui::test]
