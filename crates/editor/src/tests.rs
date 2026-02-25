@@ -48,9 +48,53 @@ fn test_backspace(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    cx.set_state("Hello, woˇrld!");
+    cx.set_state(indoc! {"
+        The quick brown fˇox
+        jumps over the lazy dog\
+    "});
     cx.dispatch_action(Backspace);
-    cx.assert_state("Hello, wˇrld!");
+    cx.assert_state(indoc! {"
+        The quick brown ˇox
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveToBeginningOfLine {
+        stop_at_soft_wraps: true,
+        stop_at_indent: true,
+    });
+    cx.assert_state(indoc! {"
+        ˇThe quick brown ox
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(Backspace);
+    cx.assert_state(indoc! {"
+        ˇThe quick brown ox
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveDown);
+    cx.assert_state(indoc! {"
+        The quick brown ox
+        ˇjumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(Backspace);
+    cx.assert_state(indoc! {"
+        The quick brown oxˇjumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveToEndOfLine {
+        stop_at_soft_wraps: true,
+    });
+    cx.assert_state(indoc! {"
+        The quick brown oxjumps over the lazy dogˇ\
+    "});
+
+    cx.dispatch_action(Backspace);
+    cx.assert_state(indoc! {"
+        The quick brown oxjumps over the lazy doˇ\
+    "});
 }
 
 #[gpui::test]
@@ -58,9 +102,65 @@ fn test_delete(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    cx.set_state("Hello, woˇrld!");
+    cx.set_state(indoc! {"
+        The quick brown fˇox
+        jumps over the lazy dog\
+    "});
     cx.dispatch_action(Delete);
-    cx.assert_state("Hello, woˇld!");
+    cx.assert_state(indoc! {"
+        The quick brown fˇx
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveToBeginningOfLine {
+        stop_at_soft_wraps: true,
+        stop_at_indent: true,
+    });
+    cx.assert_state(indoc! {"
+        ˇThe quick brown fx
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(Delete);
+    cx.assert_state(indoc! {"
+        ˇhe quick brown fx
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveToEndOfLine {
+        stop_at_soft_wraps: true,
+    });
+    cx.assert_state(indoc! {"
+        he quick brown fxˇ
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(Delete);
+    cx.assert_state(indoc! {"
+        he quick brown fxˇjumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveToEndOfLine {
+        stop_at_soft_wraps: true,
+    });
+    cx.assert_state(indoc! {"
+        he quick brown fxjumps over the lazy dogˇ\
+    "});
+
+    cx.dispatch_action(Delete);
+    cx.assert_state(indoc! {"
+        he quick brown fxjumps over the lazy dogˇ\
+    "});
+
+    cx.dispatch_action(MoveLeft);
+    cx.assert_state(indoc! {"
+        he quick brown fxjumps over the lazy doˇg\
+    "});
+
+    cx.dispatch_action(Delete);
+    cx.assert_state(indoc! {"
+        he quick brown fxjumps over the lazy doˇ\
+    "});
 }
 
 #[gpui::test]
@@ -69,12 +169,51 @@ fn test_newline(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state(indoc! {"
-        The quick brown foxˇjumps over the lazy dog
+        The quick brown foxˇjumps over the lazy dog\
     "});
     cx.dispatch_action(Newline);
     cx.assert_state(indoc! {"
         The quick brown fox
-        ˇjumps over the lazy dog
+        ˇjumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveUp);
+    cx.assert_state(indoc! {"
+        ˇThe quick brown fox
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(Newline);
+    cx.assert_state(indoc! {"
+
+        ˇThe quick brown fox
+        jumps over the lazy dog\
+    "});
+
+    cx.dispatch_action(MoveToEnd);
+    cx.assert_state(indoc! {"
+
+        The quick brown fox
+        jumps over the lazy dogˇ\
+    "});
+
+    cx.dispatch_action(Newline);
+    cx.assert_state(indoc! {"
+
+        The quick brown fox
+        jumps over the lazy dog
+        ˇ\
+    "});
+
+    cx.set_state(indoc! {"
+        The« quick ˇ»brown fox
+        jumps over the lazy dog\
+    "});
+    cx.dispatch_action(Newline);
+    cx.assert_state(indoc! {"
+        The
+        ˇbrown fox
+        jumps over the lazy dog\
     "});
 }
 
