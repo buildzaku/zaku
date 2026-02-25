@@ -864,6 +864,114 @@ fn test_undo_redo_selection(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn test_vertical_autoscroll(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    let line_height = cx.update_editor(|editor, window, cx| {
+        editor.set_vertical_scroll_margin(2, cx);
+        editor
+            .create_style(cx)
+            .text
+            .line_height_in_pixels(window.rem_size())
+    });
+    let window = cx.window;
+    cx.simulate_window_resize(window, gpui::size(gpui::px(1000.0), 6.0 * line_height));
+
+    cx.set_state(indoc! {"
+        ˇone
+        two
+        three
+        four
+        five
+        six
+        seven
+        eight
+        nine
+        ten
+    "});
+
+    cx.update_editor(|editor, window, cx| {
+        assert_eq!(
+            editor.snapshot(window, cx).scroll_position(),
+            gpui::Point::new(0.0, 0.0)
+        );
+    });
+
+    for _ in 0..6 {
+        cx.dispatch_action(MoveDown);
+    }
+    cx.run_until_parked();
+
+    cx.assert_state(indoc! {"
+        one
+        two
+        three
+        four
+        five
+        six
+        ˇseven
+        eight
+        nine
+        ten
+    "});
+    cx.update_editor(|editor, window, cx| {
+        assert_eq!(
+            editor.snapshot(window, cx).scroll_position(),
+            gpui::Point::new(0.0, 3.0)
+        );
+    });
+
+    for _ in 0..3 {
+        cx.dispatch_action(MoveDown);
+    }
+    cx.run_until_parked();
+
+    cx.assert_state(indoc! {"
+        one
+        two
+        three
+        four
+        five
+        six
+        seven
+        eight
+        nine
+        ˇten
+    "});
+    cx.update_editor(|editor, window, cx| {
+        assert_eq!(
+            editor.snapshot(window, cx).scroll_position(),
+            gpui::Point::new(0.0, 6.0)
+        );
+    });
+
+    for _ in 0..6 {
+        cx.dispatch_action(MoveUp);
+    }
+    cx.run_until_parked();
+
+    cx.assert_state(indoc! {"
+        one
+        two
+        three
+        ˇfour
+        five
+        six
+        seven
+        eight
+        nine
+        ten
+    "});
+    cx.update_editor(|editor, window, cx| {
+        assert_eq!(
+            editor.snapshot(window, cx).scroll_position(),
+            gpui::Point::new(0.0, 1.0)
+        );
+    });
+}
+
+#[gpui::test]
 fn test_copy_cut_paste_actions(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);

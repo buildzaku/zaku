@@ -451,16 +451,14 @@ impl EditorElement {
                         let current = editor.scroll_position(&snapshot);
                         let (delta_x, delta_y) = match event.delta {
                             ScrollDelta::Pixels(mut pixels) => {
-                                let axis =
-                                    editor.scroll_manager.ongoing_scroll().filter(&mut pixels);
-                                editor.scroll_manager.update_ongoing_scroll(axis);
+                                editor.filter_ongoing_scroll(&mut pixels);
                                 (
                                     (pixels.x / column_width) as f64,
                                     (pixels.y / line_height) as f64,
                                 )
                             }
                             ScrollDelta::Lines(lines) => {
-                                editor.scroll_manager.update_ongoing_scroll(None);
+                                editor.clear_ongoing_scroll();
                                 (lines.x as f64, lines.y as f64)
                             }
                         };
@@ -794,7 +792,7 @@ impl Element for EditorElement {
                     min_lines,
                     max_lines,
                 } => {
-                    let line_count = editor.snapshot(cx).max_point().row as usize + 1;
+                    let line_count = editor.buffer_snapshot(cx).max_point().row as usize + 1;
                     let line_count = line_count.max(min_lines);
                     let line_count =
                         max_lines.map_or(line_count, |max_lines| line_count.min(max_lines));
@@ -903,7 +901,7 @@ impl Element for EditorElement {
             let scroll_width = column_width * scrollable_columns as f32;
             let (autoscroll_request, needs_horizontal_autoscroll, mut scroll_position) =
                 self.editor.update(cx, |editor, cx| {
-                    let autoscroll_request = editor.scroll_manager.take_autoscroll_request();
+                    let autoscroll_request = editor.take_autoscroll_request();
                     let (needs_horizontal_autoscroll, _) = editor.autoscroll_vertically(
                         bounds,
                         line_height,

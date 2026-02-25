@@ -376,6 +376,17 @@ impl Default for EditorStyle {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct EditorSnapshot {
+    scroll_position: Point<scroll::ScrollOffset>,
+}
+
+impl EditorSnapshot {
+    pub fn scroll_position(&self) -> Point<scroll::ScrollOffset> {
+        self.scroll_position
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SelectionState {
     range: Range<usize>,
@@ -594,30 +605,22 @@ impl Editor {
         cx.notify();
     }
 
-    fn snapshot(&self, cx: &App) -> MultiBufferSnapshot {
+    fn buffer_snapshot(&self, cx: &App) -> MultiBufferSnapshot {
         self.buffer.read(cx).snapshot(cx)
+    }
+
+    pub fn snapshot(&self, _window: &Window, cx: &mut App) -> EditorSnapshot {
+        let display_snapshot = self
+            .display_map
+            .update(cx, |display_map, cx| display_map.snapshot(cx));
+        EditorSnapshot {
+            scroll_position: self.scroll_position(&display_snapshot),
+        }
     }
 
     fn display_snapshot(&self, cx: &mut Context<Self>) -> display_map::DisplaySnapshot {
         self.display_map
             .update(cx, |display_map, cx| display_map.snapshot(cx))
-    }
-
-    fn scroll_position(
-        &self,
-        snapshot: &display_map::DisplaySnapshot,
-    ) -> Point<scroll::ScrollOffset> {
-        self.scroll_manager.scroll_position(snapshot)
-    }
-
-    fn set_scroll_position(
-        &mut self,
-        snapshot: &display_map::DisplaySnapshot,
-        position: Point<scroll::ScrollOffset>,
-        cx: &mut Context<Self>,
-    ) {
-        self.scroll_manager.set_scroll_position(snapshot, position);
-        cx.notify();
     }
 
     fn selection_state(&self) -> SelectionState {
@@ -630,7 +633,7 @@ impl Editor {
     fn restore_selection_state(&mut self, state: &SelectionState, cx: &App) {
         self.selected_range = state.range.clone();
         self.selection_reversed = state.reversed;
-        let text_len = self.snapshot(cx).len().0;
+        let text_len = self.buffer_snapshot(cx).len().0;
         self.clamp_selection(text_len);
     }
 
@@ -683,7 +686,7 @@ impl Editor {
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
         self.selection_goal = SelectionGoal::None;
 
-        let text_len = self.snapshot(cx).len().0;
+        let text_len = self.buffer_snapshot(cx).len().0;
         let offset = offset.min(text_len);
         self.selected_range = offset..offset;
         self.selection_reversed = false;
@@ -693,7 +696,7 @@ impl Editor {
     }
 
     fn move_to_vertical(&mut self, offset: usize, cx: &mut Context<Self>) {
-        let text_len = self.snapshot(cx).len().0;
+        let text_len = self.buffer_snapshot(cx).len().0;
         let offset = offset.min(text_len);
         self.selected_range = offset..offset;
         self.selection_reversed = false;
@@ -1010,7 +1013,7 @@ impl Editor {
     }
 
     fn replace_range(&mut self, range: Range<usize>, new_text: &str, cx: &mut Context<Self>) {
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         let start = snapshot.clip_offset(
             MultiBufferOffset(range.start.min(snapshot.len().0)),
             Bias::Left,
@@ -1067,7 +1070,7 @@ impl Editor {
         marked_range: Option<Range<usize>>,
         cx: &mut Context<Self>,
     ) {
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         let start = snapshot.clip_offset(
             MultiBufferOffset(range.start.min(snapshot.len().0)),
             Bias::Left,
@@ -1129,7 +1132,7 @@ impl Editor {
     }
 
     fn text_offset_from_utf16(&self, utf16_offset: usize, cx: &App) -> usize {
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         snapshot
             .offset_utf16_to_offset(MultiBufferOffsetUtf16(OffsetUtf16(utf16_offset)))
             .0
@@ -1143,7 +1146,7 @@ impl Editor {
     }
 
     fn range_to_utf16(&self, range_utf8: &Range<usize>, cx: &App) -> Range<usize> {
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         let start = snapshot.clip_offset(
             MultiBufferOffset(range_utf8.start.min(snapshot.len().0)),
             Bias::Left,
@@ -1181,7 +1184,7 @@ impl Editor {
     }
 
     fn clear(&mut self, cx: &mut Context<Self>) {
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         if snapshot.is_empty() {
             return;
         }
@@ -1250,7 +1253,7 @@ impl Editor {
     }
 
     pub fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {
-        let offset = self.snapshot(cx).len().0;
+        let offset = self.buffer_snapshot(cx).len().0;
         self.selected_range = offset..offset;
         self.selection_reversed = false;
         self.selection_goal = SelectionGoal::None;
@@ -1318,7 +1321,7 @@ impl Editor {
     }
 
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
-        self.selected_range = 0..self.snapshot(cx).len().0;
+        self.selected_range = 0..self.buffer_snapshot(cx).len().0;
         self.selection_reversed = false;
         self.selection_goal = SelectionGoal::None;
         self.record_selection_history();
@@ -1412,7 +1415,7 @@ impl Editor {
     }
 
     fn move_to_end(&mut self, _: &MoveToEnd, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.snapshot(cx).len().0;
+        let offset = self.buffer_snapshot(cx).len().0;
         self.move_to(offset, cx);
     }
 
@@ -1426,7 +1429,7 @@ impl Editor {
     }
 
     fn select_to_end(&mut self, _: &SelectToEnd, _: &mut Window, cx: &mut Context<Self>) {
-        let offset = self.snapshot(cx).len().0;
+        let offset = self.buffer_snapshot(cx).len().0;
         self.select_to(offset, cx);
     }
 
@@ -1727,7 +1730,7 @@ impl Editor {
             return;
         }
 
-        let current_text = self.snapshot(cx).text();
+        let current_text = self.buffer_snapshot(cx).text();
         let text = current_text
             .get(self.selected_range.clone())
             .unwrap_or("")
@@ -1736,7 +1739,7 @@ impl Editor {
             return;
         }
 
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         let start_offset = snapshot.clip_offset(
             MultiBufferOffset(self.selected_range.start.min(snapshot.len().0)),
             Bias::Left,
@@ -1769,7 +1772,7 @@ impl Editor {
             return;
         }
 
-        let current_text = self.snapshot(cx).text();
+        let current_text = self.buffer_snapshot(cx).text();
         let text = current_text
             .get(self.selected_range.clone())
             .unwrap_or("")
@@ -1778,7 +1781,7 @@ impl Editor {
             return;
         }
 
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         let start_offset = snapshot.clip_offset(
             MultiBufferOffset(self.selected_range.start.min(snapshot.len().0)),
             Bias::Left,
@@ -1830,7 +1833,7 @@ impl Editor {
         }
 
         if self.selected_range.is_empty() && handle_entire_lines && is_entire_line {
-            let snapshot = self.snapshot(cx);
+            let snapshot = self.buffer_snapshot(cx);
             let cursor = snapshot.clip_offset(
                 MultiBufferOffset(self.cursor_offset().min(snapshot.len().0)),
                 Bias::Left,
@@ -1914,7 +1917,7 @@ impl Editor {
         if let Some(selection_state) = selection_state.as_ref() {
             self.restore_selection_state(selection_state, cx);
         } else {
-            let text_len = self.snapshot(cx).len().0;
+            let text_len = self.buffer_snapshot(cx).len().0;
             self.clamp_selection(text_len);
         }
         self.marked_range = None;
@@ -1942,7 +1945,7 @@ impl Editor {
         if let Some(selection_state) = selection_state.as_ref() {
             self.restore_selection_state(selection_state, cx);
         } else {
-            let text_len = self.snapshot(cx).len().0;
+            let text_len = self.buffer_snapshot(cx).len().0;
             self.clamp_selection(text_len);
         }
         self.marked_range = None;
@@ -1986,7 +1989,7 @@ impl Editor {
         self.focus_handle.focus(window, cx);
         self.selecting = true;
 
-        let text_len = self.snapshot(cx).len().0;
+        let text_len = self.buffer_snapshot(cx).len().0;
         let offset = self
             .index_for_mouse_position(event.position, cx)
             .min(text_len);
@@ -2022,7 +2025,7 @@ impl Editor {
 
     fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
         if self.selecting {
-            let text_len = self.snapshot(cx).len().0;
+            let text_len = self.buffer_snapshot(cx).len().0;
             let offset = self
                 .index_for_mouse_position(event.position, cx)
                 .min(text_len);
@@ -2113,7 +2116,7 @@ impl Editor {
 
         if self.mode == EditorMode::SingleLine
             && self.selected_range.is_empty()
-            && self.selected_range.end == self.snapshot(cx).len().0
+            && self.selected_range.end == self.buffer_snapshot(cx).len().0
         {
             key_context.add("end_of_input");
         }
@@ -2196,7 +2199,7 @@ impl EntityInputHandler for Editor {
     ) -> Option<String> {
         let range = self.range_from_utf16(&range_utf16, cx);
         actual_range.replace(self.range_to_utf16(&range, cx));
-        let snapshot = self.snapshot(cx);
+        let snapshot = self.buffer_snapshot(cx);
         let start = range.start.min(snapshot.len().0);
         let end = range.end.min(snapshot.len().0);
         let (start, end) = if end < start {
@@ -2431,7 +2434,7 @@ struct ErasedEditorImpl(Entity<Editor>);
 
 impl ErasedEditor for ErasedEditorImpl {
     fn text(&self, cx: &App) -> String {
-        self.0.read(cx).snapshot(cx).text()
+        self.0.read(cx).buffer_snapshot(cx).text()
     }
 
     fn set_text(&self, text: &str, _: &mut Window, cx: &mut App) {

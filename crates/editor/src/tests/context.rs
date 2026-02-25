@@ -5,6 +5,7 @@ use multi_buffer::MultiBuffer;
 use pretty_assertions::assert_eq;
 use std::{
     collections::BTreeMap,
+    ops::{Deref, DerefMut},
     sync::{
         Arc, RwLock,
         atomic::{AtomicUsize, Ordering},
@@ -20,6 +21,7 @@ use crate::{
 
 pub struct EditorTestContext {
     pub cx: VisualTestContext,
+    pub window: AnyWindowHandle,
     pub editor: Entity<Editor>,
     pub assertion_cx: AssertionContextManager,
 }
@@ -40,12 +42,14 @@ impl EditorTestContext {
         let editor_handle = window.downcast::<Editor>().expect("window to host editor");
         let mut visual_cx = VisualTestContext::from_window(window, cx);
         let editor = editor_handle.root(&mut visual_cx).expect("editor root");
+        let window = visual_cx.windows()[0];
 
         let focus_handle = editor.read_with(&visual_cx, |editor, _| editor.focus_handle.clone());
         visual_cx.update(|window, cx| focus_handle.focus(window, cx));
 
         Self {
             cx: visual_cx,
+            window,
             editor,
             assertion_cx: AssertionContextManager::new(),
         }
@@ -119,7 +123,7 @@ impl EditorTestContext {
         let (actual_text, actual_selection, actual_reversed) =
             self.editor.read_with(&self.cx, |editor, cx| {
                 (
-                    editor.snapshot(cx).text(),
+                    editor.buffer_snapshot(cx).text(),
                     editor.selected_range.clone(),
                     editor.selection_reversed,
                 )
@@ -205,5 +209,19 @@ impl Drop for ContextHandle {
             .write()
             .expect("assertion context lock poisoned");
         contexts.remove(&self.id);
+    }
+}
+
+impl Deref for EditorTestContext {
+    type Target = VisualTestContext;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cx
+    }
+}
+
+impl DerefMut for EditorTestContext {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cx
     }
 }

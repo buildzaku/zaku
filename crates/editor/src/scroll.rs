@@ -1,10 +1,13 @@
 pub(crate) mod autoscroll;
 
-use gpui::{Axis, Pixels, Point};
+use gpui::{Axis, Context, Pixels, Point};
 use multi_buffer::Anchor;
 use std::time::{Duration, Instant};
 
-use crate::display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint};
+use crate::{
+    Editor,
+    display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
+};
 
 pub use autoscroll::Autoscroll;
 
@@ -28,7 +31,7 @@ impl ScrollAnchor {
         }
     }
 
-    pub fn scroll_position(&self, snapshot: &DisplaySnapshot) -> Point<ScrollOffset> {
+    fn scroll_position(&self, snapshot: &DisplaySnapshot) -> Point<ScrollOffset> {
         let mut position = self.offset;
 
         let scroll_top_row = if self.anchor == Anchor::min() {
@@ -56,7 +59,7 @@ impl OngoingScroll {
         }
     }
 
-    pub fn filter(&self, delta: &mut Point<Pixels>) -> Option<Axis> {
+    fn filter(&self, delta: &mut Point<Pixels>) -> Option<Axis> {
         const UNLOCK_PERCENT: f32 = 1.9;
         const UNLOCK_LOWER_BOUND: Pixels = gpui::px(6.0);
         let mut axis = self.axis;
@@ -117,32 +120,28 @@ impl ScrollManager {
         }
     }
 
-    pub fn ongoing_scroll(&self) -> OngoingScroll {
+    fn ongoing_scroll(&self) -> OngoingScroll {
         self.ongoing_scroll
     }
 
-    pub fn update_ongoing_scroll(&mut self, axis: Option<Axis>) {
+    fn update_ongoing_scroll(&mut self, axis: Option<Axis>) {
         self.ongoing_scroll.last_event = Instant::now();
         self.ongoing_scroll.axis = axis;
     }
 
-    pub fn offset(&self) -> Point<ScrollOffset> {
+    fn offset(&self) -> Point<ScrollOffset> {
         self.scroll_anchor.offset
     }
 
-    pub fn scroll_position(&self, snapshot: &DisplaySnapshot) -> Point<ScrollOffset> {
+    fn scroll_position(&self, snapshot: &DisplaySnapshot) -> Point<ScrollOffset> {
         self.scroll_anchor.scroll_position(snapshot)
     }
 
-    pub fn take_autoscroll_request(&mut self) -> Option<(Autoscroll, bool)> {
+    fn take_autoscroll_request(&mut self) -> Option<(Autoscroll, bool)> {
         self.autoscroll_request.take()
     }
 
-    pub fn set_scroll_position(
-        &mut self,
-        snapshot: &DisplaySnapshot,
-        position: Point<ScrollOffset>,
-    ) {
+    fn set_scroll_position(&mut self, snapshot: &DisplaySnapshot, position: Point<ScrollOffset>) {
         let max_row = snapshot.buffer_snapshot().max_point().row;
         let scroll_top = position.y.max(0.0);
         let row = DisplayRow(scroll_top.floor().clamp(0.0, max_row as f64) as u32);
@@ -162,5 +161,43 @@ impl ScrollManager {
             },
             anchor,
         };
+    }
+}
+
+impl Editor {
+    pub(crate) fn scroll_position(&self, snapshot: &DisplaySnapshot) -> Point<ScrollOffset> {
+        self.scroll_manager.scroll_position(snapshot)
+    }
+
+    pub(crate) fn set_scroll_position(
+        &mut self,
+        snapshot: &DisplaySnapshot,
+        position: Point<ScrollOffset>,
+        cx: &mut Context<Self>,
+    ) {
+        self.scroll_manager.set_scroll_position(snapshot, position);
+        cx.notify();
+    }
+
+    pub(crate) fn filter_ongoing_scroll(&mut self, delta: &mut Point<Pixels>) {
+        let axis = self.scroll_manager.ongoing_scroll().filter(delta);
+        self.scroll_manager.update_ongoing_scroll(axis);
+    }
+
+    pub(crate) fn clear_ongoing_scroll(&mut self) {
+        self.scroll_manager.update_ongoing_scroll(None);
+    }
+
+    pub(crate) fn take_autoscroll_request(&mut self) -> Option<(Autoscroll, bool)> {
+        self.scroll_manager.take_autoscroll_request()
+    }
+
+    pub fn vertical_scroll_margin(&self) -> usize {
+        self.scroll_manager.vertical_scroll_margin as usize
+    }
+
+    pub fn set_vertical_scroll_margin(&mut self, margin_rows: usize, cx: &mut Context<Self>) {
+        self.scroll_manager.vertical_scroll_margin = margin_rows as ScrollOffset;
+        cx.notify();
     }
 }

@@ -90,7 +90,7 @@ impl Editor {
         let visible_lines = ScrollOffset::from(viewport_height / line_height);
         let display_snapshot = self.display_snapshot(cx);
 
-        let mut scroll_position = self.scroll_manager.scroll_position(&display_snapshot);
+        let mut scroll_position = self.scroll_position(&display_snapshot);
         let original_y = scroll_position.y;
 
         if scroll_position.y > max_scroll_top {
@@ -98,9 +98,7 @@ impl Editor {
         }
 
         let editor_was_scrolled = if original_y != scroll_position.y {
-            self.scroll_manager
-                .set_scroll_position(&display_snapshot, scroll_position);
-            cx.notify();
+            self.set_scroll_position(&display_snapshot, scroll_position, cx);
             WasScrolled(true)
         } else {
             WasScrolled(false)
@@ -256,7 +254,7 @@ impl Editor {
 
         let display_snapshot = self.display_snapshot(cx);
         let snapshot = display_snapshot.buffer_snapshot();
-        let mut scroll_position = self.scroll_manager.scroll_position(&display_snapshot);
+        let mut scroll_position = self.scroll_position(&display_snapshot);
 
         let mut target_left = f64::INFINITY;
         let mut target_right: f64 = 0.0;
