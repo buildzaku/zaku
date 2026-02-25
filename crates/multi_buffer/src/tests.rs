@@ -1,10 +1,10 @@
+use super::*;
+
 use gpui::{App, AppContext};
 use indoc::indoc;
 use rand::{RngExt, rngs::StdRng};
 use std::time::{Duration, Instant};
 use text::{Buffer as TextBuffer, BufferId, Point, ReplicaId};
-
-use super::*;
 
 #[gpui::test]
 fn test_empty_singleton(cx: &mut App) {

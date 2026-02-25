@@ -691,3 +691,82 @@ fn bitmask_for_len(len: u32) -> u128 {
         (1u128 << len) - 1
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::AppContext;
+    use text::{Buffer as TextBuffer, BufferId, ReplicaId};
+
+    use multi_buffer::MultiBuffer;
+
+    fn tab_snapshot_for_text(text: &str, cx: &mut gpui::App) -> TabSnapshot {
+        let buffer_id = BufferId::new(1).expect("buffer id must be valid");
+        let text_buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, text));
+        let multibuffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
+        let tab_size = NonZeroU32::new(4).expect("tab size must be non-zero");
+        let (_, tab_snapshot) = TabMap::new(multibuffer.read(cx).snapshot(cx), tab_size);
+        tab_snapshot
+    }
+
+    fn tab_snapshot_text(tab_snapshot: &TabSnapshot) -> String {
+        tab_snapshot
+            .chunks(TabPoint::zero()..tab_snapshot.max_point())
+            .map(|chunk| chunk.text)
+            .collect()
+    }
+
+    #[gpui::test]
+    fn test_long_lines(cx: &mut gpui::App) {
+        let max_expansion_column = 12;
+        let input = "A\tBC\tDEF\tG\tHI\tJ\tK\tL\tM";
+        let output = "A   BC  DEF G   HI J K L M";
+
+        let mut tab_snapshot = tab_snapshot_for_text(input, cx);
+        tab_snapshot.max_expansion_column = max_expansion_column;
+        assert_eq!(tab_snapshot_text(&tab_snapshot), output);
+
+        for (index, character) in input.char_indices() {
+            assert_eq!(
+                tab_snapshot
+                    .chunks(TabPoint::new(0, index as u32)..tab_snapshot.max_point())
+                    .map(|chunk| chunk.text)
+                    .collect::<String>(),
+                &output[index..],
+                "text from index {index}"
+            );
+
+            if character != '\t' {
+                let input_point = Point::new(0, index as u32);
+                let output_column = output
+                    .find(character)
+                    .expect("character from input must exist in output")
+                    as u32;
+                let output_point = TabPoint::new(0, output_column);
+
+                assert_eq!(
+                    tab_snapshot.point_to_tab_point(input_point, text::Bias::Left),
+                    output_point,
+                    "point_to_tab_point({input_point:?})"
+                );
+                assert_eq!(
+                    tab_snapshot.tab_point_to_point(output_point, text::Bias::Left),
+                    input_point,
+                    "tab_point_to_point({output_point:?})"
+                );
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn test_long_lines_with_character_spanning_max_expansion_column(cx: &mut gpui::App) {
+        let max_expansion_column = 8;
+        let input = "abcdefg⋯hij";
+
+        let mut tab_snapshot = tab_snapshot_for_text(input, cx);
+        tab_snapshot.max_expansion_column = max_expansion_column;
+
+        assert_eq!(tab_snapshot_text(&tab_snapshot), input);
+    }
+}
