@@ -17,7 +17,6 @@ path = "src/editor.rs"
 gpui = { workspace = true }
 input = { workspace = true }
 multi_buffer = { workspace = true }
-rope = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }

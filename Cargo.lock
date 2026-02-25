@@ -1500,7 +1500,6 @@ dependencies = [
  "input",
  "multi_buffer",
  "pretty_assertions",
- "rope",
  "schemars",
  "serde",
  "settings",

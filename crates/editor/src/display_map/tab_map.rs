@@ -9,7 +9,7 @@ use super::raw_chunks::RawChunks;
 const MAX_EXPANSION_COLUMN: u32 = 256;
 
 // Handles a tab width <= 128
-const SPACES: &[u8; rope::Chunk::MASK_BITS] = &[b' '; rope::Chunk::MASK_BITS];
+const SPACES: &[u8; text::Chunk::MASK_BITS] = &[b' '; text::Chunk::MASK_BITS];
 const MAX_TABS: NonZeroU32 = NonZeroU32::new(SPACES.len() as u32).expect("non-zero tab width");
 
 #[derive(Clone, Debug, Default)]

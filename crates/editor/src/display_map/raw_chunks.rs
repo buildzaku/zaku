@@ -52,7 +52,7 @@ impl<'a> Iterator for RawChunks<'a> {
 
             let max_bytes = cmp::min(
                 chunk.text.len(),
-                cmp::min(rope::Chunk::MASK_BITS, remaining_total_bytes),
+                cmp::min(text::Chunk::MASK_BITS, remaining_total_bytes),
             );
             let split_index = floor_char_boundary(chunk.text, max_bytes);
             if split_index == 0 {
