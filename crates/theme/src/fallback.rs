@@ -70,9 +70,9 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 editor_active_line_background: gpui::rgba(0x312f2fad).into(),
                 scrollbar_track_background: gpui::rgb(0x141414).into(),
                 scrollbar_track_border: gpui::rgb(0x1e1e1e).into(),
-                scrollbar_thumb_background: gpui::rgb(0x3a3a40).into(),
-                scrollbar_thumb_hover_background: gpui::rgb(0x3a3a40).into(),
-                scrollbar_thumb_active_background: gpui::rgb(0x3a3a40).into(),
+                scrollbar_thumb_background: gpui::rgb(0x1e1e1e).into(),
+                scrollbar_thumb_hover_background: gpui::rgb(0x1e1e1e).into(),
+                scrollbar_thumb_active_background: gpui::rgb(0x1e1e1e).into(),
                 scrollbar_thumb_border: gpui::rgb(0x2f2f2f).into(),
             };
 
