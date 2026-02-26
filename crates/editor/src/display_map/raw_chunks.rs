@@ -70,6 +70,7 @@ impl<'a> Iterator for RawChunks<'a> {
             let (chars, tabs, newlines) = compute_bitmaps(text);
             return Some(Chunk {
                 text,
+                is_tab: false,
                 chars,
                 tabs,
                 newlines,

@@ -14,6 +14,7 @@ const MAX_TABS: NonZeroU32 = NonZeroU32::new(SPACES.len() as u32).expect("non-ze
 #[derive(Clone, Debug, Default)]
 pub struct Chunk<'a> {
     pub text: &'a str,
+    pub is_tab: bool,
     pub chars: u128,
     pub tabs: u128,
     pub newlines: u128,
@@ -237,6 +238,7 @@ impl TabSnapshot {
             chunk: Chunk {
                 // Safety: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
                 text: unsafe { std::str::from_utf8_unchecked(&SPACES[..to_next_stop as usize]) },
+                is_tab: true,
                 chars: bitmask_for_len(to_next_stop),
                 ..Default::default()
             },
@@ -475,6 +477,7 @@ impl<'a> Iterator for TabChunks<'a> {
             return Some(Chunk {
                 // Safety: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
                 text: unsafe { std::str::from_utf8_unchecked(&SPACES[..len as usize]) },
+                is_tab: true,
                 chars: bitmask_for_len(len),
                 tabs: 0,
                 newlines: 0,
@@ -518,6 +521,7 @@ impl<'a> Iterator for TabChunks<'a> {
 
         Some(Chunk {
             text: prefix,
+            is_tab: self.chunk.is_tab,
             chars: prefix_chars,
             tabs: prefix_tabs,
             newlines: prefix_newlines,
@@ -699,7 +703,7 @@ mod tests {
     use gpui::AppContext;
     use text::{Buffer as TextBuffer, BufferId, ReplicaId};
 
-    use multi_buffer::MultiBuffer;
+    use multi_buffer::{MultiBuffer, MultiBufferOffset};
 
     fn expected_collapse_tabs(
         tab_snapshot: &TabSnapshot,
@@ -865,6 +869,110 @@ mod tests {
         tab_snapshot.max_expansion_column = max_expansion_column;
 
         assert_eq!(tab_snapshot_text(&tab_snapshot), input);
+    }
+
+    #[gpui::test]
+    fn test_marking_tabs(cx: &mut gpui::App) {
+        let input = "\t \thello";
+        let tab_snapshot = tab_snapshot_for_text(input, cx);
+
+        fn chunks(snapshot: &TabSnapshot, start: TabPoint) -> Vec<(String, bool)> {
+            let mut chunks = Vec::new();
+            let mut was_tab = false;
+            let mut text = String::new();
+            for chunk in snapshot.chunks(start..snapshot.max_point()) {
+                if chunk.is_tab != was_tab {
+                    if !text.is_empty() {
+                        chunks.push((std::mem::take(&mut text), was_tab));
+                    }
+                    was_tab = chunk.is_tab;
+                }
+                text.push_str(chunk.text);
+            }
+
+            if !text.is_empty() {
+                chunks.push((text, was_tab));
+            }
+            chunks
+        }
+
+        assert_eq!(
+            chunks(&tab_snapshot, TabPoint::zero()),
+            vec![
+                ("    ".to_string(), true),
+                (" ".to_string(), false),
+                ("   ".to_string(), true),
+                ("hello".to_string(), false),
+            ]
+        );
+        assert_eq!(
+            chunks(&tab_snapshot, TabPoint::new(0, 2)),
+            vec![
+                ("  ".to_string(), true),
+                (" ".to_string(), false),
+                ("   ".to_string(), true),
+                ("hello".to_string(), false),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    fn test_tab_stop_cursor_utf8(cx: &mut gpui::App) {
+        let text = "\tfoo\tbarbarbar\t\tbaz\n";
+        let tab_snapshot = tab_snapshot_for_text(text, cx);
+        let chunks =
+            tab_snapshot.raw_chunks(MultiBufferOffset(0)..tab_snapshot.buffer_snapshot().len());
+        let mut cursor = TabStopCursor::new(chunks);
+        assert!(cursor.seek(0).is_none());
+        let mut tab_stops = Vec::new();
+        let mut all_tab_stops = Vec::new();
+        let mut byte_offset = 0;
+
+        for (offset, character) in text.char_indices() {
+            byte_offset += character.len_utf8() as u32;
+            if character == '\t' {
+                all_tab_stops.push(TabStop {
+                    byte_offset,
+                    char_offset: offset as u32 + 1,
+                });
+            }
+        }
+
+        while let Some(tab_stop) = cursor.seek(u32::MAX) {
+            tab_stops.push(tab_stop);
+        }
+
+        pretty_assertions::assert_eq!(tab_stops.as_slice(), all_tab_stops.as_slice());
+        assert_eq!(cursor.byte_offset(), byte_offset);
+    }
+
+    #[gpui::test]
+    fn test_tab_stop_with_end_range_utf8(cx: &mut gpui::App) {
+        let input = "A\tBC\t";
+        let tab_snapshot = tab_snapshot_for_text(input, cx);
+        let chunks =
+            tab_snapshot.raw_chunks(MultiBufferOffset(0)..tab_snapshot.buffer_snapshot().len());
+        let mut cursor = TabStopCursor::new(chunks);
+        let mut actual_tab_stops = Vec::new();
+        let mut expected_tab_stops = Vec::new();
+        let mut byte_offset = 0;
+
+        for (offset, character) in input.char_indices() {
+            byte_offset += character.len_utf8() as u32;
+            if character == '\t' {
+                expected_tab_stops.push(TabStop {
+                    byte_offset,
+                    char_offset: offset as u32 + 1,
+                });
+            }
+        }
+
+        while let Some(tab_stop) = cursor.seek(u32::MAX) {
+            actual_tab_stops.push(tab_stop);
+        }
+
+        pretty_assertions::assert_eq!(actual_tab_stops.as_slice(), expected_tab_stops.as_slice());
+        assert_eq!(cursor.byte_offset(), byte_offset);
     }
 
     #[gpui::test]
