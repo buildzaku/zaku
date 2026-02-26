@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use gpui::{Pixels, WindowTextSystem};
-use multi_buffer::{MultiBufferOffset, MultiBufferSnapshot};
 use text::{Bias, Point, SelectionGoal};
+
+use multi_buffer::{CharClassifier, MultiBufferOffset, MultiBufferSnapshot};
 
 use crate::{
     EditorStyle,
@@ -19,46 +20,6 @@ pub struct TextLayoutDetails {
     pub(crate) text_system: Arc<WindowTextSystem>,
     pub(crate) editor_style: EditorStyle,
     pub(crate) rem_size: Pixels,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CharKind {
-    Whitespace,
-    Punctuation,
-    Word,
-}
-
-#[derive(Clone, Debug)]
-pub struct CharClassifier {
-    word_chars: Arc<[char]>,
-}
-
-impl CharClassifier {
-    pub fn new(word_chars: Arc<[char]>) -> Self {
-        Self { word_chars }
-    }
-
-    pub fn kind(&self, character: char) -> CharKind {
-        if self.is_word(character) {
-            return CharKind::Word;
-        }
-        if character.is_whitespace() {
-            return CharKind::Whitespace;
-        }
-        CharKind::Punctuation
-    }
-
-    pub fn is_whitespace(&self, character: char) -> bool {
-        self.kind(character) == CharKind::Whitespace
-    }
-
-    pub fn is_word(&self, character: char) -> bool {
-        character == '_' || self.word_chars.contains(&character) || character.is_alphanumeric()
-    }
-
-    pub fn is_punctuation(&self, character: char) -> bool {
-        self.kind(character) == CharKind::Punctuation
-    }
 }
 
 pub fn left(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
@@ -190,11 +151,10 @@ pub(crate) fn down_by_rows(
     )
 }
 
-pub fn previous_word_start(
-    map: &DisplaySnapshot,
-    point: DisplayPoint,
-    classifier: &CharClassifier,
-) -> DisplayPoint {
+pub fn previous_word_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     let mut is_first_iteration = true;
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
         if is_first_iteration
@@ -212,11 +172,10 @@ pub fn previous_word_start(
     })
 }
 
-pub fn previous_word_start_or_newline(
-    map: &DisplaySnapshot,
-    point: DisplayPoint,
-    classifier: &CharClassifier,
-) -> DisplayPoint {
+pub fn previous_word_start_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
         (classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(right))
             || left == '\n'
@@ -224,11 +183,10 @@ pub fn previous_word_start_or_newline(
     })
 }
 
-pub fn next_word_end(
-    map: &DisplaySnapshot,
-    point: DisplayPoint,
-    classifier: &CharClassifier,
-) -> DisplayPoint {
+pub fn next_word_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     let mut is_first_iteration = true;
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
         if is_first_iteration
@@ -246,11 +204,10 @@ pub fn next_word_end(
     })
 }
 
-pub fn next_word_end_or_newline(
-    map: &DisplaySnapshot,
-    point: DisplayPoint,
-    classifier: &CharClassifier,
-) -> DisplayPoint {
+pub fn next_word_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     let mut on_starting_row = true;
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
         if left == '\n' {
@@ -263,48 +220,47 @@ pub fn next_word_end_or_newline(
     })
 }
 
-pub fn previous_subword_start(
-    map: &DisplaySnapshot,
-    point: DisplayPoint,
-    classifier: &CharClassifier,
-) -> DisplayPoint {
+pub fn previous_subword_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
-        is_subword_start(left, right, classifier) || left == '\n'
+        is_subword_start(left, right, &classifier) || left == '\n'
     })
 }
 
 pub fn previous_subword_start_or_newline(
     map: &DisplaySnapshot,
     point: DisplayPoint,
-    classifier: &CharClassifier,
 ) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
-        is_subword_start(left, right, classifier) || left == '\n' || right == '\n'
+        is_subword_start(left, right, &classifier) || left == '\n' || right == '\n'
     })
 }
 
-pub fn next_subword_end(
-    map: &DisplaySnapshot,
-    point: DisplayPoint,
-    classifier: &CharClassifier,
-) -> DisplayPoint {
+pub fn next_subword_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
-        is_subword_end(left, right, classifier) || right == '\n'
+        is_subword_end(left, right, &classifier) || right == '\n'
     })
 }
 
-pub fn next_subword_end_or_newline(
-    map: &DisplaySnapshot,
-    point: DisplayPoint,
-    classifier: &CharClassifier,
-) -> DisplayPoint {
+pub fn next_subword_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+    let raw_point = point.to_point(map);
+    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+
     let mut on_starting_row = true;
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
         if left == '\n' {
             on_starting_row = false;
         }
         ((classifier.kind(left) != classifier.kind(right)
-            || is_subword_boundary_end(left, right, classifier))
+            || is_subword_boundary_end(left, right, &classifier))
             && ((on_starting_row && !left.is_whitespace())
                 || (!on_starting_row && !right.is_whitespace())))
             || right == '\n'
@@ -480,4 +436,377 @@ pub fn find_boundary(
     is_boundary: impl FnMut(char, char) -> bool,
 ) -> DisplayPoint {
     find_boundary_point(map, from, find_range, is_boundary, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use indoc::indoc;
+
+    use settings::SettingsStore;
+
+    use crate::tests::util::marked_display_snapshot;
+
+    fn init_test(cx: &mut gpui::App) {
+        let settings_store = SettingsStore::test(cx);
+        cx.set_global(settings_store);
+        theme::init(theme::LoadThemes::JustBase, cx);
+        crate::init(cx);
+    }
+
+    #[gpui::test]
+    fn test_previous_word_start(cx: &mut gpui::App) {
+        init_test(cx);
+
+        fn assert_previous_word_start(marked_text: &str, cx: &mut gpui::App) {
+            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+            assert_eq!(
+                display_points.len(),
+                2,
+                "expected exactly 2 markers in: {marked_text:?}"
+            );
+            let actual = previous_word_start(&snapshot, display_points[1]);
+            let expected = display_points[0];
+            if actual != expected {
+                eprintln!(
+                    "previous_word_start mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
+                );
+            }
+            assert_eq!(actual, expected);
+        }
+
+        assert_previous_word_start("ˇ   ˇquick", cx);
+        assert_previous_word_start(
+            indoc! {"
+                ˇ
+                ˇ   quick
+            "},
+            cx,
+        );
+        assert_previous_word_start("    ˇquickˇ", cx);
+        assert_previous_word_start("ˇ    ˇquick", cx);
+        assert_previous_word_start("    ˇquˇick", cx);
+        assert_previous_word_start(
+            indoc! {"
+                quick
+                ˇ   ˇbrown
+            "},
+            cx,
+        );
+        assert_previous_word_start(
+            indoc! {"
+
+                ˇ
+                ˇ
+            "},
+            cx,
+        );
+        assert_previous_word_start("    ˇquick  ˇbrown", cx);
+        assert_previous_word_start("ˇquick-ˇbrown", cx);
+        assert_previous_word_start("quickˇ-#$@ˇbrown", cx);
+        assert_previous_word_start("ˇquick_ˇbrown", cx);
+        assert_previous_word_start(" ˇdefγˇ", cx);
+        assert_previous_word_start(" ˇbcΔˇ", cx);
+        assert_previous_word_start("ˇhello.ˇ", cx);
+        assert_previous_word_start("helloˇ...ˇ", cx);
+        assert_previous_word_start("helloˇ.---..ˇtest", cx);
+        assert_previous_word_start("test  ˇ.--ˇtest", cx);
+        assert_previous_word_start("oneˇ,;:!?ˇtwo", cx);
+    }
+
+    #[gpui::test]
+    fn test_previous_subword_start(cx: &mut gpui::App) {
+        init_test(cx);
+
+        fn assert_previous_subword_start(marked_text: &str, cx: &mut gpui::App) {
+            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+            assert_eq!(
+                display_points.len(),
+                2,
+                "expected exactly 2 markers in: {marked_text:?}"
+            );
+            assert_eq!(
+                previous_subword_start(&snapshot, display_points[1]),
+                display_points[0]
+            );
+        }
+
+        assert_previous_subword_start("quick_ˇbrˇown", cx);
+        assert_previous_subword_start("quick_ˇbrownˇ", cx);
+        assert_previous_subword_start("ˇquick_ˇbrown", cx);
+        assert_previous_subword_start("quick_ˇbrown_ˇfox", cx);
+        assert_previous_subword_start("quickˇBrˇown", cx);
+        assert_previous_subword_start("quickˇBrownˇ", cx);
+
+        assert_previous_subword_start(
+            indoc! {"
+                ˇ   ˇquick
+            "},
+            cx,
+        );
+        assert_previous_subword_start("    ˇquickˇ", cx);
+        assert_previous_subword_start("    ˇquˇick", cx);
+        assert_previous_subword_start(
+            indoc! {"
+                quick
+                ˇ   ˇbrown
+            "},
+            cx,
+        );
+        assert_previous_subword_start(
+            indoc! {"
+
+                ˇ
+                ˇ
+            "},
+            cx,
+        );
+        assert_previous_subword_start("    ˇquick  ˇbrown", cx);
+        assert_previous_subword_start("quickˇ-ˇbrown", cx);
+        assert_previous_subword_start("quickˇ-#$@ˇbrown", cx);
+        assert_previous_subword_start(" ˇdefγˇ", cx);
+        assert_previous_subword_start(" bcˇΔˇ", cx);
+        assert_previous_subword_start(" ˇbcδˇ", cx);
+        assert_previous_subword_start(" abˇ——ˇcd", cx);
+    }
+
+    #[gpui::test]
+    fn test_find_preceding_boundary(cx: &mut gpui::App) {
+        init_test(cx);
+
+        fn assert_preceding_boundary(
+            marked_text: &str,
+            cx: &mut gpui::App,
+            is_boundary: &mut dyn FnMut(char, char) -> bool,
+        ) {
+            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+            assert_eq!(
+                display_points.len(),
+                2,
+                "expected exactly 2 markers in: {marked_text:?}"
+            );
+            assert_eq!(
+                find_preceding_boundary_display_point(
+                    &snapshot,
+                    display_points[1],
+                    FindRange::MultiLine,
+                    is_boundary,
+                ),
+                display_points[0]
+            );
+        }
+
+        assert_preceding_boundary(
+            indoc! {"
+                abcˇdef
+                gh
+                ijˇk
+            "},
+            cx,
+            &mut |left, right| left == 'c' && right == 'd',
+        );
+        assert_preceding_boundary(
+            indoc! {"
+                abcdef
+                ˇgh
+                ijˇk
+            "},
+            cx,
+            &mut |left, right| left == '\n' && right == 'g',
+        );
+        let mut line_count = 0;
+        assert_preceding_boundary(
+            indoc! {"
+                abcdef
+                ˇgh
+                ijˇk
+            "},
+            cx,
+            &mut |left, _| {
+                if left == '\n' {
+                    line_count += 1;
+                    line_count == 2
+                } else {
+                    false
+                }
+            },
+        );
+    }
+
+    #[gpui::test]
+    fn test_next_word_end(cx: &mut gpui::App) {
+        init_test(cx);
+
+        fn assert_next_word_end(marked_text: &str, cx: &mut gpui::App) {
+            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+            assert_eq!(
+                display_points.len(),
+                2,
+                "expected exactly 2 markers in: {marked_text:?}"
+            );
+            let actual = next_word_end(&snapshot, display_points[0]);
+            let expected = display_points[1];
+            if actual != expected {
+                eprintln!(
+                    "next_word_end mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
+                );
+            }
+            assert_eq!(actual, expected);
+        }
+
+        assert_next_word_end(
+            indoc! {"
+                ˇ   quickˇ
+            "},
+            cx,
+        );
+        assert_next_word_end("    ˇquickˇ", cx);
+        assert_next_word_end("    quˇickˇ", cx);
+        assert_next_word_end(
+            indoc! {"
+                quickˇ    ˇ
+                brown
+            "},
+            cx,
+        );
+        assert_next_word_end(
+            indoc! {"
+                ˇ
+                ˇ
+
+            "},
+            cx,
+        );
+        assert_next_word_end("quickˇ    brownˇ   ", cx);
+        assert_next_word_end("quickˇ-brownˇ", cx);
+        assert_next_word_end("quickˇ#$@-ˇbrown", cx);
+        assert_next_word_end("quickˇ_brownˇ", cx);
+        assert_next_word_end(" ˇbcΔˇ", cx);
+        assert_next_word_end(" abˇ——ˇcd", cx);
+        assert_next_word_end("ˇ.helloˇ", cx);
+        assert_next_word_end("display_pointsˇ[0ˇ]", cx);
+        assert_next_word_end("ˇ...ˇhello", cx);
+        assert_next_word_end("helloˇ.---..ˇtest", cx);
+        assert_next_word_end("testˇ.--ˇ test", cx);
+        assert_next_word_end("oneˇ,;:!?ˇtwo", cx);
+    }
+
+    #[gpui::test]
+    fn test_next_subword_end(cx: &mut gpui::App) {
+        init_test(cx);
+
+        fn assert_next_subword_end(marked_text: &str, cx: &mut gpui::App) {
+            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+            assert_eq!(
+                display_points.len(),
+                2,
+                "expected exactly 2 markers in: {marked_text:?}"
+            );
+            assert_eq!(
+                next_subword_end(&snapshot, display_points[0]),
+                display_points[1]
+            );
+        }
+
+        assert_next_subword_end("quˇickˇ_brown", cx);
+        assert_next_subword_end("ˇquickˇ_brown", cx);
+        assert_next_subword_end("quickˇ_brownˇ", cx);
+        assert_next_subword_end("quickˇ_brownˇ_fox", cx);
+        assert_next_subword_end("quˇickˇBrown", cx);
+        assert_next_subword_end("quickˇBrownˇFox", cx);
+
+        assert_next_subword_end(
+            indoc! {"
+                ˇ   quickˇ
+            "},
+            cx,
+        );
+        assert_next_subword_end("    ˇquickˇ", cx);
+        assert_next_subword_end("    quˇickˇ", cx);
+        assert_next_subword_end(
+            indoc! {"
+                quickˇ    ˇ
+                brown
+            "},
+            cx,
+        );
+        assert_next_subword_end(
+            indoc! {"
+                ˇ
+                ˇ
+
+            "},
+            cx,
+        );
+        assert_next_subword_end("quickˇ    brownˇ   ", cx);
+        assert_next_subword_end("quickˇ-ˇbrown", cx);
+        assert_next_subword_end("quickˇ#$@-ˇbrown", cx);
+        assert_next_subword_end("quickˇ_brownˇ", cx);
+        assert_next_subword_end(" ˇbcˇΔ", cx);
+        assert_next_subword_end(" abˇ——ˇcd", cx);
+    }
+
+    #[gpui::test]
+    fn test_find_boundary(cx: &mut gpui::App) {
+        init_test(cx);
+
+        fn assert_find_boundary(
+            marked_text: &str,
+            cx: &mut gpui::App,
+            is_boundary: &mut dyn FnMut(char, char) -> bool,
+        ) {
+            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+            assert_eq!(
+                display_points.len(),
+                2,
+                "expected exactly 2 markers in: {marked_text:?}"
+            );
+            assert_eq!(
+                find_boundary(
+                    &snapshot,
+                    display_points[0],
+                    FindRange::MultiLine,
+                    is_boundary,
+                ),
+                display_points[1]
+            );
+        }
+
+        assert_find_boundary(
+            indoc! {"
+                abcˇdef
+                gh
+                ijˇk
+            "},
+            cx,
+            &mut |left, right| left == 'j' && right == 'k',
+        );
+        assert_find_boundary(
+            indoc! {"
+                abˇcdef
+                gh
+                ˇijk
+            "},
+            cx,
+            &mut |left, right| left == '\n' && right == 'i',
+        );
+        let mut line_count = 0;
+        assert_find_boundary(
+            indoc! {"
+                abcˇdef
+                gh
+                ˇijk
+            "},
+            cx,
+            &mut |left, _| {
+                if left == '\n' {
+                    line_count += 1;
+                    line_count == 2
+                } else {
+                    false
+                }
+            },
+        );
+    }
 }

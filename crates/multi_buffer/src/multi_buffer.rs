@@ -40,6 +40,46 @@ impl Add<usize> for MultiBufferRow {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CharKind {
+    Whitespace,
+    Punctuation,
+    Word,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CharClassifier {
+    word_chars: Arc<[char]>,
+}
+
+impl CharClassifier {
+    pub fn new(word_chars: Arc<[char]>) -> Self {
+        Self { word_chars }
+    }
+
+    pub fn kind(&self, character: char) -> CharKind {
+        if self.is_word(character) {
+            return CharKind::Word;
+        }
+        if character.is_whitespace() {
+            return CharKind::Whitespace;
+        }
+        CharKind::Punctuation
+    }
+
+    pub fn is_whitespace(&self, character: char) -> bool {
+        self.kind(character) == CharKind::Whitespace
+    }
+
+    pub fn is_word(&self, character: char) -> bool {
+        character == '_' || self.word_chars.contains(&character) || character.is_alphanumeric()
+    }
+
+    pub fn is_punctuation(&self, character: char) -> bool {
+        self.kind(character) == CharKind::Punctuation
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub struct MultiBufferOffset(pub usize);
 
@@ -407,6 +447,11 @@ impl MultiBufferSnapshot {
     #[inline]
     pub fn max_point(&self) -> Point {
         self.buffer.max_point()
+    }
+
+    pub fn char_classifier_at<T: ToOffset>(&self, point: T) -> CharClassifier {
+        let _ = point.to_offset(self);
+        CharClassifier::default()
     }
 
     #[inline]

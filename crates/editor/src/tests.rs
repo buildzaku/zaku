@@ -1,4 +1,5 @@
-mod context;
+pub(crate) mod context;
+pub(crate) mod util;
 
 use gpui::{ClipboardItem, TestAppContext};
 use indoc::indoc;

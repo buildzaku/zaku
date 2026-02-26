@@ -514,7 +514,6 @@ pub struct Editor {
     masked: bool,
     active_line_highlight: Option<ActiveLineHighlight>,
     selection_goal: SelectionGoal,
-    word_chars: Arc<[char]>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -589,7 +588,6 @@ impl Editor {
             masked: false,
             active_line_highlight: None,
             selection_goal: SelectionGoal::None,
-            word_chars: Arc::from(Vec::new().into_boxed_slice()),
             _subscriptions: subscriptions,
         }
     }
@@ -677,10 +675,6 @@ impl Editor {
         } else {
             self.selected_range.end
         }
-    }
-
-    fn char_classifier(&self) -> movement::CharClassifier {
-        movement::CharClassifier::new(self.word_chars.clone())
     }
 
     fn move_to(&mut self, offset: usize, cx: &mut Context<Self>) {
@@ -846,8 +840,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
-        let classifier = self.char_classifier();
-        let target = movement::previous_word_start(&display_snapshot, display_point, &classifier);
+        let target = movement::previous_word_start(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Left).0
     }
 
@@ -860,9 +853,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
-        let classifier = self.char_classifier();
-        let target =
-            movement::previous_word_start_or_newline(&display_snapshot, display_point, &classifier);
+        let target = movement::previous_word_start_or_newline(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Left).0
     }
 
@@ -875,8 +866,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
-        let classifier = self.char_classifier();
-        let target = movement::next_word_end(&display_snapshot, display_point, &classifier);
+        let target = movement::next_word_end(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Right).0
     }
 
@@ -889,9 +879,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
-        let classifier = self.char_classifier();
-        let target =
-            movement::next_word_end_or_newline(&display_snapshot, display_point, &classifier);
+        let target = movement::next_word_end_or_newline(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Right).0
     }
 
@@ -904,9 +892,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
-        let classifier = self.char_classifier();
-        let target =
-            movement::previous_subword_start(&display_snapshot, display_point, &classifier);
+        let target = movement::previous_subword_start(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Left).0
     }
 
@@ -919,12 +905,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Left);
-        let classifier = self.char_classifier();
-        let target = movement::previous_subword_start_or_newline(
-            &display_snapshot,
-            display_point,
-            &classifier,
-        );
+        let target = movement::previous_subword_start_or_newline(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Left).0
     }
 
@@ -937,8 +918,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
-        let classifier = self.char_classifier();
-        let target = movement::next_subword_end(&display_snapshot, display_point, &classifier);
+        let target = movement::next_subword_end(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Right).0
     }
 
@@ -951,9 +931,7 @@ impl Editor {
         );
         let point = buffer_snapshot.offset_to_point(offset);
         let display_point = display_snapshot.point_to_display_point(point, Bias::Right);
-        let classifier = self.char_classifier();
-        let target =
-            movement::next_subword_end_or_newline(&display_snapshot, display_point, &classifier);
+        let target = movement::next_subword_end_or_newline(&display_snapshot, display_point);
         target.to_offset(&display_snapshot, Bias::Right).0
     }
 
@@ -1246,10 +1224,6 @@ impl Editor {
         active_line_highlight: Option<ActiveLineHighlight>,
     ) {
         self.active_line_highlight = active_line_highlight;
-    }
-
-    pub fn set_word_chars(&mut self, word_chars: impl Into<Arc<[char]>>) {
-        self.word_chars = word_chars.into();
     }
 
     pub fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {
