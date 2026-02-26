@@ -1335,11 +1335,11 @@ fn build_visible_lines(
         let mut line_text = String::new();
         let line_display_column_start = if masked {
             let mut line_exceeded_max_len = false;
-            for line_chunk in display_snapshot.line_chunks(row) {
-                let (mut chunk, has_newline) = if let Some(index) = line_chunk.find('\n') {
-                    (&line_chunk[..index], true)
+            for text_chunk in display_snapshot.text_chunks(row) {
+                let (mut chunk, has_newline) = if let Some(index) = text_chunk.find('\n') {
+                    (&text_chunk[..index], true)
                 } else {
-                    (line_chunk, false)
+                    (text_chunk, false)
                 };
 
                 if !chunk.is_empty() && !line_exceeded_max_len {
@@ -1391,15 +1391,15 @@ fn build_visible_lines(
                     crate::display_map::TabPoint::new(row.0, line_display_column_start as u32);
                 let chunk_end =
                     crate::display_map::TabPoint::new(row.0, line_display_column_end as u32);
-                for line_chunk in display_snapshot
+                for chunk in display_snapshot
                     .tab_snapshot()
                     .chunks(chunk_start..chunk_end)
                 {
-                    let line_chunk_text = line_chunk.text;
-                    let (mut chunk, has_newline) = if let Some(index) = line_chunk_text.find('\n') {
-                        (&line_chunk_text[..index], true)
+                    let chunk_text = chunk.text;
+                    let (mut chunk, has_newline) = if let Some(index) = chunk_text.find('\n') {
+                        (&chunk_text[..index], true)
                     } else {
-                        (line_chunk_text, false)
+                        (chunk_text, false)
                     };
 
                     if !chunk.is_empty() {

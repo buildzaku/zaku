@@ -701,6 +701,103 @@ mod tests {
 
     use multi_buffer::MultiBuffer;
 
+    fn expected_collapse_tabs(
+        tab_snapshot: &TabSnapshot,
+        chars: impl Iterator<Item = char>,
+        column: u32,
+        bias: Bias,
+    ) -> (u32, u32, u32) {
+        let tab_size = tab_snapshot.tab_size.get();
+
+        let mut expanded_bytes = 0;
+        let mut expanded_chars = 0;
+        let mut collapsed_bytes = 0;
+        for character in chars {
+            if expanded_bytes >= column {
+                break;
+            }
+            if collapsed_bytes >= tab_snapshot.max_expansion_column {
+                break;
+            }
+
+            if character == '\t' {
+                let tab_length = tab_size - (expanded_chars % tab_size);
+                expanded_chars += tab_length;
+                expanded_bytes += tab_length;
+                if expanded_bytes > column {
+                    expanded_chars -= expanded_bytes - column;
+                    return match bias {
+                        Bias::Left => (collapsed_bytes, expanded_chars, expanded_bytes - column),
+                        Bias::Right => (collapsed_bytes + 1, expanded_chars, 0),
+                    };
+                }
+            } else {
+                expanded_chars += 1;
+                expanded_bytes += character.len_utf8() as u32;
+            }
+
+            if expanded_bytes > column && matches!(bias, Bias::Left) {
+                expanded_chars -= 1;
+                break;
+            }
+
+            collapsed_bytes += character.len_utf8() as u32;
+        }
+
+        (
+            collapsed_bytes + column.saturating_sub(expanded_bytes),
+            expanded_chars,
+            0,
+        )
+    }
+
+    fn expected_expand_tabs(
+        tab_snapshot: &TabSnapshot,
+        chars: impl Iterator<Item = char>,
+        column: u32,
+    ) -> u32 {
+        let tab_size = tab_snapshot.tab_size.get();
+
+        let mut expanded_chars = 0;
+        let mut expanded_bytes = 0;
+        let mut collapsed_bytes = 0;
+        let end_column = column.min(tab_snapshot.max_expansion_column);
+        for character in chars {
+            if collapsed_bytes >= end_column {
+                break;
+            }
+            if character == '\t' {
+                let tab_length = tab_size - expanded_chars % tab_size;
+                expanded_bytes += tab_length;
+                expanded_chars += tab_length;
+            } else {
+                expanded_bytes += character.len_utf8() as u32;
+                expanded_chars += 1;
+            }
+            collapsed_bytes += character.len_utf8() as u32;
+        }
+
+        expanded_bytes + column.saturating_sub(collapsed_bytes)
+    }
+
+    fn expected_buffer_point(
+        tab_snapshot: &TabSnapshot,
+        output: TabPoint,
+        bias: Bias,
+    ) -> (Point, u32, u32) {
+        let max_buffer_point = tab_snapshot.buffer_snapshot.max_point();
+        let row = output.row().min(max_buffer_point.row);
+        let chars = tab_snapshot.buffer_snapshot.chars_at(Point::new(row, 0));
+        let expanded = output.column();
+        let (collapsed, expanded_char_column, to_next_stop) =
+            expected_collapse_tabs(tab_snapshot, chars, expanded, bias);
+        (
+            Point::new(row, collapsed),
+            expanded_char_column,
+            to_next_stop,
+        )
+    }
+
     fn tab_snapshot_for_text(text: &str, cx: &mut gpui::App) -> TabSnapshot {
         let buffer_id = BufferId::new(1).expect("buffer id must be valid");
         let text_buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, text));
@@ -768,5 +865,74 @@ mod tests {
         tab_snapshot.max_expansion_column = max_expansion_column;
 
         assert_eq!(tab_snapshot_text(&tab_snapshot), input);
+    }
+
+    #[gpui::test]
+    fn test_expand_tabs(cx: &mut gpui::App) {
+        let test_values = [
+            ("κg🎲 f\nwo❌🏀by🎲✋β❌c\tβ✋ \ncλ🎲", 17),
+            (" \twςe", 4),
+            ("fε", 1),
+            ("i✋\t", 3),
+        ];
+        let tab_snapshot = tab_snapshot_for_text("", cx);
+
+        for (text, column) in test_values {
+            let mut tabs = 0u128;
+            let mut chars = 0u128;
+            for (index, character) in text.char_indices() {
+                if character == '\t' {
+                    tabs |= 1 << index;
+                }
+                chars |= 1 << index;
+            }
+
+            let chunks = [Chunk {
+                text,
+                tabs,
+                chars,
+                ..Default::default()
+            }];
+
+            let cursor = TabStopCursor::new(chunks);
+
+            assert_eq!(
+                expected_expand_tabs(&tab_snapshot, text.chars(), column),
+                tab_snapshot.expand_tabs(cursor, column)
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn test_collapse_tabs(cx: &mut gpui::App) {
+        let input = "A\tBC\tDEF\tG\tHI\tJ\tK\tL\tM";
+
+        let tab_snapshot = tab_snapshot_for_text(input, cx);
+
+        for (index, _) in input.char_indices() {
+            let range = TabPoint::new(0, index as u32)..tab_snapshot.max_point();
+
+            assert_eq!(
+                expected_buffer_point(&tab_snapshot, range.start, Bias::Left),
+                tab_snapshot.tab_point_to_buffer_point(range.start, Bias::Left),
+                "failed with tab_point at column {index}"
+            );
+            assert_eq!(
+                expected_buffer_point(&tab_snapshot, range.start, Bias::Right),
+                tab_snapshot.tab_point_to_buffer_point(range.start, Bias::Right),
+                "failed with tab_point at column {index}"
+            );
+
+            assert_eq!(
+                expected_buffer_point(&tab_snapshot, range.end, Bias::Left),
+                tab_snapshot.tab_point_to_buffer_point(range.end, Bias::Left),
+                "failed with tab_point at column {index}"
+            );
+            assert_eq!(
+                expected_buffer_point(&tab_snapshot, range.end, Bias::Right),
+                tab_snapshot.tab_point_to_buffer_point(range.end, Bias::Right),
+                "failed with tab_point at column {index}"
+            );
+        }
     }
 }

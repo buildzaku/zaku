@@ -91,16 +91,16 @@ impl DisplaySnapshot {
         DisplayPoint::from_tab_point(self.tab_snapshot.max_point())
     }
 
-    pub fn line_chunks(&self, display_row: DisplayRow) -> impl Iterator<Item = &str> {
-        let max_point = self.max_point();
-        let end = if display_row < max_point.row() {
-            TabPoint::new(display_row.0.saturating_add(1), 0)
+    pub fn text_chunks(&self, display_row: DisplayRow) -> impl Iterator<Item = &str> {
+        let max_point = self.max_point().to_tab_point();
+        let start = if display_row.0 > max_point.row() {
+            max_point
         } else {
-            max_point.to_tab_point()
+            TabPoint::new(display_row.0, 0)
         };
 
         self.tab_snapshot
-            .chunks(TabPoint::new(display_row.0, 0)..end)
+            .chunks(start..max_point)
             .map(|chunk| chunk.text)
     }
 
@@ -126,7 +126,7 @@ impl DisplaySnapshot {
         }: &TextLayoutDetails,
     ) -> Arc<gpui::LineLayout> {
         let mut line = String::new();
-        for chunk in self.line_chunks(display_row) {
+        for chunk in self.text_chunks(display_row) {
             if let Some(newline_index) = chunk.find('\n') {
                 line.push_str(&chunk[..newline_index]);
                 break;
@@ -297,5 +297,200 @@ impl ToDisplayPoint for Point {
 impl ToDisplayPoint for Anchor {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint {
         map.point_to_display_point(map.buffer_snapshot().point_for_anchor(*self), self.bias())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::AppContext;
+    use settings::SettingsStore;
+    use text::{Buffer as TextBuffer, ReplicaId};
+
+    use crate::tests::util::marked_display_snapshot;
+
+    fn init_test(cx: &mut gpui::App) {
+        let settings_store = SettingsStore::test(cx);
+        cx.set_global(settings_store);
+        theme::init(theme::LoadThemes::JustBase, cx);
+        crate::init(cx);
+    }
+
+    fn display_snapshot_for_text(text: &str, cx: &mut gpui::App) -> DisplaySnapshot {
+        let text_buffer =
+            cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text));
+        let multi_buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
+        let display_map = cx.new(|cx| {
+            crate::display_map::DisplayMap::new(multi_buffer, crate::DEFAULT_TAB_SIZE, cx)
+        });
+        display_map.update(cx, |display_map, cx| display_map.snapshot(cx))
+    }
+
+    #[gpui::test]
+    fn test_text_chunks(cx: &mut gpui::App) {
+        init_test(cx);
+
+        let text = "aaaaaa\nbbbbbb\ncccccc\ndddddd\neeeeee\nffffff";
+        let text_buffer =
+            cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text));
+        let multi_buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
+        let display_map = cx.new(|cx| {
+            crate::display_map::DisplayMap::new(multi_buffer.clone(), crate::DEFAULT_TAB_SIZE, cx)
+        });
+
+        multi_buffer.update(cx, |multi_buffer, cx| {
+            multi_buffer.edit(
+                vec![
+                    (
+                        MultiBufferPoint::new(1, 0)..MultiBufferPoint::new(1, 0),
+                        "\t",
+                    ),
+                    (
+                        MultiBufferPoint::new(1, 1)..MultiBufferPoint::new(1, 1),
+                        "\t",
+                    ),
+                    (
+                        MultiBufferPoint::new(2, 1)..MultiBufferPoint::new(2, 1),
+                        "\t",
+                    ),
+                ],
+                cx,
+            );
+        });
+
+        assert_eq!(
+            display_map
+                .update(cx, |display_map, cx| display_map.snapshot(cx))
+                .text_chunks(DisplayRow(1))
+                .collect::<String>()
+                .lines()
+                .next(),
+            Some("    b   bbbbb")
+        );
+        assert_eq!(
+            display_map
+                .update(cx, |display_map, cx| display_map.snapshot(cx))
+                .text_chunks(DisplayRow(2))
+                .collect::<String>()
+                .lines()
+                .next(),
+            Some("c   ccccc")
+        );
+    }
+
+    #[gpui::test]
+    fn test_clip_point(cx: &mut gpui::App) {
+        init_test(cx);
+
+        fn assert(marked_text: &str, shift_right: bool, bias: Bias, cx: &mut gpui::App) {
+            let (unmarked_snapshot, mut markers) = marked_display_snapshot(marked_text, cx);
+
+            match bias {
+                Bias::Left => {
+                    if shift_right {
+                        *markers[1].column_mut() += 1;
+                    }
+
+                    assert_eq!(unmarked_snapshot.clip_point(markers[1], bias), markers[0]);
+                }
+                Bias::Right => {
+                    if shift_right {
+                        *markers[0].column_mut() += 1;
+                    }
+
+                    assert_eq!(unmarked_snapshot.clip_point(markers[0], bias), markers[1]);
+                }
+            }
+        }
+
+        assert("ˇˇα", false, Bias::Left, cx);
+        assert("ˇˇα", true, Bias::Left, cx);
+        assert("ˇˇα", false, Bias::Right, cx);
+        assert("ˇαˇ", true, Bias::Right, cx);
+        assert("ˇˇ🌙", false, Bias::Left, cx);
+        assert("ˇˇ🌙", true, Bias::Left, cx);
+        assert("ˇˇ🌙", false, Bias::Right, cx);
+        assert("ˇ🌙ˇ", true, Bias::Right, cx);
+        assert("ˇˇ⚽", false, Bias::Left, cx);
+        assert("ˇˇ⚽", true, Bias::Left, cx);
+        assert("ˇˇ⚽", false, Bias::Right, cx);
+        assert("ˇ⚽ˇ", true, Bias::Right, cx);
+        assert("ˇˇ\t", false, Bias::Left, cx);
+        assert("ˇˇ\t", true, Bias::Left, cx);
+        assert("ˇˇ\t", false, Bias::Right, cx);
+        assert("ˇ\tˇ", true, Bias::Right, cx);
+        assert(" ˇˇ\t", false, Bias::Left, cx);
+        assert(" ˇˇ\t", true, Bias::Left, cx);
+        assert(" ˇˇ\t", false, Bias::Right, cx);
+        assert(" ˇ\tˇ", true, Bias::Right, cx);
+        assert("   ˇˇ\t", false, Bias::Left, cx);
+        assert("   ˇˇ\t", false, Bias::Right, cx);
+    }
+
+    #[gpui::test]
+    fn test_tabs_with_multibyte_chars(cx: &mut gpui::App) {
+        init_test(cx);
+
+        let map = display_snapshot_for_text("🌙\t\tα\nβ\t\n🏀β\t\tγ", cx);
+        assert_eq!(
+            map.text_chunks(DisplayRow(0)).collect::<String>(),
+            "🌙       α\nβ   \n🏀β      γ"
+        );
+        assert_eq!(
+            map.text_chunks(DisplayRow(1)).collect::<String>(),
+            "β   \n🏀β      γ"
+        );
+        assert_eq!(
+            map.text_chunks(DisplayRow(2)).collect::<String>(),
+            "🏀β      γ"
+        );
+
+        let point = MultiBufferPoint::new(0, "🌙\t\t".len() as u32);
+        let display_point = DisplayPoint::new(DisplayRow(0), "🌙       ".len() as u32);
+        assert_eq!(point.to_display_point(&map), display_point);
+        assert_eq!(display_point.to_point(&map), point);
+
+        let point = MultiBufferPoint::new(1, "β\t".len() as u32);
+        let display_point = DisplayPoint::new(DisplayRow(1), "β   ".len() as u32);
+        assert_eq!(point.to_display_point(&map), display_point);
+        assert_eq!(display_point.to_point(&map), point);
+
+        let point = MultiBufferPoint::new(2, "🏀β\t\t".len() as u32);
+        let display_point = DisplayPoint::new(DisplayRow(2), "🏀β      ".len() as u32);
+        assert_eq!(point.to_display_point(&map), display_point);
+        assert_eq!(display_point.to_point(&map), point);
+
+        assert_eq!(
+            DisplayPoint::new(DisplayRow(0), "🌙      ".len() as u32).to_point(&map),
+            MultiBufferPoint::new(0, "🌙\t".len() as u32),
+        );
+        assert_eq!(
+            DisplayPoint::new(DisplayRow(0), "🌙 ".len() as u32).to_point(&map),
+            MultiBufferPoint::new(0, "🌙".len() as u32),
+        );
+
+        assert_eq!(
+            map.clip_point(
+                DisplayPoint::new(DisplayRow(0), "🌙".len() as u32 - 1),
+                Bias::Left,
+            ),
+            DisplayPoint::new(DisplayRow(0), 0),
+        );
+        assert_eq!(
+            map.clip_point(
+                DisplayPoint::new(DisplayRow(0), "🌙".len() as u32 - 1),
+                Bias::Right,
+            ),
+            DisplayPoint::new(DisplayRow(0), "🌙".len() as u32),
+        );
+    }
+
+    #[gpui::test]
+    fn test_max_point(cx: &mut gpui::App) {
+        init_test(cx);
+
+        let map = display_snapshot_for_text("aaa\n\t\tbbb", cx);
+        assert_eq!(map.max_point(), DisplayPoint::new(DisplayRow(1), 11));
     }
 }
