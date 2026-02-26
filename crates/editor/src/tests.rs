@@ -13,7 +13,7 @@ use crate::{
     DeleteToPreviousWordStart, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
     MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextWordEnd, MoveToPreviousWordStart,
     MoveUp, Newline, Paste, Redo, RedoSelection, SelectAll, SelectToBeginningOfLine,
-    SelectToEndOfLine, Undo, UndoSelection, tests::context::EditorTestContext,
+    SelectToEndOfLine, SelectToNextWordEnd, Undo, UndoSelection, tests::context::EditorTestContext,
 };
 
 fn init_test(cx: &mut TestAppContext) {
@@ -901,11 +901,24 @@ fn test_undo_redo_restores_selection(cx: &mut TestAppContext) {
     cx.dispatch_action(HandleInput("from Zaku".to_string()));
     cx.assert_state("Hello, from Zakuˇ!");
 
+    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.dispatch_action(SelectToNextWordEnd);
+    cx.assert_state("Hello, from «Zakuˇ»!");
+
+    cx.dispatch_action(HandleInput("another planet".to_string()));
+    cx.assert_state("Hello, from another planetˇ!");
+
+    cx.dispatch_action(Undo);
+    cx.assert_state("Hello, from «Zakuˇ»!");
+
     cx.dispatch_action(Undo);
     cx.assert_state("Hello, «worldˇ»!");
 
     cx.dispatch_action(Redo);
     cx.assert_state("Hello, from Zakuˇ!");
+
+    cx.dispatch_action(Redo);
+    cx.assert_state("Hello, from another planetˇ!");
 }
 
 #[gpui::test]
