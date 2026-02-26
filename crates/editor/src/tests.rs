@@ -26,6 +26,38 @@ fn init_test(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_handle_input(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state(indoc! {"
+        one
+        twoˇ
+        three
+        four
+        five
+    "});
+
+    cx.dispatch_action(HandleInput(String::new()));
+    cx.assert_state(indoc! {"
+        one
+        twoˇ
+        three
+        four
+        five
+    "});
+
+    cx.dispatch_action(HandleInput("X".to_string()));
+    cx.assert_state(indoc! {"
+        one
+        twoXˇ
+        three
+        four
+        five
+    "});
+}
+
+#[gpui::test]
 fn test_handle_input_replaces_selection(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
