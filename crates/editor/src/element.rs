@@ -854,9 +854,9 @@ impl Element for EditorElement {
                     editor.show_scrollbars,
                     editor.masked,
                     editor.scrollbar_drag,
-                    editor.selected_range.clone(),
-                    editor.marked_range.clone(),
-                    editor.cursor_offset(),
+                    editor.selected_range(cx),
+                    editor.marked_range(cx),
+                    editor.cursor_offset(cx),
                     editor.active_line_highlight.unwrap_or_default(),
                 )
             };
@@ -928,13 +928,14 @@ impl Element for EditorElement {
                         cursor_offset.min(display_snapshot.buffer_snapshot().len().0),
                     ));
             let cursor_row = cursor_point.row;
+            let has_ime_marked_range = marked_range.is_some();
             let show_active_line_background = match mode {
                 EditorMode::Full {
                     show_active_line_background,
                     ..
                 } => {
                     show_active_line_background
-                        && selection_range.is_empty()
+                        && (selection_range.is_empty() || has_ime_marked_range)
                         && matches!(active_line_highlight, ActiveLineHighlight::Line)
                 }
                 _ => false,

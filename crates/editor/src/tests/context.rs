@@ -1,7 +1,7 @@
 use gpui::{
     Action, AnyWindowHandle, AppContext, Context, Entity, TestAppContext, VisualTestContext, Window,
 };
-use multi_buffer::MultiBuffer;
+use multi_buffer::{MultiBuffer, MultiBufferOffset};
 use pretty_assertions::assert_eq;
 use std::{
     collections::BTreeMap,
@@ -16,7 +16,8 @@ use text::{Buffer as TextBuffer, ReplicaId, SelectionGoal};
 use util::test::{generate_marked_text, marked_text_ranges};
 
 use crate::{
-    DEFAULT_TAB_SIZE, Editor, EditorMode, SelectionHistory, SelectionState, next_buffer_id,
+    DEFAULT_TAB_SIZE, Editor, EditorMode, SelectionEffects, SelectionHistory,
+    display_map::HighlightKey, next_buffer_id,
 };
 
 pub struct EditorTestContext {
@@ -85,12 +86,6 @@ impl EditorTestContext {
             panic!("expected a single selection range");
         }
 
-        let (selected_range, selection_reversed) = if selection.start <= selection.end {
-            (selection, false)
-        } else {
-            (selection.end..selection.start, true)
-        };
-
         self.update_editor(|editor, _, cx| {
             let text_buffer =
                 cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text.as_str()));
@@ -98,14 +93,16 @@ impl EditorTestContext {
             editor.buffer = buffer.clone();
             editor.display_map =
                 cx.new(|cx| crate::display_map::DisplayMap::new(buffer, DEFAULT_TAB_SIZE, cx));
-            editor.selected_range = selected_range.clone();
-            editor.selection_reversed = selection_reversed;
-            editor.marked_range = None;
-            editor.selection_goal = SelectionGoal::None;
-            editor.selection_history = SelectionHistory::new(SelectionState {
-                range: selected_range,
-                reversed: selection_reversed,
+            editor.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
+                selections.select_ranges([
+                    MultiBufferOffset(selection.start)..MultiBufferOffset(selection.end)
+                ]);
             });
+            editor.clear_highlights(HighlightKey::InputComposition, cx);
+            editor.ime_transaction = None;
+            editor.selection_goal = SelectionGoal::None;
+            editor.selection_history =
+                SelectionHistory::new(editor.selections.disjoint_anchors_arc());
             editor.last_position_map = None;
         });
 
@@ -120,14 +117,9 @@ impl EditorTestContext {
             panic!("expected a single selection range");
         }
 
-        let (actual_text, actual_selection, actual_reversed) =
-            self.editor.read_with(&self.cx, |editor, cx| {
-                (
-                    editor.buffer_snapshot(cx).text(),
-                    editor.selected_range.clone(),
-                    editor.selection_reversed,
-                )
-            });
+        let (actual_text, actual_selection) = self.editor.read_with(&self.cx, |editor, cx| {
+            (editor.buffer_snapshot(cx).text(), editor.selection(cx))
+        });
 
         let assertion_context = self.assertion_cx.context();
         assert_eq!(
@@ -136,10 +128,10 @@ impl EditorTestContext {
             assertion_context
         );
 
-        let actual_range = if actual_reversed {
-            actual_selection.end..actual_selection.start
+        let actual_range = if actual_selection.reversed {
+            actual_selection.end.0..actual_selection.start.0
         } else {
-            actual_selection
+            actual_selection.start.0..actual_selection.end.0
         };
 
         let actual_marked =

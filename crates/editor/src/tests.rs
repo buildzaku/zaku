@@ -1,19 +1,23 @@
 pub(crate) mod context;
 pub(crate) mod util;
 
-use gpui::{ClipboardItem, TestAppContext};
+use gpui::{ClipboardItem, Context, EntityInputHandler, TestAppContext};
 use indoc::indoc;
+use multi_buffer::MultiBufferOffset;
 use pretty_assertions::assert_eq;
+use std::ops::Range;
 
 use settings::SettingsStore;
 
+use crate::display_map::{DisplayPoint, DisplayRow};
 use crate::{
     Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
     DeleteToNextSubwordEnd, DeleteToNextWordEnd, DeleteToPreviousSubwordStart,
-    DeleteToPreviousWordStart, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
+    DeleteToPreviousWordStart, Editor, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
     MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextWordEnd, MoveToPreviousWordStart,
-    MoveUp, Newline, Paste, Redo, RedoSelection, SelectAll, SelectToBeginningOfLine,
-    SelectToEndOfLine, SelectToNextWordEnd, Undo, UndoSelection, tests::context::EditorTestContext,
+    MoveUp, Newline, Paste, Redo, RedoSelection, SelectAll, SelectToBeginning,
+    SelectToBeginningOfLine, SelectToEnd, SelectToEndOfLine, SelectToNextWordEnd,
+    SelectToPreviousWordStart, Undo, UndoSelection, tests::context::EditorTestContext,
 };
 
 fn init_test(cx: &mut TestAppContext) {
@@ -23,6 +27,22 @@ fn init_test(cx: &mut TestAppContext) {
         theme::init(theme::LoadThemes::JustBase, cx);
         crate::init(cx);
     });
+}
+
+fn display_ranges(editor: &Editor, cx: &mut Context<'_, Editor>) -> Vec<Range<DisplayPoint>> {
+    let snapshot = editor.display_snapshot(cx);
+    editor
+        .selections
+        .all_display(&snapshot)
+        .into_iter()
+        .map(|selection| {
+            if selection.reversed {
+                selection.end..selection.start
+            } else {
+                selection.start..selection.end
+            }
+        })
+        .collect()
 }
 
 #[gpui::test]
@@ -542,6 +562,15 @@ fn test_prev_next_word_boundary(cx: &mut TestAppContext) {
 
     cx.dispatch_action(MoveToNextWordEnd);
     cx.assert_state("one two.threeˇ");
+
+    cx.dispatch_action(SelectToPreviousWordStart);
+    cx.assert_state("one two.«ˇthree»");
+
+    cx.dispatch_action(MoveLeft);
+    cx.set_state("one two.ˇthree");
+
+    cx.dispatch_action(SelectToNextWordEnd);
+    cx.assert_state("one two.«threeˇ»");
 }
 
 #[gpui::test]
@@ -973,6 +1002,162 @@ fn test_undo_redo_selection(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn test_selection_with_mouse(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state(indoc! {"
+        The
+        quick
+        brˇown
+        fox
+    "});
+
+    cx.update_editor(|editor, _, cx| {
+        editor.begin_selection(DisplayPoint::new(DisplayRow(2), 2), 1, cx);
+    });
+    cx.update_editor(|editor, _, cx| {
+        assert_eq!(
+            display_ranges(editor, cx),
+            [DisplayPoint::new(DisplayRow(2), 2)..DisplayPoint::new(DisplayRow(2), 2)]
+        );
+    });
+
+    cx.update_editor(|editor, _, cx| {
+        editor.update_selection(DisplayPoint::new(DisplayRow(3), 3), cx);
+    });
+    cx.update_editor(|editor, _, cx| {
+        assert_eq!(
+            display_ranges(editor, cx),
+            [DisplayPoint::new(DisplayRow(2), 2)..DisplayPoint::new(DisplayRow(3), 3)]
+        );
+    });
+
+    cx.update_editor(|editor, _, cx| {
+        editor.update_selection(DisplayPoint::new(DisplayRow(1), 1), cx);
+    });
+    cx.update_editor(|editor, _, cx| {
+        assert_eq!(
+            display_ranges(editor, cx),
+            [DisplayPoint::new(DisplayRow(2), 2)..DisplayPoint::new(DisplayRow(1), 1)]
+        );
+    });
+
+    cx.update_editor(|editor, _, cx| {
+        editor.end_selection(cx);
+        editor.update_selection(DisplayPoint::new(DisplayRow(3), 3), cx);
+    });
+    cx.update_editor(|editor, _, cx| {
+        assert_eq!(
+            display_ranges(editor, cx),
+            [DisplayPoint::new(DisplayRow(2), 2)..DisplayPoint::new(DisplayRow(1), 1)]
+        );
+    });
+
+    cx.update_editor(|editor, _, cx| {
+        editor.begin_selection(DisplayPoint::new(DisplayRow(3), 3), 1, cx);
+        editor.update_selection(DisplayPoint::new(DisplayRow(0), 0), cx);
+    });
+    cx.update_editor(|editor, _, cx| {
+        assert_eq!(
+            display_ranges(editor, cx),
+            [DisplayPoint::new(DisplayRow(3), 3)..DisplayPoint::new(DisplayRow(0), 0)]
+        );
+    });
+
+    cx.update_editor(|editor, _, cx| {
+        editor.end_selection(cx);
+    });
+    cx.update_editor(|editor, _, cx| {
+        assert_eq!(
+            display_ranges(editor, cx),
+            [DisplayPoint::new(DisplayRow(3), 3)..DisplayPoint::new(DisplayRow(0), 0)]
+        );
+    });
+}
+
+#[gpui::test]
+fn test_ime_composition(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("abcdeˇ");
+    cx.update_editor(|editor, window, cx| {
+        editor.replace_and_mark_text_in_range(Some(0..1), "à", None, window, cx);
+        editor.replace_and_mark_text_in_range(Some(0..1), "á", None, window, cx);
+        editor.replace_and_mark_text_in_range(Some(0..1), "ä", None, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "äbcde");
+        assert_eq!(editor.marked_text_range(window, cx), Some(0..1));
+
+        editor.replace_text_in_range(None, "ā", window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "ābcde");
+        assert_eq!(editor.marked_text_range(window, cx), None);
+
+        editor.undo(&Undo, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "abcde");
+        assert_eq!(editor.marked_text_range(window, cx), None);
+
+        editor.redo(&Redo, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "ābcde");
+        assert_eq!(editor.marked_text_range(window, cx), None);
+
+        editor.replace_and_mark_text_in_range(Some(0..1), "à", None, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "àbcde");
+        assert_eq!(editor.marked_text_range(window, cx), Some(0..1));
+
+        editor.undo(&Undo, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "ābcde");
+        assert_eq!(editor.marked_text_range(window, cx), None);
+
+        editor.replace_and_mark_text_in_range(Some(4..999), "è", None, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "ābcdè");
+        assert_eq!(editor.marked_text_range(window, cx), Some(4..5));
+
+        editor.replace_text_in_range(Some(4..999), "ę", window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "ābcdę");
+        assert_eq!(editor.marked_text_range(window, cx), None);
+
+        editor.replace_and_mark_text_in_range(Some(0..1), "XYZ", None, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "XYZbcdę");
+        assert_eq!(editor.marked_text_range(window, cx), Some(0..3));
+
+        editor.replace_and_mark_text_in_range(Some(1..2), "1", None, window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "X1Zbcdę");
+        assert_eq!(editor.marked_text_range(window, cx), Some(1..2));
+
+        editor.replace_text_in_range(Some(1..2), "2", window, cx);
+        assert_eq!(editor.buffer_snapshot(cx).text(), "X2Zbcdę");
+        assert_eq!(editor.marked_text_range(window, cx), None);
+    });
+}
+
+#[gpui::test]
+fn test_insert_with_old_selections(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("a( «Xˇ» ), b( Y ), c( Z )");
+    cx.update_editor(|editor, _, cx| {
+        editor.buffer.update(cx, |buffer, cx| {
+            buffer.edit(
+                [
+                    (MultiBufferOffset(2)..MultiBufferOffset(5), ""),
+                    (MultiBufferOffset(10)..MultiBufferOffset(13), ""),
+                    (MultiBufferOffset(18)..MultiBufferOffset(21), ""),
+                ],
+                cx,
+            );
+        });
+        assert_eq!(editor.buffer_snapshot(cx).text(), "a(), b(), c()");
+        assert_eq!(editor.selected_range(cx), 2..2);
+    });
+
+    cx.assert_state("a(ˇ), b(), c()");
+    cx.dispatch_action(HandleInput("Z".to_string()));
+    cx.assert_state("a(Zˇ), b(), c()");
+}
+
+#[gpui::test]
 fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
@@ -1313,6 +1498,13 @@ fn test_move_cursor(cx: &mut TestAppContext) {
         \t\taaaaaa
         aaaaaa\
     "});
+
+    cx.set_state("a«bˇ»cd");
+    cx.dispatch_action(SelectToBeginning);
+    cx.assert_state("«ˇa»bcd");
+
+    cx.dispatch_action(SelectToEnd);
+    cx.assert_state("a«bcdˇ»");
 }
 
 #[gpui::test]

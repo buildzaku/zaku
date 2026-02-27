@@ -3,12 +3,14 @@ mod tab_map;
 
 pub use tab_map::{TabMap, TabPoint, TabSnapshot};
 
-use gpui::{Context, Entity, Pixels, TextRun};
+use gpui::{Context, Entity, HighlightStyle, Pixels, TextRun};
 use serde::Deserialize;
 use std::{
+    collections::HashMap,
+    collections::hash_map::Entry,
     fmt::Debug,
     num::NonZeroU32,
-    ops::{Add, Sub},
+    ops::{Add, Range, Sub},
     sync::Arc,
 };
 use text::{Bias, Point, subscription::Subscription as BufferSubscription};
@@ -21,11 +23,17 @@ pub trait ToDisplayPoint {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint;
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum HighlightKey {
+    InputComposition,
+}
+
 pub struct DisplayMap {
     buffer: Entity<MultiBuffer>,
     buffer_subscription: BufferSubscription<MultiBufferOffset>,
     tab_map: TabMap,
     tab_size: NonZeroU32,
+    text_highlights: HashMap<HighlightKey, (HighlightStyle, Vec<Range<Anchor>>)>,
 }
 
 impl DisplayMap {
@@ -39,6 +47,7 @@ impl DisplayMap {
             buffer_subscription,
             tab_map,
             tab_size,
+            text_highlights: HashMap::default(),
         }
     }
 
@@ -53,6 +62,48 @@ impl DisplayMap {
         let tab_snapshot = self.sync_through_tab(cx);
 
         DisplaySnapshot { tab_snapshot }
+    }
+
+    pub fn highlight_text(
+        &mut self,
+        key: HighlightKey,
+        mut ranges: Vec<Range<Anchor>>,
+        style: HighlightStyle,
+        merge: bool,
+        cx: &Context<Self>,
+    ) {
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        match self.text_highlights.entry(key) {
+            Entry::Occupied(mut slot) => {
+                if merge {
+                    slot.get_mut().1.extend(ranges);
+                    slot.get_mut().1.sort_by(|left, right| {
+                        snapshot
+                            .offset_for_anchor(left.start)
+                            .cmp(&snapshot.offset_for_anchor(right.start))
+                    });
+                } else {
+                    slot.insert((style, ranges));
+                }
+            }
+            Entry::Vacant(slot) => {
+                ranges.sort_by(|left, right| {
+                    snapshot
+                        .offset_for_anchor(left.start)
+                        .cmp(&snapshot.offset_for_anchor(right.start))
+                });
+                slot.insert((style, ranges));
+            }
+        }
+    }
+
+    pub fn text_highlights(&self, key: HighlightKey) -> Option<(HighlightStyle, &[Range<Anchor>])> {
+        let highlights = self.text_highlights.get(&key)?;
+        Some((highlights.0, &highlights.1))
+    }
+
+    pub fn clear_highlights(&mut self, key: HighlightKey) -> bool {
+        self.text_highlights.remove(&key).is_some()
     }
 }
 
@@ -125,14 +176,7 @@ impl DisplaySnapshot {
             rem_size,
         }: &TextLayoutDetails,
     ) -> Arc<gpui::LineLayout> {
-        let mut line = String::new();
-        for chunk in self.text_chunks(display_row) {
-            if let Some(newline_index) = chunk.find('\n') {
-                line.push_str(&chunk[..newline_index]);
-                break;
-            }
-            line.push_str(chunk);
-        }
+        let line = self.line(display_row);
 
         let runs = [TextRun {
             len: line.len(),
@@ -144,6 +188,18 @@ impl DisplaySnapshot {
         }];
         let font_size = editor_style.text.font_size.to_pixels(*rem_size);
         text_system.layout_line(&line, font_size, &runs, None)
+    }
+
+    pub fn line(&self, display_row: DisplayRow) -> String {
+        let mut line = String::new();
+        for chunk in self.text_chunks(display_row) {
+            if let Some(newline_index) = chunk.find('\n') {
+                line.push_str(&chunk[..newline_index]);
+                break;
+            }
+            line.push_str(chunk);
+        }
+        line
     }
 
     pub fn x_for_display_point(

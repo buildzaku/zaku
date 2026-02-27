@@ -115,7 +115,7 @@ impl Editor {
             target_bottom = target_top + 1.0;
         } else {
             let snapshot = display_snapshot.buffer_snapshot();
-            let cursor_offset = self.cursor_offset().min(snapshot.len().0);
+            let cursor_offset = self.cursor_offset(cx).min(snapshot.len().0);
             let cursor_row = snapshot
                 .offset_to_point(MultiBufferOffset(cursor_offset))
                 .row;
@@ -259,7 +259,7 @@ impl Editor {
         let mut target_left = f64::INFINITY;
         let mut target_right: f64 = 0.0;
 
-        let cursor_offset = self.cursor_offset().min(snapshot.len().0);
+        let cursor_offset = self.cursor_offset(cx).min(snapshot.len().0);
         let cursor_point = snapshot.offset_to_point(MultiBufferOffset(cursor_offset));
         let head = display_snapshot.point_to_display_point(cursor_point, text::Bias::Left);
         if head.row() >= start_row
