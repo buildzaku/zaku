@@ -1,18 +1,24 @@
 use gpui::{
     AbsoluteLength, Action, App, Axis, BorderStyle, Bounds, ContentMask, Context, Corners,
     CursorStyle, DispatchPhase, Edges, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point, ScrollDelta,
-    ScrollWheelEvent, ShapedLine, SharedString, Size, Style, TextAlign, TextRun, TextStyle,
-    UnderlineStyle, Window, prelude::*,
+    GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, LayoutId, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, PathBuilder, Pixels, Point,
+    ScrollDelta, ScrollWheelEvent, ShapedLine, SharedString, Size, Style, TextAlign, TextRun,
+    TextStyle, UnderlineStyle, Window, prelude::*,
 };
 use multi_buffer::{MultiBufferOffset, MultiBufferRow};
-use std::{any::TypeId, ops::Range};
+use std::{
+    any::TypeId,
+    cmp::{self, Ordering},
+    ops::Range,
+};
 use theme::ActiveTheme;
 
 use crate::{
     ActiveLineHighlight, Editor, EditorMode, EditorStyle, HandleInput, MAX_LINE_LEN,
-    SizingBehavior, display_map::DisplaySnapshot, scroll::ScrollOffset,
+    SizingBehavior,
+    display_map::{DisplayPoint, DisplaySnapshot},
+    scroll::ScrollOffset,
 };
 
 const SCROLLBAR_THICKNESS: Pixels = gpui::px(15.0);
@@ -108,7 +114,6 @@ pub(crate) struct LineWithInvisibles {
     pub row: crate::display_map::DisplayRow,
     pub origin: Point<Pixels>,
     pub line_start_offset: usize,
-    pub line_end_offset: usize,
     pub line_display_column_start: usize,
     pub len: usize,
     pub width: Pixels,
@@ -272,6 +277,109 @@ impl EditorElement {
         };
 
         (vertical_scrollbar, horizontal_scrollbar)
+    }
+
+    fn paint_highlights(
+        &self,
+        prepaint: &PrepaintState,
+        text_bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let corner_radius = 0.15 * prepaint.line_height;
+        for range in &prepaint.selection_ranges {
+            self.paint_highlighted_range(
+                range.clone(),
+                true,
+                cx.theme().colors().element_selection_background,
+                corner_radius,
+                corner_radius * 2.0,
+                prepaint,
+                text_bounds,
+                window,
+            );
+        }
+    }
+
+    fn paint_highlighted_range(
+        &self,
+        range: Range<DisplayPoint>,
+        fill: bool,
+        color: Hsla,
+        corner_radius: Pixels,
+        line_end_overshoot: Pixels,
+        prepaint: &PrepaintState,
+        text_bounds: Bounds<Pixels>,
+        window: &mut Window,
+    ) {
+        if range.start >= range.end {
+            return;
+        }
+
+        let Some(first_line) = prepaint.line_layouts.first() else {
+            return;
+        };
+        let start_row = first_line.row;
+        let end_row = start_row + prepaint.line_layouts.len() as u32;
+        let row_range = if range.end.column() == 0 {
+            cmp::max(range.start.row(), start_row)..cmp::min(range.end.row(), end_row)
+        } else {
+            cmp::max(range.start.row(), start_row)..cmp::min(range.end.row() + 1, end_row)
+        };
+        if row_range.start >= row_range.end {
+            return;
+        }
+
+        let start_index = row_range.start.0.saturating_sub(start_row.0) as usize;
+        let Some(first_selected_line) = prepaint.line_layouts.get(start_index) else {
+            return;
+        };
+        let start_y = first_selected_line.origin.y;
+
+        let mut lines =
+            Vec::with_capacity(row_range.end.0.saturating_sub(row_range.start.0) as usize);
+        for row in row_range.start.0..row_range.end.0 {
+            let row = crate::display_map::DisplayRow(row);
+            let line_index = row.0.saturating_sub(start_row.0) as usize;
+            let Some(line_layout) = prepaint.line_layouts.get(line_index) else {
+                continue;
+            };
+
+            let start_x = if row == range.start.row() {
+                let start_column = range.start.column() as usize;
+                let start_column = start_column
+                    .saturating_sub(line_layout.line_display_column_start)
+                    .min(line_layout.len);
+                line_layout.origin.x + line_layout.x_for_index(start_column)
+            } else {
+                line_layout.origin.x
+            };
+            let end_x = if row == range.end.row() {
+                let end_column = range.end.column() as usize;
+                let end_column = end_column
+                    .saturating_sub(line_layout.line_display_column_start)
+                    .min(line_layout.len);
+                line_layout.origin.x + line_layout.x_for_index(end_column)
+            } else {
+                line_layout.origin.x + line_layout.width + line_end_overshoot
+            };
+            lines.push(HighlightedRangeLine {
+                start_x,
+                end_x: end_x.max(start_x),
+            });
+        }
+        if lines.is_empty() {
+            return;
+        }
+
+        let highlighted_range = HighlightedRange {
+            start_y,
+            line_height: prepaint.line_height,
+            lines,
+            color,
+            corner_radius,
+        };
+        highlighted_range.paint(fill, text_bounds, window);
     }
 
     fn paint_mouse_listeners(&mut self, prepaint: &PrepaintState, window: &mut Window) {
@@ -726,7 +834,7 @@ pub struct PrepaintState {
     display_snapshot: DisplaySnapshot,
     active_line_background: Option<PaintQuad>,
     cursor: Option<PaintQuad>,
-    selections: Vec<PaintQuad>,
+    selection_ranges: Vec<Range<DisplayPoint>>,
     hitbox: Option<Hitbox>,
     vertical_scrollbar: Option<ScrollbarPrepaint>,
     horizontal_scrollbar: Option<ScrollbarPrepaint>,
@@ -1041,19 +1149,34 @@ impl Element for EditorElement {
                 );
             }
 
+            let mut selection_ranges = Vec::new();
+            if !selection_range.is_empty() {
+                let buffer_snapshot = display_snapshot.buffer_snapshot();
+                let max_offset = buffer_snapshot.len().0;
+                let selection_start = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(selection_range.start.min(max_offset)),
+                    text::Bias::Left,
+                );
+                let selection_end = buffer_snapshot.clip_offset(
+                    MultiBufferOffset(selection_range.end.min(max_offset)),
+                    text::Bias::Right,
+                );
+                let selection_start_point = buffer_snapshot.offset_to_point(selection_start);
+                let selection_end_point = buffer_snapshot.offset_to_point(selection_end);
+                let selection_start = display_snapshot
+                    .point_to_display_point(selection_start_point, text::Bias::Left);
+                let selection_end =
+                    display_snapshot.point_to_display_point(selection_end_point, text::Bias::Right);
+                if selection_start < selection_end {
+                    selection_ranges.push(selection_start..selection_end);
+                }
+            }
+
             let mut active_line_background = None;
-            let mut selections = Vec::new();
             let mut cursor = None;
             for line in lines.iter() {
                 let line_text = line.line_text.as_str();
                 let line_display_column_start = line.line_display_column_start;
-                let selection_offsets = if selection_range.is_empty() {
-                    None
-                } else {
-                    let selection_start = selection_range.start.max(line.line_start_offset);
-                    let selection_end = selection_range.end.min(line.line_end_offset);
-                    (selection_start < selection_end).then_some((selection_start, selection_end))
-                };
 
                 if show_active_line_background
                     && active_line_background.is_none()
@@ -1065,56 +1188,6 @@ impl Element for EditorElement {
                             gpui::size(text_area_width, line_height),
                         ),
                         cx.theme().colors().editor_active_line_background,
-                    ));
-                }
-
-                if let Some((selection_start, selection_end)) = selection_offsets {
-                    let start_column = (selection_start - line.line_start_offset) as u32;
-                    let end_column = (selection_end - line.line_start_offset) as u32;
-                    let (mut display_start, mut display_end) = if masked {
-                        let start_column = (start_column as usize).min(line_text.len());
-                        let end_column = (end_column as usize).min(line_text.len());
-                        (
-                            line_text.get(..start_column).unwrap_or("").chars().count(),
-                            line_text.get(..end_column).unwrap_or("").chars().count(),
-                        )
-                    } else {
-                        (
-                            display_snapshot
-                                .point_to_display_point(
-                                    text::Point::new(line.row.0, start_column),
-                                    text::Bias::Left,
-                                )
-                                .column() as usize,
-                            display_snapshot
-                                .point_to_display_point(
-                                    text::Point::new(line.row.0, end_column),
-                                    text::Bias::Right,
-                                )
-                                .column() as usize,
-                        )
-                    };
-                    if !masked {
-                        display_start = display_start.saturating_sub(line_display_column_start);
-                        display_end = display_end.saturating_sub(line_display_column_start);
-                    }
-                    display_start = display_start.min(line.len);
-                    display_end = display_end.min(line.len);
-
-                    let selection_bounds = Bounds::from_corners(
-                        gpui::point(
-                            line.origin.x + line.x_for_index(display_start),
-                            line.origin.y,
-                        ),
-                        gpui::point(
-                            line.origin.x + line.x_for_index(display_end),
-                            line.origin.y + line_height,
-                        ),
-                    );
-
-                    selections.push(gpui::fill(
-                        selection_bounds,
-                        cx.theme().colors().element_selection_background,
                     ));
                 }
 
@@ -1178,7 +1251,7 @@ impl Element for EditorElement {
                 display_snapshot,
                 active_line_background,
                 cursor,
-                selections,
+                selection_ranges,
                 hitbox: Some(hitbox),
                 vertical_scrollbar,
                 horizontal_scrollbar,
@@ -1252,9 +1325,7 @@ impl Element for EditorElement {
                         window.paint_quad(active_line_background);
                     }
 
-                    for selection in prepaint.selections.drain(..) {
-                        window.paint_quad(selection);
-                    }
+                    self.paint_highlights(prepaint, text_bounds, window, cx);
 
                     for line in prepaint.line_layouts.iter() {
                         line.shaped_line
@@ -1528,7 +1599,6 @@ fn build_visible_lines(
             row,
             origin,
             line_start_offset: line_start_offset.0,
-            line_end_offset: line_end_offset.0,
             line_display_column_start,
             len: expanded_len,
             width,
@@ -1538,6 +1608,156 @@ fn build_visible_lines(
     }
 
     lines
+}
+
+#[derive(Debug)]
+pub struct HighlightedRange {
+    pub start_y: Pixels,
+    pub line_height: Pixels,
+    pub lines: Vec<HighlightedRangeLine>,
+    pub color: Hsla,
+    pub corner_radius: Pixels,
+}
+
+#[derive(Debug)]
+pub struct HighlightedRangeLine {
+    pub start_x: Pixels,
+    pub end_x: Pixels,
+}
+
+impl HighlightedRange {
+    pub fn paint(&self, fill: bool, bounds: Bounds<Pixels>, window: &mut Window) {
+        if self.lines.len() >= 2 && self.lines[0].start_x > self.lines[1].end_x {
+            self.paint_lines(self.start_y, &self.lines[0..1], fill, bounds, window);
+            self.paint_lines(
+                self.start_y + self.line_height,
+                &self.lines[1..],
+                fill,
+                bounds,
+                window,
+            );
+        } else {
+            self.paint_lines(self.start_y, &self.lines, fill, bounds, window);
+        }
+    }
+
+    fn paint_lines(
+        &self,
+        start_y: Pixels,
+        lines: &[HighlightedRangeLine],
+        fill: bool,
+        _bounds: Bounds<Pixels>,
+        window: &mut Window,
+    ) {
+        let Some(first_line) = lines.first() else {
+            return;
+        };
+        let Some(last_line) = lines.last() else {
+            return;
+        };
+
+        let first_top_left = gpui::point(first_line.start_x, start_y);
+        let first_top_right = gpui::point(first_line.end_x, start_y);
+
+        let curve_height = gpui::point(Pixels::ZERO, self.corner_radius);
+        let curve_width = |start_x: Pixels, end_x: Pixels| {
+            let max = (end_x - start_x) / 2.0;
+            let width = if max < self.corner_radius {
+                max
+            } else {
+                self.corner_radius
+            };
+
+            gpui::point(width, Pixels::ZERO)
+        };
+
+        let top_curve_width = curve_width(first_line.start_x, first_line.end_x);
+        let mut builder = if fill {
+            PathBuilder::fill()
+        } else {
+            PathBuilder::stroke(gpui::px(1.0))
+        };
+        builder.move_to(first_top_right - top_curve_width);
+        builder.curve_to(first_top_right + curve_height, first_top_right);
+
+        let mut iter = lines.iter().enumerate().peekable();
+        while let Some((index, line)) = iter.next() {
+            let bottom_right =
+                gpui::point(line.end_x, start_y + (index + 1) as f32 * self.line_height);
+
+            if let Some((_, next_line)) = iter.peek() {
+                let next_top_right = gpui::point(next_line.end_x, bottom_right.y);
+
+                match next_top_right
+                    .x
+                    .partial_cmp(&bottom_right.x)
+                    .unwrap_or(Ordering::Equal)
+                {
+                    Ordering::Equal => {
+                        builder.line_to(bottom_right);
+                    }
+                    Ordering::Less => {
+                        let curve_width = curve_width(next_top_right.x, bottom_right.x);
+                        builder.line_to(bottom_right - curve_height);
+                        if self.corner_radius > Pixels::ZERO {
+                            builder.curve_to(bottom_right - curve_width, bottom_right);
+                        }
+                        builder.line_to(next_top_right + curve_width);
+                        if self.corner_radius > Pixels::ZERO {
+                            builder.curve_to(next_top_right + curve_height, next_top_right);
+                        }
+                    }
+                    Ordering::Greater => {
+                        let curve_width = curve_width(bottom_right.x, next_top_right.x);
+                        builder.line_to(bottom_right - curve_height);
+                        if self.corner_radius > Pixels::ZERO {
+                            builder.curve_to(bottom_right + curve_width, bottom_right);
+                        }
+                        builder.line_to(next_top_right - curve_width);
+                        if self.corner_radius > Pixels::ZERO {
+                            builder.curve_to(next_top_right + curve_height, next_top_right);
+                        }
+                    }
+                }
+            } else {
+                let curve_width = curve_width(line.start_x, line.end_x);
+                builder.line_to(bottom_right - curve_height);
+                if self.corner_radius > Pixels::ZERO {
+                    builder.curve_to(bottom_right - curve_width, bottom_right);
+                }
+
+                let bottom_left = gpui::point(line.start_x, bottom_right.y);
+                builder.line_to(bottom_left + curve_width);
+                if self.corner_radius > Pixels::ZERO {
+                    builder.curve_to(bottom_left - curve_height, bottom_left);
+                }
+            }
+        }
+
+        if first_line.start_x > last_line.start_x {
+            let curve_width = curve_width(last_line.start_x, first_line.start_x);
+            let second_top_left = gpui::point(last_line.start_x, start_y + self.line_height);
+            builder.line_to(second_top_left + curve_height);
+            if self.corner_radius > Pixels::ZERO {
+                builder.curve_to(second_top_left + curve_width, second_top_left);
+            }
+            let first_bottom_left = gpui::point(first_line.start_x, second_top_left.y);
+            builder.line_to(first_bottom_left - curve_width);
+            if self.corner_radius > Pixels::ZERO {
+                builder.curve_to(first_bottom_left - curve_height, first_bottom_left);
+            }
+        }
+
+        builder.line_to(first_top_left + curve_height);
+        if self.corner_radius > Pixels::ZERO {
+            builder.curve_to(first_top_left + top_curve_width, first_top_left);
+        }
+        builder.line_to(first_top_right - top_curve_width);
+
+        if let Ok(path) = builder.build() {
+            window.paint_path(path, self.color);
+        }
+    }
 }
 
 fn scale_vertical_mouse_autoscroll_delta(delta: Pixels) -> f32 {
