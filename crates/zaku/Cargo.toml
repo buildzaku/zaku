@@ -10,6 +10,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = ["mimalloc"]
+mimalloc = ["dep:mimalloc"]
+
 [dependencies]
 assets = { workspace = true }
 editor = { workspace = true }
@@ -17,6 +21,7 @@ futures = { workspace = true }
 gpui = { workspace = true }
 gpui_platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 menu = { workspace = true }
+mimalloc = { workspace = true, optional = true }
 settings = { workspace = true }
 theme = { workspace = true }
 workspace = { workspace = true }

@@ -8,6 +8,10 @@ use workspace::Workspace;
 
 gpui::actions!(zaku, [Quit]);
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() {
     Application::with_platform(gpui_platform::current_platform(false))
         .with_assets(assets::Assets)

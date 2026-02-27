@@ -46,6 +46,7 @@ http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
 indoc = { version = "2.0" }
+mimalloc = { version = "0.1" }
 notify = { version = "8.2" }
 palette = { version = "0.7.5", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12.1" }
