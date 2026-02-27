@@ -15,6 +15,7 @@ assets = { workspace = true }
 editor = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
+gpui_platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 menu = { workspace = true }
 settings = { workspace = true }
 theme = { workspace = true }

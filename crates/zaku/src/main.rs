@@ -1,5 +1,6 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
+use gpui_platform;
 
 use settings::SettingsStore;
 use theme::LoadThemes;
@@ -8,7 +9,7 @@ use workspace::Workspace;
 gpui::actions!(zaku, [Quit]);
 
 fn main() {
-    Application::new()
+    Application::with_platform(gpui_platform::current_platform(false))
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
             settings::init(cx);

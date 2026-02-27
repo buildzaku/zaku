@@ -41,6 +41,7 @@ core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issu
 dirs = { version = "6.0" }
 futures = { version = "0.3" }
 gpui = { git = "https://github.com/zed-industries/zed", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
