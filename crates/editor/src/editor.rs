@@ -15,7 +15,7 @@ use gpui::{
     Subscription, TextStyle, UTF16Selection, Window, prelude::*,
 };
 use multi_buffer::{
-    Anchor, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
+    Anchor, Capability, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
     MultiBufferSnapshot,
 };
 use serde::{Deserialize, Serialize};
@@ -548,6 +548,7 @@ pub struct Editor {
     scrollbar_drag: Option<ScrollbarDrag>,
     selecting: bool,
     input_enabled: bool,
+    read_only: bool,
     selection_mark_mode: bool,
     masked: bool,
     active_line_highlight: Option<ActiveLineHighlight>,
@@ -619,6 +620,7 @@ impl Editor {
             scrollbar_drag: None,
             selecting: false,
             input_enabled: true,
+            read_only: false,
             selection_mark_mode: false,
             masked: false,
             active_line_highlight: None,
@@ -1298,6 +1300,10 @@ impl Editor {
     }
 
     fn clear(&mut self, cx: &mut Context<Self>) {
+        if self.read_only(cx) {
+            return;
+        }
+
         let snapshot = self.buffer_snapshot(cx);
         if snapshot.is_empty() {
             return;
@@ -1337,6 +1343,22 @@ impl Editor {
 
     pub fn set_input_enabled(&mut self, input_enabled: bool) {
         self.input_enabled = input_enabled;
+    }
+
+    pub fn capability(&self, cx: &App) -> Capability {
+        if self.read_only {
+            Capability::ReadOnly
+        } else {
+            self.buffer.read(cx).capability()
+        }
+    }
+
+    pub fn read_only(&self, cx: &App) -> bool {
+        self.read_only || self.buffer.read(cx).read_only()
+    }
+
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
     }
 
     pub fn set_active_line_highlight(
@@ -1452,7 +1474,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1491,7 +1513,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1613,7 +1635,7 @@ impl Editor {
     }
 
     fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1628,7 +1650,7 @@ impl Editor {
     }
 
     fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1648,7 +1670,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1696,7 +1718,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1744,7 +1766,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1792,7 +1814,7 @@ impl Editor {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1874,7 +1896,7 @@ impl Editor {
     }
 
     fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1925,7 +1947,7 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -1975,7 +1997,7 @@ impl Editor {
     }
 
     pub fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -2004,7 +2026,7 @@ impl Editor {
     }
 
     fn handle_input(&mut self, text: &str, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -2013,7 +2035,7 @@ impl Editor {
     }
 
     fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 
@@ -2041,7 +2063,7 @@ impl Editor {
     }
 
     fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
-        if !self.input_enabled {
+        if self.read_only(cx) {
             return;
         }
 

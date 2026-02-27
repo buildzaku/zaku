@@ -3,7 +3,7 @@ pub(crate) mod util;
 
 use gpui::{ClipboardItem, Context, EntityInputHandler, TestAppContext};
 use indoc::indoc;
-use multi_buffer::MultiBufferOffset;
+use multi_buffer::{Capability, MultiBufferOffset};
 use pretty_assertions::assert_eq;
 use std::ops::Range;
 
@@ -75,6 +75,50 @@ async fn test_handle_input(cx: &mut TestAppContext) {
         four
         five
     "});
+}
+
+#[gpui::test]
+fn test_read_only_capability(cx: &mut TestAppContext) {
+    init_test(cx);
+    let mut cx = EditorTestContext::new(cx);
+
+    cx.set_state("The quick brownˇ");
+
+    cx.editor.read_with(&cx.cx, |editor, cx| {
+        assert_eq!(editor.capability(cx), Capability::ReadWrite);
+        assert!(!editor.read_only(cx));
+    });
+
+    cx.update_editor(|editor, _, _| editor.set_read_only(true));
+
+    cx.editor.read_with(&cx.cx, |editor, cx| {
+        assert_eq!(editor.capability(cx), Capability::ReadOnly);
+        assert!(editor.read_only(cx));
+    });
+
+    cx.dispatch_action(HandleInput(" fox".to_string()));
+    cx.assert_state("The quick brownˇ");
+
+    cx.dispatch_action(Backspace);
+    cx.assert_state("The quick brownˇ");
+
+    cx.dispatch_action(Delete);
+    cx.assert_state("The quick brownˇ");
+
+    cx.dispatch_action(MoveLeft);
+    cx.assert_state("The quick browˇn");
+
+    cx.dispatch_action(MoveRight);
+    cx.assert_state("The quick brownˇ");
+
+    cx.update_editor(|editor, _, _| editor.set_read_only(false));
+    cx.editor.read_with(&cx.cx, |editor, cx| {
+        assert_eq!(editor.capability(cx), Capability::ReadWrite);
+        assert!(!editor.read_only(cx));
+    });
+
+    cx.dispatch_action(HandleInput(" fox".to_string()));
+    cx.assert_state("The quick brown foxˇ");
 }
 
 #[gpui::test]

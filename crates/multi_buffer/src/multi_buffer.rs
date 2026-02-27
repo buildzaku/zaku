@@ -47,6 +47,19 @@ pub enum CharKind {
     Word,
 }
 
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum Capability {
+    ReadWrite,
+    Read,
+    ReadOnly,
+}
+
+impl Capability {
+    pub fn editable(self) -> bool {
+        matches!(self, Capability::ReadWrite)
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum CharScopeContext {
     Completion,
@@ -318,6 +331,7 @@ pub struct MultiBuffer {
     buffer: Entity<TextBuffer>,
     subscriptions: Topic<MultiBufferOffset>,
     singleton: bool,
+    capability: Capability,
 }
 
 pub struct MultiBufferChunk<'a> {
@@ -350,6 +364,7 @@ impl MultiBuffer {
             buffer,
             subscriptions: Topic::default(),
             singleton: true,
+            capability: Capability::ReadWrite,
         }
     }
 
@@ -369,6 +384,14 @@ impl MultiBuffer {
         } else {
             None
         }
+    }
+
+    pub fn read_only(&self) -> bool {
+        !self.capability.editable()
+    }
+
+    pub fn capability(&self) -> Capability {
+        self.capability
     }
 
     pub fn subscribe(&mut self) -> Subscription<MultiBufferOffset> {
@@ -399,6 +422,10 @@ impl MultiBuffer {
         S: ToOffset,
         T: Into<Arc<str>>,
     {
+        if self.read_only() {
+            return;
+        }
+
         self.sync_mut(cx);
 
         let snapshot = self.snapshot.get_mut();
