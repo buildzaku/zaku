@@ -156,9 +156,9 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 editor_active_line_background: gpui::rgba(0xc9c9c9c4).into(),
                 scrollbar_track_background: gpui::rgb(0xffffff).into(),
                 scrollbar_track_border: gpui::rgb(0xe6dfdf).into(),
-                scrollbar_thumb_background: gpui::rgb(0xdcdfe0).into(),
-                scrollbar_thumb_hover_background: gpui::rgb(0xdcdfe0).into(),
-                scrollbar_thumb_active_background: gpui::rgb(0xdcdfe0).into(),
+                scrollbar_thumb_background: gpui::rgb(0xf0efef).into(),
+                scrollbar_thumb_hover_background: gpui::rgb(0xf0efef).into(),
+                scrollbar_thumb_active_background: gpui::rgb(0xf0efef).into(),
                 scrollbar_thumb_border: gpui::rgb(0xd7d7dd).into(),
             };
 
