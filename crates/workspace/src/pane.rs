@@ -77,6 +77,13 @@ impl Pane {
             });
         }
 
+        if let Some(response_panel) = self.response_panel.as_ref() {
+            response_panel.update(cx, |panel, cx| {
+                panel.begin_response(window, cx);
+                panel.set_response_status("Status: Sending...".into(), cx);
+            });
+        }
+
         let request = match Builder::new()
             .method(request_method)
             .uri(request_url.as_str())
@@ -87,11 +94,8 @@ impl Pane {
             Err(error) => {
                 if let Some(response_panel) = self.response_panel.as_ref() {
                     response_panel.update(cx, |panel, cx| {
-                        panel.set_response(
-                            format!("Error: {error}").into(),
-                            "Status: Error".into(),
-                            cx,
-                        );
+                        panel.set_response_status("Status: Error".into(), cx);
+                        panel.set_response_payload(format!("Error: {error}").into(), cx);
                     });
                 }
                 cx.notify();
@@ -99,20 +103,13 @@ impl Pane {
             }
         };
 
-        if let Some(response_panel) = self.response_panel.as_ref() {
-            response_panel.update(cx, |panel, cx| {
-                panel.set_response("...".into(), "Status: Sending...".into(), cx);
-            });
-        }
-        cx.notify();
-
         let http_client = self.http_client.clone();
         let response_panel = self.response_panel.clone();
 
         window
             .spawn(cx, async move |cx| {
                 let response = http_client.send(request).await;
-                let (response_text, response_status) = match response {
+                let (response_payload, response_status) = match response {
                     Ok(mut response) => {
                         let status = response.status();
                         let response_status = if let Some(reason) = status.canonical_reason() {
@@ -139,7 +136,8 @@ impl Pane {
 
                 if let Some(response_panel) = response_panel.as_ref() {
                     response_panel.update(cx, |panel, cx| {
-                        panel.set_response(response_text.into(), response_status.into(), cx);
+                        panel.set_response_status(response_status.into(), cx);
+                        panel.set_response_payload(response_payload.into(), cx);
                     });
                 }
             })

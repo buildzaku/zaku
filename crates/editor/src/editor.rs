@@ -1299,6 +1299,16 @@ impl Editor {
         cx.notify();
     }
 
+    pub fn last_transaction_id(&self, cx: &App) -> Option<TransactionId> {
+        self.buffer.read(cx).last_transaction_id(cx)
+    }
+
+    pub fn forget_transaction(&mut self, transaction_id: TransactionId, cx: &mut Context<Self>) {
+        self.buffer.update(cx, |buffer, cx| {
+            buffer.forget_transaction(transaction_id, cx);
+        });
+    }
+
     fn clear(&mut self, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;

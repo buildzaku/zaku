@@ -44,6 +44,14 @@ impl MultiBuffer {
         None
     }
 
+    pub fn forget_transaction(&mut self, transaction_id: TransactionId, cx: &mut Context<Self>) {
+        if let Some(buffer) = self.as_singleton() {
+            buffer.update(cx, |buffer, _| {
+                buffer.forget_transaction(transaction_id);
+            });
+        }
+    }
+
     pub fn undo(&mut self, cx: &mut Context<Self>) -> Option<TransactionId> {
         let mut transaction_id = None;
         if let Some(buffer) = self.as_singleton() {

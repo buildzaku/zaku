@@ -13,39 +13,51 @@ use crate::{
 };
 
 pub struct ResponsePanel {
+    focus_handle: FocusHandle,
     position: DockPosition,
     size: Pixels,
-    response: Option<SharedString>,
     response_status: SharedString,
-    response_editor: Entity<Editor>,
+    response_editor: Option<Entity<Editor>>,
 }
 
 impl ResponsePanel {
     const DEFAULT_SIZE: Pixels = gpui::px(250.0);
 
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let response_editor = cx.new(|cx| Editor::full(window, cx));
+    pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
+            focus_handle: cx.focus_handle(),
             position: DockPosition::Bottom,
             size: Self::DEFAULT_SIZE,
-            response: None,
             response_status: "Status: Idle".into(),
-            response_editor,
+            response_editor: None,
         }
     }
 
-    pub(crate) fn set_response(
+    pub(crate) fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.response_editor.take();
+        self.response_editor = Some(cx.new(|cx| Editor::full(window, cx)));
+    }
+
+    pub(crate) fn set_response_status(
         &mut self,
-        response: SharedString,
         response_status: SharedString,
         cx: &mut Context<Self>,
     ) {
-        self.response = Some(response);
         self.response_status = response_status;
+        cx.notify();
+    }
 
-        let response = self.response.clone().unwrap_or_else(|| "".into());
-        self.response_editor.update(cx, |editor, cx| {
+    pub(crate) fn set_response_payload(&mut self, response: SharedString, cx: &mut Context<Self>) {
+        let Some(response_editor) = self.response_editor.as_ref() else {
+            return;
+        };
+
+        response_editor.update(cx, |editor, cx| {
             editor.set_text(response.as_str(), cx);
+            let transaction_id = editor.last_transaction_id(cx);
+            if let Some(transaction_id) = transaction_id {
+                editor.forget_transaction(transaction_id, cx);
+            }
         });
         cx.notify();
     }
@@ -53,7 +65,10 @@ impl ResponsePanel {
 
 impl Focusable for ResponsePanel {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.response_editor.read(cx).focus_handle(cx)
+        if let Some(editor) = &self.response_editor {
+            return editor.read(cx).focus_handle(cx);
+        }
+        self.focus_handle.clone()
     }
 }
 
@@ -101,12 +116,11 @@ impl Panel for ResponsePanel {
 
 impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let response_status = self.response_status.clone();
-
         let theme_colors = cx.theme().colors();
+        let focus_handle = self.focus_handle(cx);
+        let response_status = self.response_status.clone();
         let response_editor = self.response_editor.clone();
 
-        let focus_handle = self.focus_handle(cx);
         gpui::div()
             .track_focus(&focus_handle)
             .flex()
@@ -128,6 +142,8 @@ impl Render for ResponsePanel {
                             .color(Color::Muted),
                     ),
             )
-            .child(response_editor)
+            .when_some(response_editor, |container, response_editor| {
+                container.child(response_editor)
+            })
     }
 }
