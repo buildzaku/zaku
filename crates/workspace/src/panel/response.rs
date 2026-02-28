@@ -17,7 +17,7 @@ pub struct ResponsePanel {
     position: DockPosition,
     size: Pixels,
     response_status: SharedString,
-    response_editor: Option<Entity<Editor>>,
+    response_payload: Option<Entity<Editor>>,
 }
 
 impl ResponsePanel {
@@ -29,13 +29,17 @@ impl ResponsePanel {
             position: DockPosition::Bottom,
             size: Self::DEFAULT_SIZE,
             response_status: "Status: Idle".into(),
-            response_editor: None,
+            response_payload: None,
         }
     }
 
     pub(crate) fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.response_editor.take();
-        self.response_editor = Some(cx.new(|cx| Editor::full(window, cx)));
+        self.response_payload.take();
+        self.response_payload = Some(cx.new(|cx| {
+            let mut editor = Editor::full(window, cx);
+            editor.set_read_only(true);
+            editor
+        }));
     }
 
     pub(crate) fn set_response_status(
@@ -48,11 +52,11 @@ impl ResponsePanel {
     }
 
     pub(crate) fn set_response_payload(&mut self, response: SharedString, cx: &mut Context<Self>) {
-        let Some(response_editor) = self.response_editor.as_ref() else {
+        let Some(response_payload) = self.response_payload.as_ref() else {
             return;
         };
 
-        response_editor.update(cx, |editor, cx| {
+        response_payload.update(cx, |editor, cx| {
             editor.set_text(response.as_str(), cx);
             let transaction_id = editor.last_transaction_id(cx);
             if let Some(transaction_id) = transaction_id {
@@ -65,8 +69,8 @@ impl ResponsePanel {
 
 impl Focusable for ResponsePanel {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        if let Some(editor) = &self.response_editor {
-            return editor.read(cx).focus_handle(cx);
+        if let Some(payload) = &self.response_payload {
+            return payload.read(cx).focus_handle(cx);
         }
         self.focus_handle.clone()
     }
@@ -119,7 +123,7 @@ impl Render for ResponsePanel {
         let theme_colors = cx.theme().colors();
         let focus_handle = self.focus_handle(cx);
         let response_status = self.response_status.clone();
-        let response_editor = self.response_editor.clone();
+        let response_payload = self.response_payload.clone();
 
         gpui::div()
             .track_focus(&focus_handle)
@@ -142,8 +146,8 @@ impl Render for ResponsePanel {
                             .color(Color::Muted),
                     ),
             )
-            .when_some(response_editor, |container, response_editor| {
-                container.child(response_editor)
+            .when_some(response_payload, |container, response_payload| {
+                container.child(response_payload)
             })
     }
 }
