@@ -92,3 +92,6 @@ ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }
 util = { path = "crates/util" }
 workspace = { path = "crates/workspace" }
+
+[patch.crates-io]
+windows-capture = { git = "https://github.com/zed-industries/windows-capture.git", rev = "f0d6c1b6691db75461b732f6d5ff56eed002eeb9" }
