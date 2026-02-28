@@ -21,7 +21,7 @@ pub struct ResponsePanel {
 }
 
 impl ResponsePanel {
-    const DEFAULT_SIZE: Pixels = gpui::px(250.0);
+    const DEFAULT_SIZE: Pixels = gpui::px(440.0);
 
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
