@@ -5,7 +5,7 @@ use gpui::{
 
 use editor::Editor;
 use theme::ActiveTheme;
-use ui::{Color, Label, LabelCommon, LabelSize};
+use ui::{Color, IconName, Label, LabelCommon, LabelSize};
 
 use crate::{
     DockPosition,
@@ -106,7 +106,7 @@ impl Panel for ResponsePanel {
     }
 
     fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconName> {
-        Some(ui::IconName::Response)
+        Some(IconName::Network)
     }
 
     fn icon_tooltip(&self, _window: &Window, _: &App) -> Option<&'static str> {

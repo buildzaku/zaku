@@ -19,8 +19,8 @@ pub enum IconName {
     Dash,
     File,
     Info,
+    Network,
     Option,
-    Response,
     Shift,
     Tree,
 }
