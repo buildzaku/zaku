@@ -1,4 +1,4 @@
-use gpui::{IntoElement, RenderOnce};
+use gpui::{App, IntoElement, RenderOnce, Window};
 
 use icons::IconName;
 
@@ -64,7 +64,7 @@ impl Disableable for StyledIcon {
 }
 
 impl RenderOnce for StyledIcon {
-    fn render(self, _window: &mut gpui::Window, _cx: &mut gpui::App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let icon = self
             .selected_icon
             .filter(|_| self.selected)

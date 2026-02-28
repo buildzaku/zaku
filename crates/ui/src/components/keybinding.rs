@@ -1,5 +1,5 @@
 use gpui::{
-    AbsoluteLength, Action, AnyElement, App, FocusHandle, KeybindingKeystroke, Keystroke,
+    AbsoluteLength, Action, AnyElement, App, Empty, FocusHandle, KeybindingKeystroke, Keystroke,
     Modifiers, SharedString, Window, prelude::*,
 };
 use std::rc::Rc;
@@ -169,7 +169,7 @@ impl RenderOnce for KeyBinding {
                 .map(|binding| render_keybinding(binding.keystrokes())),
             Source::Keystrokes { keystrokes } => Some(render_keybinding(keystrokes.as_ref())),
         }
-        .unwrap_or_else(|| gpui::Empty.into_any_element())
+        .unwrap_or_else(|| Empty.into_any_element())
     }
 }
 
@@ -330,7 +330,7 @@ impl RenderOnce for Key {
             })
             .h(size)
             .text_size(size)
-            .line_height(gpui::relative(1.))
+            .line_height(gpui::relative(1.0))
             .text_color(self.color.unwrap_or(Color::Muted).color(cx))
             .child(self.key)
     }

@@ -1,16 +1,19 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{
-    App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, actions, prelude::*,
-};
+use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
+use gpui_platform;
 
 use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::Workspace;
 
-actions!(zaku, [Quit]);
+gpui::actions!(zaku, [Quit]);
+
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
-    Application::new()
+    Application::with_platform(gpui_platform::current_platform(false))
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
             settings::init(cx);
@@ -38,9 +41,9 @@ fn main() {
 
             cx.activate(true);
 
-            let window_size = gpui::size(gpui::px(1180.), gpui::px(760.));
+            let window_size = gpui::size(gpui::px(1180.0), gpui::px(760.0));
             let mut bounds = Bounds::centered(None, window_size, cx);
-            bounds.origin.y -= gpui::px(36.);
+            bounds.origin.y -= gpui::px(36.0);
 
             cx.open_window(
                 WindowOptions {

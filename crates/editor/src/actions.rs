@@ -1,4 +1,4 @@
-use gpui::{Action, actions};
+use gpui::Action;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -112,7 +112,7 @@ pub struct DeleteToPreviousSubwordStart {
     pub ignore_brackets: bool,
 }
 
-actions!(
+gpui::actions!(
     editor,
     [
         /// Deletes the character before the cursor.
@@ -125,10 +125,16 @@ actions!(
         Delete,
         /// Deletes from cursor to end of line.
         DeleteToEndOfLine,
+        /// Inserts a new line and moves cursor to it.
+        Newline,
         /// Moves cursor left.
         MoveLeft,
         /// Moves cursor right.
         MoveRight,
+        /// Moves cursor up.
+        MoveUp,
+        /// Moves cursor down.
+        MoveDown,
         /// Moves cursor to the beginning of the document.
         MoveToBeginning,
         /// Moves cursor to the end of the document.
@@ -153,6 +159,10 @@ actions!(
         SelectLeft,
         /// Selects to the right.
         SelectRight,
+        /// Selects up.
+        SelectUp,
+        /// Selects down.
+        SelectDown,
         /// Selects from cursor to the beginning of the document.
         SelectToBeginning,
         /// Selects from cursor to the end of the document.

@@ -2,7 +2,9 @@ mod fallback;
 mod settings;
 
 use anyhow::{Context, Result, anyhow};
-use gpui::{App, AssetSource, BorrowAppContext, Global, Hsla, SharedString, WindowAppearance};
+use gpui::{
+    App, AssetSource, BorrowAppContext, Global, Hsla, Rgba, SharedString, WindowAppearance,
+};
 use palette::FromColor;
 use parking_lot::RwLock;
 use serde::Deserialize;
@@ -163,6 +165,14 @@ pub struct ThemeColors {
 
     pub editor_background: Hsla,
     pub editor_foreground: Hsla,
+    pub editor_active_line_background: Hsla,
+
+    pub scrollbar_track_background: Hsla,
+    pub scrollbar_track_border: Hsla,
+    pub scrollbar_thumb_background: Hsla,
+    pub scrollbar_thumb_hover_background: Hsla,
+    pub scrollbar_thumb_active_background: Hsla,
+    pub scrollbar_thumb_border: Hsla,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -312,6 +322,21 @@ pub struct ThemeStyleContent {
     pub editor_background: Option<String>,
     #[serde(rename = "editor.foreground")]
     pub editor_foreground: Option<String>,
+    #[serde(rename = "editor.active_line_background")]
+    pub editor_active_line_background: Option<String>,
+
+    #[serde(rename = "scrollbar.track.background")]
+    pub scrollbar_track_background: Option<String>,
+    #[serde(rename = "scrollbar.track.border")]
+    pub scrollbar_track_border: Option<String>,
+    #[serde(rename = "scrollbar.thumb.background")]
+    pub scrollbar_thumb_background: Option<String>,
+    #[serde(rename = "scrollbar.thumb.hover_background")]
+    pub scrollbar_thumb_hover_background: Option<String>,
+    #[serde(rename = "scrollbar.thumb.active_background")]
+    pub scrollbar_thumb_active_background: Option<String>,
+    #[serde(rename = "scrollbar.thumb.border")]
+    pub scrollbar_thumb_border: Option<String>,
 
     #[serde(rename = "conflict")]
     pub conflict: Option<String>,
@@ -460,6 +485,34 @@ impl ThemeStyleContent {
             )?,
             editor_background: required_color("editor.background", &self.editor_background)?,
             editor_foreground: required_color("editor.foreground", &self.editor_foreground)?,
+            editor_active_line_background: required_color(
+                "editor.active_line_background",
+                &self.editor_active_line_background,
+            )?,
+            scrollbar_track_background: required_color(
+                "scrollbar.track.background",
+                &self.scrollbar_track_background,
+            )?,
+            scrollbar_track_border: required_color(
+                "scrollbar.track.border",
+                &self.scrollbar_track_border,
+            )?,
+            scrollbar_thumb_background: required_color(
+                "scrollbar.thumb.background",
+                &self.scrollbar_thumb_background,
+            )?,
+            scrollbar_thumb_hover_background: required_color(
+                "scrollbar.thumb.hover_background",
+                &self.scrollbar_thumb_hover_background,
+            )?,
+            scrollbar_thumb_active_background: required_color(
+                "scrollbar.thumb.active_background",
+                &self.scrollbar_thumb_active_background,
+            )?,
+            scrollbar_thumb_border: required_color(
+                "scrollbar.thumb.border",
+                &self.scrollbar_thumb_border,
+            )?,
         };
 
         let status = StatusColors {
@@ -533,12 +586,12 @@ fn required_color(field: &'static str, value: &Option<String>) -> Result<Hsla> {
 }
 
 fn try_parse_color(color: &str) -> Result<Hsla> {
-    let rgba = gpui::Rgba::try_from(color)?;
+    let rgba = Rgba::try_from(color)?;
     let rgba = palette::rgb::Srgba::from_components((rgba.r, rgba.g, rgba.b, rgba.a));
     let hsla = palette::Hsla::from_color(rgba);
 
     Ok(gpui::hsla(
-        hsla.hue.into_positive_degrees() / 360.,
+        hsla.hue.into_positive_degrees() / 360.0,
         hsla.saturation,
         hsla.lightness,
         hsla.alpha,

@@ -10,15 +10,11 @@ use std::sync::Arc;
 use crate::DockPosition;
 
 pub mod project_panel {
-    use gpui::actions;
-
-    actions!(project_panel, [ToggleFocus]);
+    gpui::actions!(project_panel, [ToggleFocus]);
 }
 
 pub mod response_panel {
-    use gpui::actions;
-
-    actions!(response_panel, [ToggleFocus]);
+    gpui::actions!(response_panel, [ToggleFocus]);
 }
 
 pub use project::ProjectPanel;

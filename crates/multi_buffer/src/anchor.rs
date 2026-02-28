@@ -59,6 +59,22 @@ impl Anchor {
     pub fn bias(&self) -> Bias {
         self.text_anchor.bias
     }
+
+    pub fn bias_left(&self, snapshot: &MultiBufferSnapshot) -> Anchor {
+        if self.text_anchor.bias == Bias::Left {
+            *self
+        } else {
+            snapshot.anchor_at(*self, Bias::Left)
+        }
+    }
+
+    pub fn bias_right(&self, snapshot: &MultiBufferSnapshot) -> Anchor {
+        if self.text_anchor.bias == Bias::Right {
+            *self
+        } else {
+            snapshot.anchor_at(*self, Bias::Right)
+        }
+    }
 }
 
 impl ToOffset for Anchor {

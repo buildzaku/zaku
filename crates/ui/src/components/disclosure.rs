@@ -68,7 +68,7 @@ impl Clickable for Disclosure {
         self
     }
 
-    fn cursor_style(mut self, cursor_style: gpui::CursorStyle) -> Self {
+    fn cursor_style(mut self, cursor_style: CursorStyle) -> Self {
         self.cursor_style = cursor_style;
         self
     }

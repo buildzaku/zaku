@@ -1,4 +1,4 @@
-use gpui::{App, KeyBinding, actions};
+use gpui::{App, KeyBinding};
 
 const KEY_CONTEXT: &str = "menu";
 
@@ -39,7 +39,7 @@ pub fn init(cx: &mut App) {
     ]);
 }
 
-actions!(
+gpui::actions!(
     menu,
     [
         /// Cancels the current menu operation.

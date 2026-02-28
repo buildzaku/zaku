@@ -16,14 +16,16 @@ path = "src/editor.rs"
 [dependencies]
 gpui = { workspace = true }
 input = { workspace = true }
+multi_buffer = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }
-unicode-segmentation = { workspace = true }
+ui = { workspace = true }
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+indoc = { workspace = true }
 pretty_assertions = { workspace = true }
 settings = { workspace = true, features = ["test-support"] }
 util = { workspace = true, features = ["test-support"] }

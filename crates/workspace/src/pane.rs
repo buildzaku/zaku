@@ -1,5 +1,7 @@
 use futures::io::AsyncReadExt;
-use gpui::{App, Context, Entity, EntityId, FocusHandle, Focusable, Window, prelude::*};
+use gpui::{
+    App, Context, Corner, Entity, EntityId, FocusHandle, Focusable, FontWeight, Window, prelude::*,
+};
 use std::sync::Arc;
 
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy};
@@ -75,6 +77,13 @@ impl Pane {
             });
         }
 
+        if let Some(response_panel) = self.response_panel.as_ref() {
+            response_panel.update(cx, |panel, cx| {
+                panel.begin_response(window, cx);
+                panel.set_response_status("Status: Sending...".into(), cx);
+            });
+        }
+
         let request = match Builder::new()
             .method(request_method)
             .uri(request_url.as_str())
@@ -85,11 +94,8 @@ impl Pane {
             Err(error) => {
                 if let Some(response_panel) = self.response_panel.as_ref() {
                     response_panel.update(cx, |panel, cx| {
-                        panel.set_response(
-                            format!("Error: {error}").into(),
-                            "Status: Error".into(),
-                            cx,
-                        );
+                        panel.set_response_status("Status: Error".into(), cx);
+                        panel.set_response_payload(format!("Error: {error}").into(), cx);
                     });
                 }
                 cx.notify();
@@ -97,20 +103,13 @@ impl Pane {
             }
         };
 
-        if let Some(response_panel) = self.response_panel.as_ref() {
-            response_panel.update(cx, |panel, cx| {
-                panel.set_response("...".into(), "Status: Sending...".into(), cx);
-            });
-        }
-        cx.notify();
-
         let http_client = self.http_client.clone();
         let response_panel = self.response_panel.clone();
 
         window
             .spawn(cx, async move |cx| {
                 let response = http_client.send(request).await;
-                let (response_text, response_status) = match response {
+                let (response_payload, response_status) = match response {
                     Ok(mut response) => {
                         let status = response.status();
                         let response_status = if let Some(reason) = status.canonical_reason() {
@@ -137,7 +136,8 @@ impl Pane {
 
                 if let Some(response_panel) = response_panel.as_ref() {
                     response_panel.update(cx, |panel, cx| {
-                        panel.set_response(response_text.into(), response_status.into(), cx);
+                        panel.set_response_status(response_status.into(), cx);
+                        panel.set_response_payload(response_payload.into(), cx);
                     });
                 }
             })
@@ -233,8 +233,8 @@ impl Render for Pane {
                             request_method_menu,
                         )
                         .style(DropdownStyle::Outlined)
-                        .attach(gpui::Corner::BottomLeft)
-                        .offset(gpui::point(gpui::px(0.), gpui::px(0.5)))
+                        .attach(Corner::BottomLeft)
+                        .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )
                     .child(gpui::div().flex_1().child(input))
@@ -242,8 +242,8 @@ impl Render for Pane {
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
                             .size(ButtonSize::Large)
-                            .width(ui::rems_from_px(60.))
-                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .width(ui::rems_from_px(60.0))
+                            .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |pane, _, window, cx| {
                                 let request_method = pane.request_method.clone();
                                 let request_url = input_handle.read(cx).text(cx);

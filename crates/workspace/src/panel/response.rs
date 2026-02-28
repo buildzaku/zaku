@@ -1,7 +1,9 @@
 use gpui::{
-    Action, App, Context, FocusHandle, Focusable, Pixels, Render, SharedString, Window, prelude::*,
+    Action, App, Context, Entity, FocusHandle, Focusable, Pixels, Render, SharedString, Window,
+    prelude::*,
 };
 
+use editor::Editor;
 use theme::ActiveTheme;
 use ui::{Color, Label, LabelCommon, LabelSize};
 
@@ -14,37 +16,62 @@ pub struct ResponsePanel {
     focus_handle: FocusHandle,
     position: DockPosition,
     size: Pixels,
-    response: Option<SharedString>,
     response_status: SharedString,
+    response_payload: Option<Entity<Editor>>,
 }
 
 impl ResponsePanel {
-    const DEFAULT_SIZE: Pixels = gpui::px(250.);
+    const DEFAULT_SIZE: Pixels = gpui::px(440.0);
 
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             position: DockPosition::Bottom,
             size: Self::DEFAULT_SIZE,
-            response: None,
             response_status: "Status: Idle".into(),
+            response_payload: None,
         }
     }
 
-    pub(crate) fn set_response(
+    pub(crate) fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.response_payload.take();
+        self.response_payload = Some(cx.new(|cx| {
+            let mut editor = Editor::full(window, cx);
+            editor.set_read_only(true);
+            editor
+        }));
+    }
+
+    pub(crate) fn set_response_status(
         &mut self,
-        response: SharedString,
         response_status: SharedString,
         cx: &mut Context<Self>,
     ) {
-        self.response = Some(response);
         self.response_status = response_status;
+        cx.notify();
+    }
+
+    pub(crate) fn set_response_payload(&mut self, response: SharedString, cx: &mut Context<Self>) {
+        let Some(response_payload) = self.response_payload.as_ref() else {
+            return;
+        };
+
+        response_payload.update(cx, |editor, cx| {
+            editor.set_text(response.as_str(), cx);
+            let transaction_id = editor.last_transaction_id(cx);
+            if let Some(transaction_id) = transaction_id {
+                editor.forget_transaction(transaction_id, cx);
+            }
+        });
         cx.notify();
     }
 }
 
 impl Focusable for ResponsePanel {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        if let Some(payload) = &self.response_payload {
+            return payload.read(cx).focus_handle(cx);
+        }
         self.focus_handle.clone()
     }
 }
@@ -94,11 +121,12 @@ impl Panel for ResponsePanel {
 impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
-        let response = self.response.clone().unwrap_or_else(|| "".into());
+        let focus_handle = self.focus_handle(cx);
         let response_status = self.response_status.clone();
+        let response_payload = self.response_payload.clone();
 
         gpui::div()
-            .track_focus(&self.focus_handle)
+            .track_focus(&focus_handle)
             .flex()
             .flex_col()
             .size_full()
@@ -106,7 +134,7 @@ impl Render for ResponsePanel {
             .child(
                 gpui::div()
                     .w_full()
-                    .h(gpui::px(26.))
+                    .h(gpui::px(26.0))
                     .px_3()
                     .flex()
                     .items_center()
@@ -118,25 +146,8 @@ impl Render for ResponsePanel {
                             .color(Color::Muted),
                     ),
             )
-            .child(
-                gpui::div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .overflow_hidden()
-                    .p_3()
-                    .child(
-                        gpui::div()
-                            .id("response-container")
-                            .flex_1()
-                            .overflow_y_scroll()
-                            .child(
-                                Label::new(response)
-                                    .size(LabelSize::Small)
-                                    .color(Color::Default)
-                                    .buffer_font(cx),
-                            ),
-                    ),
-            )
+            .when_some(response_payload, |container, response_payload| {
+                container.child(response_payload)
+            })
     }
 }

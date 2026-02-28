@@ -1,4 +1,4 @@
-use gpui::Context;
+use gpui::{App, Context};
 use std::time::Instant;
 use text::TransactionId;
 
@@ -33,6 +33,25 @@ impl MultiBuffer {
         None
     }
 
+    pub fn last_transaction_id(&self, cx: &App) -> Option<TransactionId> {
+        if let Some(buffer) = self.as_singleton() {
+            return buffer
+                .read(cx)
+                .peek_undo_stack()
+                .map(|history_entry| history_entry.transaction_id());
+        }
+
+        None
+    }
+
+    pub fn forget_transaction(&mut self, transaction_id: TransactionId, cx: &mut Context<Self>) {
+        if let Some(buffer) = self.as_singleton() {
+            buffer.update(cx, |buffer, _| {
+                buffer.forget_transaction(transaction_id);
+            });
+        }
+    }
+
     pub fn undo(&mut self, cx: &mut Context<Self>) -> Option<TransactionId> {
         let mut transaction_id = None;
         if let Some(buffer) = self.as_singleton() {
@@ -52,5 +71,25 @@ impl MultiBuffer {
         }
 
         None
+    }
+
+    pub fn finalize_last_transaction(&mut self, cx: &mut Context<Self>) {
+        if let Some(buffer) = self.as_singleton() {
+            buffer.update(cx, |buffer, _| {
+                buffer.finalize_last_transaction();
+            });
+        }
+    }
+
+    pub fn group_until_transaction(
+        &mut self,
+        transaction_id: TransactionId,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(buffer) = self.as_singleton() {
+            buffer.update(cx, |buffer, _| {
+                buffer.group_until_transaction(transaction_id);
+            });
+        }
     }
 }
