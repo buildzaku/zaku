@@ -40,6 +40,65 @@ impl Add<usize> for MultiBufferRow {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CharKind {
+    Whitespace,
+    Punctuation,
+    Word,
+}
+
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum Capability {
+    ReadWrite,
+    Read,
+    ReadOnly,
+}
+
+impl Capability {
+    pub fn editable(self) -> bool {
+        matches!(self, Capability::ReadWrite)
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum CharScopeContext {
+    Completion,
+    LinkedEdit,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CharClassifier {
+    word_chars: Arc<[char]>,
+}
+
+impl CharClassifier {
+    pub fn new(word_chars: Arc<[char]>) -> Self {
+        Self { word_chars }
+    }
+
+    pub fn kind(&self, character: char) -> CharKind {
+        if self.is_word(character) {
+            return CharKind::Word;
+        }
+        if character.is_whitespace() {
+            return CharKind::Whitespace;
+        }
+        CharKind::Punctuation
+    }
+
+    pub fn is_whitespace(&self, character: char) -> bool {
+        self.kind(character) == CharKind::Whitespace
+    }
+
+    pub fn is_word(&self, character: char) -> bool {
+        character == '_' || self.word_chars.contains(&character) || character.is_alphanumeric()
+    }
+
+    pub fn is_punctuation(&self, character: char) -> bool {
+        self.kind(character) == CharKind::Punctuation
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq, Hash)]
 pub struct MultiBufferOffset(pub usize);
 
@@ -162,6 +221,94 @@ impl Sub<OffsetUtf16> for MultiBufferOffsetUtf16 {
     }
 }
 
+pub trait MultiBufferDimension: 'static + Copy + Default + fmt::Debug {
+    type TextDimension;
+    fn from_summary(summary: &MBTextSummary) -> Self;
+    fn add_text_dim(&mut self, summary: &Self::TextDimension);
+    fn add_mb_text_summary(&mut self, summary: &MBTextSummary);
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+pub struct MBTextSummary {
+    pub len: MultiBufferOffset,
+    pub len_utf16: OffsetUtf16,
+    pub lines: Point,
+    pub last_line_len_utf16: u32,
+}
+
+impl MBTextSummary {
+    pub fn lines_utf16(&self) -> PointUtf16 {
+        PointUtf16 {
+            row: self.lines.row,
+            column: self.last_line_len_utf16,
+        }
+    }
+}
+
+impl MultiBufferDimension for Point {
+    type TextDimension = Point;
+
+    fn from_summary(summary: &MBTextSummary) -> Self {
+        summary.lines
+    }
+
+    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
+        *self += *summary;
+    }
+
+    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
+        *self += summary.lines;
+    }
+}
+
+impl MultiBufferDimension for PointUtf16 {
+    type TextDimension = PointUtf16;
+
+    fn from_summary(summary: &MBTextSummary) -> Self {
+        summary.lines_utf16()
+    }
+
+    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
+        *self += *summary;
+    }
+
+    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
+        *self += summary.lines_utf16();
+    }
+}
+
+impl MultiBufferDimension for MultiBufferOffset {
+    type TextDimension = usize;
+
+    fn from_summary(summary: &MBTextSummary) -> Self {
+        summary.len
+    }
+
+    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
+        self.0 += *summary;
+    }
+
+    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
+        *self += summary.len;
+    }
+}
+
+impl MultiBufferDimension for MultiBufferOffsetUtf16 {
+    type TextDimension = OffsetUtf16;
+
+    fn from_summary(summary: &MBTextSummary) -> Self {
+        MultiBufferOffsetUtf16(summary.len_utf16)
+    }
+
+    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
+        self.0 += *summary;
+    }
+
+    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
+        self.0 += summary.len_utf16;
+    }
+}
+
 pub trait ToOffset: 'static + fmt::Debug {
     fn to_offset(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffset;
     fn to_offset_utf16(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffsetUtf16;
@@ -184,6 +331,25 @@ pub struct MultiBuffer {
     buffer: Entity<TextBuffer>,
     subscriptions: Topic<MultiBufferOffset>,
     singleton: bool,
+    capability: Capability,
+}
+
+pub struct MultiBufferChunk<'a> {
+    pub text: &'a str,
+}
+
+pub struct MultiBufferChunks<'a> {
+    text_chunks: text::Chunks<'a>,
+}
+
+impl<'a> Iterator for MultiBufferChunks<'a> {
+    type Item = MultiBufferChunk<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.text_chunks
+            .next()
+            .map(|text| MultiBufferChunk { text })
+    }
 }
 
 impl MultiBuffer {
@@ -198,6 +364,7 @@ impl MultiBuffer {
             buffer,
             subscriptions: Topic::default(),
             singleton: true,
+            capability: Capability::ReadWrite,
         }
     }
 
@@ -217,6 +384,14 @@ impl MultiBuffer {
         } else {
             None
         }
+    }
+
+    pub fn read_only(&self) -> bool {
+        !self.capability.editable()
+    }
+
+    pub fn capability(&self) -> Capability {
+        self.capability
     }
 
     pub fn subscribe(&mut self) -> Subscription<MultiBufferOffset> {
@@ -247,6 +422,10 @@ impl MultiBuffer {
         S: ToOffset,
         T: Into<Arc<str>>,
     {
+        if self.read_only() {
+            return;
+        }
+
         self.sync_mut(cx);
 
         let snapshot = self.snapshot.get_mut();
@@ -391,9 +570,25 @@ impl MultiBufferSnapshot {
         self.buffer.max_point()
     }
 
+    pub fn char_classifier_at<T: ToOffset>(&self, point: T) -> CharClassifier {
+        let _ = point.to_offset(self);
+        CharClassifier::default()
+    }
+
     #[inline]
     pub fn clip_offset(&self, offset: MultiBufferOffset, bias: Bias) -> MultiBufferOffset {
         MultiBufferOffset(self.buffer.clip_offset(offset.0, bias))
+    }
+
+    #[inline]
+    pub fn clip_offset_utf16(
+        &self,
+        offset: MultiBufferOffsetUtf16,
+        bias: Bias,
+    ) -> MultiBufferOffsetUtf16 {
+        let offset = self.offset_utf16_to_offset(offset);
+        let clipped = self.clip_offset(offset, bias);
+        self.offset_to_offset_utf16(clipped)
     }
 
     #[inline]
@@ -492,10 +687,80 @@ impl MultiBufferSnapshot {
         anchor.text_anchor.summary::<Point>(&self.buffer)
     }
 
+    fn summary_for_anchor(&self, anchor: Anchor) -> MBTextSummary {
+        let offset = self.offset_for_anchor(anchor);
+        let point = self.point_for_anchor(anchor);
+        let offset_utf16 = self.offset_to_offset_utf16(offset);
+        let point_utf16 = self.point_to_point_utf16(point);
+        MBTextSummary {
+            len: offset,
+            len_utf16: offset_utf16.0,
+            lines: point,
+            last_line_len_utf16: point_utf16.column,
+        }
+    }
+
+    pub fn summaries_for_anchors<'a, D, I>(&self, anchors: I) -> Vec<D>
+    where
+        D: MultiBufferDimension,
+        I: IntoIterator<Item = &'a Anchor>,
+    {
+        anchors
+            .into_iter()
+            .map(|anchor| D::from_summary(&self.summary_for_anchor(*anchor)))
+            .collect()
+    }
+
     pub fn chars_at<T: ToOffset>(&self, position: T) -> impl Iterator<Item = char> + '_ {
         let offset = position.to_offset(self);
         self.text_for_range(offset..self.len())
             .flat_map(|chunk| chunk.chars())
+    }
+
+    pub fn is_inside_word<T: ToOffset>(&self, position: T, _: Option<CharScopeContext>) -> bool {
+        let position = position.to_offset(self);
+        let classifier = self.char_classifier_at(position);
+        let next_char_kind = self.chars_at(position).next().map(|ch| classifier.kind(ch));
+        let prev_char_kind = self
+            .reversed_chars_at(position)
+            .next()
+            .map(|ch| classifier.kind(ch));
+        prev_char_kind.zip(next_char_kind) == Some((CharKind::Word, CharKind::Word))
+    }
+
+    pub fn surrounding_word<T: ToOffset>(
+        &self,
+        start: T,
+        _: Option<CharScopeContext>,
+    ) -> (Range<MultiBufferOffset>, Option<CharKind>) {
+        let mut start = start.to_offset(self);
+        let mut end = start;
+        let mut next_chars = self.chars_at(start).peekable();
+        let mut prev_chars = self.reversed_chars_at(start).peekable();
+        let classifier = self.char_classifier_at(start);
+
+        let word_kind = cmp::max(
+            prev_chars.peek().copied().map(|ch| classifier.kind(ch)),
+            next_chars.peek().copied().map(|ch| classifier.kind(ch)),
+        );
+
+        for ch in prev_chars {
+            if Some(classifier.kind(ch)) == word_kind && ch != '\n' {
+                start -= ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+
+        for ch in next_chars {
+            if Some(classifier.kind(ch)) == word_kind && ch != '\n' {
+                end += ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+
+        (start..end, word_kind)
     }
 
     pub fn reversed_chars_at<T: ToOffset>(&self, position: T) -> impl Iterator<Item = char> + '_ {
@@ -516,9 +781,15 @@ impl MultiBufferSnapshot {
     }
 
     pub fn text_for_range<T: ToOffset>(&self, range: Range<T>) -> impl Iterator<Item = &str> + '_ {
+        self.chunks(range).map(|chunk| chunk.text)
+    }
+
+    pub fn chunks<T: ToOffset>(&self, range: Range<T>) -> MultiBufferChunks<'_> {
         let start = range.start.to_offset(self);
         let end = range.end.to_offset(self);
-        self.buffer.text_for_range(start.0..end.0)
+        MultiBufferChunks {
+            text_chunks: self.buffer.text_for_range(start.0..end.0),
+        }
     }
 
     pub fn text_summary(&self) -> TextSummary {

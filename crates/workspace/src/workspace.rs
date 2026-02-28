@@ -4,8 +4,9 @@ pub mod panel;
 pub mod status_bar;
 
 use gpui::{
-    Action, App, Axis, Bounds, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, KeyBinding,
-    KeyContext, MouseButton, MouseDownEvent, Pixels, Point, Window, actions, prelude::*,
+    Action, App, Axis, Bounds, DragMoveEvent, Empty, Entity, EntityId, FocusHandle, Focusable,
+    KeyBinding, KeyContext, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
+    prelude::*,
 };
 
 use theme::ActiveTheme;
@@ -19,7 +20,7 @@ use crate::{
     status_bar::StatusBar,
 };
 
-actions!(
+gpui::actions!(
     workspace,
     [
         SendRequest,
@@ -30,10 +31,10 @@ actions!(
 );
 
 const KEY_CONTEXT: &str = "Workspace";
-const MIN_DOCK_WIDTH: Pixels = gpui::px(110.);
-const MIN_PANE_WIDTH: Pixels = gpui::px(250.);
-const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.);
-const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.);
+const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
+const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
+const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
+const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([
@@ -102,7 +103,7 @@ pub struct Workspace {
     status_bar: Entity<StatusBar>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
-    _window_appearance_subscription: gpui::Subscription,
+    _window_appearance_subscription: Subscription,
 }
 
 #[derive(Clone)]
@@ -110,7 +111,7 @@ pub struct DraggedDock(pub DockPosition);
 
 impl Render for DraggedDock {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        gpui::Empty
+        Empty
     }
 }
 
@@ -180,7 +181,7 @@ impl Workspace {
             left_dock.add_panel(left_dock_panel, window, cx);
         });
 
-        let response_panel = cx.new(ResponsePanel::new);
+        let response_panel = cx.new(|cx| ResponsePanel::new(cx));
         bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.add_panel(response_panel.clone(), window, cx);
         });

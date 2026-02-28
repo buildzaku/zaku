@@ -1,7 +1,7 @@
 use gpui::{
     AnyElement, App, Bounds, Div, DivFrameState, Element, ElementId, GlobalElementId, Hitbox,
-    InteractiveElement, IntoElement, LayoutId, ParentElement, Pixels, StyleRefinement, Styled,
-    Window,
+    InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement, Pixels,
+    StyleRefinement, Styled, Window,
 };
 
 /// An element that sets a particular rem size for its children.
@@ -52,7 +52,7 @@ impl Element for WithRemSize {
     fn request_layout(
         &mut self,
         id: Option<&GlobalElementId>,
-        inspector_id: Option<&gpui::InspectorElementId>,
+        inspector_id: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
@@ -64,7 +64,7 @@ impl Element for WithRemSize {
     fn prepaint(
         &mut self,
         id: Option<&GlobalElementId>,
-        inspector_id: Option<&gpui::InspectorElementId>,
+        inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
@@ -79,7 +79,7 @@ impl Element for WithRemSize {
     fn paint(
         &mut self,
         id: Option<&GlobalElementId>,
-        inspector_id: Option<&gpui::InspectorElementId>,
+        inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         prepaint: &mut Self::PrepaintState,
