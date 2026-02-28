@@ -40,8 +40,8 @@ bytes = { version = "1.11" }
 core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issues/47168
 dirs = { version = "6.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "746ecb082d", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "746ecb082d", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
@@ -69,7 +69,7 @@ serde_json = { version = "1.0" }
 smallvec = { version = "1.15" }
 strum = { version = "0.27", features = ["derive"] }
 syn = { version = "2.0.114", features = ["extra-traits", "full", "visit-mut"] }
-text = { git = "https://github.com/zed-industries/zed", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "746ecb082d", package = "text" }
 tokio = { version = "1.49", features = ["rt", "rt-multi-thread"] }
 unicode-segmentation = { version = "1.12" }
 url = { version = "2.5" }
