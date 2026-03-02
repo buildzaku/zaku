@@ -1,13 +1,10 @@
-use futures::io::AsyncReadExt;
+use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     App, Context, Corner, Entity, FocusHandle, Focusable, FontWeight, WeakEntity, Window,
     prelude::*,
 };
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -34,36 +31,6 @@ fn normalize_url(url: String) -> Option<String> {
     }
 }
 
-struct RequestState {
-    completed: AtomicBool,
-    bytes_received: AtomicUsize,
-}
-
-impl RequestState {
-    fn new() -> Self {
-        Self {
-            completed: AtomicBool::new(false),
-            bytes_received: AtomicUsize::new(0),
-        }
-    }
-
-    fn completed(&self) -> bool {
-        self.completed.load(Ordering::Relaxed)
-    }
-
-    fn set_completed(&self) {
-        self.completed.store(true, Ordering::Relaxed);
-    }
-
-    fn bytes_received(&self) -> usize {
-        self.bytes_received.load(Ordering::Relaxed)
-    }
-
-    fn append_bytes_received(&self, bytes: usize) {
-        self.bytes_received.fetch_add(bytes, Ordering::Relaxed);
-    }
-}
-
 #[derive(Clone)]
 struct Request {
     method: Method,
@@ -75,84 +42,6 @@ impl Default for Request {
         Self {
             method: Method::GET,
             url: String::new(),
-        }
-    }
-}
-
-impl Request {
-    async fn send(
-        &self,
-        http_client: Arc<dyn HttpClient>,
-        request_state: &RequestState,
-        started_at: Instant,
-    ) -> (String, ResponseState) {
-        let Some(normalized_url) = normalize_url(self.url.clone()) else {
-            return (
-                "Error: invalid URL".to_string(),
-                ResponseState::Error {
-                    bytes_received: request_state.bytes_received(),
-                    elapsed_duration: started_at.elapsed(),
-                },
-            );
-        };
-
-        let request = match Builder::new()
-            .method(self.method.clone())
-            .uri(normalized_url)
-            .follow_redirects(RedirectPolicy::FollowAll)
-            .body(AsyncBody::empty())
-        {
-            Ok(request) => request,
-            Err(error) => {
-                return (
-                    format!("Error: {error}"),
-                    ResponseState::Error {
-                        bytes_received: request_state.bytes_received(),
-                        elapsed_duration: started_at.elapsed(),
-                    },
-                );
-            }
-        };
-
-        match http_client.send(request).await {
-            Ok(mut response) => {
-                let status_code = response.status();
-                let mut bytes = Vec::new();
-                let mut buffer = [0; 8192];
-                let mut read_error = None;
-
-                loop {
-                    match response.body_mut().read(&mut buffer).await {
-                        Ok(0) => break,
-                        Ok(bytes_received) => {
-                            request_state.append_bytes_received(bytes_received);
-                            bytes.extend_from_slice(&buffer[..bytes_received]);
-                        }
-                        Err(error) => {
-                            read_error = Some(error);
-                            break;
-                        }
-                    }
-                }
-
-                let payload = match read_error {
-                    Some(error) => format!("(failed to read response body: {error})"),
-                    None => String::from_utf8_lossy(&bytes).into_owned(),
-                };
-                let response_state = ResponseState::Completed {
-                    status_code,
-                    bytes_received: request_state.bytes_received(),
-                    elapsed_duration: started_at.elapsed(),
-                };
-                (payload, response_state)
-            }
-            Err(error) => (
-                format!("Error: {error}"),
-                ResponseState::Error {
-                    bytes_received: request_state.bytes_received(),
-                    elapsed_duration: started_at.elapsed(),
-                },
-            ),
         }
     }
 }
@@ -205,45 +94,159 @@ impl Pane {
 
         let request_started_at = Instant::now();
         let http_client = self.http_client.clone();
-        let request_state = Arc::new(RequestState::new());
-
-        window
-            .spawn(cx, {
-                let request_state = request_state.clone();
-                let response_panel = response_panel.clone();
-                async move |cx| {
-                    loop {
-                        cx.background_executor()
-                            .timer(Duration::from_millis(50))
-                            .await;
-                        if request_state.completed() {
-                            break;
-                        }
-
-                        let response_state = ResponseState::Fetching {
-                            bytes_received: request_state.bytes_received(),
-                            elapsed_duration: request_started_at.elapsed(),
-                        };
-                        let still_active = response_panel.update(cx, |response_panel, cx| {
-                            response_panel.set_state(request_id, response_state, cx)
-                        });
-                        if !still_active {
-                            break;
-                        }
-                    }
-                }
-            })
-            .detach();
 
         window
             .spawn(cx, {
                 let request = self.request.clone();
                 let response_panel = response_panel.clone();
                 async move |cx| {
-                    let (payload, response_state) = request
-                        .send(http_client, &request_state, request_started_at)
-                        .await;
-                    request_state.set_completed();
+                    let normalized_url = match normalize_url(request.url) {
+                        Some(normalized_url) => normalized_url,
+                        None => {
+                            if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                                response_panel.set_state(
+                                    request_id,
+                                    ResponseState::Error {
+                                        bytes_received: 0,
+                                        elapsed_duration: request_started_at.elapsed(),
+                                    },
+                                    cx,
+                                );
+                                response_panel.set_payload(request_id, "Error: invalid URL", cx);
+                            }) {
+                                eprintln!("failed to update response panel: {error:?}");
+                            }
+                            return;
+                        }
+                    };
+                    let request = match Builder::new()
+                        .method(request.method)
+                        .uri(normalized_url)
+                        .follow_redirects(RedirectPolicy::FollowAll)
+                        .body(AsyncBody::empty())
+                    {
+                        Ok(request) => request,
+                        Err(error) => {
+                            if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                                response_panel.set_state(
+                                    request_id,
+                                    ResponseState::Error {
+                                        bytes_received: 0,
+                                        elapsed_duration: request_started_at.elapsed(),
+                                    },
+                                    cx,
+                                );
+                                response_panel.set_payload(request_id, format!("Error: {error}"), cx);
+                            }) {
+                                eprintln!("failed to update response panel: {error:?}");
+                            }
+                            return;
+                        }
+                    };
+
+                    let progress_timer =
+                        cx.background_executor().timer(Duration::from_millis(50)).fuse();
+                    futures::pin_mut!(progress_timer);
+
+                    let send_request = http_client.send(request).fuse();
+                    futures::pin_mut!(send_request);
+
+                    let mut response = loop {
+                        futures::select_biased! {
+                            response = send_request => {
+                                match response {
+                                    Ok(response) => break response,
+                                    Err(error) => {
+                                        if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                                            response_panel.set_state(request_id, ResponseState::Error {
+                                                bytes_received: 0,
+                                                elapsed_duration: request_started_at.elapsed(),
+                                            }, cx);
+                                            response_panel.set_payload(request_id, format!("Error: {error}"), cx);
+                                        }) {
+                                            eprintln!("failed to update response panel: {error:?}");
+                                        }
+                                        return;
+                                    }
+                                }
+                            }
+                            _ = progress_timer => {
+                                let still_active = response_panel.update(cx, |response_panel, cx| {
+                                    response_panel.set_state(
+                                        request_id,
+                                        ResponseState::Fetching {
+                                            bytes_received: 0,
+                                            elapsed_duration: request_started_at.elapsed(),
+                                        },
+                                        cx,
+                                    )
+                                });
+                                if !still_active {
+                                    return;
+                                }
+
+                                progress_timer.set(
+                                    cx.background_executor().timer(Duration::from_millis(50)).fuse(),
+                                );
+                            }
+                        }
+                    };
+
+                    let status_code = response.status();
+                    let mut bytes_received = 0;
+                    let mut payload = Vec::new();
+                    let mut buffer = [0; 8192];
+                    let mut read_error = None;
+
+                    loop {
+                        let read_response_body = response.body_mut().read(&mut buffer).fuse();
+                        futures::pin_mut!(read_response_body);
+
+                        futures::select_biased! {
+                            read_result = read_response_body => {
+                                match read_result {
+                                    Ok(0) => break,
+                                    Ok(chunk) => {
+                                        bytes_received += chunk;
+                                        payload.extend_from_slice(&buffer[..chunk]);
+                                    }
+                                    Err(error) => {
+                                        read_error = Some(error);
+                                        break;
+                                    }
+                                }
+                            }
+                            _ = progress_timer => {
+                                let still_active = response_panel.update(cx, |response_panel, cx| {
+                                    response_panel.set_state(
+                                        request_id,
+                                        ResponseState::Fetching {
+                                            bytes_received,
+                                            elapsed_duration: request_started_at.elapsed(),
+                                        },
+                                        cx,
+                                    )
+                                });
+                                if !still_active {
+                                    return;
+                                }
+
+                                progress_timer.set(
+                                    cx.background_executor().timer(Duration::from_millis(50)).fuse(),
+                                );
+                            }
+                        }
+                    }
+
+                    let payload = match read_error {
+                        Some(error) => format!("(failed to read response body: {error})"),
+                        None => String::from_utf8_lossy(&payload).into_owned(),
+                    };
+                    let response_state = ResponseState::Completed {
+                        status_code,
+                        bytes_received,
+                        elapsed_duration: request_started_at.elapsed(),
+                    };
 
                     if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
                         response_panel.set_state(request_id, response_state, cx);
