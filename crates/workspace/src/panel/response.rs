@@ -351,3 +351,48 @@ impl Render for ResponsePanel {
             .child(editor)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::time::Duration;
+
+    #[test]
+    fn test_format_bytes_received() {
+        assert_eq!(format_bytes_received(0).to_string(), "0 B");
+        assert_eq!(format_bytes_received(999).to_string(), "999 B");
+        assert_eq!(format_bytes_received(1000).to_string(), "1.00 KB");
+        assert_eq!(format_bytes_received(1545).to_string(), "1.54 KB");
+        assert_eq!(format_bytes_received(1_047_100).to_string(), "1.05 MB");
+        assert_eq!(format_bytes_received(1_384_900_000).to_string(), "1.38 GB");
+    }
+
+    #[test]
+    fn test_format_elapsed_duration() {
+        assert_eq!(
+            format_elapsed_duration(Duration::from_millis(570)).to_string(),
+            "570 ms"
+        );
+        assert_eq!(
+            format_elapsed_duration(Duration::from_millis(999)).to_string(),
+            "999 ms"
+        );
+        assert_eq!(
+            format_elapsed_duration(Duration::from_millis(1000)).to_string(),
+            "1.00 s"
+        );
+        assert_eq!(
+            format_elapsed_duration(Duration::from_millis(3865)).to_string(),
+            "3.87 s"
+        );
+        assert_eq!(
+            format_elapsed_duration(Duration::from_millis(63_430)).to_string(),
+            "1 m 3.43 s"
+        );
+        assert_eq!(
+            format_elapsed_duration(Duration::from_millis(3_723_430)).to_string(),
+            "1 h 2 m 3.43 s"
+        );
+    }
+}
