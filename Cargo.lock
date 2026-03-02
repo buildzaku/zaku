@@ -7902,6 +7902,7 @@ dependencies = [
  "http_client 0.0.0",
  "input",
  "menu",
+ "multi_buffer",
  "reqwest_client",
  "theme",
  "ui",
