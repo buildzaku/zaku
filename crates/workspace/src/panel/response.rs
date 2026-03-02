@@ -43,48 +43,40 @@ struct ResponseInfoHeader {
 
 impl ResponseStatus {
     fn format_bytes_received(bytes_received: usize) -> SharedString {
+        const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
         const DECIMAL_BYTE_UNIT: f64 = 1000.0;
 
-        let bytes_received = bytes_received as f64;
+        let mut value = bytes_received as f64;
+        let mut unit_index = 0;
 
-        if bytes_received < DECIMAL_BYTE_UNIT {
-            format!("{} B", bytes_received as usize).into()
-        } else if bytes_received < DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT {
-            format!("{:.2} KB", bytes_received / DECIMAL_BYTE_UNIT).into()
-        } else if bytes_received < DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT {
-            format!(
-                "{:.2} MB",
-                bytes_received / (DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT)
-            )
-            .into()
+        while value >= DECIMAL_BYTE_UNIT && unit_index < UNITS.len() - 1 {
+            value /= DECIMAL_BYTE_UNIT;
+            unit_index += 1;
+        }
+
+        if unit_index == 0 {
+            format!("{} {}", bytes_received, UNITS[unit_index]).into()
         } else {
-            format!(
-                "{:.2} GB",
-                bytes_received / (DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT)
-            )
-            .into()
+            format!("{:.2} {}", value, UNITS[unit_index]).into()
         }
     }
 
     fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
-        if elapsed_duration < Duration::from_secs(1) {
-            return format!("{} ms", elapsed_duration.as_millis()).into();
-        }
-
-        if elapsed_duration < Duration::from_secs(60) {
-            return format!("{:.2} s", elapsed_duration.as_secs_f64()).into();
-        }
-
         let total_seconds = elapsed_duration.as_secs();
         let hours = total_seconds / 3600;
         let minutes = (total_seconds % 3600) / 60;
         let seconds = elapsed_duration.as_secs_f64() % 60.0;
 
-        if hours > 0 {
-            format!("{hours} h {minutes} m {seconds:.2} s").into()
+        if elapsed_duration.as_millis() < 1000 {
+            format!("{} ms", elapsed_duration.as_millis())
+        } else if hours == 0 && minutes == 0 {
+            format!("{:.2} s", elapsed_duration.as_secs_f64())
+        } else if hours == 0 {
+            format!("{minutes} m {seconds:.2} s")
         } else {
-            format!("{minutes} m {seconds:.2} s").into()
+            format!("{hours} h {minutes} m {seconds:.2} s")
         }
+        .into()
     }
 
     fn info_header(&self) -> Option<ResponseInfoHeader> {
