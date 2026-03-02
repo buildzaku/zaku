@@ -167,7 +167,7 @@ impl Workspace {
             });
 
         let workspace = cx.entity().downgrade();
-        let pane = cx.new(|cx| Pane::new(workspace.clone(), cx));
+        let pane = cx.new(|cx| Pane::new(workspace.clone(), window, cx));
         let pane_focus_handle = pane.read(cx).focus_handle(cx);
         window.focus(&pane_focus_handle, cx);
 

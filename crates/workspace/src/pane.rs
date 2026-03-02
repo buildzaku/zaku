@@ -12,7 +12,7 @@ use std::{
 };
 
 use http_client::{
-    AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Request,
+    AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Request as HttpRequest,
 };
 use input::InputField;
 use reqwest_client::ReqwestClient;
@@ -54,22 +54,41 @@ impl RequestState {
     }
 }
 
+struct Request {
+    method: Method,
+    #[allow(dead_code)] // Will be used later when saving to filesystem
+    url: String,
+}
+
+impl Default for Request {
+    fn default() -> Self {
+        Self {
+            method: Method::GET,
+            url: String::new(),
+        }
+    }
+}
+
 pub struct Pane {
     focus_handle: FocusHandle,
-    input: Option<Entity<InputField>>,
-    request_method: Method,
-    http_client: Arc<dyn HttpClient>,
     workspace: WeakEntity<Workspace>,
+    http_client: Arc<dyn HttpClient>,
+    request: Request,
+    input_field: Entity<InputField>,
 }
 
 impl Pane {
-    pub fn new(workspace: WeakEntity<Workspace>, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
-            input: None,
-            request_method: Method::GET,
-            http_client: Arc::new(ReqwestClient::new()),
             workspace,
+            http_client: Arc::new(ReqwestClient::new()),
+            request: Request::default(),
+            input_field: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
         }
     }
 
@@ -87,7 +106,7 @@ impl Pane {
 
     async fn fetch(
         http_client: Arc<dyn HttpClient>,
-        request: Request<AsyncBody>,
+        request: HttpRequest<AsyncBody>,
         request_state: &RequestState,
         started_at: Instant,
     ) -> (String, ResponseState) {
@@ -133,14 +152,8 @@ impl Pane {
         }
     }
 
-    fn send_request(
-        &mut self,
-        method: Method,
-        url: String,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(url) = Self::normalize_url(url) else {
+    fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(url) = Self::normalize_url(self.input_field.read(cx).text(cx)) else {
             return;
         };
 
@@ -166,8 +179,8 @@ impl Pane {
 
         let request_started_at = Instant::now();
         let request = match Builder::new()
-            .method(method)
-            .uri(url.as_str())
+            .method(self.request.method.clone())
+            .uri(url)
             .follow_redirects(RedirectPolicy::FollowAll)
             .body(AsyncBody::empty())
         {
@@ -248,17 +261,7 @@ impl Focusable for Pane {
 
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.input.is_none() {
-            let input = cx.new(|cx| InputField::new(window, cx, "https://example.com"));
-            self.input = Some(input);
-        }
-
-        let input = self
-            .input
-            .clone()
-            .expect("InputField should be initialized");
-        let input_handle = input.clone();
-        let input_handle_for_action = input.clone();
+        let input_field = self.input_field.clone();
         let request_method_menu = {
             let available_request_methods = [
                 Method::GET,
@@ -269,7 +272,7 @@ impl Render for Pane {
                 Method::HEAD,
                 Method::OPTIONS,
             ];
-            let selected_request_method = self.request_method.clone();
+            let selected_request_method = self.request.method.clone();
             let pane = cx.weak_entity();
 
             ContextMenu::build(window, cx, move |menu, _, _| {
@@ -285,7 +288,7 @@ impl Render for Pane {
                         None,
                         move |_, cx| {
                             if let Err(error) = pane.update(cx, |pane, cx| {
-                                pane.request_method = request_method_for_handler.clone();
+                                pane.request.method = request_method_for_handler.clone();
                                 cx.notify();
                             }) {
                                 eprintln!("failed to update request method: {error:?}");
@@ -317,14 +320,12 @@ impl Render for Pane {
                     .gap_2()
                     .key_context("RequestUrl")
                     .on_action(cx.listener(move |pane, _: &SendRequest, window, cx| {
-                        let request_method = pane.request_method.clone();
-                        let request_url = input_handle_for_action.read(cx).text(cx);
-                        pane.send_request(request_method, request_url, window, cx);
+                        pane.send_request(window, cx);
                     }))
                     .child(
                         DropdownMenu::new(
                             "request-method",
-                            self.request_method.as_str().to_owned(),
+                            self.request.method.as_str().to_owned(),
                             request_method_menu,
                         )
                         .style(DropdownStyle::Outlined)
@@ -332,7 +333,7 @@ impl Render for Pane {
                         .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )
-                    .child(gpui::div().flex_1().child(input))
+                    .child(gpui::div().flex_1().child(input_field))
                     .child(
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
@@ -340,9 +341,7 @@ impl Render for Pane {
                             .width(ui::rems_from_px(60.0))
                             .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |pane, _, window, cx| {
-                                let request_method = pane.request_method.clone();
-                                let request_url = input_handle.read(cx).text(cx);
-                                pane.send_request(request_method, request_url, window, cx);
+                                pane.send_request(window, cx);
                             })),
                     ),
             )
