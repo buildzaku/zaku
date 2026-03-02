@@ -166,11 +166,10 @@ impl Workspace {
                 GlobalTheme::reload_theme(cx);
             });
 
-        let pane = cx.new(Pane::new);
+        let workspace = cx.entity().downgrade();
+        let pane = cx.new(|cx| Pane::new(workspace.clone(), window, cx));
         let pane_focus_handle = pane.read(cx).focus_handle(cx);
         window.focus(&pane_focus_handle, cx);
-
-        let workspace = cx.entity().downgrade();
 
         let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, workspace.clone(), cx));
         let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, workspace.clone(), cx));
@@ -181,7 +180,7 @@ impl Workspace {
             left_dock.add_panel(left_dock_panel, window, cx);
         });
 
-        let response_panel = cx.new(|cx| ResponsePanel::new(cx));
+        let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
         bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.add_panel(response_panel.clone(), window, cx);
         });
@@ -189,10 +188,6 @@ impl Workspace {
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
         let right_dock_buttons = cx.new(|cx| PanelButtons::new(right_dock.clone(), cx));
-
-        pane.update(cx, |pane, cx| {
-            pane.set_response_targets(bottom_dock.clone(), response_panel.clone(), cx);
-        });
 
         let status_bar = cx.new(|cx| StatusBar::new(pane.clone(), cx));
         status_bar.update(cx, |status_bar, cx| {
@@ -288,6 +283,14 @@ impl Workspace {
         let panel_id = Entity::entity_id(&self.response_panel);
         let dock = self.bottom_dock.clone();
         self.toggle_panel_focus(panel_id, &dock, window, cx);
+    }
+
+    fn open_response_panel(&mut self, cx: &mut Context<Self>) -> Entity<ResponsePanel> {
+        let panel_id = Entity::entity_id(&self.response_panel);
+        self.bottom_dock.update(cx, |dock, cx| {
+            dock.activate_panel(panel_id, cx);
+        });
+        self.response_panel.clone()
     }
 }
 

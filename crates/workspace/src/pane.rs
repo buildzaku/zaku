@@ -1,8 +1,12 @@
-use futures::io::AsyncReadExt;
+use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    App, Context, Corner, Entity, EntityId, FocusHandle, Focusable, FontWeight, Window, prelude::*,
+    App, Context, Corner, Entity, FocusHandle, Focusable, FontWeight, WeakEntity, Window,
+    prelude::*,
 };
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy};
 use input::InputField;
@@ -13,132 +17,243 @@ use ui::{
     DropdownStyle, FixedWidth, IconPosition, Label,
 };
 
-use crate::{SendRequest, dock::Dock, panel::ResponsePanel};
+use crate::{SendRequest, Workspace, panel::response::ResponseState};
+
+fn normalize_url(url: String) -> Option<String> {
+    let url = url.trim().to_string();
+    if url.is_empty() {
+        return None;
+    }
+    if url.starts_with("http://") || url.starts_with("https://") {
+        Some(url)
+    } else {
+        Some(format!("http://{url}"))
+    }
+}
+
+#[derive(Clone)]
+struct Request {
+    method: Method,
+    url: String,
+}
+
+impl Default for Request {
+    fn default() -> Self {
+        Self {
+            method: Method::GET,
+            url: String::new(),
+        }
+    }
+}
 
 pub struct Pane {
     focus_handle: FocusHandle,
-    input: Option<Entity<InputField>>,
-    request_method: Method,
+    workspace: WeakEntity<Workspace>,
     http_client: Arc<dyn HttpClient>,
-    bottom_dock: Option<Entity<Dock>>,
-    response_panel_id: Option<EntityId>,
-    response_panel: Option<Entity<ResponsePanel>>,
+    request: Request,
+    input_field: Entity<InputField>,
 }
 
 impl Pane {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        Self {
-            focus_handle: cx.focus_handle(),
-            input: None,
-            request_method: Method::GET,
-            http_client: Arc::new(ReqwestClient::new()),
-            bottom_dock: None,
-            response_panel_id: None,
-            response_panel: None,
-        }
-    }
-
-    pub fn set_response_targets(
-        &mut self,
-        bottom_dock: Entity<Dock>,
-        response_panel: Entity<ResponsePanel>,
-        cx: &mut Context<Self>,
-    ) {
-        self.bottom_dock = Some(bottom_dock);
-        self.response_panel_id = Some(Entity::entity_id(&response_panel));
-        self.response_panel = Some(response_panel);
-        cx.notify();
-    }
-
-    fn send_request(
-        &mut self,
-        request_method: Method,
-        request_url: String,
+    pub fn new(
+        workspace: WeakEntity<Workspace>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
-        let request_url = request_url.trim().to_string();
-        if request_url.is_empty() {
+    ) -> Self {
+        Self {
+            focus_handle: cx.focus_handle(),
+            workspace,
+            http_client: Arc::new(ReqwestClient::new()),
+            request: Request::default(),
+            input_field: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
+        }
+    }
+
+    fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.request.url = self.input_field.read(cx).text(cx);
+
+        let Ok(response_panel) = self
+            .workspace
+            .update(cx, |workspace, cx| workspace.open_response_panel(cx))
+        else {
             return;
-        }
-
-        let request_url =
-            if request_url.starts_with("http://") || request_url.starts_with("https://") {
-                request_url
-            } else {
-                format!("https://{request_url}")
-            };
-
-        if let (Some(bottom_dock), Some(response_panel_id)) =
-            (self.bottom_dock.as_ref(), self.response_panel_id)
-        {
-            bottom_dock.update(cx, |dock, cx| {
-                dock.activate_panel(response_panel_id, cx);
-            });
-        }
-
-        if let Some(response_panel) = self.response_panel.as_ref() {
-            response_panel.update(cx, |panel, cx| {
-                panel.begin_response(window, cx);
-                panel.set_response_status("Status: Sending...".into(), cx);
-            });
-        }
-
-        let request = match Builder::new()
-            .method(request_method)
-            .uri(request_url.as_str())
-            .follow_redirects(RedirectPolicy::FollowAll)
-            .body(AsyncBody::empty())
-        {
-            Ok(request) => request,
-            Err(error) => {
-                if let Some(response_panel) = self.response_panel.as_ref() {
-                    response_panel.update(cx, |panel, cx| {
-                        panel.set_response_status("Status: Error".into(), cx);
-                        panel.set_response_payload(format!("Error: {error}").into(), cx);
-                    });
-                }
-                cx.notify();
-                return;
-            }
         };
 
+        let request_id = response_panel.update(cx, |response_panel, cx| {
+            let request_id = response_panel.begin_response(window, cx);
+            response_panel.set_state(
+                request_id,
+                ResponseState::Fetching {
+                    bytes_received: 0,
+                    elapsed_duration: Duration::default(),
+                },
+                cx,
+            );
+            request_id
+        });
+
+        let request_started_at = Instant::now();
         let http_client = self.http_client.clone();
-        let response_panel = self.response_panel.clone();
 
         window
-            .spawn(cx, async move |cx| {
-                let response = http_client.send(request).await;
-                let (response_payload, response_status) = match response {
-                    Ok(mut response) => {
-                        let status = response.status();
-                        let response_status = if let Some(reason) = status.canonical_reason() {
-                            format!("Status: {} {}", status.as_u16(), reason)
-                        } else {
-                            format!("Status: {}", status.as_u16())
-                        };
+            .spawn(cx, {
+                let request = self.request.clone();
+                let response_panel = response_panel.clone();
+                async move |cx| {
+                    let normalized_url = match normalize_url(request.url) {
+                        Some(normalized_url) => normalized_url,
+                        None => {
+                            if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                                response_panel.set_state(
+                                    request_id,
+                                    ResponseState::Error {
+                                        bytes_received: 0,
+                                        elapsed_duration: request_started_at.elapsed(),
+                                    },
+                                    cx,
+                                );
+                                response_panel.set_payload(request_id, "Error: invalid URL", cx);
+                            }) {
+                                eprintln!("failed to update response panel: {error:?}");
+                            }
+                            return;
+                        }
+                    };
+                    let request = match Builder::new()
+                        .method(request.method)
+                        .uri(normalized_url)
+                        .follow_redirects(RedirectPolicy::FollowAll)
+                        .body(AsyncBody::empty())
+                    {
+                        Ok(request) => request,
+                        Err(error) => {
+                            if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                                response_panel.set_state(
+                                    request_id,
+                                    ResponseState::Error {
+                                        bytes_received: 0,
+                                        elapsed_duration: request_started_at.elapsed(),
+                                    },
+                                    cx,
+                                );
+                                response_panel.set_payload(request_id, format!("Error: {error}"), cx);
+                            }) {
+                                eprintln!("failed to update response panel: {error:?}");
+                            }
+                            return;
+                        }
+                    };
 
-                        let body = response.body_mut();
-                        let mut bytes = Vec::new();
-                        let read_result = body.read_to_end(&mut bytes).await;
-                        let body_text = match read_result {
-                            Ok(_) => String::from_utf8_lossy(&bytes).to_string(),
-                            Err(error) => format!("(failed to read response body: {error})"),
-                        };
+                    let progress_timer =
+                        cx.background_executor().timer(Duration::from_millis(50)).fuse();
+                    futures::pin_mut!(progress_timer);
 
-                        (body_text, response_status)
+                    let send_request = http_client.send(request).fuse();
+                    futures::pin_mut!(send_request);
+
+                    let mut response = loop {
+                        futures::select_biased! {
+                            response = send_request => {
+                                match response {
+                                    Ok(response) => break response,
+                                    Err(error) => {
+                                        if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                                            response_panel.set_state(request_id, ResponseState::Error {
+                                                bytes_received: 0,
+                                                elapsed_duration: request_started_at.elapsed(),
+                                            }, cx);
+                                            response_panel.set_payload(request_id, format!("Error: {error}"), cx);
+                                        }) {
+                                            eprintln!("failed to update response panel: {error:?}");
+                                        }
+                                        return;
+                                    }
+                                }
+                            }
+                            _ = progress_timer => {
+                                let still_active = response_panel.update(cx, |response_panel, cx| {
+                                    response_panel.set_state(
+                                        request_id,
+                                        ResponseState::Fetching {
+                                            bytes_received: 0,
+                                            elapsed_duration: request_started_at.elapsed(),
+                                        },
+                                        cx,
+                                    )
+                                });
+                                if !still_active {
+                                    return;
+                                }
+
+                                progress_timer.set(
+                                    cx.background_executor().timer(Duration::from_millis(50)).fuse(),
+                                );
+                            }
+                        }
+                    };
+
+                    let status_code = response.status();
+                    let mut bytes_received = 0;
+                    let mut payload = Vec::new();
+                    let mut buffer = [0; 8192];
+                    let mut read_error = None;
+
+                    loop {
+                        let read_response_body = response.body_mut().read(&mut buffer).fuse();
+                        futures::pin_mut!(read_response_body);
+
+                        futures::select_biased! {
+                            read_result = read_response_body => {
+                                match read_result {
+                                    Ok(0) => break,
+                                    Ok(chunk) => {
+                                        bytes_received += chunk;
+                                        payload.extend_from_slice(&buffer[..chunk]);
+                                    }
+                                    Err(error) => {
+                                        read_error = Some(error);
+                                        break;
+                                    }
+                                }
+                            }
+                            _ = progress_timer => {
+                                let still_active = response_panel.update(cx, |response_panel, cx| {
+                                    response_panel.set_state(
+                                        request_id,
+                                        ResponseState::Fetching {
+                                            bytes_received,
+                                            elapsed_duration: request_started_at.elapsed(),
+                                        },
+                                        cx,
+                                    )
+                                });
+                                if !still_active {
+                                    return;
+                                }
+
+                                progress_timer.set(
+                                    cx.background_executor().timer(Duration::from_millis(50)).fuse(),
+                                );
+                            }
+                        }
                     }
-                    Err(error) => {
-                        let error_text = format!("Error: {error}");
-                        (error_text.clone(), "Status: Error".to_string())
-                    }
-                };
 
-                if let Some(response_panel) = response_panel.as_ref() {
-                    response_panel.update(cx, |panel, cx| {
-                        panel.set_response_status(response_status.into(), cx);
-                        panel.set_response_payload(response_payload.into(), cx);
-                    });
+                    let payload = match read_error {
+                        Some(error) => format!("(failed to read response body: {error})"),
+                        None => String::from_utf8_lossy(&payload).into_owned(),
+                    };
+                    let response_state = ResponseState::Completed {
+                        status_code,
+                        bytes_received,
+                        elapsed_duration: request_started_at.elapsed(),
+                    };
+
+                    if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                        response_panel.set_state(request_id, response_state, cx);
+                        response_panel.set_payload(request_id, payload, cx);
+                    }) {
+                        eprintln!("failed to update response panel: {error:?}");
+                    }
                 }
             })
             .detach();
@@ -153,17 +268,7 @@ impl Focusable for Pane {
 
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.input.is_none() {
-            let input = cx.new(|cx| InputField::new(window, cx, "https://example.com"));
-            self.input = Some(input);
-        }
-
-        let input = self
-            .input
-            .clone()
-            .expect("InputField should be initialized");
-        let input_handle = input.clone();
-        let input_handle_for_action = input.clone();
+        let input_field = self.input_field.clone();
         let request_method_menu = {
             let available_request_methods = [
                 Method::GET,
@@ -174,7 +279,7 @@ impl Render for Pane {
                 Method::HEAD,
                 Method::OPTIONS,
             ];
-            let selected_request_method = self.request_method.clone();
+            let selected_request_method = self.request.method.clone();
             let pane = cx.weak_entity();
 
             ContextMenu::build(window, cx, move |menu, _, _| {
@@ -190,7 +295,7 @@ impl Render for Pane {
                         None,
                         move |_, cx| {
                             if let Err(error) = pane.update(cx, |pane, cx| {
-                                pane.request_method = request_method_for_handler.clone();
+                                pane.request.method = request_method_for_handler.clone();
                                 cx.notify();
                             }) {
                                 eprintln!("failed to update request method: {error:?}");
@@ -222,14 +327,12 @@ impl Render for Pane {
                     .gap_2()
                     .key_context("RequestUrl")
                     .on_action(cx.listener(move |pane, _: &SendRequest, window, cx| {
-                        let request_method = pane.request_method.clone();
-                        let request_url = input_handle_for_action.read(cx).text(cx);
-                        pane.send_request(request_method, request_url, window, cx);
+                        pane.send_request(window, cx);
                     }))
                     .child(
                         DropdownMenu::new(
                             "request-method",
-                            self.request_method.as_str().to_owned(),
+                            self.request.method.as_str().to_owned(),
                             request_method_menu,
                         )
                         .style(DropdownStyle::Outlined)
@@ -237,7 +340,7 @@ impl Render for Pane {
                         .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )
-                    .child(gpui::div().flex_1().child(input))
+                    .child(gpui::div().flex_1().child(input_field))
                     .child(
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
@@ -245,9 +348,7 @@ impl Render for Pane {
                             .width(ui::rems_from_px(60.0))
                             .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |pane, _, window, cx| {
-                                let request_method = pane.request_method.clone();
-                                let request_url = input_handle.read(cx).text(cx);
-                                pane.send_request(request_method, request_url, window, cx);
+                                pane.send_request(window, cx);
                             })),
                     ),
             )

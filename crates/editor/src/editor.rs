@@ -68,6 +68,10 @@ fn next_buffer_id() -> BufferId {
     BufferId::new(id).expect("BufferId to be non-zero")
 }
 
+pub fn local_buffer<T: Into<String>>(text: T, cx: &mut App) -> Entity<TextBuffer> {
+    cx.new(move |_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text))
+}
+
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("backspace", Backspace, Some(KEY_CONTEXT)),
@@ -559,8 +563,14 @@ pub struct Editor {
 impl EventEmitter<EditorEvent> for Editor {}
 
 impl Editor {
+    fn local_multibuffer(cx: &mut Context<Self>) -> Entity<MultiBuffer> {
+        let buffer = local_buffer("", cx);
+        cx.new(|cx| MultiBuffer::singleton(buffer, cx))
+    }
+
     pub fn single_line(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_with_mode(EditorMode::SingleLine, window, cx)
+        let buffer = Self::local_multibuffer(cx);
+        Self::new(EditorMode::SingleLine, buffer, window, cx)
     }
 
     pub fn auto_height(
@@ -569,24 +579,38 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new_with_mode(
+        let buffer = Self::local_multibuffer(cx);
+        Self::new(
             EditorMode::AutoHeight {
                 min_lines,
                 max_lines,
             },
+            buffer,
             window,
             cx,
         )
     }
 
     pub fn full(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::new_with_mode(EditorMode::full(), window, cx)
+        let buffer = Self::local_multibuffer(cx);
+        Self::new(EditorMode::full(), buffer, window, cx)
     }
 
-    fn new_with_mode(mode: EditorMode, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn for_multibuffer(
+        buffer: Entity<MultiBuffer>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::new(EditorMode::full(), buffer, window, cx)
+    }
+
+    pub fn new(
+        mode: EditorMode,
+        buffer: Entity<MultiBuffer>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let focus_handle = cx.focus_handle();
-        let text_buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), ""));
-        let buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer.clone(), cx));
         let display_map =
             cx.new(|cx| display_map::DisplayMap::new(buffer.clone(), DEFAULT_TAB_SIZE, cx));
         let scroll_manager = scroll::ScrollManager::new();
