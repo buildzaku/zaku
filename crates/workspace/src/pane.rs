@@ -11,9 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use http_client::{
-    AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Request as HttpRequest,
-};
+use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
@@ -23,6 +21,18 @@ use ui::{
 };
 
 use crate::{SendRequest, Workspace, panel::response::ResponseState};
+
+fn normalize_url(url: String) -> Option<String> {
+    let url = url.trim().to_string();
+    if url.is_empty() {
+        return None;
+    }
+    if url.starts_with("http://") || url.starts_with("https://") {
+        Some(url)
+    } else {
+        Some(format!("http://{url}"))
+    }
+}
 
 struct RequestState {
     completed: AtomicBool,
@@ -54,9 +64,9 @@ impl RequestState {
     }
 }
 
+#[derive(Clone)]
 struct Request {
     method: Method,
-    #[allow(dead_code)] // Will be used later when saving to filesystem
     url: String,
 }
 
@@ -69,47 +79,41 @@ impl Default for Request {
     }
 }
 
-pub struct Pane {
-    focus_handle: FocusHandle,
-    workspace: WeakEntity<Workspace>,
-    http_client: Arc<dyn HttpClient>,
-    request: Request,
-    input_field: Entity<InputField>,
-}
-
-impl Pane {
-    pub fn new(
-        workspace: WeakEntity<Workspace>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        Self {
-            focus_handle: cx.focus_handle(),
-            workspace,
-            http_client: Arc::new(ReqwestClient::new()),
-            request: Request::default(),
-            input_field: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
-        }
-    }
-
-    fn normalize_url(url: String) -> Option<String> {
-        let url = url.trim().to_string();
-        if url.is_empty() {
-            return None;
-        }
-        if url.starts_with("http://") || url.starts_with("https://") {
-            Some(url)
-        } else {
-            Some(format!("https://{url}"))
-        }
-    }
-
-    async fn fetch(
+impl Request {
+    async fn send(
+        &self,
         http_client: Arc<dyn HttpClient>,
-        request: HttpRequest<AsyncBody>,
         request_state: &RequestState,
         started_at: Instant,
     ) -> (String, ResponseState) {
+        let Some(normalized_url) = normalize_url(self.url.clone()) else {
+            return (
+                "Error: invalid URL".to_string(),
+                ResponseState::Error {
+                    bytes_received: request_state.bytes_received(),
+                    elapsed_duration: started_at.elapsed(),
+                },
+            );
+        };
+
+        let request = match Builder::new()
+            .method(self.method.clone())
+            .uri(normalized_url)
+            .follow_redirects(RedirectPolicy::FollowAll)
+            .body(AsyncBody::empty())
+        {
+            Ok(request) => request,
+            Err(error) => {
+                return (
+                    format!("Error: {error}"),
+                    ResponseState::Error {
+                        bytes_received: request_state.bytes_received(),
+                        elapsed_duration: started_at.elapsed(),
+                    },
+                );
+            }
+        };
+
         match http_client.send(request).await {
             Ok(mut response) => {
                 let status_code = response.status();
@@ -151,11 +155,33 @@ impl Pane {
             ),
         }
     }
+}
+
+pub struct Pane {
+    focus_handle: FocusHandle,
+    workspace: WeakEntity<Workspace>,
+    http_client: Arc<dyn HttpClient>,
+    request: Request,
+    input_field: Entity<InputField>,
+}
+
+impl Pane {
+    pub fn new(
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self {
+            focus_handle: cx.focus_handle(),
+            workspace,
+            http_client: Arc::new(ReqwestClient::new()),
+            request: Request::default(),
+            input_field: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
+        }
+    }
 
     fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(url) = Self::normalize_url(self.input_field.read(cx).text(cx)) else {
-            return;
-        };
+        self.request.url = self.input_field.read(cx).text(cx);
 
         let Ok(response_panel) = self
             .workspace
@@ -178,30 +204,6 @@ impl Pane {
         });
 
         let request_started_at = Instant::now();
-        let request = match Builder::new()
-            .method(self.request.method.clone())
-            .uri(url)
-            .follow_redirects(RedirectPolicy::FollowAll)
-            .body(AsyncBody::empty())
-        {
-            Ok(request) => request,
-            Err(error) => {
-                response_panel.update(cx, |response_panel, cx| {
-                    response_panel.set_state(
-                        request_id,
-                        ResponseState::Error {
-                            bytes_received: 0,
-                            elapsed_duration: request_started_at.elapsed(),
-                        },
-                        cx,
-                    );
-                    response_panel.set_payload(request_id, format!("Error: {error}"), cx);
-                });
-                cx.notify();
-                return;
-            }
-        };
-
         let http_client = self.http_client.clone();
         let request_state = Arc::new(RequestState::new());
 
@@ -235,10 +237,12 @@ impl Pane {
 
         window
             .spawn(cx, {
+                let request = self.request.clone();
                 let response_panel = response_panel.clone();
                 async move |cx| {
-                    let (payload, response_state) =
-                        Self::fetch(http_client, request, &request_state, request_started_at).await;
+                    let (payload, response_state) = request
+                        .send(http_client, &request_state, request_started_at)
+                        .await;
                     request_state.set_completed();
 
                     if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
