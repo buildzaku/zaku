@@ -55,9 +55,9 @@ impl ResponseStatus {
         }
 
         if unit_index == 0 {
-            format!("{} {}", bytes_received, UNITS[unit_index]).into()
+            format!("{bytes_received} {}", UNITS[unit_index]).into()
         } else {
-            format!("{:.2} {}", value, UNITS[unit_index]).into()
+            format!("{value:.2} {}", UNITS[unit_index]).into()
         }
     }
 
