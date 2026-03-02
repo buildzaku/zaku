@@ -34,54 +34,20 @@ pub(crate) enum ResponseStatus {
     },
 }
 
+#[derive(Clone)]
+struct ResponseInfoHeader {
+    label: SharedString,
+    elapsed_duration: SharedString,
+    bytes_received: SharedString,
+}
+
 impl ResponseStatus {
-    fn label(&self) -> Option<SharedString> {
-        match self {
-            ResponseStatus::Idle => None,
-            ResponseStatus::Fetching { .. } => Some("Fetching".into()),
-            ResponseStatus::Completed { status_code, .. } => {
-                if let Some(reason_phrase) = status_code.canonical_reason() {
-                    Some(format!("{} {}", status_code.as_u16(), reason_phrase).into())
-                } else {
-                    Some(status_code.as_u16().to_string().into())
-                }
-            }
-            ResponseStatus::Error { .. } => Some("Error".into()),
-        }
-    }
-
-    fn elapsed_duration_label(&self) -> Option<SharedString> {
-        let elapsed_duration = match self {
-            ResponseStatus::Idle => return None,
-            ResponseStatus::Fetching {
-                elapsed_duration, ..
-            }
-            | ResponseStatus::Completed {
-                elapsed_duration, ..
-            }
-            | ResponseStatus::Error {
-                elapsed_duration, ..
-            } => elapsed_duration,
-        };
-
-        Some(if *elapsed_duration < Duration::from_secs(1) {
-            format!("{} ms", elapsed_duration.as_millis()).into()
-        } else {
-            format!("{:.2} s", elapsed_duration.as_secs_f64()).into()
-        })
-    }
-
-    fn bytes_received_label(&self) -> Option<SharedString> {
+    fn format_bytes_received(bytes_received: usize) -> SharedString {
         const DECIMAL_BYTE_UNIT: f64 = 1000.0;
 
-        let bytes_received = match self {
-            ResponseStatus::Idle => return None,
-            ResponseStatus::Fetching { bytes_received, .. }
-            | ResponseStatus::Completed { bytes_received, .. }
-            | ResponseStatus::Error { bytes_received, .. } => *bytes_received as f64,
-        };
+        let bytes_received = bytes_received as f64;
 
-        Some(if bytes_received < DECIMAL_BYTE_UNIT {
+        if bytes_received < DECIMAL_BYTE_UNIT {
             format!("{} B", bytes_received as usize).into()
         } else if bytes_received < DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT {
             format!("{:.2} KB", bytes_received / DECIMAL_BYTE_UNIT).into()
@@ -97,7 +63,67 @@ impl ResponseStatus {
                 bytes_received / (DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT * DECIMAL_BYTE_UNIT)
             )
             .into()
-        })
+        }
+    }
+
+    fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
+        if elapsed_duration < Duration::from_secs(1) {
+            return format!("{} ms", elapsed_duration.as_millis()).into();
+        }
+
+        if elapsed_duration < Duration::from_secs(60) {
+            return format!("{:.2} s", elapsed_duration.as_secs_f64()).into();
+        }
+
+        let total_seconds = elapsed_duration.as_secs();
+        let hours = total_seconds / 3600;
+        let minutes = (total_seconds % 3600) / 60;
+        let seconds = elapsed_duration.as_secs_f64() % 60.0;
+
+        if hours > 0 {
+            format!("{hours} h {minutes} m {seconds:.2} s").into()
+        } else {
+            format!("{minutes} m {seconds:.2} s").into()
+        }
+    }
+
+    fn info_header(&self) -> Option<ResponseInfoHeader> {
+        match self {
+            ResponseStatus::Idle => None,
+            ResponseStatus::Fetching {
+                bytes_received,
+                elapsed_duration,
+            } => Some(ResponseInfoHeader {
+                label: "Fetching".into(),
+                elapsed_duration: Self::format_elapsed_duration(*elapsed_duration),
+                bytes_received: Self::format_bytes_received(*bytes_received),
+            }),
+            ResponseStatus::Completed {
+                status_code,
+                bytes_received,
+                elapsed_duration,
+            } => {
+                let label = if let Some(reason_phrase) = status_code.canonical_reason() {
+                    format!("{} {}", status_code.as_u16(), reason_phrase).into()
+                } else {
+                    status_code.as_u16().to_string().into()
+                };
+
+                Some(ResponseInfoHeader {
+                    label,
+                    elapsed_duration: Self::format_elapsed_duration(*elapsed_duration),
+                    bytes_received: Self::format_bytes_received(*bytes_received),
+                })
+            }
+            ResponseStatus::Error {
+                bytes_received,
+                elapsed_duration,
+            } => Some(ResponseInfoHeader {
+                label: "Error".into(),
+                elapsed_duration: Self::format_elapsed_duration(*elapsed_duration),
+                bytes_received: Self::format_bytes_received(*bytes_received),
+            }),
+        }
     }
 }
 
@@ -259,11 +285,7 @@ impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
         let focus_handle = self.focus_handle(cx);
-        let label = self.response_state.status.label();
-        let elapsed_duration = self.response_state.status.elapsed_duration_label();
-        let bytes_received = self.response_state.status.bytes_received_label();
-        let show_elapsed_duration_separator = label.is_some();
-        let show_bytes_received_separator = label.is_some() || elapsed_duration.is_some();
+        let info_header = self.response_state.status.info_header();
         let editor = self.editor.clone();
 
         gpui::div()
@@ -283,74 +305,56 @@ impl Render for ResponsePanel {
                     .border_b_1()
                     .border_color(theme_colors.border_variant)
                     .child(Label::new("Response").size(LabelSize::Small))
-                    .child(
-                        gpui::div()
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .gap_1()
-                            .when_some(label, |container, label| {
-                                container.child(
+                    .when_some(info_header, |header, info_header| {
+                        header.child(
+                            gpui::div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .gap_1()
+                                .child(
                                     gpui::div()
                                         .min_w(gpui::px(40.0))
                                         .flex()
                                         .justify_center()
                                         .items_center()
                                         .child(
-                                            Label::new(label)
+                                            Label::new(info_header.label)
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted)
                                                 .single_line(),
                                         ),
                                 )
-                            })
-                            .when_some(elapsed_duration, |container, elapsed_duration| {
-                                let container = if show_elapsed_duration_separator {
-                                    container.child(
-                                        Label::new("·").size(LabelSize::Small).color(Color::Muted),
-                                    )
-                                } else {
-                                    container
-                                };
-
-                                container.child(
+                                .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
+                                .child(
                                     gpui::div()
                                         .min_w(gpui::px(40.0))
                                         .flex()
                                         .justify_center()
                                         .items_center()
                                         .child(
-                                            Label::new(elapsed_duration)
+                                            Label::new(info_header.elapsed_duration)
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted)
                                                 .single_line(),
                                         ),
                                 )
-                            })
-                            .when_some(bytes_received, |container, bytes_received| {
-                                let container = if show_bytes_received_separator {
-                                    container.child(
-                                        Label::new("·").size(LabelSize::Small).color(Color::Muted),
-                                    )
-                                } else {
-                                    container
-                                };
-
-                                container.child(
+                                .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
+                                .child(
                                     gpui::div()
                                         .min_w(gpui::px(40.0))
                                         .flex()
                                         .justify_center()
                                         .items_center()
                                         .child(
-                                            Label::new(bytes_received)
+                                            Label::new(info_header.bytes_received)
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted)
                                                 .single_line(),
                                         ),
-                                )
-                            }),
-                    ),
+                                ),
+                        )
+                    }),
             )
             .child(editor)
     }
