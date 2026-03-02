@@ -15,8 +15,52 @@ use crate::{
     panel::{Panel, response_panel},
 };
 
+fn format_bytes_received(bytes_received: usize) -> SharedString {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
+    const DECIMAL_BYTE_UNIT: f64 = 1000.0;
+
+    let mut value = bytes_received as f64;
+    let mut unit_index = 0;
+
+    while value >= DECIMAL_BYTE_UNIT && unit_index < UNITS.len() - 1 {
+        value /= DECIMAL_BYTE_UNIT;
+        unit_index += 1;
+    }
+
+    if unit_index == 0 {
+        format!("{bytes_received} {}", UNITS[unit_index]).into()
+    } else {
+        format!("{value:.2} {}", UNITS[unit_index]).into()
+    }
+}
+
+fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
+    let total_seconds = elapsed_duration.as_secs();
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = elapsed_duration.as_secs_f64() % 60.0;
+
+    if elapsed_duration.as_millis() < 1000 {
+        format!("{} ms", elapsed_duration.as_millis())
+    } else if hours == 0 && minutes == 0 {
+        format!("{:.2} s", elapsed_duration.as_secs_f64())
+    } else if hours == 0 {
+        format!("{minutes} m {seconds:.2} s")
+    } else {
+        format!("{hours} h {minutes} m {seconds:.2} s")
+    }
+    .into()
+}
+
+#[derive(Clone)]
+struct ResponseSummary {
+    label: SharedString,
+    elapsed_duration: SharedString,
+    bytes_received: SharedString,
+}
+
 #[derive(Clone, Default)]
-pub(crate) enum ResponseStatus {
+pub(crate) enum ResponseState {
     #[default]
     Idle,
     Fetching {
@@ -34,95 +78,51 @@ pub(crate) enum ResponseStatus {
     },
 }
 
-#[derive(Clone)]
-struct ResponseInfoHeader {
-    label: SharedString,
-    elapsed_duration: SharedString,
-    bytes_received: SharedString,
-}
-
-impl ResponseStatus {
-    fn format_bytes_received(bytes_received: usize) -> SharedString {
-        const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
-        const DECIMAL_BYTE_UNIT: f64 = 1000.0;
-
-        let mut value = bytes_received as f64;
-        let mut unit_index = 0;
-
-        while value >= DECIMAL_BYTE_UNIT && unit_index < UNITS.len() - 1 {
-            value /= DECIMAL_BYTE_UNIT;
-            unit_index += 1;
-        }
-
-        if unit_index == 0 {
-            format!("{bytes_received} {}", UNITS[unit_index]).into()
-        } else {
-            format!("{value:.2} {}", UNITS[unit_index]).into()
-        }
-    }
-
-    fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
-        let total_seconds = elapsed_duration.as_secs();
-        let hours = total_seconds / 3600;
-        let minutes = (total_seconds % 3600) / 60;
-        let seconds = elapsed_duration.as_secs_f64() % 60.0;
-
-        if elapsed_duration.as_millis() < 1000 {
-            format!("{} ms", elapsed_duration.as_millis())
-        } else if hours == 0 && minutes == 0 {
-            format!("{:.2} s", elapsed_duration.as_secs_f64())
-        } else if hours == 0 {
-            format!("{minutes} m {seconds:.2} s")
-        } else {
-            format!("{hours} h {minutes} m {seconds:.2} s")
-        }
-        .into()
-    }
-
-    fn info_header(&self) -> Option<ResponseInfoHeader> {
+impl ResponseState {
+    fn summary(&self) -> Option<ResponseSummary> {
         match self {
-            ResponseStatus::Idle => None,
-            ResponseStatus::Fetching {
+            ResponseState::Idle => None,
+            ResponseState::Fetching {
                 bytes_received,
                 elapsed_duration,
-            } => Some(ResponseInfoHeader {
+            } => Some(ResponseSummary {
                 label: "Fetching".into(),
-                elapsed_duration: Self::format_elapsed_duration(*elapsed_duration),
-                bytes_received: Self::format_bytes_received(*bytes_received),
+                elapsed_duration: format_elapsed_duration(*elapsed_duration),
+                bytes_received: format_bytes_received(*bytes_received),
             }),
-            ResponseStatus::Completed {
+            ResponseState::Completed {
                 status_code,
                 bytes_received,
                 elapsed_duration,
             } => {
                 let label = if let Some(reason_phrase) = status_code.canonical_reason() {
-                    format!("{} {}", status_code.as_u16(), reason_phrase).into()
+                    format!("{} {reason_phrase}", status_code.as_u16()).into()
                 } else {
                     status_code.as_u16().to_string().into()
                 };
 
-                Some(ResponseInfoHeader {
+                Some(ResponseSummary {
                     label,
-                    elapsed_duration: Self::format_elapsed_duration(*elapsed_duration),
-                    bytes_received: Self::format_bytes_received(*bytes_received),
+                    elapsed_duration: format_elapsed_duration(*elapsed_duration),
+                    bytes_received: format_bytes_received(*bytes_received),
                 })
             }
-            ResponseStatus::Error {
+            ResponseState::Error {
                 bytes_received,
                 elapsed_duration,
-            } => Some(ResponseInfoHeader {
+            } => Some(ResponseSummary {
                 label: "Error".into(),
-                elapsed_duration: Self::format_elapsed_duration(*elapsed_duration),
-                bytes_received: Self::format_bytes_received(*bytes_received),
+                elapsed_duration: format_elapsed_duration(*elapsed_duration),
+                bytes_received: format_bytes_received(*bytes_received),
             }),
         }
     }
 }
 
 #[derive(Clone, Default)]
-struct ResponseState {
+struct Response {
     request_id: usize,
-    status: ResponseStatus,
+    state: ResponseState,
     payload: Option<Entity<MultiBuffer>>,
 }
 
@@ -130,7 +130,7 @@ pub struct ResponsePanel {
     focus_handle: FocusHandle,
     position: DockPosition,
     size: Pixels,
-    response_state: ResponseState,
+    response: Response,
     editor: Entity<Editor>,
     _subscriptions: Vec<Subscription>,
 }
@@ -155,7 +155,7 @@ impl ResponsePanel {
             focus_handle,
             position: DockPosition::Bottom,
             size: Self::DEFAULT_SIZE,
-            response_state: ResponseState {
+            response: Response {
                 payload: Some(payload),
                 ..Default::default()
             },
@@ -173,11 +173,11 @@ impl ResponsePanel {
             editor.set_read_only(true);
             editor
         });
-        let request_id = self.response_state.request_id.wrapping_add(1);
+        let request_id = self.response.request_id.wrapping_add(1);
 
-        self.response_state = ResponseState {
+        self.response = Response {
             request_id,
-            status: ResponseStatus::default(),
+            state: ResponseState::default(),
             payload: Some(payload),
         };
         self.editor = editor;
@@ -188,17 +188,17 @@ impl ResponsePanel {
         request_id
     }
 
-    pub(crate) fn set_status(
+    pub(crate) fn set_state(
         &mut self,
         request_id: usize,
-        status: ResponseStatus,
+        state: ResponseState,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.response_state.request_id != request_id {
+        if self.response.request_id != request_id {
             return false;
         }
 
-        self.response_state.status = status;
+        self.response.state = state;
         cx.notify();
         true
     }
@@ -209,11 +209,11 @@ impl ResponsePanel {
         payload: T,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.response_state.request_id != request_id {
+        if self.response.request_id != request_id {
             return false;
         }
 
-        let Some(payload_buffer) = self.response_state.payload.as_ref() else {
+        let Some(payload_buffer) = self.response.payload.as_ref() else {
             return false;
         };
 
@@ -277,7 +277,7 @@ impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
         let focus_handle = self.focus_handle(cx);
-        let info_header = self.response_state.status.info_header();
+        let response_summary = self.response.state.summary();
         let editor = self.editor.clone();
 
         gpui::div()
@@ -297,7 +297,7 @@ impl Render for ResponsePanel {
                     .border_b_1()
                     .border_color(theme_colors.border_variant)
                     .child(Label::new("Response").size(LabelSize::Small))
-                    .when_some(info_header, |header, info_header| {
+                    .when_some(response_summary, |header, response_summary| {
                         header.child(
                             gpui::div()
                                 .flex()
@@ -311,7 +311,7 @@ impl Render for ResponsePanel {
                                         .justify_center()
                                         .items_center()
                                         .child(
-                                            Label::new(info_header.label)
+                                            Label::new(response_summary.label)
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted)
                                                 .single_line(),
@@ -325,7 +325,7 @@ impl Render for ResponsePanel {
                                         .justify_center()
                                         .items_center()
                                         .child(
-                                            Label::new(info_header.elapsed_duration)
+                                            Label::new(response_summary.elapsed_duration)
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted)
                                                 .single_line(),
@@ -339,7 +339,7 @@ impl Render for ResponsePanel {
                                         .justify_center()
                                         .items_center()
                                         .child(
-                                            Label::new(info_header.bytes_received)
+                                            Label::new(response_summary.bytes_received)
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted)
                                                 .single_line(),

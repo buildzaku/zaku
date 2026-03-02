@@ -22,7 +22,7 @@ use ui::{
     DropdownStyle, FixedWidth, IconPosition, Label,
 };
 
-use crate::{SendRequest, Workspace, panel::response::ResponseStatus};
+use crate::{SendRequest, Workspace, panel::response::ResponseState};
 
 struct RequestState {
     completed: AtomicBool,
@@ -49,7 +49,7 @@ impl RequestState {
         self.bytes_received.load(Ordering::Relaxed)
     }
 
-    fn push_bytes(&self, bytes: usize) {
+    fn append_bytes_received(&self, bytes: usize) {
         self.bytes_received.fetch_add(bytes, Ordering::Relaxed);
     }
 }
@@ -88,9 +88,9 @@ impl Pane {
     async fn fetch(
         http_client: Arc<dyn HttpClient>,
         request: Request<AsyncBody>,
-        state: &RequestState,
+        request_state: &RequestState,
         started_at: Instant,
-    ) -> (String, ResponseStatus) {
+    ) -> (String, ResponseState) {
         match http_client.send(request).await {
             Ok(mut response) => {
                 let status_code = response.status();
@@ -102,7 +102,7 @@ impl Pane {
                     match response.body_mut().read(&mut buffer).await {
                         Ok(0) => break,
                         Ok(bytes_received) => {
-                            state.push_bytes(bytes_received);
+                            request_state.append_bytes_received(bytes_received);
                             bytes.extend_from_slice(&buffer[..bytes_received]);
                         }
                         Err(error) => {
@@ -113,20 +113,20 @@ impl Pane {
                 }
 
                 let payload = match read_error {
-                    Some(e) => format!("(failed to read response body: {e})"),
+                    Some(error) => format!("(failed to read response body: {error})"),
                     None => String::from_utf8_lossy(&bytes).into_owned(),
                 };
-                let status = ResponseStatus::Completed {
+                let response_state = ResponseState::Completed {
                     status_code,
-                    bytes_received: state.bytes_received(),
+                    bytes_received: request_state.bytes_received(),
                     elapsed_duration: started_at.elapsed(),
                 };
-                (payload, status)
+                (payload, response_state)
             }
             Err(error) => (
                 format!("Error: {error}"),
-                ResponseStatus::Error {
-                    bytes_received: state.bytes_received(),
+                ResponseState::Error {
+                    bytes_received: request_state.bytes_received(),
                     elapsed_duration: started_at.elapsed(),
                 },
             ),
@@ -151,11 +151,11 @@ impl Pane {
             return;
         };
 
-        let request_id = response_panel.update(cx, |panel, cx| {
-            let request_id = panel.begin_response(window, cx);
-            panel.set_status(
+        let request_id = response_panel.update(cx, |response_panel, cx| {
+            let request_id = response_panel.begin_response(window, cx);
+            response_panel.set_state(
                 request_id,
-                ResponseStatus::Fetching {
+                ResponseState::Fetching {
                     bytes_received: 0,
                     elapsed_duration: Duration::default(),
                 },
@@ -173,16 +173,16 @@ impl Pane {
         {
             Ok(request) => request,
             Err(error) => {
-                response_panel.update(cx, |panel, cx| {
-                    panel.set_status(
+                response_panel.update(cx, |response_panel, cx| {
+                    response_panel.set_state(
                         request_id,
-                        ResponseStatus::Error {
+                        ResponseState::Error {
                             bytes_received: 0,
                             elapsed_duration: request_started_at.elapsed(),
                         },
                         cx,
                     );
-                    panel.set_payload(request_id, format!("Error: {error}"), cx);
+                    response_panel.set_payload(request_id, format!("Error: {error}"), cx);
                 });
                 cx.notify();
                 return;
@@ -205,12 +205,13 @@ impl Pane {
                             break;
                         }
 
-                        let status = ResponseStatus::Fetching {
+                        let response_state = ResponseState::Fetching {
                             bytes_received: request_state.bytes_received(),
                             elapsed_duration: request_started_at.elapsed(),
                         };
-                        let still_active = response_panel
-                            .update(cx, |panel, cx| panel.set_status(request_id, status, cx));
+                        let still_active = response_panel.update(cx, |response_panel, cx| {
+                            response_panel.set_state(request_id, response_state, cx)
+                        });
                         if !still_active {
                             break;
                         }
@@ -223,13 +224,13 @@ impl Pane {
             .spawn(cx, {
                 let response_panel = response_panel.clone();
                 async move |cx| {
-                    let (payload, status) =
+                    let (payload, response_state) =
                         Self::fetch(http_client, request, &request_state, request_started_at).await;
                     request_state.set_completed();
 
-                    if let Err(error) = response_panel.update_in(cx, |panel, _, cx| {
-                        panel.set_status(request_id, status, cx);
-                        panel.set_payload(request_id, payload, cx);
+                    if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                        response_panel.set_state(request_id, response_state, cx);
+                        response_panel.set_payload(request_id, payload, cx);
                     }) {
                         eprintln!("failed to update response panel: {error:?}");
                     }
