@@ -1,10 +1,19 @@
 use futures::io::AsyncReadExt;
 use gpui::{
-    App, Context, Corner, Entity, EntityId, FocusHandle, Focusable, FontWeight, Window, prelude::*,
+    App, Context, Corner, Entity, FocusHandle, Focusable, FontWeight, WeakEntity, Window,
+    prelude::*,
 };
-use std::sync::Arc;
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
-use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy};
+use http_client::{
+    AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Request,
+};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
@@ -13,132 +22,217 @@ use ui::{
     DropdownStyle, FixedWidth, IconPosition, Label,
 };
 
-use crate::{SendRequest, dock::Dock, panel::ResponsePanel};
+use crate::{SendRequest, Workspace, panel::response::ResponseStatus};
+
+struct RequestState {
+    completed: AtomicBool,
+    bytes_received: AtomicUsize,
+}
+
+impl RequestState {
+    fn new() -> Self {
+        Self {
+            completed: AtomicBool::new(false),
+            bytes_received: AtomicUsize::new(0),
+        }
+    }
+
+    fn completed(&self) -> bool {
+        self.completed.load(Ordering::Relaxed)
+    }
+
+    fn set_completed(&self) {
+        self.completed.store(true, Ordering::Relaxed);
+    }
+
+    fn bytes_received(&self) -> usize {
+        self.bytes_received.load(Ordering::Relaxed)
+    }
+
+    fn push_bytes(&self, bytes: usize) {
+        self.bytes_received.fetch_add(bytes, Ordering::Relaxed);
+    }
+}
 
 pub struct Pane {
     focus_handle: FocusHandle,
     input: Option<Entity<InputField>>,
     request_method: Method,
     http_client: Arc<dyn HttpClient>,
-    bottom_dock: Option<Entity<Dock>>,
-    response_panel_id: Option<EntityId>,
-    response_panel: Option<Entity<ResponsePanel>>,
+    workspace: WeakEntity<Workspace>,
 }
 
 impl Pane {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(workspace: WeakEntity<Workspace>, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
             input: None,
             request_method: Method::GET,
             http_client: Arc::new(ReqwestClient::new()),
-            bottom_dock: None,
-            response_panel_id: None,
-            response_panel: None,
+            workspace,
         }
     }
 
-    pub fn set_response_targets(
-        &mut self,
-        bottom_dock: Entity<Dock>,
-        response_panel: Entity<ResponsePanel>,
-        cx: &mut Context<Self>,
-    ) {
-        self.bottom_dock = Some(bottom_dock);
-        self.response_panel_id = Some(Entity::entity_id(&response_panel));
-        self.response_panel = Some(response_panel);
-        cx.notify();
+    fn normalize_url(url: String) -> Option<String> {
+        let url = url.trim().to_string();
+        if url.is_empty() {
+            return None;
+        }
+        if url.starts_with("http://") || url.starts_with("https://") {
+            Some(url)
+        } else {
+            Some(format!("https://{url}"))
+        }
+    }
+
+    async fn fetch(
+        http_client: Arc<dyn HttpClient>,
+        request: Request<AsyncBody>,
+        state: &RequestState,
+        started_at: Instant,
+    ) -> (String, ResponseStatus) {
+        match http_client.send(request).await {
+            Ok(mut response) => {
+                let status_code = response.status();
+                let mut bytes = Vec::new();
+                let mut buffer = [0; 8192];
+                let mut read_error = None;
+
+                loop {
+                    match response.body_mut().read(&mut buffer).await {
+                        Ok(0) => break,
+                        Ok(bytes_received) => {
+                            state.push_bytes(bytes_received);
+                            bytes.extend_from_slice(&buffer[..bytes_received]);
+                        }
+                        Err(error) => {
+                            read_error = Some(error);
+                            break;
+                        }
+                    }
+                }
+
+                let payload = match read_error {
+                    Some(e) => format!("(failed to read response body: {e})"),
+                    None => String::from_utf8_lossy(&bytes).into_owned(),
+                };
+                let status = ResponseStatus::Completed {
+                    status_code,
+                    bytes_received: state.bytes_received(),
+                    elapsed_duration: started_at.elapsed(),
+                };
+                (payload, status)
+            }
+            Err(error) => (
+                format!("Error: {error}"),
+                ResponseStatus::Error {
+                    bytes_received: state.bytes_received(),
+                    elapsed_duration: started_at.elapsed(),
+                },
+            ),
+        }
     }
 
     fn send_request(
         &mut self,
-        request_method: Method,
-        request_url: String,
+        method: Method,
+        url: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let request_url = request_url.trim().to_string();
-        if request_url.is_empty() {
+        let Some(url) = Self::normalize_url(url) else {
             return;
-        }
+        };
 
-        let request_url =
-            if request_url.starts_with("http://") || request_url.starts_with("https://") {
-                request_url
-            } else {
-                format!("https://{request_url}")
-            };
+        let Ok(response_panel) = self
+            .workspace
+            .update(cx, |workspace, cx| workspace.open_response_panel(cx))
+        else {
+            return;
+        };
 
-        if let (Some(bottom_dock), Some(response_panel_id)) =
-            (self.bottom_dock.as_ref(), self.response_panel_id)
-        {
-            bottom_dock.update(cx, |dock, cx| {
-                dock.activate_panel(response_panel_id, cx);
-            });
-        }
+        let request_id = response_panel.update(cx, |panel, cx| {
+            let request_id = panel.begin_response(window, cx);
+            panel.set_status(
+                request_id,
+                ResponseStatus::Fetching {
+                    bytes_received: 0,
+                    elapsed_duration: Duration::default(),
+                },
+                cx,
+            );
+            request_id
+        });
 
-        if let Some(response_panel) = self.response_panel.as_ref() {
-            response_panel.update(cx, |panel, cx| {
-                panel.begin_response(window, cx);
-                panel.set_response_status("Status: Sending...".into(), cx);
-            });
-        }
-
+        let request_started_at = Instant::now();
         let request = match Builder::new()
-            .method(request_method)
-            .uri(request_url.as_str())
+            .method(method)
+            .uri(url.as_str())
             .follow_redirects(RedirectPolicy::FollowAll)
             .body(AsyncBody::empty())
         {
             Ok(request) => request,
             Err(error) => {
-                if let Some(response_panel) = self.response_panel.as_ref() {
-                    response_panel.update(cx, |panel, cx| {
-                        panel.set_response_status("Status: Error".into(), cx);
-                        panel.set_response_payload(format!("Error: {error}").into(), cx);
-                    });
-                }
+                response_panel.update(cx, |panel, cx| {
+                    panel.set_status(
+                        request_id,
+                        ResponseStatus::Error {
+                            bytes_received: 0,
+                            elapsed_duration: request_started_at.elapsed(),
+                        },
+                        cx,
+                    );
+                    panel.set_payload(request_id, format!("Error: {error}"), cx);
+                });
                 cx.notify();
                 return;
             }
         };
 
         let http_client = self.http_client.clone();
-        let response_panel = self.response_panel.clone();
+        let request_state = Arc::new(RequestState::new());
 
         window
-            .spawn(cx, async move |cx| {
-                let response = http_client.send(request).await;
-                let (response_payload, response_status) = match response {
-                    Ok(mut response) => {
-                        let status = response.status();
-                        let response_status = if let Some(reason) = status.canonical_reason() {
-                            format!("Status: {} {}", status.as_u16(), reason)
-                        } else {
-                            format!("Status: {}", status.as_u16())
+            .spawn(cx, {
+                let request_state = request_state.clone();
+                let response_panel = response_panel.clone();
+                async move |cx| {
+                    loop {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(50))
+                            .await;
+                        if request_state.completed() {
+                            break;
+                        }
+
+                        let status = ResponseStatus::Fetching {
+                            bytes_received: request_state.bytes_received(),
+                            elapsed_duration: request_started_at.elapsed(),
                         };
-
-                        let body = response.body_mut();
-                        let mut bytes = Vec::new();
-                        let read_result = body.read_to_end(&mut bytes).await;
-                        let body_text = match read_result {
-                            Ok(_) => String::from_utf8_lossy(&bytes).to_string(),
-                            Err(error) => format!("(failed to read response body: {error})"),
-                        };
-
-                        (body_text, response_status)
+                        let still_active = response_panel
+                            .update(cx, |panel, cx| panel.set_status(request_id, status, cx));
+                        if !still_active {
+                            break;
+                        }
                     }
-                    Err(error) => {
-                        let error_text = format!("Error: {error}");
-                        (error_text.clone(), "Status: Error".to_string())
-                    }
-                };
+                }
+            })
+            .detach();
 
-                if let Some(response_panel) = response_panel.as_ref() {
-                    response_panel.update(cx, |panel, cx| {
-                        panel.set_response_status(response_status.into(), cx);
-                        panel.set_response_payload(response_payload.into(), cx);
-                    });
+        window
+            .spawn(cx, {
+                let response_panel = response_panel.clone();
+                async move |cx| {
+                    let (payload, status) =
+                        Self::fetch(http_client, request, &request_state, request_started_at).await;
+                    request_state.set_completed();
+
+                    if let Err(error) = response_panel.update_in(cx, |panel, _, cx| {
+                        panel.set_status(request_id, status, cx);
+                        panel.set_payload(request_id, payload, cx);
+                    }) {
+                        eprintln!("failed to update response panel: {error:?}");
+                    }
                 }
             })
             .detach();
