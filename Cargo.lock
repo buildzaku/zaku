@@ -2342,7 +2342,7 @@ dependencies = [
  "thiserror 2.0.18",
  "url",
  "usvg",
- "util_macros",
+ "util_macros 0.1.0",
  "uuid",
  "waker-fn",
  "web-time",
@@ -6580,9 +6580,17 @@ dependencies = [
  "tendril",
  "unicase",
  "url",
- "util_macros",
+ "util_macros 0.1.0",
  "walkdir",
  "which",
+]
+
+[[package]]
+name = "util_macros"
+version = "0.0.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]

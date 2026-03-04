@@ -15,6 +15,7 @@ members = [
   "crates/ui",
   "crates/ui_macros",
   "crates/util",
+  "crates/util_macros",
   "crates/workspace",
   "crates/zaku",
 ]
@@ -91,4 +92,5 @@ theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }
 util = { path = "crates/util" }
+util_macros = { path = "crates/util_macros" }
 workspace = { path = "crates/workspace" }
