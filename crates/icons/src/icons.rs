@@ -18,6 +18,7 @@ pub enum IconName {
     Control,
     Dash,
     File,
+    FolderOpen,
     Info,
     Network,
     Option,

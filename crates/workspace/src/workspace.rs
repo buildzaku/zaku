@@ -2,15 +2,18 @@ pub mod dock;
 pub mod pane;
 pub mod panel;
 pub mod status_bar;
+pub mod welcome;
 
+use anyhow::Result;
+use futures::channel::oneshot;
 use gpui::{
     Action, App, Axis, Bounds, DragMoveEvent, Empty, Entity, EntityId, FocusHandle, Focusable,
-    KeyBinding, KeyContext, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
-    prelude::*,
+    KeyBinding, KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point,
+    PromptLevel, Subscription, Task, Window, prelude::*,
 };
+use std::path::PathBuf;
 
-use theme::ActiveTheme;
-use theme::{GlobalTheme, SystemAppearance};
+use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
 use ui::StyledTypography;
 
 use crate::{
@@ -23,6 +26,8 @@ use crate::{
 gpui::actions!(
     workspace,
     [
+        OpenWorkspace,
+        CloseProject,
         SendRequest,
         ToggleBottomDock,
         ToggleLeftDock,
@@ -39,6 +44,10 @@ const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", SendRequest, Some("RequestUrl > Editor")),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-o", OpenWorkspace, None),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-k ctrl-o", OpenWorkspace, None),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-j", ToggleBottomDock, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
@@ -68,6 +77,33 @@ pub fn init(cx: &mut App) {
             Some(KEY_CONTEXT),
         ),
     ]);
+}
+
+pub fn prompt_and_open_workspace(
+    workspace: &mut Workspace,
+    options: PathPromptOptions,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let selected_path = workspace.prompt_open_path(options, window, cx);
+
+    cx.spawn_in(window, async move |this, cx| {
+        let Ok(Some(selected_path)) = selected_path.await else {
+            return;
+        };
+
+        let open_task = match this.update_in(cx, |workspace, window, cx| {
+            workspace.open_workspace_for_path(false, selected_path, window, cx)
+        }) {
+            Ok(open_task) => open_task,
+            Err(_) => return,
+        };
+
+        if open_task.await.is_err() {
+            return;
+        }
+    })
+    .detach();
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -124,11 +160,79 @@ impl Workspace {
         }
     }
 
+    pub fn prompt_open_path(
+        &mut self,
+        options: PathPromptOptions,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Option<PathBuf>> {
+        let (sender, receiver) = oneshot::channel();
+        let path_prompt = cx.prompt_for_paths(options);
+
+        cx.spawn_in(window, async move |workspace, cx| {
+            let selection = match path_prompt.await {
+                Ok(selection) => selection,
+                Err(_) => return Ok::<(), anyhow::Error>(()),
+            };
+
+            match selection {
+                Ok(selected_paths) => {
+                    let selected_path = selected_paths.and_then(|paths| paths.into_iter().next());
+
+                    if sender.send(selected_path).is_err() {
+                        return Ok::<(), anyhow::Error>(());
+                    }
+                }
+                Err(error) => {
+                    let error_message = error.to_string();
+                    let prompt = workspace.update_in(cx, |_, window, cx| {
+                        window.prompt(
+                            PromptLevel::Critical,
+                            "Failed to open project",
+                            Some(&error_message),
+                            &["Ok"],
+                            cx,
+                        )
+                    })?;
+
+                    if prompt.await.is_err() {
+                        return Ok::<(), anyhow::Error>(());
+                    }
+                }
+            }
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .detach();
+
+        receiver
+    }
+
+    pub fn open_workspace_for_path(
+        &mut self,
+        _replace_current_window: bool,
+        _path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        let focus_handle = self.pane.read(cx).focus_handle(cx);
+        window.focus(&focus_handle, cx);
+        cx.notify();
+
+        Task::ready(Ok(()))
+    }
+
+    fn close_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let focus_handle = self.pane.read(cx).focus_handle(cx);
+        window.focus(&focus_handle, cx);
+        cx.notify();
+    }
+
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
         let dock = self.dock_at_position(position).clone();
         let was_visible = dock.read(cx).is_open();
         if was_visible && !window.bindings_for_action(&menu::Cancel).is_empty() {
-            // Move focus to the pane first so dismissing a menu does not focus a hidden dock element.
+            // Move focus back to the center so dismissing a menu does not focus a hidden dock element.
             let focus_handle = self.pane.read(cx).focus_handle(cx);
             window.focus(&focus_handle, cx);
         }
@@ -189,12 +293,19 @@ impl Workspace {
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
         let right_dock_buttons = cx.new(|cx| PanelButtons::new(right_dock.clone(), cx));
 
+        pane.update(cx, |pane, cx| {
+            pane.set_should_display_welcome_page(true, cx);
+        });
+
         let status_bar = cx.new(|cx| StatusBar::new(pane.clone(), cx));
         status_bar.update(cx, |status_bar, cx| {
             status_bar.add_left_item(left_dock_buttons, cx);
             status_bar.add_right_item(bottom_dock_buttons, cx);
             status_bar.add_right_item(right_dock_buttons, cx);
         });
+
+        let pane_focus_handle = pane.read(cx).focus_handle(cx);
+        window.focus(&pane_focus_handle, cx);
 
         Self {
             left_dock,
@@ -328,6 +439,22 @@ impl Render for Workspace {
             .font(ui_font)
             .text_ui(cx)
             .size_full()
+            .on_action(cx.listener(|workspace, _: &OpenWorkspace, window, cx| {
+                prompt_and_open_workspace(
+                    workspace,
+                    PathPromptOptions {
+                        files: false,
+                        directories: true,
+                        multiple: false,
+                        prompt: None,
+                    },
+                    window,
+                    cx,
+                );
+            }))
+            .on_action(cx.listener(|workspace, _: &CloseProject, window, cx| {
+                workspace.close_project(window, cx);
+            }))
             .on_action(cx.listener(|workspace, _: &ToggleLeftDock, window, cx| {
                 workspace.toggle_dock(DockPosition::Left, window, cx);
             }))
