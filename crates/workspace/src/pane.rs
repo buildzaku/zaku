@@ -93,13 +93,17 @@ impl Pane {
         cx.notify();
     }
 
+    pub fn should_display_welcome_page(&self) -> bool {
+        self.should_display_welcome_page
+    }
+
     fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.was_focused {
             self.was_focused = true;
             cx.notify();
         }
 
-        if self.should_display_welcome_page
+        if self.should_display_welcome_page()
             && let Some(welcome_page) = self.welcome_page.as_ref()
             && self.focus_handle.is_focused(window)
         {
@@ -311,7 +315,7 @@ impl Focusable for Pane {
 
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.should_display_welcome_page {
+        if self.should_display_welcome_page() {
             return gpui::div()
                 .track_focus(&self.focus_handle)
                 .size_full()
@@ -324,7 +328,7 @@ impl Render for Pane {
                         .size_full()
                         .justify_center();
 
-                    if !self.should_display_welcome_page {
+                    if !self.should_display_welcome_page() {
                         placeholder
                     } else {
                         if self.welcome_page.is_none() {

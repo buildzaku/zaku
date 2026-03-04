@@ -19,7 +19,9 @@ use ui::StyledTypography;
 use crate::{
     dock::Dock,
     pane::Pane,
-    panel::{ProjectPanel, ResponsePanel, buttons::PanelButtons, project_panel, response_panel},
+    panel::{
+        Panel, ProjectPanel, ResponsePanel, buttons::PanelButtons, project_panel, response_panel,
+    },
     status_bar::StatusBar,
 };
 
@@ -241,6 +243,19 @@ impl Workspace {
         let mut focus_center = false;
 
         dock.update(cx, |dock, cx| {
+            if !was_visible {
+                let needs_enabled_panel = dock
+                    .active_panel()
+                    .is_none_or(|active_panel| !active_panel.enabled(cx));
+
+                if needs_enabled_panel {
+                    let Some(panel_index) = dock.first_enabled_panel_idx(cx) else {
+                        return;
+                    };
+                    dock.set_active_panel_index(Some(panel_index), cx);
+                }
+            }
+
             if was_visible && dock.focus_handle(cx).contains_focused(window, cx) {
                 focus_center = true;
             }
@@ -279,12 +294,13 @@ impl Workspace {
         let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, workspace.clone(), cx));
         let right_dock = cx.new(|cx| Dock::new(DockPosition::Right, workspace.clone(), cx));
 
-        let left_dock_panel = cx.new(ProjectPanel::new);
+        let pane_handle = pane.downgrade();
+        let left_dock_panel = cx.new(|cx| ProjectPanel::new(pane_handle.clone(), cx));
         left_dock.update(cx, |left_dock, cx| {
             left_dock.add_panel(left_dock_panel, window, cx);
         });
 
-        let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
+        let response_panel = cx.new(|cx| ResponsePanel::new(pane_handle, window, cx));
         bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.add_panel(response_panel.clone(), window, cx);
         });
@@ -383,7 +399,7 @@ impl Workspace {
             .left_dock
             .read(cx)
             .active_panel()
-            .map(|panel| panel.panel_id());
+            .and_then(|panel| panel.enabled(cx).then_some(panel.panel_id()));
         if let Some(panel_id) = panel_id {
             let dock = self.left_dock.clone();
             self.toggle_panel_focus(panel_id, &dock, window, cx);
@@ -391,16 +407,25 @@ impl Workspace {
     }
 
     fn toggle_response_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let panel_id = Entity::entity_id(&self.response_panel);
+        let panel_id = self
+            .bottom_dock
+            .read(cx)
+            .active_panel()
+            .and_then(|panel| panel.enabled(cx).then_some(panel.panel_id()));
+        let Some(panel_id) = panel_id else {
+            return;
+        };
         let dock = self.bottom_dock.clone();
         self.toggle_panel_focus(panel_id, &dock, window, cx);
     }
 
     fn open_response_panel(&mut self, cx: &mut Context<Self>) -> Entity<ResponsePanel> {
-        let panel_id = Entity::entity_id(&self.response_panel);
-        self.bottom_dock.update(cx, |dock, cx| {
-            dock.activate_panel(panel_id, cx);
-        });
+        if self.response_panel.read(cx).enabled(cx) {
+            let panel_id = Entity::entity_id(&self.response_panel);
+            self.bottom_dock.update(cx, |dock, cx| {
+                dock.activate_panel(panel_id, cx);
+            });
+        }
         self.response_panel.clone()
     }
 }
@@ -568,5 +593,43 @@ impl Render for Workspace {
 impl Focusable for Workspace {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.pane.read(cx).focus_handle(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            editor::init(cx);
+            crate::init(cx);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(workspace.pane.read(cx).should_display_welcome_page());
+            assert!(!workspace.left_dock.read(cx).is_open());
+            assert!(!workspace.bottom_dock.read(cx).is_open());
+
+            workspace.toggle_dock(DockPosition::Left, window, cx);
+            workspace.toggle_dock(DockPosition::Bottom, window, cx);
+
+            assert!(!workspace.left_dock.read(cx).is_open());
+            assert!(!workspace.bottom_dock.read(cx).is_open());
+        });
     }
 }

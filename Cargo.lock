@@ -7913,6 +7913,7 @@ dependencies = [
  "menu",
  "multi_buffer",
  "reqwest_client",
+ "settings",
  "theme",
  "ui",
 ]

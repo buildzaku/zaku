@@ -23,5 +23,6 @@ input = { workspace = true }
 menu = { workspace = true }
 multi_buffer = { workspace = true }
 reqwest_client = { workspace = true }
+settings = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
