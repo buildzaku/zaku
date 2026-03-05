@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "crates/assets",
   "crates/editor",
+  "crates/fs",
   "crates/http_client",
   "crates/icons",
   "crates/input",
@@ -70,6 +71,7 @@ serde_json = { version = "1.0" }
 smallvec = { version = "1.15" }
 strum = { version = "0.27", features = ["derive"] }
 syn = { version = "2.0.114", features = ["extra-traits", "full", "visit-mut"] }
+tempfile = { version = "3.26" }
 text = { git = "https://github.com/zed-industries/zed", rev = "746ecb082d", package = "text" }
 tokio = { version = "1.49", features = ["rt", "rt-multi-thread"] }
 unicode-segmentation = { version = "1.12" }
@@ -80,6 +82,7 @@ uuid = { version = "1.1.2", features = ["v4"] }
 ##################################################
 assets = { path = "crates/assets" }
 editor = { path = "crates/editor" }
+fs = { path = "crates/fs" }
 http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }

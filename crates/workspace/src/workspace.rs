@@ -217,6 +217,9 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
+        self.pane.update(cx, |pane, cx| {
+            pane.set_should_display_welcome_page(false, cx);
+        });
         let focus_handle = self.pane.read(cx).focus_handle(cx);
         window.focus(&focus_handle, cx);
         cx.notify();
@@ -225,6 +228,9 @@ impl Workspace {
     }
 
     fn close_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pane.update(cx, |pane, cx| {
+            pane.set_should_display_welcome_page(true, cx);
+        });
         let focus_handle = self.pane.read(cx).focus_handle(cx);
         window.focus(&focus_handle, cx);
         cx.notify();
@@ -600,9 +606,13 @@ impl Focusable for Workspace {
 mod tests {
     use super::*;
 
+    use fs::TempFs;
     use gpui::TestAppContext;
+    use indoc::indoc;
+    use serde_json::json;
     use settings::SettingsStore;
     use theme::LoadThemes;
+    use util_macros::path;
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -630,6 +640,42 @@ mod tests {
 
             assert!(!workspace.left_dock.read(cx).is_open());
             assert!(!workspace.bottom_dock.read(cx).is_open());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
+        let temp_fs = TempFs::new();
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": indoc! {"
+                    .DS_Store
+                "},
+                "auth": {
+                    "login.toml": indoc! {r#"
+                        [config]
+                        method = "POST"
+                        url = "zaku.dev/auth/login"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join("project");
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(workspace.pane.read(cx).should_display_welcome_page());
+
+            workspace
+                .open_workspace_for_path(false, project_path.clone(), window, cx)
+                .detach_and_log_err(cx);
+
+            assert!(!workspace.pane.read(cx).should_display_welcome_page());
         });
     }
 }
