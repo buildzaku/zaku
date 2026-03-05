@@ -116,7 +116,7 @@ impl Pane {
         cx.notify();
     }
 
-    fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.request.url = self.input_field.read(cx).text(cx);
 
         let Ok(response_panel) = self

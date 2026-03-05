@@ -19,9 +19,7 @@ use ui::StyledTypography;
 use crate::{
     dock::Dock,
     pane::Pane,
-    panel::{
-        Panel, ProjectPanel, ResponsePanel, buttons::PanelButtons, project_panel, response_panel,
-    },
+    panel::{ProjectPanel, ResponsePanel, buttons::PanelButtons, project_panel, response_panel},
     status_bar::StatusBar,
 };
 
@@ -426,12 +424,10 @@ impl Workspace {
     }
 
     fn open_response_panel(&mut self, cx: &mut Context<Self>) -> Entity<ResponsePanel> {
-        if self.response_panel.read(cx).enabled(cx) {
-            let panel_id = Entity::entity_id(&self.response_panel);
-            self.bottom_dock.update(cx, |dock, cx| {
-                dock.activate_panel(panel_id, cx);
-            });
-        }
+        let panel_id = Entity::entity_id(&self.response_panel);
+        self.bottom_dock.update(cx, |dock, cx| {
+            dock.activate_panel(panel_id, cx);
+        });
         self.response_panel.clone()
     }
 }
@@ -666,7 +662,7 @@ mod tests {
             }),
         );
 
-        let project_path = temp_fs.path().join("project");
+        let project_path = temp_fs.path().join(path!("project"));
 
         workspace.update_in(cx, |workspace, window, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
@@ -676,6 +672,55 @@ mod tests {
                 .detach_and_log_err(cx);
 
             assert!(!workspace.pane.read(cx).should_display_welcome_page());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
+        let temp_fs = TempFs::new();
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": indoc! {"
+                    .DS_Store
+                "},
+                "auth": {
+                    "login.toml": indoc! {r#"
+                        [config]
+                        method = "GET"
+                        url = "zaku.dev/users/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace
+                .open_workspace_for_path(false, project_path.clone(), window, cx)
+                .detach_and_log_err(cx);
+        });
+
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane.clone());
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        workspace.update_in(cx, |workspace, _, cx| {
+            let response_panel_id = Entity::entity_id(&workspace.response_panel);
+            let active_panel_id = workspace
+                .bottom_dock
+                .read(cx)
+                .active_panel()
+                .map(|panel| panel.panel_id());
+
+            assert!(workspace.bottom_dock.read(cx).is_open());
+            assert_eq!(active_panel_id, Some(response_panel_id));
         });
     }
 }
