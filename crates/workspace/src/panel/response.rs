@@ -1,6 +1,6 @@
 use gpui::{
     Action, App, Context, Entity, FocusHandle, Focusable, Pixels, Render, SharedString,
-    Subscription, Window, prelude::*,
+    Subscription, WeakEntity, Window, prelude::*,
 };
 use std::time::Duration;
 
@@ -12,6 +12,7 @@ use ui::{Color, IconName, Label, LabelCommon, LabelSize};
 
 use crate::{
     DockPosition,
+    pane::Pane,
     panel::{Panel, response_panel},
 };
 
@@ -128,6 +129,7 @@ struct Response {
 
 pub struct ResponsePanel {
     focus_handle: FocusHandle,
+    pane: WeakEntity<Pane>,
     position: DockPosition,
     size: Pixels,
     response: Response,
@@ -138,7 +140,7 @@ pub struct ResponsePanel {
 impl ResponsePanel {
     const DEFAULT_SIZE: Pixels = gpui::px(440.0);
 
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer("", cx), cx));
         let editor = cx.new(|cx| {
             let mut editor = Editor::for_multibuffer(payload.clone(), window, cx);
@@ -153,6 +155,7 @@ impl ResponsePanel {
 
         Self {
             focus_handle,
+            pane,
             position: DockPosition::Bottom,
             size: Self::DEFAULT_SIZE,
             response: Response {
@@ -270,6 +273,12 @@ impl Panel for ResponsePanel {
 
     fn toggle_action(&self) -> Box<dyn Action> {
         response_panel::ToggleFocus.boxed_clone()
+    }
+
+    fn enabled(&self, cx: &App) -> bool {
+        self.pane
+            .upgrade()
+            .is_some_and(|pane| !pane.read(cx).should_display_welcome_page())
     }
 }
 

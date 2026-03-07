@@ -1931,6 +1931,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7904,16 +7912,22 @@ dependencies = [
 name = "workspace"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "editor",
+ "fs",
  "futures",
  "gpui",
  "http_client 0.0.0",
+ "indoc",
  "input",
  "menu",
  "multi_buffer",
  "reqwest_client",
+ "serde_json",
+ "settings",
  "theme",
  "ui",
+ "util_macros 0.0.0",
 ]
 
 [[package]]

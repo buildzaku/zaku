@@ -2,15 +2,18 @@ pub mod dock;
 pub mod pane;
 pub mod panel;
 pub mod status_bar;
+pub mod welcome;
 
+use anyhow::Result;
+use futures::channel::oneshot;
 use gpui::{
     Action, App, Axis, Bounds, DragMoveEvent, Empty, Entity, EntityId, FocusHandle, Focusable,
-    KeyBinding, KeyContext, MouseButton, MouseDownEvent, Pixels, Point, Subscription, Window,
-    prelude::*,
+    KeyBinding, KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point,
+    PromptLevel, Subscription, Task, Window, prelude::*,
 };
+use std::path::PathBuf;
 
-use theme::ActiveTheme;
-use theme::{GlobalTheme, SystemAppearance};
+use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
 use ui::StyledTypography;
 
 use crate::{
@@ -23,6 +26,8 @@ use crate::{
 gpui::actions!(
     workspace,
     [
+        OpenWorkspace,
+        CloseProject,
         SendRequest,
         ToggleBottomDock,
         ToggleLeftDock,
@@ -39,6 +44,10 @@ const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", SendRequest, Some("RequestUrl > Editor")),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-o", OpenWorkspace, None),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-k ctrl-o", OpenWorkspace, None),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-j", ToggleBottomDock, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
@@ -68,6 +77,33 @@ pub fn init(cx: &mut App) {
             Some(KEY_CONTEXT),
         ),
     ]);
+}
+
+pub fn prompt_and_open_workspace(
+    workspace: &mut Workspace,
+    options: PathPromptOptions,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let selected_path = workspace.prompt_open_path(options, window, cx);
+
+    cx.spawn_in(window, async move |this, cx| {
+        let Ok(Some(selected_path)) = selected_path.await else {
+            return;
+        };
+
+        let open_task = match this.update_in(cx, |workspace, window, cx| {
+            workspace.open_workspace_for_path(false, selected_path, window, cx)
+        }) {
+            Ok(open_task) => open_task,
+            Err(_) => return,
+        };
+
+        if open_task.await.is_err() {
+            return;
+        }
+    })
+    .detach();
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -124,11 +160,85 @@ impl Workspace {
         }
     }
 
+    pub fn prompt_open_path(
+        &mut self,
+        options: PathPromptOptions,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> oneshot::Receiver<Option<PathBuf>> {
+        let (sender, receiver) = oneshot::channel();
+        let path_prompt = cx.prompt_for_paths(options);
+
+        cx.spawn_in(window, async move |workspace, cx| {
+            let selection = match path_prompt.await {
+                Ok(selection) => selection,
+                Err(_) => return Ok::<(), anyhow::Error>(()),
+            };
+
+            match selection {
+                Ok(selected_paths) => {
+                    let selected_path = selected_paths.and_then(|paths| paths.into_iter().next());
+
+                    if sender.send(selected_path).is_err() {
+                        return Ok::<(), anyhow::Error>(());
+                    }
+                }
+                Err(error) => {
+                    let error_message = error.to_string();
+                    let prompt = workspace.update_in(cx, |_, window, cx| {
+                        window.prompt(
+                            PromptLevel::Critical,
+                            "Failed to open project",
+                            Some(&error_message),
+                            &["Ok"],
+                            cx,
+                        )
+                    })?;
+
+                    if prompt.await.is_err() {
+                        return Ok::<(), anyhow::Error>(());
+                    }
+                }
+            }
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .detach();
+
+        receiver
+    }
+
+    pub fn open_workspace_for_path(
+        &mut self,
+        _replace_current_window: bool,
+        _path: PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
+        self.pane.update(cx, |pane, cx| {
+            pane.set_should_display_welcome_page(false, cx);
+        });
+        let focus_handle = self.pane.read(cx).focus_handle(cx);
+        window.focus(&focus_handle, cx);
+        cx.notify();
+
+        Task::ready(Ok(()))
+    }
+
+    fn close_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.pane.update(cx, |pane, cx| {
+            pane.set_should_display_welcome_page(true, cx);
+        });
+        let focus_handle = self.pane.read(cx).focus_handle(cx);
+        window.focus(&focus_handle, cx);
+        cx.notify();
+    }
+
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
         let dock = self.dock_at_position(position).clone();
         let was_visible = dock.read(cx).is_open();
         if was_visible && !window.bindings_for_action(&menu::Cancel).is_empty() {
-            // Move focus to the pane first so dismissing a menu does not focus a hidden dock element.
+            // Move focus back to the center so dismissing a menu does not focus a hidden dock element.
             let focus_handle = self.pane.read(cx).focus_handle(cx);
             window.focus(&focus_handle, cx);
         }
@@ -137,6 +247,19 @@ impl Workspace {
         let mut focus_center = false;
 
         dock.update(cx, |dock, cx| {
+            if !was_visible {
+                let needs_enabled_panel = dock
+                    .active_panel()
+                    .is_none_or(|active_panel| !active_panel.enabled(cx));
+
+                if needs_enabled_panel {
+                    let Some(panel_index) = dock.first_enabled_panel_idx(cx) else {
+                        return;
+                    };
+                    dock.set_active_panel_index(Some(panel_index), cx);
+                }
+            }
+
             if was_visible && dock.focus_handle(cx).contains_focused(window, cx) {
                 focus_center = true;
             }
@@ -175,12 +298,13 @@ impl Workspace {
         let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, workspace.clone(), cx));
         let right_dock = cx.new(|cx| Dock::new(DockPosition::Right, workspace.clone(), cx));
 
-        let left_dock_panel = cx.new(ProjectPanel::new);
+        let pane_handle = pane.downgrade();
+        let left_dock_panel = cx.new(|cx| ProjectPanel::new(pane_handle.clone(), cx));
         left_dock.update(cx, |left_dock, cx| {
             left_dock.add_panel(left_dock_panel, window, cx);
         });
 
-        let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
+        let response_panel = cx.new(|cx| ResponsePanel::new(pane_handle, window, cx));
         bottom_dock.update(cx, |bottom_dock, cx| {
             bottom_dock.add_panel(response_panel.clone(), window, cx);
         });
@@ -189,12 +313,19 @@ impl Workspace {
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
         let right_dock_buttons = cx.new(|cx| PanelButtons::new(right_dock.clone(), cx));
 
+        pane.update(cx, |pane, cx| {
+            pane.set_should_display_welcome_page(true, cx);
+        });
+
         let status_bar = cx.new(|cx| StatusBar::new(pane.clone(), cx));
         status_bar.update(cx, |status_bar, cx| {
             status_bar.add_left_item(left_dock_buttons, cx);
             status_bar.add_right_item(bottom_dock_buttons, cx);
             status_bar.add_right_item(right_dock_buttons, cx);
         });
+
+        let pane_focus_handle = pane.read(cx).focus_handle(cx);
+        window.focus(&pane_focus_handle, cx);
 
         Self {
             left_dock,
@@ -272,7 +403,7 @@ impl Workspace {
             .left_dock
             .read(cx)
             .active_panel()
-            .map(|panel| panel.panel_id());
+            .and_then(|panel| panel.enabled(cx).then_some(panel.panel_id()));
         if let Some(panel_id) = panel_id {
             let dock = self.left_dock.clone();
             self.toggle_panel_focus(panel_id, &dock, window, cx);
@@ -280,7 +411,14 @@ impl Workspace {
     }
 
     fn toggle_response_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let panel_id = Entity::entity_id(&self.response_panel);
+        let panel_id = self
+            .bottom_dock
+            .read(cx)
+            .active_panel()
+            .and_then(|panel| panel.enabled(cx).then_some(panel.panel_id()));
+        let Some(panel_id) = panel_id else {
+            return;
+        };
         let dock = self.bottom_dock.clone();
         self.toggle_panel_focus(panel_id, &dock, window, cx);
     }
@@ -328,6 +466,22 @@ impl Render for Workspace {
             .font(ui_font)
             .text_ui(cx)
             .size_full()
+            .on_action(cx.listener(|workspace, _: &OpenWorkspace, window, cx| {
+                prompt_and_open_workspace(
+                    workspace,
+                    PathPromptOptions {
+                        files: false,
+                        directories: true,
+                        multiple: false,
+                        prompt: None,
+                    },
+                    window,
+                    cx,
+                );
+            }))
+            .on_action(cx.listener(|workspace, _: &CloseProject, window, cx| {
+                workspace.close_project(window, cx);
+            }))
             .on_action(cx.listener(|workspace, _: &ToggleLeftDock, window, cx| {
                 workspace.toggle_dock(DockPosition::Left, window, cx);
             }))
@@ -441,5 +595,132 @@ impl Render for Workspace {
 impl Focusable for Workspace {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.pane.read(cx).focus_handle(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use fs::TempFs;
+    use gpui::TestAppContext;
+    use indoc::indoc;
+    use serde_json::json;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+
+    fn init_test(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            editor::init(cx);
+            crate::init(cx);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(workspace.pane.read(cx).should_display_welcome_page());
+            assert!(!workspace.left_dock.read(cx).is_open());
+            assert!(!workspace.bottom_dock.read(cx).is_open());
+
+            workspace.toggle_dock(DockPosition::Left, window, cx);
+            workspace.toggle_dock(DockPosition::Bottom, window, cx);
+
+            assert!(!workspace.left_dock.read(cx).is_open());
+            assert!(!workspace.bottom_dock.read(cx).is_open());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
+        let temp_fs = TempFs::new();
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": indoc! {"
+                    .DS_Store
+                "},
+                "auth": {
+                    "login.toml": indoc! {r#"
+                        [config]
+                        method = "POST"
+                        url = "zaku.dev/auth/login"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(workspace.pane.read(cx).should_display_welcome_page());
+
+            workspace
+                .open_workspace_for_path(false, project_path.clone(), window, cx)
+                .detach_and_log_err(cx);
+
+            assert!(!workspace.pane.read(cx).should_display_welcome_page());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
+        let temp_fs = TempFs::new();
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": indoc! {"
+                    .DS_Store
+                "},
+                "auth": {
+                    "login.toml": indoc! {r#"
+                        [config]
+                        method = "GET"
+                        url = "zaku.dev/users/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace
+                .open_workspace_for_path(false, project_path.clone(), window, cx)
+                .detach_and_log_err(cx);
+        });
+
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane.clone());
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        workspace.update_in(cx, |workspace, _, cx| {
+            let response_panel_id = Entity::entity_id(&workspace.response_panel);
+            let active_panel_id = workspace
+                .bottom_dock
+                .read(cx)
+                .active_panel()
+                .map(|panel| panel.panel_id());
+
+            assert!(workspace.bottom_dock.read(cx).is_open());
+            assert_eq!(active_panel_id, Some(response_panel_id));
+        });
     }
 }

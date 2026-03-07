@@ -1,7 +1,7 @@
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    App, Context, Corner, Entity, FocusHandle, Focusable, FontWeight, WeakEntity, Window,
-    prelude::*,
+    App, Context, Corner, Entity, FocusHandle, FocusOutEvent, Focusable, FontWeight, Subscription,
+    WeakEntity, Window, prelude::*,
 };
 use std::{
     sync::Arc,
@@ -14,10 +14,10 @@ use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, ContextMenu, DropdownMenu,
-    DropdownStyle, FixedWidth, IconPosition, Label,
+    DropdownStyle, FixedWidth, IconPosition, Label, StyledExt,
 };
 
-use crate::{SendRequest, Workspace, panel::response::ResponseState};
+use crate::{SendRequest, Workspace, panel::response::ResponseState, welcome::WelcomePage};
 
 fn normalize_url(url: String) -> Option<String> {
     let url = url.trim().to_string();
@@ -48,10 +48,14 @@ impl Default for Request {
 
 pub struct Pane {
     focus_handle: FocusHandle,
+    was_focused: bool,
+    should_display_welcome_page: bool,
+    welcome_page: Option<Entity<WelcomePage>>,
     workspace: WeakEntity<Workspace>,
     http_client: Arc<dyn HttpClient>,
     request: Request,
     input_field: Entity<InputField>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl Pane {
@@ -60,16 +64,59 @@ impl Pane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let focus_handle = cx.focus_handle();
+        let subscriptions = vec![
+            cx.on_focus(&focus_handle, window, Pane::focus_in),
+            cx.on_focus_in(&focus_handle, window, Pane::focus_in),
+            cx.on_focus_out(&focus_handle, window, Pane::focus_out),
+        ];
+
         Self {
-            focus_handle: cx.focus_handle(),
+            focus_handle,
+            was_focused: false,
+            should_display_welcome_page: false,
+            welcome_page: None,
             workspace,
             http_client: Arc::new(ReqwestClient::new()),
             request: Request::default(),
             input_field: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
+            _subscriptions: subscriptions,
         }
     }
 
-    fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn set_should_display_welcome_page(
+        &mut self,
+        should_display_welcome_page: bool,
+        cx: &mut Context<Self>,
+    ) {
+        self.should_display_welcome_page = should_display_welcome_page;
+        cx.notify();
+    }
+
+    pub fn should_display_welcome_page(&self) -> bool {
+        self.should_display_welcome_page
+    }
+
+    fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.was_focused {
+            self.was_focused = true;
+            cx.notify();
+        }
+
+        if self.should_display_welcome_page()
+            && let Some(welcome_page) = self.welcome_page.as_ref()
+            && self.focus_handle.is_focused(window)
+        {
+            welcome_page.read(cx).focus_handle(cx).focus(window, cx);
+        }
+    }
+
+    fn focus_out(&mut self, _event: FocusOutEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        self.was_focused = false;
+        cx.notify();
+    }
+
+    pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.request.url = self.input_field.read(cx).text(cx);
 
         let Ok(response_panel) = self
@@ -268,6 +315,37 @@ impl Focusable for Pane {
 
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.should_display_welcome_page() {
+            return gpui::div()
+                .track_focus(&self.focus_handle)
+                .size_full()
+                .overflow_hidden()
+                .bg(cx.theme().colors().panel_background)
+                .child({
+                    let placeholder = gpui::div()
+                        .id("pane-placeholder")
+                        .h_flex()
+                        .size_full()
+                        .justify_center();
+
+                    if !self.should_display_welcome_page() {
+                        placeholder
+                    } else {
+                        if self.welcome_page.is_none() {
+                            let workspace = self.workspace.clone();
+                            self.welcome_page =
+                                Some(cx.new(|cx| WelcomePage::new(workspace, true, window, cx)));
+                        }
+
+                        if let Some(welcome_page) = self.welcome_page.clone() {
+                            placeholder.child(welcome_page)
+                        } else {
+                            placeholder
+                        }
+                    }
+                });
+        }
+
         let input_field = self.input_field.clone();
         let request_method_menu = {
             let available_request_methods = [

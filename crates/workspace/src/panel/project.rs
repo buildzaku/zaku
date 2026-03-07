@@ -1,14 +1,18 @@
-use gpui::{Action, App, Context, FocusHandle, Focusable, Pixels, Render, Window, prelude::*};
+use gpui::{
+    Action, App, Context, FocusHandle, Focusable, Pixels, Render, WeakEntity, Window, prelude::*,
+};
 
 use theme::ActiveTheme;
 
 use crate::{
     DockPosition,
+    pane::Pane,
     panel::{Panel, project_panel},
 };
 
 pub struct ProjectPanel {
     focus_handle: FocusHandle,
+    pane: WeakEntity<Pane>,
     position: DockPosition,
     size: Pixels,
 }
@@ -16,9 +20,10 @@ pub struct ProjectPanel {
 impl ProjectPanel {
     const DEFAULT_SIZE: Pixels = gpui::px(250.);
 
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    pub fn new(pane: WeakEntity<Pane>, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
+            pane,
             position: DockPosition::Left,
             size: Self::DEFAULT_SIZE,
         }
@@ -70,6 +75,12 @@ impl Panel for ProjectPanel {
 
     fn toggle_action(&self) -> Box<dyn Action> {
         project_panel::ToggleFocus.boxed_clone()
+    }
+
+    fn enabled(&self, cx: &App) -> bool {
+        self.pane
+            .upgrade()
+            .is_some_and(|pane| !pane.read(cx).should_display_welcome_page())
     }
 }
 
