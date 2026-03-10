@@ -39,6 +39,7 @@ gpui::actions!(
         OpenWorkspace,
         OpenRecent,
         CloseProject,
+        CloseWindow,
         SendRequest,
         ToggleBottomDock,
         ToggleLeftDock,
@@ -213,6 +214,24 @@ impl Root {
 
     fn close_project(&mut self, _: &CloseProject, window: &mut Window, cx: &mut Context<Self>) {
         self.replace_workspace(window, cx);
+    }
+
+    pub fn close_window(&mut self, _: &CloseWindow, window: &mut Window, cx: &mut Context<Self>) {
+        cx.spawn_in(window, async move |this, cx| {
+            let workspace = this.update(cx, |root, _cx| root.workspace().clone())?;
+            let flush_task = workspace.update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })?;
+
+            flush_task.await;
+
+            cx.update(|window, _cx| {
+                window.remove_window();
+            })?;
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
     }
 }
 

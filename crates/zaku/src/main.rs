@@ -7,7 +7,7 @@ use uuid::Uuid;
 use fs::NativeFs;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::{Root, SharedState, Workspace};
+use workspace::{CloseWindow, Root, SharedState, Workspace};
 
 gpui::actions!(zaku, [Quit]);
 
@@ -37,6 +37,22 @@ fn main() {
 
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
             cx.on_action(quit);
+            cx.observe_new(|_root: &mut Root, window, cx| {
+                let Some(window) = window else {
+                    return;
+                };
+
+                let root_handle = cx.entity().downgrade();
+                window.on_window_should_close(cx, move |window, cx| {
+                    root_handle
+                        .update(cx, |root, cx| {
+                            root.close_window(&CloseWindow, window, cx);
+                            false
+                        })
+                        .unwrap_or(true)
+                });
+            })
+            .detach();
             cx.on_window_closed(|cx| {
                 if cx.windows().is_empty() {
                     cx.quit();
