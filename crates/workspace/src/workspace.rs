@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     sync::{Arc, Weak},
+    time::Duration,
 };
 
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
@@ -50,6 +51,7 @@ const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
 const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
 const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
+const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceId(i64);
@@ -186,10 +188,73 @@ impl DockPosition {
     }
 }
 
+pub struct Root {
+    workspace: Entity<Workspace>,
+}
+
+impl Root {
+    pub fn new(workspace: Entity<Workspace>) -> Self {
+        Self { workspace }
+    }
+
+    pub fn workspace(&self) -> &Entity<Workspace> {
+        &self.workspace
+    }
+
+    pub(crate) fn replace_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let shared_state = self.workspace.read(cx).shared_state().clone();
+        self.workspace = Workspace::create(shared_state, window, cx);
+        cx.notify();
+    }
+
+    fn open_recent_project(&mut self, _: &OpenRecent, window: &mut Window, cx: &mut Context<Self>) {
+        self.replace_workspace(window, cx);
+    }
+
+    fn close_project(&mut self, _: &CloseProject, window: &mut Window, cx: &mut Context<Self>) {
+        self.replace_workspace(window, cx);
+    }
+}
+
+impl Focusable for Root {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.workspace.read(cx).focus_handle(cx)
+    }
+}
+
+impl Render for Root {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+            .size_full()
+            .on_action(cx.listener(Self::open_recent_project))
+            .on_action(cx.listener(Self::close_project))
+            .child(self.workspace.clone())
+    }
+}
+
+pub struct Project {
+    root_path: Option<PathBuf>,
+}
+
+impl Project {
+    fn new() -> Self {
+        Self { root_path: None }
+    }
+
+    fn set_root_path(&mut self, root_path: Option<PathBuf>) {
+        self.root_path = root_path;
+    }
+
+    fn root_path(&self) -> Option<PathBuf> {
+        self.root_path.clone()
+    }
+}
+
 pub struct Workspace {
     shared_state: Arc<SharedState>,
     database_id: Option<WorkspaceId>,
     session_id: Option<String>,
+    project: Entity<Project>,
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
     right_dock: Entity<Dock>,
@@ -198,6 +263,8 @@ pub struct Workspace {
     status_bar: Entity<StatusBar>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
+    _schedule_serialize_workspace: Option<Task<()>>,
+    _serialize_workspace_task: Option<Task<()>>,
     _window_appearance_subscription: Subscription,
 }
 
@@ -226,8 +293,11 @@ impl Workspace {
         cx.spawn_in(window, async move |_this, cx| {
             match WORKSPACE_DB.next_id().await {
                 Ok(workspace_id) => {
-                    match weak_workspace.update_in(cx, |workspace, _window, _cx| {
+                    match weak_workspace.update_in(cx, |workspace, window, cx| {
                         workspace.set_database_id(workspace_id);
+                        workspace._schedule_serialize_workspace.take();
+                        workspace._serialize_workspace_task =
+                            Some(workspace.serialize_workspace_internal(window, cx));
                         workspace.session_id()
                     }) {
                         Ok(session_id) => {
@@ -341,37 +411,77 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let database_id = self.database_id;
-        let location = SerializedWorkspaceLocation::Local(path);
-        let session_id = self.session_id.clone();
-        let window_id = Some(window.window_handle().window_id().as_u64());
-
-        cx.spawn_in(window, async move |_, _| {
-            let Some(database_id) = database_id else {
-                return Ok::<(), anyhow::Error>(());
-            };
-
-            WORKSPACE_DB
-                .save_workspace(SerializedWorkspace {
-                    id: database_id,
-                    location,
-                    session_id,
-                    window_id,
-                })
-                .await;
-
-            Ok::<(), anyhow::Error>(())
-        })
-        .detach();
-
+        self.project.update(cx, |project, _cx| {
+            project.set_root_path(Some(path));
+        });
         self.pane.update(cx, |pane, cx| {
             pane.set_should_display_welcome_page(false, cx);
         });
+        self.serialize_workspace(window, cx);
+
         let focus_handle = self.pane.read(cx).focus_handle(cx);
         window.focus(&focus_handle, cx);
         cx.notify();
 
         Task::ready(Ok(()))
+    }
+
+    fn root_path(&self, cx: &App) -> Option<PathBuf> {
+        self.project.read(cx).root_path()
+    }
+
+    pub fn flush_serialization(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
+        self._schedule_serialize_workspace.take();
+        self._serialize_workspace_task.take();
+
+        let serialize_task = self.serialize_workspace_internal(window, cx);
+        cx.spawn(async move |_| {
+            serialize_task.await;
+        })
+    }
+
+    fn serialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self._schedule_serialize_workspace.is_none() {
+            self._schedule_serialize_workspace =
+                Some(cx.spawn_in(window, async move |this, cx| {
+                    cx.background_executor()
+                        .timer(SERIALIZATION_THROTTLE_TIME)
+                        .await;
+                    if let Err(error) = this.update_in(cx, |this, window, cx| {
+                        this._serialize_workspace_task =
+                            Some(this.serialize_workspace_internal(window, cx));
+                        this._schedule_serialize_workspace.take();
+                    }) {
+                        eprintln!("failed to schedule workspace serialization: {error}");
+                    }
+                }));
+        }
+    }
+
+    fn serialize_workspace_internal(&self, window: &mut Window, cx: &mut App) -> Task<()> {
+        let Some(database_id) = self.database_id() else {
+            return Task::ready(());
+        };
+
+        match self.root_path(cx) {
+            Some(root_path) => {
+                let serialized_workspace = SerializedWorkspace {
+                    id: database_id,
+                    location: SerializedWorkspaceLocation::Local(root_path),
+                    session_id: self.session_id.clone(),
+                    window_id: Some(window.window_handle().window_id().as_u64()),
+                };
+
+                window.spawn(cx, async move |_| {
+                    WORKSPACE_DB.save_workspace(serialized_workspace).await;
+                })
+            }
+            None => window.spawn(cx, async move |_| {
+                if let Err(error) = WORKSPACE_DB.delete_workspace_by_id(database_id).await {
+                    eprintln!("failed to delete workspace without root path: {error}");
+                }
+            }),
+        }
     }
 
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
@@ -434,6 +544,7 @@ impl Workspace {
             });
 
         let workspace = cx.entity().downgrade();
+        let project = cx.new(|_| Project::new());
         let pane = cx.new(|cx| Pane::new(workspace.clone(), window, cx));
         let pane_focus_handle = pane.read(cx).focus_handle(cx);
         window.focus(&pane_focus_handle, cx);
@@ -476,6 +587,7 @@ impl Workspace {
             shared_state,
             database_id: None,
             session_id,
+            project,
             left_dock,
             bottom_dock,
             right_dock,
@@ -484,6 +596,8 @@ impl Workspace {
             status_bar,
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
+            _schedule_serialize_workspace: None,
+            _serialize_workspace_task: None,
             _window_appearance_subscription: window_appearance_subscription,
         }
     }
@@ -757,7 +871,7 @@ mod tests {
     use theme::LoadThemes;
     use util_macros::path;
 
-    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    pub fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
@@ -844,6 +958,7 @@ mod tests {
 
             assert!(!workspace.pane.read(cx).should_display_welcome_page());
         });
+        cx.executor().advance_clock(Duration::from_millis(200));
         cx.run_until_parked();
 
         let recent_workspaces = WORKSPACE_DB

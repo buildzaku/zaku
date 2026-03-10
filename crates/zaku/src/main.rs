@@ -1,8 +1,5 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{
-    App, Application, Bounds, Context, Entity, FocusHandle, Focusable, KeyBinding, Render, Task,
-    Window, WindowBounds, WindowOptions, prelude::*,
-};
+use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
 use gpui_platform;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -10,53 +7,13 @@ use uuid::Uuid;
 use fs::NativeFs;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::{CloseProject, OpenRecent, SharedState, Workspace};
+use workspace::{Root, SharedState, Workspace};
 
 gpui::actions!(zaku, [Quit]);
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-struct Root {
-    workspace: Entity<Workspace>,
-}
-
-impl Root {
-    fn new(workspace: Entity<Workspace>) -> Self {
-        Self { workspace }
-    }
-
-    fn replace_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let shared_state = self.workspace.read(cx).shared_state().clone();
-        self.workspace = Workspace::create(shared_state, window, cx);
-        cx.notify();
-    }
-
-    fn open_recent_project(&mut self, _: &OpenRecent, window: &mut Window, cx: &mut Context<Self>) {
-        self.replace_workspace(window, cx);
-    }
-
-    fn close_project(&mut self, _: &CloseProject, window: &mut Window, cx: &mut Context<Self>) {
-        self.replace_workspace(window, cx);
-    }
-}
-
-impl Focusable for Root {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.workspace.read(cx).focus_handle(cx)
-    }
-}
-
-impl Render for Root {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        gpui::div()
-            .size_full()
-            .on_action(cx.listener(Self::open_recent_project))
-            .on_action(cx.listener(Self::close_project))
-            .child(self.workspace.clone())
-    }
-}
 
 fn main() {
     Application::with_platform(gpui_platform::current_platform(false))
@@ -79,9 +36,7 @@ fn main() {
             workspace::init(shared_state.clone(), cx);
 
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-            cx.on_action(|_: &Quit, cx: &mut App| {
-                cx.quit();
-            });
+            cx.on_action(quit);
             cx.on_window_closed(|cx| {
                 if cx.windows().is_empty() {
                     cx.quit();
@@ -110,6 +65,37 @@ fn main() {
             )
             .unwrap();
         });
+}
+
+fn quit(_: &Quit, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let workspace_windows = cx.update(|cx| {
+            cx.windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<Root>())
+                .collect::<Vec<_>>()
+        });
+
+        let mut flush_tasks = Vec::new();
+        for window in &workspace_windows {
+            match window.update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.flush_serialization(window, cx)
+                })
+            }) {
+                Ok(flush_task) => flush_tasks.push(flush_task),
+                Err(error) => {
+                    eprintln!("failed to flush workspace serialization before quit: {error}");
+                }
+            }
+        }
+
+        futures::future::join_all(flush_tasks).await;
+
+        cx.update(|cx| cx.quit());
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
 }
 
 fn handle_settings_file_changes(

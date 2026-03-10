@@ -15,6 +15,7 @@ default = ["mimalloc"]
 mimalloc = ["dep:mimalloc"]
 
 [dependencies]
+anyhow = { workspace = true }
 assets = { workspace = true }
 editor = { workspace = true }
 fs = { workspace = true }

@@ -188,6 +188,33 @@ impl WorkspaceDb {
         })
     }
 
+    #[cfg(test)]
+    fn workspace_for_id(&self, workspace_id: WorkspaceId) -> Option<SerializedWorkspace> {
+        self.0
+            .read(|connection| {
+                connection
+                    .select_row_bound::<[i64; 1], (PathBuf, Option<String>, Option<i64>)>(indoc! {"
+                        SELECT location, session_id, window_id
+                        FROM workspace
+                        WHERE id = ?1 AND location IS NOT NULL
+                    "})
+                    .context("failed to prepare workspace by id query")
+                    .and_then(|mut f| f([i64::from(workspace_id)]))
+                    .context("failed to query workspace by id")
+                    .map(|workspace| {
+                        workspace.map(|(location, session_id, window_id)| SerializedWorkspace {
+                            id: workspace_id,
+                            location: SerializedWorkspaceLocation::Local(location),
+                            session_id,
+                            window_id: window_id
+                                .and_then(|window_id| u64::try_from(window_id).ok()),
+                        })
+                    })
+            })
+            .ok()
+            .flatten()
+    }
+
     async fn initialize_schema(&self) -> anyhow::Result<()> {
         self.0
             .write(|connection| {
@@ -306,7 +333,14 @@ mod tests {
     use gpui::TestAppContext;
     use serde_json::json;
 
-    use crate::SerializedWorkspaceLocation;
+    #[cfg(unix)]
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt};
+
+    use std::sync::Arc;
+
+    use util_macros::path;
+
+    use crate::{Root, SharedState, Workspace};
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(_cx: &mut TestAppContext) {
@@ -359,8 +393,6 @@ mod tests {
     #[cfg(unix)]
     #[gpui::test]
     async fn test_save_workspace_preserves_non_utf8_paths(_cx: &mut TestAppContext) {
-        use std::{ffi::OsString, os::unix::ffi::OsStringExt};
-
         let workspace_db =
             WorkspaceDb::open_test_db("test_save_workspace_preserves_non_utf8_paths").await;
         let path = PathBuf::from(OsString::from_vec(vec![0x2f, 0x74, 0x6d, 0x70, 0x2f, 0x80]));
@@ -413,6 +445,67 @@ mod tests {
                 .recent_workspace_count()
                 .expect("workspace count query should succeed"),
             0
+        );
+    }
+
+    #[gpui::test]
+    async fn test_create_workspace_serialization(cx: &mut TestAppContext) {
+        let temp_fs = Arc::new(TempFs::new());
+        let shared_state = Arc::new(SharedState::new(
+            temp_fs.clone(),
+            "test-session".to_string(),
+        ));
+        crate::tests::init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": indoc! {"
+                .DS_Store
+            "},
+                "auth": {
+                    "login.toml": indoc! {r#"
+                    [config]
+                    method = "GET"
+                    url = "zaku.dev/users/me"
+                "#}
+                }
+            }),
+        );
+
+        let (root, cx) = cx.add_window_view({
+            let shared_state = shared_state.clone();
+            move |window, cx| {
+                let shared_state = shared_state.clone();
+                Root::new(Workspace::create(shared_state, window, cx))
+            }
+        });
+        let workspace = root.update_in(cx, |root, window, cx| {
+            root.replace_workspace(window, cx);
+            root.workspace().clone()
+        });
+
+        let project_path = temp_fs.path().join(path!("project"));
+        workspace.update_in(cx, |workspace, window, cx| {
+            assert!(workspace.database_id().is_none());
+
+            workspace
+                .open_workspace_for_path(project_path.clone(), window, cx)
+                .detach_and_log_err(cx);
+        });
+        cx.run_until_parked();
+
+        let new_db_id = workspace.read_with(cx, |workspace, _| workspace.database_id());
+        assert!(
+            new_db_id.is_some(),
+            "Workspace should have a database_id after run_until_parked"
+        );
+
+        let workspace_id = new_db_id.unwrap();
+        let serialized = DB.workspace_for_id(workspace_id);
+        assert!(
+            serialized.is_some(),
+            "Workspace should be fully serialized in the DB after database_id assignment"
         );
     }
 }
