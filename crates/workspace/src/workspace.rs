@@ -1,17 +1,26 @@
 pub mod dock;
 pub mod pane;
 pub mod panel;
+mod persistence;
 pub mod status_bar;
 pub mod welcome;
 
-use anyhow::Result;
+pub use persistence::{
+    DB as WORKSPACE_DB, WorkspaceDb,
+    model::{SerializedWorkspace, SerializedWorkspaceLocation},
+};
+
 use futures::channel::oneshot;
 use gpui::{
     Action, App, Axis, Bounds, DragMoveEvent, Empty, Entity, EntityId, FocusHandle, Focusable,
-    KeyBinding, KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point,
+    Global, KeyBinding, KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point,
     PromptLevel, Subscription, Task, Window, prelude::*,
 };
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Weak},
+};
 
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
 use ui::StyledTypography;
@@ -27,6 +36,7 @@ gpui::actions!(
     workspace,
     [
         OpenWorkspace,
+        OpenRecent,
         CloseProject,
         SendRequest,
         ToggleBottomDock,
@@ -41,7 +51,53 @@ const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
 const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 
-pub fn init(cx: &mut App) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkspaceId(i64);
+
+impl WorkspaceId {
+    pub fn from_i64(value: i64) -> Self {
+        Self(value)
+    }
+}
+
+impl From<WorkspaceId> for i64 {
+    fn from(value: WorkspaceId) -> Self {
+        value.0
+    }
+}
+
+#[derive(Clone)]
+pub struct SharedState {
+    pub fs: Arc<dyn fs::Fs>,
+    pub session_id: String,
+}
+
+struct GlobalSharedState(Weak<SharedState>);
+
+impl Global for GlobalSharedState {}
+
+impl SharedState {
+    pub fn new(fs: Arc<dyn fs::Fs>, session_id: String) -> Self {
+        Self { fs, session_id }
+    }
+
+    #[track_caller]
+    pub fn global(cx: &App) -> Weak<Self> {
+        cx.global::<GlobalSharedState>().0.clone()
+    }
+
+    pub fn try_global(cx: &App) -> Option<Weak<Self>> {
+        cx.try_global::<GlobalSharedState>()
+            .map(|shared_state| shared_state.0.clone())
+    }
+
+    pub fn set_global(shared_state: Weak<SharedState>, cx: &mut App) {
+        cx.set_global(GlobalSharedState(shared_state));
+    }
+}
+
+pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
+    SharedState::set_global(Arc::downgrade(&shared_state), cx);
     cx.bind_keys([
         KeyBinding::new("enter", SendRequest, Some("RequestUrl > Editor")),
         #[cfg(target_os = "macos")]
@@ -93,7 +149,7 @@ pub fn prompt_and_open_workspace(
         };
 
         let open_task = match this.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(false, selected_path, window, cx)
+            workspace.open_workspace_for_path(selected_path, window, cx)
         }) {
             Ok(open_task) => open_task,
             Err(_) => return,
@@ -131,6 +187,9 @@ impl DockPosition {
 }
 
 pub struct Workspace {
+    shared_state: Arc<SharedState>,
+    database_id: Option<WorkspaceId>,
+    session_id: Option<String>,
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
     right_dock: Entity<Dock>,
@@ -152,12 +211,80 @@ impl Render for DraggedDock {
 }
 
 impl Workspace {
+    pub fn create<V>(
+        shared_state: Arc<SharedState>,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> Entity<Self>
+    where
+        V: 'static,
+    {
+        let workspace = cx.new(|cx| Self::new(shared_state, window, cx));
+        let weak_workspace = workspace.downgrade();
+        let window_id = window.window_handle().window_id().as_u64();
+
+        cx.spawn_in(window, async move |_this, cx| {
+            match WORKSPACE_DB.next_id().await {
+                Ok(workspace_id) => {
+                    match weak_workspace.update_in(cx, |workspace, _window, _cx| {
+                        workspace.set_database_id(workspace_id);
+                        workspace.session_id()
+                    }) {
+                        Ok(session_id) => {
+                            cx.background_spawn(async move {
+                                if let Err(error) = WORKSPACE_DB
+                                    .set_session_binding(workspace_id, session_id, Some(window_id))
+                                    .await
+                                {
+                                    eprintln!("failed to bind workspace session metadata: {error}");
+                                }
+                            })
+                            .detach();
+                        }
+                        Err(_) => {
+                            cx.background_spawn(async move {
+                                if let Err(error) =
+                                    WORKSPACE_DB.delete_workspace_by_id(workspace_id).await
+                                {
+                                    eprintln!("failed to delete unbound workspace id: {error}");
+                                }
+                            })
+                            .detach();
+                        }
+                    }
+                }
+                Err(error) => {
+                    eprintln!("failed to allocate workspace id: {error}");
+                }
+            }
+        })
+        .detach();
+
+        workspace
+    }
+
     fn dock_at_position(&self, position: DockPosition) -> &Entity<Dock> {
         match position {
             DockPosition::Left => &self.left_dock,
             DockPosition::Bottom => &self.bottom_dock,
             DockPosition::Right => &self.right_dock,
         }
+    }
+
+    pub fn shared_state(&self) -> &Arc<SharedState> {
+        &self.shared_state
+    }
+
+    pub fn database_id(&self) -> Option<WorkspaceId> {
+        self.database_id
+    }
+
+    pub fn session_id(&self) -> Option<String> {
+        self.session_id.clone()
+    }
+
+    pub(crate) fn set_database_id(&mut self, id: WorkspaceId) {
+        self.database_id = Some(id);
     }
 
     pub fn prompt_open_path(
@@ -210,11 +337,33 @@ impl Workspace {
 
     pub fn open_workspace_for_path(
         &mut self,
-        _replace_current_window: bool,
-        _path: PathBuf,
+        path: PathBuf,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Task<Result<()>> {
+    ) -> Task<anyhow::Result<()>> {
+        let database_id = self.database_id;
+        let location = SerializedWorkspaceLocation::Local(path);
+        let session_id = self.session_id.clone();
+        let window_id = Some(window.window_handle().window_id().as_u64());
+
+        cx.spawn_in(window, async move |_, _| {
+            let Some(database_id) = database_id else {
+                return Ok::<(), anyhow::Error>(());
+            };
+
+            WORKSPACE_DB
+                .save_workspace(SerializedWorkspace {
+                    id: database_id,
+                    location,
+                    session_id,
+                    window_id,
+                })
+                .await;
+
+            Ok::<(), anyhow::Error>(())
+        })
+        .detach();
+
         self.pane.update(cx, |pane, cx| {
             pane.set_should_display_welcome_page(false, cx);
         });
@@ -223,15 +372,6 @@ impl Workspace {
         cx.notify();
 
         Task::ready(Ok(()))
-    }
-
-    fn close_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.pane.update(cx, |pane, cx| {
-            pane.set_should_display_welcome_page(true, cx);
-        });
-        let focus_handle = self.pane.read(cx).focus_handle(cx);
-        window.focus(&focus_handle, cx);
-        cx.notify();
     }
 
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
@@ -281,7 +421,11 @@ impl Workspace {
         cx.notify();
     }
 
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        shared_state: Arc<SharedState>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let window_appearance_subscription =
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
@@ -324,10 +468,14 @@ impl Workspace {
             status_bar.add_right_item(right_dock_buttons, cx);
         });
 
+        let session_id = Some(shared_state.session_id.clone());
         let pane_focus_handle = pane.read(cx).focus_handle(cx);
         window.focus(&pane_focus_handle, cx);
 
         Self {
+            shared_state,
+            database_id: None,
+            session_id,
             left_dock,
             bottom_dock,
             right_dock,
@@ -479,9 +627,6 @@ impl Render for Workspace {
                     cx,
                 );
             }))
-            .on_action(cx.listener(|workspace, _: &CloseProject, window, cx| {
-                workspace.close_project(window, cx);
-            }))
             .on_action(cx.listener(|workspace, _: &ToggleLeftDock, window, cx| {
                 workspace.toggle_dock(DockPosition::Left, window, cx);
             }))
@@ -602,29 +747,46 @@ impl Focusable for Workspace {
 mod tests {
     use super::*;
 
-    use fs::TempFs;
     use gpui::TestAppContext;
     use indoc::indoc;
     use serde_json::json;
+    use std::sync::Arc;
+
+    use fs::TempFs;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
 
-    fn init_test(cx: &mut TestAppContext) {
+    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
             editor::init(cx);
-            crate::init(cx);
+            crate::init(shared_state, cx);
         });
+    }
+
+    async fn clear_test_workspace_db() {
+        WORKSPACE_DB
+            .clear_recent_workspaces()
+            .await
+            .expect("workspace recent list should clear");
     }
 
     #[gpui::test]
     async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
-        init_test(cx);
+        let shared_state = Arc::new(SharedState::new(
+            Arc::new(TempFs::new()),
+            "test-session".to_string(),
+        ));
+        init_test(shared_state.clone(), cx);
 
-        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
+        clear_test_workspace_db().await;
+        let (workspace, cx) = cx.add_window_view({
+            let shared_state = shared_state.clone();
+            move |window, cx| Workspace::new(shared_state, window, cx)
+        });
 
         workspace.update_in(cx, |workspace, window, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
@@ -641,10 +803,18 @@ mod tests {
 
     #[gpui::test]
     async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
-        init_test(cx);
+        let temp_fs = Arc::new(TempFs::new());
+        let shared_state = Arc::new(SharedState::new(
+            temp_fs.clone(),
+            "test-session".to_string(),
+        ));
+        init_test(shared_state.clone(), cx);
 
-        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
-        let temp_fs = TempFs::new();
+        clear_test_workspace_db().await;
+        let (workspace, cx) = cx.add_window_view({
+            let shared_state = shared_state.clone();
+            move |window, cx| Workspace::new(shared_state, window, cx)
+        });
 
         temp_fs.insert_tree(
             path!("project"),
@@ -666,21 +836,41 @@ mod tests {
 
         workspace.update_in(cx, |workspace, window, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
+            workspace.set_database_id(WorkspaceId::from_i64(1));
 
             workspace
-                .open_workspace_for_path(false, project_path.clone(), window, cx)
+                .open_workspace_for_path(project_path.clone(), window, cx)
                 .detach_and_log_err(cx);
 
             assert!(!workspace.pane.read(cx).should_display_welcome_page());
         });
+        cx.run_until_parked();
+
+        let recent_workspaces = WORKSPACE_DB
+            .recent_workspaces_on_disk(temp_fs.as_ref())
+            .await
+            .expect("recent workspace query should succeed");
+        assert!(
+            recent_workspaces
+                .iter()
+                .any(|(_, location, _)| { location.path() == project_path.as_path() })
+        );
     }
 
     #[gpui::test]
     async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
-        init_test(cx);
+        let temp_fs = Arc::new(TempFs::new());
+        let shared_state = Arc::new(SharedState::new(
+            temp_fs.clone(),
+            "test-session".to_string(),
+        ));
+        init_test(shared_state.clone(), cx);
 
-        let (workspace, cx) = cx.add_window_view(|window, cx| Workspace::new(window, cx));
-        let temp_fs = TempFs::new();
+        clear_test_workspace_db().await;
+        let (workspace, cx) = cx.add_window_view({
+            let shared_state = shared_state.clone();
+            move |window, cx| Workspace::new(shared_state, window, cx)
+        });
 
         temp_fs.insert_tree(
             path!("project"),
@@ -701,8 +891,9 @@ mod tests {
         let project_path = temp_fs.path().join(path!("project"));
 
         workspace.update_in(cx, |workspace, window, cx| {
+            workspace.set_database_id(WorkspaceId::from_i64(1));
             workspace
-                .open_workspace_for_path(false, project_path.clone(), window, cx)
+                .open_workspace_for_path(project_path.clone(), window, cx)
                 .detach_and_log_err(cx);
         });
 

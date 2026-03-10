@@ -1,7 +1,10 @@
+use chrono::{DateTime, Utc};
 use gpui::{
     Action, App, Context, FocusHandle, Focusable, FontWeight, Render, SharedString, WeakEntity,
     Window, prelude::*,
 };
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use menu::{SelectNext, SelectPrevious};
 use theme::ActiveTheme;
@@ -10,7 +13,14 @@ use ui::{
     KeyBinding, Label, LabelCommon, LabelSize,
 };
 
-use crate::{OpenWorkspace, Workspace};
+use crate::{OpenWorkspace, SerializedWorkspaceLocation, WORKSPACE_DB, Workspace, WorkspaceId};
+
+#[derive(PartialEq, Clone, Debug, Deserialize, Serialize, JsonSchema, Action)]
+#[action(namespace = welcome)]
+#[serde(transparent)]
+pub struct OpenRecentProject {
+    pub index: usize,
+}
 
 #[derive(IntoElement)]
 struct SectionHeader {
@@ -154,13 +164,15 @@ const CONTENT: Section<1> = Section {
 };
 
 pub struct WelcomePage {
+    workspace: WeakEntity<Workspace>,
     focus_handle: FocusHandle,
     fallback_to_recent_projects: bool,
+    recent_workspaces: Option<Vec<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>>,
 }
 
 impl WelcomePage {
     pub fn new(
-        _workspace: WeakEntity<Workspace>,
+        workspace: WeakEntity<Workspace>,
         fallback_to_recent_projects: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -169,9 +181,37 @@ impl WelcomePage {
         cx.on_focus(&focus_handle, window, |_, _, cx| cx.notify())
             .detach();
 
+        if fallback_to_recent_projects {
+            let fs = workspace
+                .upgrade()
+                .map(|workspace| workspace.read(cx).shared_state().fs.clone());
+            cx.spawn_in(window, async move |this: WeakEntity<Self>, cx| {
+                let Some(fs) = fs else {
+                    return;
+                };
+                let recent_workspaces = WORKSPACE_DB
+                    .recent_workspaces_on_disk(fs.as_ref())
+                    .await
+                    .unwrap_or_else(|error| {
+                        eprintln!("failed to load recent workspaces: {error}");
+                        Vec::new()
+                    });
+
+                if let Err(error) = this.update_in(cx, |welcome_page, _window, cx| {
+                    welcome_page.recent_workspaces = Some(recent_workspaces);
+                    cx.notify();
+                }) {
+                    eprintln!("failed to update welcome page recent workspaces: {error}");
+                }
+            })
+            .detach();
+        }
+
         Self {
+            workspace,
             focus_handle,
             fallback_to_recent_projects,
+            recent_workspaces: None,
         }
     }
 
@@ -183,6 +223,67 @@ impl WelcomePage {
     fn select_previous(&mut self, _: &SelectPrevious, window: &mut Window, cx: &mut Context<Self>) {
         window.focus_prev(cx);
         cx.notify();
+    }
+
+    fn open_recent_project(
+        &mut self,
+        action: &OpenRecentProject,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(recent_workspaces) = self.recent_workspaces.as_ref() else {
+            return;
+        };
+        let Some((_workspace_id, location, _timestamp)) = recent_workspaces.get(action.index)
+        else {
+            return;
+        };
+        let recent_workspace_path = location.path().to_path_buf();
+
+        if let Err(error) = self.workspace.update(cx, |workspace, cx| {
+            workspace
+                .open_workspace_for_path(recent_workspace_path, window, cx)
+                .detach_and_log_err(cx);
+        }) {
+            eprintln!("failed to open recent workspace from welcome page: {error}");
+        }
+    }
+
+    fn render_recent_project_section(
+        &self,
+        recent_projects: Vec<impl IntoElement>,
+    ) -> impl IntoElement {
+        ui::v_flex()
+            .w_full()
+            .child(SectionHeader::new("Recent Projects"))
+            .children(recent_projects)
+    }
+
+    fn render_recent_project(
+        &self,
+        project_index: usize,
+        tab_index: usize,
+        location: &SerializedWorkspaceLocation,
+    ) -> impl IntoElement {
+        let (icon, title) = match location {
+            SerializedWorkspaceLocation::Local(path) => {
+                let title = path
+                    .file_name()
+                    .map(|file_name| file_name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                (IconName::Folder, title)
+            }
+        };
+
+        SectionButton::new(
+            title,
+            icon,
+            &OpenRecentProject {
+                index: project_index,
+            },
+            tab_index,
+            self.focus_handle.clone(),
+        )
     }
 }
 
@@ -200,11 +301,56 @@ impl Render for WelcomePage {
             "Welcome to Zaku"
         };
 
+        let recent_projects = self
+            .recent_workspaces
+            .as_ref()
+            .into_iter()
+            .flatten()
+            .take(5)
+            .enumerate()
+            .map(|(index, (_workspace_id, location, _timestamp))| {
+                self.render_recent_project(index, CONTENT.entries.len() + index, location)
+            })
+            .collect::<Vec<_>>();
+
+        let welcome_content = ui::v_flex()
+            .flex_1()
+            .justify_center()
+            .overflow_hidden()
+            .max_w_112()
+            .mx_auto()
+            .gap_6()
+            .child(
+                ui::h_flex().w_full().justify_center().mb_4().child(
+                    ui::v_flex()
+                        .items_center()
+                        .child(
+                            Label::new(welcome_label)
+                                .size(LabelSize::Large)
+                                .weight(FontWeight::MEDIUM),
+                        )
+                        .child(
+                            Label::new("Fast, open-source API client with fangs.")
+                                .size(LabelSize::Small)
+                                .color(Color::Muted)
+                                .italic(),
+                        ),
+                ),
+            )
+            .child(CONTENT.render(0, &self.focus_handle, cx));
+
+        let welcome_content = if self.fallback_to_recent_projects && !recent_projects.is_empty() {
+            welcome_content.child(self.render_recent_project_section(recent_projects))
+        } else {
+            welcome_content
+        };
+
         ui::h_flex()
             .key_context("Welcome")
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::select_previous))
             .on_action(cx.listener(Self::select_next))
+            .on_action(cx.listener(Self::open_recent_project))
             .size_full()
             .justify_center()
             .overflow_hidden()
@@ -215,33 +361,7 @@ impl Render for WelcomePage {
                     .size_full()
                     .px_12()
                     .max_w(gpui::px(1100.0))
-                    .child(
-                        ui::v_flex()
-                            .flex_1()
-                            .justify_center()
-                            .overflow_hidden()
-                            .max_w_112()
-                            .mx_auto()
-                            .gap_6()
-                            .child(
-                                ui::h_flex().w_full().justify_center().mb_4().child(
-                                    ui::v_flex()
-                                        .items_center()
-                                        .child(
-                                            Label::new(welcome_label)
-                                                .size(LabelSize::Large)
-                                                .weight(FontWeight::MEDIUM),
-                                        )
-                                        .child(
-                                            Label::new("Fast, open-source API client with fangs.")
-                                                .size(LabelSize::Small)
-                                                .color(Color::Muted)
-                                                .italic(),
-                                        ),
-                                ),
-                            )
-                            .child(CONTENT.render(0, &self.focus_handle, cx)),
-                    ),
+                    .child(welcome_content),
             )
     }
 }

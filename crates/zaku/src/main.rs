@@ -1,16 +1,62 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
+use gpui::{
+    App, Application, Bounds, Context, Entity, FocusHandle, Focusable, KeyBinding, Render, Task,
+    Window, WindowBounds, WindowOptions, prelude::*,
+};
 use gpui_platform;
+use std::sync::Arc;
+use uuid::Uuid;
 
+use fs::NativeFs;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::Workspace;
+use workspace::{CloseProject, OpenRecent, SharedState, Workspace};
 
 gpui::actions!(zaku, [Quit]);
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+struct Root {
+    workspace: Entity<Workspace>,
+}
+
+impl Root {
+    fn new(workspace: Entity<Workspace>) -> Self {
+        Self { workspace }
+    }
+
+    fn replace_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let shared_state = self.workspace.read(cx).shared_state().clone();
+        self.workspace = Workspace::create(shared_state, window, cx);
+        cx.notify();
+    }
+
+    fn open_recent_project(&mut self, _: &OpenRecent, window: &mut Window, cx: &mut Context<Self>) {
+        self.replace_workspace(window, cx);
+    }
+
+    fn close_project(&mut self, _: &CloseProject, window: &mut Window, cx: &mut Context<Self>) {
+        self.replace_workspace(window, cx);
+    }
+}
+
+impl Focusable for Root {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.workspace.read(cx).focus_handle(cx)
+    }
+}
+
+impl Render for Root {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::div()
+            .size_full()
+            .on_action(cx.listener(Self::open_recent_project))
+            .on_action(cx.listener(Self::close_project))
+            .child(self.workspace.clone())
+    }
+}
 
 fn main() {
     Application::with_platform(gpui_platform::current_platform(false))
@@ -26,7 +72,11 @@ fn main() {
             register_embedded_fonts(cx);
             menu::init(cx);
             editor::init(cx);
-            workspace::init(cx);
+            let shared_state = Arc::new(SharedState::new(
+                Arc::new(NativeFs::new()),
+                Uuid::new_v4().to_string(),
+            ));
+            workspace::init(shared_state.clone(), cx);
 
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
             cx.on_action(|_: &Quit, cx: &mut App| {
@@ -50,7 +100,13 @@ fn main() {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |window, cx| cx.new(|cx| Workspace::new(window, cx)),
+                move |window, cx| {
+                    let shared_state = shared_state.clone();
+                    cx.new(|cx| {
+                        let workspace = Workspace::create(shared_state, window, cx);
+                        Root::new(workspace)
+                    })
+                },
             )
             .unwrap();
         });

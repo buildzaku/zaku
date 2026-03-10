@@ -89,6 +89,9 @@ impl Pane {
         should_display_welcome_page: bool,
         cx: &mut Context<Self>,
     ) {
+        if should_display_welcome_page && !self.should_display_welcome_page {
+            self.welcome_page = None;
+        }
         self.should_display_welcome_page = should_display_welcome_page;
         cx.notify();
     }

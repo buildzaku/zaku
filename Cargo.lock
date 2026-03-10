@@ -1319,6 +1319,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
+name = "db"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "fs",
+ "futures",
+ "gpui",
+ "indoc",
+ "libsqlite3-sys",
+ "parking_lot",
+ "smol",
+ "thread_local",
+ "util 0.0.0",
+ "uuid",
+]
+
+[[package]]
 name = "deflate64"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1934,7 +1951,10 @@ dependencies = [
 name = "fs"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "serde_json",
+ "smol",
  "tempfile",
 ]
 
@@ -3373,6 +3393,17 @@ dependencies = [
  "bitflags 2.11.0",
  "libc",
  "redox_syscall 0.7.3",
+]
+
+[[package]]
+name = "libsqlite3-sys"
+version = "0.36.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95b4103cffefa72eb8428cb6b47d6627161e51c2739fc5e3b734584157bc642a"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
 ]
 
 [[package]]
@@ -5959,6 +5990,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tendril"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4790fc369d5a530f4b544b094e31388b9b3a37c0f4652ade4505945f5660d24"
+dependencies = [
+ "new_debug_unreachable",
+ "utf-8",
+]
+
+[[package]]
 name = "termcolor"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6548,7 +6589,9 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 name = "util"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "rust-embed",
+ "tendril 0.5.0",
 ]
 
 [[package]]
@@ -6585,7 +6628,7 @@ dependencies = [
  "smol",
  "take-until",
  "tempfile",
- "tendril",
+ "tendril 0.4.3",
  "unicase",
  "url",
  "util_macros 0.1.0",
@@ -7913,6 +7956,8 @@ name = "workspace"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "chrono",
+ "db",
  "editor",
  "fs",
  "futures",
@@ -7923,11 +7968,15 @@ dependencies = [
  "menu",
  "multi_buffer",
  "reqwest_client",
+ "schemars",
+ "serde",
  "serde_json",
  "settings",
+ "smol",
  "theme",
  "ui",
  "util_macros 0.0.0",
+ "uuid",
 ]
 
 [[package]]
@@ -8108,6 +8157,7 @@ dependencies = [
  "assets",
  "core-text",
  "editor",
+ "fs",
  "futures",
  "gpui",
  "gpui_platform",
@@ -8115,6 +8165,7 @@ dependencies = [
  "mimalloc",
  "settings",
  "theme",
+ "uuid",
  "workspace",
 ]
 

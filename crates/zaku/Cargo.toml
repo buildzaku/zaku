@@ -17,6 +17,7 @@ mimalloc = ["dep:mimalloc"]
 [dependencies]
 assets = { workspace = true }
 editor = { workspace = true }
+fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
 gpui_platform = { workspace = true, features = ["font-kit"] }
@@ -24,6 +25,7 @@ menu = { workspace = true }
 mimalloc = { workspace = true, optional = true }
 settings = { workspace = true }
 theme = { workspace = true }
+uuid = { workspace = true }
 workspace = { workspace = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]

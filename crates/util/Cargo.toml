@@ -17,4 +17,8 @@ path = "src/util.rs"
 test-support = []
 
 [dependencies]
+anyhow = { workspace = true }
 rust-embed = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+tendril = { workspace = true }
