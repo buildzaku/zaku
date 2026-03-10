@@ -10,7 +10,12 @@ publish.workspace = true
 workspace = true
 
 [features]
-test-support = ["db/test-support", "fs/test-support"]
+test-support = [
+    "db/test-support",
+    "fs/test-support",
+    "gpui/test-support",
+    "settings/test-support",
+]
 
 [lib]
 name = "workspace"
@@ -40,5 +45,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 fs = { workspace = true, features = ["test-support"] }
+gpui = { workspace = true, features = ["test-support"] }
+settings = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
 util_macros = { workspace = true }
