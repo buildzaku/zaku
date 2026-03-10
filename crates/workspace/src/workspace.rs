@@ -31,6 +31,7 @@ use crate::{
     pane::Pane,
     panel::{ProjectPanel, ResponsePanel, buttons::PanelButtons, project_panel, response_panel},
     status_bar::StatusBar,
+    welcome::OpenRecentProject,
 };
 
 gpui::actions!(
@@ -107,6 +108,32 @@ pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
         KeyBinding::new("cmd-o", OpenWorkspace, None),
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-k ctrl-o", OpenWorkspace, None),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("alt-cmd-o", OpenRecent, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "windows")]
+        KeyBinding::new("ctrl-r", OpenRecent, Some(KEY_CONTEXT)),
+        #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+        KeyBinding::new("alt-ctrl-o", OpenRecent, Some(KEY_CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-1", OpenRecentProject { index: 0 }, Some("Welcome")),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-1", OpenRecentProject { index: 0 }, Some("Welcome")),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-2", OpenRecentProject { index: 1 }, Some("Welcome")),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-2", OpenRecentProject { index: 1 }, Some("Welcome")),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-3", OpenRecentProject { index: 2 }, Some("Welcome")),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-3", OpenRecentProject { index: 2 }, Some("Welcome")),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-4", OpenRecentProject { index: 3 }, Some("Welcome")),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-4", OpenRecentProject { index: 3 }, Some("Welcome")),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("cmd-5", OpenRecentProject { index: 4 }, Some("Welcome")),
+        #[cfg(not(target_os = "macos"))]
+        KeyBinding::new("ctrl-5", OpenRecentProject { index: 4 }, Some("Welcome")),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-j", ToggleBottomDock, Some(KEY_CONTEXT)),
         #[cfg(not(target_os = "macos"))]
