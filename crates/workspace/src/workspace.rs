@@ -920,13 +920,6 @@ mod tests {
         });
     }
 
-    async fn clear_test_workspace_db() {
-        WORKSPACE_DB
-            .clear_recent_workspaces()
-            .await
-            .expect("workspace recent list should clear");
-    }
-
     #[gpui::test]
     async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
         let shared_state = Arc::new(SharedState::new(
@@ -935,7 +928,6 @@ mod tests {
         ));
         init_test(shared_state.clone(), cx);
 
-        clear_test_workspace_db().await;
         let (workspace, cx) = cx.add_window_view({
             let shared_state = shared_state.clone();
             move |window, cx| Workspace::new(shared_state, window, cx)
@@ -963,7 +955,6 @@ mod tests {
         ));
         init_test(shared_state.clone(), cx);
 
-        clear_test_workspace_db().await;
         let (workspace, cx) = cx.add_window_view({
             let shared_state = shared_state.clone();
             move |window, cx| Workspace::new(shared_state, window, cx)
@@ -1020,7 +1011,6 @@ mod tests {
         ));
         init_test(shared_state.clone(), cx);
 
-        clear_test_workspace_db().await;
         let (workspace, cx) = cx.add_window_view({
             let shared_state = shared_state.clone();
             move |window, cx| Workspace::new(shared_state, window, cx)
