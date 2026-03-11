@@ -299,7 +299,6 @@ impl Project {
 pub struct Workspace {
     shared_state: Arc<SharedState>,
     database_id: Option<WorkspaceId>,
-    session_id: Option<String>,
     project: Entity<Project>,
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
@@ -344,7 +343,7 @@ impl Workspace {
                         workspace._schedule_serialize_workspace.take();
                         workspace._serialize_workspace_task =
                             Some(workspace.serialize_workspace_internal(window, cx));
-                        workspace.session_id()
+                        Some(workspace.shared_state().session_id.clone())
                     }) {
                         Ok(session_id) => {
                             cx.background_spawn(async move {
@@ -393,10 +392,6 @@ impl Workspace {
 
     pub fn database_id(&self) -> Option<WorkspaceId> {
         self.database_id
-    }
-
-    pub fn session_id(&self) -> Option<String> {
-        self.session_id.clone()
     }
 
     pub(crate) fn set_database_id(&mut self, id: WorkspaceId) {
@@ -514,7 +509,7 @@ impl Workspace {
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
                     location: SerializedWorkspaceLocation::Local(root_path),
-                    session_id: self.session_id.clone(),
+                    session_id: Some(self.shared_state.session_id.clone()),
                     window_id: Some(window.window_handle().window_id().as_u64()),
                 };
 
@@ -625,14 +620,12 @@ impl Workspace {
             status_bar.add_right_item(right_dock_buttons, cx);
         });
 
-        let session_id = Some(shared_state.session_id.clone());
         let pane_focus_handle = pane.read(cx).focus_handle(cx);
         window.focus(&pane_focus_handle, cx);
 
         Self {
             shared_state,
             database_id: None,
-            session_id,
             project,
             left_dock,
             bottom_dock,
