@@ -1,10 +1,13 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
 use gpui_platform;
+use std::sync::Arc;
+use uuid::Uuid;
 
+use fs::NativeFs;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::Workspace;
+use workspace::{CloseWindow, Root, SharedState, Workspace};
 
 gpui::actions!(zaku, [Quit]);
 
@@ -26,12 +29,30 @@ fn main() {
             register_embedded_fonts(cx);
             menu::init(cx);
             editor::init(cx);
-            workspace::init(cx);
+            let shared_state = Arc::new(SharedState::new(
+                Arc::new(NativeFs::new()),
+                Uuid::new_v4().to_string(),
+            ));
+            workspace::init(shared_state.clone(), cx);
 
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-            cx.on_action(|_: &Quit, cx: &mut App| {
-                cx.quit();
-            });
+            cx.on_action(quit);
+            cx.observe_new(|_root: &mut Root, window, cx| {
+                let Some(window) = window else {
+                    return;
+                };
+
+                let root_handle = cx.entity().downgrade();
+                window.on_window_should_close(cx, move |window, cx| {
+                    root_handle
+                        .update(cx, |root, cx| {
+                            root.close_window(&CloseWindow, window, cx);
+                            false
+                        })
+                        .unwrap_or(true)
+                });
+            })
+            .detach();
             cx.on_window_closed(|cx| {
                 if cx.windows().is_empty() {
                     cx.quit();
@@ -50,10 +71,47 @@ fn main() {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     ..Default::default()
                 },
-                |window, cx| cx.new(|cx| Workspace::new(window, cx)),
+                move |window, cx| {
+                    let shared_state = shared_state.clone();
+                    cx.new(|cx| {
+                        let workspace = Workspace::create(shared_state, window, cx);
+                        Root::new(workspace)
+                    })
+                },
             )
             .unwrap();
         });
+}
+
+fn quit(_: &Quit, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let workspace_windows = cx.update(|cx| {
+            cx.windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<Root>())
+                .collect::<Vec<_>>()
+        });
+
+        let mut flush_tasks = Vec::new();
+        for window in &workspace_windows {
+            match window.update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.flush_serialization(window, cx)
+                })
+            }) {
+                Ok(flush_task) => flush_tasks.push(flush_task),
+                Err(error) => {
+                    eprintln!("failed to flush workspace serialization before quit: {error}");
+                }
+            }
+        }
+
+        futures::future::join_all(flush_tasks).await;
+
+        cx.update(|cx| cx.quit());
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
 }
 
 fn handle_settings_file_changes(

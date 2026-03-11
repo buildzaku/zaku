@@ -1,10 +1,10 @@
 use gpui::{Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Window};
 use ui::{
-    ButtonCommon, Clickable, Color, IconButton, IconButtonShape, IconSize, StyledTypography,
-    Toggleable, Tooltip,
+    ButtonCommon, Clickable, Color, Disableable, IconButton, IconButtonShape, IconSize,
+    StyledTypography, Toggleable, Tooltip,
 };
 
-use crate::{dock::Dock, status_bar::StatusItemView};
+use crate::{dock::Dock, pane::Pane, status_bar::StatusItemView};
 
 pub struct PanelButtons {
     dock: Entity<Dock>,
@@ -20,6 +20,7 @@ impl PanelButtons {
 impl Render for PanelButtons {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dock = self.dock.read(cx);
+        let is_disabled = dock.first_enabled_panel_idx(cx).is_none();
         let active_index = dock.active_panel_index();
         let is_open = dock.is_open();
         let focus_handle = dock.focus_handle(cx);
@@ -51,6 +52,7 @@ impl Render for PanelButtons {
                         .icon_size(IconSize::Small)
                         .shape(IconButtonShape::Square)
                         .icon_color(Color::Muted)
+                        .disabled(is_disabled)
                         .toggle_state(is_active_button)
                         .tooltip(Tooltip::for_action_title(tooltip, action.as_ref()))
                         .on_click(move |_, window, cx| {
@@ -72,11 +74,7 @@ impl Render for PanelButtons {
 }
 
 impl StatusItemView for PanelButtons {
-    fn set_active_pane(
-        &mut self,
-        _active_pane: &Entity<crate::pane::Pane>,
-        _cx: &mut Context<Self>,
-    ) {
-        // Panel buttons are not dependent on center-pane active item.
+    fn set_active_pane(&mut self, _active_pane: &Entity<Pane>, cx: &mut Context<Self>) {
+        cx.notify();
     }
 }

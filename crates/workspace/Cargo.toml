@@ -9,18 +9,43 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+test-support = [
+    "db/test-support",
+    "fs/test-support",
+    "gpui/test-support",
+    "settings/test-support",
+]
+
 [lib]
 name = "workspace"
 path = "src/workspace.rs"
 
 [dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+db = { workspace = true, features = ["test-support"] }
 editor = { workspace = true }
+fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
 http_client = { workspace = true }
+indoc = { workspace = true }
 input = { workspace = true }
 menu = { workspace = true }
 multi_buffer = { workspace = true }
 reqwest_client = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+settings = { workspace = true }
+smol = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+fs = { workspace = true, features = ["test-support"] }
+gpui = { workspace = true, features = ["test-support"] }
+settings = { workspace = true, features = ["test-support"] }
+serde_json = { workspace = true }
+util_macros = { workspace = true }

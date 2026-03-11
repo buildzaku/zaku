@@ -1,5 +1,5 @@
 [package]
-name = "util"
+name = "fs"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,15 +10,15 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "util"
-path = "src/util.rs"
+name = "fs"
+path = "src/fs.rs"
 
 [features]
 test-support = []
 
 [dependencies]
 anyhow = { workspace = true }
-rust-embed = { workspace = true }
-
-[target.'cfg(windows)'.dependencies]
-tendril = { workspace = true }
+async-trait = { workspace = true }
+smol = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
