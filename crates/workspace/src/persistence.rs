@@ -13,13 +13,13 @@ use crate::WorkspaceId;
 
 pub struct WorkspaceDb(ThreadSafeConnection);
 
-#[cfg(any(test, feature = "test-support"))]
-pub static DB: LazyLock<WorkspaceDb> =
-    LazyLock::new(|| smol::block_on(WorkspaceDb::open_test_db("DB")));
-
 #[cfg(not(any(test, feature = "test-support")))]
 pub static DB: LazyLock<WorkspaceDb> =
     LazyLock::new(|| smol::block_on(WorkspaceDb::open_default()));
+
+#[cfg(any(test, feature = "test-support"))]
+pub static DB: LazyLock<WorkspaceDb> =
+    LazyLock::new(|| smol::block_on(WorkspaceDb::open_test_db("DB")));
 
 impl WorkspaceDb {
     #[cfg(not(any(test, feature = "test-support")))]
