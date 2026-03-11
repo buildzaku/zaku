@@ -557,8 +557,8 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_select_supports_more_than_four_columns(_cx: &mut TestAppContext) {
-        let connection = open_test_db("test_select_supports_more_than_four_columns").await;
+    async fn test_select_supports_ten_columns(_cx: &mut TestAppContext) {
+        let connection = open_test_db("test_select_supports_ten_columns").await;
 
         connection
             .write(|connection| {
@@ -569,12 +569,17 @@ mod tests {
                             b INTEGER,
                             c INTEGER,
                             d INTEGER,
-                            e INTEGER
+                            e INTEGER,
+                            f INTEGER,
+                            g INTEGER,
+                            h INTEGER,
+                            i INTEGER,
+                            j INTEGER
                         ) STRICT
                     "})
                     .and_then(|mut f| f())?;
                 connection
-                    .exec("INSERT INTO test(a, b, c, d, e) VALUES (1, 2, 3, 4, 5)")
+                    .exec("INSERT INTO test(a, b, c, d, e, f, g, h, i, j) VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)")
                     .and_then(|mut f| f())?;
                 Ok(())
             })
@@ -584,13 +589,15 @@ mod tests {
         let value = connection
             .read(|connection| {
                 connection
-                    .select_row::<(i64, i64, i64, i64, i64)>("SELECT a, b, c, d, e FROM test")
+                    .select_row::<(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)>(
+                        "SELECT a, b, c, d, e, f, g, h, i, j FROM test",
+                    )
                     .and_then(|mut f| f())
-                    .context("five-column query returned no row")
+                    .context("ten-column query returned no row")
             })
             .unwrap();
 
-        assert_eq!(value, Some((1, 2, 3, 4, 5)));
+        assert_eq!(value, Some((1, 2, 3, 4, 5, 6, 7, 8, 9, 10)));
     }
 
     #[gpui::test]
