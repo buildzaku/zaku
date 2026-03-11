@@ -166,14 +166,12 @@ const CONTENT: Section<1> = Section {
 pub struct WelcomePage {
     workspace: WeakEntity<Workspace>,
     focus_handle: FocusHandle,
-    fallback_to_recent_projects: bool,
     recent_workspaces: Option<Vec<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>>,
 }
 
 impl WelcomePage {
     pub fn new(
         workspace: WeakEntity<Workspace>,
-        fallback_to_recent_projects: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -181,36 +179,33 @@ impl WelcomePage {
         cx.on_focus(&focus_handle, window, |_, _, cx| cx.notify())
             .detach();
 
-        if fallback_to_recent_projects {
-            let fs = workspace
-                .upgrade()
-                .map(|workspace| workspace.read(cx).shared_state().fs.clone());
-            cx.spawn_in(window, async move |this: WeakEntity<Self>, cx| {
-                let Some(fs) = fs else {
-                    return;
-                };
-                let recent_workspaces = WORKSPACE_DB
-                    .recent_workspaces_on_disk(fs.as_ref())
-                    .await
-                    .unwrap_or_else(|error| {
-                        eprintln!("failed to load recent workspaces: {error}");
-                        Vec::new()
-                    });
+        let fs = workspace
+            .upgrade()
+            .map(|workspace| workspace.read(cx).shared_state().fs.clone());
+        cx.spawn_in(window, async move |this: WeakEntity<Self>, cx| {
+            let Some(fs) = fs else {
+                return;
+            };
+            let recent_workspaces = WORKSPACE_DB
+                .recent_workspaces_on_disk(fs.as_ref())
+                .await
+                .unwrap_or_else(|error| {
+                    eprintln!("failed to load recent workspaces: {error}");
+                    Vec::new()
+                });
 
-                if let Err(error) = this.update_in(cx, |welcome_page, _window, cx| {
-                    welcome_page.recent_workspaces = Some(recent_workspaces);
-                    cx.notify();
-                }) {
-                    eprintln!("failed to update welcome page recent workspaces: {error}");
-                }
-            })
-            .detach();
-        }
+            if let Err(error) = this.update_in(cx, |welcome_page, _window, cx| {
+                welcome_page.recent_workspaces = Some(recent_workspaces);
+                cx.notify();
+            }) {
+                eprintln!("failed to update welcome page recent workspaces: {error}");
+            }
+        })
+        .detach();
 
         Self {
             workspace,
             focus_handle,
-            fallback_to_recent_projects,
             recent_workspaces: None,
         }
     }
@@ -295,12 +290,6 @@ impl Focusable for WelcomePage {
 
 impl Render for WelcomePage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let welcome_label = if self.fallback_to_recent_projects {
-            "Welcome back to Zaku"
-        } else {
-            "Welcome to Zaku"
-        };
-
         let recent_projects = self
             .recent_workspaces
             .as_ref()
@@ -325,7 +314,7 @@ impl Render for WelcomePage {
                     ui::v_flex()
                         .items_center()
                         .child(
-                            Label::new(welcome_label)
+                            Label::new("Welcome to Zaku")
                                 .size(LabelSize::Large)
                                 .weight(FontWeight::MEDIUM),
                         )
@@ -339,7 +328,7 @@ impl Render for WelcomePage {
             )
             .child(CONTENT.render(0, &self.focus_handle, cx));
 
-        let welcome_content = if self.fallback_to_recent_projects && !recent_projects.is_empty() {
+        let welcome_content = if !recent_projects.is_empty() {
             welcome_content.child(self.render_recent_project_section(recent_projects))
         } else {
             welcome_content

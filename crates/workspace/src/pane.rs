@@ -337,7 +337,7 @@ impl Render for Pane {
                         if self.welcome_page.is_none() {
                             let workspace = self.workspace.clone();
                             self.welcome_page =
-                                Some(cx.new(|cx| WelcomePage::new(workspace, true, window, cx)));
+                                Some(cx.new(|cx| WelcomePage::new(workspace, window, cx)));
                         }
 
                         if let Some(welcome_page) = self.welcome_page.clone() {
