@@ -1,3 +1,4 @@
+pub mod path;
 pub mod test;
 
 use std::borrow::Cow;

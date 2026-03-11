@@ -30,6 +30,9 @@ pub trait Panel: Focusable + Render + Sized {
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self) -> Box<dyn Action>;
+    fn enabled(&self, _cx: &App) -> bool {
+        true
+    }
 }
 
 pub trait PanelHandle: Send + Sync {
@@ -43,6 +46,7 @@ pub trait PanelHandle: Send + Sync {
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self, window: &Window, cx: &App) -> Box<dyn Action>;
+    fn enabled(&self, cx: &App) -> bool;
     fn panel_focus_handle(&self, cx: &App) -> FocusHandle;
     fn to_any(&self) -> AnyView;
 }
@@ -89,6 +93,10 @@ where
 
     fn toggle_action(&self, _window: &Window, cx: &App) -> Box<dyn Action> {
         self.read(cx).toggle_action()
+    }
+
+    fn enabled(&self, cx: &App) -> bool {
+        self.read(cx).enabled(cx)
     }
 
     fn panel_focus_handle(&self, cx: &App) -> FocusHandle {

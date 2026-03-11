@@ -112,6 +112,12 @@ impl Dock {
         Some(panel_entry.panel())
     }
 
+    pub fn first_enabled_panel_idx(&self, cx: &App) -> Option<usize> {
+        self.panel_entries
+            .iter()
+            .position(|entry| entry.panel().enabled(cx))
+    }
+
     fn visible_entry(&self) -> Option<&PanelEntry> {
         if self.is_open {
             self.active_panel_entry()
