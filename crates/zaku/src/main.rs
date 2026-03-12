@@ -1,7 +1,7 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
 use gpui_platform;
-use std::{collections::HashMap, io, path::Path, sync::Arc};
+use std::{collections::HashMap, io::IsTerminal, path::Path, sync::Arc};
 use uuid::Uuid;
 
 use fs::NativeFs;
@@ -23,10 +23,14 @@ fn main() {
     }
 
     logger::init();
-    let result = logger::init_output_file(settings::log_file(), Some(settings::old_log_file()));
-    if let Err(error) = result {
-        eprintln!("Could not open log file: {error}... Defaulting to stdout");
+    if std::io::stdout().is_terminal() {
         logger::init_output_stdout();
+    } else {
+        let result = logger::init_output_file(settings::log_file(), Some(settings::old_log_file()));
+        if let Err(error) = result {
+            eprintln!("Could not open log file: {error}... Defaulting to stdout");
+            logger::init_output_stdout();
+        }
     }
 
     Application::with_platform(gpui_platform::current_platform(false))
@@ -97,7 +101,7 @@ fn main() {
         });
 }
 
-fn init_paths() -> HashMap<io::ErrorKind, Vec<&'static Path>> {
+fn init_paths() -> HashMap<std::io::ErrorKind, Vec<&'static Path>> {
     [
         settings::config_dir(),
         settings::data_dir(),
@@ -113,37 +117,6 @@ fn init_paths() -> HashMap<io::ErrorKind, Vec<&'static Path>> {
         }
         errors
     })
-}
-
-fn quit(_: &Quit, cx: &mut App) {
-    cx.spawn(async move |cx| {
-        let workspace_windows = cx.update(|cx| {
-            cx.windows()
-                .into_iter()
-                .filter_map(|window| window.downcast::<Root>())
-                .collect::<Vec<_>>()
-        });
-
-        let mut flush_tasks = Vec::new();
-        for window in &workspace_windows {
-            match window.update(cx, |root, window, cx| {
-                root.workspace().update(cx, |workspace, cx| {
-                    workspace.flush_serialization(window, cx)
-                })
-            }) {
-                Ok(flush_task) => flush_tasks.push(flush_task),
-                Err(error) => {
-                    log::error!("Failed to flush workspace serialization before quit: {error}");
-                }
-            }
-        }
-
-        futures::future::join_all(flush_tasks).await;
-
-        cx.update(|cx| cx.quit());
-        anyhow::Ok(())
-    })
-    .detach_and_log_err(cx);
 }
 
 fn handle_settings_file_changes(
@@ -207,4 +180,35 @@ fn register_embedded_fonts(cx: &App) {
     if let Err(error) = cx.text_system().add_fonts(embedded_fonts) {
         log::error!("Failed to add bundled fonts: {error:?}");
     }
+}
+
+fn quit(_: &Quit, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let workspace_windows = cx.update(|cx| {
+            cx.windows()
+                .into_iter()
+                .filter_map(|window| window.downcast::<Root>())
+                .collect::<Vec<_>>()
+        });
+
+        let mut flush_tasks = Vec::new();
+        for window in &workspace_windows {
+            match window.update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.flush_serialization(window, cx)
+                })
+            }) {
+                Ok(flush_task) => flush_tasks.push(flush_task),
+                Err(error) => {
+                    log::error!("Failed to flush workspace serialization before quit: {error}");
+                }
+            }
+        }
+
+        futures::future::join_all(flush_tasks).await;
+
+        cx.update(|cx| cx.quit());
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
 }
