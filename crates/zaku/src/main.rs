@@ -16,6 +16,9 @@ gpui::actions!(zaku, [Quit]);
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    logger::init();
+    logger::init_output_stdout();
+
     Application::with_platform(gpui_platform::current_platform(false))
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
@@ -101,7 +104,7 @@ fn quit(_: &Quit, cx: &mut App) {
             }) {
                 Ok(flush_task) => flush_tasks.push(flush_task),
                 Err(error) => {
-                    eprintln!("failed to flush workspace serialization before quit: {error}");
+                    log::error!("Failed to flush workspace serialization before quit: {error}");
                 }
             }
         }
@@ -125,7 +128,7 @@ fn handle_settings_file_changes(
     {
         Some(content) => content,
         None => {
-            eprintln!("failed to load settings file: settings channel closed");
+            log::error!("Failed to load settings file: settings channel closed");
             settings::default_user_settings().into_owned()
         }
     };
@@ -150,7 +153,7 @@ fn register_embedded_fonts(cx: &App) {
     let font_paths = match asset_source.list("fonts") {
         Ok(font_paths) => font_paths,
         Err(error) => {
-            eprintln!("failed to list bundled fonts: {error:?}");
+            log::error!("Failed to list bundled fonts: {error:?}");
             return;
         }
     };
@@ -164,15 +167,15 @@ fn register_embedded_fonts(cx: &App) {
         match asset_source.load(font_path) {
             Ok(Some(font_bytes)) => embedded_fonts.push(font_bytes),
             Ok(None) => {
-                eprintln!("asset source returned None for {font_path:?}");
+                log::error!("Asset source returned None for {font_path:?}");
             }
             Err(error) => {
-                eprintln!("failed to load bundled font {font_path:?}: {error:?}");
+                log::error!("Failed to load bundled font {font_path:?}: {error:?}");
             }
         }
     }
 
     if let Err(error) = cx.text_system().add_fonts(embedded_fonts) {
-        eprintln!("failed to add bundled fonts: {error:?}");
+        log::error!("Failed to add bundled fonts: {error:?}");
     }
 }

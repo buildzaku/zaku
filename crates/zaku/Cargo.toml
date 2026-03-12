@@ -22,6 +22,8 @@ fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
 gpui_platform = { workspace = true, features = ["font-kit"] }
+log = { workspace = true }
+logger = { workspace = true }
 menu = { workspace = true }
 mimalloc = { workspace = true, optional = true }
 settings = { workspace = true }

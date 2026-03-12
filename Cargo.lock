@@ -3468,6 +3468,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "logger"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "fs",
+ "log",
+]
+
+[[package]]
 name = "loop9"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8162,6 +8172,8 @@ dependencies = [
  "futures",
  "gpui",
  "gpui_platform",
+ "log",
+ "logger",
  "menu",
  "mimalloc",
  "settings",
