@@ -442,13 +442,14 @@ pub fn find_boundary(
 mod tests {
     use super::*;
 
+    use gpui::App;
     use indoc::indoc;
 
     use settings::SettingsStore;
 
     use crate::tests::util::marked_display_snapshot;
 
-    fn init_test(cx: &mut gpui::App) {
+    fn init_test(cx: &mut App) {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
         theme::init(theme::LoadThemes::JustBase, cx);
@@ -456,10 +457,10 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_previous_word_start(cx: &mut gpui::App) {
+    fn test_previous_word_start(cx: &mut App) {
         init_test(cx);
 
-        fn assert_previous_word_start(marked_text: &str, cx: &mut gpui::App) {
+        fn assert_previous_word_start(marked_text: &str, cx: &mut App) {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -468,12 +469,10 @@ mod tests {
             );
             let actual = previous_word_start(&snapshot, display_points[1]);
             let expected = display_points[0];
-            if actual != expected {
-                eprintln!(
-                    "previous_word_start mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
-                );
-            }
-            assert_eq!(actual, expected);
+            assert_eq!(
+                actual, expected,
+                "previous_word_start mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
+            );
         }
 
         assert_previous_word_start("ˇ   ˇquick", cx);
@@ -516,10 +515,10 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_previous_subword_start(cx: &mut gpui::App) {
+    fn test_previous_subword_start(cx: &mut App) {
         init_test(cx);
 
-        fn assert_previous_subword_start(marked_text: &str, cx: &mut gpui::App) {
+        fn assert_previous_subword_start(marked_text: &str, cx: &mut App) {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -572,12 +571,12 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_find_preceding_boundary(cx: &mut gpui::App) {
+    fn test_find_preceding_boundary(cx: &mut App) {
         init_test(cx);
 
         fn assert_preceding_boundary(
             marked_text: &str,
-            cx: &mut gpui::App,
+            cx: &mut App,
             is_boundary: &mut dyn FnMut(char, char) -> bool,
         ) {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
@@ -635,10 +634,10 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_next_word_end(cx: &mut gpui::App) {
+    fn test_next_word_end(cx: &mut App) {
         init_test(cx);
 
-        fn assert_next_word_end(marked_text: &str, cx: &mut gpui::App) {
+        fn assert_next_word_end(marked_text: &str, cx: &mut App) {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -647,12 +646,10 @@ mod tests {
             );
             let actual = next_word_end(&snapshot, display_points[0]);
             let expected = display_points[1];
-            if actual != expected {
-                eprintln!(
-                    "next_word_end mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
-                );
-            }
-            assert_eq!(actual, expected);
+            assert_eq!(
+                actual, expected,
+                "next_word_end mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
+            );
         }
 
         assert_next_word_end(
@@ -693,10 +690,10 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_next_subword_end(cx: &mut gpui::App) {
+    fn test_next_subword_end(cx: &mut App) {
         init_test(cx);
 
-        fn assert_next_subword_end(marked_text: &str, cx: &mut gpui::App) {
+        fn assert_next_subword_end(marked_text: &str, cx: &mut App) {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -748,12 +745,12 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_find_boundary(cx: &mut gpui::App) {
+    fn test_find_boundary(cx: &mut App) {
         init_test(cx);
 
         fn assert_find_boundary(
             marked_text: &str,
-            cx: &mut gpui::App,
+            cx: &mut App,
             is_boundary: &mut dyn FnMut(char, char) -> bool,
         ) {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);

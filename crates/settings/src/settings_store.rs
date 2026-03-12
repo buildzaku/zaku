@@ -84,7 +84,7 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
                     access.next_entry::<String, Option<FeatureValue>>()?
                 {
                     if !is_valid_feature_tag(&key) {
-                        eprintln!("settings: incorrect font feature tag: {key}");
+                        log::warn!("Invalid font feature tag in settings: {key}");
                         continue;
                     }
 
@@ -100,8 +100,8 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
                             if let Some(value) = value.as_u64() {
                                 feature_map.insert(key, value as u32);
                             } else {
-                                eprintln!(
-                                    "settings: incorrect font feature value {value} for feature tag {key}",
+                                log::warn!(
+                                    "Invalid font feature value {value} for feature tag {key}",
                                 );
                             }
                         }
@@ -300,11 +300,11 @@ impl SettingsStore {
         let default_settings = match parse_json::<SettingsContent>(default_settings_content) {
             ParseStatus::Ok(default_settings) => default_settings,
             ParseStatus::OkWithErrors { value, error } => {
-                eprintln!("settings: invalid default settings: {error}");
+                log::error!("Invalid default settings: {error}");
                 value
             }
             ParseStatus::Err { error } => {
-                eprintln!("settings: failed to parse default settings: {error}");
+                log::error!("Failed to parse default settings: {error}");
                 return;
             }
         };
@@ -317,11 +317,11 @@ impl SettingsStore {
         let user_settings = match parse_json::<SettingsContent>(user_settings_content) {
             ParseStatus::Ok(user_settings) => user_settings,
             ParseStatus::OkWithErrors { value, error } => {
-                eprintln!("settings: invalid user settings: {error}");
+                log::error!("Invalid user settings: {error}");
                 value
             }
             ParseStatus::Err { error } => {
-                eprintln!("settings: failed to parse user settings: {error}");
+                log::error!("Failed to parse user settings: {error}");
                 return;
             }
         };

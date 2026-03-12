@@ -87,7 +87,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     ThemeRegistry::set_global(assets, cx);
 
     if load_bundled_themes && let Err(error) = ThemeRegistry::global(cx).load_bundled_themes() {
-        eprintln!("failed to load bundled themes: {error:?}");
+        log::error!("Failed to load bundled themes: {error:?}");
     }
 
     let theme = GlobalTheme::configured_theme(cx);
@@ -703,7 +703,7 @@ impl ThemeRegistry {
             let content: ThemeFamilyContent = match serde_json::from_slice(&bytes) {
                 Ok(content) => content,
                 Err(error) => {
-                    eprintln!("failed to parse theme at path {path:?}: {error:?}");
+                    log::error!("Failed to parse theme at path {path:?}: {error:?}");
                     continue;
                 }
             };
@@ -711,7 +711,7 @@ impl ThemeRegistry {
             let family = match refine_theme_family(content) {
                 Ok(family) => family,
                 Err(error) => {
-                    eprintln!("failed to refine theme at path {path:?}: {error:?}");
+                    log::error!("Failed to refine theme at path {path:?}: {error:?}");
                     continue;
                 }
             };

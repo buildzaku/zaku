@@ -164,7 +164,7 @@ impl Pane {
                                 );
                                 response_panel.set_payload(request_id, "Error: invalid URL", cx);
                             }) {
-                                eprintln!("failed to update response panel: {error:?}");
+                                log::debug!("Failed to update response panel: {error:?}");
                             }
                             return;
                         }
@@ -188,7 +188,7 @@ impl Pane {
                                 );
                                 response_panel.set_payload(request_id, format!("Error: {error}"), cx);
                             }) {
-                                eprintln!("failed to update response panel: {error:?}");
+                                log::debug!("Failed to update response panel: {error:?}");
                             }
                             return;
                         }
@@ -214,7 +214,7 @@ impl Pane {
                                             }, cx);
                                             response_panel.set_payload(request_id, format!("Error: {error}"), cx);
                                         }) {
-                                            eprintln!("failed to update response panel: {error:?}");
+                                            log::debug!("Failed to update response panel: {error:?}");
                                         }
                                         return;
                                     }
@@ -302,7 +302,7 @@ impl Pane {
                         response_panel.set_state(request_id, response_state, cx);
                         response_panel.set_payload(request_id, payload, cx);
                     }) {
-                        eprintln!("failed to update response panel: {error:?}");
+                        log::debug!("Failed to update response panel: {error:?}");
                     }
                 }
             })
@@ -379,7 +379,7 @@ impl Render for Pane {
                                 pane.request.method = request_method_for_handler.clone();
                                 cx.notify();
                             }) {
-                                eprintln!("failed to update request method: {error:?}");
+                                log::debug!("Failed to update request method: {error:?}");
                             }
                         },
                     );

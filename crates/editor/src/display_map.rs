@@ -3,7 +3,7 @@ mod tab_map;
 
 pub use tab_map::{TabMap, TabPoint, TabSnapshot};
 
-use gpui::{Context, Entity, HighlightStyle, Pixels, TextRun};
+use gpui::{Context, Entity, HighlightStyle, LineLayout, Pixels, TextRun};
 use serde::Deserialize;
 use std::{
     collections::HashMap,
@@ -175,7 +175,7 @@ impl DisplaySnapshot {
             editor_style,
             rem_size,
         }: &TextLayoutDetails,
-    ) -> Arc<gpui::LineLayout> {
+    ) -> Arc<LineLayout> {
         let line = self.line(display_row);
 
         let runs = [TextRun {
@@ -360,20 +360,20 @@ impl ToDisplayPoint for Anchor {
 mod tests {
     use super::*;
 
-    use gpui::AppContext;
+    use gpui::{App, AppContext};
     use settings::SettingsStore;
     use text::{Buffer as TextBuffer, ReplicaId};
 
     use crate::tests::util::marked_display_snapshot;
 
-    fn init_test(cx: &mut gpui::App) {
+    fn init_test(cx: &mut App) {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
         theme::init(theme::LoadThemes::JustBase, cx);
         crate::init(cx);
     }
 
-    fn display_snapshot_for_text(text: &str, cx: &mut gpui::App) -> DisplaySnapshot {
+    fn display_snapshot_for_text(text: &str, cx: &mut App) -> DisplaySnapshot {
         let text_buffer =
             cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text));
         let multi_buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
@@ -384,7 +384,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_text_chunks(cx: &mut gpui::App) {
+    fn test_text_chunks(cx: &mut App) {
         init_test(cx);
 
         let text = "aaaaaa\nbbbbbb\ncccccc\ndddddd\neeeeee\nffffff";
@@ -436,10 +436,10 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_clip_point(cx: &mut gpui::App) {
+    fn test_clip_point(cx: &mut App) {
         init_test(cx);
 
-        fn assert(marked_text: &str, shift_right: bool, bias: Bias, cx: &mut gpui::App) {
+        fn assert(marked_text: &str, shift_right: bool, bias: Bias, cx: &mut App) {
             let (unmarked_snapshot, mut markers) = marked_display_snapshot(marked_text, cx);
 
             match bias {
@@ -485,7 +485,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_tabs_with_multibyte_chars(cx: &mut gpui::App) {
+    fn test_tabs_with_multibyte_chars(cx: &mut App) {
         init_test(cx);
 
         let map = display_snapshot_for_text("🌙\t\tα\nβ\t\n🏀β\t\tγ", cx);
@@ -543,7 +543,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_max_point(cx: &mut gpui::App) {
+    fn test_max_point(cx: &mut App) {
         init_test(cx);
 
         let map = display_snapshot_for_text("aaa\n\t\tbbb", cx);

@@ -100,7 +100,7 @@ impl WorkspaceDb {
             })
             .await
         {
-            eprintln!("failed to save workspace: {error}");
+            log::error!("Failed to save workspace: {error}");
         }
     }
 
