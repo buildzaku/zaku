@@ -154,6 +154,7 @@ pub struct SettingsContent {
     buffer_font_features: Option<FontFeaturesContent>,
     buffer_font_weight: Option<FontWeightContent>,
     buffer_line_height: Option<BufferLineHeight>,
+    pub(crate) log: Option<HashMap<String, String>>,
 }
 
 impl SettingsContent {

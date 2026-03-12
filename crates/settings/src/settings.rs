@@ -1,4 +1,5 @@
 mod fallible_options;
+pub mod log_settings;
 pub mod merge_from;
 mod paths;
 mod settings_file;
@@ -8,7 +9,7 @@ use gpui::{App, Global};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
-pub use paths::{config_dir, data_dir, settings_file};
+pub use paths::{config_dir, data_dir, log_file, logs_dir, old_log_file, settings_file};
 pub use settings_file::watch_config_file;
 pub use settings_store::{
     BufferLineHeight, FontFeaturesContent, FontWeightContent, Settings, SettingsContent,

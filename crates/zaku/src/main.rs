@@ -1,7 +1,7 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
 use gpui_platform;
-use std::sync::Arc;
+use std::{collections::HashMap, io, path::Path, sync::Arc};
 use uuid::Uuid;
 
 use fs::NativeFs;
@@ -16,13 +16,24 @@ gpui::actions!(zaku, [Quit]);
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    let file_errors = init_paths();
+    if !file_errors.is_empty() {
+        eprintln!("Zaku failed to launch: {file_errors:?}");
+        return;
+    }
+
     logger::init();
-    logger::init_output_stdout();
+    let result = logger::init_output_file(settings::log_file(), Some(settings::old_log_file()));
+    if let Err(error) = result {
+        eprintln!("Could not open log file: {error}... Defaulting to stdout");
+        logger::init_output_stdout();
+    }
 
     Application::with_platform(gpui_platform::current_platform(false))
         .with_assets(assets::Assets)
         .run(|cx: &mut App| {
             settings::init(cx);
+            settings::log_settings::init(cx);
             let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
                 cx.background_executor(),
                 settings::settings_file().clone(),
@@ -84,6 +95,24 @@ fn main() {
             )
             .unwrap();
         });
+}
+
+fn init_paths() -> HashMap<io::ErrorKind, Vec<&'static Path>> {
+    [
+        settings::config_dir(),
+        settings::data_dir(),
+        settings::logs_dir(),
+    ]
+    .into_iter()
+    .fold(HashMap::default(), |mut errors, path| {
+        if let Err(error) = std::fs::create_dir_all(path) {
+            errors
+                .entry(error.kind())
+                .or_insert_with(Vec::new)
+                .push(path);
+        }
+        errors
+    })
 }
 
 fn quit(_: &Quit, cx: &mut App) {

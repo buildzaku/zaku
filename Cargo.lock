@@ -5482,6 +5482,7 @@ dependencies = [
  "futures",
  "gpui",
  "indexmap",
+ "logger",
  "notify",
  "rust-embed",
  "serde",
