@@ -61,14 +61,7 @@ pub fn is_scope_enabled(scope: &ScopeRef<'_>, module_path: Option<&str>, level: 
 pub fn refresh_from_settings(settings: &HashMap<String, String>) {
     let env_config = ENV_FILTER.get();
     let map_new = ScopeMap::new_from_settings_and_env(settings, env_config, DEFAULT_FILTERS);
-    let mut level_enabled_max = LEVEL_ENABLED_MAX_STATIC.load(Ordering::Acquire);
-
-    for entry in &map_new.entries {
-        if let Some(level) = entry.enabled {
-            level_enabled_max = level_enabled_max.max(level as u8);
-        }
-    }
-
+    let level_enabled_max = level_enabled_max(&map_new);
     LEVEL_ENABLED_MAX_CONFIG.store(level_enabled_max, Ordering::Release);
 
     {
@@ -80,6 +73,22 @@ pub fn refresh_from_settings(settings: &HashMap<String, String>) {
     }
 
     log::trace!("Log configuration updated");
+}
+
+fn level_enabled_max(scope_map: &ScopeMap) -> u8 {
+    let mut level_enabled_max = LEVEL_ENABLED_MAX_STATIC.load(Ordering::Acquire);
+
+    for entry in &scope_map.entries {
+        if let Some(level) = entry.enabled {
+            level_enabled_max = level_enabled_max.max(level as u8);
+        }
+    }
+
+    for (_, level) in &scope_map.modules {
+        level_enabled_max = level_enabled_max.max(*level as u8);
+    }
+
+    level_enabled_max
 }
 
 fn level_filter_from_str(level_str: &str) -> Option<LevelFilter> {
@@ -397,6 +406,18 @@ mod tests {
             .map(|(key, value)| (key.to_string(), value.to_string()))
             .collect();
         ScopeMap::new_from_settings_and_env(&hash_map, None, &[])
+    }
+
+    fn level_filter_from_u8(level: u8) -> LevelFilter {
+        match level {
+            level if level == LevelFilter::Off as u8 => LevelFilter::Off,
+            level if level == LevelFilter::Error as u8 => LevelFilter::Error,
+            level if level == LevelFilter::Warn as u8 => LevelFilter::Warn,
+            level if level == LevelFilter::Info as u8 => LevelFilter::Info,
+            level if level == LevelFilter::Debug as u8 => LevelFilter::Debug,
+            level if level == LevelFilter::Trace as u8 => LevelFilter::Trace,
+            _ => panic!("invalid LevelFilter value: {level}"),
+        }
     }
 
     fn scope_from_scope_str(scope_str: &'static str) -> Scope {
@@ -793,5 +814,38 @@ mod tests {
             EnabledStatus::Disabled,
             "crate::submodule should be disabled by disabling `crate` filter"
         );
+    }
+
+    #[test]
+    fn test_module_filters_raise_max_enabled_level() {
+        for (level_str, expected_level_filter, expected_level) in [
+            ("debug", LevelFilter::Debug, Level::Debug),
+            ("trace", LevelFilter::Trace, Level::Trace),
+        ] {
+            let settings = HashMap::from([("crate::module".to_string(), level_str.to_string())]);
+            assert!(
+                !is_possibly_enabled_level(expected_level),
+                "configured module logs should be filtered before the max enabled level is refreshed",
+            );
+
+            refresh_from_settings(&settings);
+
+            let actual_level_filter =
+                level_filter_from_u8(LEVEL_ENABLED_MAX_CONFIG.load(Ordering::Acquire));
+
+            assert_eq!(
+                actual_level_filter, expected_level_filter,
+                "module-specific filters should raise the max enabled level",
+            );
+            assert!(
+                is_possibly_enabled_level(expected_level),
+                "configured module logs should survive the max enabled level check before module matching runs",
+            );
+            assert_eq!(
+                is_scope_enabled(&scope_new(&[""]), Some("crate::module"), expected_level),
+                true,
+                "exact module matching should allow the configured module level once the filter is checked",
+            );
+        }
     }
 }
