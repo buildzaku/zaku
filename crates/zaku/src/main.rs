@@ -1,6 +1,13 @@
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
+
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{App, Application, Bounds, KeyBinding, Task, WindowBounds, WindowOptions, prelude::*};
+use gpui::{
+    App, Application, Bounds, Empty, KeyBinding, Pixels, PromptLevel, QuitMode, Size, Task,
+    WindowBounds, WindowOptions, prelude::*,
+};
 use gpui_platform;
+use indoc::{formatdoc, indoc};
 use std::{collections::HashMap, io::IsTerminal, path::Path, sync::Arc};
 use uuid::Uuid;
 
@@ -15,10 +22,12 @@ gpui::actions!(zaku, [Quit]);
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
+
 fn main() {
     let file_errors = init_paths();
     if !file_errors.is_empty() {
-        eprintln!("Zaku failed to launch: {file_errors:?}");
+        files_not_created_on_launch(file_errors);
         return;
     }
 
@@ -80,8 +89,7 @@ fn main() {
 
             cx.activate(true);
 
-            let window_size = gpui::size(gpui::px(1180.0), gpui::px(760.0));
-            let mut bounds = Bounds::centered(None, window_size, cx);
+            let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
             bounds.origin.y -= gpui::px(36.0);
 
             cx.open_window(
@@ -179,6 +187,118 @@ fn register_embedded_fonts(cx: &App) {
 
     if let Err(error) = cx.text_system().add_fonts(embedded_fonts) {
         log::error!("Failed to add bundled fonts: {error:?}");
+    }
+}
+
+fn files_not_created_on_launch(errors: HashMap<std::io::ErrorKind, Vec<&Path>>) {
+    let message = "Zaku failed to launch";
+    let error_details = errors
+        .into_iter()
+        .flat_map(|(kind, paths)| {
+            #[allow(unused_mut)]
+            let mut error_kind_details = match paths.len() {
+                0 => return None,
+                1 => format!(
+                    "{kind} when creating directory {:?}",
+                    paths.first().expect("match arm checks for a single entry")
+                ),
+                _many => format!("{kind} when creating directories {paths:?}"),
+            };
+
+            #[cfg(unix)]
+            {
+                if kind == std::io::ErrorKind::PermissionDenied {
+                    error_kind_details.push_str("\n\n");
+                    error_kind_details.push_str(indoc! {"
+                        Consider using chown and chmod tools for altering the directories permissions if your user has corresponding rights.
+
+                        For example, `sudo chown $(whoami):staff ~/.config` and `chmod +uwrx ~/.config`
+                    "});
+                }
+            }
+
+            Some(error_kind_details)
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    eprintln!("{message}: {error_details}");
+    Application::with_platform(gpui_platform::current_platform(false))
+        .with_quit_mode(QuitMode::Explicit)
+        .run(move |cx| {
+            let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
+            bounds.origin.y -= gpui::px(36.0);
+
+            if let Ok(window) = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    ..Default::default()
+                },
+                |_, cx| cx.new(|_| Empty),
+            ) {
+                if let Err(error) = window.update(cx, |_, window, cx| {
+                    let response = window.prompt(
+                        PromptLevel::Critical,
+                        message,
+                        Some(&error_details),
+                        &["Exit"],
+                        cx,
+                    );
+
+                    cx.spawn_in(window, async move |_, cx| {
+                        response.await?;
+                        cx.update(|_, cx| cx.quit())
+                    })
+                    .detach_and_log_err(cx);
+                }) {
+                    fail_to_open_window(
+                        anyhow::anyhow!(formatdoc! {"
+                            {message}: {error_details}
+
+                            Failed to show launch failure prompt: {error:?}
+                        "}),
+                        cx,
+                    );
+                }
+            } else {
+                fail_to_open_window(anyhow::anyhow!("{message}: {error_details}"), cx)
+            }
+        })
+}
+
+fn fail_to_open_window(error: anyhow::Error, _cx: &mut App) {
+    eprintln!("Zaku failed to open a window: {error:?}.");
+
+    #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+    {
+        std::process::exit(1);
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    {
+        _cx.spawn(async move |_| {
+            let Ok(proxy) = NotificationProxy::new().await else {
+                std::process::exit(1);
+            };
+
+            let notification_id = "dev.zaku.Oops";
+            let notification_body = format!("{error:?}.");
+            proxy
+                .add_notification(
+                    notification_id,
+                    Notification::new("Zaku failed to launch")
+                        .body(Some(notification_body.as_str()))
+                        .priority(Priority::High)
+                        .icon(ashpd::desktop::Icon::with_names(&[
+                            "dialog-question-symbolic",
+                        ])),
+                )
+                .await
+                .ok();
+
+            std::process::exit(1);
+        })
+        .detach();
     }
 }
 

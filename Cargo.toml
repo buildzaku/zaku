@@ -40,6 +40,10 @@ style = { level = "allow" }
 # External crates
 ##################################################
 anyhow = { version = "1.0" }
+ashpd = { version = "0.13", default-features = false, features = [
+  "async-io",
+  "notification",
+] }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 chrono = { version = "0.4" }

@@ -8170,6 +8170,7 @@ name = "zaku"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "ashpd",
  "assets",
  "core-text",
  "editor",
@@ -8177,6 +8178,7 @@ dependencies = [
  "futures",
  "gpui",
  "gpui_platform",
+ "indoc",
  "log",
  "logger",
  "menu",
