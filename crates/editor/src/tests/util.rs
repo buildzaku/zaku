@@ -1,4 +1,4 @@
-use gpui::AppContext;
+use gpui::{App, AppContext};
 use text::{Buffer as TextBuffer, ReplicaId};
 
 use multi_buffer::{MultiBuffer, MultiBufferOffset};
@@ -11,7 +11,7 @@ use crate::{
 
 pub fn marked_display_snapshot(
     marked_text: &str,
-    cx: &mut gpui::App,
+    cx: &mut App,
 ) -> (DisplaySnapshot, Vec<DisplayPoint>) {
     let (text, marker_offsets) = marked_text_offsets(marked_text);
     let text_buffer =

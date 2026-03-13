@@ -10,9 +10,9 @@ pub use element::EditorElement;
 
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontStyle, Hsla, KeyBinding,
-    KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
-    Subscription, TextStyle, UTF16Selection, Window, prelude::*,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontStyle, HighlightStyle, Hsla,
+    KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
+    SharedString, Subscription, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
 };
 use multi_buffer::{
     Anchor, Capability, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
@@ -2557,7 +2557,7 @@ impl Editor {
         &mut self,
         key: HighlightKey,
         ranges: Vec<Range<Anchor>>,
-        style: gpui::HighlightStyle,
+        style: HighlightStyle,
         cx: &mut Context<Self>,
     ) {
         self.display_map.update(cx, |map, cx| {
@@ -2570,7 +2570,7 @@ impl Editor {
         &self,
         key: HighlightKey,
         cx: &App,
-    ) -> Option<(gpui::HighlightStyle, Vec<Range<Anchor>>)> {
+    ) -> Option<(HighlightStyle, Vec<Range<Anchor>>)> {
         let map = self.display_map.read(cx);
         map.text_highlights(key)
             .map(|(style, ranges)| (style, ranges.to_vec()))
@@ -2755,8 +2755,8 @@ impl EntityInputHandler for Editor {
                 this.highlight_text(
                     HighlightKey::InputComposition,
                     marked_ranges.clone(),
-                    gpui::HighlightStyle {
-                        underline: Some(gpui::UnderlineStyle {
+                    HighlightStyle {
+                        underline: Some(UnderlineStyle {
                             thickness: gpui::px(1.0),
                             color: None,
                             wavy: false,

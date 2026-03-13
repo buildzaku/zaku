@@ -190,7 +190,7 @@ impl WelcomePage {
                 .recent_workspaces_on_disk(fs.as_ref())
                 .await
                 .unwrap_or_else(|error| {
-                    eprintln!("failed to load recent workspaces: {error}");
+                    log::error!("Failed to load recent workspaces: {error}");
                     Vec::new()
                 });
 
@@ -198,7 +198,7 @@ impl WelcomePage {
                 welcome_page.recent_workspaces = Some(recent_workspaces);
                 cx.notify();
             }) {
-                eprintln!("failed to update welcome page recent workspaces: {error}");
+                log::debug!("Failed to update welcome page recent workspaces: {error}");
             }
         })
         .detach();
@@ -240,7 +240,7 @@ impl WelcomePage {
                 .open_workspace_for_path(recent_workspace_path, window, cx)
                 .detach_and_log_err(cx);
         }) {
-            eprintln!("failed to open recent workspace from welcome page: {error}");
+            log::debug!("Failed to open recent workspace from welcome page: {error}");
         }
     }
 

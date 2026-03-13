@@ -22,6 +22,8 @@ dirs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
 indexmap = { workspace = true }
+logger = { workspace = true }
+log = { workspace = true }
 notify = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
