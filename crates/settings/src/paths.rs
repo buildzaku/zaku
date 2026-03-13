@@ -1,8 +1,5 @@
 use std::{path::PathBuf, sync::OnceLock};
 
-static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
-static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
-
 fn home_dir() -> PathBuf {
     dirs::home_dir().expect("failed to determine home directory")
 }
@@ -13,6 +10,7 @@ fn home_dir() -> PathBuf {
 /// - Linux/FreeBSD: `$XDG_CONFIG_HOME/zaku` (or `~/.config/zaku`), with Flatpak override.
 /// - Windows: `%APPDATA%\\Zaku`
 pub fn config_dir() -> &'static PathBuf {
+    static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
     CONFIG_DIR.get_or_init(|| {
         if cfg!(target_os = "windows") {
             dirs::config_dir()
@@ -37,6 +35,7 @@ pub fn config_dir() -> &'static PathBuf {
 /// - Linux/FreeBSD: `$XDG_DATA_HOME/zaku` (or `~/.local/share/zaku`), with Flatpak override.
 /// - Windows: `%LOCALAPPDATA%\\Zaku`
 pub fn data_dir() -> &'static PathBuf {
+    static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
     DATA_DIR.get_or_init(|| {
         if cfg!(target_os = "macos") {
             home_dir()
@@ -58,6 +57,34 @@ pub fn data_dir() -> &'static PathBuf {
             config_dir().clone()
         }
     })
+}
+
+/// Returns the path to the logs directory.
+///
+/// - macOS: `~/Library/Logs/Zaku`
+/// - Linux/FreeBSD: `$XDG_DATA_HOME/zaku/logs` (or `~/.local/share/zaku/logs`), with Flatpak override.
+/// - Windows: `%LOCALAPPDATA%\\Zaku\\logs`
+pub fn logs_dir() -> &'static PathBuf {
+    static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
+    LOGS_DIR.get_or_init(|| {
+        if cfg!(target_os = "macos") {
+            home_dir().join("Library/Logs/Zaku")
+        } else {
+            data_dir().join("logs")
+        }
+    })
+}
+
+/// Returns the path to the `Zaku.log` file.
+pub fn log_file() -> &'static PathBuf {
+    static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log"))
+}
+
+/// Returns the path to the `Zaku.log.old` file.
+pub fn old_log_file() -> &'static PathBuf {
+    static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    OLD_LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log.old"))
 }
 
 /// Returns the path to the `settings.json` file.

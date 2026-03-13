@@ -1,7 +1,7 @@
 mod fallback;
 mod settings;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, anyhow};
 use gpui::{
     App, AssetSource, BorrowAppContext, Global, Hsla, Rgba, SharedString, WindowAppearance,
 };
@@ -87,7 +87,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     ThemeRegistry::set_global(assets, cx);
 
     if load_bundled_themes && let Err(error) = ThemeRegistry::global(cx).load_bundled_themes() {
-        eprintln!("failed to load bundled themes: {error:?}");
+        log::error!("Failed to load bundled themes: {error:?}");
     }
 
     let theme = GlobalTheme::configured_theme(cx);
@@ -431,7 +431,7 @@ pub struct ThemeStyleContent {
 }
 
 impl ThemeStyleContent {
-    fn to_styles(&self) -> Result<ThemeStyles> {
+    fn to_styles(&self) -> anyhow::Result<ThemeStyles> {
         let colors = ThemeColors {
             background: required_color("background", &self.background)?,
             surface_background: required_color("surface.background", &self.surface_background)?,
@@ -576,7 +576,7 @@ impl ThemeStyleContent {
     }
 }
 
-fn required_color(field: &'static str, value: &Option<String>) -> Result<Hsla> {
+fn required_color(field: &'static str, value: &Option<String>) -> anyhow::Result<Hsla> {
     let Some(value) = value.as_ref() else {
         return Err(anyhow!("missing required theme style field: {field}"));
     };
@@ -585,7 +585,7 @@ fn required_color(field: &'static str, value: &Option<String>) -> Result<Hsla> {
         .with_context(|| format!("invalid color value for theme style field {field:?}: {value:?}"))
 }
 
-fn try_parse_color(color: &str) -> Result<Hsla> {
+fn try_parse_color(color: &str) -> anyhow::Result<Hsla> {
     let rgba = Rgba::try_from(color)?;
     let rgba = palette::rgb::Srgba::from_components((rgba.r, rgba.g, rgba.b, rgba.a));
     let hsla = palette::Hsla::from_color(rgba);
@@ -604,7 +604,7 @@ pub struct ThemeFamily {
     pub themes: Vec<Theme>,
 }
 
-fn refine_theme_family(content: ThemeFamilyContent) -> Result<ThemeFamily> {
+fn refine_theme_family(content: ThemeFamilyContent) -> anyhow::Result<ThemeFamily> {
     let mut themes = Vec::with_capacity(content.themes.len());
     for theme in &content.themes {
         themes.push(refine_theme(theme)?);
@@ -617,7 +617,7 @@ fn refine_theme_family(content: ThemeFamilyContent) -> Result<ThemeFamily> {
     })
 }
 
-fn refine_theme(content: &ThemeContent) -> Result<Theme> {
+fn refine_theme(content: &ThemeContent) -> anyhow::Result<Theme> {
     let appearance = match content.appearance {
         AppearanceContent::Light => Appearance::Light,
         AppearanceContent::Dark => Appearance::Dark,
@@ -682,7 +682,7 @@ impl ThemeRegistry {
         }
     }
 
-    pub fn load_bundled_themes(&self) -> Result<()> {
+    pub fn load_bundled_themes(&self) -> anyhow::Result<()> {
         let theme_paths = self
             .assets
             .list("themes/")
@@ -703,7 +703,7 @@ impl ThemeRegistry {
             let content: ThemeFamilyContent = match serde_json::from_slice(&bytes) {
                 Ok(content) => content,
                 Err(error) => {
-                    eprintln!("failed to parse theme at path {path:?}: {error:?}");
+                    log::error!("Failed to parse theme at path {path:?}: {error:?}");
                     continue;
                 }
             };
@@ -711,7 +711,7 @@ impl ThemeRegistry {
             let family = match refine_theme_family(content) {
                 Ok(family) => family,
                 Err(error) => {
-                    eprintln!("failed to refine theme at path {path:?}: {error:?}");
+                    log::error!("Failed to refine theme at path {path:?}: {error:?}");
                     continue;
                 }
             };

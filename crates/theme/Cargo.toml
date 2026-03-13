@@ -16,6 +16,7 @@ path = "src/theme.rs"
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
+log = { workspace = true }
 palette = { workspace = true }
 parking_lot = { workspace = true }
 settings = { workspace = true }

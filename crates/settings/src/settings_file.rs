@@ -10,7 +10,7 @@ fn read_config_file(path: &Path) -> String {
             crate::default_user_settings().into_owned()
         }
         Err(error) => {
-            eprintln!("failed to load settings file: {error}");
+            log::error!("Failed to load settings file: {error}");
             crate::default_user_settings().into_owned()
         }
     }
@@ -49,8 +49,8 @@ pub fn watch_config_file(
         let (watch_root, mode) = match existing_watch_root(&path) {
             Some(result) => result,
             None => {
-                eprintln!(
-                    "failed to watch settings file: no existing parent directory for {path:?}"
+                log::error!(
+                    "Failed to watch settings file: no existing parent directory for {path:?}"
                 );
                 let contents = read_config_file(&path);
                 if tx.unbounded_send(contents).is_err() {
@@ -81,13 +81,13 @@ pub fn watch_config_file(
                         }
                     }
                     Err(error) => {
-                        eprintln!("failed to watch settings file: {error}");
+                        log::error!("Failed to watch settings file: {error}");
                     }
                 }
             }) {
                 Ok(watcher) => watcher,
                 Err(error) => {
-                    eprintln!("failed to watch settings file: {error}");
+                    log::error!("Failed to watch settings file: {error}");
                     let contents = read_config_file(&path);
                     if tx.unbounded_send(contents).is_err() {
                         return;
@@ -97,7 +97,7 @@ pub fn watch_config_file(
             };
 
         if let Err(error) = watcher.watch(&watch_root, mode) {
-            eprintln!("failed to watch settings file: {error}");
+            log::error!("Failed to watch settings file: {error}");
             let contents = read_config_file(&path);
             if tx.unbounded_send(contents).is_err() {
                 return;

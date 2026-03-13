@@ -700,7 +700,7 @@ fn bitmask_for_len(len: u32) -> u128 {
 mod tests {
     use super::*;
 
-    use gpui::AppContext;
+    use gpui::{App, AppContext};
     use text::{Buffer as TextBuffer, BufferId, ReplicaId};
 
     use multi_buffer::{MultiBuffer, MultiBufferOffset};
@@ -802,7 +802,7 @@ mod tests {
         )
     }
 
-    fn tab_snapshot_for_text(text: &str, cx: &mut gpui::App) -> TabSnapshot {
+    fn tab_snapshot_for_text(text: &str, cx: &mut App) -> TabSnapshot {
         let buffer_id = BufferId::new(1).expect("buffer id must be valid");
         let text_buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, text));
         let multibuffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
@@ -819,7 +819,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_long_lines(cx: &mut gpui::App) {
+    fn test_long_lines(cx: &mut App) {
         let max_expansion_column = 12;
         let input = "A\tBC\tDEF\tG\tHI\tJ\tK\tL\tM";
         let output = "A   BC  DEF G   HI J K L M";
@@ -861,7 +861,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_long_lines_with_character_spanning_max_expansion_column(cx: &mut gpui::App) {
+    fn test_long_lines_with_character_spanning_max_expansion_column(cx: &mut App) {
         let max_expansion_column = 8;
         let input = "abcdefg⋯hij";
 
@@ -872,7 +872,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_marking_tabs(cx: &mut gpui::App) {
+    fn test_marking_tabs(cx: &mut App) {
         let input = "\t \thello";
         let tab_snapshot = tab_snapshot_for_text(input, cx);
 
@@ -917,7 +917,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_tab_stop_cursor_utf8(cx: &mut gpui::App) {
+    fn test_tab_stop_cursor_utf8(cx: &mut App) {
         let text = "\tfoo\tbarbarbar\t\tbaz\n";
         let tab_snapshot = tab_snapshot_for_text(text, cx);
         let chunks =
@@ -947,7 +947,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_tab_stop_with_end_range_utf8(cx: &mut gpui::App) {
+    fn test_tab_stop_with_end_range_utf8(cx: &mut App) {
         let input = "A\tBC\t";
         let tab_snapshot = tab_snapshot_for_text(input, cx);
         let chunks =
@@ -976,7 +976,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_expand_tabs(cx: &mut gpui::App) {
+    fn test_expand_tabs(cx: &mut App) {
         let test_values = [
             ("κg🎲 f\nwo❌🏀by🎲✋β❌c\tβ✋ \ncλ🎲", 17),
             (" \twςe", 4),
@@ -1012,7 +1012,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_collapse_tabs(cx: &mut gpui::App) {
+    fn test_collapse_tabs(cx: &mut App) {
         let input = "A\tBC\tDEF\tG\tHI\tJ\tK\tL\tM";
 
         let tab_snapshot = tab_snapshot_for_text(input, cx);

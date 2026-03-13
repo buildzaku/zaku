@@ -10,5 +10,6 @@
   "buffer_font_fallbacks": null,
   "buffer_font_features": { "calt": false },
   "buffer_font_weight": 400,
-  "buffer_line_height": "comfortable"
+  "buffer_line_height": "comfortable",
+  "log": {}
 }

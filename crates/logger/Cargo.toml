@@ -1,0 +1,24 @@
+[package]
+name = "logger"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/logger.rs"
+
+[features]
+default = []
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+fs = { workspace = true, features = ["test-support"] }

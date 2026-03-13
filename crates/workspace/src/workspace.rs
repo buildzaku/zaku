@@ -351,7 +351,9 @@ impl Workspace {
                                     .set_session_binding(workspace_id, session_id, Some(window_id))
                                     .await
                                 {
-                                    eprintln!("failed to bind workspace session metadata: {error}");
+                                    log::error!(
+                                        "Failed to bind workspace session metadata: {error}"
+                                    );
                                 }
                             })
                             .detach();
@@ -361,7 +363,7 @@ impl Workspace {
                                 if let Err(error) =
                                     WORKSPACE_DB.delete_workspace_by_id(workspace_id).await
                                 {
-                                    eprintln!("failed to delete unbound workspace id: {error}");
+                                    log::error!("Failed to delete unbound workspace id: {error}");
                                 }
                             })
                             .detach();
@@ -369,7 +371,7 @@ impl Workspace {
                     }
                 }
                 Err(error) => {
-                    eprintln!("failed to allocate workspace id: {error}");
+                    log::error!("Failed to allocate workspace id: {error}");
                 }
             }
         })
@@ -493,7 +495,7 @@ impl Workspace {
                             Some(this.serialize_workspace_internal(window, cx));
                         this._schedule_serialize_workspace.take();
                     }) {
-                        eprintln!("failed to schedule workspace serialization: {error}");
+                        log::debug!("Failed to schedule workspace serialization: {error}");
                     }
                 }));
         }
@@ -519,7 +521,7 @@ impl Workspace {
             }
             None => window.spawn(cx, async move |_| {
                 if let Err(error) = WORKSPACE_DB.delete_workspace_by_id(database_id).await {
-                    eprintln!("failed to delete workspace without root path: {error}");
+                    log::error!("Failed to delete workspace without root path: {error}");
                 }
             }),
         }

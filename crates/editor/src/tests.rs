@@ -1,7 +1,7 @@
 pub(crate) mod context;
 pub(crate) mod util;
 
-use gpui::{ClipboardItem, Context, EntityInputHandler, TestAppContext};
+use gpui::{ClipboardItem, Context, EntityInputHandler, Point, TestAppContext};
 use indoc::indoc;
 use multi_buffer::{Capability, MultiBufferOffset};
 use pretty_assertions::assert_eq;
@@ -380,7 +380,7 @@ fn test_select_all_does_not_autoscroll(cx: &mut TestAppContext) {
 
     let initial_scroll_position = cx.update_editor(|editor, window, cx| {
         let scroll_position = editor.snapshot(window, cx).scroll_position();
-        assert_eq!(scroll_position, gpui::Point::new(0.0, 3.0));
+        assert_eq!(scroll_position, Point::new(0.0, 3.0));
 
         scroll_position
     });
@@ -1232,7 +1232,7 @@ fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 0.0)
+            Point::new(0.0, 0.0)
         );
     });
 
@@ -1256,7 +1256,7 @@ fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 3.0)
+            Point::new(0.0, 3.0)
         );
     });
 
@@ -1280,7 +1280,7 @@ fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 6.0)
+            Point::new(0.0, 6.0)
         );
     });
 
@@ -1304,7 +1304,7 @@ fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 1.0)
+            Point::new(0.0, 1.0)
         );
     });
 }
@@ -1370,7 +1370,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 6.0)
+            Point::new(0.0, 6.0)
         );
     });
 
@@ -1391,7 +1391,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 1.0)
+            Point::new(0.0, 1.0)
         );
     });
 
@@ -1414,7 +1414,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 4.0)
+            Point::new(0.0, 4.0)
         );
     });
 
@@ -1435,7 +1435,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
     cx.update_editor(|editor, window, cx| {
         assert_eq!(
             editor.snapshot(window, cx).scroll_position(),
-            gpui::Point::new(0.0, 1.0)
+            Point::new(0.0, 1.0)
         );
     });
 }

@@ -1,6 +1,5 @@
 mod async_body;
 
-use anyhow::Result;
 use futures::future::BoxFuture;
 use http::HeaderValue;
 
@@ -52,14 +51,14 @@ pub trait HttpClient: 'static + Send + Sync {
     fn send(
         &self,
         request: http::Request<AsyncBody>,
-    ) -> BoxFuture<'static, Result<Response<AsyncBody>>>;
+    ) -> BoxFuture<'static, anyhow::Result<Response<AsyncBody>>>;
 
     fn get(
         &self,
         uri: &str,
         body: AsyncBody,
         follow_redirects: bool,
-    ) -> BoxFuture<'static, Result<Response<AsyncBody>>> {
+    ) -> BoxFuture<'static, anyhow::Result<Response<AsyncBody>>> {
         let request = Builder::new()
             .uri(uri)
             .follow_redirects(if follow_redirects {

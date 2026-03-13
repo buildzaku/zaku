@@ -77,8 +77,8 @@ async fn try_open_db(db_dir: &Path) -> Option<ThreadSafeConnection> {
     {
         Ok(db_path) => open_main_db(&db_path).await,
         Err(error) => {
-            eprintln!(
-                "failed to prepare sqlite database directory {}: {error}",
+            log::error!(
+                "Failed to prepare sqlite database directory {}: {error}",
                 db_dir.display()
             );
             None
@@ -91,6 +91,7 @@ pub fn file_db_failed() -> bool {
 }
 
 async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
+    log::trace!("Opening database {}", path.display());
     ThreadSafeConnectionBuilder {
         db_init_query: None,
         write_queue_constructor: None,
@@ -105,8 +106,8 @@ async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
     .build()
     .await
     .map_err(|error| {
-        eprintln!(
-            "failed to open sqlite database at {}: {error}",
+        log::error!(
+            "Failed to open sqlite database at {}: {error}",
             path.display()
         );
         error
@@ -115,7 +116,7 @@ async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
 }
 
 async fn open_fallback_db() -> ThreadSafeConnection {
-    eprintln!("opening fallback in-memory database");
+    log::warn!("Opening fallback in-memory database");
     ThreadSafeConnectionBuilder {
         db_init_query: None,
         write_queue_constructor: None,
