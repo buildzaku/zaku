@@ -7,7 +7,11 @@ use gpui::{
     WindowBounds, WindowOptions, prelude::*,
 };
 use gpui_platform;
-use indoc::{formatdoc, indoc};
+use indoc::formatdoc;
+
+#[cfg(unix)]
+use indoc::indoc;
+
 use std::{collections::HashMap, io::IsTerminal, path::Path, sync::Arc};
 use uuid::Uuid;
 
