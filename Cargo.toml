@@ -47,11 +47,11 @@ ashpd = { version = "0.13", default-features = false, features = [
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 chrono = { version = "0.4" }
-core-text = { version = "=21.0.0" } # https://github.com/zed-industries/zed/issues/47168
+core-text = { version = "21.0" } # https://github.com/zed-industries/zed/issues/47168
 dirs = { version = "6.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "746ecb082d", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "746ecb082d", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
@@ -60,10 +60,10 @@ libsqlite3-sys = { version = "0.36", features = ["bundled"] }
 log = { version = "0.4" }
 mimalloc = { version = "0.1" }
 notify = { version = "8.2" }
-palette = { version = "0.7.5", default-features = false, features = ["std"] }
-parking_lot = { version = "0.12.1" }
+palette = { version = "0.7", default-features = false, features = ["std"] }
+parking_lot = { version = "0.12" }
 pretty_assertions = { version = "1.4" }
-quote = { version = "1.0.44" }
+quote = { version = "1.0" }
 rand = { version = "0.10" }
 reqwest = { version = "0.13", default-features = false, features = [
   "charset",
@@ -74,22 +74,22 @@ reqwest = { version = "0.13", default-features = false, features = [
   "stream",
   "system-proxy",
 ] }
-rust-embed = { version = "8.0", features = ["debug-embed"] }
+rust-embed = { version = "8.11", features = ["debug-embed"] }
 schemars = { version = "1.2" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 smallvec = { version = "1.15" }
 smol = { version = "2.0" }
-strum = { version = "0.27", features = ["derive"] }
-syn = { version = "2.0.114", features = ["extra-traits", "full", "visit-mut"] }
-tempfile = { version = "3.26" }
+strum = { version = "0.28", features = ["derive"] }
+syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
+tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "746ecb082d", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "text" }
 thread_local = { version = "1.1" }
-tokio = { version = "1.49", features = ["rt", "rt-multi-thread"] }
+tokio = { version = "1.50", features = ["rt", "rt-multi-thread"] }
 unicode-segmentation = { version = "1.12" }
 url = { version = "2.5" }
-uuid = { version = "1.1.2", features = ["v4"] }
+uuid = { version = "1.22", features = ["v4"] }
 ##################################################
 # Workspace member crates
 ##################################################
