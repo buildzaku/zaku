@@ -18,7 +18,8 @@ pub struct ProjectPanel {
 }
 
 impl ProjectPanel {
-    const DEFAULT_SIZE: Pixels = gpui::px(250.);
+    const DEFAULT_SIZE: Pixels = gpui::px(250.0);
+    const PANEL_KEY: &str = "ProjectPanel";
 
     pub fn new(pane: WeakEntity<Pane>, cx: &mut Context<Self>) -> Self {
         Self {
@@ -38,7 +39,11 @@ impl Focusable for ProjectPanel {
 
 impl Panel for ProjectPanel {
     fn persistent_name() -> &'static str {
-        "ProjectPanel"
+        "Project Panel"
+    }
+
+    fn panel_key() -> &'static str {
+        Self::PANEL_KEY
     }
 
     fn position(&self, _window: &Window, _: &App) -> DockPosition {
@@ -75,6 +80,10 @@ impl Panel for ProjectPanel {
 
     fn toggle_action(&self) -> Box<dyn Action> {
         project_panel::ToggleFocus.boxed_clone()
+    }
+
+    fn activation_priority(&self) -> u32 {
+        0
     }
 
     fn enabled(&self, cx: &App) -> bool {

@@ -139,6 +139,7 @@ pub struct ResponsePanel {
 
 impl ResponsePanel {
     const DEFAULT_SIZE: Pixels = gpui::px(440.0);
+    const PANEL_KEY: &str = "ResponsePanel";
 
     pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer("", cx), cx));
@@ -236,7 +237,11 @@ impl Focusable for ResponsePanel {
 
 impl Panel for ResponsePanel {
     fn persistent_name() -> &'static str {
-        "ResponsePanel"
+        "Response Panel"
+    }
+
+    fn panel_key() -> &'static str {
+        Self::PANEL_KEY
     }
 
     fn position(&self, _window: &Window, _: &App) -> DockPosition {
@@ -273,6 +278,10 @@ impl Panel for ResponsePanel {
 
     fn toggle_action(&self) -> Box<dyn Action> {
         response_panel::ToggleFocus.boxed_clone()
+    }
+
+    fn activation_priority(&self) -> u32 {
+        0
     }
 
     fn enabled(&self, cx: &App) -> bool {

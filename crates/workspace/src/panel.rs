@@ -22,6 +22,7 @@ pub use response::ResponsePanel;
 
 pub trait Panel: Focusable + Render + Sized {
     fn persistent_name() -> &'static str;
+    fn panel_key() -> &'static str;
     fn position(&self, window: &Window, cx: &App) -> DockPosition;
     fn position_is_valid(&self, position: DockPosition) -> bool;
     fn set_position(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>);
@@ -30,6 +31,7 @@ pub trait Panel: Focusable + Render + Sized {
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self) -> Box<dyn Action>;
+    fn activation_priority(&self) -> u32;
     fn enabled(&self, _cx: &App) -> bool {
         true
     }
@@ -38,6 +40,7 @@ pub trait Panel: Focusable + Render + Sized {
 pub trait PanelHandle: Send + Sync {
     fn panel_id(&self) -> EntityId;
     fn persistent_name(&self) -> &'static str;
+    fn panel_key(&self) -> &'static str;
     fn position(&self, window: &Window, cx: &App) -> DockPosition;
     fn position_is_valid(&self, position: DockPosition, cx: &App) -> bool;
     fn set_position(&self, position: DockPosition, window: &mut Window, cx: &mut App);
@@ -46,6 +49,7 @@ pub trait PanelHandle: Send + Sync {
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self, window: &Window, cx: &App) -> Box<dyn Action>;
+    fn activation_priority(&self, cx: &App) -> u32;
     fn enabled(&self, cx: &App) -> bool;
     fn panel_focus_handle(&self, cx: &App) -> FocusHandle;
     fn to_any(&self) -> AnyView;
@@ -61,6 +65,10 @@ where
 
     fn persistent_name(&self) -> &'static str {
         T::persistent_name()
+    }
+
+    fn panel_key(&self) -> &'static str {
+        T::panel_key()
     }
 
     fn position(&self, window: &Window, cx: &App) -> DockPosition {
@@ -93,6 +101,10 @@ where
 
     fn toggle_action(&self, _window: &Window, cx: &App) -> Box<dyn Action> {
         self.read(cx).toggle_action()
+    }
+
+    fn activation_priority(&self, cx: &App) -> u32 {
+        self.read(cx).activation_priority()
     }
 
     fn enabled(&self, cx: &App) -> bool {
