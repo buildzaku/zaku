@@ -4,7 +4,12 @@ use anyhow::Context;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
-use std::{ffi::OsStr, path::Path};
+use std::{
+    ffi::OsStr,
+    fmt::{self, Debug, Display, Formatter},
+    path::Path,
+    sync::Arc,
+};
 
 #[cfg(windows)]
 use tendril::fmt::{Format, WTF8};
@@ -36,12 +41,106 @@ impl<T: AsRef<Path>> PathExt for T {
             WTF8::validate(bytes)
                 .then(|| {
                     Self::from(Path::new(
-                        // Safety: WTF8::validate(bytes) above guarantees that bytes are valid WTF-8
-                        // for OsStr::from_encoded_bytes_unchecked on Windows.
+                        // Safety: `WTF8::validate(bytes)` above guarantees that bytes are valid WTF-8
+                        // for `OsStr::from_encoded_bytes_unchecked` on Windows.
                         unsafe { OsStr::from_encoded_bytes_unchecked(bytes) },
                     ))
                 })
                 .with_context(|| format!("Invalid WTF-8 sequence: {bytes:?}"))
         }
+    }
+}
+
+/// In memory, this is identical to `Path`. On non-Windows conversions to this
+/// type are no-ops. On Windows, these conversions sanitize UNC paths by
+/// removing the `\\?\` prefix.
+#[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[repr(transparent)]
+pub struct SanitizedPath(Path);
+
+impl SanitizedPath {
+    pub fn new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
+        #[cfg(not(target_os = "windows"))]
+        return Self::unchecked_new(path.as_ref());
+
+        #[cfg(target_os = "windows")]
+        return Self::unchecked_new(dunce::simplified(path.as_ref()));
+    }
+
+    pub fn unchecked_new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
+        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // extra invariants, so this shared reference cast is valid.
+        unsafe { std::mem::transmute::<&Path, &Self>(path.as_ref()) }
+    }
+
+    pub fn from_arc(path: Arc<Path>) -> Arc<Self> {
+        #[cfg(not(target_os = "windows"))]
+        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // extra invariants, so this `Arc` cast is valid.
+        return unsafe { std::mem::transmute::<Arc<Path>, Arc<Self>>(path) };
+
+        #[cfg(target_os = "windows")]
+        {
+            let simplified = dunce::simplified(path.as_ref());
+            if simplified == path.as_ref() {
+                // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+                // extra invariants, so this `Arc` cast is valid.
+                unsafe { std::mem::transmute::<Arc<Path>, Arc<Self>>(path) }
+            } else {
+                Self::unchecked_new(simplified).into()
+            }
+        }
+    }
+
+    pub fn new_arc<T: AsRef<Path> + ?Sized>(path: &T) -> Arc<Self> {
+        Self::new(path).into()
+    }
+
+    pub fn cast_arc(path: Arc<Self>) -> Arc<Path> {
+        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // extra invariants, so this `Arc` cast is valid.
+        unsafe { std::mem::transmute::<Arc<Self>, Arc<Path>>(path) }
+    }
+
+    pub fn cast_arc_ref(path: &Arc<Self>) -> &Arc<Path> {
+        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // extra invariants, so this reference to `Arc` cast is valid.
+        unsafe { std::mem::transmute::<&Arc<Self>, &Arc<Path>>(path) }
+    }
+
+    pub fn starts_with(&self, prefix: &Self) -> bool {
+        self.0.starts_with(&prefix.0)
+    }
+
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Debug for SanitizedPath {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.0, formatter)
+    }
+}
+
+impl Display for SanitizedPath {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.0.display())
+    }
+}
+
+impl From<&SanitizedPath> for Arc<SanitizedPath> {
+    fn from(sanitized_path: &SanitizedPath) -> Self {
+        let path: Arc<Path> = sanitized_path.0.into();
+
+        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // extra invariants, so this `Arc` cast is valid.
+        unsafe { std::mem::transmute(path) }
+    }
+}
+
+impl AsRef<Path> for SanitizedPath {
+    fn as_ref(&self) -> &Path {
+        &self.0
     }
 }

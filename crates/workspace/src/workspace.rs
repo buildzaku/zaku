@@ -925,7 +925,7 @@ mod tests {
     #[gpui::test]
     async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
         let shared_state = Arc::new(SharedState::new(
-            Arc::new(TempFs::new()),
+            Arc::new(TempFs::new(cx.executor())),
             "test-session".to_string(),
         ));
         init_test(shared_state.clone(), cx);
@@ -950,7 +950,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
-        let temp_fs = Arc::new(TempFs::new());
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = Arc::new(SharedState::new(
             temp_fs.clone(),
             "test-session".to_string(),
@@ -1006,7 +1006,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
-        let temp_fs = Arc::new(TempFs::new());
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = Arc::new(SharedState::new(
             temp_fs.clone(),
             "test-session".to_string(),

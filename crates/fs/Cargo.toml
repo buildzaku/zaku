@@ -19,6 +19,16 @@ test-support = []
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-smol = { workspace = true }
+futures = { workspace = true }
+gpui = { workspace = true }
+log = { workspace = true }
+notify = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+smol = { workspace = true }
 tempfile = { workspace = true }
+util = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true }

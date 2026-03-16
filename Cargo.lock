@@ -1975,9 +1975,17 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "futures",
+ "gpui",
+ "log",
+ "notify",
+ "parking_lot",
+ "serde",
  "serde_json",
  "smol",
  "tempfile",
+ "util 0.0.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3498,6 +3506,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "fs",
+ "gpui",
  "log",
 ]
 
@@ -6735,6 +6744,8 @@ name = "util"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "dunce",
+ "log",
  "rust-embed",
  "tendril 0.5.0",
 ]
