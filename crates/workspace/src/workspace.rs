@@ -950,6 +950,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = Arc::new(SharedState::new(
             temp_fs.clone(),

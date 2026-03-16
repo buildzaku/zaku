@@ -344,6 +344,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
         let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree("project", json!(null));
 
