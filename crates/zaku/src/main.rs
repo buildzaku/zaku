@@ -21,7 +21,7 @@ use std::{
 use uuid::Uuid;
 
 use assets::Assets;
-use fs::NativeFs;
+use fs::{Fs, NativeFs};
 use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::{CloseWindow, Root, SharedState, Workspace};
@@ -57,8 +57,10 @@ fn main() {
         .run(|cx: &mut App| {
             settings::init(cx);
             settings::log_settings::init(cx);
+            let fs: Arc<dyn Fs> = Arc::new(NativeFs::new(cx.background_executor().clone()));
             let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
                 cx.background_executor(),
+                fs.clone(),
                 settings::settings_file().clone(),
             );
             handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
@@ -66,10 +68,7 @@ fn main() {
             register_embedded_fonts(cx);
             menu::init(cx);
             editor::init(cx);
-            let shared_state = Arc::new(SharedState::new(
-                Arc::new(NativeFs::new(cx.background_executor().clone())),
-                Uuid::new_v4().to_string(),
-            ));
+            let shared_state = Arc::new(SharedState::new(fs, Uuid::new_v4().to_string()));
             workspace::init(shared_state.clone(), cx);
 
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
