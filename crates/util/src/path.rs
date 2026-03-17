@@ -5,6 +5,7 @@ use anyhow::Context;
 use std::os::unix::ffi::OsStrExt;
 
 use std::{
+    borrow::Cow,
     ffi::OsStr,
     fmt::{self, Debug, Display, Formatter},
     path::Path,
@@ -14,10 +15,97 @@ use std::{
 #[cfg(windows)]
 use tendril::fmt::{Format, WTF8};
 
+use crate::rel_path::RelPath;
+
 pub trait PathExt {
     fn try_from_bytes<'a>(bytes: &'a [u8]) -> anyhow::Result<Self>
     where
         Self: From<&'a Path>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PathStyle {
+    Posix,
+    Windows,
+}
+
+impl PathStyle {
+    #[cfg(target_os = "windows")]
+    pub const fn local() -> Self {
+        Self::Windows
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub const fn local() -> Self {
+        Self::Posix
+    }
+
+    pub fn primary_separator(self) -> &'static str {
+        match self {
+            Self::Posix => "/",
+            Self::Windows => "\\",
+        }
+    }
+
+    pub fn separators(self) -> &'static [&'static str] {
+        match self {
+            Self::Posix => &["/"],
+            Self::Windows => &["\\", "/"],
+        }
+    }
+
+    pub fn is_windows(self) -> bool {
+        self == Self::Windows
+    }
+
+    pub fn strip_prefix<'a>(self, child: &'a Path, parent: &'a Path) -> Option<Cow<'a, RelPath>> {
+        let parent = parent.to_str()?;
+        if parent.is_empty() {
+            return RelPath::new(child, self).ok();
+        }
+
+        let parent = self
+            .separators()
+            .iter()
+            .find_map(|separator| parent.strip_suffix(separator))
+            .unwrap_or(parent);
+        let child = child.to_str()?;
+
+        let stripped = if self.is_windows()
+            && child.as_bytes().get(1) == Some(&b':')
+            && parent.as_bytes().get(1) == Some(&b':')
+            && child.as_bytes()[0].eq_ignore_ascii_case(&parent.as_bytes()[0])
+        {
+            child[2..].strip_prefix(&parent[2..])?
+        } else {
+            child.strip_prefix(parent)?
+        };
+
+        if let Some(relative_path) = self
+            .separators()
+            .iter()
+            .find_map(|separator| stripped.strip_prefix(separator))
+        {
+            RelPath::new(relative_path.as_ref(), self).ok()
+        } else if stripped.is_empty() {
+            Some(Cow::Borrowed(RelPath::empty()))
+        } else {
+            None
+        }
+    }
+}
+
+pub fn is_absolute(path: &str, path_style: PathStyle) -> bool {
+    path.starts_with('/')
+        || path_style == PathStyle::Windows
+            && (path.starts_with('\\')
+                || path
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_alphabetic())
+                    && path[1..]
+                        .strip_prefix(':')
+                        .is_some_and(|suffix| suffix.starts_with('/') || suffix.starts_with('\\')))
 }
 
 impl<T: AsRef<Path>> PathExt for T {
@@ -142,5 +230,93 @@ impl From<&SanitizedPath> for Arc<SanitizedPath> {
 impl AsRef<Path> for SanitizedPath {
     fn as_ref(&self) -> &Path {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_path_style_strip_prefix() {
+        let expected = [
+            (
+                PathStyle::Posix,
+                "/a/b/c",
+                "/a/b",
+                Some(RelPath::unix("c").unwrap().into_arc()),
+            ),
+            (
+                PathStyle::Posix,
+                "/a/b/c",
+                "/a/b/",
+                Some(RelPath::unix("c").unwrap().into_arc()),
+            ),
+            (
+                PathStyle::Posix,
+                "/a/b/c",
+                "/",
+                Some(RelPath::unix("a/b/c").unwrap().into_arc()),
+            ),
+            (PathStyle::Posix, "/a/b/c", "", None),
+            (PathStyle::Posix, "/a/b//c", "/a/b/", None),
+            (PathStyle::Posix, "/a/bc", "/a/b", None),
+            (
+                PathStyle::Posix,
+                "/a/b/c",
+                "/a/b/c",
+                Some(RelPath::unix("").unwrap().into_arc()),
+            ),
+            (
+                PathStyle::Windows,
+                "C:\\a\\b\\c",
+                "C:\\a\\b",
+                Some(RelPath::unix("c").unwrap().into_arc()),
+            ),
+            (
+                PathStyle::Windows,
+                "C:\\a\\b\\c",
+                "C:\\a\\b\\",
+                Some(RelPath::unix("c").unwrap().into_arc()),
+            ),
+            (
+                PathStyle::Windows,
+                "C:\\a\\b\\c",
+                "C:\\",
+                Some(RelPath::unix("a/b/c").unwrap().into_arc()),
+            ),
+            (PathStyle::Windows, "C:\\a\\b\\c", "", None),
+            (PathStyle::Windows, "C:\\a\\b\\\\c", "C:\\a\\b\\", None),
+            (PathStyle::Windows, "C:\\a\\bc", "C:\\a\\b", None),
+            (
+                PathStyle::Windows,
+                "C:\\a\\b/c",
+                "C:\\a\\b",
+                Some(RelPath::unix("c").unwrap().into_arc()),
+            ),
+            (
+                PathStyle::Windows,
+                "C:\\a\\b/c",
+                "C:\\a\\b\\",
+                Some(RelPath::unix("c").unwrap().into_arc()),
+            ),
+            (
+                PathStyle::Windows,
+                "C:\\a\\b/c",
+                "C:\\a\\b/",
+                Some(RelPath::unix("c").unwrap().into_arc()),
+            ),
+        ];
+        let actual = expected.clone().map(|(style, child, parent, _)| {
+            (
+                style,
+                child,
+                parent,
+                style
+                    .strip_prefix(child.as_ref(), parent.as_ref())
+                    .map(|relative_path| relative_path.into_arc()),
+            )
+        });
+        assert_eq!(actual, expected);
     }
 }

@@ -1,4 +1,6 @@
+pub mod command;
 pub mod path;
+pub mod rel_path;
 pub mod test;
 
 use log::{Level, Record};

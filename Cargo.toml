@@ -63,7 +63,7 @@ mimalloc = { version = "0.1" }
 notify = { version = "8.2" }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
-pretty_assertions = { version = "1.4" }
+pretty_assertions = { version = "1.4", features = ["unstable"] }
 quote = { version = "1.0" }
 rand = { version = "0.10" }
 reqwest = { version = "0.13", default-features = false, features = [

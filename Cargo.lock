@@ -6746,7 +6746,10 @@ dependencies = [
  "anyhow",
  "dunce",
  "log",
+ "pretty_assertions",
  "rust-embed",
+ "serde",
+ "smol",
  "tendril 0.5.0",
 ]
 

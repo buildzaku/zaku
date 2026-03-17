@@ -21,6 +21,11 @@ anyhow = { workspace = true }
 dunce = { workspace = true }
 log = { workspace = true }
 rust-embed = { workspace = true }
+serde = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
+smol = { workspace = true }
 tendril = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
