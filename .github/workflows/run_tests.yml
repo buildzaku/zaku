@@ -36,6 +36,8 @@ jobs:
 
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: "Check Rust formatting"
         run: cargo fmt --all -- --check
@@ -64,6 +66,8 @@ jobs:
 
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: "Run Clippy"
         run: ./script/clippy
@@ -85,6 +89,8 @@ jobs:
 
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: "Run Clippy"
         run: ./script/clippy
@@ -106,6 +112,8 @@ jobs:
 
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: "Run Clippy"
         run: ./script/clippy
@@ -127,6 +135,8 @@ jobs:
 
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: "Run Clippy"
         run: ./script/clippy.ps1
