@@ -39,7 +39,7 @@ use std::ffi::{CStr, OsStr};
 #[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
