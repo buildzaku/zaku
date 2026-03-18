@@ -553,7 +553,6 @@ impl Fs for NativeFs {
                         }
                         return Err(error.into());
                     }
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
                     Err(error)
                         if error.raw_os_error().is_some_and(|code| {
                             code == libc::ENOSYS
@@ -576,8 +575,9 @@ impl Fs for NativeFs {
         if use_metadata_fallback && smol::fs::metadata(target).await.is_ok() {
             if options.ignore_if_exists {
                 return Ok(());
+            } else {
+                anyhow::bail!("{target:?} already exists");
             }
-            anyhow::bail!("{target:?} already exists");
         }
 
         smol::fs::rename(source, target).await?;
