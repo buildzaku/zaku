@@ -22,7 +22,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(unix)]
 use std::ffi::CString;
 
 #[cfg(target_os = "windows")]
@@ -46,7 +46,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::mem::MaybeUninit;
 
 #[cfg(target_os = "windows")]
-use std::os::windows::std::io::AsRawHandle;
+use smol::fs::windows::OpenOptionsExt as SmolOpenOptionsExt;
 
 #[cfg(target_os = "windows")]
 use windows::{
@@ -64,7 +64,11 @@ use windows::{
 #[cfg(target_os = "windows")]
 use std::{
     ffi::OsString,
-    os::windows::{ffi::OsStringExt, fs::OpenOptionsExt},
+    os::windows::{
+        ffi::{OsStrExt, OsStringExt},
+        fs::OpenOptionsExt,
+        io::AsRawHandle,
+    },
 };
 
 use crate::fs_watcher::FsWatcher;
@@ -532,55 +536,42 @@ impl Fs for NativeFs {
             return Ok(());
         }
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let use_metadata_fallback = {
-            let source = source.to_path_buf();
-            let target = target.to_path_buf();
-            match self
-                .executor
-                .spawn(async move { rename_without_replace(&source, &target) })
-                .await
+            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
             {
-                Ok(()) => return Ok(()),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    if options.ignore_if_exists {
-                        return Ok(());
-                    }
-                    return Err(error.into());
-                }
-                Err(error)
-                    if error.raw_os_error().is_some_and(|code| {
-                        code == libc::ENOSYS || code == libc::ENOTSUP || code == libc::EOPNOTSUPP
-                    }) =>
+                let source = source.to_path_buf();
+                let target = target.to_path_buf();
+                match self
+                    .executor
+                    .spawn(async move { rename_without_replace(&source, &target) })
+                    .await
                 {
-                    true
-                }
-                Err(error) => return Err(error.into()),
-            }
-        };
-
-        #[cfg(target_os = "windows")]
-        let use_metadata_fallback = {
-            let source = source.to_path_buf();
-            let target = target.to_path_buf();
-            match self
-                .executor
-                .spawn(async move { rename_without_replace(&source, &target) })
-                .await
-            {
-                Ok(()) => return Ok(()),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    if options.ignore_if_exists {
-                        return Ok(());
+                    Ok(()) => return Ok(()),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                        if options.ignore_if_exists {
+                            return Ok(());
+                        }
+                        return Err(error.into());
                     }
-                    return Err(error.into());
+                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    Err(error)
+                        if error.raw_os_error().is_some_and(|code| {
+                            code == libc::ENOSYS
+                                || code == libc::ENOTSUP
+                                || code == libc::EOPNOTSUPP
+                        }) =>
+                    {
+                        true
+                    }
+                    Err(error) => return Err(error.into()),
                 }
-                Err(error) => return Err(error.into()),
+            }
+
+            #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+            {
+                true
             }
         };
-
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        let use_metadata_fallback = true;
 
         if use_metadata_fallback && smol::fs::metadata(target).await.is_ok() {
             if options.ignore_if_exists {
