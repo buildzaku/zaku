@@ -1,7 +1,10 @@
 use futures::{FutureExt, StreamExt};
 use gpui::{BackgroundExecutor, TestAppContext};
-use std::{collections::BTreeSet, path::PathBuf, time::Duration};
+use std::{collections::BTreeSet, time::Duration};
 use tempfile::TempDir;
+
+#[cfg(unix)]
+use std::path::PathBuf;
 
 use fs::{Fs, NativeFs, PathEventKind, RenameOptions};
 
