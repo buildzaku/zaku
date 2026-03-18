@@ -57,6 +57,8 @@ http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
 indoc = { version = "2.0" }
+is_executable = { version = "1.0" }
+libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.36", features = ["bundled"] }
 log = { version = "0.4" }
 mimalloc = { version = "0.1" }

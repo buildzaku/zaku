@@ -4,8 +4,10 @@ use anyhow::Context;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use gpui::BackgroundExecutor;
+use is_executable::IsExecutable;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use tempfile::TempDir;
 
 #[cfg(feature = "test-support")]
 use serde_json::Value;
@@ -13,31 +15,57 @@ use serde_json::Value;
 use std::{
     path::{Path, PathBuf},
     pin::Pin,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::ffi::CString;
+
+#[cfg(target_os = "windows")]
+use util::command::new_command;
 
 use util::{ResultExt, path::SanitizedPath};
 
 #[cfg(unix)]
-use std::os::unix::fs::MetadataExt;
+use std::os::fd::{AsFd, AsRawFd};
+
+#[cfg(target_os = "macos")]
+use std::ffi::{CStr, OsStr};
+
+#[cfg(unix)]
+use std::os::unix::fs::{FileTypeExt, MetadataExt};
+
+#[cfg(target_os = "macos")]
+use std::os::unix::ffi::OsStrExt;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use std::mem::MaybeUninit;
 
 #[cfg(target_os = "windows")]
-use std::{mem::MaybeUninit, os::windows::io::AsRawHandle, path::Component};
+use std::os::windows::std::io::AsRawHandle;
 
 #[cfg(target_os = "windows")]
-use smol::fs::windows::OpenOptionsExt;
-
-#[cfg(target_os = "windows")]
-use windows::Win32::{
-    Foundation::HANDLE,
-    Storage::FileSystem::{
-        BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, GetFileInformationByHandle,
+use windows::{
+    Win32::{
+        Foundation::HANDLE,
+        Storage::FileSystem::{
+            BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, FILE_NAME_NORMALIZED,
+            GetFileInformationByHandle, GetFinalPathNameByHandleW, GetVolumePathNameW,
+            MOVE_FILE_FLAGS, MoveFileExW,
+        },
     },
+    core::{HSTRING, PCWSTR},
 };
 
-#[cfg(feature = "test-support")]
-use tempfile::TempDir;
+#[cfg(target_os = "windows")]
+use std::{
+    ffi::OsString,
+    os::windows::{ffi::OsStringExt, fs::OpenOptionsExt},
+};
 
 use crate::fs_watcher::FsWatcher;
 
@@ -51,6 +79,7 @@ pub enum PathEventKind {
     Removed,
     Created,
     Changed,
+    Rescan,
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -65,16 +94,40 @@ impl From<PathEvent> for PathBuf {
     }
 }
 
+#[derive(Copy, Clone, Default)]
+pub struct RenameOptions {
+    pub overwrite: bool,
+    pub ignore_if_exists: bool,
+    pub create_parents: bool,
+}
+
+#[derive(Copy, Clone, Default)]
+pub struct RemoveOptions {
+    pub recursive: bool,
+    pub ignore_if_not_exists: bool,
+}
+
 #[async_trait]
 pub trait Fs: Send + Sync {
+    async fn create_dir(&self, path: &Path) -> anyhow::Result<()>;
+    async fn create_symlink(&self, path: &Path, target: PathBuf) -> anyhow::Result<()>;
     async fn canonicalize(&self, path: &Path) -> anyhow::Result<PathBuf>;
     async fn metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>>;
     async fn load(&self, path: &Path) -> anyhow::Result<String>;
+    async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>>;
     async fn read_link(&self, path: &Path) -> anyhow::Result<PathBuf>;
     async fn read_dir(
         &self,
         path: &Path,
     ) -> anyhow::Result<Pin<Box<dyn Send + Stream<Item = anyhow::Result<PathBuf>>>>>;
+    async fn rename(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: RenameOptions,
+    ) -> anyhow::Result<()>;
+    async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
+    async fn remove_file(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
     async fn watch(
         &self,
         path: &Path,
@@ -83,6 +136,84 @@ pub trait Fs: Send + Sync {
         Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>>,
         Arc<dyn Watcher>,
     );
+    async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()>;
+    async fn is_case_sensitive(&self) -> bool;
+}
+
+pub trait FileHandle: Send + Sync + std::fmt::Debug {
+    fn current_path(&self, fs: &Arc<dyn Fs>) -> anyhow::Result<PathBuf>;
+}
+
+impl FileHandle for std::fs::File {
+    #[cfg(target_os = "macos")]
+    fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
+        let fd = self.as_fd();
+        let mut path_buf = MaybeUninit::<[u8; libc::PATH_MAX as usize]>::uninit();
+
+        // Safety: `fd` remains valid for the duration of this call and `path_buf`
+        // provides writable `PATH_MAX`-sized storage for the kernel to fill.
+        let result = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETPATH, path_buf.as_mut_ptr()) };
+
+        anyhow::ensure!(result != -1, "fcntl returned -1");
+
+        // Safety: Successful `libc::fcntl()` call above populates `path_buf` with
+        // a valid C string.
+        let c_str = unsafe { CStr::from_ptr(path_buf.as_ptr().cast()) };
+
+        anyhow::ensure!(
+            !c_str.is_empty(),
+            "could not find a path for the file handle"
+        );
+        Ok(PathBuf::from(OsStr::from_bytes(c_str.to_bytes())))
+    }
+
+    #[cfg(target_os = "linux")]
+    fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
+        let fd = self.as_fd();
+        let fd_path = format!("/proc/self/fd/{}", fd.as_raw_fd());
+        let new_path = std::fs::read_link(fd_path)?;
+        if new_path
+            .file_name()
+            .is_some_and(|file_name| file_name.to_string_lossy().ends_with(" (deleted)"))
+        {
+            anyhow::bail!("file was deleted");
+        }
+
+        Ok(new_path)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
+        let handle = HANDLE(self.as_raw_handle());
+
+        // Safety: `handle` remains valid for the duration of this call and the empty
+        // buffer is used to query the required path length.
+        let required_len =
+            unsafe { GetFinalPathNameByHandleW(handle, &mut [], FILE_NAME_NORMALIZED) };
+
+        anyhow::ensure!(
+            required_len != 0,
+            "GetFinalPathNameByHandleW returned 0 length"
+        );
+
+        let mut buf = vec![0u16; required_len as usize + 1];
+
+        // Safety: `handle` remains valid for the duration of this call and `buf`
+        // provides writable storage for the returned UTF-16 path.
+        let written = unsafe { GetFinalPathNameByHandleW(handle, &mut buf, FILE_NAME_NORMALIZED) };
+
+        anyhow::ensure!(
+            written != 0,
+            "GetFinalPathNameByHandleW failed to write path"
+        );
+
+        let os_str = OsString::from_wide(&buf[..written as usize]);
+        anyhow::ensure!(
+            !os_str.is_empty(),
+            "could not find a path for the file handle"
+        );
+        Ok(PathBuf::from(os_str))
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -113,98 +244,165 @@ pub struct Metadata {
     pub is_symlink: bool,
     pub is_dir: bool,
     pub len: u64,
+    pub is_fifo: bool,
+    pub is_executable: bool,
 }
 
 pub struct NativeFs {
     executor: BackgroundExecutor,
+    is_case_sensitive: AtomicU8,
 }
 
 impl NativeFs {
     pub fn new(executor: BackgroundExecutor) -> Self {
-        Self { executor }
+        Self {
+            executor,
+            is_case_sensitive: AtomicU8::new(0),
+        }
     }
 
     #[cfg(target_os = "windows")]
     fn canonicalize(path: &Path) -> anyhow::Result<PathBuf> {
-        let mut strip_prefix = None;
+        // Resolve relative paths first so `GetVolumePathNameW` sees the caller's
+        // original drive or mount point before canonicalization rebases the result.
+        let abs_path = if path.is_relative() {
+            std::env::current_dir()?.join(path)
+        } else {
+            path.to_path_buf()
+        };
 
-        let mut new_path = PathBuf::new();
-        for component in path.components() {
-            match component {
-                Component::Prefix(_) => {
-                    let component = component.as_os_str();
-                    let canonicalized = if component
-                        .to_str()
-                        .map(|component| component.ends_with("\\"))
-                        .unwrap_or(false)
-                    {
-                        std::fs::canonicalize(component)
-                    } else {
-                        let mut component = component.to_os_string();
-                        component.push("\\");
-                        std::fs::canonicalize(component)
-                    }?;
+        let path_hstring = HSTRING::from(abs_path.as_os_str());
+        let mut volume_buffer = vec![0u16; abs_path.as_os_str().len() + 2];
 
-                    let mut strip = PathBuf::new();
-                    for component in canonicalized.components() {
-                        match component {
-                            Component::Prefix(prefix_component) => {
-                                match prefix_component.kind() {
-                                    std::path::Prefix::Verbatim(os_str) => {
-                                        strip.push(os_str);
-                                    }
-                                    std::path::Prefix::VerbatimUNC(host, share) => {
-                                        strip.push("\\\\");
-                                        strip.push(host);
-                                        strip.push(share);
-                                    }
-                                    std::path::Prefix::VerbatimDisk(disk) => {
-                                        strip.push(format!("{}:", disk as char));
-                                    }
-                                    _ => strip.push(component),
-                                };
-                            }
-                            _ => strip.push(component),
-                        }
-                    }
-                    strip_prefix = Some(strip);
-                    new_path.push(component);
-                }
-                Component::RootDir => {
-                    new_path.push(component);
-                }
-                Component::CurDir => {
-                    if strip_prefix.is_none() {
-                        new_path.push(component);
-                    }
-                }
-                Component::ParentDir => {
-                    if strip_prefix.is_some() {
-                        new_path.pop();
-                    } else {
-                        new_path.push(component);
-                    }
-                }
-                Component::Normal(_) => {
-                    if let Ok(link) = std::fs::read_link(new_path.join(component)) {
-                        let link = match &strip_prefix {
-                            Some(prefix) => link.strip_prefix(prefix).unwrap_or(&link),
-                            None => &link,
-                        };
-                        new_path.extend(link);
-                    } else {
-                        new_path.push(component);
-                    }
-                }
-            }
+        // Safety: `path_hstring` remains valid for the duration of this call and
+        // `volume_buffer` provides writable storage for the returned UTF-16 volume root.
+        unsafe { GetVolumePathNameW(&path_hstring, &mut volume_buffer)? };
+
+        let volume_root = {
+            let len = volume_buffer
+                .iter()
+                .position(|&character| character == 0)
+                .unwrap_or(volume_buffer.len());
+            PathBuf::from(OsString::from_wide(&volume_buffer[..len]))
+        };
+
+        let resolved_path = dunce::canonicalize(&abs_path)?;
+        let resolved_root = dunce::canonicalize(&volume_root)?;
+
+        if let Ok(relative) = resolved_path.strip_prefix(&resolved_root) {
+            let mut result = volume_root;
+            result.push(relative);
+            Ok(result)
+        } else {
+            Ok(resolved_path)
         }
-
-        Ok(new_path)
     }
+}
+
+#[cfg(target_os = "macos")]
+fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    let source = path_to_c_string(source)?;
+    let target = path_to_c_string(target)?;
+
+    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
+    // duration of this call.
+    let result = unsafe { libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL) };
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    let source = path_to_c_string(source)?;
+    let target = path_to_c_string(target)?;
+
+    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
+    // duration of this call.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            source.as_ptr(),
+            libc::AT_FDCWD,
+            target.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+
+    // Safety: `source` and `target` remain valid NUL-terminated UTF-16 strings for
+    // the duration of this call.
+    unsafe {
+        MoveFileExW(
+            PCWSTR(source.as_ptr()),
+            PCWSTR(target.as_ptr()),
+            MOVE_FILE_FLAGS::default(),
+        )
+    }
+    .map_err(|_| std::io::Error::last_os_error())
+}
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn path_to_c_string(path: &Path) -> std::io::Result<CString> {
+    CString::new(path.as_os_str().as_bytes()).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("path contains interior NUL: {}", path.display()),
+        )
+    })
 }
 
 #[async_trait]
 impl Fs for NativeFs {
+    async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
+        Ok(smol::fs::create_dir_all(path).await?)
+    }
+
+    async fn create_symlink(&self, path: &Path, target: PathBuf) -> anyhow::Result<()> {
+        #[cfg(unix)]
+        {
+            smol::fs::unix::symlink(target, path).await?;
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            if smol::fs::metadata(&target).await?.is_dir() {
+                let status = new_command("cmd")
+                    .args(["/C", "mklink", "/J"])
+                    .args([path, target.as_path()])
+                    .status()
+                    .await?;
+
+                if !status.success() {
+                    return Err(anyhow::anyhow!(
+                        "Failed to create junction from {:?} to {:?}",
+                        path,
+                        target
+                    ));
+                }
+            } else {
+                smol::fs::windows::symlink_file(target, path).await?;
+            }
+        }
+
+        Ok(())
+    }
+
     async fn canonicalize(&self, path: &Path) -> anyhow::Result<PathBuf> {
         let path = path.to_path_buf();
         self.executor
@@ -242,12 +440,26 @@ impl Fs for NativeFs {
         #[cfg(not(any(unix, target_os = "windows")))]
         let inode = 0;
 
+        #[cfg(unix)]
+        let is_fifo = metadata.file_type().is_fifo();
+
+        #[cfg(not(unix))]
+        let is_fifo = false;
+
+        let path_buf = path.to_path_buf();
+        let is_executable = self
+            .executor
+            .spawn(async move { path_buf.is_executable() })
+            .await;
+
         Ok(Some(Metadata {
             inode,
             mtime: MTime(metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH)),
             is_symlink,
             is_dir: metadata.file_type().is_dir(),
             len: metadata.len(),
+            is_fifo,
+            is_executable,
         }))
     }
 
@@ -259,6 +471,16 @@ impl Fs for NativeFs {
                     .with_context(|| format!("failed to read file {}", path.display()))
             })
             .await
+    }
+
+    async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>> {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(target_os = "windows")]
+        {
+            options.custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0);
+        }
+        Ok(Arc::new(options.open(path)?))
     }
 
     async fn read_dir(
@@ -291,6 +513,130 @@ impl Fs for NativeFs {
             })
             .await?;
         Ok(path)
+    }
+
+    async fn rename(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: RenameOptions,
+    ) -> anyhow::Result<()> {
+        if options.create_parents
+            && let Some(parent) = target.parent()
+        {
+            self.create_dir(parent).await?;
+        }
+
+        if options.overwrite {
+            smol::fs::rename(source, target).await?;
+            return Ok(());
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        let use_metadata_fallback = {
+            let source = source.to_path_buf();
+            let target = target.to_path_buf();
+            match self
+                .executor
+                .spawn(async move { rename_without_replace(&source, &target) })
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if options.ignore_if_exists {
+                        return Ok(());
+                    }
+                    return Err(error.into());
+                }
+                Err(error)
+                    if error.raw_os_error().is_some_and(|code| {
+                        code == libc::ENOSYS || code == libc::ENOTSUP || code == libc::EOPNOTSUPP
+                    }) =>
+                {
+                    true
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
+
+        #[cfg(target_os = "windows")]
+        let use_metadata_fallback = {
+            let source = source.to_path_buf();
+            let target = target.to_path_buf();
+            match self
+                .executor
+                .spawn(async move { rename_without_replace(&source, &target) })
+                .await
+            {
+                Ok(()) => return Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if options.ignore_if_exists {
+                        return Ok(());
+                    }
+                    return Err(error.into());
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
+
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        let use_metadata_fallback = true;
+
+        if use_metadata_fallback && smol::fs::metadata(target).await.is_ok() {
+            if options.ignore_if_exists {
+                return Ok(());
+            }
+            anyhow::bail!("{target:?} already exists");
+        }
+
+        smol::fs::rename(source, target).await?;
+        Ok(())
+    }
+
+    async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
+        let result = if options.recursive {
+            smol::fs::remove_dir_all(path).await
+        } else {
+            smol::fs::remove_dir(path).await
+        };
+
+        match result {
+            Ok(()) => Ok(()),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound && options.ignore_if_not_exists =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    async fn remove_file(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
+        #[cfg(target_os = "windows")]
+        if let Ok(Some(metadata)) = self.metadata(path).await
+            && metadata.is_symlink
+            && metadata.is_dir
+        {
+            self.remove_dir(
+                path,
+                RemoveOptions {
+                    recursive: false,
+                    ignore_if_not_exists: true,
+                },
+            )
+            .await?;
+            return Ok(());
+        }
+
+        match smol::fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound && options.ignore_if_not_exists =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(error.into()),
+        }
     }
 
     async fn watch(
@@ -357,6 +703,56 @@ impl Fs for NativeFs {
             watcher,
         )
     }
+
+    async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()> {
+        if let Some(parent) = path.parent() {
+            self.create_dir(parent).await?;
+        }
+
+        let path = path.to_path_buf();
+        let content = content.to_vec();
+        self.executor
+            .spawn(async move {
+                std::fs::write(&path, content)
+                    .with_context(|| format!("failed to write file {}", path.display()))?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn is_case_sensitive(&self) -> bool {
+        const UNINITIALIZED: u8 = 0;
+        const CASE_SENSITIVE: u8 = 1;
+        const NOT_CASE_SENSITIVE: u8 = 2;
+
+        let load = self.is_case_sensitive.load(Ordering::Acquire);
+        if load != UNINITIALIZED {
+            return load == CASE_SENSITIVE;
+        }
+
+        let is_case_sensitive = self
+            .executor
+            .spawn(async move {
+                is_filesystem_case_sensitive().unwrap_or_else(|error| {
+                    log::error!(
+                        "Failed to determine whether filesystem is case sensitive. Falling back to true: {error:#}"
+                    );
+                    true
+                })
+            })
+            .await;
+
+        self.is_case_sensitive.store(
+            if is_case_sensitive {
+                CASE_SENSITIVE
+            } else {
+                NOT_CASE_SENSITIVE
+            },
+            Ordering::Release,
+        );
+
+        is_case_sensitive
+    }
 }
 
 #[cfg(feature = "test-support")]
@@ -419,6 +815,20 @@ impl TempFs {
 #[cfg(feature = "test-support")]
 #[async_trait]
 impl Fs for TempFs {
+    async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .create_dir(&absolute_path)
+            .await
+    }
+
+    async fn create_symlink(&self, path: &Path, target: PathBuf) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .create_symlink(&absolute_path, target)
+            .await
+    }
+
     async fn canonicalize(&self, path: &Path) -> anyhow::Result<PathBuf> {
         let absolute_path = resolve_path(self.path(), path);
         NativeFs::new(self.executor.clone())
@@ -440,6 +850,13 @@ impl Fs for TempFs {
             .await
     }
 
+    async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .open_handle(&absolute_path)
+            .await
+    }
+
     async fn read_dir(
         &self,
         path: &Path,
@@ -457,6 +874,33 @@ impl Fs for TempFs {
             .await
     }
 
+    async fn rename(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: RenameOptions,
+    ) -> anyhow::Result<()> {
+        let absolute_source = resolve_path(self.path(), source);
+        let absolute_target = resolve_path(self.path(), target);
+        NativeFs::new(self.executor.clone())
+            .rename(&absolute_source, &absolute_target, options)
+            .await
+    }
+
+    async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .remove_dir(&absolute_path, options)
+            .await
+    }
+
+    async fn remove_file(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .remove_file(&absolute_path, options)
+            .await
+    }
+
     async fn watch(
         &self,
         path: &Path,
@@ -469,6 +913,17 @@ impl Fs for TempFs {
         NativeFs::new(self.executor.clone())
             .watch(&absolute_path, latency)
             .await
+    }
+
+    async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .write(&absolute_path, content)
+            .await
+    }
+
+    async fn is_case_sensitive(&self) -> bool {
+        true
     }
 }
 
@@ -507,6 +962,39 @@ fn metadata_for_path(path: &Path) -> anyhow::Result<Option<(std::fs::Metadata, b
     Ok(Some((metadata, is_symlink)))
 }
 
+fn is_filesystem_case_sensitive() -> anyhow::Result<bool> {
+    let temp_dir =
+        TempDir::new().context("failed to create temporary case sensitivity directory")?;
+
+    let test_file_1 = temp_dir.path().join("case_sensitivity_test.tmp");
+    let test_file_2 = temp_dir.path().join("CASE_SENSITIVITY_TEST.TMP");
+
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&test_file_1)
+        .with_context(|| format!("failed to create {}", test_file_1.display()))?;
+
+    let case_sensitive = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&test_file_2)
+    {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to create {}", test_file_2.display()));
+        }
+    };
+
+    temp_dir
+        .close()
+        .context("failed to remove temporary case sensitivity directory")?;
+
+    Ok(case_sensitive)
+}
+
 #[cfg(feature = "test-support")]
 fn resolve_path(root: &Path, path: &Path) -> PathBuf {
     if !path.is_absolute() {
@@ -527,7 +1015,7 @@ async fn file_id(path: impl AsRef<Path>) -> anyhow::Result<u64> {
     smol::unblock(move || {
         let mut info = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
 
-        // Safety: `file` stays alive for the duration of this call, so the raw handle remains valid,
+        // Safety: `file` remains valid for the duration of this call, so the raw handle remains valid,
         // and `info.as_mut_ptr()` points to writable storage for `BY_HANDLE_FILE_INFORMATION`.
         unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), info.as_mut_ptr())? };
 

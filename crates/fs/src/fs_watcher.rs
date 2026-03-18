@@ -78,8 +78,16 @@ impl Watcher for FsWatcher {
             }
         }
 
-        let root_path = SanitizedPath::new_arc(path);
-        let path: Arc<Path> = path.into();
+        // FSEvents follows the resolved target path, while callers can hand us a
+        // symlinked alias like `/var`.
+        let watch_path = canonicalize_path(path);
+        let watched_root_path = SanitizedPath::from_arc(watch_path.clone());
+        let original_watch_path: Arc<Path> = path.into();
+
+        #[cfg(target_os = "macos")]
+        if original_watch_path.as_ref() != watch_path.as_ref() {
+            log::trace!("Canonicalized watched path {original_watch_path:?} -> {watch_path:?}");
+        }
 
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         let mode = RecursiveMode::Recursive;
@@ -87,12 +95,14 @@ impl Watcher for FsWatcher {
         #[cfg(target_os = "linux")]
         let mode = RecursiveMode::NonRecursive;
 
+        let registration_path = original_watch_path.clone();
         let registration_id = global({
-            let path = path.clone();
-            let root_path = root_path.clone();
+            let watch_path = watch_path.clone();
+            let original_watch_path = original_watch_path.clone();
+            let watched_root_path = watched_root_path.clone();
 
             move |watcher| {
-                watcher.add(path, mode, move |event: &notify::Event| {
+                watcher.add(watch_path, mode, move |event: &notify::Event| {
                     log::trace!("Received watch event: {event:?}");
 
                     let kind = match event.kind {
@@ -107,12 +117,41 @@ impl Watcher for FsWatcher {
                         .iter()
                         .filter_map(|event_path| {
                             let event_path = SanitizedPath::new(event_path);
-                            event_path.starts_with(&root_path).then(|| PathEvent {
-                                path: event_path.as_path().to_path_buf(),
-                                kind,
-                            })
+                            if !event_path.starts_with(watched_root_path.as_ref()) {
+                                return None;
+                            }
+
+                            #[cfg(target_os = "macos")]
+                            let path = {
+                                if watched_root_path.as_path() == original_watch_path.as_ref() {
+                                    event_path.as_path().to_path_buf()
+                                } else {
+                                    let relative_event_path = event_path
+                                        .as_path()
+                                        .strip_prefix(watched_root_path.as_path())
+                                        .ok()?;
+                                    original_watch_path.join(relative_event_path)
+                                }
+                            };
+
+                            #[cfg(not(target_os = "macos"))]
+                            let path = event_path.as_path().to_path_buf();
+
+                            Some(PathEvent { path, kind })
                         })
                         .collect::<Vec<_>>();
+
+                    if event.need_rescan() {
+                        log::warn!(
+                            "Filesystem watcher lost sync for {original_watch_path:?}; scheduling rescan"
+                        );
+                        path_events
+                            .retain(|path_event| path_event.path != original_watch_path.as_ref());
+                        path_events.push(PathEvent {
+                            path: original_watch_path.to_path_buf(),
+                            kind: Some(PathEventKind::Rescan),
+                        });
+                    }
 
                     if !path_events.is_empty() {
                         path_events.sort();
@@ -120,6 +159,7 @@ impl Watcher for FsWatcher {
                         if pending_paths.is_empty() {
                             tx.try_send(()).ok();
                         }
+                        coalesce_pending_rescans(&mut pending_paths, &mut path_events);
                         util::extend_sorted(
                             &mut *pending_paths,
                             path_events,
@@ -131,7 +171,9 @@ impl Watcher for FsWatcher {
             }
         })??;
 
-        self.registrations.lock().insert(path, registration_id);
+        self.registrations
+            .lock()
+            .insert(registration_path, registration_id);
         Ok(())
     }
 
@@ -144,6 +186,70 @@ impl Watcher for FsWatcher {
 
         global(|watcher| watcher.remove(registration))
     }
+}
+
+fn canonicalize_path(path: &Path) -> Arc<Path> {
+    #[cfg(target_os = "macos")]
+    {
+        return std::fs::canonicalize(path)
+            .unwrap_or_else(|_| path.to_path_buf())
+            .into();
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        path.into()
+    }
+}
+
+fn coalesce_pending_rescans(pending_paths: &mut Vec<PathEvent>, path_events: &mut Vec<PathEvent>) {
+    if !path_events
+        .iter()
+        .any(|event| event.kind == Some(PathEventKind::Rescan))
+    {
+        return;
+    }
+
+    let mut new_rescan_paths = path_events
+        .iter()
+        .filter(|event| event.kind == Some(PathEventKind::Rescan))
+        .map(|event| event.path.clone())
+        .collect::<Vec<_>>();
+    new_rescan_paths.sort_unstable();
+
+    let mut deduped_rescans = Vec::with_capacity(new_rescan_paths.len());
+    for path in new_rescan_paths {
+        if deduped_rescans
+            .iter()
+            .any(|ancestor| path != *ancestor && path.starts_with(ancestor))
+        {
+            continue;
+        }
+        deduped_rescans.push(path);
+    }
+
+    deduped_rescans.retain(|new_path| {
+        !pending_paths
+            .iter()
+            .any(|pending| is_covered_rescan(pending.kind, new_path, &pending.path))
+    });
+
+    if !deduped_rescans.is_empty() {
+        pending_paths.retain(|pending| {
+            !deduped_rescans.iter().any(|rescan_path| {
+                pending.path == *rescan_path
+                    || is_covered_rescan(pending.kind, &pending.path, rescan_path)
+            })
+        });
+    }
+
+    path_events.retain(|event| {
+        event.kind != Some(PathEventKind::Rescan) || deduped_rescans.contains(&event.path)
+    });
+}
+
+fn is_covered_rescan(kind: Option<PathEventKind>, path: &Path, ancestor: &Path) -> bool {
+    kind == Some(PathEventKind::Rescan) && path != ancestor && path.starts_with(ancestor)
 }
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -282,5 +388,95 @@ pub fn global<T>(callback: impl FnOnce(&GlobalWatcher) -> T) -> anyhow::Result<T
     match result {
         Ok(watcher) => Ok(callback(watcher)),
         Err(error) => Err(anyhow!("{error}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn rescan(path: &str) -> PathEvent {
+        PathEvent {
+            path: PathBuf::from(path),
+            kind: Some(PathEventKind::Rescan),
+        }
+    }
+
+    fn changed(path: &str) -> PathEvent {
+        PathEvent {
+            path: PathBuf::from(path),
+            kind: Some(PathEventKind::Changed),
+        }
+    }
+
+    struct TestCase {
+        name: &'static str,
+        pending_paths: Vec<PathEvent>,
+        path_events: Vec<PathEvent>,
+        expected_pending_paths: Vec<PathEvent>,
+        expected_path_events: Vec<PathEvent>,
+    }
+
+    #[test]
+    fn test_coalesce_pending_rescans() {
+        let test_cases = [
+            TestCase {
+                name: "Coalesce descendant rescans under pending ancestor",
+                pending_paths: vec![rescan("/root")],
+                path_events: vec![rescan("/root/child"), rescan("/root/child/grandchild")],
+                expected_pending_paths: vec![rescan("/root")],
+                expected_path_events: vec![],
+            },
+            TestCase {
+                name: "New ancestor rescan replaces pending descendant rescans",
+                pending_paths: vec![
+                    changed("/other"),
+                    rescan("/root/child"),
+                    rescan("/root/child/grandchild"),
+                ],
+                path_events: vec![rescan("/root")],
+                expected_pending_paths: vec![changed("/other")],
+                expected_path_events: vec![rescan("/root")],
+            },
+            TestCase {
+                name: "Same path rescan replaces pending non-rescan event",
+                pending_paths: vec![changed("/root")],
+                path_events: vec![rescan("/root")],
+                expected_pending_paths: vec![],
+                expected_path_events: vec![rescan("/root")],
+            },
+            TestCase {
+                name: "Preserve unrelated rescans",
+                pending_paths: vec![rescan("/root-a")],
+                path_events: vec![rescan("/root-b")],
+                expected_pending_paths: vec![rescan("/root-a")],
+                expected_path_events: vec![rescan("/root-b")],
+            },
+            TestCase {
+                name: "Batch ancestor rescan replaces descendant rescan",
+                pending_paths: vec![],
+                path_events: vec![rescan("/root/child"), rescan("/root")],
+                expected_pending_paths: vec![],
+                expected_path_events: vec![rescan("/root")],
+            },
+        ];
+
+        for test_case in test_cases {
+            let test_name = test_case.name;
+            let mut pending_paths = test_case.pending_paths;
+            let mut path_events = test_case.path_events;
+
+            coalesce_pending_rescans(&mut pending_paths, &mut path_events);
+
+            assert_eq!(
+                pending_paths, test_case.expected_pending_paths,
+                "pending_paths mismatch for case: {test_name}",
+            );
+            assert_eq!(
+                path_events, test_case.expected_path_events,
+                "path_events mismatch for case: {test_name}",
+            );
+        }
     }
 }

@@ -21,6 +21,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
+is_executable = { workspace = true }
 log = { workspace = true }
 notify = { workspace = true }
 parking_lot = { workspace = true }
@@ -30,5 +31,12 @@ smol = { workspace = true }
 tempfile = { workspace = true }
 util = { workspace = true }
 
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+libc = { workspace = true }
+
 [target.'cfg(target_os = "windows")'.dependencies]
+dunce = { workspace = true }
 windows = { workspace = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
