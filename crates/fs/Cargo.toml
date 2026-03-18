@@ -13,6 +13,10 @@ workspace = true
 name = "fs"
 path = "src/fs.rs"
 
+[[test]]
+name = "integration"
+path = "tests/integration/fs_tests.rs"
+
 [features]
 test-support = []
 
