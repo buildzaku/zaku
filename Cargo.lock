@@ -1975,9 +1975,20 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "dunce",
+ "futures",
+ "gpui",
+ "is_executable",
+ "libc",
+ "log",
+ "notify",
+ "parking_lot",
+ "serde",
  "serde_json",
  "smol",
  "tempfile",
+ "util 0.0.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3199,6 +3210,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "is_executable"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baabb8b4867b26294d818bf3f651a454b6901431711abb96e296245888d6e8c4"
+dependencies = [
+ "windows-sys 0.60.2",
+]
+
+[[package]]
 name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3498,6 +3518,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "fs",
+ "gpui",
  "log",
 ]
 
@@ -5584,12 +5605,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
+ "fs",
  "futures",
  "gpui",
  "indexmap",
  "log",
  "logger",
- "notify",
  "rust-embed",
  "serde",
  "serde_json",
@@ -6735,7 +6756,12 @@ name = "util"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "dunce",
+ "log",
+ "pretty_assertions",
  "rust-embed",
+ "serde",
+ "smol",
  "tendril 0.5.0",
 ]
 

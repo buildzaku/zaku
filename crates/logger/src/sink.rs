@@ -297,10 +297,11 @@ mod tests {
     use super::*;
 
     use fs::TempFs;
+    use gpui::TestAppContext;
 
-    #[test]
-    fn test_open_or_create_log_file_rotate() {
-        let temp_fs = TempFs::new();
+    #[gpui::test]
+    fn test_open_or_create_log_file_rotate(cx: &mut TestAppContext) {
+        let temp_fs = TempFs::new(cx.executor());
         let log_file_path = temp_fs.path().join("Zaku.log");
         let old_log_file_path = temp_fs.path().join("Zaku.log.old");
 
@@ -315,9 +316,9 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&log_file_path).unwrap(), "");
     }
 
-    #[test]
-    fn test_open_or_create_log_file() {
-        let temp_fs = TempFs::new();
+    #[gpui::test]
+    fn test_open_or_create_log_file(cx: &mut TestAppContext) {
+        let temp_fs = TempFs::new(cx.executor());
         let log_file_path = temp_fs.path().join("Zaku.log");
         let old_log_file_path = temp_fs.path().join("Zaku.log.old");
 

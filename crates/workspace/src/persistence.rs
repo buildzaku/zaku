@@ -343,8 +343,10 @@ mod tests {
     use crate::{Root, SharedState, Workspace};
 
     #[gpui::test]
-    async fn test_save_workspace_deduplicates_paths(_cx: &mut TestAppContext) {
-        let temp_fs = TempFs::new();
+    async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree("project", json!(null));
 
         let workspace_db =
@@ -412,8 +414,8 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_recent_workspaces_on_disk_prunes_missing_paths(_cx: &mut TestAppContext) {
-        let temp_fs = TempFs::new();
+    async fn test_recent_workspaces_on_disk_prunes_missing_paths(cx: &mut TestAppContext) {
+        let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree("project", json!(null));
 
         let workspace_db =
@@ -450,7 +452,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_create_workspace_serialization(cx: &mut TestAppContext) {
-        let temp_fs = Arc::new(TempFs::new());
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = Arc::new(SharedState::new(
             temp_fs.clone(),
             "test-session".to_string(),

@@ -373,7 +373,7 @@ mod tests {
     async fn test_db_corruption(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = TempFs::new();
+        let temp_fs = TempFs::new(cx.executor());
         let db_dir = temp_fs.path().join("db");
         let db_path = db_dir.join(DB_NAME);
 
@@ -422,7 +422,7 @@ mod tests {
     async fn test_db_open_failure_falls_back_to_memory(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = TempFs::new();
+        let temp_fs = TempFs::new(cx.executor());
         let db_dir = temp_fs.path().join("db");
         let db_path = db_dir.join(DB_NAME);
 
@@ -633,8 +633,8 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_persistent_connection_retries_after_open_failure(_cx: &mut TestAppContext) {
-        let temp_fs = TempFs::new();
+    async fn test_persistent_connection_retries_after_open_failure(cx: &mut TestAppContext) {
+        let temp_fs = TempFs::new(cx.executor());
         let db_path = temp_fs.path().join("db.sqlite");
         std::fs::create_dir_all(&db_path).unwrap();
 

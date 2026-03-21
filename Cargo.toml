@@ -49,6 +49,7 @@ bytes = { version = "1.11" }
 chrono = { version = "0.4" }
 core-text = { version = "21.0" } # https://github.com/zed-industries/zed/issues/47168
 dirs = { version = "6.0" }
+dunce = { version = "1.0" }
 futures = { version = "0.3" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "gpui" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "gpui_platform" }
@@ -56,13 +57,15 @@ http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
 indoc = { version = "2.0" }
+is_executable = { version = "1.0" }
+libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.36", features = ["bundled"] }
 log = { version = "0.4" }
 mimalloc = { version = "0.1" }
 notify = { version = "8.2" }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
-pretty_assertions = { version = "1.4" }
+pretty_assertions = { version = "1.4", features = ["unstable"] }
 quote = { version = "1.0" }
 rand = { version = "0.10" }
 reqwest = { version = "0.13", default-features = false, features = [
@@ -90,6 +93,10 @@ tokio = { version = "1.50", features = ["rt", "rt-multi-thread"] }
 unicode-segmentation = { version = "1.12" }
 url = { version = "2.5" }
 uuid = { version = "1.22", features = ["v4"] }
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+] }
 ##################################################
 # Workspace member crates
 ##################################################

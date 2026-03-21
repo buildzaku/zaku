@@ -13,12 +13,32 @@ workspace = true
 name = "fs"
 path = "src/fs.rs"
 
+[[test]]
+name = "integration"
+path = "tests/integration/fs_tests.rs"
+
 [features]
 test-support = []
 
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-smol = { workspace = true }
+futures = { workspace = true }
+gpui = { workspace = true }
+is_executable = { workspace = true }
+libc = { workspace = true }
+log = { workspace = true }
+notify = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+smol = { workspace = true }
 tempfile = { workspace = true }
+util = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+dunce = { workspace = true }
+windows = { workspace = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
