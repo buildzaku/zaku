@@ -106,6 +106,12 @@ impl Pane {
             cx.notify();
         }
 
+        if self.focus_handle.is_focused(window) {
+            cx.on_next_frame(window, |_, _, cx| {
+                cx.notify();
+            });
+        }
+
         if self.should_display_welcome_page()
             && let Some(welcome_page) = self.welcome_page.as_ref()
             && self.focus_handle.is_focused(window)
@@ -122,10 +128,9 @@ impl Pane {
     pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.request.url = self.input_field.read(cx).text(cx);
 
-        let Ok(response_panel) = self
-            .workspace
-            .update(cx, |workspace, cx| workspace.open_response_panel(cx))
-        else {
+        let Ok(response_panel) = self.workspace.update(cx, |workspace, cx| {
+            workspace.open_response_panel(window, cx)
+        }) else {
             return;
         };
 
@@ -288,14 +293,23 @@ impl Pane {
                         }
                     }
 
-                    let payload = match read_error {
-                        Some(error) => format!("(failed to read response body: {error})"),
-                        None => String::from_utf8_lossy(&payload).into_owned(),
-                    };
-                    let response_state = ResponseState::Completed {
-                        status_code,
-                        bytes_received,
-                        elapsed_duration: request_started_at.elapsed(),
+                    let elapsed_duration = request_started_at.elapsed();
+                    let (payload, response_state) = match read_error {
+                        Some(ref error) => (
+                            format!("(failed to read response body: {error})"),
+                            ResponseState::Error {
+                                bytes_received,
+                                elapsed_duration,
+                            },
+                        ),
+                        None => (
+                            String::from_utf8_lossy(&payload).into_owned(),
+                            ResponseState::Completed {
+                                status_code,
+                                bytes_received,
+                                elapsed_duration,
+                            },
+                        ),
                     };
 
                     if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {

@@ -1,3 +1,6 @@
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+compile_error!("settings only supports macOS, Linux and Windows");
+
 use std::{path::PathBuf, sync::OnceLock};
 
 fn home_dir() -> PathBuf {
@@ -7,24 +10,26 @@ fn home_dir() -> PathBuf {
 /// Returns the path to the configuration directory.
 ///
 /// - macOS: `~/.config/zaku`
-/// - Linux/FreeBSD: `$XDG_CONFIG_HOME/zaku` (or `~/.config/zaku`), with Flatpak override.
+/// - Linux: `$XDG_CONFIG_HOME/zaku` (or `~/.config/zaku`), with Flatpak override.
 /// - Windows: `%APPDATA%\\Zaku`
 pub fn config_dir() -> &'static PathBuf {
     static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
     CONFIG_DIR.get_or_init(|| {
-        if cfg!(target_os = "windows") {
-            dirs::config_dir()
-                .expect("failed to determine RoamingAppData directory")
-                .join("Zaku")
-        } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
+        if cfg!(target_os = "macos") {
+            home_dir().join(".config").join("zaku")
+        } else if cfg!(target_os = "linux") {
             if let Ok(flatpak_xdg_config) = std::env::var("FLATPAK_XDG_CONFIG_HOME") {
                 PathBuf::from(flatpak_xdg_config)
             } else {
                 dirs::config_dir().expect("failed to determine XDG_CONFIG_HOME directory")
             }
             .join("zaku")
+        } else if cfg!(target_os = "windows") {
+            dirs::config_dir()
+                .expect("failed to determine RoamingAppData directory")
+                .join("Zaku")
         } else {
-            home_dir().join(".config").join("zaku")
+            unreachable!("Unsupported platform")
         }
     })
 }
@@ -32,7 +37,7 @@ pub fn config_dir() -> &'static PathBuf {
 /// Returns the path to the data directory.
 ///
 /// - macOS: `~/Library/Application Support/Zaku`
-/// - Linux/FreeBSD: `$XDG_DATA_HOME/zaku` (or `~/.local/share/zaku`), with Flatpak override.
+/// - Linux: `$XDG_DATA_HOME/zaku` (or `~/.local/share/zaku`), with Flatpak override.
 /// - Windows: `%LOCALAPPDATA%\\Zaku`
 pub fn data_dir() -> &'static PathBuf {
     static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -42,7 +47,7 @@ pub fn data_dir() -> &'static PathBuf {
                 .join("Library")
                 .join("Application Support")
                 .join("Zaku")
-        } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
+        } else if cfg!(target_os = "linux") {
             if let Ok(flatpak_xdg_data) = std::env::var("FLATPAK_XDG_DATA_HOME") {
                 PathBuf::from(flatpak_xdg_data)
             } else {
@@ -54,7 +59,7 @@ pub fn data_dir() -> &'static PathBuf {
                 .expect("failed to determine LocalAppData directory")
                 .join("Zaku")
         } else {
-            config_dir().clone()
+            unreachable!("Unsupported platform")
         }
     })
 }
@@ -62,15 +67,17 @@ pub fn data_dir() -> &'static PathBuf {
 /// Returns the path to the logs directory.
 ///
 /// - macOS: `~/Library/Logs/Zaku`
-/// - Linux/FreeBSD: `$XDG_DATA_HOME/zaku/logs` (or `~/.local/share/zaku/logs`), with Flatpak override.
+/// - Linux: `$XDG_DATA_HOME/zaku/logs` (or `~/.local/share/zaku/logs`), with Flatpak override.
 /// - Windows: `%LOCALAPPDATA%\\Zaku\\logs`
 pub fn logs_dir() -> &'static PathBuf {
     static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
     LOGS_DIR.get_or_init(|| {
         if cfg!(target_os = "macos") {
             home_dir().join("Library/Logs/Zaku")
-        } else {
+        } else if cfg!(target_os = "linux") || cfg!(target_os = "windows") {
             data_dir().join("logs")
+        } else {
+            unreachable!("Unsupported platform")
         }
     })
 }

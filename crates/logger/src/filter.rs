@@ -17,9 +17,9 @@ static LEVEL_ENABLED_MAX_CONFIG: AtomicU8 = AtomicU8::new(LEVEL_ENABLED_MAX_DEFA
 
 const LEVEL_ENABLED_MAX_DEFAULT: LevelFilter = LevelFilter::Info;
 const DEFAULT_FILTERS: &[(&str, LevelFilter)] = &[
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[cfg(target_os = "linux")]
     ("zbus", LevelFilter::Warn),
-    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
     ("naga::back::spv::writer", LevelFilter::Warn),
     ("usvg::parser", LevelFilter::Error),
 ];

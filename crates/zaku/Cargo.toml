@@ -32,7 +32,7 @@ theme = { workspace = true }
 uuid = { workspace = true }
 workspace = { workspace = true }
 
-[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { workspace = true }
 gpui_platform = { workspace = true, features = [
   "screen-capture",

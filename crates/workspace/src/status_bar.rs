@@ -8,12 +8,17 @@ use ui::StyledTypography;
 use crate::pane::Pane;
 
 pub trait StatusItemView: Render {
-    fn set_active_pane(&mut self, active_pane: &Entity<Pane>, cx: &mut Context<Self>);
+    fn set_active_pane(
+        &mut self,
+        active_pane: &Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    );
 }
 
 trait StatusItemViewHandle: Send {
     fn to_any(&self) -> AnyView;
-    fn set_active_pane(&self, active_pane: &Entity<Pane>, cx: &mut App);
+    fn set_active_pane(&self, active_pane: &Entity<Pane>, window: &mut Window, cx: &mut App);
 }
 
 pub struct StatusBar {
@@ -24,45 +29,58 @@ pub struct StatusBar {
 }
 
 impl StatusBar {
-    pub fn new(active_pane: Entity<Pane>, cx: &mut Context<Self>) -> Self {
-        let observe_active_pane = cx.observe(&active_pane, |this, _, cx| {
-            this.update_active_pane(cx);
-        });
-
-        Self {
+    pub fn new(active_pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut this = Self {
             left_items: Vec::new(),
             right_items: Vec::new(),
-            active_pane,
-            _observe_active_pane: observe_active_pane,
-        }
+            active_pane: active_pane.clone(),
+            _observe_active_pane: cx.observe_in(active_pane, window, |this, _, window, cx| {
+                this.update_active_pane(window, cx);
+            }),
+        };
+        this.update_active_pane(window, cx);
+        this
     }
 
-    pub fn add_left_item<T>(&mut self, item: Entity<T>, cx: &mut Context<Self>)
+    pub fn add_left_item<T>(&mut self, item: Entity<T>, window: &mut Window, cx: &mut Context<Self>)
     where
         T: 'static + StatusItemView,
     {
         let active_pane = self.active_pane.clone();
-        item.update(cx, |item, cx| item.set_active_pane(&active_pane, cx));
+        item.update(cx, |item, cx| {
+            item.set_active_pane(&active_pane, window, cx)
+        });
         self.left_items.push(Box::new(item));
         cx.notify();
     }
 
-    pub fn add_right_item<T>(&mut self, item: Entity<T>, cx: &mut Context<Self>)
-    where
+    pub fn add_right_item<T>(
+        &mut self,
+        item: Entity<T>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) where
         T: 'static + StatusItemView,
     {
         let active_pane = self.active_pane.clone();
-        item.update(cx, |item, cx| item.set_active_pane(&active_pane, cx));
+        item.update(cx, |item, cx| {
+            item.set_active_pane(&active_pane, window, cx)
+        });
         self.right_items.push(Box::new(item));
         cx.notify();
     }
 
-    pub fn set_active_pane(&mut self, active_pane: Entity<Pane>, cx: &mut Context<Self>) {
+    pub fn set_active_pane(
+        &mut self,
+        active_pane: &Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.active_pane = active_pane.clone();
-        self._observe_active_pane = cx.observe(&active_pane, |this, _, cx| {
-            this.update_active_pane(cx);
+        self._observe_active_pane = cx.observe_in(active_pane, window, |this, _, window, cx| {
+            this.update_active_pane(window, cx);
         });
-        self.update_active_pane(cx);
+        self.update_active_pane(window, cx);
     }
 
     fn render_left_tools(&self) -> impl IntoElement {
@@ -85,11 +103,10 @@ impl StatusBar {
             .children(self.right_items.iter().rev().map(|item| item.to_any()))
     }
 
-    fn update_active_pane(&mut self, cx: &mut Context<Self>) {
+    fn update_active_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         for item in self.left_items.iter().chain(self.right_items.iter()) {
-            item.set_active_pane(&self.active_pane, cx);
+            item.set_active_pane(&self.active_pane, window, cx);
         }
-        cx.notify();
     }
 }
 
@@ -121,7 +138,7 @@ impl<T: StatusItemView> StatusItemViewHandle for Entity<T> {
         self.clone().into()
     }
 
-    fn set_active_pane(&self, active_pane: &Entity<Pane>, cx: &mut App) {
-        self.update(cx, |this, cx| this.set_active_pane(active_pane, cx));
+    fn set_active_pane(&self, active_pane: &Entity<Pane>, window: &mut Window, cx: &mut App) {
+        self.update(cx, |this, cx| this.set_active_pane(active_pane, window, cx));
     }
 }

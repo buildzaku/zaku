@@ -1,4 +1,4 @@
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
 use anyhow::Context;
 
 use libsqlite3_sys::{
@@ -152,7 +152,7 @@ fn path_to_cstring(path: &Path) -> anyhow::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
 
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
 fn path_to_cstring(path: &Path) -> anyhow::Result<CString> {
     let path = path.to_str().with_context(|| {
         format!(

@@ -5,9 +5,6 @@ pub mod response;
 use gpui::{
     Action, AnyView, App, Context, Entity, EntityId, FocusHandle, Focusable, Pixels, Render, Window,
 };
-use std::sync::Arc;
-
-use crate::DockPosition;
 
 pub mod project_panel {
     gpui::actions!(project_panel, [ToggleFocus]);
@@ -21,15 +18,16 @@ pub use project::ProjectPanel;
 pub use response::ResponsePanel;
 
 pub trait Panel: Focusable + Render + Sized {
-    fn persistent_name() -> &'static str;
-    fn position(&self, window: &Window, cx: &App) -> DockPosition;
-    fn position_is_valid(&self, position: DockPosition) -> bool;
-    fn set_position(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>);
-    fn size(&self, window: &Window, cx: &App) -> Pixels;
-    fn set_size(&mut self, size: Option<Pixels>, window: &mut Window, cx: &mut Context<Self>);
+    fn panel_key() -> &'static str;
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels;
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self) -> Box<dyn Action>;
+    fn starts_open(&self, _window: &Window, _cx: &App) -> bool {
+        false
+    }
+    fn set_active(&mut self, _active: bool, _window: &mut Window, _cx: &mut Context<Self>) {}
+    fn activation_priority(&self) -> u32;
     fn enabled(&self, _cx: &App) -> bool {
         true
     }
@@ -37,15 +35,13 @@ pub trait Panel: Focusable + Render + Sized {
 
 pub trait PanelHandle: Send + Sync {
     fn panel_id(&self) -> EntityId;
-    fn persistent_name(&self) -> &'static str;
-    fn position(&self, window: &Window, cx: &App) -> DockPosition;
-    fn position_is_valid(&self, position: DockPosition, cx: &App) -> bool;
-    fn set_position(&self, position: DockPosition, window: &mut Window, cx: &mut App);
-    fn size(&self, window: &Window, cx: &App) -> Pixels;
-    fn set_size(&self, size: Option<Pixels>, window: &mut Window, cx: &mut App);
+    fn panel_key(&self) -> &'static str;
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels;
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self, window: &Window, cx: &App) -> Box<dyn Action>;
+    fn set_active(&self, active: bool, window: &mut Window, cx: &mut App);
+    fn activation_priority(&self, cx: &App) -> u32;
     fn enabled(&self, cx: &App) -> bool;
     fn panel_focus_handle(&self, cx: &App) -> FocusHandle;
     fn to_any(&self) -> AnyView;
@@ -59,28 +55,12 @@ where
         Entity::entity_id(self)
     }
 
-    fn persistent_name(&self) -> &'static str {
-        T::persistent_name()
+    fn panel_key(&self) -> &'static str {
+        T::panel_key()
     }
 
-    fn position(&self, window: &Window, cx: &App) -> DockPosition {
-        self.read(cx).position(window, cx)
-    }
-
-    fn position_is_valid(&self, position: DockPosition, cx: &App) -> bool {
-        self.read(cx).position_is_valid(position)
-    }
-
-    fn set_position(&self, position: DockPosition, window: &mut Window, cx: &mut App) {
-        self.update(cx, |this, cx| this.set_position(position, window, cx));
-    }
-
-    fn size(&self, window: &Window, cx: &App) -> Pixels {
-        self.read(cx).size(window, cx)
-    }
-
-    fn set_size(&self, size: Option<Pixels>, window: &mut Window, cx: &mut App) {
-        self.update(cx, |this, cx| this.set_size(size, window, cx));
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels {
+        self.read(cx).default_size(window, cx)
     }
 
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName> {
@@ -93,6 +73,14 @@ where
 
     fn toggle_action(&self, _window: &Window, cx: &App) -> Box<dyn Action> {
         self.read(cx).toggle_action()
+    }
+
+    fn set_active(&self, active: bool, window: &mut Window, cx: &mut App) {
+        self.update(cx, |this, cx| this.set_active(active, window, cx));
+    }
+
+    fn activation_priority(&self, cx: &App) -> u32 {
+        self.read(cx).activation_priority()
     }
 
     fn enabled(&self, cx: &App) -> bool {
@@ -111,19 +99,5 @@ where
 impl From<&dyn PanelHandle> for AnyView {
     fn from(value: &dyn PanelHandle) -> Self {
         value.to_any()
-    }
-}
-
-pub(crate) struct PanelEntry {
-    panel: Arc<dyn PanelHandle>,
-}
-
-impl PanelEntry {
-    pub(crate) fn new(panel: Arc<dyn PanelHandle>) -> Self {
-        Self { panel }
-    }
-
-    pub(crate) fn panel(&self) -> &Arc<dyn PanelHandle> {
-        &self.panel
     }
 }

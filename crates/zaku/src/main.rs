@@ -1,4 +1,4 @@
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+#[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
@@ -12,10 +12,16 @@ use indoc::formatdoc;
 #[cfg(unix)]
 use indoc::indoc;
 
-use std::{collections::HashMap, io::IsTerminal, path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    io::{ErrorKind, IsTerminal},
+    path::Path,
+    sync::Arc,
+};
 use uuid::Uuid;
 
-use fs::NativeFs;
+use assets::Assets;
+use fs::{Fs, NativeFs};
 use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::{CloseWindow, Root, SharedState, Workspace};
@@ -47,23 +53,22 @@ fn main() {
     }
 
     Application::with_platform(gpui_platform::current_platform(false))
-        .with_assets(assets::Assets)
+        .with_assets(Assets)
         .run(|cx: &mut App| {
             settings::init(cx);
             settings::log_settings::init(cx);
+            let fs: Arc<dyn Fs> = Arc::new(NativeFs::new(cx.background_executor().clone()));
             let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
                 cx.background_executor(),
+                fs.clone(),
                 settings::settings_file().clone(),
             );
             handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
-            theme::init(LoadThemes::All(Box::new(assets::Assets)), cx);
+            theme::init(LoadThemes::All(Box::new(Assets)), cx);
             register_embedded_fonts(cx);
             menu::init(cx);
             editor::init(cx);
-            let shared_state = Arc::new(SharedState::new(
-                Arc::new(NativeFs::new()),
-                Uuid::new_v4().to_string(),
-            ));
+            let shared_state = Arc::new(SharedState::new(fs, Uuid::new_v4().to_string()));
             workspace::init(shared_state.clone(), cx);
 
             cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
@@ -113,7 +118,7 @@ fn main() {
         });
 }
 
-fn init_paths() -> HashMap<std::io::ErrorKind, Vec<&'static Path>> {
+fn init_paths() -> HashMap<ErrorKind, Vec<&'static Path>> {
     [
         settings::config_dir(),
         settings::data_dir(),
@@ -148,14 +153,21 @@ fn handle_settings_file_changes(
     };
 
     cx.update_global::<SettingsStore, _>(|store, cx| {
-        store.set_user_settings(&user_content, cx);
+        let result = store.set_user_settings(&user_content, cx);
+        if let settings::ParseStatus::Failed { error } = &result {
+            log::error!("Failed to load user settings: {error}");
+        }
     });
 
     cx.spawn(async move |cx| {
         let _user_settings_watcher = user_settings_watcher;
         while let Some(content) = user_settings_file_rx.next().await {
             cx.update_global(|store: &mut SettingsStore, cx| {
-                store.set_user_settings(&content, cx);
+                let result = store.set_user_settings(&content, cx);
+                if let settings::ParseStatus::Failed { error } = &result {
+                    log::error!("Failed to load user settings: {error}");
+                }
+                cx.refresh_windows();
             });
         }
     })
@@ -194,7 +206,7 @@ fn register_embedded_fonts(cx: &App) {
     }
 }
 
-fn files_not_created_on_launch(errors: HashMap<std::io::ErrorKind, Vec<&Path>>) {
+fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     let message = "Zaku failed to launch";
     let error_details = errors
         .into_iter()
@@ -211,7 +223,7 @@ fn files_not_created_on_launch(errors: HashMap<std::io::ErrorKind, Vec<&Path>>) 
 
             #[cfg(unix)]
             {
-                if kind == std::io::ErrorKind::PermissionDenied {
+                if kind == ErrorKind::PermissionDenied {
                     error_kind_details.push_str("\n\n");
                     error_kind_details.push_str(indoc! {"
                         Consider using chown and chmod tools for altering the directories permissions if your user has corresponding rights.
@@ -273,12 +285,12 @@ fn files_not_created_on_launch(errors: HashMap<std::io::ErrorKind, Vec<&Path>>) 
 fn fail_to_open_window(error: anyhow::Error, _cx: &mut App) {
     eprintln!("Zaku failed to open a window: {error:?}.");
 
-    #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         std::process::exit(1);
     }
 
-    #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+    #[cfg(target_os = "linux")]
     {
         _cx.spawn(async move |_| {
             let Ok(proxy) = NotificationProxy::new().await else {

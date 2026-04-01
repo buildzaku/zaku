@@ -1,5 +1,5 @@
 [package]
-name = "settings"
+name = "worktree"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,28 +10,37 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "settings"
-path = "src/settings.rs"
+name = "worktree"
+path = "src/worktree.rs"
+
+[[test]]
+name = "worktree_tests"
+path = "tests/integration/worktree_tests.rs"
 
 [features]
-test-support = ["gpui/test-support", "fs/test-support"]
+test-support = []
 
 [dependencies]
 anyhow = { workspace = true }
-dirs = { workspace = true }
+async-lock = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
-indexmap = { workspace = true }
-logger = { workspace = true }
 log = { workspace = true }
-rust-embed = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
-settings_macros = { workspace = true }
+smallvec = { workspace = true }
+smol = { workspace = true }
+sum_tree = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
 util = { workspace = true }
 
 [dev-dependencies]
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
+parking_lot = { workspace = true }
+pretty_assertions = { workspace = true }
+serde_json = { workspace = true }
+util_macros = { workspace = true }
+worktree = { workspace = true, features = ["test-support"] }

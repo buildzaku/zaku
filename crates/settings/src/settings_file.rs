@@ -1,117 +1,155 @@
-use futures::channel::mpsc;
+use fs::Fs;
+use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{BackgroundExecutor, Task};
-use notify::{RecursiveMode, Watcher};
-use std::path::{Path, PathBuf};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
-fn read_config_file(path: &Path) -> String {
-    match std::fs::read_to_string(path) {
-        Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            crate::default_user_settings().into_owned()
-        }
-        Err(error) => {
-            log::error!("Failed to load settings file: {error}");
-            crate::default_user_settings().into_owned()
-        }
-    }
-}
-
-fn existing_watch_root(target_path: &Path) -> Option<(PathBuf, RecursiveMode)> {
-    let file_parent = target_path.parent()?.to_path_buf();
-    let mut watch_root = file_parent.clone();
-
-    while !watch_root.is_dir() {
-        if !watch_root.pop() {
-            return None;
-        }
-    }
-
-    let mode = if watch_root == file_parent {
-        RecursiveMode::NonRecursive
-    } else {
-        RecursiveMode::Recursive
-    };
-
-    Some((watch_root, mode))
-}
+const FILE_WATCH_LATENCY: Duration = Duration::from_millis(100);
 
 pub fn watch_config_file(
     executor: &BackgroundExecutor,
+    fs: Arc<dyn Fs>,
     path: PathBuf,
-) -> (mpsc::UnboundedReceiver<String>, Task<()>) {
-    let (tx, rx) = mpsc::unbounded();
+) -> (UnboundedReceiver<String>, Task<()>) {
+    let (tx, rx) = futures::channel::mpsc::unbounded();
     let task = executor.spawn(async move {
-        let file_parent = path
-            .parent()
-            .map(|path| path.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."));
+        let (events, _) = fs.watch(&path, FILE_WATCH_LATENCY).await;
+        futures::pin_mut!(events);
 
-        let (watch_root, mode) = match existing_watch_root(&path) {
-            Some(result) => result,
-            None => {
-                log::error!(
-                    "Failed to watch settings file: no existing parent directory for {path:?}"
-                );
-                let contents = read_config_file(&path);
-                if tx.unbounded_send(contents).is_err() {
-                    return;
+        let contents = match fs.load(&path).await {
+            Ok(contents) => contents,
+            Err(error) => {
+                if let Some(io_error) = error.downcast_ref::<std::io::Error>()
+                    && io_error.kind() == std::io::ErrorKind::NotFound
+                {
+                    crate::default_user_settings().into_owned()
+                } else {
+                    log::error!("Failed to load settings file: {error}");
+                    String::new()
                 }
-                return;
             }
         };
-
-        let path_for_callback = path.clone();
-        let file_parent_for_callback = file_parent.clone();
-        let tx_for_callback = tx.clone();
-        let mut watcher =
-            match notify::recommended_watcher(move |result: notify::Result<notify::Event>| {
-                match result {
-                    Ok(event) => {
-                        let is_relevant = event.paths.iter().any(|changed_path| {
-                            changed_path == &path_for_callback
-                                || changed_path.parent() == Some(file_parent_for_callback.as_path())
-                        });
-                        if !is_relevant {
-                            return;
-                        }
-
-                        let contents = read_config_file(&path_for_callback);
-                        if tx_for_callback.unbounded_send(contents).is_err() {
-                            return;
-                        }
-                    }
-                    Err(error) => {
-                        log::error!("Failed to watch settings file: {error}");
-                    }
-                }
-            }) {
-                Ok(watcher) => watcher,
-                Err(error) => {
-                    log::error!("Failed to watch settings file: {error}");
-                    let contents = read_config_file(&path);
-                    if tx.unbounded_send(contents).is_err() {
-                        return;
-                    }
-                    return;
-                }
-            };
-
-        if let Err(error) = watcher.watch(&watch_root, mode) {
-            log::error!("Failed to watch settings file: {error}");
-            let contents = read_config_file(&path);
-            if tx.unbounded_send(contents).is_err() {
-                return;
-            }
-            return;
-        }
-
-        let contents = read_config_file(&path);
         if tx.unbounded_send(contents).is_err() {
             return;
         }
 
-        futures::future::pending::<()>().await;
+        loop {
+            if events.next().await.is_none() {
+                break;
+            }
+
+            match fs.load(&path).await {
+                Ok(contents) => {
+                    if tx.unbounded_send(contents).is_err() {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    if let Some(io_error) = error.downcast_ref::<std::io::Error>()
+                        && io_error.kind() == std::io::ErrorKind::NotFound
+                    {
+                        if tx
+                            .unbounded_send(crate::default_user_settings().into_owned())
+                            .is_err()
+                        {
+                            break;
+                        }
+                    } else {
+                        log::error!("Failed to load settings file: {error}");
+                    }
+                }
+            }
+        }
     });
 
     (rx, task)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use fs::TempFs;
+    use futures::FutureExt;
+    use gpui::TestAppContext;
+    use indoc::indoc;
+
+    async fn next_settings_update(
+        receiver: &mut UnboundedReceiver<String>,
+        cx: &mut TestAppContext,
+    ) -> String {
+        let next_update = receiver.next().fuse();
+        let timeout = cx.background_executor.timer(Duration::from_secs(5)).fuse();
+        futures::pin_mut!(next_update, timeout);
+
+        futures::select_biased! {
+            update = next_update => update.unwrap_or_else(|| panic!("Settings watcher closed")),
+            _ = timeout => panic!("Timed out waiting for settings watcher update"),
+        }
+    }
+
+    #[gpui::test]
+    async fn test_watch_config_file_uses_default_user_settings_when_file_is_missing(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let settings_path = temp_fs.path().join("settings.json");
+        let (mut receiver, _watcher) =
+            watch_config_file(&cx.background_executor, temp_fs, settings_path);
+
+        assert_eq!(
+            next_settings_update(&mut receiver, cx).await,
+            crate::default_user_settings().into_owned()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_watch_config_file_reloads_after_file_change(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let settings_path = temp_fs.path().join("settings.json");
+        temp_fs
+            .write(
+                &settings_path,
+                indoc! {r#"
+                    { "ui_font_size": 13 }
+                "#}
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+
+        let (mut receiver, _watcher) = watch_config_file(
+            &cx.background_executor,
+            temp_fs.clone(),
+            settings_path.clone(),
+        );
+
+        assert_eq!(
+            next_settings_update(&mut receiver, cx).await,
+            indoc! {r#"
+                { "ui_font_size": 13 }
+            "#}
+        );
+
+        temp_fs
+            .write(
+                &settings_path,
+                indoc! {r#"
+                    { "ui_font_size": 14 }
+                "#}
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            next_settings_update(&mut receiver, cx).await,
+            indoc! {r#"
+                { "ui_font_size": 14 }
+            "#}
+        );
+    }
 }

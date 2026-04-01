@@ -140,8 +140,12 @@ impl WorkspaceDb {
 
         for (workspace_id, location, timestamp) in self.recent_workspaces()? {
             let workspace_path = location.path().to_path_buf();
-            if Self::all_paths_exist_with_a_directory(std::slice::from_ref(&workspace_path), fs)
-                .await
+            if Self::all_paths_exist_with_a_directory(
+                std::slice::from_ref(&workspace_path),
+                fs,
+                Some(timestamp),
+            )
+            .await
             {
                 existing_workspaces.push((workspace_id, location, timestamp));
             } else {
@@ -290,12 +294,20 @@ impl WorkspaceDb {
             .await
     }
 
-    async fn all_paths_exist_with_a_directory(paths: &[PathBuf], fs: &dyn Fs) -> bool {
+    async fn all_paths_exist_with_a_directory(
+        paths: &[PathBuf],
+        fs: &dyn Fs,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> bool {
         let mut any_directory = false;
 
         for path in paths {
             match fs.metadata(path).await.ok().flatten() {
-                None => return false,
+                None => {
+                    return timestamp.is_some_and(|timestamp| {
+                        Utc::now() - timestamp < chrono::Duration::days(7)
+                    });
+                }
                 Some(metadata) => {
                     if metadata.is_dir {
                         any_directory = true;
@@ -343,8 +355,10 @@ mod tests {
     use crate::{Root, SharedState, Workspace};
 
     #[gpui::test]
-    async fn test_save_workspace_deduplicates_paths(_cx: &mut TestAppContext) {
-        let temp_fs = TempFs::new();
+    async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree("project", json!(null));
 
         let workspace_db =
@@ -412,45 +426,10 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_recent_workspaces_on_disk_prunes_missing_paths(_cx: &mut TestAppContext) {
-        let temp_fs = TempFs::new();
-        temp_fs.insert_tree("project", json!(null));
-
-        let workspace_db =
-            WorkspaceDb::open_test_db("test_recent_workspaces_on_disk_prunes_missing_paths").await;
-        workspace_db
-            .clear_recent_workspaces()
-            .await
-            .expect("workspace recent list should clear");
-
-        let project_path = temp_fs.path().join("project");
-        workspace_db
-            .save_workspace(SerializedWorkspace {
-                id: WorkspaceId::from_i64(1),
-                location: SerializedWorkspaceLocation::Local(project_path.clone()),
-                session_id: Some("session-a".to_string()),
-                window_id: Some(10),
-            })
-            .await;
-        std::fs::remove_dir_all(&project_path).expect("project directory should be removed");
-
-        let recent_workspaces = workspace_db
-            .recent_workspaces_on_disk(&temp_fs)
-            .await
-            .expect("recent workspace query should succeed");
-
-        assert!(recent_workspaces.is_empty());
-        assert_eq!(
-            workspace_db
-                .recent_workspace_count()
-                .expect("workspace count query should succeed"),
-            0
-        );
-    }
-
-    #[gpui::test]
     async fn test_create_workspace_serialization(cx: &mut TestAppContext) {
-        let temp_fs = Arc::new(TempFs::new());
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = Arc::new(SharedState::new(
             temp_fs.clone(),
             "test-session".to_string(),
@@ -461,14 +440,13 @@ mod tests {
             path!("project"),
             json!({
                 ".gitignore": indoc! {"
-                .DS_Store
-            "},
-                "auth": {
-                    "login.toml": indoc! {r#"
-                    [config]
-                    method = "GET"
-                    url = "zaku.dev/users/me"
-                "#}
+                    .DS_Store
+                "},
+                "collection": {
+                    "request.toml": indoc! {"
+                        [meta]
+                        version = 1
+                    "}
                 }
             }),
         );
@@ -484,24 +462,23 @@ mod tests {
             root.replace_workspace(window, cx);
             root.workspace().clone()
         });
-
-        let project_path = temp_fs.path().join(path!("project"));
-        workspace.update_in(cx, |workspace, window, cx| {
-            assert!(workspace.database_id().is_none());
-
-            workspace
-                .open_workspace_for_path(project_path.clone(), window, cx)
-                .detach_and_log_err(cx);
-        });
         cx.run_until_parked();
 
-        let new_db_id = workspace.read_with(cx, |workspace, _| workspace.database_id());
-        assert!(
-            new_db_id.is_some(),
-            "Workspace should have a database_id after run_until_parked"
-        );
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .expect("workspace should have a database_id after initialization");
 
-        let workspace_id = new_db_id.unwrap();
+        let project_path = temp_fs.path().join(path!("project"));
+        let open_workspace = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.open_workspace_for_path(project_path.clone(), window, cx)
+        });
+        open_workspace.await.expect("workspace open should succeed");
+
+        let flush_serialization = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.flush_serialization(window, cx)
+        });
+        flush_serialization.await;
+
         let serialized = DB.workspace_for_id(workspace_id);
         assert!(
             serialized.is_some(),

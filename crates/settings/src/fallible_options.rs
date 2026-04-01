@@ -6,13 +6,12 @@ thread_local! {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseStatus<T> {
-    Ok(T),
-    OkWithErrors { value: T, error: String },
-    Err { error: String },
+pub enum ParseStatus {
+    Success,
+    Failed { error: String },
 }
 
-pub fn parse_json<'de, T>(json: &'de str) -> ParseStatus<T>
+pub fn parse_json<'de, T>(json: &'de str) -> (Option<T>, ParseStatus)
 where
     T: Deserialize<'de>,
 {
@@ -25,9 +24,12 @@ where
     let value = match value {
         Ok(value) => value,
         Err(error) => {
-            return ParseStatus::Err {
-                error: error.to_string(),
-            };
+            return (
+                None,
+                ParseStatus::Failed {
+                    error: error.to_string(),
+                },
+            );
         }
     };
 
@@ -38,10 +40,10 @@ where
             .flat_map(|e| ["\n".to_owned(), e])
             .skip(1)
             .collect::<String>();
-        return ParseStatus::OkWithErrors { value, error };
+        return (Some(value), ParseStatus::Failed { error });
     }
 
-    ParseStatus::Ok(value)
+    (Some(value), ParseStatus::Success)
 }
 
 pub(crate) fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -64,3 +66,49 @@ where
 
 pub trait FallibleOption: Default {}
 impl<T> FallibleOption for Option<T> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use indoc::indoc;
+    use settings_macros::with_fallible_options;
+
+    #[with_fallible_options]
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Foo {
+        foo: Option<String>,
+        bar: Option<usize>,
+        baz: Option<bool>,
+    }
+
+    #[test]
+    fn test_fallible() {
+        let input = indoc! {r#"
+            {
+                "foo": "bar",
+                "bar": "foo",
+                "baz": 3
+            }
+        "#};
+
+        let (value, parse_status) = parse_json::<Foo>(input);
+        let value = value.expect("Expected partial settings value");
+        let ParseStatus::Failed { error } = parse_status else {
+            panic!("Expected parse to fail")
+        };
+
+        assert_eq!(
+            value,
+            Foo {
+                foo: Some("bar".into()),
+                bar: None,
+                baz: None,
+            }
+        );
+        assert_eq!(
+            error,
+            "invalid type: string \"foo\", expected usize at line 3 column 16\ninvalid type: integer `3`, expected a boolean at line 4 column 12".to_string()
+        );
+    }
+}

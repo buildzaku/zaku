@@ -1,5 +1,5 @@
 [package]
-name = "settings"
+name = "project"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,28 +10,25 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "settings"
-path = "src/settings.rs"
+name = "project"
+path = "src/project.rs"
 
-[features]
-test-support = ["gpui/test-support", "fs/test-support"]
+[[test]]
+name = "integration"
+path = "tests/integration/project_tests.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-dirs = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
-indexmap = { workspace = true }
-logger = { workspace = true }
-log = { workspace = true }
-rust-embed = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-settings_macros = { workspace = true }
 util = { workspace = true }
+worktree = { workspace = true }
 
 [dev-dependencies]
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
+serde_json = { workspace = true }
+util = { workspace = true, features = ["test-support"] }
+util_macros = { workspace = true }

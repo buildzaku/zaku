@@ -28,11 +28,11 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("cmd-enter", SecondaryConfirm, Some(KEY_CONTEXT)),
         KeyBinding::new("ctrl-c", Cancel, Some(KEY_CONTEXT)),
         KeyBinding::new("escape", Cancel, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         KeyBinding::new("ctrl-escape", Cancel, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-escape", Cancel, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         KeyBinding::new("alt-shift-enter", Restart, Some(KEY_CONTEXT)),
         #[cfg(target_os = "windows")]
         KeyBinding::new("shift-alt-enter", Restart, Some(KEY_CONTEXT)),

@@ -11,6 +11,7 @@ members = [
   "crates/logger",
   "crates/menu",
   "crates/multi_buffer",
+  "crates/project",
   "crates/reqwest_client",
   "crates/settings",
   "crates/settings_macros",
@@ -20,6 +21,7 @@ members = [
   "crates/util",
   "crates/util_macros",
   "crates/workspace",
+  "crates/worktree",
   "crates/zaku",
 ]
 
@@ -44,25 +46,29 @@ ashpd = { version = "0.13", default-features = false, features = [
   "async-io",
   "notification",
 ] }
+async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 chrono = { version = "0.4" }
 core-text = { version = "21.0" } # https://github.com/zed-industries/zed/issues/47168
 dirs = { version = "6.0" }
+dunce = { version = "1.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.13" }
 indoc = { version = "2.0" }
-libsqlite3-sys = { version = "0.36", features = ["bundled"] }
+is_executable = { version = "1.0" }
+libc = { version = "0.2" }
+libsqlite3-sys = { version = "0.37", features = ["bundled"] }
 log = { version = "0.4" }
 mimalloc = { version = "0.1" }
 notify = { version = "8.2" }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
-pretty_assertions = { version = "1.4" }
+pretty_assertions = { version = "1.4", features = ["unstable"] }
 quote = { version = "1.0" }
 rand = { version = "0.10" }
 reqwest = { version = "0.13", default-features = false, features = [
@@ -81,15 +87,21 @@ serde_json = { version = "1.0" }
 smallvec = { version = "1.15" }
 smol = { version = "2.0" }
 strum = { version = "0.28", features = ["derive"] }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "e79429b51b", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "text" }
 thread_local = { version = "1.1" }
-tokio = { version = "1.50", features = ["rt", "rt-multi-thread"] }
-unicode-segmentation = { version = "1.12" }
+tokio = { version = "1.50", features = ["rt", "rt-multi-thread", "sync"] }
+toml = { version = "1.1" }
+unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.22", features = ["v4"] }
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+] }
 ##################################################
 # Workspace member crates
 ##################################################
@@ -103,6 +115,7 @@ input = { path = "crates/input" }
 logger = { path = "crates/logger" }
 menu = { path = "crates/menu" }
 multi_buffer = { path = "crates/multi_buffer" }
+project = { path = "crates/project" }
 reqwest_client = { path = "crates/reqwest_client" }
 settings = { path = "crates/settings" }
 settings_macros = { path = "crates/settings_macros" }
@@ -112,3 +125,4 @@ ui_macros = { path = "crates/ui_macros" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
 workspace = { path = "crates/workspace" }
+worktree = { path = "crates/worktree" }

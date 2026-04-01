@@ -20,7 +20,10 @@ impl PanelButtons {
 impl Render for PanelButtons {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let dock = self.dock.read(cx);
-        let is_disabled = dock.first_enabled_panel_idx(cx).is_none();
+        let is_disabled = !dock
+            .panel_entries()
+            .iter()
+            .any(|entry| entry.panel().enabled(cx));
         let active_index = dock.active_panel_index();
         let is_open = dock.is_open();
         let focus_handle = dock.focus_handle(cx);
@@ -31,7 +34,7 @@ impl Render for PanelButtons {
             .filter_map(|(index, entry)| {
                 let icon = entry.panel().icon(window, cx)?;
                 let icon_tooltip = entry.panel().icon_tooltip(window, cx)?;
-                let name = entry.panel().persistent_name();
+                let panel_key = entry.panel().panel_key();
 
                 let is_active_button = Some(index) == active_index && is_open;
                 let (action, tooltip) = if is_active_button {
@@ -47,7 +50,7 @@ impl Render for PanelButtons {
                 let focus_handle = focus_handle.clone();
 
                 Some(
-                    IconButton::new(format!("{name}-button-{is_active_button}"), icon)
+                    IconButton::new(format!("{panel_key}-button-{is_active_button}"), icon)
                         .variant(ui::ButtonVariant::Subtle)
                         .icon_size(IconSize::Small)
                         .shape(IconButtonShape::Square)
@@ -74,7 +77,11 @@ impl Render for PanelButtons {
 }
 
 impl StatusItemView for PanelButtons {
-    fn set_active_pane(&mut self, _active_pane: &Entity<Pane>, cx: &mut Context<Self>) {
-        cx.notify();
+    fn set_active_pane(
+        &mut self,
+        _active_pane: &Entity<Pane>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
     }
 }

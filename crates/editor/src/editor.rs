@@ -105,11 +105,11 @@ pub fn init(cx: &mut App) {
         ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("alt-left", MoveToPreviousWordStart, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-left", MoveToPreviousWordStart, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("alt-right", MoveToNextWordEnd, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-right", MoveToNextWordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new(
@@ -117,7 +117,7 @@ pub fn init(cx: &mut App) {
             SelectToPreviousWordStart,
             Some(KEY_CONTEXT),
         ),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new(
             "ctrl-shift-left",
             SelectToPreviousWordStart,
@@ -125,7 +125,7 @@ pub fn init(cx: &mut App) {
         ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("alt-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new(
@@ -163,21 +163,21 @@ pub fn init(cx: &mut App) {
             SelectToNextSubwordEnd,
             Some(KEY_CONTEXT),
         ),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new(
             "ctrl-alt-left",
             MoveToPreviousSubwordStart,
             Some(KEY_CONTEXT),
         ),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-alt-right", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new(
             "ctrl-alt-shift-left",
             SelectToPreviousSubwordStart,
             Some(KEY_CONTEXT),
         ),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new(
             "ctrl-alt-shift-right",
             SelectToNextSubwordEnd,
@@ -189,7 +189,7 @@ pub fn init(cx: &mut App) {
             DeleteToBeginningOfLine::default(),
             Some(KEY_CONTEXT),
         ),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new(
             "ctrl-backspace",
             DeleteToPreviousWordStart::default(),
@@ -197,7 +197,7 @@ pub fn init(cx: &mut App) {
         ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-delete", DeleteToEndOfLine, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new(
             "ctrl-delete",
             DeleteToNextWordEnd::default(),
@@ -261,35 +261,35 @@ pub fn init(cx: &mut App) {
         ),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-a", SelectAll, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-a", SelectAll, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-c", Copy, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-c", Copy, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-x", Cut, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-x", Cut, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-v", Paste, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-v", Paste, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-z", Undo, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-z", Undo, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-u", UndoSelection, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-u", UndoSelection, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-z", Redo, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-y", Redo, Some(KEY_CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-shift-u", RedoSelection, Some(KEY_CONTEXT)),
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         KeyBinding::new("ctrl-shift-u", RedoSelection, Some(KEY_CONTEXT)),
     ]);
 

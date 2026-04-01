@@ -11,7 +11,6 @@ use theme::ActiveTheme;
 use ui::{Color, IconName, Label, LabelCommon, LabelSize};
 
 use crate::{
-    DockPosition,
     pane::Pane,
     panel::{Panel, response_panel},
 };
@@ -130,8 +129,6 @@ struct Response {
 pub struct ResponsePanel {
     focus_handle: FocusHandle,
     pane: WeakEntity<Pane>,
-    position: DockPosition,
-    size: Pixels,
     response: Response,
     editor: Entity<Editor>,
     _subscriptions: Vec<Subscription>,
@@ -139,6 +136,7 @@ pub struct ResponsePanel {
 
 impl ResponsePanel {
     const DEFAULT_SIZE: Pixels = gpui::px(440.0);
+    const PANEL_KEY: &str = "ResponsePanel";
 
     pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer("", cx), cx));
@@ -148,16 +146,17 @@ impl ResponsePanel {
             editor
         });
         let focus_handle = cx.focus_handle();
-        let focus_subscription =
-            cx.on_focus(&focus_handle, window, |response_panel, window, cx| {
-                window.focus(&response_panel.editor.focus_handle(cx), cx);
+        let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
+            cx.on_next_frame(window, |response_panel, window, cx| {
+                if response_panel.focus_handle.is_focused(window) {
+                    response_panel.editor.focus_handle(cx).focus(window, cx);
+                }
             });
+        });
 
         Self {
             focus_handle,
             pane,
-            position: DockPosition::Bottom,
-            size: Self::DEFAULT_SIZE,
             response: Response {
                 payload: Some(payload),
                 ..Default::default()
@@ -235,32 +234,12 @@ impl Focusable for ResponsePanel {
 }
 
 impl Panel for ResponsePanel {
-    fn persistent_name() -> &'static str {
-        "ResponsePanel"
+    fn panel_key() -> &'static str {
+        Self::PANEL_KEY
     }
 
-    fn position(&self, _window: &Window, _: &App) -> DockPosition {
-        self.position
-    }
-
-    fn position_is_valid(&self, position: DockPosition) -> bool {
-        position == DockPosition::Bottom
-    }
-
-    fn set_position(&mut self, position: DockPosition, _: &mut Window, cx: &mut Context<Self>) {
-        if self.position_is_valid(position) {
-            self.position = position;
-            cx.notify();
-        }
-    }
-
-    fn size(&self, _window: &Window, _: &App) -> Pixels {
-        self.size
-    }
-
-    fn set_size(&mut self, size: Option<Pixels>, _window: &mut Window, cx: &mut Context<Self>) {
-        self.size = size.unwrap_or(Self::DEFAULT_SIZE).round();
-        cx.notify();
+    fn default_size(&self, _window: &Window, _: &App) -> Pixels {
+        Self::DEFAULT_SIZE
     }
 
     fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconName> {
@@ -273,6 +252,10 @@ impl Panel for ResponsePanel {
 
     fn toggle_action(&self) -> Box<dyn Action> {
         response_panel::ToggleFocus.boxed_clone()
+    }
+
+    fn activation_priority(&self) -> u32 {
+        2
     }
 
     fn enabled(&self, cx: &App) -> bool {

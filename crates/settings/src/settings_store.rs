@@ -1,4 +1,4 @@
-use gpui::{App, BorrowAppContext, Global, Pixels, Subscription};
+use gpui::{App, Global, Pixels};
 use indexmap::IndexMap;
 use serde::{
     Deserialize, Deserializer, Serialize,
@@ -7,8 +7,10 @@ use serde::{
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
+    sync::Arc,
 };
 
+use fs::Fs;
 use settings_macros::{MergeFrom, with_fallible_options};
 
 use crate::merge_from::MergeFrom;
@@ -84,7 +86,7 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
                     access.next_entry::<String, Option<FeatureValue>>()?
                 {
                     if !is_valid_feature_tag(&key) {
-                        log::warn!("Invalid font feature tag in settings: {key}");
+                        log::error!("Invalid font feature tag: {key}");
                         continue;
                     }
 
@@ -100,7 +102,7 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
                             if let Some(value) = value.as_u64() {
                                 feature_map.insert(key, value as u32);
                             } else {
-                                log::warn!(
+                                log::error!(
                                     "Invalid font feature value {value} for feature tag {key}",
                                 );
                             }
@@ -252,13 +254,18 @@ impl Global for SettingsStore {}
 
 impl SettingsStore {
     pub fn new(default_settings_json: impl AsRef<str>) -> Self {
-        let default_settings = match parse_json::<SettingsContent>(default_settings_json.as_ref()) {
-            ParseStatus::Ok(default_settings) => default_settings,
-            ParseStatus::OkWithErrors { error, .. } => {
+        let (default_settings, parse_status) =
+            parse_json::<SettingsContent>(default_settings_json.as_ref());
+        let default_settings = match (default_settings, parse_status) {
+            (Some(default_settings), ParseStatus::Success) => default_settings,
+            (Some(_), ParseStatus::Failed { error }) => {
                 panic!("invalid default settings: {error}");
             }
-            ParseStatus::Err { error } => {
+            (None, ParseStatus::Failed { error }) => {
                 panic!("failed to parse default settings: {error}")
+            }
+            (None, ParseStatus::Success) => {
+                panic!("failed to parse default settings: missing parsed value")
             }
         };
 
@@ -277,34 +284,36 @@ impl SettingsStore {
         &self.merged_settings
     }
 
-    pub fn observe_active_settings_profile_name(cx: &mut App) -> Subscription {
-        cx.observe_global::<crate::ActiveSettingsProfileName>(|cx| {
-            cx.update_global::<Self, _>(|store, cx| {
-                store.recompute_values(cx);
-            });
-        })
-    }
-
-    pub fn load_settings() -> anyhow::Result<String> {
-        let settings_path = paths::settings_file().as_path();
-        match std::fs::read_to_string(settings_path) {
+    pub async fn load_settings(fs: &Arc<dyn Fs>) -> anyhow::Result<String> {
+        match fs.load(paths::settings_file()).await {
             Ok(text) => Ok(text),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(crate::default_user_settings().into_owned())
+            Err(error) => {
+                if let Some(io_error) = error.downcast_ref::<std::io::Error>()
+                    && io_error.kind() == std::io::ErrorKind::NotFound
+                {
+                    return Ok(crate::default_user_settings().into_owned());
+                }
+
+                Err(error)
             }
-            Err(error) => Err(error.into()),
         }
     }
 
     pub fn set_default_settings(&mut self, default_settings_content: &str, cx: &mut App) {
-        let default_settings = match parse_json::<SettingsContent>(default_settings_content) {
-            ParseStatus::Ok(default_settings) => default_settings,
-            ParseStatus::OkWithErrors { value, error } => {
+        let (default_settings, parse_status) =
+            parse_json::<SettingsContent>(default_settings_content);
+        let default_settings = match (default_settings, parse_status) {
+            (Some(default_settings), ParseStatus::Success) => default_settings,
+            (Some(default_settings), ParseStatus::Failed { error }) => {
                 log::error!("Invalid default settings: {error}");
-                value
+                default_settings
             }
-            ParseStatus::Err { error } => {
+            (None, ParseStatus::Failed { error }) => {
                 log::error!("Failed to parse default settings: {error}");
+                return;
+            }
+            (None, ParseStatus::Success) => {
+                log::error!("Failed to parse default settings: missing parsed value");
                 return;
             }
         };
@@ -313,21 +322,20 @@ impl SettingsStore {
         self.recompute_values(cx);
     }
 
-    pub fn set_user_settings(&mut self, user_settings_content: &str, cx: &mut App) {
-        let user_settings = match parse_json::<SettingsContent>(user_settings_content) {
-            ParseStatus::Ok(user_settings) => user_settings,
-            ParseStatus::OkWithErrors { value, error } => {
-                log::error!("Invalid user settings: {error}");
-                value
-            }
-            ParseStatus::Err { error } => {
-                log::error!("Failed to parse user settings: {error}");
-                return;
-            }
+    #[must_use]
+    pub fn set_user_settings(&mut self, user_settings_content: &str, cx: &mut App) -> ParseStatus {
+        let (user_settings, parse_status) = if user_settings_content.is_empty() {
+            parse_json::<SettingsContent>("{}")
+        } else {
+            parse_json::<SettingsContent>(user_settings_content)
         };
 
-        self.user_settings = Some(user_settings);
-        self.recompute_values(cx);
+        if let Some(user_settings) = user_settings {
+            self.user_settings = Some(user_settings);
+            self.recompute_values(cx);
+        }
+
+        parse_status
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -359,7 +367,7 @@ impl SettingsStore {
         );
     }
 
-    fn recompute_values(&mut self, cx: &mut App) {
+    fn recompute_values(&mut self, _cx: &mut App) {
         let mut merged_settings = self.default_settings.clone();
         if let Some(user_settings) = self.user_settings.as_ref() {
             merged_settings.merge_from(user_settings);
@@ -376,7 +384,5 @@ impl SettingsStore {
             let value = factory(self.content());
             self.settings.insert(type_id, value);
         }
-
-        cx.refresh_windows();
     }
 }
