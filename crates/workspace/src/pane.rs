@@ -8,40 +8,69 @@ use std::{
     time::{Duration, Instant},
 };
 
-use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy};
+use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::InputField;
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
 use ui::{
-    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, ContextMenu, DropdownMenu,
-    DropdownStyle, FixedWidth, IconPosition, Label, StyledExt,
+    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
+    DropdownStyle, FixedWidth, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
+    Label, Tooltip,
 };
 
 use crate::{SendRequest, Workspace, panel::response::ResponseState, welcome::WelcomePage};
 
-fn normalize_url(url: String) -> Option<String> {
-    let url = url.trim().to_string();
+fn normalize_url(url: String) -> Option<Url> {
+    let url = url.trim();
     if url.is_empty() {
         return None;
     }
-    if url.starts_with("http://") || url.starts_with("https://") {
-        Some(url)
+
+    let url = if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
     } else {
-        Some(format!("http://{url}"))
+        format!("http://{url}")
+    };
+
+    Url::parse(&url).ok()
+}
+
+struct RequestConfig {
+    method: Method,
+    url: Entity<InputField>,
+    params: Vec<RequestParam>,
+}
+
+impl RequestConfig {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            method: Method::GET,
+            url: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
+            params: Vec::new(),
+        }
+    }
+
+    fn add_param(&mut self, window: &mut Window, cx: &mut App) {
+        self.params.push(RequestParam::new(window, cx));
+    }
+
+    fn delete_param(&mut self, index: usize) {
+        if index < self.params.len() {
+            self.params.remove(index);
+        }
     }
 }
 
-#[derive(Clone)]
-struct Request {
-    method: Method,
-    url: String,
+struct RequestParam {
+    name: Entity<InputField>,
+    value: Entity<InputField>,
 }
 
-impl Default for Request {
-    fn default() -> Self {
+impl RequestParam {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
         Self {
-            method: Method::GET,
-            url: String::new(),
+            name: cx.new(|cx| InputField::new(window, cx, "Key")),
+            value: cx.new(|cx| InputField::new(window, cx, "Value")),
         }
     }
 }
@@ -53,8 +82,7 @@ pub struct Pane {
     welcome_page: Option<Entity<WelcomePage>>,
     workspace: WeakEntity<Workspace>,
     http_client: Arc<dyn HttpClient>,
-    request: Request,
-    input_field: Entity<InputField>,
+    request: RequestConfig,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -78,8 +106,7 @@ impl Pane {
             welcome_page: None,
             workspace,
             http_client: Arc::new(ReqwestClient::new()),
-            request: Request::default(),
-            input_field: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
+            request: RequestConfig::new(window, cx),
             _subscriptions: subscriptions,
         }
     }
@@ -126,7 +153,22 @@ impl Pane {
     }
 
     pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.request.url = self.input_field.read(cx).text(cx);
+        let request_method = self.request.method.clone();
+        let request_url = self.request.url.read(cx).text(cx);
+        let request_params = self
+            .request
+            .params
+            .iter()
+            .filter_map(|request_param| {
+                let name = request_param.name.read(cx).text(cx).trim().to_string();
+                if name.is_empty() {
+                    return None;
+                }
+
+                let value = request_param.value.read(cx).text(cx);
+                Some((name, value))
+            })
+            .collect::<Vec<_>>();
 
         let Ok(response_panel) = self.workspace.update(cx, |workspace, cx| {
             workspace.open_response_panel(window, cx)
@@ -152,11 +194,10 @@ impl Pane {
 
         window
             .spawn(cx, {
-                let request = self.request.clone();
                 let response_panel = response_panel.clone();
                 async move |cx| {
-                    let normalized_url = match normalize_url(request.url) {
-                        Some(normalized_url) => normalized_url,
+                    let mut request_url = match normalize_url(request_url) {
+                        Some(request_url) => request_url,
                         None => {
                             if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
                                 response_panel.set_state(
@@ -174,9 +215,17 @@ impl Pane {
                             return;
                         }
                     };
+
+                    {
+                        let mut query_pairs = request_url.query_pairs_mut();
+                        for (name, value) in request_params {
+                            query_pairs.append_pair(&name, &value);
+                        }
+                    }
+
                     let request = match Builder::new()
-                        .method(request.method)
-                        .uri(normalized_url)
+                        .method(request_method)
+                        .uri(request_url.as_str())
                         .follow_redirects(RedirectPolicy::FollowAll)
                         .body(AsyncBody::empty())
                     {
@@ -333,37 +382,55 @@ impl Focusable for Pane {
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.should_display_welcome_page() {
+            if self.welcome_page.is_none() {
+                let workspace = self.workspace.clone();
+                self.welcome_page = Some(cx.new(|cx| WelcomePage::new(workspace, window, cx)));
+            }
+
             return gpui::div()
                 .track_focus(&self.focus_handle)
                 .size_full()
                 .overflow_hidden()
                 .bg(cx.theme().colors().panel_background)
-                .child({
-                    let placeholder = gpui::div()
-                        .id("pane-placeholder")
-                        .h_flex()
+                .child(
+                    ui::h_flex()
                         .size_full()
-                        .justify_center();
-
-                    if !self.should_display_welcome_page() {
-                        placeholder
-                    } else {
-                        if self.welcome_page.is_none() {
-                            let workspace = self.workspace.clone();
-                            self.welcome_page =
-                                Some(cx.new(|cx| WelcomePage::new(workspace, window, cx)));
-                        }
-
-                        if let Some(welcome_page) = self.welcome_page.clone() {
-                            placeholder.child(welcome_page)
-                        } else {
-                            placeholder
-                        }
-                    }
-                });
+                        .justify_center()
+                        .when_some(self.welcome_page.clone(), |container, welcome_page| {
+                            container.child(welcome_page)
+                        }),
+                );
         }
 
-        let input_field = self.input_field.clone();
+        let url = self.request.url.clone();
+        let request_params = self
+            .request
+            .params
+            .iter()
+            .enumerate()
+            .map(|(index, request_param)| {
+                let name = request_param.name.clone();
+                let value = request_param.value.clone();
+
+                ui::h_flex()
+                    .id(("request-param-row", index))
+                    .w_full()
+                    .gap_2()
+                    .child(gpui::div().flex_1().child(name))
+                    .child(gpui::div().flex_1().child(value))
+                    .child(
+                        IconButton::new(("request-param-delete", index), IconName::Trash)
+                            .shape(IconButtonShape::Square)
+                            .variant(ButtonVariant::Outline)
+                            .icon_color(Color::Muted)
+                            .tooltip(Tooltip::text("Delete"))
+                            .on_click(cx.listener(move |pane, _, _, cx| {
+                                pane.request.delete_param(index);
+                                cx.notify();
+                            })),
+                    )
+            })
+            .collect::<Vec<_>>();
         let request_method_menu = {
             let available_request_methods = [
                 Method::GET,
@@ -404,19 +471,14 @@ impl Render for Pane {
 
         let theme_colors = cx.theme().colors();
 
-        gpui::div()
+        ui::v_flex()
             .track_focus(&self.focus_handle)
-            .flex()
-            .flex_col()
             .size_full()
             .bg(theme_colors.panel_background)
             .p_3()
             .child(Label::new("HTTP Request"))
             .child(
-                gpui::div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
+                ui::h_flex()
                     .w_full()
                     .py_2()
                     .gap_2()
@@ -435,7 +497,7 @@ impl Render for Pane {
                         .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )
-                    .child(gpui::div().flex_1().child(input_field))
+                    .child(gpui::div().flex_1().child(url))
                     .child(
                         Button::new("request-send", "Send")
                             .variant(ButtonVariant::Accent)
@@ -448,9 +510,29 @@ impl Render for Pane {
                     ),
             )
             .child(
-                gpui::div()
-                    .flex()
-                    .flex_col()
+                ui::v_flex()
+                    .w_full()
+                    .gap_2()
+                    .pb_2()
+                    .child(ui::h_flex().w_full().child(Label::new("Query Parameters")))
+                    .children(request_params)
+                    .child(
+                        ui::h_flex().child(
+                            Button::new("request-param-add", "Add Parameter")
+                                .icon(IconName::Plus)
+                                .icon_size(IconSize::Small)
+                                .icon_color(Color::Muted)
+                                .variant(ButtonVariant::Outline)
+                                .size(ButtonSize::Medium)
+                                .on_click(cx.listener(move |pane, _, window, cx| {
+                                    pane.request.add_param(window, cx);
+                                    cx.notify();
+                                })),
+                        ),
+                    ),
+            )
+            .child(
+                ui::v_flex()
                     .flex_1()
                     .overflow_hidden()
                     .child(gpui::div().flex_1()),

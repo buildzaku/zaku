@@ -29,8 +29,8 @@ use tokio::sync::{oneshot, watch};
 
 use request::parse_request_file;
 pub use request::{
-    RequestBody, RequestBodyKind, RequestConfig, RequestFile, RequestHeader, RequestMeta,
-    RequestState,
+    RequestFile, RequestFileBody, RequestFileBodyKind, RequestFileConfig, RequestFileHeader,
+    RequestFileMeta, RequestFileState,
 };
 
 use fs::{
@@ -647,7 +647,7 @@ pub struct Entry {
     pub is_external: bool,
     pub is_fifo: bool,
     pub size: u64,
-    pub request: Option<RequestState>,
+    pub request: Option<RequestFileState>,
 }
 
 impl Entry {
@@ -1585,7 +1585,7 @@ impl BackgroundScanner {
 
             child_entry.request = Some(match self.fs.load(child_abs_path.as_ref()).await {
                 Ok(contents) => parse_request_file(&contents),
-                Err(error) => RequestState::Invalid(error.to_string()),
+                Err(error) => RequestFileState::Invalid(error.to_string()),
             });
             new_entries.push(child_entry);
         }
@@ -1668,7 +1668,7 @@ impl BackgroundScanner {
 
                     Some(match self.fs.load(abs_path.as_path()).await {
                         Ok(contents) => parse_request_file(&contents),
-                        Err(error) => RequestState::Invalid(error.to_string()),
+                        Err(error) => RequestFileState::Invalid(error.to_string()),
                     })
                 })
                 .collect::<Vec<_>>(),
