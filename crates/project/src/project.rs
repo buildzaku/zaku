@@ -1,8 +1,13 @@
 pub mod worktree_store;
 
 use anyhow;
+
+#[cfg(feature = "test-support")]
+use gpui::TestAppContext;
+
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task};
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -58,6 +63,35 @@ impl Project {
         })
     }
 
+    #[cfg(feature = "test-support")]
+    pub async fn test(
+        fs: Arc<dyn Fs>,
+        root_path: &Path,
+        cx: &mut TestAppContext,
+    ) -> Entity<Project> {
+        let project = cx.update(|cx| {
+            cx.new({
+                let fs = fs.clone();
+                move |cx| Self::new(fs.clone(), cx)
+            })
+        });
+
+        let worktree = project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(root_path, true, cx)
+            })
+            .await
+            .unwrap();
+
+        worktree
+            .read_with(cx, |worktree, _| {
+                worktree.as_local().unwrap().scan_complete()
+            })
+            .await;
+
+        project
+    }
+
     fn on_worktree_store_event(
         &mut self,
         _: Entity<WorktreeStore>,
@@ -87,6 +121,14 @@ impl Project {
 
     pub fn path_style(&self, cx: &App) -> PathStyle {
         self.worktree_store.read(cx).path_style()
+    }
+
+    pub fn worktree_store(&self) -> Entity<WorktreeStore> {
+        self.worktree_store.clone()
+    }
+
+    pub fn wait_for_initial_scan(&self, cx: &App) -> impl Future<Output = ()> + use<> {
+        self.worktree_store.read(cx).wait_for_initial_scan()
     }
 
     pub fn find_or_create_worktree(

@@ -16,12 +16,17 @@ path = "src/project.rs"
 [[test]]
 name = "integration"
 path = "tests/integration/project_tests.rs"
+required-features = ["test-support"]
+
+[features]
+test-support = ["gpui/test-support"]
 
 [dependencies]
 anyhow = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
+tokio = { workspace = true }
 util = { workspace = true }
 worktree = { workspace = true }
 

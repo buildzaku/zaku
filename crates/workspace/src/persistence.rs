@@ -395,7 +395,7 @@ mod tests {
             panic!("expected a recent workspace");
         };
         assert_eq!(*workspace_id, WorkspaceId::from_i64(1));
-        assert_eq!(location.path(), project_path.as_path());
+        assert_eq!(location.path(), project_path);
         assert_eq!(
             workspace_db
                 .recent_workspace_count()
@@ -474,10 +474,15 @@ mod tests {
         });
         open_workspace.await.expect("workspace open should succeed");
 
-        let flush_serialization = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.flush_serialization(window, cx)
-        });
-        flush_serialization.await;
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
 
         let serialized = DB.workspace_for_id(workspace_id);
         assert!(

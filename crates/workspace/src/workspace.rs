@@ -483,6 +483,21 @@ impl Workspace {
         self.project().read(cx).root(cx)
     }
 
+    pub fn worktree_scan_complete(&self, cx: &App) -> impl Future<Output = ()> + 'static + use<> {
+        let scan_complete = self.project().read(cx).worktree(cx).and_then(|worktree| {
+            worktree
+                .read(cx)
+                .as_local()
+                .map(|worktree| worktree.scan_complete())
+        });
+
+        async move {
+            if let Some(scan_complete) = scan_complete {
+                scan_complete.await;
+            }
+        }
+    }
+
     pub fn flush_serialization(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
         self._schedule_serialize_workspace.take();
         self._serialize_workspace_task.take();
@@ -974,8 +989,15 @@ mod tests {
             .await
             .expect("equivalent newer workspace open should succeed");
 
-        cx.executor().advance_clock(Duration::from_millis(200));
-        cx.run_until_parked();
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
 
         let current_root = workspace.update_in(cx, |workspace, _, cx| workspace.root(cx));
         let recent_workspaces = WORKSPACE_DB
@@ -987,12 +1009,12 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path.as_path())
+                .any(|(_, location, _)| location.path() == canonical_project_path)
         );
         assert!(
             recent_workspaces
                 .iter()
-                .all(|(_, location, _)| location.path() != alternate_project_path.as_path())
+                .all(|(_, location, _)| location.path() != alternate_project_path)
         );
     }
 
@@ -1045,8 +1067,9 @@ mod tests {
             .await
             .expect("first workspace open should succeed");
 
-        cx.executor().advance_clock(Duration::from_millis(200));
-        cx.run_until_parked();
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
 
         let second_open = workspace.update_in(cx, |workspace, _, cx| {
             workspace.project().update(cx, |project, cx| {
@@ -1130,8 +1153,9 @@ mod tests {
             "older workspace open should not report success once superseded"
         );
 
-        cx.executor().advance_clock(Duration::from_millis(200));
-        cx.run_until_parked();
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
 
         let current_root = workspace.update_in(cx, |workspace, _, cx| workspace.root(cx));
         assert_eq!(current_root, Some(second_path));
@@ -1202,13 +1226,8 @@ mod tests {
             .await
             .expect("latest equivalent workspace open should succeed");
 
-        let worktree = workspace
-            .update_in(cx, |workspace, _, cx| {
-                workspace.project().read(cx).worktree(cx)
-            })
-            .expect("latest open should create a worktree");
-
-        cx.update(|_, cx| worktree.read(cx).as_local().unwrap().scan_complete())
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
 
         let current_root = workspace.update_in(cx, |workspace, _, cx| workspace.root(cx));
@@ -1283,11 +1302,16 @@ mod tests {
         });
         open_workspace.await.expect("workspace open should succeed");
 
-        let flush_serialization = workspace.update_in(cx, |workspace, window, cx| {
-            assert!(!workspace.pane.read(cx).should_display_welcome_page());
-            workspace.flush_serialization(window, cx)
-        });
-        flush_serialization.await;
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                assert!(!workspace.pane.read(cx).should_display_welcome_page());
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
 
         let recent_workspaces = WORKSPACE_DB
             .recent_workspaces_on_disk(temp_fs.as_ref())
@@ -1296,12 +1320,14 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| { location.path() == project_path.as_path() })
+                .any(|(_, location, _)| { location.path() == project_path })
         );
     }
 
     #[gpui::test]
     async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = Arc::new(SharedState::new(
             temp_fs.clone(),
@@ -1331,12 +1357,17 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
 
-        workspace.update_in(cx, |workspace, window, cx| {
-            workspace.set_database_id(WorkspaceId::from_i64(1));
-            workspace
-                .open_workspace_for_path(project_path.clone(), window, cx)
-                .detach_and_log_err(cx);
-        });
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.set_database_id(WorkspaceId::from_i64(1));
+                workspace.open_workspace_for_path(project_path.clone(), window, cx)
+            })
+            .await
+            .expect("workspace open should succeed");
+
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
 
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane.clone());
         pane.update_in(cx, |pane, window, cx| {
@@ -1410,13 +1441,8 @@ mod tests {
             .await
             .expect("second workspace open should succeed");
 
-        let worktree = workspace
-            .update_in(cx, |workspace, _, cx| {
-                workspace.project().read(cx).worktree(cx)
-            })
-            .expect("second open should keep the current worktree");
-
-        cx.update(|_, cx| worktree.read(cx).as_local().unwrap().scan_complete())
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
@@ -1492,8 +1518,15 @@ mod tests {
             .await
             .expect("second workspace open should succeed");
 
-        cx.executor().advance_clock(Duration::from_millis(200));
-        cx.run_until_parked();
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
@@ -1509,19 +1542,16 @@ mod tests {
             .expect("recent workspace query should succeed");
 
         assert_eq!(Some(first_worktree_id), second_worktree_id);
-        assert_eq!(
-            current_root.as_deref(),
-            Some(canonical_project_path.as_path())
+        assert_eq!(current_root, Some(canonical_project_path.clone()));
+        assert!(
+            recent_workspaces
+                .iter()
+                .any(|(_, location, _)| location.path() == canonical_project_path)
         );
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path.as_path())
-        );
-        assert!(
-            recent_workspaces
-                .iter()
-                .all(|(_, location, _)| location.path() != alternate_project_path.as_path())
+                .all(|(_, location, _)| location.path() != alternate_project_path)
         );
     }
 
@@ -1591,8 +1621,15 @@ mod tests {
             .await
             .expect("second workspace open should succeed");
 
-        cx.executor().advance_clock(Duration::from_millis(200));
-        cx.run_until_parked();
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
@@ -1612,12 +1649,12 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path.as_path())
+                .any(|(_, location, _)| location.path() == canonical_project_path)
         );
         assert!(
             recent_workspaces
                 .iter()
-                .all(|(_, location, _)| location.path() != alias_project_path.as_path())
+                .all(|(_, location, _)| location.path() != alias_project_path)
         );
     }
 
@@ -1670,6 +1707,10 @@ mod tests {
             .await
             .expect("first workspace open should succeed");
 
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
                 workspace
@@ -1686,6 +1727,10 @@ mod tests {
         second_open
             .await
             .expect("second workspace open should succeed");
+
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
 
         let (current_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);

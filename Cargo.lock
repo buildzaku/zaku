@@ -4641,6 +4641,7 @@ dependencies = [
  "gpui",
  "indoc",
  "serde_json",
+ "tokio",
  "util 0.0.0",
  "util_macros 0.0.0",
  "worktree",

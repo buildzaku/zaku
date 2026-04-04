@@ -9,6 +9,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
+use tokio::sync::watch;
 
 use fs::Fs;
 use util::{
@@ -42,6 +43,7 @@ pub struct WorktreeStore {
     next_entry_id: Arc<AtomicUsize>,
     next_worktree_id: WorktreeIdCounter,
     worktree: Option<Entity<Worktree>>,
+    initial_scan_complete: (watch::Sender<bool>, watch::Receiver<bool>),
     worktree_subscription: Option<Subscription>,
     worktree_path_to_open: Option<Arc<SanitizedPath>>,
     worktree_open_epoch: usize,
@@ -68,6 +70,7 @@ impl WorktreeStore {
             next_entry_id: Default::default(),
             next_worktree_id,
             worktree: None,
+            initial_scan_complete: watch::channel(true),
             worktree_subscription: None,
             worktree_path_to_open: None,
             worktree_open_epoch: 0,
@@ -83,10 +86,60 @@ impl WorktreeStore {
 
     pub fn disable_scanner(&mut self) {
         self.scanning_enabled = false;
+        self.initial_scan_complete.0.send_replace(true);
     }
 
     pub fn worktree(&self) -> Option<Entity<Worktree>> {
         self.worktree.clone()
+    }
+
+    pub fn wait_for_initial_scan(&self) -> impl std::future::Future<Output = ()> + use<> {
+        let mut rx = self.initial_scan_complete.1.clone();
+        async move {
+            let mut done = *rx.borrow_and_update();
+            while !done {
+                if rx.changed().await.is_ok() {
+                    done = *rx.borrow_and_update();
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    pub fn initial_scan_completed(&self) -> bool {
+        *self.initial_scan_complete.1.borrow()
+    }
+
+    fn update_initial_scan_state(&mut self, cx: &App) {
+        let complete = self.pending_worktree_tasks.is_empty()
+            && self
+                .worktree
+                .as_ref()
+                .is_none_or(|worktree| worktree.read(cx).completed_scan_id() >= 1);
+        self.initial_scan_complete.0.send_replace(complete);
+    }
+
+    fn observe_worktree_scan_completion(
+        &mut self,
+        worktree: &Entity<Worktree>,
+        cx: &mut Context<Self>,
+    ) {
+        let scan_complete = worktree
+            .read(cx)
+            .as_local()
+            .map(|worktree| worktree.scan_complete());
+        cx.spawn(async move |this, cx| {
+            if let Some(scan_complete) = scan_complete {
+                scan_complete.await;
+            }
+            this.update(cx, |this, cx| {
+                this.update_initial_scan_state(cx);
+            })
+            .ok();
+            anyhow::Ok(())
+        })
+        .detach();
     }
 
     pub fn snapshot(&self, cx: &App) -> Option<Snapshot> {
@@ -188,6 +241,7 @@ impl WorktreeStore {
                         this.create_local_worktree(fs, canonical_abs_path.clone(), visible, cx);
                     this.pending_worktree_tasks
                         .insert(canonical_abs_path.clone(), task.shared());
+                    this.update_initial_scan_state(cx);
                 }
 
                 let Some(task) = this
@@ -204,8 +258,9 @@ impl WorktreeStore {
             let worktree = match task.await {
                 Ok(worktree) => worktree,
                 Err(error) => {
-                    worktree_store.update(cx, |this, _| {
+                    worktree_store.update(cx, |this, cx| {
                         this.pending_worktree_tasks.remove(&canonical_abs_path);
+                        this.update_initial_scan_state(cx);
                     })?;
 
                     return Err(anyhow!("{error:#}"));
@@ -287,6 +342,8 @@ impl WorktreeStore {
             },
         ));
 
+        self.update_initial_scan_state(cx);
+        self.observe_worktree_scan_completion(worktree, cx);
         cx.emit(WorktreeStoreEvent::WorktreeAdded);
     }
 
@@ -295,6 +352,7 @@ impl WorktreeStore {
         let removed_worktree = self.worktree.take();
         self.worktree_path_to_open = None;
         self.worktree_open_epoch = self.worktree_open_epoch.wrapping_add(1);
+        self.update_initial_scan_state(cx);
 
         if removed_worktree.is_some() {
             cx.emit(WorktreeStoreEvent::WorktreeRemoved);
