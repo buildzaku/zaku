@@ -3,24 +3,18 @@ use gpui::{
     Action, App, Context, FocusHandle, Focusable, FontWeight, Render, SharedString, WeakEntity,
     Window, prelude::*,
 };
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
 
-use menu::{SelectNext, SelectPrevious};
+use actions::{
+    menu::{SelectNext, SelectPrevious},
+    workspace::{Open, OpenRecentProject},
+};
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, FixedWidth, Icon, IconName, IconSize,
     KeyBinding, Label, LabelCommon, LabelSize,
 };
 
-use crate::{OpenWorkspace, SerializedWorkspaceLocation, WORKSPACE_DB, Workspace, WorkspaceId};
-
-#[derive(PartialEq, Clone, Debug, Deserialize, Serialize, JsonSchema, Action)]
-#[action(namespace = welcome)]
-#[serde(transparent)]
-pub struct OpenRecentProject {
-    pub index: usize,
-}
+use crate::{SerializedWorkspaceLocation, WORKSPACE_DB, Workspace, WorkspaceId};
 
 #[derive(IntoElement)]
 struct SectionHeader {
@@ -159,7 +153,7 @@ const CONTENT: Section<1> = Section {
     entries: [SectionEntry {
         icon: IconName::FolderOpen,
         title: "Open Project",
-        action: &OpenWorkspace,
+        action: &Open::DEFAULT,
     }],
 };
 

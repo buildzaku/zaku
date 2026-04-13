@@ -6,14 +6,6 @@ use gpui::{
     Action, AnyView, App, Context, Entity, EntityId, FocusHandle, Focusable, Pixels, Render, Window,
 };
 
-pub mod project_panel {
-    gpui::actions!(project_panel, [ToggleFocus]);
-}
-
-pub mod response_panel {
-    gpui::actions!(response_panel, [ToggleFocus]);
-}
-
 pub use project::ProjectPanel;
 pub use response::ResponsePanel;
 

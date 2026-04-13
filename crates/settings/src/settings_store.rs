@@ -7,17 +7,12 @@ use serde::{
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
-    sync::Arc,
 };
 
-use fs::Fs;
 use settings_macros::{MergeFrom, with_fallible_options};
 
+use crate::fallible_options::{ParseStatus, parse_json};
 use crate::merge_from::MergeFrom;
-use crate::{
-    fallible_options::{ParseStatus, parse_json},
-    paths,
-};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -282,21 +277,6 @@ impl SettingsStore {
 
     pub fn content(&self) -> &SettingsContent {
         &self.merged_settings
-    }
-
-    pub async fn load_settings(fs: &Arc<dyn Fs>) -> anyhow::Result<String> {
-        match fs.load(paths::settings_file()).await {
-            Ok(text) => Ok(text),
-            Err(error) => {
-                if let Some(io_error) = error.downcast_ref::<std::io::Error>()
-                    && io_error.kind() == std::io::ErrorKind::NotFound
-                {
-                    return Ok(crate::default_user_settings().into_owned());
-                }
-
-                Err(error)
-            }
-        }
     }
 
     pub fn set_default_settings(&mut self, default_settings_content: &str, cx: &mut App) {

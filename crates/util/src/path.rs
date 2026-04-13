@@ -35,7 +35,7 @@ impl PathStyle {
         Self::Windows
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     pub const fn local() -> Self {
         Self::Posix
     }
@@ -148,7 +148,7 @@ pub struct SanitizedPath(Path);
 
 impl SanitizedPath {
     pub fn new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         return Self::unchecked_new(path.as_ref());
 
         #[cfg(target_os = "windows")]
@@ -162,7 +162,7 @@ impl SanitizedPath {
     }
 
     pub fn from_arc(path: Arc<Path>) -> Arc<Self> {
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         return unsafe { std::mem::transmute::<Arc<Path>, Arc<Self>>(path) };

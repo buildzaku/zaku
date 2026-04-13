@@ -1,6 +1,3 @@
-#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-compile_error!("settings only supports macOS, Linux and Windows");
-
 use std::{path::PathBuf, sync::OnceLock};
 
 fn home_dir() -> PathBuf {
@@ -98,4 +95,10 @@ pub fn old_log_file() -> &'static PathBuf {
 pub fn settings_file() -> &'static PathBuf {
     static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
     SETTINGS_FILE.get_or_init(|| config_dir().join("settings.json"))
+}
+
+/// Returns the path to the `keymap.json` file.
+pub fn keymap_file() -> &'static PathBuf {
+    static KEYMAP_FILE: OnceLock<PathBuf> = OnceLock::new();
+    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.json"))
 }

@@ -50,7 +50,7 @@ pub struct WorktreeStore {
     scanning_enabled: bool,
     pending_worktree_tasks: HashMap<
         Arc<SanitizedPath>,
-        future::Shared<Task<std::result::Result<Entity<Worktree>, Arc<anyhow::Error>>>>,
+        future::Shared<Task<Result<Entity<Worktree>, Arc<anyhow::Error>>>>,
     >,
     fs: Arc<dyn Fs>,
 }
@@ -302,7 +302,7 @@ impl WorktreeStore {
         abs_path: Arc<SanitizedPath>,
         visible: bool,
         cx: &mut Context<Self>,
-    ) -> Task<std::result::Result<Entity<Worktree>, Arc<anyhow::Error>>> {
+    ) -> Task<Result<Entity<Worktree>, Arc<anyhow::Error>>> {
         let next_entry_id = self.next_entry_id.clone();
         let scanning_enabled = self.scanning_enabled;
         let worktree_id = self.next_worktree_id();

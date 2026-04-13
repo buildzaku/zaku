@@ -3,15 +3,23 @@ use gpui::{
     WeakEntity, Window, prelude::*,
 };
 
+use actions::workspace::project_panel;
 use project::{EntryKind, Project, ProjectEvent, Snapshot};
-
 use theme::ActiveTheme;
 use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
 
-use crate::{
-    pane::Pane,
-    panel::{Panel, project_panel},
-};
+use crate::{Workspace, pane::Pane, panel::Panel};
+
+pub fn init(cx: &mut App) {
+    cx.observe_new(
+        |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
+            workspace.register_action(|workspace, _: &project_panel::ToggleFocus, window, cx| {
+                workspace.toggle_panel_focus::<ProjectPanel>(window, cx);
+            });
+        },
+    )
+    .detach();
+}
 
 pub struct ProjectPanel {
     focus_handle: FocusHandle,

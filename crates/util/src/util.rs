@@ -1,6 +1,7 @@
 pub mod command;
 pub mod path;
 pub mod rel_path;
+pub mod serde;
 pub mod test;
 
 use log::{Level, Record};
@@ -50,7 +51,7 @@ fn log_error_with_caller<E>(caller: Location<'_>, error: E)
 where
     E: Debug,
 {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let file = caller.file();
 
     #[cfg(target_os = "windows")]

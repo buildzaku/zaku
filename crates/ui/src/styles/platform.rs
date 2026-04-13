@@ -1,6 +1,3 @@
-#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-compile_error!("ui only supports macOS, Linux and Windows");
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub enum PlatformStyle {
     Mac,

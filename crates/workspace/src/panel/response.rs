@@ -4,16 +4,25 @@ use gpui::{
 };
 use std::time::Duration;
 
+use actions::workspace::response_panel;
 use editor::Editor;
 use http_client::StatusCode;
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{Color, IconName, Label, LabelCommon, LabelSize};
 
-use crate::{
-    pane::Pane,
-    panel::{Panel, response_panel},
-};
+use crate::{Workspace, pane::Pane, panel::Panel};
+
+pub fn init(cx: &mut App) {
+    cx.observe_new(
+        |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
+            workspace.register_action(|workspace, _: &response_panel::ToggleFocus, window, cx| {
+                workspace.toggle_panel_focus::<ResponsePanel>(window, cx);
+            });
+        },
+    )
+    .detach();
+}
 
 fn format_bytes_received(bytes_received: usize) -> SharedString {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB"];

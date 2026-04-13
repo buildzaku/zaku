@@ -12,11 +12,12 @@ use std::{
     cmp::{self, Ordering},
     ops::Range,
 };
+
+use actions::editor::HandleInput;
 use theme::ActiveTheme;
 
 use crate::{
-    ActiveLineHighlight, Editor, EditorMode, EditorStyle, HandleInput, MAX_LINE_LEN,
-    SizingBehavior,
+    ActiveLineHighlight, Editor, EditorMode, EditorStyle, MAX_LINE_LEN, SizingBehavior,
     display_map::{DisplayPoint, DisplaySnapshot},
     scroll::ScrollOffset,
 };

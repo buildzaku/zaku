@@ -1,18 +1,15 @@
-mod actions;
 mod display_map;
 mod element;
 mod movement;
 mod scroll;
 mod selections_collection;
-
-pub use actions::*;
 pub use element::EditorElement;
 
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontStyle, HighlightStyle, Hsla,
-    KeyBinding, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
-    SharedString, Subscription, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
+    KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
+    Subscription, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
 };
 use multi_buffer::{
     Anchor, Capability, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
@@ -38,6 +35,17 @@ use text::{
     TransactionId,
 };
 
+use actions::editor::{
+    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
+    DeleteToNextSubwordEnd, DeleteToNextWordEnd, DeleteToPreviousSubwordStart,
+    DeleteToPreviousWordStart, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
+    MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextSubwordEnd, MoveToNextWordEnd,
+    MoveToPreviousSubwordStart, MoveToPreviousWordStart, MoveUp, Newline, Paste, Redo,
+    RedoSelection, SelectAll, SelectDown, SelectLeft, SelectRight, SelectToBeginning,
+    SelectToBeginningOfLine, SelectToEnd, SelectToEndOfLine, SelectToNextSubwordEnd,
+    SelectToNextWordEnd, SelectToPreviousSubwordStart, SelectToPreviousWordStart, SelectUp, Undo,
+    UndoSelection,
+};
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use theme::{ActiveTheme, ThemeSettings};
 
@@ -45,9 +53,6 @@ use crate::display_map::{DisplayPoint, HighlightKey};
 use crate::element::PositionMap;
 use crate::selections_collection::{MutableSelectionsCollection, SelectionsCollection};
 
-pub(crate) const KEY_CONTEXT: &str = "Editor";
-const KEY_CONTEXT_FULL: &str = "Editor && mode == full";
-const KEY_CONTEXT_AUTO_HEIGHT: &str = "Editor && mode == auto_height";
 const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
 static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
@@ -72,227 +77,7 @@ pub fn local_buffer<T: Into<String>>(text: T, cx: &mut App) -> Entity<TextBuffer
     cx.new(move |_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text))
 }
 
-pub fn init(cx: &mut App) {
-    cx.bind_keys([
-        KeyBinding::new("backspace", Backspace, Some(KEY_CONTEXT)),
-        KeyBinding::new("delete", Delete, Some(KEY_CONTEXT)),
-        KeyBinding::new("enter", Newline, Some(KEY_CONTEXT_FULL)),
-        KeyBinding::new("shift-enter", Newline, Some(KEY_CONTEXT_FULL)),
-        KeyBinding::new("ctrl-enter", Newline, Some(KEY_CONTEXT_AUTO_HEIGHT)),
-        KeyBinding::new("shift-enter", Newline, Some(KEY_CONTEXT_AUTO_HEIGHT)),
-        KeyBinding::new("left", MoveLeft, Some(KEY_CONTEXT)),
-        KeyBinding::new("right", MoveRight, Some(KEY_CONTEXT)),
-        KeyBinding::new("up", MoveUp, Some(KEY_CONTEXT)),
-        KeyBinding::new("down", MoveDown, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-left", SelectLeft, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-right", SelectRight, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-up", SelectUp, Some(KEY_CONTEXT)),
-        KeyBinding::new("shift-down", SelectDown, Some(KEY_CONTEXT)),
-        KeyBinding::new(
-            "home",
-            MoveToBeginningOfLine {
-                stop_at_soft_wraps: true,
-                stop_at_indent: true,
-            },
-            Some(KEY_CONTEXT),
-        ),
-        KeyBinding::new(
-            "end",
-            MoveToEndOfLine {
-                stop_at_soft_wraps: true,
-            },
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-left", MoveToPreviousWordStart, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-left", MoveToPreviousWordStart, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-right", MoveToNextWordEnd, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-right", MoveToNextWordEnd, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "alt-shift-left",
-            SelectToPreviousWordStart,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new(
-            "ctrl-shift-left",
-            SelectToPreviousWordStart,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("alt-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-shift-right", SelectToNextWordEnd, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "ctrl-alt-left",
-            MoveToPreviousSubwordStart,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-right", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-b", MoveToPreviousSubwordStart, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("ctrl-alt-f", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "ctrl-alt-shift-left",
-            SelectToPreviousSubwordStart,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "ctrl-alt-shift-right",
-            SelectToNextSubwordEnd,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "ctrl-alt-shift-b",
-            SelectToPreviousSubwordStart,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "ctrl-alt-shift-f",
-            SelectToNextSubwordEnd,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new(
-            "ctrl-alt-left",
-            MoveToPreviousSubwordStart,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-alt-right", MoveToNextSubwordEnd, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new(
-            "ctrl-alt-shift-left",
-            SelectToPreviousSubwordStart,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new(
-            "ctrl-alt-shift-right",
-            SelectToNextSubwordEnd,
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "cmd-backspace",
-            DeleteToBeginningOfLine::default(),
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new(
-            "ctrl-backspace",
-            DeleteToPreviousWordStart::default(),
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-delete", DeleteToEndOfLine, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new(
-            "ctrl-delete",
-            DeleteToNextWordEnd::default(),
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "cmd-left",
-            MoveToBeginningOfLine {
-                stop_at_soft_wraps: true,
-                stop_at_indent: true,
-            },
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "cmd-right",
-            MoveToEndOfLine {
-                stop_at_soft_wraps: true,
-            },
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "cmd-shift-left",
-            SelectToBeginningOfLine {
-                stop_at_soft_wraps: true,
-                stop_at_indent: true,
-            },
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "cmd-shift-right",
-            SelectToEndOfLine {
-                stop_at_soft_wraps: true,
-            },
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-up", MoveToBeginning, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-down", MoveToEnd, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "alt-backspace",
-            DeleteToPreviousWordStart::default(),
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "ctrl-w",
-            DeleteToPreviousWordStart::default(),
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new(
-            "alt-delete",
-            DeleteToNextWordEnd::default(),
-            Some(KEY_CONTEXT),
-        ),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-a", SelectAll, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-a", SelectAll, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-c", Copy, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-c", Copy, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-x", Cut, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-x", Cut, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-v", Paste, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-v", Paste, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-z", Undo, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-z", Undo, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-u", UndoSelection, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-u", UndoSelection, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-shift-z", Redo, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-y", Redo, Some(KEY_CONTEXT)),
-        #[cfg(target_os = "macos")]
-        KeyBinding::new("cmd-shift-u", RedoSelection, Some(KEY_CONTEXT)),
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        KeyBinding::new("ctrl-shift-u", RedoSelection, Some(KEY_CONTEXT)),
-    ]);
-
+pub fn init(_cx: &mut App) {
     _ = ERASED_EDITOR_FACTORY.set(|window, cx| {
         Arc::new(ErasedEditorImpl(
             cx.new(|cx| Editor::single_line(window, cx)),

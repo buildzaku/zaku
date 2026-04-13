@@ -275,7 +275,7 @@ async fn test_absolute_path_resolves_relative_paths_against_current_root(cx: &mu
 
     let project_path = temp_fs.path().join("project");
     let request_path = project_path.join("nested").join("request.toml");
-    let project = Project::test(temp_fs.clone(), &project_path, cx).await;
+    let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
 
     let (resolved_request_path, resolved_project_path) = cx.update(|cx| {
         let project = project.read(cx);
@@ -297,7 +297,7 @@ async fn test_initial_scan_complete(cx: &mut TestAppContext) {
     temp_fs.insert_tree(path!("project"), Default::default());
 
     let project_path = temp_fs.path().join("project");
-    let project = Project::test(temp_fs.clone(), &project_path, cx).await;
+    let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
 
     project
         .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))

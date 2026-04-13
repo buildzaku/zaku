@@ -5,6 +5,7 @@ use gpui::{
 };
 use std::sync::Arc;
 
+use actions::workspace::{ToggleBottomDock, ToggleLeftDock};
 use theme::ActiveTheme;
 
 use crate::{
@@ -214,8 +215,8 @@ impl Dock {
 
     pub fn toggle_action(&self) -> Box<dyn Action> {
         match self.position {
-            DockPosition::Left => crate::ToggleLeftDock.boxed_clone(),
-            DockPosition::Bottom => crate::ToggleBottomDock.boxed_clone(),
+            DockPosition::Left => ToggleLeftDock.boxed_clone(),
+            DockPosition::Bottom => ToggleBottomDock.boxed_clone(),
         }
     }
 
@@ -358,6 +359,73 @@ impl Render for Dock {
             gpui::div()
                 .key_context(Self::dispatch_context())
                 .track_focus(&self.focus_handle)
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test {
+    use super::*;
+
+    pub struct TestPanel {
+        pub active: bool,
+        pub focus_handle: FocusHandle,
+        pub default_size: Pixels,
+        pub activation_priority: u32,
+    }
+
+    gpui::actions!(test_only, [ToggleTestPanel]);
+
+    impl TestPanel {
+        pub fn new(activation_priority: u32, cx: &mut App) -> Self {
+            Self {
+                active: false,
+                focus_handle: cx.focus_handle(),
+                default_size: gpui::px(250.0),
+                activation_priority,
+            }
+        }
+    }
+
+    impl Render for TestPanel {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            gpui::div().id("test-panel").track_focus(&self.focus_handle)
+        }
+    }
+
+    impl Panel for TestPanel {
+        fn panel_key() -> &'static str {
+            "TestPanel"
+        }
+
+        fn default_size(&self, _window: &Window, _: &App) -> Pixels {
+            self.default_size
+        }
+
+        fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconName> {
+            None
+        }
+
+        fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
+            None
+        }
+
+        fn toggle_action(&self) -> Box<dyn Action> {
+            ToggleTestPanel.boxed_clone()
+        }
+
+        fn set_active(&mut self, active: bool, _window: &mut Window, _cx: &mut Context<Self>) {
+            self.active = active;
+        }
+
+        fn activation_priority(&self) -> u32 {
+            self.activation_priority
+        }
+    }
+
+    impl Focusable for TestPanel {
+        fn focus_handle(&self, _cx: &App) -> FocusHandle {
+            self.focus_handle.clone()
         }
     }
 }

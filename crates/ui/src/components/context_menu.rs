@@ -4,7 +4,7 @@ use gpui::{
 };
 use std::{rc::Rc, time::Duration};
 
-use menu::{SelectFirst, SelectLast, SelectNext, SelectPrevious};
+use actions::menu::{self, SelectFirst, SelectLast, SelectNext, SelectPrevious};
 use theme::ThemeSettings;
 
 use crate::{

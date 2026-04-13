@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "actions"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "schemars",
+ "serde",
+ "util 0.0.0",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1576,12 +1586,12 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 name = "editor"
 version = "0.0.0"
 dependencies = [
+ "actions",
  "gpui",
  "indoc",
  "input",
  "multi_buffer",
  "pretty_assertions",
- "schemars",
  "serde",
  "settings",
  "text",
@@ -3707,13 +3717,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "menu"
-version = "0.0.0"
-dependencies = [
- "gpui",
-]
-
-[[package]]
 name = "metal"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5668,6 +5671,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_path_to_error"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
+dependencies = [
+ "itoa",
+ "serde",
+ "serde_core",
+]
+
+[[package]]
 name = "serde_repr"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5724,6 +5738,7 @@ dependencies = [
  "rust-embed",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "settings_macros",
  "util 0.0.0",
 ]
@@ -6732,9 +6747,9 @@ dependencies = [
 name = "ui"
 version = "0.0.0"
 dependencies = [
+ "actions",
  "gpui",
  "icons",
- "menu",
  "settings",
  "smallvec",
  "theme",
@@ -8284,6 +8299,7 @@ dependencies = [
 name = "workspace"
 version = "0.0.0"
 dependencies = [
+ "actions",
  "anyhow",
  "chrono",
  "db",
@@ -8295,11 +8311,9 @@ dependencies = [
  "indoc",
  "input",
  "log",
- "menu",
  "multi_buffer",
  "project",
  "reqwest_client",
- "schemars",
  "serde",
  "serde_json",
  "settings",
@@ -8510,6 +8524,7 @@ dependencies = [
 name = "zaku"
 version = "0.0.0"
 dependencies = [
+ "actions",
  "anyhow",
  "ashpd",
  "assets",
@@ -8522,7 +8537,6 @@ dependencies = [
  "indoc",
  "log",
  "logger",
- "menu",
  "mimalloc",
  "settings",
  "theme",

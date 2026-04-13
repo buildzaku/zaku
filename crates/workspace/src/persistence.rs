@@ -13,24 +13,25 @@ use crate::WorkspaceId;
 
 pub struct WorkspaceDb(ThreadSafeConnection);
 
-#[cfg(not(any(test, feature = "test-support")))]
-pub static DB: LazyLock<WorkspaceDb> =
-    LazyLock::new(|| smol::block_on(WorkspaceDb::open_default()));
-
-#[cfg(any(test, feature = "test-support"))]
-pub static DB: LazyLock<WorkspaceDb> =
-    LazyLock::new(|| smol::block_on(WorkspaceDb::open_test_db("DB")));
+pub static DB: LazyLock<WorkspaceDb> = LazyLock::new(|| smol::block_on(WorkspaceDb::open()));
 
 impl WorkspaceDb {
-    #[cfg(not(any(test, feature = "test-support")))]
-    async fn open_default() -> Self {
-        let database_path = default_database_dir();
-        let workspace_db = Self(db::open_db(&database_path).await);
-        workspace_db
-            .initialize_schema()
-            .await
-            .expect("workspace persistence schema should initialize");
-        workspace_db
+    async fn open() -> Self {
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            Self::open_test_db("DB").await
+        }
+
+        #[cfg(not(any(test, feature = "test-support")))]
+        {
+            let database_path = default_database_dir();
+            let workspace_db = Self(db::open_db(&database_path).await);
+            workspace_db
+                .initialize_schema()
+                .await
+                .expect("workspace persistence schema should initialize");
+            workspace_db
+        }
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -52,7 +53,7 @@ impl WorkspaceDb {
                     .and_then(|mut f| f().context("failed to allocate next workspace id"))?
                     .context("next workspace id query returned no row")?;
 
-                Ok(WorkspaceId::from_i64(next_id))
+                Ok(WorkspaceId::from(next_id))
             })
             .await
     }
@@ -271,7 +272,7 @@ impl WorkspaceDb {
                 .into_iter()
                 .map(|(id, location, timestamp)| {
                     (
-                        WorkspaceId::from_i64(id),
+                        WorkspaceId::from(id),
                         SerializedWorkspaceLocation::Local(location),
                         parse_timestamp(&timestamp),
                     )
@@ -371,7 +372,7 @@ mod tests {
         let project_path = temp_fs.path().join("project");
         workspace_db
             .save_workspace(SerializedWorkspace {
-                id: WorkspaceId::from_i64(1),
+                id: WorkspaceId::from(1),
                 location: SerializedWorkspaceLocation::Local(project_path.clone()),
                 session_id: Some("session-a".to_string()),
                 window_id: Some(10),
@@ -379,7 +380,7 @@ mod tests {
             .await;
         workspace_db
             .save_workspace(SerializedWorkspace {
-                id: WorkspaceId::from_i64(1),
+                id: WorkspaceId::from(1),
                 location: SerializedWorkspaceLocation::Local(project_path.clone()),
                 session_id: Some("session-a".to_string()),
                 window_id: Some(10),
@@ -394,7 +395,7 @@ mod tests {
         let Some((workspace_id, location, _timestamp)) = recent_workspaces.first() else {
             panic!("expected a recent workspace");
         };
-        assert_eq!(*workspace_id, WorkspaceId::from_i64(1));
+        assert_eq!(*workspace_id, WorkspaceId::from(1));
         assert_eq!(location.path(), project_path);
         assert_eq!(
             workspace_db
@@ -413,7 +414,7 @@ mod tests {
 
         workspace_db
             .save_workspace(SerializedWorkspace {
-                id: WorkspaceId::from_i64(1),
+                id: WorkspaceId::from(1),
                 location: SerializedWorkspaceLocation::Local(path.clone()),
                 session_id: Some("session-a".to_string()),
                 window_id: Some(10),

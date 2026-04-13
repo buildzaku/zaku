@@ -2,7 +2,7 @@ pub mod worktree_store;
 
 use anyhow;
 
-#[cfg(feature = "test-support")]
+#[cfg(any(test, feature = "test-support"))]
 use gpui::TestAppContext;
 
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task};
@@ -63,8 +63,8 @@ impl Project {
         })
     }
 
-    #[cfg(feature = "test-support")]
-    pub async fn test(
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn test_new(
         fs: Arc<dyn Fs>,
         root_path: &Path,
         cx: &mut TestAppContext,

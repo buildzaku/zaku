@@ -1,10 +1,9 @@
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
-use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{
-    App, Application, Bounds, Empty, KeyBinding, Pixels, PromptLevel, QuitMode, Size, Task,
-    WindowBounds, WindowOptions, prelude::*,
+    App, Application, Bounds, Empty, Pixels, PromptLevel, QuitMode, Size, WindowBounds,
+    WindowOptions, prelude::*,
 };
 use gpui_platform;
 use indoc::formatdoc;
@@ -22,11 +21,8 @@ use uuid::Uuid;
 
 use assets::Assets;
 use fs::{Fs, NativeFs};
-use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::{CloseWindow, Root, SharedState, Workspace};
-
-gpui::actions!(zaku, [Quit]);
+use workspace::{Root, SharedState, Workspace};
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -63,38 +59,21 @@ fn main() {
                 fs.clone(),
                 settings::settings_file().clone(),
             );
-            handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
+            let (user_keymap_file_rx, user_keymap_watcher) = settings::watch_config_file(
+                cx.background_executor(),
+                fs.clone(),
+                settings::keymap_file().clone(),
+            );
+            zaku::handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
+            zaku::handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
             theme::init(LoadThemes::All(Box::new(Assets)), cx);
             register_embedded_fonts(cx);
-            menu::init(cx);
             editor::init(cx);
             let shared_state = Arc::new(SharedState::new(fs, Uuid::new_v4().to_string()));
             workspace::init(shared_state.clone(), cx);
-
-            cx.bind_keys([KeyBinding::new("cmd-q", Quit, None)]);
-            cx.on_action(quit);
-            cx.observe_new(|_root: &mut Root, window, cx| {
-                let Some(window) = window else {
-                    return;
-                };
-
-                let root_handle = cx.entity().downgrade();
-                window.on_window_should_close(cx, move |window, cx| {
-                    root_handle
-                        .update(cx, |root, cx| {
-                            root.close_window(&CloseWindow, window, cx);
-                            false
-                        })
-                        .unwrap_or(true)
-                });
-            })
-            .detach();
-            cx.on_window_closed(|cx| {
-                if cx.windows().is_empty() {
-                    cx.quit();
-                }
-            })
-            .detach();
+            workspace::panel::project::init(cx);
+            workspace::panel::response::init(cx);
+            zaku::init(cx);
 
             cx.activate(true);
 
@@ -134,44 +113,6 @@ fn init_paths() -> HashMap<ErrorKind, Vec<&'static Path>> {
         }
         errors
     })
-}
-
-fn handle_settings_file_changes(
-    mut user_settings_file_rx: UnboundedReceiver<String>,
-    user_settings_watcher: Task<()>,
-    cx: &mut App,
-) {
-    let user_content = match cx
-        .foreground_executor()
-        .block_on(user_settings_file_rx.next())
-    {
-        Some(content) => content,
-        None => {
-            log::error!("Failed to load settings file: settings channel closed");
-            settings::default_user_settings().into_owned()
-        }
-    };
-
-    cx.update_global::<SettingsStore, _>(|store, cx| {
-        let result = store.set_user_settings(&user_content, cx);
-        if let settings::ParseStatus::Failed { error } = &result {
-            log::error!("Failed to load user settings: {error}");
-        }
-    });
-
-    cx.spawn(async move |cx| {
-        let _user_settings_watcher = user_settings_watcher;
-        while let Some(content) = user_settings_file_rx.next().await {
-            cx.update_global(|store: &mut SettingsStore, cx| {
-                let result = store.set_user_settings(&content, cx);
-                if let settings::ParseStatus::Failed { error } = &result {
-                    log::error!("Failed to load user settings: {error}");
-                }
-                cx.refresh_windows();
-            });
-        }
-    })
-    .detach();
 }
 
 fn register_embedded_fonts(cx: &App) {
@@ -316,35 +257,4 @@ fn fail_to_open_window(error: anyhow::Error, _cx: &mut App) {
         })
         .detach();
     }
-}
-
-fn quit(_: &Quit, cx: &mut App) {
-    cx.spawn(async move |cx| {
-        let workspace_windows = cx.update(|cx| {
-            cx.windows()
-                .into_iter()
-                .filter_map(|window| window.downcast::<Root>())
-                .collect::<Vec<_>>()
-        });
-
-        let mut flush_tasks = Vec::new();
-        for window in &workspace_windows {
-            match window.update(cx, |root, window, cx| {
-                root.workspace().update(cx, |workspace, cx| {
-                    workspace.flush_serialization(window, cx)
-                })
-            }) {
-                Ok(flush_task) => flush_tasks.push(flush_task),
-                Err(error) => {
-                    log::error!("Failed to flush workspace serialization before quit: {error}");
-                }
-            }
-        }
-
-        futures::future::join_all(flush_tasks).await;
-
-        cx.update(|cx| cx.quit());
-        anyhow::Ok(())
-    })
-    .detach_and_log_err(cx);
 }

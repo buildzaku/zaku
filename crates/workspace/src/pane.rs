@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use actions::workspace::SendRequest;
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::InputField;
 use reqwest_client::ReqwestClient;
@@ -18,7 +19,7 @@ use ui::{
     Label, Tooltip,
 };
 
-use crate::{SendRequest, Workspace, panel::response::ResponseState, welcome::WelcomePage};
+use crate::{Workspace, panel::response::ResponseState, welcome::WelcomePage};
 
 fn normalize_url(url: String) -> Option<Url> {
     let url = url.trim();

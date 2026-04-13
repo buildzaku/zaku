@@ -1,5 +1,5 @@
 [package]
-name = "menu"
+name = "actions"
 version.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -10,8 +10,11 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "menu"
-path = "src/menu.rs"
+name = "actions"
+path = "src/actions.rs"
 
 [dependencies]
 gpui = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+util = { workspace = true }

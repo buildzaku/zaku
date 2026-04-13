@@ -7,18 +7,19 @@ use multi_buffer::{Capability, MultiBufferOffset};
 use pretty_assertions::assert_eq;
 use std::ops::Range;
 
-use settings::SettingsStore;
-
-use crate::display_map::{DisplayPoint, DisplayRow};
-use crate::{
+use actions::editor::{
     Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
     DeleteToNextSubwordEnd, DeleteToNextWordEnd, DeleteToPreviousSubwordStart,
-    DeleteToPreviousWordStart, Editor, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
+    DeleteToPreviousWordStart, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
     MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextWordEnd, MoveToPreviousWordStart,
     MoveUp, Newline, Paste, Redo, RedoSelection, SelectAll, SelectToBeginning,
     SelectToBeginningOfLine, SelectToEnd, SelectToEndOfLine, SelectToNextWordEnd,
-    SelectToPreviousWordStart, Undo, UndoSelection, tests::context::EditorTestContext,
+    SelectToPreviousWordStart, Undo, UndoSelection,
 };
+use settings::SettingsStore;
+
+use crate::display_map::{DisplayPoint, DisplayRow};
+use crate::{Editor, tests::context::EditorTestContext};
 
 fn init_test(cx: &mut TestAppContext) {
     cx.update(|cx| {

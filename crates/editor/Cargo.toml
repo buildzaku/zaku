@@ -14,10 +14,10 @@ name = "editor"
 path = "src/editor.rs"
 
 [dependencies]
+actions = { workspace = true }
 gpui = { workspace = true }
 input = { workspace = true }
 multi_buffer = { workspace = true }
-schemars = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }
