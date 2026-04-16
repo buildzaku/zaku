@@ -1,6 +1,5 @@
 [package]
 name = "workspace"
-version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -35,6 +34,7 @@ http_client = { workspace = true }
 indoc = { workspace = true }
 input = { workspace = true }
 log = { workspace = true }
+metadata = { workspace = true }
 multi_buffer = { workspace = true }
 project = { workspace = true }
 reqwest_client = { workspace = true }

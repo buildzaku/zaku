@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use assets::Assets;
 use fs::{Fs, NativeFs};
+use metadata::ZAKU_IDENTIFIER;
 use theme::LoadThemes;
 use workspace::{Root, SharedState, Workspace};
 
@@ -74,6 +75,8 @@ fn main() {
             workspace::panel::project::init(cx);
             workspace::panel::response::init(cx);
             zaku::init(cx);
+            let menus = zaku::app_menu(cx);
+            cx.set_menus(menus);
 
             cx.activate(true);
 
@@ -83,6 +86,7 @@ fn main() {
             cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    app_id: Some(ZAKU_IDENTIFIER.to_owned()),
                     ..Default::default()
                 },
                 move |window, cx| {
@@ -189,6 +193,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
             if let Ok(window) = cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    app_id: Some(ZAKU_IDENTIFIER.to_owned()),
                     ..Default::default()
                 },
                 |_, cx| cx.new(|_| Empty),

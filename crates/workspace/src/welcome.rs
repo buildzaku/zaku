@@ -8,6 +8,7 @@ use actions::{
     menu::{SelectNext, SelectPrevious},
     workspace::{Open, OpenRecentProject},
 };
+use metadata::{ZAKU_DESCRIPTION, ZAKU_NAME};
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, FixedWidth, Icon, IconName, IconSize,
@@ -37,7 +38,7 @@ impl RenderOnce for SectionHeader {
             .gap_2()
             .child(
                 Label::new(self.title.to_ascii_uppercase())
-                    .buffer_font(cx)
+                    .font_buffer(cx)
                     .color(Color::Muted)
                     .size(LabelSize::XSmall),
             )
@@ -308,12 +309,12 @@ impl Render for WelcomePage {
                     ui::v_flex()
                         .items_center()
                         .child(
-                            Label::new("Welcome to Zaku")
+                            Label::new(format!("Welcome to {ZAKU_NAME}"))
                                 .size(LabelSize::Large)
                                 .weight(FontWeight::MEDIUM),
                         )
                         .child(
-                            Label::new("Fast, open-source API client with fangs.")
+                            Label::new(ZAKU_DESCRIPTION)
                                 .size(LabelSize::Small)
                                 .color(Color::Muted)
                                 .italic(),

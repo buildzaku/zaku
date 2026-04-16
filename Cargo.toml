@@ -10,6 +10,7 @@ members = [
   "crates/icons",
   "crates/input",
   "crates/logger",
+  "crates/metadata",
   "crates/multi_buffer",
   "crates/project",
   "crates/reqwest_client",
@@ -26,7 +27,6 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.0"
 license = "AGPL-3.0-or-later"
 authors = ["Mayank Verma <errmayank@gmail.com>"]
 edition = "2024"
@@ -115,6 +115,7 @@ http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
 logger = { path = "crates/logger" }
+metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }
 project = { path = "crates/project" }
 reqwest_client = { path = "crates/reqwest_client" }

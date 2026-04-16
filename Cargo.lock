@@ -3717,6 +3717,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "metadata"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "toml 1.1.0+spec-1.1.0",
+]
+
+[[package]]
 name = "metal"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8311,6 +8319,7 @@ dependencies = [
  "indoc",
  "input",
  "log",
+ "metadata",
  "multi_buffer",
  "project",
  "reqwest_client",
@@ -8537,9 +8546,11 @@ dependencies = [
  "indoc",
  "log",
  "logger",
+ "metadata",
  "mimalloc",
  "settings",
  "theme",
+ "ui",
  "uuid",
  "workspace",
 ]

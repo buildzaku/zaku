@@ -35,7 +35,7 @@ pub trait LabelCommon {
     fn alpha(self, alpha: f32) -> Self;
     fn truncate(self) -> Self;
     fn single_line(self) -> Self;
-    fn buffer_font(self, cx: &App) -> Self;
+    fn font_buffer(self, cx: &App) -> Self;
     fn inline_code(self, cx: &App) -> Self;
 }
 
@@ -148,7 +148,7 @@ impl LabelCommon for LabelLike {
         self
     }
 
-    fn buffer_font(mut self, cx: &App) -> Self {
+    fn font_buffer(mut self, cx: &App) -> Self {
         self.base = self
             .base
             .font(ThemeSettings::get_global(cx).buffer_font.clone());

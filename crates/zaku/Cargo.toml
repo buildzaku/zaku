@@ -1,11 +1,17 @@
 [package]
 name = "zaku"
-description = "Fast, open-source API client with fangs."
-version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[package.metadata.bundle]
+name = "Zaku"
+description = "Fast, open-source API client with fangs."
+version = "Unreleased"
+repository = "https://github.com/buildzaku/zaku"
+identifier = "dev.zaku.Zaku"
+icon = ["resources/app-icon.png", "resources/app-icon@2x.png"]
 
 [lints]
 workspace = true
@@ -34,9 +40,11 @@ gpui_platform = { workspace = true, features = ["font-kit"] }
 indoc = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
+metadata = { workspace = true }
 mimalloc = { workspace = true, optional = true }
 settings = { workspace = true }
 theme = { workspace = true }
+ui = { workspace = true }
 uuid = { workspace = true }
 workspace = { workspace = true }
 

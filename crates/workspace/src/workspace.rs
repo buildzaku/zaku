@@ -26,7 +26,9 @@ use std::{
 use actions::{
     menu,
     workspace::{CloseProject, CloseWindow, Open, ToggleBottomDock, ToggleLeftDock},
+    zaku::{Minimize, Zoom},
 };
+use metadata::ZAKU_IDENTIFIER;
 use project::Project;
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
 use ui::{StyledTypography, h_flex};
@@ -105,20 +107,27 @@ pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
 }
 
 fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<Workspace>) {
-    workspace.register_action(|workspace, action: &Open, window, cx| {
-        prompt_and_open_workspace(
-            workspace,
-            PathPromptOptions {
-                files: false,
-                directories: true,
-                multiple: false,
-                prompt: None,
-            },
-            action.create_new_window,
-            window,
-            cx,
-        );
-    });
+    workspace
+        .register_action(|workspace, action: &Open, window, cx| {
+            prompt_and_open_workspace(
+                workspace,
+                PathPromptOptions {
+                    files: false,
+                    directories: true,
+                    multiple: false,
+                    prompt: None,
+                },
+                action.create_new_window,
+                window,
+                cx,
+            );
+        })
+        .register_action(|_, _: &Minimize, window, _| {
+            window.minimize_window();
+        })
+        .register_action(|_, _: &Zoom, window, _| {
+            window.zoom_window();
+        });
 }
 
 fn default_window_options(cx: &mut App) -> WindowOptions {
@@ -127,6 +136,7 @@ fn default_window_options(cx: &mut App) -> WindowOptions {
 
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
+        app_id: Some(ZAKU_IDENTIFIER.to_owned()),
         ..Default::default()
     }
 }

@@ -88,8 +88,8 @@ impl LabelCommon for Label {
         self
     }
 
-    fn buffer_font(mut self, cx: &App) -> Self {
-        self.base = self.base.buffer_font(cx);
+    fn font_buffer(mut self, cx: &App) -> Self {
+        self.base = self.base.font_buffer(cx);
         self
     }
 

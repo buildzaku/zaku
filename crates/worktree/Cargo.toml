@@ -1,6 +1,5 @@
 [package]
 name = "worktree"
-version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true

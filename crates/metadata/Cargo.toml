@@ -1,5 +1,5 @@
 [package]
-name = "actions"
+name = "metadata"
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,11 +9,9 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "actions"
-path = "src/actions.rs"
+name = "metadata"
+path = "src/metadata.rs"
 
-[dependencies]
-gpui = { workspace = true }
-schemars = { workspace = true }
+[build-dependencies]
 serde = { workspace = true }
-util = { workspace = true }
+toml = { workspace = true }

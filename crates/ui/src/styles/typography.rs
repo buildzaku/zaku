@@ -1,6 +1,6 @@
-use gpui::{App, Pixels, Rems, Styled};
+use gpui::{App, Pixels, Rems, SharedString, Window, prelude::*};
 
-use theme::ThemeSettings;
+use theme::{ActiveTheme, ThemeSettings};
 
 pub trait StyledTypography: Styled + Sized {
     fn font_buffer(self, cx: &App) -> Self {
@@ -75,5 +75,66 @@ impl TextSize {
             Self::Ui => theme_settings.ui_font_size(cx),
             Self::Editor => theme_settings.buffer_font_size(cx),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+pub enum HeadlineSize {
+    XSmall,
+    Small,
+    #[default]
+    Medium,
+    Large,
+    XLarge,
+}
+
+impl HeadlineSize {
+    pub fn rems(self) -> Rems {
+        match self {
+            Self::XSmall => gpui::rems(0.88),
+            Self::Small => gpui::rems(1.0),
+            Self::Medium => gpui::rems(1.125),
+            Self::Large => gpui::rems(1.27),
+            Self::XLarge => gpui::rems(1.43),
+        }
+    }
+
+    pub fn line_height(self) -> Rems {
+        match self {
+            Self::XSmall | Self::Small | Self::Medium | Self::Large | Self::XLarge => {
+                gpui::rems(1.6)
+            }
+        }
+    }
+}
+
+#[derive(IntoElement)]
+pub struct Headline {
+    size: HeadlineSize,
+    text: SharedString,
+}
+
+impl Headline {
+    pub fn new(text: impl Into<SharedString>) -> Self {
+        Self {
+            size: HeadlineSize::default(),
+            text: text.into(),
+        }
+    }
+
+    pub fn size(mut self, size: HeadlineSize) -> Self {
+        self.size = size;
+        self
+    }
+}
+
+impl RenderOnce for Headline {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        gpui::div()
+            .font(ThemeSettings::get_global(cx).ui_font.clone())
+            .line_height(self.size.line_height())
+            .text_size(self.size.rems())
+            .text_color(cx.theme().colors().text)
+            .child(self.text)
     }
 }

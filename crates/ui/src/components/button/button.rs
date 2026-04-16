@@ -346,9 +346,9 @@ impl RenderOnce for Button {
                 LabelSize::XSmall => this.text_ui_xs(cx),
             })
             .map(|this| match self.size {
-                ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base08.rems(cx)),
+                ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base12.rems(cx)),
                 ButtonSize::Default | ButtonSize::Compact => {
-                    this.px(DynamicSpacing::Base04.rems(cx))
+                    this.px(DynamicSpacing::Base08.rems(cx))
                 }
                 ButtonSize::None => this.px_px(),
             })
