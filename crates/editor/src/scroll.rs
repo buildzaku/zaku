@@ -27,14 +27,14 @@ impl ScrollAnchor {
     pub fn new() -> Self {
         Self {
             offset: Point::default(),
-            anchor: Anchor::min(),
+            anchor: Anchor::Min,
         }
     }
 
     fn scroll_position(&self, snapshot: &DisplaySnapshot) -> Point<ScrollOffset> {
         let mut position = self.offset;
 
-        let scroll_top_row = if self.anchor == Anchor::min() {
+        let scroll_top_row = if self.anchor == Anchor::Min {
             0.0
         } else {
             self.anchor.to_display_point(snapshot).row().0 as f64

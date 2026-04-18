@@ -56,9 +56,6 @@ gpui_platform = { workspace = true, features = [
   "x11",
 ] }
 
-[target.'cfg(target_os = "macos")'.dependencies]
-core-text = { workspace = true }
-
 [dev-dependencies]
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }

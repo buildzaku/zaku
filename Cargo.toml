@@ -50,16 +50,16 @@ async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 chrono = { version = "0.4" }
-core-text = { version = "21.0" } # https://github.com/zed-industries/zed/issues/47168
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "ec9be5c332", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "ec9be5c332", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
-indexmap = { version = "2.13" }
+indexmap = { version = "2.14" }
 indoc = { version = "2.0" }
+itertools = { version = "0.14" }
 is_executable = { version = "1.0" }
 libc = { version = "0.2" }
 libsqlite3-sys = { version = "0.37", features = ["bundled"] }
@@ -88,17 +88,17 @@ serde_path_to_error = { version = "0.1" }
 smallvec = { version = "1.15" }
 smol = { version = "2.0" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "sum_tree" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "ec9be5c332", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "9bbdff43cc", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "ec9be5c332", package = "text" }
 thread_local = { version = "1.1" }
-tokio = { version = "1.50", features = ["rt", "rt-multi-thread", "sync"] }
+tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
 unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
-uuid = { version = "1.22", features = ["v4"] }
+uuid = { version = "1.23", features = ["v4"] }
 windows = { version = "0.62", features = [
   "Win32_Foundation",
   "Win32_Storage_FileSystem",

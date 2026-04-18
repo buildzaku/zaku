@@ -13,7 +13,7 @@ use gpui::{
 };
 use multi_buffer::{
     Anchor, Capability, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
-    MultiBufferSnapshot,
+    MultiBufferSnapshot, ToOffset, ToPoint,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -480,8 +480,8 @@ impl Editor {
         let selection = self.selections.newest_anchor();
         Selection {
             id: selection.id,
-            start: snapshot.offset_for_anchor(selection.start),
-            end: snapshot.offset_for_anchor(selection.end),
+            start: selection.start.to_offset(&snapshot),
+            end: selection.end.to_offset(&snapshot),
             reversed: selection.reversed,
             goal: selection.goal,
         }
@@ -492,8 +492,8 @@ impl Editor {
         let selection = self.selections.newest_anchor();
         Selection {
             id: selection.id,
-            start: snapshot.offset_to_offset_utf16(snapshot.offset_for_anchor(selection.start)),
-            end: snapshot.offset_to_offset_utf16(snapshot.offset_for_anchor(selection.end)),
+            start: snapshot.offset_to_offset_utf16(selection.start.to_offset(&snapshot)),
+            end: snapshot.offset_to_offset_utf16(selection.end.to_offset(&snapshot)),
             reversed: selection.reversed,
             goal: selection.goal,
         }
@@ -1048,8 +1048,7 @@ impl Editor {
             ranges
                 .iter()
                 .map(|range| {
-                    snapshot.offset_to_offset_utf16(snapshot.offset_for_anchor(range.start))
-                        ..snapshot.offset_to_offset_utf16(snapshot.offset_for_anchor(range.end))
+                    range.start.to_offset_utf16(&snapshot)..range.end.to_offset_utf16(&snapshot)
                 })
                 .collect(),
         )
@@ -2034,14 +2033,14 @@ impl Editor {
         };
 
         let snapshot = display_snapshot.buffer_snapshot();
-        if snapshot.offset_for_anchor(pending_selection.start)
-            > snapshot.offset_for_anchor(current_selection.start)
+        if pending_selection
+            .start
+            .cmp(&current_selection.start, snapshot)
+            == std::cmp::Ordering::Greater
         {
             pending_selection.start = current_selection.start;
         }
-        if snapshot.offset_for_anchor(pending_selection.end)
-            < snapshot.offset_for_anchor(current_selection.end)
-        {
+        if pending_selection.end.cmp(&current_selection.end, snapshot) == std::cmp::Ordering::Less {
             pending_selection.end = current_selection.end;
             pending_selection.reversed = true;
         }
@@ -2076,12 +2075,12 @@ impl Editor {
         let (head, tail) = match &mode {
             SelectMode::Character => (
                 position.to_point(&display_snapshot),
-                buffer.point_for_anchor(pending.tail()),
+                pending.tail().to_point(buffer),
             ),
             SelectMode::Word(original_range) => {
                 let offset = position.to_offset(&display_snapshot, Bias::Left);
-                let original_start = buffer.offset_for_anchor(original_range.start);
-                let original_end = buffer.offset_for_anchor(original_range.end);
+                let original_start = original_range.start.to_offset(buffer);
+                let original_end = original_range.end.to_offset(buffer);
 
                 let head_offset = if buffer.is_inside_word(offset, None)
                     || (original_start..original_end).contains(&offset)
@@ -2105,8 +2104,8 @@ impl Editor {
                 (head, tail)
             }
             SelectMode::Line(original_range) => {
-                let original_start = buffer.point_for_anchor(original_range.start);
-                let original_end = buffer.point_for_anchor(original_range.end);
+                let original_start = original_range.start.to_point(buffer);
+                let original_end = original_range.end.to_point(buffer);
 
                 let position = display_snapshot.clip_point(position, Bias::Left);
                 let position = position.to_point(&display_snapshot);
@@ -2374,7 +2373,7 @@ impl Editor {
         let snapshot = self.buffer_snapshot(cx);
         let (_, ranges) = self.text_highlights(HighlightKey::InputComposition, cx)?;
         let range = ranges.first()?;
-        Some(snapshot.offset_for_anchor(range.start).0..snapshot.offset_for_anchor(range.end).0)
+        Some(range.start.to_offset(&snapshot).0..range.end.to_offset(&snapshot).0)
     }
 }
 
@@ -2429,16 +2428,7 @@ impl EntityInputHandler for Editor {
         let snapshot = self.buffer_snapshot(cx);
         let (_, ranges) = self.text_highlights(HighlightKey::InputComposition, cx)?;
         let range = ranges.first()?;
-        Some(
-            snapshot
-                .offset_to_offset_utf16(snapshot.offset_for_anchor(range.start))
-                .0
-                .0
-                ..snapshot
-                    .offset_to_offset_utf16(snapshot.offset_for_anchor(range.end))
-                    .0
-                    .0,
-        )
+        Some(range.start.to_offset_utf16(&snapshot).0.0..range.end.to_offset_utf16(&snapshot).0.0)
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -2459,18 +2449,29 @@ impl EntityInputHandler for Editor {
 
         self.transact(window, cx, |this, window, cx| {
             let new_selected_ranges = if let Some(range_utf16) = range_utf16 {
-                let range_utf16 = MultiBufferOffsetUtf16(OffsetUtf16(range_utf16.start))
-                    ..MultiBufferOffsetUtf16(OffsetUtf16(range_utf16.end));
-                Some(this.selection_replacement_ranges(range_utf16, cx))
+                if let Some(marked_ranges) = this.marked_text_ranges(cx) {
+                    Some(marked_ranges)
+                } else if range_utf16.start == range_utf16.end {
+                    None
+                } else {
+                    let range_utf16 = MultiBufferOffsetUtf16(OffsetUtf16(range_utf16.start))
+                        ..MultiBufferOffsetUtf16(OffsetUtf16(range_utf16.end));
+                    Some(this.selection_replacement_ranges(range_utf16, cx))
+                }
             } else {
                 this.marked_text_ranges(cx)
             };
 
             if let Some(new_selected_ranges) = new_selected_ranges {
+                let should_backspace = new_selected_ranges
+                    .iter()
+                    .any(|range| range.start != range.end);
                 this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
                     selections.select_ranges(new_selected_ranges)
                 });
-                this.backspace(&Default::default(), window, cx);
+                if should_backspace {
+                    this.backspace(&Default::default(), window, cx);
+                }
             }
 
             this.handle_input(new_text, window, cx);
@@ -2559,9 +2560,7 @@ impl EntityInputHandler for Editor {
                 let new_selected_ranges = marked_ranges
                     .into_iter()
                     .map(|marked_range| {
-                        let insertion_start = snapshot
-                            .offset_to_offset_utf16(snapshot.offset_for_anchor(marked_range.start))
-                            .0;
+                        let insertion_start = marked_range.start.to_offset_utf16(&snapshot).0;
                         let new_start = MultiBufferOffsetUtf16(OffsetUtf16(
                             insertion_start.0 + new_selected_range.start,
                         ));

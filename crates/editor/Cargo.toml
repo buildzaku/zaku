@@ -16,6 +16,7 @@ path = "src/editor.rs"
 actions = { workspace = true }
 gpui = { workspace = true }
 input = { workspace = true }
+itertools = { workspace = true }
 multi_buffer = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }

@@ -15,7 +15,9 @@ use std::{
 };
 use text::{Bias, Point, subscription::Subscription as BufferSubscription};
 
-use multi_buffer::{Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferSnapshot};
+use multi_buffer::{
+    Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferSnapshot, ToPoint,
+};
 
 use crate::movement::TextLayoutDetails;
 
@@ -77,21 +79,15 @@ impl DisplayMap {
             Entry::Occupied(mut slot) => {
                 if merge {
                     slot.get_mut().1.extend(ranges);
-                    slot.get_mut().1.sort_by(|left, right| {
-                        snapshot
-                            .offset_for_anchor(left.start)
-                            .cmp(&snapshot.offset_for_anchor(right.start))
-                    });
+                    slot.get_mut()
+                        .1
+                        .sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
                 } else {
                     slot.insert((style, ranges));
                 }
             }
             Entry::Vacant(slot) => {
-                ranges.sort_by(|left, right| {
-                    snapshot
-                        .offset_for_anchor(left.start)
-                        .cmp(&snapshot.offset_for_anchor(right.start))
-                });
+                ranges.sort_by(|left, right| left.start.cmp(&right.start, &snapshot));
                 slot.insert((style, ranges));
             }
         }
@@ -352,7 +348,7 @@ impl ToDisplayPoint for Point {
 
 impl ToDisplayPoint for Anchor {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint {
-        map.point_to_display_point(map.buffer_snapshot().point_for_anchor(*self), self.bias())
+        self.to_point(map.buffer_snapshot()).to_display_point(map)
     }
 }
 

@@ -7,20 +7,17 @@ mod tests;
 use gpui::{App, Context, Entity};
 use std::{
     cell::{Ref, RefCell},
-    cmp, fmt, mem,
+    cmp, fmt, iter, mem,
     ops::{self, Add, AddAssign, Range, Sub},
     sync::Arc,
 };
 use text::{
     Bias, Buffer as TextBuffer, BufferSnapshot as TextBufferSnapshot, Edit as TextEdit,
-    OffsetUtf16, Point, PointUtf16, TextSummary,
+    OffsetUtf16, Point, PointUtf16, TextDimension, TextSummary,
     subscription::{Subscription, Topic},
 };
 
 pub use anchor::Anchor;
-
-#[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ExcerptId(u32);
 
 pub type MultiBufferPoint = Point;
 
@@ -222,7 +219,7 @@ impl Sub<OffsetUtf16> for MultiBufferOffsetUtf16 {
 }
 
 pub trait MultiBufferDimension: 'static + Copy + Default + fmt::Debug {
-    type TextDimension;
+    type TextDimension: TextDimension;
     fn from_summary(summary: &MBTextSummary) -> Self;
     fn add_text_dim(&mut self, summary: &Self::TextDimension);
     fn add_mb_text_summary(&mut self, summary: &MBTextSummary);
@@ -231,9 +228,14 @@ pub trait MultiBufferDimension: 'static + Copy + Default + fmt::Debug {
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub struct MBTextSummary {
     pub len: MultiBufferOffset,
+    pub chars: usize,
     pub len_utf16: OffsetUtf16,
     pub lines: Point,
+    pub first_line_chars: u32,
+    pub last_line_chars: u32,
     pub last_line_len_utf16: u32,
+    pub longest_row: u32,
+    pub longest_row_chars: u32,
 }
 
 impl MBTextSummary {
@@ -241,6 +243,22 @@ impl MBTextSummary {
         PointUtf16 {
             row: self.lines.row,
             column: self.last_line_len_utf16,
+        }
+    }
+}
+
+impl From<TextSummary> for MBTextSummary {
+    fn from(summary: TextSummary) -> Self {
+        MBTextSummary {
+            len: MultiBufferOffset(summary.len),
+            chars: summary.chars,
+            len_utf16: summary.len_utf16,
+            lines: summary.lines,
+            first_line_chars: summary.first_line_chars,
+            last_line_chars: summary.last_line_chars,
+            last_line_len_utf16: summary.last_line_len_utf16,
+            longest_row: summary.longest_row,
+            longest_row_chars: summary.longest_row_chars,
         }
     }
 }
@@ -322,7 +340,6 @@ pub trait ToPoint: 'static + fmt::Debug {
 #[derive(Clone)]
 pub struct MultiBufferSnapshot {
     buffer: TextBufferSnapshot,
-    excerpt_id: ExcerptId,
     edit_count: usize,
 }
 
@@ -358,7 +375,6 @@ impl MultiBuffer {
         Self {
             snapshot: RefCell::new(MultiBufferSnapshot {
                 buffer: buffer_snapshot,
-                excerpt_id: ExcerptId(1),
                 edit_count: 0,
             }),
             buffer,
@@ -661,54 +677,105 @@ impl MultiBufferSnapshot {
             Bias::Right => self.buffer.anchor_after(position.0),
         };
 
-        Anchor {
-            excerpt_id: self.excerpt_id,
-            text_anchor,
-        }
+        Anchor::in_buffer(text_anchor)
     }
 
-    pub fn offset_for_anchor(&self, anchor: Anchor) -> MultiBufferOffset {
-        if anchor.is_min() {
-            return MultiBufferOffset::ZERO;
-        }
-        if anchor.is_max() {
-            return self.len();
-        }
-        MultiBufferOffset(anchor.text_anchor.summary::<usize>(&self.buffer))
-    }
-
-    pub fn point_for_anchor(&self, anchor: Anchor) -> Point {
-        if anchor.is_min() {
-            return Point::zero();
-        }
-        if anchor.is_max() {
-            return self.max_point();
-        }
-        anchor.text_anchor.summary::<Point>(&self.buffer)
-    }
-
-    fn summary_for_anchor(&self, anchor: Anchor) -> MBTextSummary {
-        let offset = self.offset_for_anchor(anchor);
-        let point = self.point_for_anchor(anchor);
-        let offset_utf16 = self.offset_to_offset_utf16(offset);
-        let point_utf16 = self.point_to_point_utf16(point);
-        MBTextSummary {
-            len: offset,
-            len_utf16: offset_utf16.0,
-            lines: point,
-            last_line_len_utf16: point_utf16.column,
-        }
-    }
-
-    pub fn summaries_for_anchors<'a, D, I>(&self, anchors: I) -> Vec<D>
+    pub fn summary_for_anchor<MBD>(&self, anchor: &Anchor) -> MBD
     where
-        D: MultiBufferDimension,
-        I: IntoIterator<Item = &'a Anchor>,
+        MBD: MultiBufferDimension
+            + Ord
+            + Sub<Output = MBD::TextDimension>
+            + Sub<MBD::TextDimension, Output = MBD>
+            + AddAssign<MBD::TextDimension>
+            + Add<MBD::TextDimension, Output = MBD>,
+        MBD::TextDimension: Sub<Output = MBD::TextDimension> + Ord,
     {
-        anchors
-            .into_iter()
-            .map(|anchor| D::from_summary(&self.summary_for_anchor(*anchor)))
-            .collect()
+        match anchor {
+            Anchor::Min => MBD::default(),
+            Anchor::Excerpt(excerpt_anchor) => {
+                let summary = self
+                    .buffer
+                    .summary_for_anchor::<MBD::TextDimension>(&excerpt_anchor.text_anchor());
+                let mut multi_buffer_summary = MBD::default();
+                multi_buffer_summary.add_text_dim(&summary);
+                multi_buffer_summary
+            }
+            Anchor::Max => MBD::from_summary(&self.text_summary()),
+        }
+    }
+
+    pub fn summaries_for_anchors<'a, MBD, I>(&'a self, anchors: I) -> Vec<MBD>
+    where
+        MBD: MultiBufferDimension
+            + Ord
+            + Sub<Output = MBD::TextDimension>
+            + AddAssign<MBD::TextDimension>,
+        MBD::TextDimension: Sub<Output = MBD::TextDimension> + Ord,
+        I: 'a + IntoIterator<Item = &'a Anchor>,
+    {
+        let mut anchors = anchors.into_iter().peekable();
+        let mut summaries = Vec::new();
+
+        while let Some(anchor) = anchors.peek() {
+            match anchor {
+                Anchor::Min => {
+                    summaries.push(MBD::default());
+                    anchors.next();
+                }
+                Anchor::Max => {
+                    summaries.push(MBD::from_summary(&self.text_summary()));
+                    anchors.next();
+                }
+                Anchor::Excerpt(_) => {
+                    for (summary, ()) in self
+                        .buffer
+                        .summaries_for_anchors_with_payload::<MBD::TextDimension, _, _>(
+                            std::iter::from_fn(|| {
+                                let excerpt_anchor = anchors.peek()?.excerpt_anchor()?;
+                                anchors.next();
+                                Some((excerpt_anchor.text_anchor(), ()))
+                            }),
+                        )
+                    {
+                        let mut multi_buffer_summary = MBD::default();
+                        multi_buffer_summary.add_text_dim(&summary);
+                        summaries.push(multi_buffer_summary);
+                    }
+                }
+            }
+        }
+
+        summaries
+    }
+
+    pub fn dimensions_from_points<'a, MBD>(
+        &'a self,
+        points: impl 'a + IntoIterator<Item = Point>,
+    ) -> impl 'a + Iterator<Item = MBD>
+    where
+        MBD: MultiBufferDimension + Sub + AddAssign<<MBD as Sub>::Output>,
+    {
+        let max_point = self.max_point();
+        let max_position = MBD::from_summary(&self.text_summary());
+        let mut previous_point = Point::default();
+        let mut previous_position = MBD::default();
+        let mut points = points.into_iter();
+
+        iter::from_fn(move || {
+            let point = points.next()?;
+            debug_assert!(point >= previous_point);
+
+            if point >= max_point {
+                previous_point = max_point;
+                previous_position = max_position;
+                return Some(previous_position);
+            }
+
+            previous_position
+                .add_text_dim(&self.buffer.text_summary_for_range(previous_point..point));
+            previous_point = point;
+            Some(previous_position)
+        })
     }
 
     pub fn chars_at<T: ToOffset>(&self, position: T) -> impl Iterator<Item = char> + '_ {
@@ -792,9 +859,12 @@ impl MultiBufferSnapshot {
         }
     }
 
-    pub fn text_summary(&self) -> TextSummary {
-        self.buffer
-            .text_summary_for_range(MultiBufferOffset::ZERO.0..self.len().0)
+    pub fn max_row(&self) -> MultiBufferRow {
+        MultiBufferRow(self.text_summary().lines.row)
+    }
+
+    pub fn text_summary(&self) -> MBTextSummary {
+        MBTextSummary::from(self.buffer.text_summary())
     }
 
     pub fn bytes_in_range<T: ToOffset>(&self, range: Range<T>) -> impl Iterator<Item = &[u8]> + '_ {
@@ -805,26 +875,6 @@ impl MultiBufferSnapshot {
 
     pub fn edit_count(&self) -> usize {
         self.edit_count
-    }
-}
-
-impl ExcerptId {
-    pub fn min() -> Self {
-        Self(0)
-    }
-
-    pub fn max() -> Self {
-        Self(u32::MAX)
-    }
-
-    pub fn cmp(&self, other: &Self, _: &MultiBufferSnapshot) -> cmp::Ordering {
-        self.0.cmp(&other.0)
-    }
-}
-
-impl From<ExcerptId> for usize {
-    fn from(val: ExcerptId) -> Self {
-        val.0 as usize
     }
 }
 

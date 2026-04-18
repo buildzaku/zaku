@@ -1,13 +1,15 @@
 use std::{
-    fmt, iter,
+    cmp, fmt, iter,
     ops::{AddAssign, Deref, DerefMut, Range, Sub},
     sync::Arc,
 };
 
+use itertools::Itertools;
+use text::{Bias, Point, Selection, SelectionGoal};
+
 use multi_buffer::{
     Anchor, MultiBufferDimension, MultiBufferOffset, MultiBufferSnapshot, ToOffset,
 };
-use text::{Bias, Point, Selection, SelectionGoal};
 
 use crate::{
     SelectMode,
@@ -37,8 +39,8 @@ impl SelectionsCollection {
             pending: Some(PendingSelection {
                 selection: Selection {
                     id: 0,
-                    start: Anchor::min(),
-                    end: Anchor::min(),
+                    start: Anchor::Min,
+                    end: Anchor::Min,
                     reversed: false,
                     goal: SelectionGoal::None,
                 },
@@ -245,7 +247,7 @@ impl MutableSelectionsCollection<'_, '_> {
         let snapshot = self.snapshot.buffer_snapshot();
         let mut start = range.start;
         let mut end = range.end;
-        let reversed = snapshot.offset_for_anchor(start) > snapshot.offset_for_anchor(end);
+        let reversed = start.cmp(&end, snapshot).is_gt();
         if reversed {
             std::mem::swap(&mut start, &mut end);
         }
@@ -474,29 +476,23 @@ fn resolve_selections_point<'a>(
     selections: impl 'a + IntoIterator<Item = &'a Selection<Anchor>>,
     map: &'a DisplaySnapshot,
 ) -> impl 'a + Iterator<Item = Selection<Point>> {
-    let buffer_snapshot = map.buffer_snapshot();
-    selections.into_iter().map(move |selection| Selection {
-        id: selection.id,
-        start: buffer_snapshot.point_for_anchor(selection.start),
-        end: buffer_snapshot.point_for_anchor(selection.end),
-        reversed: selection.reversed,
-        goal: selection.goal,
-    })
-}
-
-fn resolve_selections_display<'a>(
-    selections: impl 'a + IntoIterator<Item = &'a Selection<Anchor>>,
-    map: &'a DisplaySnapshot,
-) -> impl 'a + Iterator<Item = Selection<DisplayPoint>> {
-    resolve_selections_point(selections, map).map(move |selection| {
-        let start = map.point_to_display_point(selection.start, Bias::Left);
-        let end = map.point_to_display_point(
+    let (to_summarize, selections) = selections.into_iter().tee();
+    let mut summaries = map
+        .buffer_snapshot()
+        .summaries_for_anchors::<Point, _>(
+            to_summarize.flat_map(|selection| [&selection.start, &selection.end]),
+        )
+        .into_iter();
+    selections.map(move |selection| {
+        let start = summaries.next().expect("start summary must exist");
+        let end = summaries.next().expect("end summary must exist");
+        assert!(
+            start <= end,
+            "anchors: start: {:?}, end: {:?}; resolved to: start: {:?}, end: {:?}",
+            selection.start,
             selection.end,
-            if selection.start == selection.end {
-                Bias::Right
-            } else {
-                Bias::Left
-            },
+            start,
+            end
         );
 
         Selection {
@@ -509,6 +505,38 @@ fn resolve_selections_display<'a>(
     })
 }
 
+fn resolve_selections_display<'a>(
+    selections: impl 'a + IntoIterator<Item = &'a Selection<Anchor>>,
+    map: &'a DisplaySnapshot,
+) -> impl 'a + Iterator<Item = Selection<DisplayPoint>> {
+    let selections = resolve_selections_point(selections, map).map(move |selection| {
+        let display_start = map.point_to_display_point(selection.start, Bias::Left);
+        let display_end = map.point_to_display_point(
+            selection.end,
+            if selection.start == selection.end {
+                Bias::Right
+            } else {
+                Bias::Left
+            },
+        );
+        assert!(
+            display_start <= display_end,
+            "display_start: {:?}, display_end: {:?}",
+            display_start,
+            display_end
+        );
+
+        Selection {
+            id: selection.id,
+            start: display_start,
+            end: display_end,
+            reversed: selection.reversed,
+            goal: selection.goal,
+        }
+    });
+    coalesce_selections(selections)
+}
+
 pub(crate) fn resolve_selections_wrapping_blocks<'a, D, I>(
     selections: I,
     map: &'a DisplaySnapshot,
@@ -517,13 +545,24 @@ where
     D: MultiBufferDimension + Sub + AddAssign<<D as Sub>::Output> + Ord,
     I: 'a + IntoIterator<Item = &'a Selection<Anchor>>,
 {
-    let buffer_snapshot = map.buffer_snapshot();
-    selections.into_iter().map(move |selection| {
-        let mut summaries = buffer_snapshot
-            .summaries_for_anchors::<D, _>([&selection.start, &selection.end])
-            .into_iter();
-        let start = summaries.next().expect("start summary must exist");
-        let end = summaries.next().expect("end summary must exist");
+    let (to_convert, selections) = resolve_selections_display(selections, map).tee();
+    let mut converted_endpoints =
+        map.buffer_snapshot()
+            .dimensions_from_points::<D>(to_convert.flat_map(|selection| {
+                let start = map.display_point_to_point(selection.start, Bias::Left);
+                let end = map.display_point_to_point(selection.end, Bias::Right);
+                assert!(start <= end, "start: {:?}, end: {:?}", start, end);
+                [start, end]
+            }));
+
+    selections.map(move |selection| {
+        let start = converted_endpoints
+            .next()
+            .expect("start converted endpoint must exist");
+        let end = converted_endpoints
+            .next()
+            .expect("end converted endpoint must exist");
+        assert!(start <= end, "start: {:?}, end: {:?}", start, end);
         Selection {
             id: selection.id,
             start,
@@ -531,6 +570,43 @@ where
             reversed: selection.reversed,
             goal: selection.goal,
         }
+    })
+}
+
+fn coalesce_selections<D: Ord + fmt::Debug + Copy>(
+    selections: impl Iterator<Item = Selection<D>>,
+) -> impl Iterator<Item = Selection<D>> {
+    let mut selections = selections.peekable();
+    iter::from_fn(move || {
+        let mut selection = selections.next()?;
+        while let Some(next_selection) = selections.peek() {
+            if should_merge(
+                selection.start,
+                selection.end,
+                next_selection.start,
+                next_selection.end,
+                true,
+            ) {
+                if selection.reversed == next_selection.reversed {
+                    selection.end = cmp::max(selection.end, next_selection.end);
+                    selections.next();
+                } else {
+                    selection.end = cmp::max(selection.start, next_selection.start);
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        assert!(
+            selection.start <= selection.end,
+            "selection.start: {:?}, selection.end: {:?}, selection.reversed: {:?}",
+            selection.start,
+            selection.end,
+            selection.reversed
+        );
+        Some(selection)
     })
 }
 

@@ -43,7 +43,7 @@ pub fn init(cx: &mut App) {
         });
     })
     .detach();
-    cx.on_window_closed(|cx| {
+    cx.on_window_closed(|cx, _| {
         if cx.windows().is_empty() {
             cx.quit();
         }
