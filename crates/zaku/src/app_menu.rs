@@ -37,6 +37,8 @@ pub fn app_menu(_cx: &mut App) -> Vec<Menu> {
             name: "File".into(),
             disabled: false,
             items: vec![
+                MenuItem::action("New Window", workspace::NewWindow),
+                MenuItem::separator(),
                 MenuItem::action("Open…", workspace::Open::default()),
                 MenuItem::separator(),
                 MenuItem::action("Close Project", workspace::CloseProject),

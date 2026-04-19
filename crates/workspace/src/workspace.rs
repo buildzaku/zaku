@@ -21,7 +21,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use actions::{
     menu,
-    workspace::{CloseProject, CloseWindow, Open, ToggleBottomDock, ToggleLeftDock},
+    workspace::{CloseProject, CloseWindow, NewWindow, Open, ToggleBottomDock, ToggleLeftDock},
     zaku::{Minimize, Zoom},
 };
 use metadata::ZAKU_IDENTIFIER;
@@ -101,18 +101,25 @@ impl SharedState {
 }
 
 pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
-    SharedState::set_global(shared_state, cx);
+    SharedState::set_global(shared_state.clone(), cx);
 
-    cx.observe_new(|workspace: &mut Workspace, window, cx| {
-        let Some(window) = window else {
-            return;
-        };
-        register_actions(workspace, window, cx);
+    cx.observe_new({
+        move |workspace: &mut Workspace, window, cx| {
+            let Some(window) = window else {
+                return;
+            };
+            register_actions(shared_state.clone(), workspace, window, cx);
+        }
     })
     .detach();
 }
 
-fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<Workspace>) {
+fn register_actions(
+    shared_state: Arc<SharedState>,
+    workspace: &mut Workspace,
+    _: &mut Window,
+    _: &mut Context<Workspace>,
+) {
     workspace
         .register_action(|workspace, action: &Open, window, cx| {
             prompt_and_open_workspace(
@@ -127,6 +134,24 @@ fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<W
                 window,
                 cx,
             );
+        })
+        .register_action({
+            move |_, _: &NewWindow, _, cx| {
+                cx.activate(true);
+                let window_options = default_window_options(cx);
+                let shared_state = shared_state.clone();
+
+                if let Err(error) = cx.open_window(window_options, move |window, cx| {
+                    window.activate_window();
+
+                    cx.new(|cx| {
+                        let workspace = Workspace::create(shared_state, window, cx);
+                        Root::new(workspace)
+                    })
+                }) {
+                    log::error!("Failed to open workspace window: {error}");
+                }
+            }
         })
         .register_action(|_, _: &Minimize, window, _| {
             window.minimize_window();
