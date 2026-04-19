@@ -5735,6 +5735,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "session"
+version = "0.0.0"
+dependencies = [
+ "db",
+ "gpui",
+ "serde_json",
+ "util 0.0.0",
+ "uuid",
+]
+
+[[package]]
 name = "settings"
 version = "0.0.0"
 dependencies = [
