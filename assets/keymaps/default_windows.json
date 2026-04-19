@@ -19,6 +19,7 @@
       "ctrl-c": "menu::Cancel",
       "escape": "menu::Cancel",
       "shift-alt-enter": "menu::Restart",
+      "ctrl-shift-n": "workspace::NewWindow",
       "ctrl-k ctrl-o": "workspace::Open",
       "ctrl-q": "zaku::Quit"
     }
