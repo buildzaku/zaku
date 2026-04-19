@@ -368,13 +368,18 @@ fn database_path(db_dir: &Path) -> anyhow::Result<PathBuf> {
     Ok(db_dir.join(DB_NAME))
 }
 
+pub fn database_dir() -> PathBuf {
+    settings::data_dir().join("db")
+}
+
 pub struct AppDatabase(pub ThreadSafeConnection);
 
 impl Global for AppDatabase {}
 
 impl AppDatabase {
-    pub fn new(db_dir: &Path) -> Self {
-        let connection = smol::block_on(open_db(db_dir));
+    pub fn new() -> Self {
+        let db_dir = database_dir();
+        let connection = smol::block_on(open_db(&db_dir));
         let app_db = Self(connection);
         smol::block_on(kv::KeyValueStore::from_app_db(&app_db).initialize_schema())
             .expect("key-value store schema should initialize");

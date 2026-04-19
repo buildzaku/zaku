@@ -102,10 +102,7 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor().clone()));
-    let shared_state = Arc::new(SharedState::new(
-        temp_fs.clone(),
-        "test-session".to_string(),
-    ));
+    let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
     init_test(shared_state.clone(), cx);
 
     let window = cx.add_window({
@@ -186,10 +183,7 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor().clone()));
-    let shared_state = Arc::new(SharedState::new(
-        temp_fs.clone(),
-        "test-session".to_string(),
-    ));
+    let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
     init_test(shared_state.clone(), cx);
 
     let window = cx.add_window({
@@ -262,7 +256,7 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
 #[gpui::test]
 async fn test_action_namespaces(cx: &mut TestAppContext) {
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    let shared_state = Arc::new(SharedState::new(temp_fs, "test-session".to_string()));
+    let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
     init_test(shared_state, cx);
 
     cx.update(|cx| {

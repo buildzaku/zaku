@@ -14,6 +14,7 @@ test-support = [
     "fs/test-support",
     "gpui/test-support",
     "project/test-support",
+    "session/test-support",
     "settings/test-support",
 ]
 
@@ -38,6 +39,7 @@ metadata = { workspace = true }
 multi_buffer = { workspace = true }
 project = { workspace = true }
 reqwest_client = { workspace = true }
+session = { workspace = true }
 serde = { workspace = true }
 settings = { workspace = true }
 smol = { workspace = true }
@@ -50,6 +52,7 @@ db = { workspace = true, features = ["test-support"] }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
+session = { workspace = true, features = ["test-support"] }
 settings = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
 util_macros = { workspace = true }
