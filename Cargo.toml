@@ -14,6 +14,7 @@ members = [
   "crates/multi_buffer",
   "crates/project",
   "crates/reqwest_client",
+  "crates/session",
   "crates/settings",
   "crates/settings_macros",
   "crates/theme",
@@ -119,6 +120,7 @@ metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }
 project = { path = "crates/project" }
 reqwest_client = { path = "crates/reqwest_client" }
+session = { path = "crates/session" }
 settings = { path = "crates/settings" }
 settings_macros = { path = "crates/settings_macros" }
 theme = { path = "crates/theme" }

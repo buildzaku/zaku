@@ -431,10 +431,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         crate::tests::init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(

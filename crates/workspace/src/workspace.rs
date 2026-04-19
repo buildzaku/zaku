@@ -17,22 +17,22 @@ use gpui::{
     Subscription, Task, Window, WindowBounds, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    path::PathBuf,
-    sync::{Arc, Weak},
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use actions::{
     menu,
-    workspace::{CloseProject, CloseWindow, Open, ToggleBottomDock, ToggleLeftDock},
+    workspace::{CloseProject, CloseWindow, NewWindow, Open, ToggleBottomDock, ToggleLeftDock},
     zaku::{Minimize, Zoom},
 };
 use metadata::ZAKU_IDENTIFIER;
 use project::Project;
+use session::AppSession;
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
 use ui::{StyledTypography, h_flex};
 use util::ResultExt;
+
+#[cfg(any(test, feature = "test-support"))]
+use session::Session;
 
 use crate::{
     dock::Dock,
@@ -67,46 +67,59 @@ impl From<WorkspaceId> for i64 {
 #[derive(Clone)]
 pub struct SharedState {
     pub fs: Arc<dyn fs::Fs>,
-    pub session_id: String,
+    pub session: Entity<AppSession>,
 }
 
-struct GlobalSharedState(Weak<SharedState>);
+struct GlobalSharedState(Arc<SharedState>);
 
 impl Global for GlobalSharedState {}
 
 impl SharedState {
-    pub fn new(fs: Arc<dyn fs::Fs>, session_id: String) -> Self {
-        Self { fs, session_id }
+    pub fn new(fs: Arc<dyn fs::Fs>, session: Entity<AppSession>) -> Self {
+        Self { fs, session }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_new(fs: Arc<dyn fs::Fs>, cx: &mut App) -> Self {
+        let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
+        Self { fs, session }
     }
 
     #[track_caller]
-    pub fn global(cx: &App) -> Weak<Self> {
+    pub fn global(cx: &App) -> Arc<Self> {
         cx.global::<GlobalSharedState>().0.clone()
     }
 
-    pub fn try_global(cx: &App) -> Option<Weak<Self>> {
+    pub fn try_global(cx: &App) -> Option<Arc<Self>> {
         cx.try_global::<GlobalSharedState>()
             .map(|shared_state| shared_state.0.clone())
     }
 
-    pub fn set_global(shared_state: Weak<SharedState>, cx: &mut App) {
+    pub fn set_global(shared_state: Arc<SharedState>, cx: &mut App) {
         cx.set_global(GlobalSharedState(shared_state));
     }
 }
 
 pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
-    SharedState::set_global(Arc::downgrade(&shared_state), cx);
+    SharedState::set_global(shared_state.clone(), cx);
 
-    cx.observe_new(|workspace: &mut Workspace, window, cx| {
-        let Some(window) = window else {
-            return;
-        };
-        register_actions(workspace, window, cx);
+    cx.observe_new({
+        move |workspace: &mut Workspace, window, cx| {
+            let Some(window) = window else {
+                return;
+            };
+            register_actions(shared_state.clone(), workspace, window, cx);
+        }
     })
     .detach();
 }
 
-fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<Workspace>) {
+fn register_actions(
+    shared_state: Arc<SharedState>,
+    workspace: &mut Workspace,
+    _: &mut Window,
+    _: &mut Context<Workspace>,
+) {
     workspace
         .register_action(|workspace, action: &Open, window, cx| {
             prompt_and_open_workspace(
@@ -122,6 +135,24 @@ fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<W
                 cx,
             );
         })
+        .register_action({
+            move |_, _: &NewWindow, _, cx| {
+                cx.activate(true);
+                let window_options = default_window_options(cx);
+                let shared_state = shared_state.clone();
+
+                if let Err(error) = cx.open_window(window_options, move |window, cx| {
+                    window.activate_window();
+
+                    cx.new(|cx| {
+                        let workspace = Workspace::create(shared_state, window, cx);
+                        Root::new(workspace)
+                    })
+                }) {
+                    log::error!("Failed to open workspace window: {error}");
+                }
+            }
+        })
         .register_action(|_, _: &Minimize, window, _| {
             window.minimize_window();
         })
@@ -130,7 +161,7 @@ fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<W
         });
 }
 
-fn default_window_options(cx: &mut App) -> WindowOptions {
+pub fn default_window_options(cx: &mut App) -> WindowOptions {
     let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
     bounds.origin.y -= gpui::px(36.0);
 
@@ -347,7 +378,7 @@ impl Workspace {
                         workspace._schedule_serialize_workspace.take();
                         workspace._serialize_workspace_task =
                             Some(workspace.serialize_workspace_internal(window, cx));
-                        Some(workspace.shared_state().session_id.clone())
+                        Some(workspace.shared_state().session.read(cx).id().to_string())
                     }) {
                         Ok(session_id) => {
                             cx.background_spawn(async move {
@@ -562,7 +593,7 @@ impl Workspace {
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
                     location: SerializedWorkspaceLocation::Local(root_path),
-                    session_id: Some(self.shared_state.session_id.clone()),
+                    session_id: Some(self.shared_state.session.read(cx).id().to_string()),
                     window_id: Some(window.window_handle().window_id().as_u64()),
                 };
 
@@ -694,9 +725,7 @@ impl Workspace {
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_new(project: Entity<Project>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let shared_state = SharedState::global(cx)
-            .upgrade()
-            .expect("workspace shared state should be initialized");
+        let shared_state = SharedState::global(cx);
         window.activate_window();
         let workspace = Self::new(shared_state, project, window, cx);
         workspace
@@ -1010,10 +1039,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
@@ -1087,10 +1113,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (workspace, cx) =
@@ -1163,10 +1186,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (workspace, cx) =
@@ -1228,10 +1248,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (workspace, cx) =
@@ -1295,10 +1312,7 @@ mod tests {
     #[gpui::test]
     async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (workspace, cx) =
@@ -1322,10 +1336,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (workspace, cx) =
@@ -1382,10 +1393,7 @@ mod tests {
     #[gpui::test]
     async fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
@@ -1465,10 +1473,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1518,10 +1523,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1581,10 +1583,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1671,10 +1670,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1769,10 +1765,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(

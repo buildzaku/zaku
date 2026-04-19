@@ -35,6 +35,8 @@ gpui::actions!(
         CloseProject,
         /// Close the current window.
         CloseWindow,
+        /// Open a new window.
+        NewWindow,
         /// Send the current request.
         SendRequest,
         /// Toggle the bottom dock.
