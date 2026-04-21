@@ -105,10 +105,8 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
     let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
     init_test(shared_state.clone(), cx);
 
-    let window = cx.add_window({
-        let shared_state = shared_state.clone();
-        move |window, cx| Root::new(Workspace::create(shared_state, window, cx))
-    });
+    let window =
+        cx.add_window(move |window, cx| Root::new(Workspace::create(shared_state, window, cx)));
     let workspace = window
         .read_with(cx, |root, _| root.workspace().clone())
         .unwrap();
@@ -186,13 +184,8 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
     let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
     init_test(shared_state.clone(), cx);
 
-    let window = cx.add_window({
-        let shared_state = shared_state.clone();
-        move |window, cx| {
-            let shared_state = shared_state.clone();
-            Root::new(Workspace::create(shared_state, window, cx))
-        }
-    });
+    let window =
+        cx.add_window(move |window, cx| Root::new(Workspace::create(shared_state, window, cx)));
     let workspace = window
         .read_with(cx, |root, _| root.workspace().clone())
         .unwrap();

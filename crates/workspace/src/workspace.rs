@@ -160,10 +160,7 @@ fn register_actions(
                 if let Err(error) = cx.open_window(window_options, move |window, cx| {
                     window.activate_window();
 
-                    cx.new(|cx| {
-                        let workspace = Workspace::create(shared_state, window, cx);
-                        Root::new(workspace)
-                    })
+                    cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
                 }) {
                     log::error!("Failed to open workspace window: {error}");
                 }
@@ -311,7 +308,7 @@ impl Root {
             }
 
             this.update_in(cx, |root, window, cx| {
-                root.workspace = Workspace::create(shared_state.clone(), window, cx);
+                root.workspace = Workspace::create(shared_state, window, cx);
                 cx.notify();
             })?;
 
@@ -600,14 +597,8 @@ impl Workspace {
                 (window, workspace, open_task)
             } else {
                 let window_options = cx.update(default_window_options);
-                let window = cx.open_window(window_options, {
-                    let shared_state = shared_state.clone();
-                    move |window, cx| {
-                        cx.new(|cx| {
-                            let workspace = Workspace::create(shared_state, window, cx);
-                            Root::new(workspace)
-                        })
-                    }
+                let window = cx.open_window(window_options, move |window, cx| {
+                    cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
                 })?;
 
                 let (workspace, open_task) = window.update(cx, |root: &mut Root, window, cx| {
@@ -1189,8 +1180,10 @@ mod tests {
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1272,8 +1265,10 @@ mod tests {
         let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("first"),
@@ -1345,8 +1340,10 @@ mod tests {
         let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("first"),
@@ -1407,8 +1404,10 @@ mod tests {
         let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("first"),
@@ -1471,8 +1470,10 @@ mod tests {
         let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         workspace.update_in(cx, |workspace, window, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
@@ -1495,8 +1496,10 @@ mod tests {
         let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1553,8 +1556,10 @@ mod tests {
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
             let panel = cx.new(|cx| TestPanel::new(100, cx));
@@ -1649,8 +1654,10 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         workspace.update_in(cx, |workspace, _, _| {
             workspace.set_database_id(WorkspaceId::from(1));
@@ -1696,8 +1703,10 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -1755,12 +1764,8 @@ mod tests {
         );
 
         let project_path = temp_fs.path().join(path!("project"));
-        let (root, cx) = cx.add_window_view({
-            let shared_state = shared_state.clone();
-            move |window, cx| {
-                let shared_state = shared_state.clone();
-                Root::new(Workspace::create(shared_state, window, cx))
-            }
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(shared_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
@@ -1816,8 +1821,10 @@ mod tests {
         let canonical_project_path = temp_fs.path().join(path!("project"));
         let alternate_project_path = canonical_project_path.join("..").join("project");
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         workspace.update_in(cx, |workspace, _, _| {
             workspace.set_database_id(WorkspaceId::from(1));
@@ -1912,8 +1919,10 @@ mod tests {
             .await
             .unwrap();
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         workspace.update_in(cx, |workspace, _, _| {
             workspace.set_database_id(WorkspaceId::from(1));
@@ -2024,8 +2033,10 @@ mod tests {
         let first_path = temp_fs.path().join(path!("first"));
         let second_path = temp_fs.path().join(path!("second"));
         let project = Project::test_new(temp_fs.clone(), &first_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {

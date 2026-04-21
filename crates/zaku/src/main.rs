@@ -87,11 +87,7 @@ fn main() {
 
         let window_options = workspace::default_window_options(cx);
         cx.open_window(window_options, move |window, cx| {
-            let shared_state = shared_state.clone();
-            cx.new(|cx| {
-                let workspace = Workspace::create(shared_state, window, cx);
-                Root::new(workspace)
-            })
+            cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
         })
         .unwrap();
     });

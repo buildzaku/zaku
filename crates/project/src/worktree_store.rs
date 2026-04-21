@@ -216,15 +216,9 @@ impl WorktreeStore {
             };
 
             let task = worktree_store.update(cx, |this, cx| {
-                let is_current_open_epoch = this.worktree_open_epoch == worktree_open_epoch;
-                let is_latest_request = this.worktree_path_to_open.as_deref()
-                    == Some(requested_abs_path.as_ref())
-                    || this.worktree_path_to_open.as_deref() == Some(canonical_abs_path.as_ref());
-                if !is_current_open_epoch || !is_latest_request {
+                if this.worktree_open_epoch != worktree_open_epoch {
                     return Err(anyhow!("Worktree open was superseded by a newer request"));
                 }
-
-                this.worktree_path_to_open = Some(canonical_abs_path.clone());
 
                 if let Some(worktree) = this.worktree.as_ref()
                     && worktree.read(cx).abs_path().as_ref() == canonical_abs_path.as_path()

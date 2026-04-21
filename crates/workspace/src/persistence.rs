@@ -451,19 +451,15 @@ mod tests {
             }),
         );
 
-        let (root, cx) = cx.add_window_view({
-            let shared_state = shared_state.clone();
-            move |window, cx| {
-                let shared_state = shared_state.clone();
-                Root::new(Workspace::create(shared_state, window, cx))
-            }
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(shared_state, window, cx))
         });
-        let workspace = root.update_in(cx, |root, window, cx| {
+        root.update_in(cx, |root, window, cx| {
             root.replace_workspace(window, cx);
-            root.workspace().clone()
         });
         cx.run_until_parked();
 
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
             .expect("workspace should have a database_id after initialization");
