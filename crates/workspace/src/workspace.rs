@@ -75,6 +75,13 @@ pub enum OpenMode {
     Activate,
 }
 
+#[derive(PartialEq, Eq, Debug)]
+pub enum CloseIntent {
+    Quit,
+    CloseWindow,
+    ReplaceWindow,
+}
+
 pub struct OpenResult {
     pub window: WindowHandle<Root>,
     pub workspace: Entity<Workspace>,
@@ -301,16 +308,18 @@ impl Root {
         let shared_state = workspace.read(cx).shared_state().clone();
 
         cx.spawn_in(window, async move |this, cx| {
-            if let Ok(flush_task) = workspace.update_in(cx, |workspace, window, cx| {
-                workspace.flush_serialization(window, cx)
-            }) {
-                flush_task.await;
-            }
+            let should_replace = workspace
+                .update_in(cx, |workspace, window, cx| {
+                    workspace.prepare_to_close(CloseIntent::ReplaceWindow, window, cx)
+                })?
+                .await?;
 
-            this.update_in(cx, |root, window, cx| {
-                root.workspace = Workspace::create(shared_state, window, cx);
-                cx.notify();
-            })?;
+            if should_replace {
+                this.update_in(cx, |root, window, cx| {
+                    root.workspace = Workspace::create(shared_state, window, cx);
+                    cx.notify();
+                })?;
+            }
 
             anyhow::Ok(())
         })
@@ -324,15 +333,17 @@ impl Root {
     pub fn close_window(&mut self, _: &CloseWindow, window: &mut Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             let workspace = this.update(cx, |root, _cx| root.workspace().clone())?;
-            let flush_task = workspace.update_in(cx, |workspace, window, cx| {
-                workspace.flush_serialization(window, cx)
-            })?;
+            let should_close = workspace
+                .update_in(cx, |workspace, window, cx| {
+                    workspace.prepare_to_close(CloseIntent::CloseWindow, window, cx)
+                })?
+                .await?;
 
-            flush_task.await;
-
-            cx.update(|window, _cx| {
-                window.remove_window();
-            })?;
+            if should_close {
+                cx.update(|window, _cx| {
+                    window.remove_window();
+                })?;
+            }
 
             anyhow::Ok(())
         })
@@ -468,6 +479,26 @@ impl Workspace {
             })
             .log_err();
         });
+    }
+
+    pub fn prepare_to_close(
+        &mut self,
+        close_intent: CloseIntent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<bool>> {
+        cx.spawn_in(window, async move |this, cx| {
+            let flush_task =
+                this.update_in(cx, |this, window, cx| this.flush_serialization(window, cx))?;
+            flush_task.await;
+
+            if close_intent != CloseIntent::Quit {
+                this.update_in(cx, |this, window, cx| this.remove_from_session(window, cx))?
+                    .await?;
+            }
+
+            Ok(true)
+        })
     }
 
     fn dock_at_position(&self, position: DockPosition) -> &Entity<Dock> {
@@ -699,6 +730,18 @@ impl Workspace {
         let serialize_task = self.serialize_workspace_internal(window, cx);
         cx.spawn(async move |_| {
             serialize_task.await;
+        })
+    }
+
+    fn remove_from_session(&mut self, _: &mut Window, cx: &mut App) -> Task<anyhow::Result<()>> {
+        let Some(database_id) = self.database_id() else {
+            return Task::ready(Ok(()));
+        };
+
+        cx.spawn(async move |_| {
+            WORKSPACE_DB
+                .set_session_binding(database_id, None, None)
+                .await
         })
     }
 

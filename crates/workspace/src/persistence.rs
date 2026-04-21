@@ -346,8 +346,6 @@ mod tests {
     use gpui::TestAppContext;
     use serde_json::json;
 
-    use crate::OpenMode;
-
     #[cfg(unix)]
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
@@ -355,7 +353,7 @@ mod tests {
 
     use util_macros::path;
 
-    use crate::{Root, SharedState, Workspace};
+    use crate::{CloseWindow, OpenMode, Root, SharedState, Workspace};
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
@@ -485,5 +483,123 @@ mod tests {
             serialized.is_some(),
             "Workspace should be fully serialized in the DB after database_id assignment"
         );
+    }
+
+    #[gpui::test]
+    async fn test_replace_workspace_removes_workspace_from_current_session(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        crate::tests::init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(shared_state, window, cx))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let project_path = temp_fs.path().join(path!("project"));
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_workspace_for_path(
+                    project_path.clone(),
+                    OpenMode::Activate,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("workspace open should succeed");
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
+
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .expect("workspace should have a database_id after opening");
+        let serialized_workspace = DB
+            .workspace_for_id(workspace_id)
+            .expect("workspace should be serialized before replacement");
+
+        assert!(serialized_workspace.session_id.is_some());
+        assert!(serialized_workspace.window_id.is_some());
+
+        root.update_in(cx, |root, window, cx| root.replace_workspace(window, cx));
+        cx.run_until_parked();
+
+        let serialized_workspace = DB
+            .workspace_for_id(workspace_id)
+            .expect("workspace row should remain after replacement");
+
+        assert_eq!(serialized_workspace.session_id, None);
+        assert_eq!(serialized_workspace.window_id, None);
+    }
+
+    #[gpui::test]
+    async fn test_close_window_removes_workspace_from_current_session(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        crate::tests::init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(shared_state, window, cx))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let project_path = temp_fs.path().join(path!("project"));
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_workspace_for_path(
+                    project_path.clone(),
+                    OpenMode::Activate,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("workspace open should succeed");
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
+
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .expect("workspace should have a database_id after opening");
+        let serialized_workspace = DB
+            .workspace_for_id(workspace_id)
+            .expect("workspace should be serialized before close");
+
+        assert!(serialized_workspace.session_id.is_some());
+        assert!(serialized_workspace.window_id.is_some());
+
+        root.update_in(cx, |root, window, cx| {
+            root.close_window(&CloseWindow, window, cx)
+        });
+        cx.run_until_parked();
+
+        let serialized_workspace = DB
+            .workspace_for_id(workspace_id)
+            .expect("workspace row should remain after close");
+
+        assert_eq!(serialized_workspace.session_id, None);
+        assert_eq!(serialized_workspace.window_id, None);
     }
 }

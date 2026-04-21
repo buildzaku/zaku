@@ -22,7 +22,7 @@ use metadata::{
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use theme::ActiveTheme;
 use ui::{Headline, Label, LabelCommon, LabelSize, Link, TextSize, prelude::*};
-use workspace::{Root, Workspace};
+use workspace::{CloseIntent, Root, Workspace};
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
@@ -68,22 +68,35 @@ fn register_actions(cx: &mut App) {
                     .collect::<Vec<_>>()
             });
 
-            let mut flush_tasks = Vec::new();
             for window in &workspace_windows {
-                match window.update(cx, |root, window, cx| {
+                let prepare_task = match window.update(cx, |root, window, cx| {
                     root.workspace().update(cx, |workspace, cx| {
-                        workspace.flush_serialization(window, cx)
+                        workspace.prepare_to_close(CloseIntent::Quit, window, cx)
                     })
                 }) {
-                    Ok(flush_task) => flush_tasks.push(flush_task),
+                    Ok(prepare_task) => prepare_task,
                     Err(error) => {
-                        log::error!("Failed to flush workspace serialization before quit: {error}");
+                        log::error!("Failed to prepare workspace for quit: {error}");
+                        return anyhow::Ok(());
                     }
+                };
+
+                let should_quit = match prepare_task.await {
+                    Ok(should_quit) => should_quit,
+                    Err(error) => {
+                        log::error!("Failed to prepare workspace for quit: {error}");
+                        return anyhow::Ok(());
+                    }
+                };
+
+                if !should_quit {
+                    return anyhow::Ok(());
                 }
             }
 
-            futures::future::join_all(flush_tasks).await;
             cx.update(|cx| cx.quit());
+
+            anyhow::Ok(())
         })
         .detach();
     })
