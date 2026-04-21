@@ -7,14 +7,14 @@ pub mod welcome;
 
 pub use persistence::{
     DB as WORKSPACE_DB, WorkspaceDb,
-    model::{SerializedWorkspace, SerializedWorkspaceLocation},
+    model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
 };
 
 use futures::channel::oneshot;
 use gpui::{
     Action, App, Axis, Bounds, Div, DragMoveEvent, Empty, Entity, FocusHandle, Focusable, Global,
     KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, Size,
-    Subscription, Task, Window, WindowBounds, WindowHandle, WindowOptions, prelude::*,
+    Subscription, Task, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -190,6 +190,17 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
         ..Default::default()
     }
+}
+
+pub async fn last_session_workspace_locations(
+    db: &WorkspaceDb,
+    last_session_id: &str,
+    last_session_window_stack: Option<Vec<WindowId>>,
+    fs: &dyn fs::Fs,
+) -> Option<Vec<SessionWorkspace>> {
+    db.last_session_workspace_locations(last_session_id, last_session_window_stack, fs)
+        .await
+        .log_err()
 }
 
 fn find_existing_workspace_window(

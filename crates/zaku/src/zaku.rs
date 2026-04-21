@@ -4,8 +4,8 @@ pub use app_menu::app_menu;
 
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{
-    App, Bounds, Context, FocusHandle, Focusable, Image, ImageFormat, KeyBinding, Size, Task,
-    TitlebarOptions, Window, WindowBounds, WindowKind, WindowOptions, prelude::*,
+    App, AsyncApp, Bounds, Context, FocusHandle, Focusable, Image, ImageFormat, KeyBinding, Size,
+    Task, TitlebarOptions, Window, WindowBounds, WindowKind, WindowOptions, prelude::*,
 };
 use std::sync::Arc;
 
@@ -22,7 +22,10 @@ use metadata::{
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use theme::ActiveTheme;
 use ui::{Headline, Label, LabelCommon, LabelSize, Link, TextSize, prelude::*};
-use workspace::{CloseIntent, Root, Workspace};
+use workspace::{
+    CloseIntent, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace, SharedState,
+    WORKSPACE_DB, Workspace,
+};
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
@@ -372,4 +375,75 @@ fn load_default_keymap(cx: &mut App) {
         Err(error) => panic!("Failed to load default keymap: {error}"),
     };
     cx.bind_keys(key_bindings);
+}
+
+pub async fn restore_or_create_workspace(
+    shared_state: Arc<SharedState>,
+    cx: &mut AsyncApp,
+) -> anyhow::Result<()> {
+    if let Some(workspaces) = restorable_workspace_locations(cx, &shared_state).await {
+        let mut restored_workspaces = 0;
+
+        for session_workspace in workspaces {
+            let path = match session_workspace.location {
+                SerializedWorkspaceLocation::Local(path) => path,
+            };
+            let result = cx
+                .update(|cx| {
+                    Workspace::open_local(path, shared_state.clone(), None, OpenMode::NewWindow, cx)
+                })
+                .await;
+
+            match result {
+                Ok(_) => restored_workspaces += 1,
+                Err(error) => log::error!("Failed to restore workspace: {error:#}"),
+            }
+        }
+
+        if restored_workspaces > 0 {
+            return Ok(());
+        }
+    }
+
+    cx.update(|cx| {
+        let window_options = workspace::default_window_options(cx);
+        cx.open_window(window_options, move |window, cx| {
+            cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
+        })
+    })?;
+
+    Ok(())
+}
+
+async fn restorable_workspace_locations(
+    cx: &mut AsyncApp,
+    shared_state: &Arc<SharedState>,
+) -> Option<Vec<SessionWorkspace>> {
+    let session_handle = shared_state.session.clone();
+    let (last_session_id, last_session_window_stack) = cx.update(|cx| {
+        let session = session_handle.read(cx);
+
+        (
+            session.last_session_id().map(|id| id.to_string()),
+            session.last_session_window_stack(),
+        )
+    });
+
+    let last_session_id = last_session_id?;
+    let has_window_stack = last_session_window_stack.is_some();
+
+    let mut locations = workspace::last_session_workspace_locations(
+        &WORKSPACE_DB,
+        &last_session_id,
+        last_session_window_stack,
+        shared_state.fs.as_ref(),
+    )
+    .await
+    .filter(|locations| !locations.is_empty())?;
+
+    if has_window_stack {
+        locations.reverse();
+    }
+
+    Some(locations)
 }

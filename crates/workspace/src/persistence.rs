@@ -2,13 +2,14 @@ pub mod model;
 
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use gpui::WindowId;
 use indoc::indoc;
 use std::{path::PathBuf, sync::LazyLock};
 
 use db::ThreadSafeConnection;
 use fs::Fs;
 
-use self::model::{SerializedWorkspace, SerializedWorkspaceLocation};
+use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
 use crate::WorkspaceId;
 
 pub struct WorkspaceDb(ThreadSafeConnection);
@@ -166,6 +167,44 @@ impl WorkspaceDb {
         Ok(self.recent_workspaces_on_disk(fs).await?.into_iter().next())
     }
 
+    pub async fn last_session_workspace_locations(
+        &self,
+        last_session_id: &str,
+        last_session_window_stack: Option<Vec<WindowId>>,
+        fs: &dyn Fs,
+    ) -> anyhow::Result<Vec<SessionWorkspace>> {
+        let mut workspaces = Vec::new();
+
+        for (workspace_id, location, window_id) in
+            self.session_workspaces(last_session_id.to_owned())?
+        {
+            let workspace_path = location.path().to_path_buf();
+            if Self::all_paths_exist_with_a_directory(
+                std::slice::from_ref(&workspace_path),
+                fs,
+                None,
+            )
+            .await
+            {
+                workspaces.push(SessionWorkspace {
+                    workspace_id,
+                    location,
+                    window_id: window_id.map(WindowId::from),
+                });
+            }
+        }
+
+        if let Some(stack) = last_session_window_stack {
+            workspaces.sort_by_key(|workspace| {
+                workspace
+                    .window_id
+                    .and_then(|window_id| stack.iter().position(|&id| id == window_id))
+            });
+        }
+
+        Ok(workspaces)
+    }
+
     #[cfg(test)]
     pub(crate) async fn clear_recent_workspaces(&self) -> anyhow::Result<()> {
         self.0
@@ -281,6 +320,35 @@ impl WorkspaceDb {
         })
     }
 
+    fn session_workspaces(
+        &self,
+        session_id: String,
+    ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, Option<u64>)>> {
+        self.0.read(|connection| {
+            let rows = connection
+                .select_bound::<String, (i64, PathBuf, Option<i64>)>(indoc! {"
+                        SELECT id, location, window_id
+                        FROM workspace
+                        WHERE session_id = ?1 AND location IS NOT NULL
+                        ORDER BY timestamp DESC
+                    "})
+                .context("failed to prepare session workspaces query")
+                .and_then(|mut f| f(session_id))
+                .context("failed to execute session workspaces query")?;
+
+            Ok(rows
+                .into_iter()
+                .map(|(workspace_id, location, window_id)| {
+                    (
+                        WorkspaceId::from(workspace_id),
+                        SerializedWorkspaceLocation::Local(location),
+                        window_id.and_then(|window_id| u64::try_from(window_id).ok()),
+                    )
+                })
+                .collect())
+        })
+    }
+
     pub async fn delete_workspace_by_id(&self, workspace_id: WorkspaceId) -> anyhow::Result<()> {
         self.0
             .write(move |connection| {
@@ -342,8 +410,7 @@ fn default_database_dir() -> PathBuf {
 mod tests {
     use super::*;
 
-    use fs::TempFs;
-    use gpui::TestAppContext;
+    use gpui::{TestAppContext, WindowId};
     use serde_json::json;
 
     #[cfg(unix)]
@@ -351,6 +418,7 @@ mod tests {
 
     use std::sync::Arc;
 
+    use fs::TempFs;
     use util_macros::path;
 
     use crate::{CloseWindow, OpenMode, Root, SharedState, Workspace};
@@ -482,6 +550,121 @@ mod tests {
         assert!(
             serialized.is_some(),
             "Workspace should be fully serialized in the DB after database_id assignment"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_last_session_workspace_locations(cx: &mut TestAppContext) {
+        let temp_fs = TempFs::new(cx.executor());
+        temp_fs.insert_tree(path!("first"), json!(null));
+        temp_fs.insert_tree(path!("second"), json!(null));
+        temp_fs.insert_tree(path!("third"), json!(null));
+        temp_fs.insert_tree(path!("fourth"), json!(null));
+
+        let workspace_db = WorkspaceDb::open_test_db("test_last_session_workspace_locations").await;
+
+        let first_path = temp_fs.path().join(path!("first"));
+        let second_path = temp_fs.path().join(path!("second"));
+        let third_path = temp_fs.path().join(path!("third"));
+        let fourth_path = temp_fs.path().join(path!("fourth"));
+
+        for (workspace_id, location, window_id) in [
+            (1, first_path.clone(), 9_u64),
+            (2, second_path.clone(), 5_u64),
+            (3, third_path.clone(), 8_u64),
+            (4, fourth_path.clone(), 2_u64),
+        ] {
+            workspace_db
+                .save_workspace(SerializedWorkspace {
+                    id: WorkspaceId::from(workspace_id),
+                    location: SerializedWorkspaceLocation::Local(location),
+                    session_id: Some("session-uuid".to_string()),
+                    window_id: Some(window_id),
+                })
+                .await;
+        }
+
+        let locations = workspace_db
+            .last_session_workspace_locations(
+                "session-uuid",
+                Some(Vec::from([
+                    WindowId::from(2_u64),
+                    WindowId::from(8_u64),
+                    WindowId::from(5_u64),
+                    WindowId::from(9_u64),
+                ])),
+                &temp_fs,
+            )
+            .await
+            .expect("last session workspace query should succeed");
+
+        assert_eq!(
+            locations,
+            vec![
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(4),
+                    location: SerializedWorkspaceLocation::Local(fourth_path),
+                    window_id: Some(WindowId::from(2_u64)),
+                },
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(3),
+                    location: SerializedWorkspaceLocation::Local(third_path),
+                    window_id: Some(WindowId::from(8_u64)),
+                },
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(2),
+                    location: SerializedWorkspaceLocation::Local(second_path),
+                    window_id: Some(WindowId::from(5_u64)),
+                },
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(1),
+                    location: SerializedWorkspaceLocation::Local(first_path),
+                    window_id: Some(WindowId::from(9_u64)),
+                },
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_last_session_workspace_locations_skips_missing_paths(cx: &mut TestAppContext) {
+        let temp_fs = TempFs::new(cx.executor());
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let workspace_db =
+            WorkspaceDb::open_test_db("test_last_session_workspace_locations_skips_missing_paths")
+                .await;
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(1),
+                location: SerializedWorkspaceLocation::Local(temp_fs.path().join(path!("project"))),
+                session_id: Some("session-uuid".to_string()),
+                window_id: Some(1),
+            })
+            .await;
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(2),
+                location: SerializedWorkspaceLocation::Local(
+                    temp_fs.path().join(path!("missing_project")),
+                ),
+                session_id: Some("session-uuid".to_string()),
+                window_id: Some(2),
+            })
+            .await;
+
+        let locations = workspace_db
+            .last_session_workspace_locations("session-uuid", None, &temp_fs)
+            .await
+            .expect("last session workspace query should succeed");
+
+        assert_eq!(
+            locations,
+            vec![SessionWorkspace {
+                workspace_id: WorkspaceId::from(1),
+                location: SerializedWorkspaceLocation::Local(temp_fs.path().join(path!("project"))),
+                window_id: Some(WindowId::from(1_u64)),
+            }]
         );
     }
 

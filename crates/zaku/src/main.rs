@@ -21,7 +21,7 @@ use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
 use session::{AppSession, Session};
 use theme::LoadThemes;
-use workspace::{Root, SharedState, Workspace};
+use workspace::SharedState;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -84,12 +84,12 @@ fn main() {
         cx.set_menus(menus);
 
         cx.activate(true);
-
-        let window_options = workspace::default_window_options(cx);
-        cx.open_window(window_options, move |window, cx| {
-            cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
+        cx.spawn(async move |cx| {
+            if let Err(error) = zaku::restore_or_create_workspace(shared_state, cx).await {
+                log::error!("Failed to restore or create workspace: {error:#}");
+            }
         })
-        .unwrap();
+        .detach();
     });
 }
 
