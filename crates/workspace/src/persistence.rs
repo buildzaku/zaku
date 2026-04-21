@@ -555,6 +555,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_last_session_workspace_locations(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
         let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree(path!("first"), json!(null));
         temp_fs.insert_tree(path!("second"), json!(null));
@@ -627,6 +629,8 @@ mod tests {
 
     #[gpui::test]
     async fn test_last_session_workspace_locations_skips_missing_paths(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
         let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree(path!("project"), json!(null));
 
