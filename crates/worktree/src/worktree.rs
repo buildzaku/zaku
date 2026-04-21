@@ -1684,11 +1684,7 @@ impl BackgroundScanner {
             }
         }
 
-        for ((path, metadata), request) in relative_paths
-            .iter()
-            .zip(metadata.into_iter())
-            .zip(requests.into_iter())
-        {
+        for ((path, metadata), request) in relative_paths.iter().zip(metadata).zip(requests) {
             let abs_path: Arc<Path> = root_abs_path.as_path().join(path.as_std_path()).into();
             match metadata {
                 Ok(Some((metadata, canonical_path))) => {
