@@ -346,6 +346,8 @@ mod tests {
     use gpui::TestAppContext;
     use serde_json::json;
 
+    use crate::OpenMode;
+
     #[cfg(unix)]
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
@@ -468,7 +470,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let open_workspace = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
         });
         open_workspace.await.expect("workspace open should succeed");
 

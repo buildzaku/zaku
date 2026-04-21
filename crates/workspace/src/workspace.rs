@@ -14,10 +14,14 @@ use futures::channel::oneshot;
 use gpui::{
     Action, App, Axis, Bounds, Div, DragMoveEvent, Empty, Entity, FocusHandle, Focusable, Global,
     KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, Size,
-    Subscription, Task, Window, WindowBounds, WindowOptions, prelude::*,
+    Subscription, Task, Window, WindowBounds, WindowHandle, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use actions::{
     menu,
@@ -62,6 +66,18 @@ impl From<WorkspaceId> for i64 {
     fn from(value: WorkspaceId) -> Self {
         value.0
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OpenMode {
+    NewWindow,
+    #[default]
+    Activate,
+}
+
+pub struct OpenResult {
+    pub window: WindowHandle<Root>,
+    pub workspace: Entity<Workspace>,
 }
 
 #[derive(Clone)]
@@ -172,6 +188,50 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
     }
 }
 
+fn find_existing_workspace_window(
+    path: &Path,
+    requesting_window: Option<WindowHandle<Root>>,
+    cx: &App,
+) -> Option<(WindowHandle<Root>, Entity<Workspace>)> {
+    if let Some(window) = requesting_window
+        && let Ok(root) = window.read(cx)
+    {
+        let workspace = root.workspace().clone();
+        let is_match = workspace
+            .read(cx)
+            .root(cx)
+            .is_some_and(|root_path| root_path.as_path() == path);
+
+        if is_match {
+            return Some((window, workspace));
+        }
+    }
+
+    for window in cx
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<Root>())
+    {
+        if Some(window) == requesting_window {
+            continue;
+        }
+
+        if let Ok(root) = window.read(cx) {
+            let workspace = root.workspace().clone();
+            let is_match = workspace
+                .read(cx)
+                .root(cx)
+                .is_some_and(|root_path| root_path.as_path() == path);
+
+            if is_match {
+                return Some((window, workspace));
+            }
+        }
+    }
+
+    None
+}
+
 fn prompt_and_open_workspace(
     workspace: &mut Workspace,
     options: PathPromptOptions,
@@ -180,39 +240,21 @@ fn prompt_and_open_workspace(
     cx: &mut Context<Workspace>,
 ) {
     let selected_path = workspace.prompt_open_path(options, window, cx);
-    let shared_state = workspace.shared_state().clone();
 
     cx.spawn_in(window, async move |this, cx| {
         let Some(selected_path) = selected_path.await.log_err().flatten() else {
             return;
         };
 
-        if create_new_window {
-            cx.update(|_, cx| {
-                let window_options = default_window_options(cx);
-
-                if let Err(error) = cx.open_window(window_options, move |window, cx| {
-                    let shared_state = shared_state.clone();
-                    let selected_path = selected_path.clone();
-                    cx.new(|cx| {
-                        let workspace = Workspace::create(shared_state, window, cx);
-                        let open_workspace = workspace.update(cx, |workspace, cx| {
-                            workspace.open_workspace_for_path(selected_path.clone(), window, cx)
-                        });
-                        open_workspace.detach_and_log_err(cx);
-                        Root::new(workspace)
-                    })
-                }) {
-                    log::error!("Failed to open workspace window: {error}");
-                }
-            })
-            .log_err();
-            return;
-        }
+        let open_mode = if create_new_window {
+            OpenMode::NewWindow
+        } else {
+            OpenMode::Activate
+        };
 
         if let Some(open_task) = this
             .update_in(cx, |workspace, window, cx| {
-                workspace.open_workspace_for_path(selected_path, window, cx)
+                workspace.open_workspace_for_path(selected_path, open_mode, window, cx)
             })
             .log_err()
         {
@@ -498,37 +540,141 @@ impl Workspace {
         receiver
     }
 
+    pub fn open_local(
+        path: PathBuf,
+        shared_state: Arc<SharedState>,
+        requesting_window: Option<WindowHandle<Root>>,
+        open_mode: OpenMode,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<OpenResult>> {
+        fn inner(
+            workspace: &mut Workspace,
+            path: PathBuf,
+            window: &mut Window,
+            cx: &mut Context<Workspace>,
+        ) -> Task<anyhow::Result<()>> {
+            let project = workspace.project();
+
+            cx.spawn_in(window, async move |this, cx| {
+                let open_task = project.update(cx, |project, cx| {
+                    project.find_or_create_worktree(&path, true, cx)
+                });
+                open_task.await?;
+
+                this.update_in(cx, |workspace, window, cx| {
+                    workspace.pane.update(cx, |pane, cx| {
+                        pane.set_should_display_welcome_page(false, cx);
+                    });
+                    workspace.left_dock.update(cx, |dock, cx| {
+                        if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
+                            dock.activate_panel(panel_index, window, cx);
+                            dock.set_open(true, window, cx);
+                        }
+                    });
+
+                    let focus_handle = workspace.pane.read(cx).focus_handle(cx);
+                    window.focus(&focus_handle, cx);
+                    workspace.serialize_workspace(window, cx);
+                    cx.notify();
+                })?;
+
+                anyhow::Ok(())
+            })
+        }
+
+        let window_to_replace = match open_mode {
+            OpenMode::NewWindow => None,
+            OpenMode::Activate => requesting_window,
+        };
+
+        cx.spawn(async move |cx| {
+            let (window, workspace, open_task) = if let Some(window) = window_to_replace {
+                let (workspace, open_task) = window.update(cx, |root: &mut Root, window, cx| {
+                    let workspace = root.workspace().clone();
+                    let open_task = workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        inner(workspace, path.clone(), window, cx)
+                    });
+                    (workspace, open_task)
+                })?;
+
+                (window, workspace, open_task)
+            } else {
+                let window_options = cx.update(default_window_options);
+                let window = cx.open_window(window_options, {
+                    let shared_state = shared_state.clone();
+                    move |window, cx| {
+                        cx.new(|cx| {
+                            let workspace = Workspace::create(shared_state, window, cx);
+                            Root::new(workspace)
+                        })
+                    }
+                })?;
+
+                let (workspace, open_task) = window.update(cx, |root: &mut Root, window, cx| {
+                    let workspace = root.workspace().clone();
+                    let open_task = workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        inner(workspace, path.clone(), window, cx)
+                    });
+                    (workspace, open_task)
+                })?;
+
+                (window, workspace, open_task)
+            };
+
+            open_task.await?;
+
+            Ok(OpenResult { window, workspace })
+        })
+    }
+
     pub fn open_workspace_for_path(
         &mut self,
         path: PathBuf,
+        mut open_mode: OpenMode,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<()>> {
-        let project = self.project();
+    ) -> Task<anyhow::Result<Entity<Workspace>>> {
+        let requesting_window = window.window_handle().downcast::<Root>();
 
-        cx.spawn_in(window, async move |this, cx| {
-            let open_task = project.update(cx, |project, cx| {
-                project.find_or_create_worktree(&path, true, cx)
-            });
-            open_task.await?;
+        if self.root(cx).is_none() {
+            open_mode = OpenMode::Activate;
+        }
 
-            this.update_in(cx, |workspace, window, cx| {
-                workspace.pane.update(cx, |pane, cx| {
-                    pane.set_should_display_welcome_page(false, cx);
-                });
-                workspace.left_dock.update(cx, |dock, cx| {
-                    if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
-                        dock.activate_panel(panel_index, window, cx);
-                        dock.set_open(true, window, cx);
-                    }
-                });
+        let shared_state = self.shared_state().clone();
 
-                let focus_handle = workspace.pane.read(cx).focus_handle(cx);
-                window.focus(&focus_handle, cx);
-                workspace.serialize_workspace(window, cx);
-                cx.notify();
-            })?;
-            Ok(())
+        cx.spawn(async move |_, cx| {
+            let path = shared_state.fs.canonicalize(&path).await.unwrap_or(path);
+            let existing = cx
+                .update(|cx| find_existing_workspace_window(path.as_path(), requesting_window, cx));
+
+            if let Some((window, workspace)) = existing {
+                window
+                    .update(cx, {
+                        let workspace = workspace.clone();
+                        move |_, window, cx| {
+                            window.activate_window();
+                            let focus_handle = workspace.read(cx).focus_handle(cx);
+                            window.focus(&focus_handle, cx);
+                        }
+                    })
+                    .log_err();
+
+                return Ok(workspace);
+            }
+
+            let OpenResult { window, workspace } = cx
+                .update(|cx| {
+                    Workspace::open_local(path, shared_state, requesting_window, open_mode, cx)
+                })
+                .await?;
+
+            window
+                .update(cx, |_, window, _cx| {
+                    window.activate_window();
+                })
+                .log_err();
+
+            Ok(workspace)
         })
     }
 
@@ -1066,10 +1212,20 @@ mod tests {
         });
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(alternate_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                alternate_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(canonical_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                canonical_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
 
         first_open
@@ -1146,7 +1302,7 @@ mod tests {
         let second_path = temp_fs.path().join(path!("second"));
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
         first_open
             .await
@@ -1219,10 +1375,10 @@ mod tests {
         let second_path = temp_fs.path().join(path!("second"));
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(second_path.clone(), window, cx)
+            workspace.open_workspace_for_path(second_path.clone(), OpenMode::Activate, window, cx)
         });
 
         second_open
@@ -1281,13 +1437,13 @@ mod tests {
         let second_path = temp_fs.path().join(path!("second"));
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(second_path.clone(), window, cx)
+            workspace.open_workspace_for_path(second_path.clone(), OpenMode::Activate, window, cx)
         });
         let third_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
 
         first_open
@@ -1364,7 +1520,7 @@ mod tests {
             workspace.set_database_id(WorkspaceId::from(1));
         });
         let open_workspace = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
         });
         open_workspace.await.expect("workspace open should succeed");
 
@@ -1554,7 +1710,7 @@ mod tests {
             .expect("first open should create a worktree");
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
         });
         second_open
             .await
@@ -1574,6 +1730,65 @@ mod tests {
 
         assert_eq!(Some(first_worktree_id), second_worktree_id);
         assert_eq!(current_root, Some(project_path));
+    }
+
+    #[gpui::test]
+    async fn test_opening_same_workspace_in_new_window_activates_existing_workspace(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {"
+                        [meta]
+                        version = 1
+                    "}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let (root, cx) = cx.add_window_view({
+            let shared_state = shared_state.clone();
+            move |window, cx| {
+                let shared_state = shared_state.clone();
+                Root::new(Workspace::create(shared_state, window, cx))
+            }
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        let first_open = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
+        });
+        let first_workspace = first_open
+            .await
+            .expect("first workspace open should succeed");
+
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
+        assert_eq!(cx.windows().len(), 1);
+
+        let second_open = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::NewWindow, window, cx)
+        });
+        let second_workspace = second_open
+            .await
+            .expect("new-window open for existing workspace should succeed");
+
+        assert_eq!(cx.windows().len(), 1);
+        assert_eq!(
+            Entity::entity_id(&first_workspace),
+            Entity::entity_id(&second_workspace)
+        );
     }
 
     #[gpui::test]
@@ -1619,7 +1834,12 @@ mod tests {
             .expect("first open should create a worktree");
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(alternate_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                alternate_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         second_open
             .await
@@ -1700,7 +1920,12 @@ mod tests {
         });
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(alias_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                alias_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         first_open
             .await
@@ -1717,7 +1942,12 @@ mod tests {
         assert_eq!(first_root, Some(canonical_project_path.clone()));
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(canonical_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                canonical_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         second_open
             .await
@@ -1808,7 +2038,7 @@ mod tests {
             .expect("first open should create a worktree");
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(second_path.clone(), window, cx)
+            workspace.open_workspace_for_path(second_path.clone(), OpenMode::Activate, window, cx)
         });
         second_open
             .await

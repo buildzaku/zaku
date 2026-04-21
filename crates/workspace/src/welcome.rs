@@ -15,7 +15,7 @@ use ui::{
     KeyBinding, Label, LabelCommon, LabelSize,
 };
 
-use crate::{SerializedWorkspaceLocation, WORKSPACE_DB, Workspace, WorkspaceId};
+use crate::{OpenMode, SerializedWorkspaceLocation, WORKSPACE_DB, Workspace, WorkspaceId};
 
 #[derive(IntoElement)]
 struct SectionHeader {
@@ -232,7 +232,7 @@ impl WelcomePage {
 
         if let Err(error) = self.workspace.update(cx, |workspace, cx| {
             workspace
-                .open_workspace_for_path(recent_workspace_path, window, cx)
+                .open_workspace_for_path(recent_workspace_path, OpenMode::Activate, window, cx)
                 .detach_and_log_err(cx);
         }) {
             log::debug!("Failed to open recent workspace from welcome page: {error}");
