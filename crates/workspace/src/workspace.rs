@@ -38,6 +38,9 @@ use util::ResultExt;
 #[cfg(any(test, feature = "test-support"))]
 use session::Session;
 
+#[cfg(test)]
+use uuid::Uuid;
+
 use crate::{
     dock::Dock,
     pane::Pane,
@@ -511,8 +514,8 @@ impl Workspace {
     }
 
     #[cfg(test)]
-    pub(crate) fn set_database_id(&mut self, id: WorkspaceId) {
-        self.database_id = Some(id);
+    pub(crate) fn set_random_database_id(&mut self) {
+        self.database_id = Some(WorkspaceId(Uuid::new_v4().as_u64_pair().0 as i64));
     }
 
     pub fn prompt_open_path(
@@ -1266,9 +1269,7 @@ mod tests {
         let canonical_project_path = temp_fs.path().join(path!("project"));
         let alternate_project_path = canonical_project_path.join("..").join("project");
 
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
-        });
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(
@@ -1586,7 +1587,7 @@ mod tests {
 
         workspace.update_in(cx, |workspace, _, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
-            workspace.set_database_id(WorkspaceId::from(1));
+            workspace.set_random_database_id();
         });
         let open_workspace = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
@@ -1725,9 +1726,7 @@ mod tests {
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
-        });
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane.clone());
         pane.update_in(cx, |pane, window, cx| {
@@ -1893,9 +1892,7 @@ mod tests {
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
-        });
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -1991,9 +1988,7 @@ mod tests {
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
-        });
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(
