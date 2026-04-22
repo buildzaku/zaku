@@ -405,10 +405,11 @@ pub async fn restore_or_create_workspace(
         }
     }
 
+    let workspace_id = WORKSPACE_DB.next_id().await?;
     cx.update(|cx| {
         let window_options = workspace::default_window_options(cx);
         cx.open_window(window_options, move |window, cx| {
-            cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
+            cx.new(|cx| Root::new(Workspace::create(workspace_id, shared_state, window, cx)))
         })
     })?;
 

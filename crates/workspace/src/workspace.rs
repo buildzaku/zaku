@@ -50,8 +50,8 @@ const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
 const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
 const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
-const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
+pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceId(i64);
@@ -161,16 +161,31 @@ fn register_actions(
         .register_action({
             move |_, _: &NewWindow, _, cx| {
                 cx.activate(true);
-                let window_options = default_window_options(cx);
                 let shared_state = shared_state.clone();
 
-                if let Err(error) = cx.open_window(window_options, move |window, cx| {
-                    window.activate_window();
+                cx.spawn(async move |_, cx| {
+                    let workspace_id = match WORKSPACE_DB.next_id().await {
+                        Ok(workspace_id) => workspace_id,
+                        Err(error) => {
+                            log::error!("Failed to allocate workspace id: {error}");
+                            return;
+                        }
+                    };
 
-                    cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
-                }) {
-                    log::error!("Failed to open workspace window: {error}");
-                }
+                    if let Err(error) = cx.update(|cx| {
+                        let window_options = default_window_options(cx);
+                        cx.open_window(window_options, move |window, cx| {
+                            window.activate_window();
+
+                            cx.new(|cx| {
+                                Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                            })
+                        })
+                    }) {
+                        log::error!("Failed to open workspace window: {error}");
+                    }
+                })
+                .detach();
             }
         })
         .register_action(|_, _: &Minimize, window, _| {
@@ -326,8 +341,9 @@ impl Root {
                 .await?;
 
             if should_replace {
+                let workspace_id = WORKSPACE_DB.next_id().await?;
                 this.update_in(cx, |root, window, cx| {
-                    root.workspace = Workspace::create(shared_state, window, cx);
+                    root.workspace = Workspace::create(workspace_id, shared_state, window, cx);
                     cx.notify();
                 })?;
             }
@@ -392,6 +408,7 @@ pub struct Workspace {
     shared_state: Arc<SharedState>,
     workspace_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
+    session_id: Option<String>,
     project: Entity<Project>,
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
@@ -402,6 +419,7 @@ pub struct Workspace {
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
     _schedule_serialize_workspace: Option<Task<()>>,
     _serialize_workspace_task: Option<Task<()>>,
+    _window_activation_subscription: Subscription,
     _window_appearance_subscription: Subscription,
 }
 
@@ -416,6 +434,7 @@ impl Render for DraggedDock {
 
 impl Workspace {
     pub fn create<V>(
+        workspace_id: WorkspaceId,
         shared_state: Arc<SharedState>,
         window: &mut Window,
         cx: &mut Context<V>,
@@ -427,53 +446,17 @@ impl Workspace {
             let fs = shared_state.fs.clone();
             move |cx| Project::new(fs.clone(), cx)
         });
-        let workspace = cx.new(|cx| Self::new(shared_state, project, window, cx));
-        let weak_workspace = workspace.downgrade();
-        let window_id = window.window_handle().window_id().as_u64();
 
-        cx.spawn_in(window, async move |_this, cx| {
-            match WORKSPACE_DB.next_id().await {
-                Ok(workspace_id) => {
-                    match weak_workspace.update_in(cx, |workspace, window, cx| {
-                        workspace.set_database_id(workspace_id);
-                        workspace._schedule_serialize_workspace.take();
-                        workspace._serialize_workspace_task =
-                            Some(workspace.serialize_workspace_internal(window, cx));
-                        Some(workspace.shared_state().session.read(cx).id().to_string())
-                    }) {
-                        Ok(session_id) => {
-                            cx.background_spawn(async move {
-                                if let Err(error) = WORKSPACE_DB
-                                    .set_session_binding(workspace_id, session_id, Some(window_id))
-                                    .await
-                                {
-                                    log::error!(
-                                        "Failed to bind workspace session metadata: {error}"
-                                    );
-                                }
-                            })
-                            .detach();
-                        }
-                        Err(_) => {
-                            cx.background_spawn(async move {
-                                if let Err(error) =
-                                    WORKSPACE_DB.delete_workspace_by_id(workspace_id).await
-                                {
-                                    log::error!("Failed to delete unbound workspace id: {error}");
-                                }
-                            })
-                            .detach();
-                        }
-                    }
-                }
-                Err(error) => {
-                    log::error!("Failed to allocate workspace id: {error}");
-                }
-            }
+        cx.new(|cx| {
+            Self::new(
+                Some(workspace_id),
+                Some(shared_state.session.read(cx).id().to_string()),
+                shared_state,
+                project,
+                window,
+                cx,
+            )
         })
-        .detach();
-
-        workspace
     }
 
     pub fn close_window(cx: &mut App) {
@@ -505,7 +488,7 @@ impl Workspace {
 
             if close_intent != CloseIntent::Quit {
                 this.update_in(cx, |this, window, cx| this.remove_from_session(window, cx))?
-                    .await?;
+                    .await;
             }
 
             Ok(true)
@@ -527,6 +510,7 @@ impl Workspace {
         self.database_id
     }
 
+    #[cfg(test)]
     pub(crate) fn set_database_id(&mut self, id: WorkspaceId) {
         self.database_id = Some(id);
     }
@@ -638,9 +622,12 @@ impl Workspace {
 
                 (window, workspace, open_task)
             } else {
+                let workspace_id = WORKSPACE_DB.next_id().await?;
                 let window_options = cx.update(default_window_options);
                 let window = cx.open_window(window_options, move |window, cx| {
-                    cx.new(|cx| Root::new(Workspace::create(shared_state, window, cx)))
+                    cx.new(|cx| {
+                        Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                    })
                 })?;
 
                 let (workspace, open_task) = window.update(cx, |root: &mut Root, window, cx| {
@@ -655,6 +642,13 @@ impl Workspace {
             };
 
             open_task.await?;
+            if let Some(database_id) =
+                workspace.read_with(cx, |workspace, _| workspace.database_id())
+            {
+                if let Err(error) = WORKSPACE_DB.update_activation_order(database_id).await {
+                    log::error!("Failed to update workspace activation order: {error}");
+                }
+            }
 
             Ok(OpenResult { window, workspace })
         })
@@ -744,16 +738,9 @@ impl Workspace {
         })
     }
 
-    fn remove_from_session(&mut self, _: &mut Window, cx: &mut App) -> Task<anyhow::Result<()>> {
-        let Some(database_id) = self.database_id() else {
-            return Task::ready(Ok(()));
-        };
-
-        cx.spawn(async move |_| {
-            WORKSPACE_DB
-                .set_session_binding(database_id, None, None)
-                .await
-        })
+    fn remove_from_session(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
+        self.session_id.take();
+        self.serialize_workspace_internal(window, cx)
     }
 
     fn serialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -784,19 +771,18 @@ impl Workspace {
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
                     location: SerializedWorkspaceLocation::Local(root_path),
-                    session_id: Some(self.shared_state.session.read(cx).id().to_string()),
-                    window_id: Some(window.window_handle().window_id().as_u64()),
+                    session_id: self.session_id.clone(),
+                    window_id: self
+                        .session_id
+                        .as_ref()
+                        .map(|_| window.window_handle().window_id().as_u64()),
                 };
 
                 window.spawn(cx, async move |_| {
                     WORKSPACE_DB.save_workspace(serialized_workspace).await;
                 })
             }
-            None => window.spawn(cx, async move |_| {
-                if let Err(error) = WORKSPACE_DB.delete_workspace_by_id(database_id).await {
-                    log::error!("Failed to delete workspace without root path: {error}");
-                }
-            }),
+            None => Task::ready(()),
         }
     }
 
@@ -848,11 +834,28 @@ impl Workspace {
     }
 
     pub fn new(
+        database_id: Option<WorkspaceId>,
+        session_id: Option<String>,
         shared_state: Arc<SharedState>,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let window_activation_subscription =
+            cx.observe_window_activation(window, |workspace, window, cx| {
+                if window.is_window_active()
+                    && let Some(database_id) = workspace.database_id
+                {
+                    cx.background_spawn(async move {
+                        if let Err(error) = WORKSPACE_DB.update_activation_order(database_id).await
+                        {
+                            log::error!("Failed to update workspace activation order: {error}");
+                        }
+                    })
+                    .detach();
+                }
+            });
+
         let window_appearance_subscription =
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
@@ -899,7 +902,8 @@ impl Workspace {
         Self {
             shared_state,
             workspace_actions: Default::default(),
-            database_id: None,
+            database_id,
+            session_id,
             project,
             left_dock,
             bottom_dock,
@@ -910,6 +914,7 @@ impl Workspace {
             previous_dock_drag_coordinates: None,
             _schedule_serialize_workspace: None,
             _serialize_workspace_task: None,
+            _window_activation_subscription: window_activation_subscription,
             _window_appearance_subscription: window_appearance_subscription,
         }
     }
@@ -918,7 +923,14 @@ impl Workspace {
     pub fn test_new(project: Entity<Project>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let shared_state = SharedState::global(cx);
         window.activate_window();
-        let workspace = Self::new(shared_state, project, window, cx);
+        let workspace = Self::new(
+            None,
+            Some(shared_state.session.read(cx).id().to_string()),
+            shared_state,
+            project,
+            window,
+            cx,
+        );
         workspace
             .pane
             .update(cx, |pane, cx| window.focus(&pane.focus_handle(cx), cx));
@@ -1818,8 +1830,9 @@ mod tests {
         );
 
         let project_path = temp_fs.path().join(path!("project"));
+        let workspace_id = WORKSPACE_DB.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 

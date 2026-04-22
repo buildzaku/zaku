@@ -16,29 +16,18 @@ pub struct Session {
 }
 
 impl Session {
-    pub async fn new(session_id: String, db: KeyValueStore) -> Self {
-        let old_session_id = db.read_kv(SESSION_ID_KEY).ok().flatten();
+    pub async fn new(session_id: String, kv_store: KeyValueStore) -> Self {
+        let old_session_id = kv_store.read_kv(SESSION_ID_KEY).ok().flatten();
 
-        db.write_kv(SESSION_ID_KEY.to_string(), session_id.clone())
+        kv_store
+            .write_kv(SESSION_ID_KEY.to_string(), session_id.clone())
             .await
             .log_err();
-
-        let old_window_ids = db
-            .read_kv(SESSION_WINDOW_STACK_KEY)
-            .ok()
-            .flatten()
-            .and_then(|json| serde_json::from_str::<Vec<u64>>(&json).ok())
-            .map(|window_ids: Vec<u64>| {
-                window_ids
-                    .into_iter()
-                    .map(WindowId::from)
-                    .collect::<Vec<WindowId>>()
-            });
 
         Self {
             session_id,
             old_session_id,
-            old_window_ids,
+            old_window_ids: load_window_stack(&kv_store),
         }
     }
 
@@ -64,18 +53,18 @@ pub struct AppSession {
 
 impl AppSession {
     pub fn new(session: Session, cx: &Context<Self>) -> Self {
-        let _subscriptions = vec![cx.on_app_quit(Self::app_will_quit)];
+        let _subscriptions = vec![cx.on_app_quit(Self::before_quit)];
 
         #[cfg(not(any(test, feature = "test-support")))]
         let _serialization_task = {
-            let db = KeyValueStore::global(cx);
+            let kv_store = KeyValueStore::global(cx);
             cx.spawn(async move |_, cx| {
                 let mut current_window_stack = Vec::new();
                 loop {
                     if let Some(windows) = cx.update(|cx| window_stack(cx))
                         && windows != current_window_stack
                     {
-                        store_window_stack(db.clone(), &windows).await;
+                        save_window_stack(kv_store.clone(), &windows).await;
                         current_window_stack = windows;
                     }
 
@@ -96,10 +85,10 @@ impl AppSession {
         }
     }
 
-    fn app_will_quit(&mut self, cx: &mut Context<Self>) -> Task<()> {
+    fn before_quit(&mut self, cx: &mut Context<Self>) -> Task<()> {
         if let Some(window_stack) = window_stack(cx) {
-            let db = KeyValueStore::global(cx);
-            cx.background_spawn(async move { store_window_stack(db, &window_stack).await })
+            let kv_store = KeyValueStore::global(cx);
+            cx.background_spawn(async move { save_window_stack(kv_store, &window_stack).await })
         } else {
             Task::ready(())
         }
@@ -114,7 +103,7 @@ impl AppSession {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn replace_session_for_test(&mut self, session: Session) {
+    pub fn replace_session(&mut self, session: Session) {
         self.session = session;
     }
 
@@ -132,9 +121,19 @@ fn window_stack(cx: &App) -> Option<Vec<u64>> {
     )
 }
 
-async fn store_window_stack(db: KeyValueStore, windows: &[u64]) {
+pub fn load_window_stack(kv_store: &KeyValueStore) -> Option<Vec<WindowId>> {
+    kv_store
+        .read_kv(SESSION_WINDOW_STACK_KEY)
+        .ok()
+        .flatten()
+        .and_then(|json| serde_json::from_str::<Vec<u64>>(&json).ok())
+        .map(|window_ids| window_ids.into_iter().map(WindowId::from).collect())
+}
+
+pub async fn save_window_stack(kv_store: KeyValueStore, windows: &[u64]) {
     if let Ok(window_ids_json) = serde_json::to_string(windows) {
-        db.write_kv(SESSION_WINDOW_STACK_KEY.to_string(), window_ids_json)
+        kv_store
+            .write_kv(SESSION_WINDOW_STACK_KEY.to_string(), window_ids_json)
             .await
             .log_err();
     }

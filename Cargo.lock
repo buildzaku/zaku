@@ -8499,6 +8499,7 @@ dependencies = [
  "logger",
  "metadata",
  "mimalloc",
+ "serde_json",
  "session",
  "settings",
  "theme",

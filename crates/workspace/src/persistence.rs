@@ -77,8 +77,8 @@ impl WorkspaceDb {
 
                     connection
                         .exec_bound(indoc! {"
-                            INSERT INTO workspace(id, location, session_id, window_id, timestamp)
-                            VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)
+                            INSERT INTO workspace(id, location, session_id, window_id, activation_order, timestamp)
+                            VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace), CURRENT_TIMESTAMP)
                             ON CONFLICT(id)
                             DO UPDATE SET
                                 location = excluded.location,
@@ -86,7 +86,7 @@ impl WorkspaceDb {
                                 window_id = excluded.window_id,
                                 timestamp = CURRENT_TIMESTAMP
                         "})
-                        .context("failed to prepare recent workspace upsert query")
+                        .context("failed to prepare workspace upsert query")
                         .and_then(|mut f| {
                             f((
                                 i64::from(workspace.id),
@@ -95,7 +95,7 @@ impl WorkspaceDb {
                                 window_id,
                             ))
                         })
-                        .context("failed to upsert recent workspace")?;
+                        .context("failed to upsert workspace")?;
 
                     Ok(())
                 })
@@ -104,33 +104,6 @@ impl WorkspaceDb {
         {
             log::error!("Failed to save workspace: {error}");
         }
-    }
-
-    pub async fn set_session_binding(
-        &self,
-        workspace_id: WorkspaceId,
-        session_id: Option<String>,
-        window_id: Option<u64>,
-    ) -> anyhow::Result<()> {
-        let window_id = serialize_window_id(window_id)?;
-
-        self.0
-            .write(move |connection| {
-                connection
-                    .exec_bound(indoc! {"
-                        UPDATE workspace
-                        SET session_id = ?2, window_id = ?3
-                        WHERE id = ?1
-                    "})
-                    .context("failed to prepare workspace session binding update query")
-                    .and_then(|mut f| {
-                        f((i64::from(workspace_id), session_id.as_deref(), window_id))
-                    })
-                    .context("failed to update workspace session binding")?;
-
-                Ok(())
-            })
-            .await
     }
 
     pub async fn recent_workspaces_on_disk(
@@ -165,6 +138,24 @@ impl WorkspaceDb {
         fs: &dyn Fs,
     ) -> anyhow::Result<Option<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>> {
         Ok(self.recent_workspaces_on_disk(fs).await?.into_iter().next())
+    }
+
+    pub async fn update_activation_order(&self, workspace_id: WorkspaceId) -> anyhow::Result<()> {
+        self.0
+            .write(move |connection| {
+                connection
+                    .exec_bound(indoc! {"
+                        UPDATE workspace
+                        SET activation_order = (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace)
+                        WHERE id = ?1
+                    "})
+                    .context("failed to prepare workspace activation order update query")
+                    .and_then(|mut f| f([i64::from(workspace_id)]))
+                    .context("failed to update workspace activation order")?;
+
+                Ok(())
+            })
+            .await
     }
 
     pub async fn last_session_workspace_locations(
@@ -270,12 +261,22 @@ impl WorkspaceDb {
                                 location BLOB UNIQUE,
                                 session_id TEXT,
                                 window_id INTEGER,
+                                activation_order INTEGER NOT NULL DEFAULT 0,
                                 timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                             ) STRICT
                         "})
                         .context("failed to set up workspace table initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace persistence table")?;
+
+                    connection
+                        .exec(indoc! {"
+                            CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
+                            ON workspace(activation_order DESC)
+                        "})
+                        .context("failed to set up workspace activation order index initialization")
+                        .and_then(|mut f| f())
+                        .context("failed to initialize workspace activation order index")?;
 
                     connection
                         .exec(indoc! {"
@@ -301,7 +302,7 @@ impl WorkspaceDb {
                     SELECT id, location, timestamp
                     FROM workspace
                     WHERE location IS NOT NULL
-                    ORDER BY timestamp DESC
+                    ORDER BY activation_order DESC
                 "})
                 .context("failed to prepare recent workspace query")
                 .and_then(|mut f| f())
@@ -330,7 +331,7 @@ impl WorkspaceDb {
                         SELECT id, location, window_id
                         FROM workspace
                         WHERE session_id = ?1 AND location IS NOT NULL
-                        ORDER BY timestamp DESC
+                        ORDER BY activation_order DESC
                     "})
                 .context("failed to prepare session workspaces query")
                 .and_then(|mut f| f(session_id))
@@ -517,8 +518,9 @@ mod tests {
             }),
         );
 
+        let workspace_id = DB.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
         root.update_in(cx, |root, window, cx| {
             root.replace_workspace(window, cx);
@@ -684,8 +686,9 @@ mod tests {
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
+        let workspace_id = DB.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));
@@ -741,8 +744,9 @@ mod tests {
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
+        let workspace_id = DB.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));

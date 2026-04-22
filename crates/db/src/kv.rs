@@ -15,12 +15,12 @@ impl KeyValueStore {
 
     #[cfg(any(test, feature = "test-support"))]
     pub async fn from_test_db(name: &'static str) -> Self {
-        let key_value_store = Self(crate::open_test_db(name).await);
-        key_value_store
+        let kv_store = Self(crate::open_test_db(name).await);
+        kv_store
             .initialize_schema()
             .await
             .expect("key-value store schema should initialize");
-        key_value_store
+        kv_store
     }
 
     pub fn global(cx: &App) -> Self {
