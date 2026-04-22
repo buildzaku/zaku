@@ -173,35 +173,41 @@ mod tests {
 
     #[gpui::test]
     async fn test_kv() {
-        let db = KeyValueStore::from_test_db("test_kv").await;
+        let kv_store = KeyValueStore::from_test_db("test_kv").await;
 
-        assert_eq!(db.read_kv("key-1").unwrap(), None);
+        assert_eq!(kv_store.read_kv("key-1").unwrap(), None);
 
-        db.write_kv("key-1".to_string(), "one".to_string())
+        kv_store
+            .write_kv("key-1".to_string(), "one".to_string())
             .await
             .unwrap();
-        assert_eq!(db.read_kv("key-1").unwrap(), Some("one".to_string()));
+        assert_eq!(kv_store.read_kv("key-1").unwrap(), Some("one".to_string()));
 
-        db.write_kv("key-1".to_string(), "one-2".to_string())
+        kv_store
+            .write_kv("key-1".to_string(), "one-2".to_string())
             .await
             .unwrap();
-        assert_eq!(db.read_kv("key-1").unwrap(), Some("one-2".to_string()));
+        assert_eq!(
+            kv_store.read_kv("key-1").unwrap(),
+            Some("one-2".to_string())
+        );
 
-        db.write_kv("key-2".to_string(), "two".to_string())
+        kv_store
+            .write_kv("key-2".to_string(), "two".to_string())
             .await
             .unwrap();
-        assert_eq!(db.read_kv("key-2").unwrap(), Some("two".to_string()));
+        assert_eq!(kv_store.read_kv("key-2").unwrap(), Some("two".to_string()));
 
-        db.delete_kv("key-1".to_string()).await.unwrap();
-        assert_eq!(db.read_kv("key-1").unwrap(), None);
+        kv_store.delete_kv("key-1".to_string()).await.unwrap();
+        assert_eq!(kv_store.read_kv("key-1").unwrap(), None);
     }
 
     #[gpui::test]
     async fn test_scoped_kv() {
-        let db = KeyValueStore::from_test_db("test_scoped_kv").await;
+        let kv_store = KeyValueStore::from_test_db("test_scoped_kv").await;
 
-        let scope_a = db.scoped("namespace-a");
-        let scope_b = db.scoped("namespace-b");
+        let scope_a = kv_store.scoped("namespace-a");
+        let scope_b = kv_store.scoped("namespace-b");
 
         assert_eq!(scope_a.read("key-1").unwrap(), None);
 
