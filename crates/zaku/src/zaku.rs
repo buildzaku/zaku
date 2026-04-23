@@ -24,7 +24,7 @@ use theme::ActiveTheme;
 use ui::{Headline, Label, LabelCommon, LabelSize, Link, TextSize, prelude::*};
 use workspace::{
     CloseIntent, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace, SharedState,
-    WORKSPACE_DB, Workspace,
+    Workspace, WorkspaceDb,
 };
 
 pub fn init(cx: &mut App) {
@@ -405,7 +405,8 @@ pub async fn restore_or_create_workspace(
         }
     }
 
-    let workspace_id = WORKSPACE_DB.next_id().await?;
+    let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+    let workspace_id = workspace_db.next_id().await?;
     cx.update(|cx| {
         let window_options = workspace::default_window_options(cx);
         cx.open_window(window_options, move |window, cx| {
@@ -432,9 +433,10 @@ async fn restorable_workspace_locations(
 
     let last_session_id = last_session_id?;
     let has_window_stack = last_session_window_stack.is_some();
+    let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
 
     let mut locations = workspace::last_session_workspace_locations(
-        &WORKSPACE_DB,
+        &workspace_db,
         &last_session_id,
         last_session_window_stack,
         shared_state.fs.as_ref(),

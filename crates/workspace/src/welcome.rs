@@ -15,7 +15,7 @@ use ui::{
     KeyBinding, Label, LabelCommon, LabelSize,
 };
 
-use crate::{OpenMode, SerializedWorkspaceLocation, WORKSPACE_DB, Workspace, WorkspaceId};
+use crate::{OpenMode, SerializedWorkspaceLocation, Workspace, WorkspaceDb, WorkspaceId};
 
 #[derive(IntoElement)]
 struct SectionHeader {
@@ -177,11 +177,12 @@ impl WelcomePage {
         let fs = workspace
             .upgrade()
             .map(|workspace| workspace.read(cx).shared_state().fs.clone());
+        let workspace_db = WorkspaceDb::global(cx);
         cx.spawn_in(window, async move |this: WeakEntity<Self>, cx| {
             let Some(fs) = fs else {
                 return;
             };
-            let recent_workspaces = WORKSPACE_DB
+            let recent_workspaces = workspace_db
                 .recent_workspaces_on_disk(fs.as_ref())
                 .await
                 .unwrap_or_else(|error| {

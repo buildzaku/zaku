@@ -9,7 +9,7 @@ use session::{AppSession, Session};
 use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::{
-    OpenMode, OpenResult, Root, SERIALIZATION_THROTTLE_TIME, SharedState, WORKSPACE_DB, Workspace,
+    OpenMode, OpenResult, Root, SERIALIZATION_THROTTLE_TIME, SharedState, Workspace, WorkspaceDb,
 };
 
 fn init_test(shared_state: Arc<SharedState>, app_db: AppDatabase, cx: &mut TestAppContext) {
@@ -93,8 +93,9 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         open_results.try_into().ok().unwrap();
 
     let session_id = cx.update(|cx| shared_state.session.read(cx).id().to_owned());
+    let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
     let session_workspaces = workspace::last_session_workspace_locations(
-        &WORKSPACE_DB,
+        &workspace_db,
         &session_id,
         None,
         temp_fs.as_ref(),
@@ -158,7 +159,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     cx.executor().advance_clock(SERIALIZATION_THROTTLE_TIME);
     cx.run_until_parked();
 
-    let recent_workspace_paths = WORKSPACE_DB
+    let recent_workspace_paths = workspace_db
         .recent_workspaces_on_disk(temp_fs.as_ref())
         .await
         .unwrap()

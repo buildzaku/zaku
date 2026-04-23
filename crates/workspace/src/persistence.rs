@@ -2,37 +2,26 @@ pub mod model;
 
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use gpui::WindowId;
+use gpui::{App, WindowId};
 use indoc::indoc;
-use std::{path::PathBuf, sync::LazyLock};
+use std::path::PathBuf;
 
-use db::ThreadSafeConnection;
+use db::{AppDatabase, ThreadSafeConnection};
 use fs::Fs;
 
 use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
 use crate::WorkspaceId;
 
+#[derive(Clone)]
 pub struct WorkspaceDb(ThreadSafeConnection);
 
-pub static DB: LazyLock<WorkspaceDb> = LazyLock::new(|| smol::block_on(WorkspaceDb::open()));
-
 impl WorkspaceDb {
-    async fn open() -> Self {
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            Self::open_test_db("DB").await
-        }
+    pub fn from_app_db(db: &AppDatabase) -> Self {
+        Self(db.0.clone())
+    }
 
-        #[cfg(not(any(test, feature = "test-support")))]
-        {
-            let database_path = default_database_dir();
-            let workspace_db = Self(db::open_db(&database_path).await);
-            workspace_db
-                .initialize_schema()
-                .await
-                .expect("workspace persistence schema should initialize");
-            workspace_db
-        }
+    pub fn global(cx: &App) -> Self {
+        Self(AppDatabase::global(cx).clone())
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -250,7 +239,7 @@ impl WorkspaceDb {
             .flatten()
     }
 
-    async fn initialize_schema(&self) -> anyhow::Result<()> {
+    pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
         self.0
             .write(|connection| {
                 connection.with_savepoint("initialize_workspace_schema", || {
@@ -402,11 +391,6 @@ fn serialize_window_id(window_id: Option<u64>) -> anyhow::Result<Option<i64>> {
         .transpose()
 }
 
-#[cfg(not(any(test, feature = "test-support")))]
-fn default_database_dir() -> PathBuf {
-    settings::data_dir().join("db")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -518,7 +502,8 @@ mod tests {
             }),
         );
 
-        let workspace_id = DB.next_id().await.unwrap();
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
@@ -548,7 +533,7 @@ mod tests {
             })
             .await;
 
-        let serialized = DB.workspace_for_id(workspace_id);
+        let serialized = workspace_db.workspace_for_id(workspace_id);
         assert!(
             serialized.is_some(),
             "Workspace should be fully serialized in the DB after database_id assignment"
@@ -686,7 +671,8 @@ mod tests {
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
-        let workspace_id = DB.next_id().await.unwrap();
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
@@ -716,7 +702,7 @@ mod tests {
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
             .expect("workspace should have a database_id after opening");
-        let serialized_workspace = DB
+        let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
             .expect("workspace should be serialized before replacement");
 
@@ -726,7 +712,7 @@ mod tests {
         root.update_in(cx, |root, window, cx| root.replace_workspace(window, cx));
         cx.run_until_parked();
 
-        let serialized_workspace = DB
+        let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
             .expect("workspace row should remain after replacement");
 
@@ -744,7 +730,8 @@ mod tests {
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
-        let workspace_id = DB.next_id().await.unwrap();
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
@@ -774,7 +761,7 @@ mod tests {
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
             .expect("workspace should have a database_id after opening");
-        let serialized_workspace = DB
+        let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
             .expect("workspace should be serialized before close");
 
@@ -786,7 +773,7 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let serialized_workspace = DB
+        let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
             .expect("workspace row should remain after close");
 

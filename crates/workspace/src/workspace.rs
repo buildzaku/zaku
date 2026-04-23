@@ -6,7 +6,7 @@ pub mod status_bar;
 pub mod welcome;
 
 pub use persistence::{
-    DB as WORKSPACE_DB, WorkspaceDb,
+    WorkspaceDb,
     model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
 };
 
@@ -128,6 +128,8 @@ impl SharedState {
 
 pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
     SharedState::set_global(shared_state.clone(), cx);
+    smol::block_on(WorkspaceDb::global(cx).initialize_schema())
+        .expect("workspace persistence schema should initialize");
 
     cx.observe_new({
         move |workspace: &mut Workspace, window, cx| {
@@ -165,9 +167,10 @@ fn register_actions(
             move |_, _: &NewWindow, _, cx| {
                 cx.activate(true);
                 let shared_state = shared_state.clone();
+                let workspace_db = WorkspaceDb::global(cx);
 
                 cx.spawn(async move |_, cx| {
-                    let workspace_id = match WORKSPACE_DB.next_id().await {
+                    let workspace_id = match workspace_db.next_id().await {
                         Ok(workspace_id) => workspace_id,
                         Err(error) => {
                             log::error!("Failed to allocate workspace id: {error}");
@@ -335,6 +338,7 @@ impl Root {
     pub fn replace_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let workspace = self.workspace.clone();
         let shared_state = workspace.read(cx).shared_state().clone();
+        let workspace_db = WorkspaceDb::global(cx);
 
         cx.spawn_in(window, async move |this, cx| {
             let should_replace = workspace
@@ -344,7 +348,7 @@ impl Root {
                 .await?;
 
             if should_replace {
-                let workspace_id = WORKSPACE_DB.next_id().await?;
+                let workspace_id = workspace_db.next_id().await?;
                 this.update_in(cx, |root, window, cx| {
                     root.workspace = Workspace::create(workspace_id, shared_state, window, cx);
                     cx.notify();
@@ -612,6 +616,7 @@ impl Workspace {
             OpenMode::NewWindow => None,
             OpenMode::Activate => requesting_window,
         };
+        let workspace_db = WorkspaceDb::global(cx);
 
         cx.spawn(async move |cx| {
             let (window, workspace, open_task) = if let Some(window) = window_to_replace {
@@ -625,7 +630,7 @@ impl Workspace {
 
                 (window, workspace, open_task)
             } else {
-                let workspace_id = WORKSPACE_DB.next_id().await?;
+                let workspace_id = workspace_db.next_id().await?;
                 let window_options = cx.update(default_window_options);
                 let window = cx.open_window(window_options, move |window, cx| {
                     cx.new(|cx| {
@@ -648,7 +653,7 @@ impl Workspace {
             if let Some(database_id) =
                 workspace.read_with(cx, |workspace, _| workspace.database_id())
             {
-                if let Err(error) = WORKSPACE_DB.update_activation_order(database_id).await {
+                if let Err(error) = workspace_db.update_activation_order(database_id).await {
                     log::error!("Failed to update workspace activation order: {error}");
                 }
             }
@@ -736,9 +741,7 @@ impl Workspace {
         self._serialize_workspace_task.take();
 
         let serialize_task = self.serialize_workspace_internal(window, cx);
-        cx.spawn(async move |_| {
-            serialize_task.await;
-        })
+        cx.spawn(async move |_| serialize_task.await)
     }
 
     fn remove_from_session(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
@@ -781,8 +784,9 @@ impl Workspace {
                         .map(|_| window.window_handle().window_id().as_u64()),
                 };
 
+                let workspace_db = WorkspaceDb::global(cx);
                 window.spawn(cx, async move |_| {
-                    WORKSPACE_DB.save_workspace(serialized_workspace).await;
+                    workspace_db.save_workspace(serialized_workspace).await
                 })
             }
             None => Task::ready(()),
@@ -849,8 +853,9 @@ impl Workspace {
                 if window.is_window_active()
                     && let Some(database_id) = workspace.database_id
                 {
+                    let workspace_db = WorkspaceDb::global(cx);
                     cx.background_spawn(async move {
-                        if let Err(error) = WORKSPACE_DB.update_activation_order(database_id).await
+                        if let Err(error) = workspace_db.update_activation_order(database_id).await
                         {
                             log::error!("Failed to update workspace activation order: {error}");
                         }
@@ -1306,7 +1311,8 @@ mod tests {
             .await;
 
         let current_root = workspace.update_in(cx, |workspace, _, cx| workspace.root(cx));
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
@@ -1605,7 +1611,8 @@ mod tests {
             })
             .await;
 
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
@@ -1829,7 +1836,8 @@ mod tests {
         );
 
         let project_path = temp_fs.path().join(path!("project"));
-        let workspace_id = WORKSPACE_DB.next_id().await.unwrap();
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
@@ -1934,7 +1942,8 @@ mod tests {
             )
         });
 
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
@@ -2042,7 +2051,8 @@ mod tests {
             )
         });
 
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
