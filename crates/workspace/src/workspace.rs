@@ -577,41 +577,6 @@ impl Workspace {
         open_mode: OpenMode,
         cx: &mut App,
     ) -> Task<anyhow::Result<OpenResult>> {
-        fn inner(
-            workspace: &mut Workspace,
-            path: PathBuf,
-            window: &mut Window,
-            cx: &mut Context<Workspace>,
-        ) -> Task<anyhow::Result<()>> {
-            let project = workspace.project();
-
-            cx.spawn_in(window, async move |this, cx| {
-                let open_task = project.update(cx, |project, cx| {
-                    project.find_or_create_worktree(&path, true, cx)
-                });
-                open_task.await?;
-
-                this.update_in(cx, |workspace, window, cx| {
-                    workspace.pane.update(cx, |pane, cx| {
-                        pane.set_should_display_welcome_page(false, cx);
-                    });
-                    workspace.left_dock.update(cx, |dock, cx| {
-                        if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
-                            dock.activate_panel(panel_index, window, cx);
-                            dock.set_open(true, window, cx);
-                        }
-                    });
-
-                    let focus_handle = workspace.pane.read(cx).focus_handle(cx);
-                    window.focus(&focus_handle, cx);
-                    workspace.serialize_workspace(window, cx);
-                    cx.notify();
-                })?;
-
-                anyhow::Ok(())
-            })
-        }
-
         let window_to_replace = match open_mode {
             OpenMode::NewWindow => None,
             OpenMode::Activate => requesting_window,
@@ -619,37 +584,93 @@ impl Workspace {
         let workspace_db = WorkspaceDb::global(cx);
 
         cx.spawn(async move |cx| {
-            let (window, workspace, open_task) = if let Some(window) = window_to_replace {
-                let (workspace, open_task) = window.update(cx, |root: &mut Root, window, cx| {
+            let existing_window = if let Some(window) = window_to_replace {
+                let workspace =
+                    window.update(cx, |root: &mut Root, _window, _cx| root.workspace().clone())?;
+                Some((window, workspace))
+            } else {
+                None
+            };
+
+            let project = if let Some((_, workspace)) = &existing_window {
+                workspace.read_with(cx, |workspace, _| workspace.project())
+            } else {
+                cx.update(|cx| Project::open_local(shared_state.fs.clone(), path.clone(), cx))
+                    .await?
+            };
+
+            if existing_window.is_some() {
+                let open_task = project.update(cx, |project, cx| {
+                    project.find_or_create_worktree(&path, true, cx)
+                });
+                open_task.await?;
+            }
+
+            let (window, workspace) = if let Some((window, _)) = existing_window {
+                let workspace = window.update(cx, |root: &mut Root, window, cx| {
                     let workspace = root.workspace().clone();
-                    let open_task = workspace.update(cx, |workspace: &mut Workspace, cx| {
-                        inner(workspace, path.clone(), window, cx)
+                    workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        workspace.pane.update(cx, |pane, _cx| {
+                            pane.set_should_display_welcome_page(false);
+                        });
+                        workspace.left_dock.update(cx, |dock, cx| {
+                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
+                                dock.activate_panel(panel_index, window, cx);
+                                dock.set_open(true, window, cx);
+                            }
+                        });
+
+                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
+                        window.focus(&focus_handle, cx);
+                        workspace.serialize_workspace(window, cx);
+                        cx.notify();
                     });
-                    (workspace, open_task)
+                    workspace
                 })?;
 
-                (window, workspace, open_task)
+                (window, workspace)
             } else {
                 let workspace_id = workspace_db.next_id().await?;
                 let window_options = cx.update(default_window_options);
                 let window = cx.open_window(window_options, move |window, cx| {
-                    cx.new(|cx| {
-                        Root::new(Workspace::create(workspace_id, shared_state, window, cx))
-                    })
-                })?;
-
-                let (workspace, open_task) = window.update(cx, |root: &mut Root, window, cx| {
-                    let workspace = root.workspace().clone();
-                    let open_task = workspace.update(cx, |workspace: &mut Workspace, cx| {
-                        inner(workspace, path.clone(), window, cx)
+                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let workspace = cx.new(|cx| {
+                        Workspace::new(
+                            Some(workspace_id),
+                            Some(session_id),
+                            shared_state,
+                            project,
+                            window,
+                            cx,
+                        )
                     });
-                    (workspace, open_task)
+                    cx.new(|_| Root::new(workspace))
                 })?;
 
-                (window, workspace, open_task)
+                let workspace = window.update(cx, |root: &mut Root, window, cx| {
+                    let workspace = root.workspace().clone();
+                    workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        workspace.pane.update(cx, |pane, _cx| {
+                            pane.set_should_display_welcome_page(false);
+                        });
+                        workspace.left_dock.update(cx, |dock, cx| {
+                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
+                                dock.activate_panel(panel_index, window, cx);
+                                dock.set_open(true, window, cx);
+                            }
+                        });
+
+                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
+                        window.focus(&focus_handle, cx);
+                        workspace.serialize_workspace(window, cx);
+                        cx.notify();
+                    });
+                    workspace
+                })?;
+
+                (window, workspace)
             };
 
-            open_task.await?;
             if let Some(database_id) =
                 workspace.read_with(cx, |workspace, _| workspace.database_id())
             {
@@ -715,6 +736,10 @@ impl Workspace {
 
     fn project(&self) -> Entity<Project> {
         self.project.clone()
+    }
+
+    pub(crate) fn has_worktree(&self, cx: &App) -> bool {
+        self.project().read(cx).worktree(cx).is_some()
     }
 
     fn root(&self, cx: &App) -> Option<PathBuf> {
@@ -894,8 +919,8 @@ impl Workspace {
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
 
-        pane.update(cx, |pane, cx| {
-            pane.set_should_display_welcome_page(true, cx);
+        pane.update(cx, |pane, _| {
+            pane.set_should_display_welcome_page(true);
         });
 
         let status_bar = cx.new(|cx| StatusBar::new(&pane, window, cx));
