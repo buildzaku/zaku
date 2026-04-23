@@ -28,10 +28,15 @@ mimalloc = ["dep:mimalloc"]
 name = "keymap_tests"
 path = "tests/integration/keymap_tests.rs"
 
+[[test]]
+name = "workspace_tests"
+path = "tests/integration/workspace_tests.rs"
+
 [dependencies]
 actions = { workspace = true }
 anyhow = { workspace = true }
 assets = { workspace = true }
+db = { workspace = true }
 editor = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
@@ -42,6 +47,7 @@ log = { workspace = true }
 logger = { workspace = true }
 metadata = { workspace = true }
 mimalloc = { workspace = true, optional = true }
+session = { workspace = true }
 settings = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
@@ -59,3 +65,5 @@ gpui_platform = { workspace = true, features = [
 [dev-dependencies]
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
+serde_json = { workspace = true }
+workspace = { workspace = true, features = ["test-support"] }

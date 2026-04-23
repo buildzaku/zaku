@@ -1,3 +1,4 @@
+use gpui::WindowId;
 use std::path::{Path, PathBuf};
 
 use crate::WorkspaceId;
@@ -21,4 +22,11 @@ pub struct SerializedWorkspace {
     pub location: SerializedWorkspaceLocation,
     pub session_id: Option<String>,
     pub window_id: Option<u64>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SessionWorkspace {
+    pub workspace_id: WorkspaceId,
+    pub location: SerializedWorkspaceLocation,
+    pub window_id: Option<WindowId>,
 }

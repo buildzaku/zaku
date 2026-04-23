@@ -1,10 +1,7 @@
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
-use gpui::{
-    App, Application, Bounds, Empty, Pixels, PromptLevel, QuitMode, Size, WindowBounds,
-    WindowOptions, prelude::*,
-};
+use gpui::{App, Application, Empty, PromptLevel, QuitMode, prelude::*};
 use gpui_platform;
 use indoc::formatdoc;
 
@@ -20,16 +17,15 @@ use std::{
 use uuid::Uuid;
 
 use assets::Assets;
+use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
-use metadata::ZAKU_IDENTIFIER;
+use session::{AppSession, Session};
 use theme::LoadThemes;
-use workspace::{Root, SharedState, Workspace};
+use workspace::SharedState;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
 
 fn main() {
     let file_errors = init_paths();
@@ -49,56 +45,52 @@ fn main() {
         }
     }
 
-    Application::with_platform(gpui_platform::current_platform(false))
-        .with_assets(Assets)
-        .run(|cx: &mut App| {
-            settings::init(cx);
-            settings::log_settings::init(cx);
-            let fs: Arc<dyn Fs> = Arc::new(NativeFs::new(cx.background_executor().clone()));
-            let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
-                cx.background_executor(),
-                fs.clone(),
-                settings::settings_file().clone(),
-            );
-            let (user_keymap_file_rx, user_keymap_watcher) = settings::watch_config_file(
-                cx.background_executor(),
-                fs.clone(),
-                settings::keymap_file().clone(),
-            );
-            zaku::handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
-            zaku::handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
-            theme::init(LoadThemes::All(Box::new(Assets)), cx);
-            register_embedded_fonts(cx);
-            editor::init(cx);
-            let shared_state = Arc::new(SharedState::new(fs, Uuid::new_v4().to_string()));
-            workspace::init(shared_state.clone(), cx);
-            workspace::panel::project::init(cx);
-            workspace::panel::response::init(cx);
-            zaku::init(cx);
-            let menus = zaku::app_menu(cx);
-            cx.set_menus(menus);
+    let app =
+        Application::with_platform(gpui_platform::current_platform(false)).with_assets(Assets);
+    let app_db = AppDatabase::new();
+    let session = app.background_executor().spawn(Session::new(
+        Uuid::new_v4().to_string(),
+        KeyValueStore::from_app_db(&app_db),
+    ));
 
-            cx.activate(true);
+    app.run(move |cx: &mut App| {
+        cx.set_global(app_db);
+        settings::init(cx);
+        settings::log_settings::init(cx);
+        let fs: Arc<dyn Fs> = Arc::new(NativeFs::new(cx.background_executor().clone()));
+        let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
+            cx.background_executor(),
+            fs.clone(),
+            settings::settings_file().clone(),
+        );
+        let (user_keymap_file_rx, user_keymap_watcher) = settings::watch_config_file(
+            cx.background_executor(),
+            fs.clone(),
+            settings::keymap_file().clone(),
+        );
+        zaku::handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
+        zaku::handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
+        theme::init(LoadThemes::All(Box::new(Assets)), cx);
+        register_embedded_fonts(cx);
+        editor::init(cx);
+        let session = cx.foreground_executor().block_on(session);
+        let app_session = cx.new(|cx| AppSession::new(session, cx));
+        let shared_state = Arc::new(SharedState::new(fs, app_session));
+        workspace::init(shared_state.clone(), cx);
+        workspace::panel::project::init(cx);
+        workspace::panel::response::init(cx);
+        zaku::init(cx);
+        let menus = zaku::app_menu(cx);
+        cx.set_menus(menus);
 
-            let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
-            bounds.origin.y -= gpui::px(36.0);
-
-            cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    app_id: Some(ZAKU_IDENTIFIER.to_owned()),
-                    ..Default::default()
-                },
-                move |window, cx| {
-                    let shared_state = shared_state.clone();
-                    cx.new(|cx| {
-                        let workspace = Workspace::create(shared_state, window, cx);
-                        Root::new(workspace)
-                    })
-                },
-            )
-            .unwrap();
-        });
+        cx.activate(true);
+        cx.spawn(async move |cx| {
+            if let Err(error) = zaku::restore_or_create_workspace(shared_state, cx).await {
+                log::error!("Failed to restore or create workspace: {error:#}");
+            }
+        })
+        .detach();
+    });
 }
 
 fn init_paths() -> HashMap<ErrorKind, Vec<&'static Path>> {
@@ -187,17 +179,8 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     Application::with_platform(gpui_platform::current_platform(false))
         .with_quit_mode(QuitMode::Explicit)
         .run(move |cx| {
-            let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
-            bounds.origin.y -= gpui::px(36.0);
-
-            if let Ok(window) = cx.open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    app_id: Some(ZAKU_IDENTIFIER.to_owned()),
-                    ..Default::default()
-                },
-                |_, cx| cx.new(|_| Empty),
-            ) {
+            let window_options = workspace::default_window_options(cx);
+            if let Ok(window) = cx.open_window(window_options, |_, cx| cx.new(|_| Empty)) {
                 if let Err(error) = window.update(cx, |_, window, cx| {
                     let response = window.prompt(
                         PromptLevel::Critical,

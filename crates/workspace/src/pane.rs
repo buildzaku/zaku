@@ -112,16 +112,8 @@ impl Pane {
         }
     }
 
-    pub fn set_should_display_welcome_page(
-        &mut self,
-        should_display_welcome_page: bool,
-        cx: &mut Context<Self>,
-    ) {
-        if should_display_welcome_page && !self.should_display_welcome_page {
-            self.welcome_page = None;
-        }
+    pub fn set_should_display_welcome_page(&mut self, should_display_welcome_page: bool) {
         self.should_display_welcome_page = should_display_welcome_page;
-        cx.notify();
     }
 
     pub fn should_display_welcome_page(&self) -> bool {
@@ -382,7 +374,12 @@ impl Focusable for Pane {
 
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.should_display_welcome_page() {
+        let has_worktree = self
+            .workspace
+            .upgrade()
+            .is_some_and(|workspace| workspace.read(cx).has_worktree(cx));
+
+        if !has_worktree && self.should_display_welcome_page() {
             if self.welcome_page.is_none() {
                 let workspace = self.workspace.clone();
                 self.welcome_page = Some(cx.new(|cx| WelcomePage::new(workspace, window, cx)));

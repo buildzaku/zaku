@@ -6,33 +6,40 @@ pub mod status_bar;
 pub mod welcome;
 
 pub use persistence::{
-    DB as WORKSPACE_DB, WorkspaceDb,
-    model::{SerializedWorkspace, SerializedWorkspaceLocation},
+    WorkspaceDb,
+    model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
 };
 
 use futures::channel::oneshot;
 use gpui::{
     Action, App, Axis, Bounds, Div, DragMoveEvent, Empty, Entity, FocusHandle, Focusable, Global,
     KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, Size,
-    Subscription, Task, Window, WindowBounds, WindowOptions, prelude::*,
+    Subscription, Task, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
-    path::PathBuf,
-    sync::{Arc, Weak},
+    path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
 use actions::{
     menu,
-    workspace::{CloseProject, CloseWindow, Open, ToggleBottomDock, ToggleLeftDock},
+    workspace::{CloseProject, CloseWindow, NewWindow, Open, ToggleBottomDock, ToggleLeftDock},
     zaku::{Minimize, Zoom},
 };
 use metadata::ZAKU_IDENTIFIER;
 use project::Project;
+use session::AppSession;
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
 use ui::{StyledTypography, h_flex};
 use util::ResultExt;
+
+#[cfg(any(test, feature = "test-support"))]
+use session::Session;
+
+#[cfg(test)]
+use uuid::Uuid;
 
 use crate::{
     dock::Dock,
@@ -46,8 +53,8 @@ const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
 const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
 const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
-const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
+pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceId(i64);
@@ -64,49 +71,83 @@ impl From<WorkspaceId> for i64 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OpenMode {
+    NewWindow,
+    #[default]
+    Activate,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum CloseIntent {
+    Quit,
+    CloseWindow,
+    ReplaceWindow,
+}
+
+pub struct OpenResult {
+    pub window: WindowHandle<Root>,
+    pub workspace: Entity<Workspace>,
+}
+
 #[derive(Clone)]
 pub struct SharedState {
     pub fs: Arc<dyn fs::Fs>,
-    pub session_id: String,
+    pub session: Entity<AppSession>,
 }
 
-struct GlobalSharedState(Weak<SharedState>);
+struct GlobalSharedState(Arc<SharedState>);
 
 impl Global for GlobalSharedState {}
 
 impl SharedState {
-    pub fn new(fs: Arc<dyn fs::Fs>, session_id: String) -> Self {
-        Self { fs, session_id }
+    pub fn new(fs: Arc<dyn fs::Fs>, session: Entity<AppSession>) -> Self {
+        Self { fs, session }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_new(fs: Arc<dyn fs::Fs>, cx: &mut App) -> Self {
+        let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
+        Self { fs, session }
     }
 
     #[track_caller]
-    pub fn global(cx: &App) -> Weak<Self> {
+    pub fn global(cx: &App) -> Arc<Self> {
         cx.global::<GlobalSharedState>().0.clone()
     }
 
-    pub fn try_global(cx: &App) -> Option<Weak<Self>> {
+    pub fn try_global(cx: &App) -> Option<Arc<Self>> {
         cx.try_global::<GlobalSharedState>()
             .map(|shared_state| shared_state.0.clone())
     }
 
-    pub fn set_global(shared_state: Weak<SharedState>, cx: &mut App) {
+    pub fn set_global(shared_state: Arc<SharedState>, cx: &mut App) {
         cx.set_global(GlobalSharedState(shared_state));
     }
 }
 
 pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
-    SharedState::set_global(Arc::downgrade(&shared_state), cx);
+    SharedState::set_global(shared_state.clone(), cx);
+    smol::block_on(WorkspaceDb::global(cx).initialize_schema())
+        .expect("workspace persistence schema should initialize");
 
-    cx.observe_new(|workspace: &mut Workspace, window, cx| {
-        let Some(window) = window else {
-            return;
-        };
-        register_actions(workspace, window, cx);
+    cx.observe_new({
+        move |workspace: &mut Workspace, window, cx| {
+            let Some(window) = window else {
+                return;
+            };
+            register_actions(shared_state.clone(), workspace, window, cx);
+        }
     })
     .detach();
 }
 
-fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<Workspace>) {
+fn register_actions(
+    shared_state: Arc<SharedState>,
+    workspace: &mut Workspace,
+    _: &mut Window,
+    _: &mut Context<Workspace>,
+) {
     workspace
         .register_action(|workspace, action: &Open, window, cx| {
             prompt_and_open_workspace(
@@ -122,6 +163,37 @@ fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<W
                 cx,
             );
         })
+        .register_action({
+            move |_, _: &NewWindow, _, cx| {
+                cx.activate(true);
+                let shared_state = shared_state.clone();
+                let workspace_db = WorkspaceDb::global(cx);
+
+                cx.spawn(async move |_, cx| {
+                    let workspace_id = match workspace_db.next_id().await {
+                        Ok(workspace_id) => workspace_id,
+                        Err(error) => {
+                            log::error!("Failed to allocate workspace id: {error}");
+                            return;
+                        }
+                    };
+
+                    if let Err(error) = cx.update(|cx| {
+                        let window_options = default_window_options(cx);
+                        cx.open_window(window_options, move |window, cx| {
+                            window.activate_window();
+
+                            cx.new(|cx| {
+                                Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                            })
+                        })
+                    }) {
+                        log::error!("Failed to open workspace window: {error}");
+                    }
+                })
+                .detach();
+            }
+        })
         .register_action(|_, _: &Minimize, window, _| {
             window.minimize_window();
         })
@@ -130,7 +202,7 @@ fn register_actions(workspace: &mut Workspace, _: &mut Window, _: &mut Context<W
         });
 }
 
-fn default_window_options(cx: &mut App) -> WindowOptions {
+pub fn default_window_options(cx: &mut App) -> WindowOptions {
     let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
     bounds.origin.y -= gpui::px(36.0);
 
@@ -141,6 +213,61 @@ fn default_window_options(cx: &mut App) -> WindowOptions {
     }
 }
 
+pub async fn last_session_workspace_locations(
+    db: &WorkspaceDb,
+    last_session_id: &str,
+    last_session_window_stack: Option<Vec<WindowId>>,
+    fs: &dyn fs::Fs,
+) -> Option<Vec<SessionWorkspace>> {
+    db.last_session_workspace_locations(last_session_id, last_session_window_stack, fs)
+        .await
+        .log_err()
+}
+
+fn find_existing_workspace_window(
+    path: &Path,
+    requesting_window: Option<WindowHandle<Root>>,
+    cx: &App,
+) -> Option<(WindowHandle<Root>, Entity<Workspace>)> {
+    if let Some(window) = requesting_window
+        && let Ok(root) = window.read(cx)
+    {
+        let workspace = root.workspace().clone();
+        let is_match = workspace
+            .read(cx)
+            .root(cx)
+            .is_some_and(|root_path| root_path.as_path() == path);
+
+        if is_match {
+            return Some((window, workspace));
+        }
+    }
+
+    for window in cx
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<Root>())
+    {
+        if Some(window) == requesting_window {
+            continue;
+        }
+
+        if let Ok(root) = window.read(cx) {
+            let workspace = root.workspace().clone();
+            let is_match = workspace
+                .read(cx)
+                .root(cx)
+                .is_some_and(|root_path| root_path.as_path() == path);
+
+            if is_match {
+                return Some((window, workspace));
+            }
+        }
+    }
+
+    None
+}
+
 fn prompt_and_open_workspace(
     workspace: &mut Workspace,
     options: PathPromptOptions,
@@ -149,39 +276,21 @@ fn prompt_and_open_workspace(
     cx: &mut Context<Workspace>,
 ) {
     let selected_path = workspace.prompt_open_path(options, window, cx);
-    let shared_state = workspace.shared_state().clone();
 
     cx.spawn_in(window, async move |this, cx| {
         let Some(selected_path) = selected_path.await.log_err().flatten() else {
             return;
         };
 
-        if create_new_window {
-            cx.update(|_, cx| {
-                let window_options = default_window_options(cx);
-
-                if let Err(error) = cx.open_window(window_options, move |window, cx| {
-                    let shared_state = shared_state.clone();
-                    let selected_path = selected_path.clone();
-                    cx.new(|cx| {
-                        let workspace = Workspace::create(shared_state, window, cx);
-                        let open_workspace = workspace.update(cx, |workspace, cx| {
-                            workspace.open_workspace_for_path(selected_path.clone(), window, cx)
-                        });
-                        open_workspace.detach_and_log_err(cx);
-                        Root::new(workspace)
-                    })
-                }) {
-                    log::error!("Failed to open workspace window: {error}");
-                }
-            })
-            .log_err();
-            return;
-        }
+        let open_mode = if create_new_window {
+            OpenMode::NewWindow
+        } else {
+            OpenMode::Activate
+        };
 
         if let Some(open_task) = this
             .update_in(cx, |workspace, window, cx| {
-                workspace.open_workspace_for_path(selected_path, window, cx)
+                workspace.open_workspace_for_path(selected_path, open_mode, window, cx)
             })
             .log_err()
         {
@@ -229,18 +338,22 @@ impl Root {
     pub fn replace_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let workspace = self.workspace.clone();
         let shared_state = workspace.read(cx).shared_state().clone();
+        let workspace_db = WorkspaceDb::global(cx);
 
         cx.spawn_in(window, async move |this, cx| {
-            if let Ok(flush_task) = workspace.update_in(cx, |workspace, window, cx| {
-                workspace.flush_serialization(window, cx)
-            }) {
-                flush_task.await;
-            }
+            let should_replace = workspace
+                .update_in(cx, |workspace, window, cx| {
+                    workspace.prepare_to_close(CloseIntent::ReplaceWindow, window, cx)
+                })?
+                .await?;
 
-            this.update_in(cx, |root, window, cx| {
-                root.workspace = Workspace::create(shared_state.clone(), window, cx);
-                cx.notify();
-            })?;
+            if should_replace {
+                let workspace_id = workspace_db.next_id().await?;
+                this.update_in(cx, |root, window, cx| {
+                    root.workspace = Workspace::create(workspace_id, shared_state, window, cx);
+                    cx.notify();
+                })?;
+            }
 
             anyhow::Ok(())
         })
@@ -254,15 +367,17 @@ impl Root {
     pub fn close_window(&mut self, _: &CloseWindow, window: &mut Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             let workspace = this.update(cx, |root, _cx| root.workspace().clone())?;
-            let flush_task = workspace.update_in(cx, |workspace, window, cx| {
-                workspace.flush_serialization(window, cx)
-            })?;
+            let should_close = workspace
+                .update_in(cx, |workspace, window, cx| {
+                    workspace.prepare_to_close(CloseIntent::CloseWindow, window, cx)
+                })?
+                .await?;
 
-            flush_task.await;
-
-            cx.update(|window, _cx| {
-                window.remove_window();
-            })?;
+            if should_close {
+                cx.update(|window, _cx| {
+                    window.remove_window();
+                })?;
+            }
 
             anyhow::Ok(())
         })
@@ -300,6 +415,7 @@ pub struct Workspace {
     shared_state: Arc<SharedState>,
     workspace_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
+    session_id: Option<String>,
     project: Entity<Project>,
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
@@ -310,6 +426,7 @@ pub struct Workspace {
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
     _schedule_serialize_workspace: Option<Task<()>>,
     _serialize_workspace_task: Option<Task<()>>,
+    _window_activation_subscription: Subscription,
     _window_appearance_subscription: Subscription,
 }
 
@@ -324,6 +441,7 @@ impl Render for DraggedDock {
 
 impl Workspace {
     pub fn create<V>(
+        workspace_id: WorkspaceId,
         shared_state: Arc<SharedState>,
         window: &mut Window,
         cx: &mut Context<V>,
@@ -335,53 +453,17 @@ impl Workspace {
             let fs = shared_state.fs.clone();
             move |cx| Project::new(fs.clone(), cx)
         });
-        let workspace = cx.new(|cx| Self::new(shared_state, project, window, cx));
-        let weak_workspace = workspace.downgrade();
-        let window_id = window.window_handle().window_id().as_u64();
 
-        cx.spawn_in(window, async move |_this, cx| {
-            match WORKSPACE_DB.next_id().await {
-                Ok(workspace_id) => {
-                    match weak_workspace.update_in(cx, |workspace, window, cx| {
-                        workspace.set_database_id(workspace_id);
-                        workspace._schedule_serialize_workspace.take();
-                        workspace._serialize_workspace_task =
-                            Some(workspace.serialize_workspace_internal(window, cx));
-                        Some(workspace.shared_state().session_id.clone())
-                    }) {
-                        Ok(session_id) => {
-                            cx.background_spawn(async move {
-                                if let Err(error) = WORKSPACE_DB
-                                    .set_session_binding(workspace_id, session_id, Some(window_id))
-                                    .await
-                                {
-                                    log::error!(
-                                        "Failed to bind workspace session metadata: {error}"
-                                    );
-                                }
-                            })
-                            .detach();
-                        }
-                        Err(_) => {
-                            cx.background_spawn(async move {
-                                if let Err(error) =
-                                    WORKSPACE_DB.delete_workspace_by_id(workspace_id).await
-                                {
-                                    log::error!("Failed to delete unbound workspace id: {error}");
-                                }
-                            })
-                            .detach();
-                        }
-                    }
-                }
-                Err(error) => {
-                    log::error!("Failed to allocate workspace id: {error}");
-                }
-            }
+        cx.new(|cx| {
+            Self::new(
+                Some(workspace_id),
+                Some(shared_state.session.read(cx).id().to_string()),
+                shared_state,
+                project,
+                window,
+                cx,
+            )
         })
-        .detach();
-
-        workspace
     }
 
     pub fn close_window(cx: &mut App) {
@@ -400,6 +482,26 @@ impl Workspace {
         });
     }
 
+    pub fn prepare_to_close(
+        &mut self,
+        close_intent: CloseIntent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<bool>> {
+        cx.spawn_in(window, async move |this, cx| {
+            let flush_task =
+                this.update_in(cx, |this, window, cx| this.flush_serialization(window, cx))?;
+            flush_task.await;
+
+            if close_intent != CloseIntent::Quit {
+                this.update_in(cx, |this, window, cx| this.remove_from_session(window, cx))?
+                    .await;
+            }
+
+            Ok(true)
+        })
+    }
+
     fn dock_at_position(&self, position: DockPosition) -> &Entity<Dock> {
         match position {
             DockPosition::Left => &self.left_dock,
@@ -415,8 +517,9 @@ impl Workspace {
         self.database_id
     }
 
-    pub(crate) fn set_database_id(&mut self, id: WorkspaceId) {
-        self.database_id = Some(id);
+    #[cfg(test)]
+    pub(crate) fn set_random_database_id(&mut self) {
+        self.database_id = Some(WorkspaceId(Uuid::new_v4().as_u64_pair().0 as i64));
     }
 
     pub fn prompt_open_path(
@@ -467,42 +570,176 @@ impl Workspace {
         receiver
     }
 
+    pub fn open_local(
+        path: PathBuf,
+        shared_state: Arc<SharedState>,
+        requesting_window: Option<WindowHandle<Root>>,
+        open_mode: OpenMode,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<OpenResult>> {
+        let window_to_replace = match open_mode {
+            OpenMode::NewWindow => None,
+            OpenMode::Activate => requesting_window,
+        };
+        let workspace_db = WorkspaceDb::global(cx);
+
+        cx.spawn(async move |cx| {
+            let existing_window = if let Some(window) = window_to_replace {
+                let workspace =
+                    window.update(cx, |root: &mut Root, _window, _cx| root.workspace().clone())?;
+                Some((window, workspace))
+            } else {
+                None
+            };
+
+            let project = if let Some((_, workspace)) = &existing_window {
+                workspace.read_with(cx, |workspace, _| workspace.project())
+            } else {
+                cx.update(|cx| Project::open_local(shared_state.fs.clone(), path.clone(), cx))
+                    .await?
+            };
+
+            if existing_window.is_some() {
+                let open_task = project.update(cx, |project, cx| {
+                    project.find_or_create_worktree(&path, true, cx)
+                });
+                open_task.await?;
+            }
+
+            let (window, workspace) = if let Some((window, _)) = existing_window {
+                let workspace = window.update(cx, |root: &mut Root, window, cx| {
+                    let workspace = root.workspace().clone();
+                    workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        workspace.pane.update(cx, |pane, _cx| {
+                            pane.set_should_display_welcome_page(false);
+                        });
+                        workspace.left_dock.update(cx, |dock, cx| {
+                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
+                                dock.activate_panel(panel_index, window, cx);
+                                dock.set_open(true, window, cx);
+                            }
+                        });
+
+                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
+                        window.focus(&focus_handle, cx);
+                        workspace.serialize_workspace(window, cx);
+                        cx.notify();
+                    });
+                    workspace
+                })?;
+
+                (window, workspace)
+            } else {
+                let workspace_id = workspace_db.next_id().await?;
+                let window_options = cx.update(default_window_options);
+                let window = cx.open_window(window_options, move |window, cx| {
+                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let workspace = cx.new(|cx| {
+                        Workspace::new(
+                            Some(workspace_id),
+                            Some(session_id),
+                            shared_state,
+                            project,
+                            window,
+                            cx,
+                        )
+                    });
+                    cx.new(|_| Root::new(workspace))
+                })?;
+
+                let workspace = window.update(cx, |root: &mut Root, window, cx| {
+                    let workspace = root.workspace().clone();
+                    workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        workspace.pane.update(cx, |pane, _cx| {
+                            pane.set_should_display_welcome_page(false);
+                        });
+                        workspace.left_dock.update(cx, |dock, cx| {
+                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
+                                dock.activate_panel(panel_index, window, cx);
+                                dock.set_open(true, window, cx);
+                            }
+                        });
+
+                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
+                        window.focus(&focus_handle, cx);
+                        workspace.serialize_workspace(window, cx);
+                        cx.notify();
+                    });
+                    workspace
+                })?;
+
+                (window, workspace)
+            };
+
+            if let Some(database_id) =
+                workspace.read_with(cx, |workspace, _| workspace.database_id())
+            {
+                if let Err(error) = workspace_db.update_activation_order(database_id).await {
+                    log::error!("Failed to update workspace activation order: {error}");
+                }
+            }
+
+            Ok(OpenResult { window, workspace })
+        })
+    }
+
     pub fn open_workspace_for_path(
         &mut self,
         path: PathBuf,
+        mut open_mode: OpenMode,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<()>> {
-        let project = self.project();
+    ) -> Task<anyhow::Result<Entity<Workspace>>> {
+        let requesting_window = window.window_handle().downcast::<Root>();
 
-        cx.spawn_in(window, async move |this, cx| {
-            let open_task = project.update(cx, |project, cx| {
-                project.find_or_create_worktree(&path, true, cx)
-            });
-            open_task.await?;
+        if self.root(cx).is_none() {
+            open_mode = OpenMode::Activate;
+        }
 
-            this.update_in(cx, |workspace, window, cx| {
-                workspace.pane.update(cx, |pane, cx| {
-                    pane.set_should_display_welcome_page(false, cx);
-                });
-                workspace.left_dock.update(cx, |dock, cx| {
-                    if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
-                        dock.activate_panel(panel_index, window, cx);
-                        dock.set_open(true, window, cx);
-                    }
-                });
+        let shared_state = self.shared_state().clone();
 
-                let focus_handle = workspace.pane.read(cx).focus_handle(cx);
-                window.focus(&focus_handle, cx);
-                workspace.serialize_workspace(window, cx);
-                cx.notify();
-            })?;
-            Ok(())
+        cx.spawn(async move |_, cx| {
+            let path = shared_state.fs.canonicalize(&path).await.unwrap_or(path);
+            let existing = cx
+                .update(|cx| find_existing_workspace_window(path.as_path(), requesting_window, cx));
+
+            if let Some((window, workspace)) = existing {
+                window
+                    .update(cx, {
+                        let workspace = workspace.clone();
+                        move |_, window, cx| {
+                            window.activate_window();
+                            let focus_handle = workspace.read(cx).focus_handle(cx);
+                            window.focus(&focus_handle, cx);
+                        }
+                    })
+                    .log_err();
+
+                return Ok(workspace);
+            }
+
+            let OpenResult { window, workspace } = cx
+                .update(|cx| {
+                    Workspace::open_local(path, shared_state, requesting_window, open_mode, cx)
+                })
+                .await?;
+
+            window
+                .update(cx, |_, window, _cx| {
+                    window.activate_window();
+                })
+                .log_err();
+
+            Ok(workspace)
         })
     }
 
     fn project(&self) -> Entity<Project> {
         self.project.clone()
+    }
+
+    pub(crate) fn has_worktree(&self, cx: &App) -> bool {
+        self.project().read(cx).worktree(cx).is_some()
     }
 
     fn root(&self, cx: &App) -> Option<PathBuf> {
@@ -529,9 +766,12 @@ impl Workspace {
         self._serialize_workspace_task.take();
 
         let serialize_task = self.serialize_workspace_internal(window, cx);
-        cx.spawn(async move |_| {
-            serialize_task.await;
-        })
+        cx.spawn(async move |_| serialize_task.await)
+    }
+
+    fn remove_from_session(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
+        self.session_id.take();
+        self.serialize_workspace_internal(window, cx)
     }
 
     fn serialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -562,19 +802,19 @@ impl Workspace {
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
                     location: SerializedWorkspaceLocation::Local(root_path),
-                    session_id: Some(self.shared_state.session_id.clone()),
-                    window_id: Some(window.window_handle().window_id().as_u64()),
+                    session_id: self.session_id.clone(),
+                    window_id: self
+                        .session_id
+                        .as_ref()
+                        .map(|_| window.window_handle().window_id().as_u64()),
                 };
 
+                let workspace_db = WorkspaceDb::global(cx);
                 window.spawn(cx, async move |_| {
-                    WORKSPACE_DB.save_workspace(serialized_workspace).await;
+                    workspace_db.save_workspace(serialized_workspace).await
                 })
             }
-            None => window.spawn(cx, async move |_| {
-                if let Err(error) = WORKSPACE_DB.delete_workspace_by_id(database_id).await {
-                    log::error!("Failed to delete workspace without root path: {error}");
-                }
-            }),
+            None => Task::ready(()),
         }
     }
 
@@ -626,11 +866,29 @@ impl Workspace {
     }
 
     pub fn new(
+        database_id: Option<WorkspaceId>,
+        session_id: Option<String>,
         shared_state: Arc<SharedState>,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let window_activation_subscription =
+            cx.observe_window_activation(window, |workspace, window, cx| {
+                if window.is_window_active()
+                    && let Some(database_id) = workspace.database_id
+                {
+                    let workspace_db = WorkspaceDb::global(cx);
+                    cx.background_spawn(async move {
+                        if let Err(error) = workspace_db.update_activation_order(database_id).await
+                        {
+                            log::error!("Failed to update workspace activation order: {error}");
+                        }
+                    })
+                    .detach();
+                }
+            });
+
         let window_appearance_subscription =
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
@@ -661,8 +919,8 @@ impl Workspace {
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
 
-        pane.update(cx, |pane, cx| {
-            pane.set_should_display_welcome_page(true, cx);
+        pane.update(cx, |pane, _| {
+            pane.set_should_display_welcome_page(true);
         });
 
         let status_bar = cx.new(|cx| StatusBar::new(&pane, window, cx));
@@ -677,7 +935,8 @@ impl Workspace {
         Self {
             shared_state,
             workspace_actions: Default::default(),
-            database_id: None,
+            database_id,
+            session_id,
             project,
             left_dock,
             bottom_dock,
@@ -688,17 +947,23 @@ impl Workspace {
             previous_dock_drag_coordinates: None,
             _schedule_serialize_workspace: None,
             _serialize_workspace_task: None,
+            _window_activation_subscription: window_activation_subscription,
             _window_appearance_subscription: window_appearance_subscription,
         }
     }
 
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_new(project: Entity<Project>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let shared_state = SharedState::global(cx)
-            .upgrade()
-            .expect("workspace shared state should be initialized");
+        let shared_state = SharedState::global(cx);
         window.activate_window();
-        let workspace = Self::new(shared_state, project, window, cx);
+        let workspace = Self::new(
+            None,
+            Some(shared_state.session.read(cx).id().to_string()),
+            shared_state,
+            project,
+            window,
+            cx,
+        );
         workspace
             .pane
             .update(cx, |pane, cx| window.focus(&pane.focus_handle(cx), cx));
@@ -1010,15 +1275,14 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1035,15 +1299,23 @@ mod tests {
         let canonical_project_path = temp_fs.path().join(path!("project"));
         let alternate_project_path = canonical_project_path.join("..").join("project");
 
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
-        });
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(alternate_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                alternate_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(canonical_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                canonical_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
 
         first_open
@@ -1064,7 +1336,8 @@ mod tests {
             .await;
 
         let current_root = workspace.update_in(cx, |workspace, _, cx| workspace.root(cx));
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
@@ -1087,14 +1360,13 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("first"),
@@ -1123,7 +1395,7 @@ mod tests {
         let second_path = temp_fs.path().join(path!("second"));
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
         first_open
             .await
@@ -1163,14 +1435,13 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("first"),
@@ -1199,10 +1470,10 @@ mod tests {
         let second_path = temp_fs.path().join(path!("second"));
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(second_path.clone(), window, cx)
+            workspace.open_workspace_for_path(second_path.clone(), OpenMode::Activate, window, cx)
         });
 
         second_open
@@ -1228,14 +1499,13 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("first"),
@@ -1264,13 +1534,13 @@ mod tests {
         let second_path = temp_fs.path().join(path!("second"));
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(second_path.clone(), window, cx)
+            workspace.open_workspace_for_path(second_path.clone(), OpenMode::Activate, window, cx)
         });
         let third_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(first_path.clone(), window, cx)
+            workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
 
         first_open
@@ -1295,14 +1565,13 @@ mod tests {
     #[gpui::test]
     async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         workspace.update_in(cx, |workspace, window, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
@@ -1322,14 +1591,13 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1350,10 +1618,10 @@ mod tests {
 
         workspace.update_in(cx, |workspace, _, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
-            workspace.set_database_id(WorkspaceId::from(1));
+            workspace.set_random_database_id();
         });
         let open_workspace = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
         });
         open_workspace.await.expect("workspace open should succeed");
 
@@ -1368,7 +1636,8 @@ mod tests {
             })
             .await;
 
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
@@ -1382,15 +1651,14 @@ mod tests {
     #[gpui::test]
     async fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
             let panel = cx.new(|cx| TestPanel::new(100, cx));
@@ -1465,10 +1733,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1488,12 +1753,12 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
-
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
         });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane.clone());
         pane.update_in(cx, |pane, window, cx| {
@@ -1518,10 +1783,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1538,8 +1800,10 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -1552,7 +1816,7 @@ mod tests {
             .expect("first open should create a worktree");
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
         });
         second_open
             .await
@@ -1575,16 +1839,70 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_opening_same_workspace_in_new_window_activates_existing_workspace(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {"
+                        [meta]
+                        version = 1
+                    "}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        let first_open = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
+        });
+        let first_workspace = first_open
+            .await
+            .expect("first workspace open should succeed");
+
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+
+        assert_eq!(cx.windows().len(), 1);
+
+        let second_open = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::NewWindow, window, cx)
+        });
+        let second_workspace = second_open
+            .await
+            .expect("new-window open for existing workspace should succeed");
+
+        assert_eq!(cx.windows().len(), 1);
+        assert_eq!(
+            Entity::entity_id(&first_workspace),
+            Entity::entity_id(&second_workspace)
+        );
+    }
+
+    #[gpui::test]
     async fn test_opening_equivalent_workspace_path_reuses_current_worktree(
         cx: &mut TestAppContext,
     ) {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1602,12 +1920,12 @@ mod tests {
         let canonical_project_path = temp_fs.path().join(path!("project"));
         let alternate_project_path = canonical_project_path.join("..").join("project");
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
-
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
         });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -1620,7 +1938,12 @@ mod tests {
             .expect("first open should create a worktree");
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(alternate_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                alternate_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         second_open
             .await
@@ -1644,7 +1967,8 @@ mod tests {
             )
         });
 
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
@@ -1671,10 +1995,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1696,15 +2017,20 @@ mod tests {
             .await
             .unwrap();
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
-
-        workspace.update_in(cx, |workspace, _, _| {
-            workspace.set_database_id(WorkspaceId::from(1));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
         });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(alias_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                alias_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         first_open
             .await
@@ -1721,7 +2047,12 @@ mod tests {
         assert_eq!(first_root, Some(canonical_project_path.clone()));
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(canonical_project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(
+                canonical_project_path.clone(),
+                OpenMode::Activate,
+                window,
+                cx,
+            )
         });
         second_open
             .await
@@ -1745,7 +2076,8 @@ mod tests {
             )
         });
 
-        let recent_workspaces = WORKSPACE_DB
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
@@ -1769,10 +2101,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1801,8 +2130,10 @@ mod tests {
         let first_path = temp_fs.path().join(path!("first"));
         let second_path = temp_fs.path().join(path!("second"));
         let project = Project::test_new(temp_fs.clone(), &first_path, cx).await;
-        let (workspace, cx) =
-            cx.add_window_view(move |window, cx| Workspace::test_new(project, window, cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -1815,7 +2146,7 @@ mod tests {
             .expect("first open should create a worktree");
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(second_path.clone(), window, cx)
+            workspace.open_workspace_for_path(second_path.clone(), OpenMode::Activate, window, cx)
         });
         second_open
             .await

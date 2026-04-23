@@ -1,11 +1,13 @@
 mod bindable;
 mod connection;
+pub mod kv;
 mod savepoint;
 mod statement;
 mod typed_statements;
 
 use anyhow::Context;
 use futures::{Future, channel::oneshot};
+use gpui::{App, Global};
 use indoc::indoc;
 use parking_lot::{Mutex, RwLock};
 use std::{
@@ -36,6 +38,9 @@ const DB_INIT_QUERY: &str = indoc! {"
 
 const FALLBACK_MEMORY_DB_NAME: &str = "FALLBACK_MEMORY_DB";
 const DB_NAME: &str = "db.sqlite";
+
+#[cfg(any(test, feature = "test-support"))]
+static TEST_APP_DATABASE: LazyLock<AppDatabase> = LazyLock::new(AppDatabase::test_new);
 
 type QueuedWrite = Box<dyn 'static + Send + FnOnce()>;
 type WriteQueue = Box<dyn 'static + Send + Sync + Fn(QueuedWrite) -> anyhow::Result<()>>;
@@ -361,6 +366,51 @@ fn database_path(db_dir: &Path) -> anyhow::Result<PathBuf> {
     }
 
     Ok(db_dir.join(DB_NAME))
+}
+
+pub fn database_dir() -> PathBuf {
+    settings::data_dir().join("db")
+}
+
+pub struct AppDatabase(pub ThreadSafeConnection);
+
+impl Global for AppDatabase {}
+
+impl AppDatabase {
+    pub fn new() -> Self {
+        let db_dir = database_dir();
+        let connection = smol::block_on(open_db(&db_dir));
+        let app_db = Self(connection);
+        smol::block_on(kv::KeyValueStore::from_app_db(&app_db).initialize_schema())
+            .expect("key-value store schema should initialize");
+        app_db
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test_new() -> Self {
+        let name = format!("test-db-{}", uuid::Uuid::new_v4());
+        let connection = smol::block_on(open_test_db(&name));
+        let app_db = Self(connection);
+        smol::block_on(kv::KeyValueStore::from_app_db(&app_db).initialize_schema())
+            .expect("key-value store schema should initialize");
+        app_db
+    }
+
+    pub fn global(cx: &App) -> &ThreadSafeConnection {
+        if let Some(db) = cx.try_global::<Self>() {
+            &db.0
+        } else {
+            #[cfg(any(test, feature = "test-support"))]
+            {
+                &TEST_APP_DATABASE.0
+            }
+
+            #[cfg(not(any(test, feature = "test-support")))]
+            {
+                panic!("database not initialized")
+            }
+        }
+    }
 }
 
 #[cfg(test)]

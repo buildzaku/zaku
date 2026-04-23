@@ -38,8 +38,7 @@ impl EditorTestContext {
 
     fn new_with_mode(cx: &mut TestAppContext, mode: EditorMode) -> Self {
         let window_handle = cx.add_window(move |window, cx| {
-            let buffer = Editor::local_multibuffer(cx);
-            Editor::new(mode, buffer, window, cx)
+            Editor::new(mode, Editor::local_multibuffer(cx), window, cx)
         });
         let window: AnyWindowHandle = window_handle.into();
         let editor_handle = window.downcast::<Editor>().expect("window to host editor");

@@ -2,36 +2,26 @@ pub mod model;
 
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
+use gpui::{App, WindowId};
 use indoc::indoc;
-use std::{path::PathBuf, sync::LazyLock};
+use std::path::PathBuf;
 
-use db::ThreadSafeConnection;
+use db::{AppDatabase, ThreadSafeConnection};
 use fs::Fs;
 
-use self::model::{SerializedWorkspace, SerializedWorkspaceLocation};
+use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
 use crate::WorkspaceId;
 
+#[derive(Clone)]
 pub struct WorkspaceDb(ThreadSafeConnection);
 
-pub static DB: LazyLock<WorkspaceDb> = LazyLock::new(|| smol::block_on(WorkspaceDb::open()));
-
 impl WorkspaceDb {
-    async fn open() -> Self {
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            Self::open_test_db("DB").await
-        }
+    pub fn from_app_db(db: &AppDatabase) -> Self {
+        Self(db.0.clone())
+    }
 
-        #[cfg(not(any(test, feature = "test-support")))]
-        {
-            let database_path = default_database_dir();
-            let workspace_db = Self(db::open_db(&database_path).await);
-            workspace_db
-                .initialize_schema()
-                .await
-                .expect("workspace persistence schema should initialize");
-            workspace_db
-        }
+    pub fn global(cx: &App) -> Self {
+        Self(AppDatabase::global(cx).clone())
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -76,8 +66,8 @@ impl WorkspaceDb {
 
                     connection
                         .exec_bound(indoc! {"
-                            INSERT INTO workspace(id, location, session_id, window_id, timestamp)
-                            VALUES (?1, ?2, ?3, ?4, CURRENT_TIMESTAMP)
+                            INSERT INTO workspace(id, location, session_id, window_id, activation_order, timestamp)
+                            VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace), CURRENT_TIMESTAMP)
                             ON CONFLICT(id)
                             DO UPDATE SET
                                 location = excluded.location,
@@ -85,7 +75,7 @@ impl WorkspaceDb {
                                 window_id = excluded.window_id,
                                 timestamp = CURRENT_TIMESTAMP
                         "})
-                        .context("failed to prepare recent workspace upsert query")
+                        .context("failed to prepare workspace upsert query")
                         .and_then(|mut f| {
                             f((
                                 i64::from(workspace.id),
@@ -94,7 +84,7 @@ impl WorkspaceDb {
                                 window_id,
                             ))
                         })
-                        .context("failed to upsert recent workspace")?;
+                        .context("failed to upsert workspace")?;
 
                     Ok(())
                 })
@@ -103,33 +93,6 @@ impl WorkspaceDb {
         {
             log::error!("Failed to save workspace: {error}");
         }
-    }
-
-    pub async fn set_session_binding(
-        &self,
-        workspace_id: WorkspaceId,
-        session_id: Option<String>,
-        window_id: Option<u64>,
-    ) -> anyhow::Result<()> {
-        let window_id = serialize_window_id(window_id)?;
-
-        self.0
-            .write(move |connection| {
-                connection
-                    .exec_bound(indoc! {"
-                        UPDATE workspace
-                        SET session_id = ?2, window_id = ?3
-                        WHERE id = ?1
-                    "})
-                    .context("failed to prepare workspace session binding update query")
-                    .and_then(|mut f| {
-                        f((i64::from(workspace_id), session_id.as_deref(), window_id))
-                    })
-                    .context("failed to update workspace session binding")?;
-
-                Ok(())
-            })
-            .await
     }
 
     pub async fn recent_workspaces_on_disk(
@@ -164,6 +127,62 @@ impl WorkspaceDb {
         fs: &dyn Fs,
     ) -> anyhow::Result<Option<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>> {
         Ok(self.recent_workspaces_on_disk(fs).await?.into_iter().next())
+    }
+
+    pub async fn update_activation_order(&self, workspace_id: WorkspaceId) -> anyhow::Result<()> {
+        self.0
+            .write(move |connection| {
+                connection
+                    .exec_bound(indoc! {"
+                        UPDATE workspace
+                        SET activation_order = (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace)
+                        WHERE id = ?1
+                    "})
+                    .context("failed to prepare workspace activation order update query")
+                    .and_then(|mut f| f([i64::from(workspace_id)]))
+                    .context("failed to update workspace activation order")?;
+
+                Ok(())
+            })
+            .await
+    }
+
+    pub async fn last_session_workspace_locations(
+        &self,
+        last_session_id: &str,
+        last_session_window_stack: Option<Vec<WindowId>>,
+        fs: &dyn Fs,
+    ) -> anyhow::Result<Vec<SessionWorkspace>> {
+        let mut workspaces = Vec::new();
+
+        for (workspace_id, location, window_id) in
+            self.session_workspaces(last_session_id.to_owned())?
+        {
+            let workspace_path = location.path().to_path_buf();
+            if Self::all_paths_exist_with_a_directory(
+                std::slice::from_ref(&workspace_path),
+                fs,
+                None,
+            )
+            .await
+            {
+                workspaces.push(SessionWorkspace {
+                    workspace_id,
+                    location,
+                    window_id: window_id.map(WindowId::from),
+                });
+            }
+        }
+
+        if let Some(stack) = last_session_window_stack {
+            workspaces.sort_by_key(|workspace| {
+                workspace
+                    .window_id
+                    .and_then(|window_id| stack.iter().position(|&id| id == window_id))
+            });
+        }
+
+        Ok(workspaces)
     }
 
     #[cfg(test)]
@@ -220,7 +239,7 @@ impl WorkspaceDb {
             .flatten()
     }
 
-    async fn initialize_schema(&self) -> anyhow::Result<()> {
+    pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
         self.0
             .write(|connection| {
                 connection.with_savepoint("initialize_workspace_schema", || {
@@ -231,12 +250,22 @@ impl WorkspaceDb {
                                 location BLOB UNIQUE,
                                 session_id TEXT,
                                 window_id INTEGER,
+                                activation_order INTEGER NOT NULL DEFAULT 0,
                                 timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                             ) STRICT
                         "})
                         .context("failed to set up workspace table initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace persistence table")?;
+
+                    connection
+                        .exec(indoc! {"
+                            CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
+                            ON workspace(activation_order DESC)
+                        "})
+                        .context("failed to set up workspace activation order index initialization")
+                        .and_then(|mut f| f())
+                        .context("failed to initialize workspace activation order index")?;
 
                     connection
                         .exec(indoc! {"
@@ -262,7 +291,7 @@ impl WorkspaceDb {
                     SELECT id, location, timestamp
                     FROM workspace
                     WHERE location IS NOT NULL
-                    ORDER BY timestamp DESC
+                    ORDER BY activation_order DESC
                 "})
                 .context("failed to prepare recent workspace query")
                 .and_then(|mut f| f())
@@ -275,6 +304,35 @@ impl WorkspaceDb {
                         WorkspaceId::from(id),
                         SerializedWorkspaceLocation::Local(location),
                         parse_timestamp(&timestamp),
+                    )
+                })
+                .collect())
+        })
+    }
+
+    fn session_workspaces(
+        &self,
+        session_id: String,
+    ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, Option<u64>)>> {
+        self.0.read(|connection| {
+            let rows = connection
+                .select_bound::<String, (i64, PathBuf, Option<i64>)>(indoc! {"
+                        SELECT id, location, window_id
+                        FROM workspace
+                        WHERE session_id = ?1 AND location IS NOT NULL
+                        ORDER BY activation_order DESC
+                    "})
+                .context("failed to prepare session workspaces query")
+                .and_then(|mut f| f(session_id))
+                .context("failed to execute session workspaces query")?;
+
+            Ok(rows
+                .into_iter()
+                .map(|(workspace_id, location, window_id)| {
+                    (
+                        WorkspaceId::from(workspace_id),
+                        SerializedWorkspaceLocation::Local(location),
+                        window_id.and_then(|window_id| u64::try_from(window_id).ok()),
                     )
                 })
                 .collect())
@@ -333,17 +391,11 @@ fn serialize_window_id(window_id: Option<u64>) -> anyhow::Result<Option<i64>> {
         .transpose()
 }
 
-#[cfg(not(any(test, feature = "test-support")))]
-fn default_database_dir() -> PathBuf {
-    settings::data_dir().join("db")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use fs::TempFs;
-    use gpui::TestAppContext;
+    use gpui::{TestAppContext, WindowId};
     use serde_json::json;
 
     #[cfg(unix)]
@@ -351,9 +403,10 @@ mod tests {
 
     use std::sync::Arc;
 
+    use fs::TempFs;
     use util_macros::path;
 
-    use crate::{Root, SharedState, Workspace};
+    use crate::{CloseWindow, OpenMode, Root, SharedState, Workspace};
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
@@ -431,10 +484,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = Arc::new(SharedState::new(
-            temp_fs.clone(),
-            "test-session".to_string(),
-        ));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         crate::tests::init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -452,26 +502,24 @@ mod tests {
             }),
         );
 
-        let (root, cx) = cx.add_window_view({
-            let shared_state = shared_state.clone();
-            move |window, cx| {
-                let shared_state = shared_state.clone();
-                Root::new(Workspace::create(shared_state, window, cx))
-            }
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
-        let workspace = root.update_in(cx, |root, window, cx| {
+        root.update_in(cx, |root, window, cx| {
             root.replace_workspace(window, cx);
-            root.workspace().clone()
         });
         cx.run_until_parked();
 
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
             .expect("workspace should have a database_id after initialization");
 
         let project_path = temp_fs.path().join(path!("project"));
         let open_workspace = workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_workspace_for_path(project_path.clone(), window, cx)
+            workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
         });
         open_workspace.await.expect("workspace open should succeed");
 
@@ -485,10 +533,251 @@ mod tests {
             })
             .await;
 
-        let serialized = DB.workspace_for_id(workspace_id);
+        let serialized = workspace_db.workspace_for_id(workspace_id);
         assert!(
             serialized.is_some(),
             "Workspace should be fully serialized in the DB after database_id assignment"
         );
+    }
+
+    #[gpui::test]
+    async fn test_last_session_workspace_locations(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        temp_fs.insert_tree(path!("first"), json!(null));
+        temp_fs.insert_tree(path!("second"), json!(null));
+        temp_fs.insert_tree(path!("third"), json!(null));
+        temp_fs.insert_tree(path!("fourth"), json!(null));
+
+        let workspace_db = WorkspaceDb::open_test_db("test_last_session_workspace_locations").await;
+
+        let first_path = temp_fs.path().join(path!("first"));
+        let second_path = temp_fs.path().join(path!("second"));
+        let third_path = temp_fs.path().join(path!("third"));
+        let fourth_path = temp_fs.path().join(path!("fourth"));
+
+        for (workspace_id, location, window_id) in [
+            (1, first_path.clone(), 9_u64),
+            (2, second_path.clone(), 5_u64),
+            (3, third_path.clone(), 8_u64),
+            (4, fourth_path.clone(), 2_u64),
+        ] {
+            workspace_db
+                .save_workspace(SerializedWorkspace {
+                    id: WorkspaceId::from(workspace_id),
+                    location: SerializedWorkspaceLocation::Local(location),
+                    session_id: Some("session-uuid".to_string()),
+                    window_id: Some(window_id),
+                })
+                .await;
+        }
+
+        let locations = workspace_db
+            .last_session_workspace_locations(
+                "session-uuid",
+                Some(Vec::from([
+                    WindowId::from(2_u64),
+                    WindowId::from(8_u64),
+                    WindowId::from(5_u64),
+                    WindowId::from(9_u64),
+                ])),
+                &temp_fs,
+            )
+            .await
+            .expect("last session workspace query should succeed");
+
+        assert_eq!(
+            locations,
+            vec![
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(4),
+                    location: SerializedWorkspaceLocation::Local(fourth_path),
+                    window_id: Some(WindowId::from(2_u64)),
+                },
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(3),
+                    location: SerializedWorkspaceLocation::Local(third_path),
+                    window_id: Some(WindowId::from(8_u64)),
+                },
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(2),
+                    location: SerializedWorkspaceLocation::Local(second_path),
+                    window_id: Some(WindowId::from(5_u64)),
+                },
+                SessionWorkspace {
+                    workspace_id: WorkspaceId::from(1),
+                    location: SerializedWorkspaceLocation::Local(first_path),
+                    window_id: Some(WindowId::from(9_u64)),
+                },
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_last_session_workspace_locations_skips_missing_paths(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let workspace_db =
+            WorkspaceDb::open_test_db("test_last_session_workspace_locations_skips_missing_paths")
+                .await;
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(1),
+                location: SerializedWorkspaceLocation::Local(temp_fs.path().join(path!("project"))),
+                session_id: Some("session-uuid".to_string()),
+                window_id: Some(1),
+            })
+            .await;
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(2),
+                location: SerializedWorkspaceLocation::Local(
+                    temp_fs.path().join(path!("missing_project")),
+                ),
+                session_id: Some("session-uuid".to_string()),
+                window_id: Some(2),
+            })
+            .await;
+
+        let locations = workspace_db
+            .last_session_workspace_locations("session-uuid", None, &temp_fs)
+            .await
+            .expect("last session workspace query should succeed");
+
+        assert_eq!(
+            locations,
+            vec![SessionWorkspace {
+                workspace_id: WorkspaceId::from(1),
+                location: SerializedWorkspaceLocation::Local(temp_fs.path().join(path!("project"))),
+                window_id: Some(WindowId::from(1_u64)),
+            }]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_replace_workspace_removes_workspace_from_current_session(
+        cx: &mut TestAppContext,
+    ) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        crate::tests::init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let project_path = temp_fs.path().join(path!("project"));
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_workspace_for_path(
+                    project_path.clone(),
+                    OpenMode::Activate,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("workspace open should succeed");
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
+
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .expect("workspace should have a database_id after opening");
+        let serialized_workspace = workspace_db
+            .workspace_for_id(workspace_id)
+            .expect("workspace should be serialized before replacement");
+
+        assert!(serialized_workspace.session_id.is_some());
+        assert!(serialized_workspace.window_id.is_some());
+
+        root.update_in(cx, |root, window, cx| root.replace_workspace(window, cx));
+        cx.run_until_parked();
+
+        let serialized_workspace = workspace_db
+            .workspace_for_id(workspace_id)
+            .expect("workspace row should remain after replacement");
+
+        assert_eq!(serialized_workspace.session_id, None);
+        assert_eq!(serialized_workspace.window_id, None);
+    }
+
+    #[gpui::test]
+    async fn test_close_window_removes_workspace_from_current_session(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        crate::tests::init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let project_path = temp_fs.path().join(path!("project"));
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_workspace_for_path(
+                    project_path.clone(),
+                    OpenMode::Activate,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .expect("workspace open should succeed");
+        workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+            .await;
+
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .expect("workspace should have a database_id after opening");
+        let serialized_workspace = workspace_db
+            .workspace_for_id(workspace_id)
+            .expect("workspace should be serialized before close");
+
+        assert!(serialized_workspace.session_id.is_some());
+        assert!(serialized_workspace.window_id.is_some());
+
+        root.update_in(cx, |root, window, cx| {
+            root.close_window(&CloseWindow, window, cx)
+        });
+        cx.run_until_parked();
+
+        let serialized_workspace = workspace_db
+            .workspace_for_id(workspace_id)
+            .expect("workspace row should remain after close");
+
+        assert_eq!(serialized_workspace.session_id, None);
+        assert_eq!(serialized_workspace.window_id, None);
     }
 }

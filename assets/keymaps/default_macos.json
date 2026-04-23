@@ -24,6 +24,7 @@
       "ctrl-c": "menu::Cancel",
       "escape": "menu::Cancel",
       "alt-shift-enter": "menu::Restart",
+      "cmd-shift-n": "workspace::NewWindow",
       "cmd-o": "workspace::Open",
       "cmd-q": "zaku::Quit"
     }

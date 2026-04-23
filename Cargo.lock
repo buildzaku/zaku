@@ -1371,6 +1371,7 @@ dependencies = [
  "libsqlite3-sys",
  "log",
  "parking_lot",
+ "settings",
  "smol",
  "thread_local",
  "util 0.0.0",
@@ -5735,6 +5736,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "session"
+version = "0.0.0"
+dependencies = [
+ "db",
+ "gpui",
+ "serde_json",
+ "util 0.0.0",
+ "uuid",
+]
+
+[[package]]
 name = "settings"
 version = "0.0.0"
 dependencies = [
@@ -8263,12 +8275,14 @@ dependencies = [
  "reqwest_client",
  "serde",
  "serde_json",
+ "session",
  "settings",
  "smol",
  "theme",
  "ui",
  "util 0.0.0",
  "util_macros 0.0.0",
+ "uuid",
 ]
 
 [[package]]
@@ -8475,6 +8489,7 @@ dependencies = [
  "anyhow",
  "ashpd",
  "assets",
+ "db",
  "editor",
  "fs",
  "futures",
@@ -8485,6 +8500,8 @@ dependencies = [
  "logger",
  "metadata",
  "mimalloc",
+ "serde_json",
+ "session",
  "settings",
  "theme",
  "ui",
