@@ -45,7 +45,7 @@ impl Element for WithRemSize {
         Element::id(&self.div)
     }
 
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
         Element::source_location(&self.div)
     }
 

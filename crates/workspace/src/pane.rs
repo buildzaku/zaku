@@ -1,6 +1,6 @@
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    App, Context, Corner, Entity, FocusHandle, FocusOutEvent, Focusable, FontWeight, Subscription,
+    Anchor, App, Context, Entity, FocusHandle, FocusOutEvent, Focusable, FontWeight, Subscription,
     WeakEntity, Window, prelude::*,
 };
 use std::{
@@ -491,7 +491,7 @@ impl Render for Pane {
                             request_method_menu,
                         )
                         .style(DropdownStyle::Outlined)
-                        .attach(Corner::BottomLeft)
+                        .attach(Anchor::BottomLeft)
                         .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
                     )

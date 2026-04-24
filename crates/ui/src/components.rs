@@ -7,6 +7,7 @@ mod label;
 mod link;
 mod list;
 mod popover_menu;
+mod scrollbar;
 mod stack;
 mod tooltip;
 
@@ -19,5 +20,6 @@ pub use label::*;
 pub use link::*;
 pub use list::*;
 pub use popover_menu::*;
+pub use scrollbar::*;
 pub use stack::*;
 pub use tooltip::*;
