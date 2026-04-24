@@ -1,7 +1,7 @@
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    Anchor, App, Context, Entity, FocusHandle, FocusOutEvent, Focusable, FontWeight, Subscription,
-    WeakEntity, Window, prelude::*,
+    Anchor, App, Context, Entity, FocusHandle, FocusOutEvent, Focusable, FontWeight, ScrollHandle,
+    Subscription, WeakEntity, Window, prelude::*,
 };
 use std::{
     sync::Arc,
@@ -16,7 +16,7 @@ use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
     DropdownStyle, FixedWidth, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
-    Label, Tooltip,
+    Label, Tooltip, WithScrollbar,
 };
 
 use crate::{Workspace, panel::response::ResponseState, welcome::WelcomePage};
@@ -84,6 +84,7 @@ pub struct Pane {
     workspace: WeakEntity<Workspace>,
     http_client: Arc<dyn HttpClient>,
     request: RequestConfig,
+    scroll_handle: ScrollHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -108,6 +109,7 @@ impl Pane {
             workspace,
             http_client: Arc::new(ReqwestClient::new()),
             request: RequestConfig::new(window, cx),
+            scroll_handle: ScrollHandle::new(),
             _subscriptions: subscriptions,
         }
     }
@@ -473,11 +475,17 @@ impl Render for Pane {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(theme_colors.panel_background)
-            .p_3()
-            .child(Label::new("HTTP Request"))
             .child(
                 ui::h_flex()
                     .w_full()
+                    .px_3()
+                    .pt_3()
+                    .child(Label::new("HTTP Request")),
+            )
+            .child(
+                ui::h_flex()
+                    .w_full()
+                    .px_3()
                     .py_2()
                     .gap_2()
                     .key_context("RequestUrl")
@@ -509,31 +517,60 @@ impl Render for Pane {
             )
             .child(
                 ui::v_flex()
+                    .id("request-params")
                     .w_full()
-                    .gap_2()
-                    .pb_2()
-                    .child(ui::h_flex().w_full().child(Label::new("Query Parameters")))
-                    .children(request_params)
-                    .child(
-                        ui::h_flex().child(
-                            Button::new("request-param-add", "Add Parameter")
-                                .icon(IconName::Plus)
-                                .icon_size(IconSize::Small)
-                                .icon_color(Color::Muted)
-                                .variant(ButtonVariant::Outline)
-                                .size(ButtonSize::Medium)
-                                .on_click(cx.listener(move |pane, _, window, cx| {
-                                    pane.request.add_param(window, cx);
-                                    cx.notify();
-                                })),
-                        ),
-                    ),
-            )
-            .child(
-                ui::v_flex()
                     .flex_1()
-                    .overflow_hidden()
-                    .child(gpui::div().flex_1()),
+                    .min_h_0()
+                    .child(
+                        gpui::div()
+                            .id("request-params-scroll")
+                            .w_full()
+                            .flex_1()
+                            .min_h_0()
+                            .child(
+                                ui::v_flex()
+                                    .id("request-params-content")
+                                    .track_scroll(&self.scroll_handle)
+                                    .size_full()
+                                    .min_w_0()
+                                    .overflow_y_scroll()
+                                    .child(
+                                        ui::v_flex()
+                                            .w_full()
+                                            .min_w_0()
+                                            .pl_3()
+                                            .pr(gpui::px(18.0))
+                                            .gap_2()
+                                            .pb_3()
+                                            .child(
+                                                ui::h_flex()
+                                                    .w_full()
+                                                    .child(Label::new("Query Parameters")),
+                                            )
+                                            .children(request_params)
+                                            .child(
+                                                ui::h_flex().child(
+                                                    Button::new(
+                                                        "request-param-add",
+                                                        "Add Parameter",
+                                                    )
+                                                    .icon(IconName::Plus)
+                                                    .icon_size(IconSize::Small)
+                                                    .icon_color(Color::Muted)
+                                                    .variant(ButtonVariant::Outline)
+                                                    .size(ButtonSize::Medium)
+                                                    .on_click(cx.listener(
+                                                        move |pane, _, window, cx| {
+                                                            pane.request.add_param(window, cx);
+                                                            cx.notify();
+                                                        },
+                                                    )),
+                                                ),
+                                            ),
+                                    ),
+                            )
+                            .vertical_scrollbar_for(&self.scroll_handle, window, cx),
+                    ),
             )
     }
 }
