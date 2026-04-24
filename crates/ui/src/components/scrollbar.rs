@@ -20,9 +20,10 @@ use util::ResultExt;
 use crate::scrollbars::{ScrollbarAutoHide, ScrollbarVisibility, ShowScrollbar};
 
 const SCROLLBAR_HIDE_DELAY_INTERVAL: Duration = Duration::from_secs(1);
-const SCROLLBAR_HIDE_DURATION: Duration = Duration::from_millis(400);
-const SCROLLBAR_SHOW_DURATION: Duration = Duration::from_millis(50);
-const SCROLLBAR_PADDING: Pixels = gpui::px(4.0);
+const SCROLLBAR_HIDE_DURATION: Duration = Duration::from_millis(75);
+const SCROLLBAR_SHOW_DURATION: Duration = Duration::from_millis(25);
+const SCROLLBAR_PADDING: Pixels = Pixels::ZERO;
+const SCROLLBAR_THUMB_RADIUS: Pixels = gpui::px(2.0);
 
 pub mod scrollbars {
     use gpui::{App, Global};
@@ -278,9 +279,9 @@ enum ScrollbarWidth {
 impl ScrollbarWidth {
     fn to_pixels(&self) -> Pixels {
         match self {
-            ScrollbarWidth::Normal => gpui::px(8.0),
-            ScrollbarWidth::Small => gpui::px(6.0),
-            ScrollbarWidth::XSmall => gpui::px(4.0),
+            ScrollbarWidth::Normal => gpui::px(10.0),
+            ScrollbarWidth::Small => gpui::px(8.0),
+            ScrollbarWidth::XSmall => gpui::px(6.0),
         }
     }
 }
@@ -1241,7 +1242,7 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
 
                     window.paint_quad(gpui::quad(
                         *thumb_bounds,
-                        Corners::all(Pixels::MAX).clamp_radii_for_quad_size(thumb_bounds.size),
+                        Corners::all(SCROLLBAR_THUMB_RADIUS),
                         thumb_color,
                         Edges::default(),
                         Hsla::transparent_black(),
