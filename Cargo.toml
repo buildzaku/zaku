@@ -54,8 +54,8 @@ chrono = { version = "0.4" }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "250e697ff7", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "250e697ff7", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "832c17e819", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "832c17e819", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.14" }
@@ -89,11 +89,11 @@ serde_path_to_error = { version = "0.1" }
 smallvec = { version = "1.15" }
 smol = { version = "2.0" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "250e697ff7", package = "sum_tree" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "832c17e819", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "250e697ff7", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "832c17e819", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
