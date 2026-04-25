@@ -1294,38 +1294,53 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
 
                 move |event: &MouseDownEvent, phase, window, cx| {
                     state.update(cx, |state, cx| {
-                        let Some(scrollbar_layout) = (phase == capture_phase
-                            && event.button == MouseButton::Left)
-                            .then(|| state.hit_for_position(&event.position))
-                            .flatten()
-                        else {
+                        if phase != capture_phase || event.button != MouseButton::Left {
+                            return;
+                        }
+
+                        let Some(scrollbar_layout) = state.hit_for_position(&event.position) else {
                             return;
                         };
 
                         let ScrollbarLayout {
-                            thumb_bounds, axis, ..
+                            thumb_bounds,
+                            axis,
+                            reserved_space,
+                            ..
                         } = scrollbar_layout;
-
-                        if let Some(thumb_bounds) = thumb_bounds
-                            .as_ref()
-                            .filter(|bounds| bounds.contains(&event.position))
-                        {
-                            let offset =
-                                event.position.along(*axis) - thumb_bounds.origin.along(*axis);
-                            state.set_dragging(*axis, offset, window, cx);
-                        } else if let Some(click_offset) = {
+                        let axis = *axis;
+                        let thumb_bounds = *thumb_bounds;
+                        let needs_scroll_track = reserved_space.needs_scroll_track();
+                        let click_offset = if needs_scroll_track {
                             let scroll_handle = state.scroll_handle();
                             scrollbar_layout.compute_click_offset(
                                 event.position,
                                 scroll_handle.max_offset(),
                                 ScrollbarMouseEvent::TrackClick,
                             )
-                        } {
-                            let scroll_handle = state.scroll_handle();
-                            state.set_offset(
-                                scroll_handle.offset().apply_along(*axis, |_| click_offset),
-                                cx,
-                            );
+                        } else {
+                            None
+                        };
+
+                        if let Some(thumb_bounds) = thumb_bounds
+                            .as_ref()
+                            .filter(|bounds| bounds.contains(&event.position))
+                        {
+                            let offset =
+                                event.position.along(axis) - thumb_bounds.origin.along(axis);
+                            state.set_dragging(axis, offset, window, cx);
+                        } else if needs_scroll_track && let Some(click_offset) = click_offset {
+                            if let Some(thumb_bounds) = thumb_bounds {
+                                state.set_dragging(
+                                    axis,
+                                    thumb_bounds.size.along(axis) / 2.0,
+                                    window,
+                                    cx,
+                                );
+                            }
+
+                            let offset = state.scroll_handle().offset();
+                            state.set_offset(offset.apply_along(axis, |_| click_offset), cx);
                         };
 
                         cx.stop_propagation();
