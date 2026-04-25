@@ -621,15 +621,8 @@ impl<T: ScrollableHandle> ScrollbarState<T> {
     }
 
     fn space_to_reserve_for(&self, axis: ScrollbarAxis) -> Option<Pixels> {
-        (self.show_state.is_disabled().not()
-            && self.visibility.along(axis).needs_scroll_track()
-            && self
-                .scroll_handle()
-                .max_offset()
-                .along(axis)
-                .is_zero()
-                .not())
-        .then(|| self.space_to_reserve())
+        (self.show_state.is_disabled().not() && self.visibility.along(axis).needs_scroll_track())
+            .then(|| self.space_to_reserve())
     }
 
     fn space_to_reserve(&self) -> Pixels {
@@ -737,43 +730,55 @@ impl<T: ScrollableHandle> ScrollbarState<T> {
             .and_then(|state| state.thumbs.iter().find(|thumb| thumb.axis == axis))
     }
 
-    fn thumb_ranges(
+    fn scrollbar_layouts(
         &self,
-    ) -> impl Iterator<Item = (ScrollbarAxis, Range<f32>, ReservedSpace)> + '_ {
+    ) -> impl Iterator<Item = (ScrollbarAxis, Option<Range<f32>>, ReservedSpace)> + '_ {
+        [ScrollbarAxis::Horizontal, ScrollbarAxis::Vertical]
+            .into_iter()
+            .filter_map(|axis| {
+                let reserved_space = self.visibility.along(axis);
+                let thumb_range = self.thumb_range_for_axis(axis);
+
+                (reserved_space.needs_scroll_track() || thumb_range.is_some()).then_some((
+                    axis,
+                    thumb_range,
+                    reserved_space,
+                ))
+            })
+    }
+
+    fn thumb_range_for_axis(&self, axis: ScrollbarAxis) -> Option<Range<f32>> {
         const MINIMUM_THUMB_SIZE: Pixels = gpui::px(25.0);
         let max_offset = self.scroll_handle().max_offset();
         let viewport_size = self.scroll_handle().viewport().size;
         let current_offset = self.scroll_handle().offset();
 
-        [ScrollbarAxis::Horizontal, ScrollbarAxis::Vertical]
-            .into_iter()
-            .filter(|&axis| self.visibility.along(axis).is_visible())
-            .flat_map(move |axis| {
-                let max_offset = max_offset.along(axis);
-                let viewport_size = viewport_size.along(axis);
-                if max_offset.is_zero() || viewport_size.is_zero() {
-                    return None;
-                }
-                let content_size = viewport_size + max_offset;
-                let visible_percentage = viewport_size / content_size;
-                let thumb_size = MINIMUM_THUMB_SIZE.max(viewport_size * visible_percentage);
-                if thumb_size > viewport_size {
-                    return None;
-                }
-                let current_offset = current_offset
-                    .along(axis)
-                    .clamp(-max_offset, Pixels::ZERO)
-                    .abs();
-                let start_offset = (current_offset / max_offset) * (viewport_size - thumb_size);
-                let thumb_percentage_start = start_offset / viewport_size;
-                let thumb_percentage_end = (start_offset + thumb_size) / viewport_size;
+        if self.visibility.along(axis).is_visible().not() {
+            return None;
+        }
 
-                Some((
-                    axis,
-                    thumb_percentage_start..thumb_percentage_end,
-                    self.visibility.along(axis),
-                ))
-            })
+        let max_offset = max_offset.along(axis);
+        let viewport_size = viewport_size.along(axis);
+        if max_offset.is_zero() || viewport_size.is_zero() {
+            return None;
+        }
+
+        let content_size = viewport_size + max_offset;
+        let visible_percentage = viewport_size / content_size;
+        let thumb_size = MINIMUM_THUMB_SIZE.max(viewport_size * visible_percentage);
+        if thumb_size > viewport_size {
+            return None;
+        }
+
+        let current_offset = current_offset
+            .along(axis)
+            .clamp(-max_offset, Pixels::ZERO)
+            .abs();
+        let start_offset = (current_offset / max_offset) * (viewport_size - thumb_size);
+        let thumb_percentage_start = start_offset / viewport_size;
+        let thumb_percentage_end = (start_offset + thumb_size) / viewport_size;
+
+        Some(thumb_percentage_start..thumb_percentage_end)
     }
 
     fn visible(&self) -> bool {
@@ -904,7 +909,7 @@ enum ScrollbarMouseEvent {
 }
 
 struct ScrollbarLayout {
-    thumb_bounds: Bounds<Pixels>,
+    thumb_bounds: Option<Bounds<Pixels>>,
     track_bounds: Bounds<Pixels>,
     cursor_hitbox: Hitbox,
     reserved_space: ReservedSpace,
@@ -918,7 +923,7 @@ impl ScrollbarLayout {
         event_position: Point<Pixels>,
         max_offset: Point<Pixels>,
         event_type: ScrollbarMouseEvent,
-    ) -> Pixels {
+    ) -> Option<Pixels> {
         let Self {
             track_bounds,
             thumb_bounds,
@@ -928,6 +933,10 @@ impl ScrollbarLayout {
         let axis = *axis;
 
         let viewport_size = track_bounds.size.along(axis);
+        let Some(thumb_bounds) = thumb_bounds else {
+            return None;
+        };
+
         let thumb_size = thumb_bounds.size.along(axis);
         let thumb_offset = match event_type {
             ScrollbarMouseEvent::TrackClick => thumb_size / 2.0,
@@ -945,7 +954,7 @@ impl ScrollbarLayout {
             0.0
         };
 
-        -max_offset * percentage
+        Some(-max_offset * percentage)
     }
 }
 
@@ -956,13 +965,19 @@ impl PartialEq for ScrollbarLayout {
         }
 
         let axis = self.axis;
-        let thumb_offset =
-            self.thumb_bounds.origin.along(axis) - self.track_bounds.origin.along(axis);
-        let other_thumb_offset =
-            other.thumb_bounds.origin.along(axis) - other.track_bounds.origin.along(axis);
+        match (&self.thumb_bounds, &other.thumb_bounds) {
+            (Some(thumb_bounds), Some(other_thumb_bounds)) => {
+                let thumb_offset =
+                    thumb_bounds.origin.along(axis) - self.track_bounds.origin.along(axis);
+                let other_thumb_offset =
+                    other_thumb_bounds.origin.along(axis) - other.track_bounds.origin.along(axis);
 
-        thumb_offset == other_thumb_offset
-            && self.thumb_bounds.size.along(axis) == other.thumb_bounds.size.along(axis)
+                thumb_offset == other_thumb_offset
+                    && thumb_bounds.size.along(axis) == other_thumb_bounds.size.along(axis)
+            }
+            (None, None) => self.track_bounds == other.track_bounds,
+            _ => false,
+        }
     }
 }
 
@@ -973,9 +988,11 @@ pub struct ScrollbarPrepaintState {
 
 impl ScrollbarPrepaintState {
     fn thumb_for_position(&self, position: &Point<Pixels>) -> Option<&ScrollbarLayout> {
-        self.thumbs
-            .iter()
-            .find(|info| info.thumb_bounds.contains(position))
+        self.thumbs.iter().find(|info| {
+            info.thumb_bounds
+                .as_ref()
+                .is_some_and(|bounds| bounds.contains(position))
+        })
     }
 
     fn hit_for_position(&self, position: &Point<Pixels>) -> Option<&ScrollbarLayout> {
@@ -983,7 +1000,9 @@ impl ScrollbarPrepaintState {
             if info.reserved_space.needs_scroll_track() {
                 info.track_bounds.contains(position)
             } else {
-                info.thumb_bounds.contains(position)
+                info.thumb_bounds
+                    .as_ref()
+                    .is_some_and(|bounds| bounds.contains(position))
             }
         })
     }
@@ -1041,17 +1060,17 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
             .then(|| ScrollbarPrepaintState {
                 thumbs: {
                     let state = self.state.read(cx);
-                    let thumb_ranges = state.thumb_ranges().collect::<Vec<_>>();
+                    let scrollbar_layouts = state.scrollbar_layouts().collect::<Vec<_>>();
                     let width = state.width.to_pixels();
                     let track_color = state.track_color;
 
-                    let additional_padding = if thumb_ranges.len() == 2 {
+                    let additional_padding = if scrollbar_layouts.len() == 2 {
                         width
                     } else {
                         Pixels::ZERO
                     };
 
-                    thumb_ranges
+                    scrollbar_layouts
                         .into_iter()
                         .map(|(axis, thumb_range, reserved_space)| {
                             let track_anchor = match axis {
@@ -1085,29 +1104,34 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                             let available_space =
                                 padded_bounds.size.along(axis) - additional_padding;
 
-                            let thumb_offset = thumb_range.start * available_space;
-                            let thumb_end = thumb_range.end * available_space;
-                            let thumb_bounds = Bounds::new(
-                                padded_bounds
-                                    .origin
-                                    .apply_along(axis, |origin| origin + thumb_offset),
-                                padded_bounds
-                                    .size
-                                    .apply_along(axis, |_| thumb_end - thumb_offset),
-                            );
+                            let thumb_bounds = thumb_range.map(|thumb_range| {
+                                let thumb_offset = thumb_range.start * available_space;
+                                let thumb_end = thumb_range.end * available_space;
+                                Bounds::new(
+                                    padded_bounds
+                                        .origin
+                                        .apply_along(axis, |origin| origin + thumb_offset),
+                                    padded_bounds
+                                        .size
+                                        .apply_along(axis, |_| thumb_end - thumb_offset),
+                                )
+                            });
 
                             let needs_scroll_track = reserved_space.needs_scroll_track();
+                            let cursor_bounds = if needs_scroll_track {
+                                padded_bounds
+                            } else if let Some(thumb_bounds) = thumb_bounds {
+                                thumb_bounds
+                            } else {
+                                padded_bounds
+                            };
 
                             ScrollbarLayout {
                                 thumb_bounds,
                                 track_bounds: padded_bounds,
                                 axis,
                                 cursor_hitbox: window.insert_hitbox(
-                                    if needs_scroll_track {
-                                        padded_bounds
-                                    } else {
-                                        thumb_bounds
-                                    },
+                                    cursor_bounds,
                                     HitboxBehavior::BlockMouseExceptScroll,
                                 ),
                                 track_background: track_color
@@ -1198,32 +1222,6 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                     ..
                 } in &prepaint_state.thumbs
                 {
-                    const MAXIMUM_OPACITY: f32 = 0.7;
-                    let (thumb_base_color, hovered) = match thumb_state {
-                        ThumbState::Dragging(dragged_axis, _) if dragged_axis == axis => {
-                            (colors.scrollbar_thumb_active_background, false)
-                        }
-                        ThumbState::Hover(hovered_axis) if hovered_axis == axis => {
-                            (colors.scrollbar_thumb_hover_background, true)
-                        }
-                        _ => (colors.scrollbar_thumb_background, false),
-                    };
-
-                    let blending_color = if hovered || reserved_space.needs_scroll_track() {
-                        track_background
-                            .map(|(_, background)| background)
-                            .unwrap_or(colors.surface_background)
-                    } else {
-                        let blend_color = colors.surface_background;
-                        blend_color.min(blend_color.alpha(MAXIMUM_OPACITY))
-                    };
-
-                    let mut thumb_color = blending_color.blend(thumb_base_color);
-
-                    if !hovered && let Some(fade) = autohide_fade {
-                        thumb_color.fade_out(fade);
-                    }
-
                     if let Some((track_bounds, color)) = track_background {
                         let mut color = *color;
                         if let Some(fade) = autohide_fade {
@@ -1240,14 +1238,42 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                         ));
                     }
 
-                    window.paint_quad(gpui::quad(
-                        *thumb_bounds,
-                        Corners::all(SCROLLBAR_THUMB_RADIUS),
-                        thumb_color,
-                        Edges::default(),
-                        Hsla::transparent_black(),
-                        BorderStyle::default(),
-                    ));
+                    if let Some(thumb_bounds) = thumb_bounds {
+                        const MAXIMUM_OPACITY: f32 = 0.7;
+                        let (thumb_base_color, hovered) = match thumb_state {
+                            ThumbState::Dragging(dragged_axis, _) if dragged_axis == axis => {
+                                (colors.scrollbar_thumb_active_background, false)
+                            }
+                            ThumbState::Hover(hovered_axis) if hovered_axis == axis => {
+                                (colors.scrollbar_thumb_hover_background, true)
+                            }
+                            _ => (colors.scrollbar_thumb_background, false),
+                        };
+
+                        let blending_color = if hovered || reserved_space.needs_scroll_track() {
+                            track_background
+                                .map(|(_, background)| background)
+                                .unwrap_or(colors.surface_background)
+                        } else {
+                            let blend_color = colors.surface_background;
+                            blend_color.min(blend_color.alpha(MAXIMUM_OPACITY))
+                        };
+
+                        let mut thumb_color = blending_color.blend(thumb_base_color);
+
+                        if !hovered && let Some(fade) = autohide_fade {
+                            thumb_color.fade_out(fade);
+                        }
+
+                        window.paint_quad(gpui::quad(
+                            *thumb_bounds,
+                            Corners::all(SCROLLBAR_THUMB_RADIUS),
+                            thumb_color,
+                            Edges::default(),
+                            Hsla::transparent_black(),
+                            BorderStyle::default(),
+                        ));
+                    }
 
                     if thumb_state.is_dragging() {
                         window.set_window_cursor_style(CursorStyle::Arrow);
@@ -1280,17 +1306,22 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                             thumb_bounds, axis, ..
                         } = scrollbar_layout;
 
-                        if thumb_bounds.contains(&event.position) {
+                        if let Some(thumb_bounds) = thumb_bounds
+                            .as_ref()
+                            .filter(|bounds| bounds.contains(&event.position))
+                        {
                             let offset =
                                 event.position.along(*axis) - thumb_bounds.origin.along(*axis);
                             state.set_dragging(*axis, offset, window, cx);
-                        } else {
+                        } else if let Some(click_offset) = {
                             let scroll_handle = state.scroll_handle();
-                            let click_offset = scrollbar_layout.compute_click_offset(
+                            scrollbar_layout.compute_click_offset(
                                 event.position,
                                 scroll_handle.max_offset(),
                                 ScrollbarMouseEvent::TrackClick,
-                            );
+                            )
+                        } {
+                            let scroll_handle = state.scroll_handle();
                             state.set_offset(
                                 scroll_handle.offset().apply_along(*axis, |_| click_offset),
                                 cx,
@@ -1326,11 +1357,13 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                         ThumbState::Dragging(axis, drag_state) if event.dragging() => {
                             if let Some(scrollbar_layout) = state.read(cx).thumb_for_axis(axis) {
                                 let scroll_handle = state.read(cx).scroll_handle();
-                                let drag_offset = scrollbar_layout.compute_click_offset(
+                                let Some(drag_offset) = scrollbar_layout.compute_click_offset(
                                     event.position,
                                     scroll_handle.max_offset(),
                                     ScrollbarMouseEvent::ThumbDrag(drag_state),
-                                );
+                                ) else {
+                                    return;
+                                };
                                 let new_offset =
                                     scroll_handle.offset().apply_along(axis, |_| drag_offset);
 
