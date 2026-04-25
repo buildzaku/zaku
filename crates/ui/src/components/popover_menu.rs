@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, AnyView, App, Bounds, Corner, DismissEvent, DispatchPhase, ElementId, Entity,
+    Anchor, AnyElement, AnyView, App, Bounds, DismissEvent, DispatchPhase, ElementId, Entity,
     Focusable, GlobalElementId, HitboxBehavior, HitboxId, InspectorElementId, LayoutId, Length,
     ManagedView, MouseDownEvent, Pixels, Point, Style, Window, prelude::*,
 };
@@ -107,8 +107,8 @@ pub struct PopoverMenu<M: ManagedView> {
     id: ElementId,
     child_builder: Option<ChildBuilder<M>>,
     menu_builder: Option<MenuBuilder<M>>,
-    anchor: Corner,
-    attach: Option<Corner>,
+    anchor: Anchor,
+    attach: Option<Anchor>,
     offset: Option<Point<Pixels>>,
     trigger_handle: Option<PopoverMenuHandle<M>>,
     on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
@@ -121,7 +121,7 @@ impl<M: ManagedView> PopoverMenu<M> {
             id: id.into(),
             child_builder: None,
             menu_builder: None,
-            anchor: Corner::TopLeft,
+            anchor: Anchor::TopLeft,
             attach: None,
             offset: None,
             trigger_handle: None,
@@ -185,12 +185,12 @@ impl<M: ManagedView> PopoverMenu<M> {
         self
     }
 
-    pub fn anchor(mut self, anchor: Corner) -> Self {
+    pub fn anchor(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
     }
 
-    pub fn attach(mut self, attach: Corner) -> Self {
+    pub fn attach(mut self, attach: Anchor) -> Self {
         self.attach = Some(attach);
         self
     }
@@ -205,21 +205,33 @@ impl<M: ManagedView> PopoverMenu<M> {
         self
     }
 
-    fn resolved_attach(&self) -> Corner {
-        self.attach.unwrap_or(match self.anchor {
-            Corner::TopLeft => Corner::BottomLeft,
-            Corner::TopRight => Corner::BottomRight,
-            Corner::BottomLeft => Corner::TopLeft,
-            Corner::BottomRight => Corner::TopRight,
-        })
+    fn resolved_attach(&self) -> Anchor {
+        self.attach
+            .unwrap_or(self.attach.unwrap_or(match self.anchor {
+                Anchor::TopLeft => Anchor::BottomLeft,
+                Anchor::TopCenter => Anchor::BottomCenter,
+                Anchor::TopRight => Anchor::BottomRight,
+                Anchor::BottomLeft => Anchor::TopLeft,
+                Anchor::BottomCenter => Anchor::TopCenter,
+                Anchor::BottomRight => Anchor::TopRight,
+                Anchor::LeftCenter => Anchor::LeftCenter,
+                Anchor::RightCenter => Anchor::RightCenter,
+            }))
     }
 
     fn resolved_offset(&self, window: &mut Window) -> Point<Pixels> {
         self.offset.unwrap_or_else(|| {
-            let offset = rems_from_px(5.) * window.rem_size();
+            let offset = rems_from_px(5.0) * window.rem_size();
             match self.anchor {
-                Corner::TopRight | Corner::BottomRight => gpui::point(offset, gpui::px(0.)),
-                Corner::TopLeft | Corner::BottomLeft => gpui::point(-offset, gpui::px(0.)),
+                Anchor::TopRight | Anchor::BottomRight | Anchor::RightCenter => {
+                    gpui::point(offset, gpui::px(0.0))
+                }
+                Anchor::TopLeft | Anchor::BottomLeft | Anchor::LeftCenter => {
+                    gpui::point(-offset, gpui::px(0.0))
+                }
+                Anchor::TopCenter | Anchor::BottomCenter => {
+                    gpui::point(gpui::px(0.0), gpui::px(0.0))
+                }
             }
         })
     }
@@ -304,7 +316,7 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
         Some(self.id.clone())
     }
 
-    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
         None
     }
 
@@ -324,7 +336,7 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
                 let menu_element = element_state.menu.borrow_mut().as_mut().map(|menu| {
                     let offset = self.resolved_offset(window);
                     let mut anchored = gpui::anchored()
-                        .snap_to_window_with_margin(gpui::px(8.))
+                        .snap_to_window_with_margin(gpui::px(8.0))
                         .anchor(self.anchor)
                         .offset(offset);
                     if let Some(child_bounds) = element_state.child_bounds {
@@ -360,7 +372,7 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
 
                 let mut style = Style::default();
                 if self.full_width {
-                    style.size = gpui::size(gpui::relative(1.).into(), Length::Auto);
+                    style.size = gpui::size(gpui::relative(1.0).into(), Length::Auto);
                 }
 
                 let layout_id = window.request_layout(
