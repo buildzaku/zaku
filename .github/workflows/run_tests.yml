@@ -45,8 +45,8 @@ jobs:
       - name: "Check for typos"
         uses: crate-ci/typos@v1.43.1
 
-  run_tests_linux_x86_64:
-    name: "Test Linux x86_64"
+  run_clippy_linux_x86_64:
+    name: "Clippy Linux x86_64"
     if: github.repository == 'buildzaku/zaku'
     runs-on: ubuntu-latest
     steps:
@@ -73,6 +73,81 @@ jobs:
         run: ./script/clippy
         shell: bash
 
+  run_clippy_macos_arm64:
+    name: "Clippy macOS ARM64"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: macos-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: "Run Clippy"
+        run: ./script/clippy
+        shell: bash
+
+  run_clippy_macos_x86_64:
+    name: "Clippy macOS x86_64"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: macos-15-intel
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: "Run Clippy"
+        run: ./script/clippy
+        shell: bash
+
+  run_clippy_windows_x86_64:
+    name: "Clippy Windows x86_64"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: windows-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
+      - name: "Run Clippy"
+        run: ./script/clippy.ps1
+        shell: pwsh
+
+  run_tests_linux_x86_64:
+    name: "Test Linux x86_64"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v6
+
+      - name: "Install Linux dependencies"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-xcb-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev \
+            libfontconfig-dev \
+            libasound2-dev \
+            libssl-dev
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
+
       - name: "Install Nextest"
         uses: taiki-e/install-action@nextest
 
@@ -91,10 +166,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-targets: false
-
-      - name: "Run Clippy"
-        run: ./script/clippy
-        shell: bash
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@nextest
@@ -115,10 +186,6 @@ jobs:
         with:
           cache-targets: false
 
-      - name: "Run Clippy"
-        run: ./script/clippy
-        shell: bash
-
       - name: "Install Nextest"
         uses: taiki-e/install-action@nextest
 
@@ -137,10 +204,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-targets: false
-
-      - name: "Run Clippy"
-        run: ./script/clippy.ps1
-        shell: pwsh
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@nextest
