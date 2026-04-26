@@ -114,7 +114,7 @@ show_config() {
   echo "SCCACHE_REGION: ${SCCACHE_REGION:-<not set>}"
   echo "SCCACHE_BASEDIRS: ${SCCACHE_BASEDIRS:-<not set>}"
   if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
-    echo "AWS_ACCESS_KEY_ID: <set, length=${#AWS_ACCESS_KEY_ID}>"
+    echo "AWS_ACCESS_KEY_ID: <set>"
   else
     echo "AWS_ACCESS_KEY_ID: <not set>"
   fi
