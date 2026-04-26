@@ -102,7 +102,7 @@ function Configure-Sccache {
     $env:SCCACHE_ENDPOINT = "https://$($env:R2_ACCOUNT_ID).r2.cloudflarestorage.com"
     $env:SCCACHE_BUCKET = $env:R2_SCCACHE_BUCKET
     $env:SCCACHE_REGION = "auto"
-    $env:SCCACHE_BASEDIR = $baseDir
+    $env:SCCACHE_BASEDIRS = $baseDir
     $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
     $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
     $env:RUSTC_WRAPPER = $sccacheBin
@@ -112,7 +112,7 @@ function Configure-Sccache {
             "SCCACHE_ENDPOINT=$($env:SCCACHE_ENDPOINT)"
             "SCCACHE_BUCKET=$($env:SCCACHE_BUCKET)"
             "SCCACHE_REGION=$($env:SCCACHE_REGION)"
-            "SCCACHE_BASEDIR=$($env:SCCACHE_BASEDIR)"
+            "SCCACHE_BASEDIRS=$($env:SCCACHE_BASEDIRS)"
             "AWS_ACCESS_KEY_ID=$($env:AWS_ACCESS_KEY_ID)"
             "AWS_SECRET_ACCESS_KEY=$($env:AWS_SECRET_ACCESS_KEY)"
             "RUSTC_WRAPPER=$($env:RUSTC_WRAPPER)"
@@ -142,7 +142,7 @@ function Show-Config {
     Write-Host "SCCACHE_BUCKET: $(Format-EnvValue $env:SCCACHE_BUCKET)"
     Write-Host "SCCACHE_ENDPOINT: $(Format-EnvValue $env:SCCACHE_ENDPOINT)"
     Write-Host "SCCACHE_REGION: $(Format-EnvValue $env:SCCACHE_REGION)"
-    Write-Host "SCCACHE_BASEDIR: $(Format-EnvValue $env:SCCACHE_BASEDIR)"
+    Write-Host "SCCACHE_BASEDIRS: $(Format-EnvValue $env:SCCACHE_BASEDIRS)"
 
     if ($env:AWS_ACCESS_KEY_ID) {
         Write-Host "AWS_ACCESS_KEY_ID: <set>"
