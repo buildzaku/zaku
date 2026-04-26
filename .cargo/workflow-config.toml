@@ -1,9 +1,5 @@
 [build]
-incremental = false
 rustflags = ["-D", "warnings"]
 
 [profile.dev]
 debug = "limited"
-
-[term]
-color = "always"
