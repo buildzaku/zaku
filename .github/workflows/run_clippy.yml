@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: "Setup Cargo config"
         run: |
@@ -44,7 +44,7 @@ jobs:
             libssl-dev
 
       - name: "Setup Rust cache"
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           cache-targets: false
 
@@ -71,7 +71,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: "Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: "Setup Cargo config"
         run: |
@@ -80,7 +80,7 @@ jobs:
         shell: bash
 
       - name: "Setup Rust cache"
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           cache-targets: false
 
@@ -107,7 +107,7 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - name: "Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: "Setup Cargo config"
         run: |
@@ -116,7 +116,7 @@ jobs:
         shell: bash
 
       - name: "Setup Rust cache"
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           cache-targets: false
 
@@ -143,7 +143,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: "Checkout repository"
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: "Setup Cargo config"
         run: |
@@ -152,7 +152,7 @@ jobs:
         shell: pwsh
 
       - name: "Setup Rust cache"
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           cache-targets: false
 
