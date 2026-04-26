@@ -46,8 +46,21 @@ jobs:
         with:
           cache-targets: false
 
+      - name: "Setup sccache"
+        run: ./script/setup-sccache
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
+
       - name: "Run Clippy"
         run: ./script/clippy
+        shell: bash
+
+      - name: "Show sccache stats"
+        run: sccache --show-stats
         shell: bash
 
   run_clippy_macos_arm64:
@@ -69,8 +82,21 @@ jobs:
         with:
           cache-targets: false
 
+      - name: "Setup sccache"
+        run: ./script/setup-sccache
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
+
       - name: "Run Clippy"
         run: ./script/clippy
+        shell: bash
+
+      - name: "Show sccache stats"
+        run: sccache --show-stats
         shell: bash
 
   run_clippy_macos_x86_64:
@@ -92,8 +118,21 @@ jobs:
         with:
           cache-targets: false
 
+      - name: "Setup sccache"
+        run: ./script/setup-sccache
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
+
       - name: "Run Clippy"
         run: ./script/clippy
+        shell: bash
+
+      - name: "Show sccache stats"
+        run: sccache --show-stats
         shell: bash
 
   run_clippy_windows_x86_64:
@@ -115,6 +154,19 @@ jobs:
         with:
           cache-targets: false
 
+      - name: "Setup sccache"
+        run: ./script/setup-sccache.ps1
+        shell: pwsh
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
+
       - name: "Run Clippy"
         run: ./script/clippy.ps1
+        shell: pwsh
+
+      - name: "Show sccache stats"
+        run: if ($env:RUSTC_WRAPPER) { & $env:RUSTC_WRAPPER --show-stats }
         shell: pwsh
