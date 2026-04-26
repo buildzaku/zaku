@@ -13,7 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
 
 jobs:
@@ -24,6 +23,12 @@ jobs:
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v6
+
+      - name: "Setup Cargo config"
+        run: |
+          mkdir -p ./../.cargo
+          cp ./.cargo/workflow-config.toml ./../.cargo/config.toml
+        shell: bash
 
       - name: "Install Linux dependencies"
         run: |
@@ -55,6 +60,12 @@ jobs:
       - name: "Checkout repository"
         uses: actions/checkout@v6
 
+      - name: "Setup Cargo config"
+        run: |
+          mkdir -p ./../.cargo
+          cp ./.cargo/workflow-config.toml ./../.cargo/config.toml
+        shell: bash
+
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
         with:
@@ -74,6 +85,12 @@ jobs:
       - name: "Checkout repository"
         uses: actions/checkout@v6
 
+      - name: "Setup Cargo config"
+        run: |
+          mkdir -p ./../.cargo
+          cp ./.cargo/workflow-config.toml ./../.cargo/config.toml
+        shell: bash
+
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
         with:
@@ -92,6 +109,12 @@ jobs:
     steps:
       - name: "Checkout repository"
         uses: actions/checkout@v6
+
+      - name: "Setup Cargo config"
+        run: |
+          New-Item -ItemType Directory -Path "./../.cargo" -Force
+          Copy-Item -Path "./.cargo/workflow-config.toml" -Destination "./../.cargo/config.toml"
+        shell: pwsh
 
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@v2
