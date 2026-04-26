@@ -13,9 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: "1"
 
 jobs:
   check_style:
@@ -34,17 +32,6 @@ jobs:
       - name: "Check Prettier formatting"
         run: ./script/prettier
         shell: bash
-
-      - name: "Setup Cargo config"
-        run: |
-          mkdir -p ./../.cargo
-          cp ./.cargo/workflow-config.toml ./../.cargo/config.toml
-        shell: bash
-
-      - name: "Setup Rust cache"
-        uses: Swatinem/rust-cache@v2
-        with:
-          cache-targets: false
 
       - name: "Check Rust formatting"
         run: cargo fmt --all -- --check
