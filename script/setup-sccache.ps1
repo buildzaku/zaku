@@ -122,27 +122,15 @@ function Configure-Sccache {
     Write-Host "sccache configured with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))"
 }
 
-function Format-EnvValue {
-    param (
-        [string]$Value
-    )
-
-    if ($Value) {
-        return $Value
-    }
-
-    return "<not set>"
-}
-
 function Show-Config {
     Write-Host "=== sccache configuration ==="
     Write-Host "sccache version: $(sccache --version)"
     Write-Host "sccache path: $((Get-Command sccache).Source)"
-    Write-Host "RUSTC_WRAPPER: $(Format-EnvValue $env:RUSTC_WRAPPER)"
-    Write-Host "SCCACHE_BUCKET: $(Format-EnvValue $env:SCCACHE_BUCKET)"
-    Write-Host "SCCACHE_ENDPOINT: $(Format-EnvValue $env:SCCACHE_ENDPOINT)"
-    Write-Host "SCCACHE_REGION: $(Format-EnvValue $env:SCCACHE_REGION)"
-    Write-Host "SCCACHE_BASEDIRS: $(Format-EnvValue $env:SCCACHE_BASEDIRS)"
+    Write-Host "RUSTC_WRAPPER: $($env:RUSTC_WRAPPER ?? '<not set>')"
+    Write-Host "SCCACHE_BUCKET: $($env:SCCACHE_BUCKET ?? '<not set>')"
+    Write-Host "SCCACHE_ENDPOINT: $($env:SCCACHE_ENDPOINT ?? '<not set>')"
+    Write-Host "SCCACHE_REGION: $($env:SCCACHE_REGION ?? '<not set>')"
+    Write-Host "SCCACHE_BASEDIRS: $($env:SCCACHE_BASEDIRS ?? '<not set>')"
 
     if ($env:AWS_ACCESS_KEY_ID) {
         Write-Host "AWS_ACCESS_KEY_ID: <set>"
