@@ -46,7 +46,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: linux-x86_64
 
       - name: "Setup sccache"
         run: ./script/setup-sccache
@@ -82,7 +84,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: macos-arm64
 
       - name: "Setup sccache"
         run: ./script/setup-sccache
@@ -118,7 +122,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: windows-x86_64
 
       - name: "Setup sccache"
         run: ./script/setup-sccache.ps1

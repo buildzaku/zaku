@@ -46,7 +46,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: linux-arm64
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
@@ -95,7 +97,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: linux-x86_64
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
@@ -133,7 +137,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: macos-arm64
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
@@ -171,7 +177,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: macos-x86_64
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
@@ -209,7 +217,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: windows-arm64
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
@@ -247,7 +257,9 @@ jobs:
       - name: "Setup Rust cache"
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
+          add-job-id-key: false
           cache-targets: false
+          shared-key: windows-x86_64
 
       - name: "Install Nextest"
         uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
