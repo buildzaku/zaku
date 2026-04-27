@@ -18,8 +18,8 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
-  run_clippy_linux_x86_64:
-    name: "Clippy Linux x86_64"
+  run_clippy_linux:
+    name: "Clippy Linux"
     if: github.repository == 'buildzaku/zaku'
     runs-on: ubuntu-24.04
     steps:
@@ -65,8 +65,8 @@ jobs:
         run: sccache --show-stats
         shell: bash
 
-  run_clippy_macos_arm64:
-    name: "Clippy macOS ARM64"
+  run_clippy_macos:
+    name: "Clippy macOS"
     if: github.repository == 'buildzaku/zaku'
     runs-on: macos-26
     steps:
@@ -101,44 +101,8 @@ jobs:
         run: sccache --show-stats
         shell: bash
 
-  run_clippy_macos_x86_64:
-    name: "Clippy macOS x86_64"
-    if: github.repository == 'buildzaku/zaku'
-    runs-on: macos-26-intel
-    steps:
-      - name: "Checkout repository"
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - name: "Setup Cargo config"
-        run: |
-          mkdir -p ./../.cargo
-          cp ./.cargo/workflow-config.toml ./../.cargo/config.toml
-        shell: bash
-
-      - name: "Setup Rust cache"
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-        with:
-          cache-targets: false
-
-      - name: "Setup sccache"
-        run: ./script/setup-sccache
-        shell: bash
-        env:
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
-
-      - name: "Run Clippy"
-        run: ./script/clippy
-        shell: bash
-
-      - name: "Show sccache stats"
-        run: sccache --show-stats
-        shell: bash
-
-  run_clippy_windows_x86_64:
-    name: "Clippy Windows x86_64"
+  run_clippy_windows:
+    name: "Clippy Windows"
     if: github.repository == 'buildzaku/zaku'
     runs-on: windows-2025
     steps:
