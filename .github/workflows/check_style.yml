@@ -1,0 +1,40 @@
+name: "Check Style"
+
+on:
+  pull_request:
+    branches:
+      - "**"
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name == 'main' && github.sha || github.head_ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check_style:
+    name: "Check Style"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: "Setup pnpm"
+        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with:
+          version: 10.33.2
+
+      - name: "Check Prettier formatting"
+        run: ./script/prettier
+        shell: bash
+
+      - name: "Check Rust formatting"
+        run: cargo fmt --all -- --check
+
+      - name: "Check for typos"
+        uses: crate-ci/typos@cf5f1c29a8ac336af8568821ec41919923b05a83 # v1.45.1

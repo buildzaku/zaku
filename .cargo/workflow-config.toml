@@ -1,0 +1,5 @@
+[build]
+rustflags = ["-D", "warnings"]
+
+[profile.dev]
+debug = "limited"
