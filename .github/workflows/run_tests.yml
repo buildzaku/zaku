@@ -18,6 +18,55 @@ env:
   RUST_BACKTRACE: "1"
 
 jobs:
+  run_tests_linux_arm64:
+    name: "Test Linux ARM64"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: "Setup Cargo config"
+        run: |
+          mkdir -p ./../.cargo
+          cp ./.cargo/workflow-config.toml ./../.cargo/config.toml
+        shell: bash
+
+      - name: "Install Linux dependencies"
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-xcb-dev \
+            libxkbcommon-x11-dev \
+            libwayland-dev \
+            libfontconfig-dev \
+            libasound2-dev \
+            libssl-dev
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-targets: false
+
+      - name: "Install Nextest"
+        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+
+      - name: "Setup sccache"
+        run: ./script/setup-sccache
+        shell: bash
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
+
+      - name: "Run tests"
+        run: cargo nextest run --workspace --no-fail-fast
+
+      - name: "Show sccache stats"
+        run: sccache --show-stats
+        shell: bash
+
   run_tests_linux_x86_64:
     name: "Test Linux x86_64"
     if: github.repository == 'buildzaku/zaku'
@@ -142,6 +191,44 @@ jobs:
       - name: "Show sccache stats"
         run: sccache --show-stats
         shell: bash
+
+  run_tests_windows_arm64:
+    name: "Test Windows ARM64"
+    if: github.repository == 'buildzaku/zaku'
+    runs-on: windows-11-arm
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: "Setup Cargo config"
+        run: |
+          New-Item -ItemType Directory -Path "./../.cargo" -Force
+          Copy-Item -Path "./.cargo/workflow-config.toml" -Destination "./../.cargo/config.toml"
+        shell: pwsh
+
+      - name: "Setup Rust cache"
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          cache-targets: false
+
+      - name: "Install Nextest"
+        uses: taiki-e/install-action@e537394e10461340f56469a03c3e73f1705074a9 # nextest
+
+      - name: "Setup sccache"
+        run: ./script/setup-sccache.ps1
+        shell: pwsh
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
+
+      - name: "Run tests"
+        run: cargo nextest run --workspace --no-fail-fast
+
+      - name: "Show sccache stats"
+        run: if ($env:RUSTC_WRAPPER) { & $env:RUSTC_WRAPPER --show-stats }
+        shell: pwsh
 
   run_tests_windows_x86_64:
     name: "Test Windows x86_64"

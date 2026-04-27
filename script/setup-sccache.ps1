@@ -15,11 +15,15 @@ function Install-Sccache {
     else {
         Write-Host "Installing sccache ${SCCACHE_VERSION} from GitHub releases..."
 
-        if (-not [Environment]::Is64BitOperatingSystem) {
-            Write-Host "Error: 64-bit Windows is required"
-            exit 1
+        $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+        $arch = switch ($architecture) {
+            "Arm64" { "aarch64" }
+            "X64" { "x86_64" }
+            default {
+                Write-Host "Error: Unsupported Windows architecture: $architecture"
+                exit 1
+            }
         }
-        $arch = "x86_64"
         $archive = "sccache-${SCCACHE_VERSION}-${arch}-pc-windows-msvc.zip"
         $basename = "sccache-${SCCACHE_VERSION}-${arch}-pc-windows-msvc"
         $url = "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${archive}"
