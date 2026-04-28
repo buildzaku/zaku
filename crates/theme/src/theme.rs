@@ -5,7 +5,7 @@ use anyhow::{Context, anyhow};
 use gpui::{
     App, AssetSource, BorrowAppContext, Global, Hsla, Rgba, SharedString, WindowAppearance,
 };
-use palette::FromColor;
+use palette::{FromColor, Hsl, Okhsl};
 use parking_lot::RwLock;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};
@@ -116,6 +116,23 @@ impl Theme {
     #[inline(always)]
     pub fn status(&self) -> &StatusColors {
         &self.styles.status
+    }
+
+    pub fn darken(&self, color: Hsla, light_amount: f32, dark_amount: f32) -> Hsla {
+        let amount = match self.appearance {
+            Appearance::Light => light_amount,
+            Appearance::Dark => dark_amount,
+        };
+        let mut okhsl = Okhsl::from_color(Hsl::new_srgb(color.h * 360.0, color.s, color.l));
+        okhsl.lightness = (okhsl.lightness - amount).max(0.0);
+        let hsla: Hsl = Hsl::from_color(okhsl);
+
+        gpui::hsla(
+            hsla.hue.into_positive_degrees() / 360.0,
+            hsla.saturation,
+            hsla.lightness,
+            color.a,
+        )
     }
 }
 
