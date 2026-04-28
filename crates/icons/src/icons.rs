@@ -14,6 +14,7 @@ pub enum IconName {
     CaretRight,
     CaretUpDown,
     Check,
+    Close,
     Command,
     Control,
     Dash,

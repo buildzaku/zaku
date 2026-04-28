@@ -1,3 +1,4 @@
+pub mod animation;
 mod color;
 mod elevation;
 mod platform;
