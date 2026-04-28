@@ -22,6 +22,7 @@ pub enum IconName {
     Folder,
     FolderOpen,
     Info,
+    Minimize,
     Network,
     Option,
     Plus,
