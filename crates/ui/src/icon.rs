@@ -6,6 +6,8 @@ use crate::{Color, DynamicSpacing};
 
 #[derive(Default, PartialEq, Copy, Clone)]
 pub enum IconSize {
+    /// 10px
+    Indicator,
     /// 12px
     XSmall,
     /// 14px
@@ -21,10 +23,11 @@ pub enum IconSize {
 impl IconSize {
     pub fn rems(self) -> Rems {
         match self {
-            IconSize::XSmall => crate::rems_from_px(12.),
-            IconSize::Small => crate::rems_from_px(14.),
-            IconSize::Medium => crate::rems_from_px(16.),
-            IconSize::XLarge => crate::rems_from_px(48.),
+            IconSize::Indicator => crate::rems_from_px(10.0),
+            IconSize::XSmall => crate::rems_from_px(12.0),
+            IconSize::Small => crate::rems_from_px(14.0),
+            IconSize::Medium => crate::rems_from_px(16.0),
+            IconSize::XLarge => crate::rems_from_px(48.0),
             IconSize::Custom(size) => size,
         }
     }
@@ -32,6 +35,7 @@ impl IconSize {
     pub fn square_components(&self, window: &mut Window, cx: &mut App) -> (Pixels, Pixels) {
         let icon_size = self.rems() * window.rem_size();
         let padding = match self {
+            IconSize::Indicator => DynamicSpacing::Base00.px(cx),
             IconSize::XSmall | IconSize::Small | IconSize::Medium | IconSize::XLarge => {
                 DynamicSpacing::Base04.px(cx)
             }

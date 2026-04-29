@@ -3,11 +3,10 @@ use gpui::{
     SharedString, Window, prelude::*,
 };
 use smallvec::SmallVec;
-use theme::ActiveTheme;
 
 use crate::{
-    ButtonColor, ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth,
-    Toggleable, VisibleOnHover,
+    ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth, Toggleable,
+    VisibleOnHover,
 };
 
 pub trait SelectableButton: Toggleable {
@@ -152,38 +151,18 @@ impl ParentElement for ButtonLike {
 
 impl RenderOnce for ButtonLike {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
         let variant = self
             .selected_style
             .filter(|_| self.selected)
             .unwrap_or(self.variant);
-        let mut colors = variant.colors(cx);
+        let style = if self.disabled {
+            variant.disabled(cx)
+        } else {
+            variant.enabled(cx)
+        };
+        let hovered_style = variant.hovered(cx);
+        let active_style = variant.active(cx);
         let is_outlined = matches!(self.variant, ButtonVariant::Outline);
-
-        if self.disabled {
-            colors = match variant {
-                ButtonVariant::Subtle => ButtonColor {
-                    bg: theme_colors.ghost_element_disabled,
-                    text: theme_colors.text_disabled,
-                    hover_bg: theme_colors.ghost_element_disabled,
-                    active_bg: theme_colors.ghost_element_disabled,
-                },
-                ButtonVariant::Solid | ButtonVariant::Outline | ButtonVariant::Accent => {
-                    ButtonColor {
-                        bg: theme_colors.element_disabled,
-                        text: theme_colors.text_disabled,
-                        hover_bg: theme_colors.element_disabled,
-                        active_bg: theme_colors.element_disabled,
-                    }
-                }
-                ButtonVariant::Ghost => ButtonColor {
-                    bg: gpui::transparent_black(),
-                    text: theme_colors.text_disabled,
-                    hover_bg: gpui::transparent_black(),
-                    active_bg: gpui::transparent_black(),
-                },
-            };
-        }
 
         self.base
             .id(self.id.clone())
@@ -208,10 +187,11 @@ impl RenderOnce for ButtonLike {
             })
             .rounded_sm()
             .when(is_outlined, |this| {
-                this.border_1().border_color(theme_colors.border_variant)
+                this.border_1().border_color(style.border_color)
             })
-            .bg(colors.bg)
-            .text_color(colors.text)
+            .border_color(style.border_color)
+            .bg(style.background)
+            .text_color(style.label_color)
             .when(self.disabled, |this| {
                 if self.cursor_style == CursorStyle::PointingHand {
                     this.cursor_not_allowed()
@@ -221,8 +201,8 @@ impl RenderOnce for ButtonLike {
             })
             .when(!self.disabled, |this| {
                 this.cursor(self.cursor_style)
-                    .hover(|style| style.bg(colors.hover_bg))
-                    .active(|style| style.bg(colors.active_bg))
+                    .hover(|style| style.bg(hovered_style.background))
+                    .active(|style| style.bg(active_style.background))
             })
             .when_some(
                 self.on_click.filter(|_| !self.disabled),

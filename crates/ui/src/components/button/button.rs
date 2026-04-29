@@ -11,11 +11,63 @@ use crate::{
     LabelSize, SelectableButton, StyledTypography, Toggleable,
 };
 
-pub struct ButtonColor {
-    pub bg: Hsla,
-    pub text: Hsla,
-    pub hover_bg: Hsla,
-    pub active_bg: Hsla,
+#[derive(Debug, Clone)]
+pub struct ButtonStyle {
+    pub background: Hsla,
+    pub border_color: Hsla,
+    pub label_color: Hsla,
+    pub icon_color: Hsla,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+pub enum TintColor {
+    #[default]
+    Info,
+    Error,
+    Warning,
+    Success,
+}
+
+impl TintColor {
+    fn button_style(self, cx: &mut App) -> ButtonStyle {
+        match self {
+            TintColor::Info => ButtonStyle {
+                background: cx.theme().status().info_background,
+                border_color: cx.theme().status().info_border,
+                label_color: cx.theme().colors().text,
+                icon_color: cx.theme().colors().text,
+            },
+            TintColor::Error => ButtonStyle {
+                background: cx.theme().status().error_background,
+                border_color: cx.theme().status().error_border,
+                label_color: cx.theme().colors().text,
+                icon_color: cx.theme().colors().text,
+            },
+            TintColor::Warning => ButtonStyle {
+                background: cx.theme().status().warning_background,
+                border_color: cx.theme().status().warning_border,
+                label_color: cx.theme().colors().text,
+                icon_color: cx.theme().colors().text,
+            },
+            TintColor::Success => ButtonStyle {
+                background: cx.theme().status().success_background,
+                border_color: cx.theme().status().success_border,
+                label_color: cx.theme().colors().text,
+                icon_color: cx.theme().colors().text,
+            },
+        }
+    }
+}
+
+impl From<TintColor> for Color {
+    fn from(tint: TintColor) -> Self {
+        match tint {
+            TintColor::Info => Color::Info,
+            TintColor::Error => Color::Error,
+            TintColor::Warning => Color::Warning,
+            TintColor::Success => Color::Success,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -26,43 +78,211 @@ pub enum ButtonVariant {
     Accent,
     Outline,
     Ghost,
+    Tinted(TintColor),
+}
+
+impl From<ButtonVariant> for Color {
+    fn from(variant: ButtonVariant) -> Self {
+        match variant {
+            ButtonVariant::Subtle
+            | ButtonVariant::Solid
+            | ButtonVariant::Accent
+            | ButtonVariant::Outline
+            | ButtonVariant::Ghost => Color::Default,
+            ButtonVariant::Tinted(tint) => tint.into(),
+        }
+    }
 }
 
 impl ButtonVariant {
-    pub fn colors(&self, cx: &App) -> ButtonColor {
-        let colors = cx.theme().colors();
-        let status = cx.theme().status();
+    pub fn enabled(self, cx: &mut App) -> ButtonStyle {
         match self {
-            ButtonVariant::Subtle => ButtonColor {
-                bg: colors.ghost_element_background,
-                text: colors.text,
-                hover_bg: colors.ghost_element_hover,
-                active_bg: colors.ghost_element_active,
-            },
-            ButtonVariant::Solid => ButtonColor {
-                bg: colors.element_background,
-                text: colors.text,
-                hover_bg: colors.element_hover,
-                active_bg: colors.element_active,
-            },
-            ButtonVariant::Accent => ButtonColor {
-                bg: status.info,
-                text: status.info_background,
-                hover_bg: status.info,
-                active_bg: status.info,
-            },
-            ButtonVariant::Outline => ButtonColor {
-                bg: colors.ghost_element_background,
-                text: colors.text,
-                hover_bg: colors.ghost_element_hover,
-                active_bg: colors.ghost_element_active,
-            },
-            ButtonVariant::Ghost => ButtonColor {
-                bg: gpui::transparent_black(),
-                text: colors.text,
-                hover_bg: gpui::transparent_black(),
-                active_bg: gpui::transparent_black(),
-            },
+            ButtonVariant::Subtle => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.ghost_element_background,
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Solid => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.element_background,
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Accent => {
+                let status = cx.theme().status();
+                ButtonStyle {
+                    background: status.info,
+                    border_color: gpui::transparent_black(),
+                    label_color: status.info_background,
+                    icon_color: status.info_background,
+                }
+            }
+            ButtonVariant::Outline => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.ghost_element_background,
+                    border_color: colors.border_variant,
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Ghost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Tinted(tint) => tint.button_style(cx),
+        }
+    }
+
+    pub fn hovered(self, cx: &mut App) -> ButtonStyle {
+        match self {
+            ButtonVariant::Subtle => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.ghost_element_hover,
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Solid => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.element_hover,
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Accent => {
+                let status = cx.theme().status();
+                ButtonStyle {
+                    background: status.info,
+                    border_color: gpui::transparent_black(),
+                    label_color: status.info_background,
+                    icon_color: status.info_background,
+                }
+            }
+            ButtonVariant::Outline => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.ghost_element_hover,
+                    border_color: colors.border,
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Ghost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Tinted(tint) => {
+                let mut styles = tint.button_style(cx);
+                let theme = cx.theme();
+                styles.background = theme.darken(styles.background, 0.05, 0.2);
+                styles
+            }
+        }
+    }
+
+    pub fn active(self, cx: &mut App) -> ButtonStyle {
+        match self {
+            ButtonVariant::Subtle => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.ghost_element_active,
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Solid => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.element_active,
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Accent => {
+                let status = cx.theme().status();
+                ButtonStyle {
+                    background: status.info,
+                    border_color: gpui::transparent_black(),
+                    label_color: status.info_background,
+                    icon_color: status.info_background,
+                }
+            }
+            ButtonVariant::Outline => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.ghost_element_active,
+                    border_color: colors.border_variant,
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Ghost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::Tinted(tint) => tint.button_style(cx),
+        }
+    }
+
+    pub fn disabled(self, cx: &mut App) -> ButtonStyle {
+        match self {
+            ButtonVariant::Subtle => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.ghost_element_disabled,
+                    border_color: colors.border_disabled,
+                    label_color: colors.text_disabled,
+                    icon_color: colors.text_disabled,
+                }
+            }
+            ButtonVariant::Solid | ButtonVariant::Accent | ButtonVariant::Outline => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: colors.element_disabled,
+                    border_color: colors.border_disabled,
+                    label_color: colors.text_disabled,
+                    icon_color: colors.text_disabled,
+                }
+            }
+            ButtonVariant::Ghost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
+                    border_color: gpui::transparent_black(),
+                    label_color: colors.text_disabled,
+                    icon_color: colors.text_disabled,
+                }
+            }
+            ButtonVariant::Tinted(tint) => tint.button_style(cx),
         }
     }
 }
@@ -80,11 +300,11 @@ pub enum ButtonSize {
 impl ButtonSize {
     pub fn rems(self) -> Rems {
         match self {
-            ButtonSize::Large => crate::rems_from_px(32.),
-            ButtonSize::Medium => crate::rems_from_px(28.),
-            ButtonSize::Default => crate::rems_from_px(22.),
-            ButtonSize::Compact => crate::rems_from_px(18.),
-            ButtonSize::None => crate::rems_from_px(16.),
+            ButtonSize::Large => crate::rems_from_px(32.0),
+            ButtonSize::Medium => crate::rems_from_px(28.0),
+            ButtonSize::Default => crate::rems_from_px(22.0),
+            ButtonSize::Compact => crate::rems_from_px(18.0),
+            ButtonSize::None => crate::rems_from_px(16.0),
         }
     }
 }
@@ -115,6 +335,8 @@ pub struct Button {
     icon_position: Option<IconPosition>,
     icon_size: Option<IconSize>,
     icon_color: Option<Color>,
+    start_icon: Option<Icon>,
+    end_icon: Option<Icon>,
     font_weight: Option<FontWeight>,
     tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     on_click: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
@@ -141,6 +363,8 @@ impl Button {
             icon_position: None,
             icon_size: None,
             icon_color: None,
+            start_icon: None,
+            end_icon: None,
             font_weight: None,
             tooltip: None,
             on_click: None,
@@ -180,6 +404,16 @@ impl Button {
 
     pub fn icon_color(mut self, icon_color: Color) -> Self {
         self.icon_color = Some(icon_color);
+        self
+    }
+
+    pub fn start_icon(mut self, icon: impl Into<Option<Icon>>) -> Self {
+        self.start_icon = icon.into();
+        self
+    }
+
+    pub fn end_icon(mut self, icon: impl Into<Option<Icon>>) -> Self {
+        self.end_icon = icon.into();
         self
     }
 
@@ -262,36 +496,19 @@ impl ButtonCommon for Button {
 
 impl RenderOnce for Button {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
+        let disabled = self.disabled;
         let variant = self
             .selected_style
             .filter(|_| self.selected)
             .unwrap_or(self.variant);
-        let mut colors = variant.colors(cx);
-        if self.disabled {
-            colors = match variant {
-                ButtonVariant::Subtle => ButtonColor {
-                    bg: theme_colors.ghost_element_disabled,
-                    text: theme_colors.text_disabled,
-                    hover_bg: theme_colors.ghost_element_disabled,
-                    active_bg: theme_colors.ghost_element_disabled,
-                },
-                ButtonVariant::Solid | ButtonVariant::Outline | ButtonVariant::Accent => {
-                    ButtonColor {
-                        bg: theme_colors.element_disabled,
-                        text: theme_colors.text_disabled,
-                        hover_bg: theme_colors.element_disabled,
-                        active_bg: theme_colors.element_disabled,
-                    }
-                }
-                ButtonVariant::Ghost => ButtonColor {
-                    bg: gpui::transparent_black(),
-                    text: theme_colors.text_disabled,
-                    hover_bg: gpui::transparent_black(),
-                    active_bg: gpui::transparent_black(),
-                },
-            };
-        }
+        let style = if self.disabled {
+            variant.disabled(cx)
+        } else {
+            variant.enabled(cx)
+        };
+        let hovered_style = variant.hovered(cx);
+        let active_style = variant.active(cx);
+        let text_accent = cx.theme().colors().text_accent;
         let icon_size = self.icon_size.unwrap_or(match self.size {
             ButtonSize::Large => IconSize::Medium,
             ButtonSize::Medium => IconSize::Small,
@@ -302,28 +519,46 @@ impl RenderOnce for Button {
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
         let text_color = if self.disabled {
-            colors.text
+            style.label_color
         } else if self.selected {
-            theme_colors.text_accent
+            text_accent
         } else {
-            colors.text
+            style.label_color
         };
 
         let label_text_color = if self.disabled {
-            colors.text
+            style.label_color
         } else if self.selected {
-            theme_colors.text_accent
+            text_accent
         } else {
             self.label_color
                 .map(|color| color.color(cx))
-                .unwrap_or(colors.text)
+                .unwrap_or(style.label_color)
         };
 
         let icon_color = if self.disabled || self.selected {
             text_color.into()
         } else {
-            self.icon_color.unwrap_or_else(|| text_color.into())
+            self.icon_color.unwrap_or_else(|| style.icon_color.into())
         };
+
+        let mut start_icon = self.start_icon;
+        let mut end_icon = self.end_icon;
+        if let Some(icon) = self.icon {
+            let icon = Icon::new(icon).size(icon_size).color(icon_color);
+            match icon_position {
+                IconPosition::Start => {
+                    if start_icon.is_none() {
+                        start_icon = Some(icon);
+                    }
+                }
+                IconPosition::End => {
+                    if end_icon.is_none() {
+                        end_icon = Some(icon);
+                    }
+                }
+            }
+        }
 
         let label_size = self.label_size.unwrap_or_default();
 
@@ -353,7 +588,8 @@ impl RenderOnce for Button {
                 ButtonSize::None => this.px_px(),
             })
             .rounded_md()
-            .bg(colors.bg)
+            .border_color(style.border_color)
+            .bg(style.background)
             .text_color(label_text_color)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
             .when(self.disabled, |this| {
@@ -365,8 +601,8 @@ impl RenderOnce for Button {
             })
             .when(!self.disabled, |this| {
                 this.cursor(self.cursor_style)
-                    .hover(|style| style.bg(colors.hover_bg))
-                    .active(|style| style.bg(colors.active_bg))
+                    .hover(|style| style.bg(hovered_style.background))
+                    .active(|style| style.bg(active_style.background))
             })
             .when_some(
                 self.on_click.filter(|_| !self.disabled),
@@ -381,26 +617,22 @@ impl RenderOnce for Button {
                 },
             )
             .when(self.variant == ButtonVariant::Outline, |this| {
-                this.border_1().border_color(theme_colors.border_variant)
+                this.border_1().border_color(style.border_color)
             })
-            .when(
-                self.icon.is_some() && icon_position == IconPosition::Start,
-                |this| {
-                    this.children(
-                        self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(icon_color)),
-                    )
-                },
-            )
+            .when_some(start_icon, |this, icon| {
+                this.child(if disabled {
+                    icon.color(Color::Disabled)
+                } else {
+                    icon
+                })
+            })
             .child(self.label)
-            .when(
-                self.icon.is_some() && icon_position == IconPosition::End,
-                |this| {
-                    this.children(
-                        self.icon
-                            .map(|icon| Icon::new(icon).size(icon_size).color(icon_color)),
-                    )
-                },
-            )
+            .when_some(end_icon, |this, icon| {
+                this.child(if disabled {
+                    icon.color(Color::Disabled)
+                } else {
+                    icon
+                })
+            })
     }
 }

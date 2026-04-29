@@ -1,4 +1,5 @@
 pub mod dock;
+pub mod notifications;
 pub mod pane;
 pub mod panel;
 mod persistence;
@@ -18,6 +19,8 @@ use gpui::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
+    collections::HashSet,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -25,7 +28,10 @@ use std::{
 
 use actions::{
     menu,
-    workspace::{CloseProject, CloseWindow, NewWindow, Open, ToggleBottomDock, ToggleLeftDock},
+    workspace::{
+        CloseProject, CloseWindow, NewWindow, Open, SuppressNotification, ToggleBottomDock,
+        ToggleLeftDock,
+    },
     zaku::{Minimize, Zoom},
 };
 use metadata::ZAKU_IDENTIFIER;
@@ -43,6 +49,7 @@ use uuid::Uuid;
 
 use crate::{
     dock::Dock,
+    notifications::{NotificationId, Notifications},
     pane::Pane,
     panel::{ProjectPanel, ResponsePanel, buttons::PanelButtons},
     status_bar::StatusBar,
@@ -83,6 +90,47 @@ pub enum CloseIntent {
     Quit,
     CloseWindow,
     ReplaceWindow,
+}
+
+#[derive(Clone)]
+pub struct Toast {
+    id: NotificationId,
+    msg: Cow<'static, str>,
+    autohide: bool,
+    on_click: Option<(Cow<'static, str>, Arc<dyn Fn(&mut Window, &mut App)>)>,
+}
+
+impl Toast {
+    pub fn new<I: Into<Cow<'static, str>>>(id: NotificationId, msg: I) -> Self {
+        Toast {
+            id,
+            msg: msg.into(),
+            on_click: None,
+            autohide: false,
+        }
+    }
+
+    pub fn on_click<F, M>(mut self, message: M, on_click: F) -> Self
+    where
+        M: Into<Cow<'static, str>>,
+        F: Fn(&mut Window, &mut App) + 'static,
+    {
+        self.on_click = Some((message.into(), Arc::new(on_click)));
+        self
+    }
+
+    pub fn autohide(mut self) -> Self {
+        self.autohide = true;
+        self
+    }
+}
+
+impl PartialEq for Toast {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.msg == other.msg
+            && self.on_click.is_some() == other.on_click.is_some()
+    }
 }
 
 pub struct OpenResult {
@@ -422,6 +470,8 @@ pub struct Workspace {
     pane: Entity<Pane>,
     response_panel: Entity<ResponsePanel>,
     status_bar: Entity<StatusBar>,
+    notifications: Notifications,
+    suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
     _schedule_serialize_workspace: Option<Task<()>>,
@@ -943,6 +993,8 @@ impl Workspace {
             pane,
             response_panel,
             status_bar,
+            notifications: Notifications::default(),
+            suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
             _schedule_serialize_workspace: None,
@@ -1088,6 +1140,13 @@ impl Workspace {
             .on_action(cx.listener(|workspace, _: &ToggleBottomDock, window, cx| {
                 workspace.toggle_dock(DockPosition::Bottom, window, cx);
             }))
+            .on_action(cx.listener(
+                |workspace: &mut Workspace, _: &SuppressNotification, _, cx| {
+                    if let Some((notification_id, _)) = workspace.notifications.pop() {
+                        workspace.suppress_notification(&notification_id, cx);
+                    }
+                },
+            ))
     }
 
     pub fn register_action<A: Action>(
@@ -1124,12 +1183,41 @@ impl Workspace {
         }
         div
     }
+
+    fn render_notifications(&self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<Div> {
+        if self.notifications.is_empty() {
+            None
+        } else {
+            Some(
+                gpui::div()
+                    .absolute()
+                    .right_3()
+                    .bottom_3()
+                    .w_112()
+                    .h_full()
+                    .flex()
+                    .flex_col()
+                    .justify_end()
+                    .gap_2()
+                    .children(
+                        self.notifications
+                            .iter()
+                            .map(|(_, notification)| notification.clone().into_any()),
+                    ),
+            )
+        }
+    }
 }
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let ui_font = theme::setup_ui_font(window, cx);
         let theme_colors = cx.theme().colors();
+        let notification_entities = self
+            .notifications
+            .iter()
+            .map(|(_, notification)| notification.entity_id())
+            .collect::<Vec<_>>();
 
         gpui::div()
             .flex()
@@ -1139,6 +1227,11 @@ impl Render for Workspace {
             .font(ui_font)
             .text_ui(cx)
             .size_full()
+            .on_modifiers_changed(move |_, _, cx| {
+                for &id in &notification_entities {
+                    cx.notify(id);
+                }
+            })
             .on_drag_move(
                 cx.listener(|workspace, e: &DragMoveEvent<DraggedDock>, window, cx| {
                     if workspace.previous_dock_drag_coordinates != Some(e.event.position) {
@@ -1173,6 +1266,7 @@ impl Render for Workspace {
             )
             .child(
                 gpui::div()
+                    .relative()
                     .flex()
                     .flex_row()
                     .flex_1()
@@ -1227,7 +1321,8 @@ impl Render for Workspace {
                                     .child(self.pane.clone()),
                             )
                             .child(self.bottom_dock.clone()),
-                    ),
+                    )
+                    .children(self.render_notifications(window, cx)),
             )
             .child(self.status_bar.clone())
     }

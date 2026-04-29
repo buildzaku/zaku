@@ -56,10 +56,10 @@ impl TextSize {
     pub fn rems(self, cx: &App) -> Rems {
         let theme_settings = ThemeSettings::get_global(cx);
         match self {
-            Self::Large => crate::rems_from_px(16.),
-            Self::Default => crate::rems_from_px(14.),
-            Self::Small => crate::rems_from_px(12.),
-            Self::XSmall => crate::rems_from_px(10.),
+            Self::Large => crate::rems_from_px(16.0),
+            Self::Default => crate::rems_from_px(14.0),
+            Self::Small => crate::rems_from_px(12.0),
+            Self::XSmall => crate::rems_from_px(10.0),
             Self::Ui => crate::rems_from_px(theme_settings.ui_font_size(cx)),
             Self::Editor => crate::rems_from_px(theme_settings.buffer_font_size(cx)),
         }

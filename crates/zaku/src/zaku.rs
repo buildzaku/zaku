@@ -23,8 +23,8 @@ use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use theme::ActiveTheme;
 use ui::{Headline, Label, LabelCommon, LabelSize, Link, TextSize, prelude::*};
 use workspace::{
-    CloseIntent, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace, SharedState,
-    Workspace, WorkspaceDb,
+    CloseIntent, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace, SharedState, Toast,
+    Workspace, WorkspaceDb, notifications::NotificationId,
 };
 
 pub fn init(cx: &mut App) {
@@ -382,7 +382,7 @@ pub async fn restore_or_create_workspace(
     cx: &mut AsyncApp,
 ) -> anyhow::Result<()> {
     if let Some(workspaces) = restorable_workspace_locations(cx, &shared_state).await {
-        let mut restored_workspaces = 0;
+        let mut error_count = 0;
 
         for session_workspace in workspaces {
             let path = match session_workspace.location {
@@ -394,15 +394,66 @@ pub async fn restore_or_create_workspace(
                 })
                 .await;
 
-            match result {
-                Ok(_) => restored_workspaces += 1,
-                Err(error) => log::error!("Failed to restore workspace: {error:#}"),
+            if let Err(error) = result {
+                log::error!("Failed to restore workspace: {error:#}");
+                error_count += 1;
             }
         }
 
-        if restored_workspaces > 0 {
-            return Ok(());
+        if error_count > 0 {
+            let message = if error_count == 1 {
+                "Failed to restore 1 workspace. Check logs for details.".to_string()
+            } else {
+                format!("Failed to restore {error_count} workspaces. Check logs for details.")
+            };
+
+            let toast_shown = cx.update(|cx| {
+                if let Some(window) = cx.active_window()
+                    && let Some(root) = window.downcast::<Root>()
+                {
+                    root.update(cx, |root, _, cx| {
+                        root.workspace().update(cx, |workspace, cx| {
+                            workspace.show_toast(
+                                Toast::new(NotificationId::unique::<()>(), message.clone()),
+                                cx,
+                            )
+                        })
+                    })
+                    .ok();
+                    return true;
+                }
+
+                false
+            });
+
+            if !toast_shown {
+                log::error!("All workspace restorations failed. Opening fallback empty workspace.");
+
+                let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+                let workspace_id = workspace_db.next_id().await?;
+                let shared_state = shared_state.clone();
+                cx.update(|cx| {
+                    let window_options = workspace::default_window_options(cx);
+                    cx.open_window(window_options, move |window, cx| {
+                        cx.new(|cx| {
+                            let workspace =
+                                Workspace::create(workspace_id, shared_state, window, cx);
+
+                            workspace.update(cx, |workspace, cx| {
+                                workspace.show_toast(
+                                    Toast::new(NotificationId::unique::<()>(), message),
+                                    cx,
+                                )
+                            });
+
+                            Root::new(workspace)
+                        })
+                    })
+                })?;
+            }
         }
+
+        return Ok(());
     }
 
     let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));

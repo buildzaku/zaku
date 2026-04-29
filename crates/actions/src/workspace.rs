@@ -39,6 +39,8 @@ gpui::actions!(
         NewWindow,
         /// Send the current request.
         SendRequest,
+        /// Suppress the current notification.
+        SuppressNotification,
         /// Toggle the bottom dock.
         ToggleBottomDock,
         /// Toggle the left dock.
