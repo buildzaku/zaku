@@ -289,7 +289,6 @@ async fn test_action_namespaces(cx: &mut TestAppContext) {
                 "menu".to_string(),
                 "project_panel".to_string(),
                 "response_panel".to_string(),
-                "toast".to_string(),
                 "welcome".to_string(),
                 "workspace".to_string(),
                 "zaku".to_string(),
