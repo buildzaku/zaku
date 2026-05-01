@@ -167,6 +167,13 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         .map(|(_, location, _)| location.path().to_path_buf())
         .collect::<Vec<_>>();
 
+    for window in &restored_windows {
+        window
+            .update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+    }
+    cx.run_until_parked();
+
     assert_eq!(
         recent_workspace_paths,
         vec![second_path, fourth_path, third_path, first_path],
