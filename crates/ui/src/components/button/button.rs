@@ -116,12 +116,12 @@ impl ButtonVariant {
                 }
             }
             ButtonVariant::Accent => {
-                let status = cx.theme().status();
+                let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: status.info,
+                    background: colors.text_accent.opacity(0.8),
                     border_color: gpui::transparent_black(),
-                    label_color: status.info_background,
-                    icon_color: status.info_background,
+                    label_color: colors.panel_background,
+                    icon_color: colors.panel_background,
                 }
             }
             ButtonVariant::Outline => {
@@ -167,12 +167,12 @@ impl ButtonVariant {
                 }
             }
             ButtonVariant::Accent => {
-                let status = cx.theme().status();
+                let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: status.info,
+                    background: colors.text_accent.opacity(0.8),
                     border_color: gpui::transparent_black(),
-                    label_color: status.info_background,
-                    icon_color: status.info_background,
+                    label_color: colors.panel_background,
+                    icon_color: colors.panel_background,
                 }
             }
             ButtonVariant::Outline => {
@@ -223,12 +223,12 @@ impl ButtonVariant {
                 }
             }
             ButtonVariant::Accent => {
-                let status = cx.theme().status();
+                let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: status.info,
+                    background: colors.text_accent.opacity(0.8),
                     border_color: gpui::transparent_black(),
-                    label_color: status.info_background,
-                    icon_color: status.info_background,
+                    label_color: colors.panel_background,
+                    icon_color: colors.panel_background,
                 }
             }
             ButtonVariant::Outline => {
