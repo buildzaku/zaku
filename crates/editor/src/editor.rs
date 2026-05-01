@@ -340,6 +340,7 @@ pub struct Editor {
     read_only: bool,
     selection_mark_mode: bool,
     masked: bool,
+    muted: bool,
     active_line_highlight: Option<ActiveLineHighlight>,
     selection_goal: SelectionGoal,
     _subscriptions: Vec<Subscription>,
@@ -432,6 +433,7 @@ impl Editor {
             read_only: false,
             selection_mark_mode: false,
             masked: false,
+            muted: false,
             active_line_highlight: None,
             selection_goal: SelectionGoal::None,
             _subscriptions: subscriptions,
@@ -1161,6 +1163,10 @@ impl Editor {
 
     pub fn set_input_enabled(&mut self, input_enabled: bool) {
         self.input_enabled = input_enabled;
+    }
+
+    fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
     }
 
     pub fn capability(&self, cx: &App) -> Capability {
@@ -2299,7 +2305,11 @@ impl Editor {
         };
 
         let text_style = TextStyle {
-            color: theme_colors.editor_foreground,
+            color: if self.muted {
+                theme_colors.text_disabled
+            } else {
+                theme_colors.editor_foreground
+            },
             font_family: theme_settings.buffer_font.family.clone(),
             font_features: theme_settings.buffer_font.features.clone(),
             font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
@@ -2749,6 +2759,12 @@ impl ErasedEditor for ErasedEditorImpl {
         });
     }
 
+    fn set_muted(&self, muted: bool, _: &mut Window, cx: &mut App) {
+        self.0.update(cx, |editor, _cx| {
+            editor.set_muted(muted);
+        });
+    }
+
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.0.read(cx).focus_handle(cx)
     }
@@ -2771,6 +2787,7 @@ impl ErasedEditor for ErasedEditorImpl {
     fn render(&self, _window: &mut Window, cx: &App) -> AnyElement {
         let theme_colors = cx.theme().colors();
         let theme_settings = ThemeSettings::get_global(cx);
+        let muted = self.0.read(cx).muted;
 
         let text_style = TextStyle {
             font_family: theme_settings.ui_font.family.clone(),
@@ -2779,7 +2796,11 @@ impl ErasedEditor for ErasedEditorImpl {
             font_weight: theme_settings.buffer_font.weight,
             font_style: FontStyle::Normal,
             line_height: gpui::relative(1.2),
-            color: theme_colors.text,
+            color: if muted {
+                theme_colors.text_disabled
+            } else {
+                theme_colors.text
+            },
             ..Default::default()
         };
 

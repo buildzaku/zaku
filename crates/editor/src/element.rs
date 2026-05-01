@@ -946,6 +946,7 @@ impl Element for EditorElement {
             let (
                 focus_handle,
                 placeholder,
+                muted,
                 mode,
                 show_scrollbars,
                 masked,
@@ -959,6 +960,7 @@ impl Element for EditorElement {
                 (
                     editor.focus_handle.clone(),
                     editor.placeholder.clone(),
+                    editor.muted,
                     editor.mode.clone(),
                     editor.show_scrollbars,
                     editor.masked,
@@ -968,6 +970,11 @@ impl Element for EditorElement {
                     editor.cursor_offset(cx),
                     editor.active_line_highlight.unwrap_or_default(),
                 )
+            };
+            let placeholder_color = if muted {
+                style.color
+            } else {
+                cx.theme().colors().text_placeholder
             };
             let display_snapshot = self
                 .editor
@@ -1069,6 +1076,7 @@ impl Element for EditorElement {
                 &style,
                 font_size,
                 &placeholder,
+                placeholder_color,
                 masked,
                 marked_range.as_ref(),
                 max_display_row,
@@ -1079,7 +1087,6 @@ impl Element for EditorElement {
                 first_row_origin_y,
                 em_layout_width,
                 window,
-                cx,
             );
 
             if needs_horizontal_autoscroll.0 && max_scroll_x > 0.0 {
@@ -1106,6 +1113,7 @@ impl Element for EditorElement {
                         &style,
                         font_size,
                         &placeholder,
+                        placeholder_color,
                         masked,
                         marked_range.as_ref(),
                         max_display_row,
@@ -1116,7 +1124,6 @@ impl Element for EditorElement {
                         first_row_origin_y,
                         em_layout_width,
                         window,
-                        cx,
                     );
                 }
             }
@@ -1136,6 +1143,7 @@ impl Element for EditorElement {
                     &style,
                     font_size,
                     &placeholder,
+                    placeholder_color,
                     masked,
                     marked_range.as_ref(),
                     max_display_row,
@@ -1146,7 +1154,6 @@ impl Element for EditorElement {
                     first_row_origin_y,
                     em_layout_width,
                     window,
-                    cx,
                 );
             }
 
@@ -1376,6 +1383,7 @@ fn build_visible_lines(
     style: &TextStyle,
     font_size: Pixels,
     placeholder: &SharedString,
+    placeholder_color: Hsla,
     masked: bool,
     marked_range: Option<&Range<usize>>,
     max_display_row: u32,
@@ -1386,7 +1394,6 @@ fn build_visible_lines(
     first_row_origin_y: Pixels,
     em_layout_width: Pixels,
     window: &mut Window,
-    cx: &mut App,
 ) -> Vec<LineWithInvisibles> {
     let scroll_x_pixels = em_layout_width * line_scroll_x as f32;
     let mut lines = Vec::new();
@@ -1499,7 +1506,7 @@ fn build_visible_lines(
         };
 
         let (expanded, text_color): (SharedString, _) = if !has_content && row.0 == 0 {
-            (placeholder.clone(), cx.theme().colors().text_placeholder)
+            (placeholder.clone(), placeholder_color)
         } else if masked {
             (mask_line(&line_text).into(), style.color)
         } else {

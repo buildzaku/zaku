@@ -76,6 +76,14 @@ impl RequestParam {
             disabled: false,
         }
     }
+
+    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
+        self.disabled = disabled;
+        self.name
+            .update(cx, |name, cx| name.set_muted(disabled, window, cx));
+        self.value
+            .update(cx, |value, cx| value.set_muted(disabled, window, cx));
+    }
 }
 
 pub struct Pane {
@@ -428,10 +436,14 @@ impl Render for Pane {
                                 ToggleState::from(!request_param.disabled),
                             )
                             .on_click(cx.listener(
-                                move |pane, new_state: &ToggleState, _, cx| {
+                                move |pane, new_state: &ToggleState, window, cx| {
                                     if let Some(request_param) = pane.request.params.get_mut(index)
                                     {
-                                        request_param.disabled = !new_state.selected();
+                                        request_param.set_disabled(
+                                            !new_state.selected(),
+                                            window,
+                                            cx,
+                                        );
                                         cx.notify();
                                     }
                                 },
