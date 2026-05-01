@@ -16,7 +16,7 @@ use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
     DropdownStyle, FixedWidth, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
-    Label, ScrollAxes, Scrollbars, Tooltip, WithScrollbar,
+    Label, ScrollAxes, Scrollbars, ToggleState, Tooltip, WithScrollbar,
 };
 
 use crate::{Workspace, panel::response::ResponseState, welcome::WelcomePage};
@@ -65,6 +65,7 @@ impl RequestConfig {
 struct RequestParam {
     name: Entity<InputField>,
     value: Entity<InputField>,
+    disabled: bool,
 }
 
 impl RequestParam {
@@ -72,6 +73,7 @@ impl RequestParam {
         Self {
             name: cx.new(|cx| InputField::new(window, cx, "Key")),
             value: cx.new(|cx| InputField::new(window, cx, "Value")),
+            disabled: false,
         }
     }
 }
@@ -155,6 +157,10 @@ impl Pane {
             .params
             .iter()
             .filter_map(|request_param| {
+                if request_param.disabled {
+                    return None;
+                }
+
                 let name = request_param.name.read(cx).text(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
@@ -415,19 +421,40 @@ impl Render for Pane {
                 ui::h_flex()
                     .id(("request-param-row", index))
                     .w_full()
-                    .gap_2()
-                    .child(gpui::div().flex_1().child(name))
-                    .child(gpui::div().flex_1().child(value))
                     .child(
-                        IconButton::new(("request-param-delete", index), IconName::Trash)
-                            .shape(IconButtonShape::Square)
-                            .variant(ButtonVariant::Outline)
-                            .icon_color(Color::Muted)
-                            .tooltip(Tooltip::text("Delete"))
-                            .on_click(cx.listener(move |pane, _, _, cx| {
-                                pane.request.delete_param(index);
-                                cx.notify();
-                            })),
+                        gpui::div().pr_1p5().child(
+                            ui::checkbox(
+                                ("request-param-disabled", index),
+                                ToggleState::from(!request_param.disabled),
+                            )
+                            .on_click(cx.listener(
+                                move |pane, new_state: &ToggleState, _, cx| {
+                                    if let Some(request_param) = pane.request.params.get_mut(index)
+                                    {
+                                        request_param.disabled = !new_state.selected();
+                                        cx.notify();
+                                    }
+                                },
+                            )),
+                        ),
+                    )
+                    .child(
+                        ui::h_flex()
+                            .flex_1()
+                            .gap_2p5()
+                            .child(gpui::div().flex_1().child(name))
+                            .child(gpui::div().flex_1().child(value))
+                            .child(
+                                IconButton::new(("request-param-delete", index), IconName::Trash)
+                                    .shape(IconButtonShape::Square)
+                                    .variant(ButtonVariant::Outline)
+                                    .icon_color(Color::Muted)
+                                    .tooltip(Tooltip::text("Delete"))
+                                    .on_click(cx.listener(move |pane, _, _, cx| {
+                                        pane.request.delete_param(index);
+                                        cx.notify();
+                                    })),
+                            ),
                     )
             })
             .collect::<Vec<_>>();
@@ -538,18 +565,19 @@ impl Render for Pane {
                                         ui::v_flex()
                                             .w_full()
                                             .min_w_0()
-                                            .pl_3()
-                                            .pr(gpui::px(8.0))
+                                            .pl_2()
+                                            .pr(gpui::px(10.0))
                                             .gap_2()
                                             .pb_3()
                                             .child(
                                                 ui::h_flex()
                                                     .w_full()
+                                                    .pl_1()
                                                     .child(Label::new("Query Parameters")),
                                             )
                                             .children(request_params)
                                             .child(
-                                                ui::h_flex().child(
+                                                ui::h_flex().pl_1().child(
                                                     Button::new(
                                                         "request-param-add",
                                                         "Add Parameter",
