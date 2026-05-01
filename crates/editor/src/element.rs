@@ -972,7 +972,7 @@ impl Element for EditorElement {
                 )
             };
             let placeholder_color = if muted {
-                style.color
+                style.color.opacity(0.4)
             } else {
                 cx.theme().colors().text_placeholder
             };
