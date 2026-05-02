@@ -14,15 +14,13 @@ pub struct InputFieldStyle {
     border_focused: Hsla,
 }
 
-/// An Input Field component that can be used to create text fields like search inputs, form fields, etc.
-///
-/// It wraps a single line editor and allows for common field properties like labels, placeholders, icons, etc.
 pub struct InputField {
     label: Option<SharedString>,
     label_size: LabelSize,
     placeholder: SharedString,
     editor: Arc<dyn ErasedEditor>,
     start_icon: Option<IconName>,
+    muted: bool,
     min_width: Length,
     tab_index: Option<isize>,
     tab_stop: bool,
@@ -48,6 +46,7 @@ impl InputField {
             placeholder: SharedString::new(placeholder_text),
             editor,
             start_icon: None,
+            muted: false,
             min_width: gpui::px(192.).into(),
             tab_index: None,
             tab_stop: true,
@@ -57,6 +56,21 @@ impl InputField {
     pub fn start_icon(mut self, icon: IconName) -> Self {
         self.start_icon = Some(icon);
         self
+    }
+
+    pub fn muted(mut self, muted: bool) -> Self {
+        self.muted = muted;
+        self
+    }
+
+    pub fn set_muted(&mut self, muted: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.muted == muted {
+            return;
+        }
+
+        self.muted = muted;
+        self.editor.set_muted(muted, window, cx);
+        cx.notify();
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
@@ -108,17 +122,38 @@ impl InputField {
 impl Render for InputField {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let editor = self.editor.clone();
+        editor.set_muted(self.muted, window, cx);
 
         let theme_colors = cx.theme().colors();
+        let (text_color, icon_color, border_color, border_focused) = if self.muted {
+            (
+                theme_colors.text_disabled,
+                theme_colors.text_disabled,
+                theme_colors.border_disabled,
+                theme_colors.border_disabled,
+            )
+        } else {
+            (
+                theme_colors.text,
+                theme_colors.icon_muted,
+                theme_colors.border_variant,
+                theme_colors.border_focused,
+            )
+        };
         let style = InputFieldStyle {
-            text_color: theme_colors.text,
-            icon_color: theme_colors.icon_muted,
+            text_color,
+            icon_color,
             background_color: theme_colors.editor_background,
-            border_color: theme_colors.border_variant,
-            border_focused: theme_colors.border_focused,
+            border_color,
+            border_focused,
+        };
+        let label_color = if self.muted {
+            Color::Disabled
+        } else {
+            Color::Default
         };
 
-        let focus_handle = self.editor.focus_handle(cx);
+        let focus_handle = editor.focus_handle(cx);
 
         let configured_handle = if let Some(tab_index) = self.tab_index {
             focus_handle.tab_index(tab_index).tab_stop(self.tab_stop)
@@ -134,11 +169,7 @@ impl Render for InputField {
             .w_full()
             .gap_1()
             .when_some(self.label.clone(), |this, label| {
-                this.child(
-                    Label::new(label)
-                        .size(self.label_size)
-                        .color(Color::Default),
-                )
+                this.child(Label::new(label).size(self.label_size).color(label_color))
             })
             .child(
                 gpui::div()
@@ -166,7 +197,7 @@ impl Render for InputField {
                                 .color(style.icon_color.into()),
                         )
                     })
-                    .child(self.editor.render(window, cx)),
+                    .child(editor.render(window, cx)),
             )
     }
 }

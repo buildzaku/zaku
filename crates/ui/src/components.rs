@@ -9,6 +9,7 @@ mod list;
 mod popover_menu;
 mod scrollbar;
 mod stack;
+mod toggle;
 mod tooltip;
 
 pub use button::*;
@@ -22,4 +23,5 @@ pub use list::*;
 pub use popover_menu::*;
 pub use scrollbar::*;
 pub use stack::*;
+pub use toggle::*;
 pub use tooltip::*;
