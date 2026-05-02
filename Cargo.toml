@@ -34,9 +34,11 @@ edition = "2024"
 publish = false
 
 [workspace.lints.clippy]
-type_complexity = { level = "allow" }
+pedantic = { level = "deny", priority = -1 }
+dbg_macro = { level = "deny" }
+todo = { level = "deny" }
 too_many_arguments = { level = "allow" }
-style = { level = "allow" }
+type_complexity = { level = "allow" }
 
 [workspace.dependencies]
 ##################################################
