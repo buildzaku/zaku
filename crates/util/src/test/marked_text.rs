@@ -3,7 +3,7 @@ use std::{cmp::Ordering, collections::HashMap, ops::Range};
 /// Build a string and offsets from embedded position markers.
 pub fn marked_text_offsets_by(
     marked_text: &str,
-    markers: Vec<char>,
+    markers: &[char],
 ) -> (String, HashMap<char, Vec<usize>>) {
     let mut extracted_markers: HashMap<char, Vec<usize>> = HashMap::default();
     let mut unmarked_text = String::new();
@@ -26,9 +26,9 @@ pub fn marked_text_ranges_by(
     marked_text: &str,
     markers: Vec<TextRangeMarker>,
 ) -> (String, HashMap<TextRangeMarker, Vec<Range<usize>>>) {
-    let all_markers = markers.iter().flat_map(|marker| marker.markers()).collect();
+    let all_markers: Vec<_> = markers.iter().flat_map(|marker| marker.markers()).collect();
 
-    let (unmarked_text, mut marker_offsets) = marked_text_offsets_by(marked_text, all_markers);
+    let (unmarked_text, mut marker_offsets) = marked_text_offsets_by(marked_text, &all_markers);
     let range_lookup = markers
         .into_iter()
         .map(|marker| {

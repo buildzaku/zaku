@@ -82,7 +82,7 @@ impl RelPath {
         let path = path.as_ref();
         match Self::new(path, PathStyle::Posix)? {
             Cow::Borrowed(path) => Ok(path),
-            Cow::Owned(_) => Err(anyhow!("invalid relative path {path:?}")),
+            Cow::Owned(_) => Err(anyhow!("invalid relative path {}", path.display())),
         }
     }
 

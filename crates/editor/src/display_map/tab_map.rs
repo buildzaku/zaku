@@ -791,7 +791,7 @@ mod tests {
     ) -> (Point, u32, u32) {
         let max_buffer_point = tab_snapshot.buffer_snapshot.max_point();
         let row = output.row().min(max_buffer_point.row);
-        let chars = tab_snapshot.buffer_snapshot.chars_at(Point::new(row, 0));
+        let chars = tab_snapshot.buffer_snapshot.chars_at(&Point::new(row, 0));
         let expanded = output.column();
         let (collapsed, expanded_char_column, to_next_stop) =
             expected_collapse_tabs(tab_snapshot, chars, expanded, bias);

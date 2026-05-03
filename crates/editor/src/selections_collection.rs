@@ -465,8 +465,8 @@ fn selection_to_anchor_selection(
 
     Selection {
         id: selection.id,
-        start: buffer.anchor_after(selection.start),
-        end: buffer.anchor_at(selection.end, end_bias),
+        start: buffer.anchor_after(&selection.start),
+        end: buffer.anchor_at(&selection.end, end_bias),
         reversed: selection.reversed,
         goal: selection.goal,
     }

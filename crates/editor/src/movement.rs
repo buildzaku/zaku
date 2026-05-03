@@ -153,7 +153,7 @@ pub(crate) fn down_by_rows(
 
 pub fn previous_word_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     let mut is_first_iteration = true;
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
@@ -174,7 +174,7 @@ pub fn previous_word_start(map: &DisplaySnapshot, point: DisplayPoint) -> Displa
 
 pub fn previous_word_start_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
         (classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(right))
@@ -185,7 +185,7 @@ pub fn previous_word_start_or_newline(map: &DisplaySnapshot, point: DisplayPoint
 
 pub fn next_word_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     let mut is_first_iteration = true;
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
@@ -206,7 +206,7 @@ pub fn next_word_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint
 
 pub fn next_word_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     let mut on_starting_row = true;
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
@@ -222,7 +222,7 @@ pub fn next_word_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> D
 
 pub fn previous_subword_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
         is_subword_start(left, right, &classifier) || left == '\n'
@@ -234,7 +234,7 @@ pub fn previous_subword_start_or_newline(
     point: DisplayPoint,
 ) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     find_preceding_boundary_display_point(map, point, FindRange::MultiLine, |left, right| {
         is_subword_start(left, right, &classifier) || left == '\n' || right == '\n'
@@ -243,7 +243,7 @@ pub fn previous_subword_start_or_newline(
 
 pub fn next_subword_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
         is_subword_end(left, right, &classifier) || right == '\n'
@@ -252,7 +252,7 @@ pub fn next_subword_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPo
 
 pub fn next_subword_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
-    let classifier = map.buffer_snapshot().char_classifier_at(raw_point);
+    let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
     let mut on_starting_row = true;
     find_boundary(map, point, FindRange::MultiLine, |left, right| {
@@ -362,7 +362,7 @@ pub fn find_preceding_boundary_point(
     let mut previous_character = None;
     let mut offset = buffer_snapshot.point_to_offset(from);
 
-    for character in buffer_snapshot.reversed_chars_at(offset) {
+    for character in buffer_snapshot.reversed_chars_at(&offset) {
         if find_range == FindRange::SingleLine && character == '\n' {
             break;
         }
@@ -407,7 +407,7 @@ pub fn find_boundary_point(
     let mut previous_offset = offset;
     let mut previous_character = None;
 
-    for character in map.buffer_snapshot().chars_at(offset) {
+    for character in map.buffer_snapshot().chars_at(&offset) {
         if find_range == FindRange::SingleLine && character == '\n' {
             break;
         }

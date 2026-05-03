@@ -24,7 +24,7 @@ pub fn try_init(filter: Option<String>) -> anyhow::Result<()> {
     log::set_logger(&LOGGER)?;
     log::set_max_level(LevelFilter::max());
     process_env(filter);
-    filter::refresh_from_settings(&HashMap::default());
+    filter::refresh_from_settings(&HashMap::<String, String>::default());
     Ok(())
 }
 

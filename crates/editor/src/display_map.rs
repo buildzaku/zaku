@@ -129,8 +129,8 @@ impl DisplaySnapshot {
     pub fn display_point_to_anchor(&self, point: DisplayPoint, bias: Bias) -> Anchor {
         let offset = point.to_offset(self, bias);
         match bias {
-            Bias::Left => self.buffer_snapshot().anchor_before(offset),
-            Bias::Right => self.buffer_snapshot().anchor_after(offset),
+            Bias::Left => self.buffer_snapshot().anchor_before(&offset),
+            Bias::Right => self.buffer_snapshot().anchor_after(&offset),
         }
     }
 

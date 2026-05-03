@@ -81,7 +81,7 @@ fn open_or_create_log_file(
 
     match size_bytes {
         Ok(size_bytes) if size_bytes >= sink_file_size_bytes_max => {
-            let file = rotate_log_file(Some(path), path_rotate)?;
+            let file = rotate_log_file(Some(path.as_path()), path_rotate.map(PathBuf::as_path))?;
 
             match file {
                 Some(file) => Ok(file),
@@ -104,10 +104,11 @@ static LEVEL_ANSI_COLORS: [&str; 6] = [
 ];
 
 pub fn submit(mut record: Record) {
-    if record
-        .module_path
-        .is_none_or(|module_path| !module_path.ends_with(".rs"))
-    {
+    if record.module_path.is_none_or(|module_path| {
+        !Path::new(module_path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("rs"))
+    }) {
         record.line.take();
     }
 
@@ -188,7 +189,10 @@ pub fn submit(mut record: Record) {
 
         if file_size_bytes > SINK_FILE_SIZE_BYTES_MAX {
             *file_guard = None;
-            let file = rotate_log_file(SINK_FILE_PATH.get(), SINK_FILE_PATH_ROTATE.get());
+            let file = rotate_log_file(
+                SINK_FILE_PATH.get().map(|path| path.as_path()),
+                SINK_FILE_PATH_ROTATE.get().map(|path| path.as_path()),
+            );
 
             match file {
                 Ok(Some(file)) => *file_guard = Some(file),
@@ -262,14 +266,10 @@ impl Display for SourceFmt<'_> {
     }
 }
 
-fn rotate_log_file<PathRef>(
-    path: Option<PathRef>,
-    path_rotate: Option<PathRef>,
-) -> std::io::Result<Option<File>>
-where
-    PathRef: AsRef<Path>,
-{
-    let path = path.as_ref().map(PathRef::as_ref);
+fn rotate_log_file(
+    path: Option<&Path>,
+    path_rotate: Option<&Path>,
+) -> std::io::Result<Option<File>> {
     let rotation_error = match (path, path_rotate) {
         (Some(_), None) => Some(anyhow::anyhow!("No rotation log file path configured")),
         (None, _) => Some(anyhow::anyhow!("No log file path configured")),

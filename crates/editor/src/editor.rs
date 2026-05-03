@@ -1976,14 +1976,14 @@ impl Editor {
 
         let (start, end, mode) = match click_count {
             1 => {
-                let start = buffer.anchor_before(position.to_point(&display_snapshot));
+                let start = buffer.anchor_before(&position.to_point(&display_snapshot));
                 (start, start, SelectMode::Character)
             }
             2 => {
                 let position = position.to_offset(&display_snapshot, Bias::Left);
-                let (word_range, _) = buffer.surrounding_word(position, None);
-                let start = buffer.anchor_before(word_range.start);
-                let end = buffer.anchor_before(word_range.end);
+                let (word_range, _) = buffer.surrounding_word(&position, None);
+                let start = buffer.anchor_before(&word_range.start);
+                let end = buffer.anchor_before(&word_range.end);
                 (start, end, SelectMode::Word(start..end))
             }
             3 => {
@@ -1993,13 +1993,13 @@ impl Editor {
                     text::Point::new(position.row.saturating_add(1), 0),
                     Bias::Left,
                 );
-                let start = buffer.anchor_before(line_start);
-                let end = buffer.anchor_before(next_line_start);
+                let start = buffer.anchor_before(&line_start);
+                let end = buffer.anchor_before(&next_line_start);
                 (start, end, SelectMode::Line(start..end))
             }
             _ => {
-                let start = buffer.anchor_before(MultiBufferOffset::ZERO);
-                let end = buffer.anchor_before(buffer.len());
+                let start = buffer.anchor_before(&MultiBufferOffset::ZERO);
+                let end = buffer.anchor_before(&buffer.len());
                 (start, end, SelectMode::All)
             }
         };
@@ -2029,7 +2029,7 @@ impl Editor {
         });
         self.begin_selection(position, click_count, cx);
 
-        let tail_anchor = display_snapshot.buffer_snapshot().anchor_before(tail);
+        let tail_anchor = display_snapshot.buffer_snapshot().anchor_before(&tail);
         let current_selection = match self.selections.select_mode() {
             SelectMode::Character | SelectMode::All => tail_anchor..tail_anchor,
             SelectMode::Word(range) | SelectMode::Line(range) => range.clone(),
@@ -2088,10 +2088,10 @@ impl Editor {
                 let original_start = original_range.start.to_offset(buffer);
                 let original_end = original_range.end.to_offset(buffer);
 
-                let head_offset = if buffer.is_inside_word(offset, None)
+                let head_offset = if buffer.is_inside_word(&offset, None)
                     || (original_start..original_end).contains(&offset)
                 {
-                    let (word_range, _) = buffer.surrounding_word(offset, None);
+                    let (word_range, _) = buffer.surrounding_word(&offset, None);
                     if word_range.start < original_start {
                         word_range.start
                     } else {
@@ -2139,12 +2139,12 @@ impl Editor {
         };
 
         if head < tail {
-            pending.start = buffer.anchor_before(head);
-            pending.end = buffer.anchor_before(tail);
+            pending.start = buffer.anchor_before(&head);
+            pending.end = buffer.anchor_before(&tail);
             pending.reversed = true;
         } else {
-            pending.start = buffer.anchor_before(tail);
-            pending.end = buffer.anchor_before(head);
+            pending.start = buffer.anchor_before(&tail);
+            pending.end = buffer.anchor_before(&head);
             pending.reversed = false;
         }
 

@@ -144,7 +144,7 @@ impl Anchor {
     pub fn bias_left(&self, snapshot: &MultiBufferSnapshot) -> Anchor {
         match self {
             Anchor::Min => *self,
-            Anchor::Max => snapshot.anchor_before(snapshot.max_point()),
+            Anchor::Max => snapshot.anchor_before(&snapshot.max_point()),
             Anchor::Excerpt(excerpt_anchor) => Anchor::Excerpt(excerpt_anchor.bias_left(snapshot)),
         }
     }
@@ -152,7 +152,7 @@ impl Anchor {
     pub fn bias_right(&self, snapshot: &MultiBufferSnapshot) -> Anchor {
         match self {
             Anchor::Max => *self,
-            Anchor::Min => snapshot.anchor_after(Point::zero()),
+            Anchor::Min => snapshot.anchor_after(&Point::zero()),
             Anchor::Excerpt(excerpt_anchor) => Anchor::Excerpt(excerpt_anchor.bias_right(snapshot)),
         }
     }

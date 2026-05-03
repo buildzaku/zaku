@@ -1,6 +1,7 @@
 use log::{Level, LevelFilter};
 use std::{
     collections::{HashMap, VecDeque},
+    hash::BuildHasher,
     ops::Range,
     sync::{
         OnceLock, RwLock,
@@ -59,7 +60,7 @@ pub fn is_scope_enabled(scope: &ScopeRef<'_>, module_path: Option<&str>, level: 
     }
 }
 
-pub fn refresh_from_settings(settings: &HashMap<String, String>) {
+pub fn refresh_from_settings<S: BuildHasher>(settings: &HashMap<String, String, S>) {
     let env_config = ENV_FILTER.get();
     let map_new = ScopeMap::new_from_settings_and_env(settings, env_config, DEFAULT_FILTERS);
     let level_enabled_max = level_enabled_max(&map_new);
@@ -159,6 +160,12 @@ pub struct ScopeMapEntry {
     descendants: Range<usize>,
 }
 
+struct ProcessQueueEntry {
+    parent_index: usize,
+    depth: usize,
+    items_range: Range<usize>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnabledStatus {
     Enabled,
@@ -167,8 +174,8 @@ pub enum EnabledStatus {
 }
 
 impl ScopeMap {
-    pub fn new_from_settings_and_env(
-        items_input_map: &HashMap<String, String>,
+    pub fn new_from_settings_and_env<S: BuildHasher>(
+        items_input_map: &HashMap<String, String, S>,
         env_config: Option<&EnvFilter>,
         default_filters: &[(&str, LevelFilter)],
     ) -> Self {
@@ -231,11 +238,6 @@ impl ScopeMap {
 
         let items_count = items.len();
 
-        struct ProcessQueueEntry {
-            parent_index: usize,
-            depth: usize,
-            items_range: Range<usize>,
-        }
         let mut process_queue = VecDeque::new();
         process_queue.push_back(ProcessQueueEntry {
             parent_index: usize::MAX,
