@@ -67,7 +67,7 @@ impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
 impl WorktreeStore {
     pub fn new(fs: Arc<dyn Fs>, next_worktree_id: WorktreeIdCounter) -> Self {
         Self {
-            next_entry_id: Default::default(),
+            next_entry_id: Arc::default(),
             next_worktree_id,
             worktree: None,
             initial_scan_complete: watch::channel(true),
@@ -75,7 +75,7 @@ impl WorktreeStore {
             worktree_path_to_open: None,
             worktree_open_epoch: 0,
             scanning_enabled: true,
-            pending_worktree_tasks: Default::default(),
+            pending_worktree_tasks: HashMap::default(),
             fs,
         }
     }
@@ -120,11 +120,7 @@ impl WorktreeStore {
         self.initial_scan_complete.0.send_replace(complete);
     }
 
-    fn observe_worktree_scan_completion(
-        &mut self,
-        worktree: &Entity<Worktree>,
-        cx: &mut Context<Self>,
-    ) {
+    fn observe_worktree_scan_completion(worktree: &Entity<Worktree>, cx: &mut Context<Self>) {
         let scan_complete = worktree
             .read(cx)
             .as_local()
@@ -337,7 +333,7 @@ impl WorktreeStore {
         ));
 
         self.update_initial_scan_state(cx);
-        self.observe_worktree_scan_completion(worktree, cx);
+        Self::observe_worktree_scan_completion(worktree, cx);
         cx.emit(WorktreeStoreEvent::WorktreeAdded);
     }
 

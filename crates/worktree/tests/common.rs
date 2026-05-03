@@ -1,3 +1,4 @@
+use fs::RemoveOptions;
 use futures::StreamExt;
 use gpui::{Entity, TestAppContext};
 use std::time::Duration;
@@ -27,11 +28,11 @@ pub async fn flush_fs_events(worktree: &Entity<Worktree>, cx: &mut TestAppContex
     while !file_exists() {
         futures::select_biased! {
             _ = events.next() => {}
-            _ = futures::FutureExt::fuse(cx.background_executor.timer(Duration::from_millis(10))) => {}
+            () = futures::FutureExt::fuse(cx.background_executor.timer(Duration::from_millis(10))) => {}
         }
     }
 
-    fs.remove_file(&root_path.join(file_name), Default::default())
+    fs.remove_file(&root_path.join(file_name), RemoveOptions::default())
         .await
         .unwrap();
 
@@ -45,7 +46,7 @@ pub async fn flush_fs_events(worktree: &Entity<Worktree>, cx: &mut TestAppContex
     while !file_gone() {
         futures::select_biased! {
             _ = events.next() => {}
-            _ = futures::FutureExt::fuse(cx.background_executor.timer(Duration::from_millis(10))) => {}
+            () = futures::FutureExt::fuse(cx.background_executor.timer(Duration::from_millis(10))) => {}
         }
     }
 

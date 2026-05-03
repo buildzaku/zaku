@@ -315,7 +315,12 @@ impl<T: Bind + StaticColumnCount> Bind for Option<T> {
 impl<T: Column + StaticColumnCount> Column for Option<T> {
     fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         if let SqlType::Null = row.column_type(start_index)? {
-            Ok((None, start_index + T::column_count() as i32))
+            let column_count =
+                i32::try_from(T::column_count()).context("column count exceeds i32 range")?;
+            let next_index = start_index
+                .checked_add(column_count)
+                .context("column index overflow")?;
+            Ok((None, next_index))
         } else {
             T::column(row, start_index).map(|(result, next_index)| (Some(result), next_index))
         }

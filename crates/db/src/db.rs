@@ -103,7 +103,7 @@ async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
         connection: ThreadSafeConnection {
             target: ConnectionTarget::file(path),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         },
     }
     .with_db_init_query(DB_INIT_QUERY)
@@ -128,7 +128,7 @@ async fn open_fallback_db() -> ThreadSafeConnection {
         connection: ThreadSafeConnection {
             target: ConnectionTarget::memory(FALLBACK_MEMORY_DB_NAME),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         },
     }
     .with_db_init_query(DB_INIT_QUERY)
@@ -146,7 +146,7 @@ pub async fn open_test_db(db_name: &str) -> ThreadSafeConnection {
         connection: ThreadSafeConnection {
             target: ConnectionTarget::memory(db_name),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         },
     }
     .with_db_init_query(DB_INIT_QUERY)
@@ -523,7 +523,7 @@ mod tests {
                     connection: ThreadSafeConnection {
                         target: ConnectionTarget::memory("test.sqlite"),
                         connection_init_query: None,
-                        connections: Default::default(),
+                        connections: Arc::default(),
                     },
                 }
                 .with_db_init_query(DB_INIT_QUERY)
@@ -662,7 +662,7 @@ mod tests {
             connection: ThreadSafeConnection {
                 target: ConnectionTarget::memory("test_db_init_query_applies_to_worker_connection"),
                 connection_init_query: None,
-                connections: Default::default(),
+                connections: Arc::default(),
             },
         }
         .with_db_init_query(DB_INIT_QUERY)
@@ -692,7 +692,7 @@ mod tests {
         let connection = ThreadSafeConnection {
             target: ConnectionTarget::file(&db_path),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         };
         connection.initialize_queues(Some(locking_queue()));
 

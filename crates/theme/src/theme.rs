@@ -103,17 +103,14 @@ pub struct Theme {
 }
 
 impl Theme {
-    #[inline(always)]
     pub fn colors(&self) -> &ThemeColors {
         &self.styles.colors
     }
 
-    #[inline(always)]
     pub fn appearance(&self) -> Appearance {
         self.appearance
     }
 
-    #[inline(always)]
     pub fn status(&self) -> &StatusColors {
         &self.styles.status
     }
@@ -450,151 +447,187 @@ pub struct ThemeStyleContent {
 impl ThemeStyleContent {
     fn to_styles(&self) -> anyhow::Result<ThemeStyles> {
         let colors = ThemeColors {
-            background: required_color("background", &self.background)?,
-            surface_background: required_color("surface.background", &self.surface_background)?,
-            elevated_surface_background: required_color(
+            background: parse_color("background", self.background.as_deref())?,
+            surface_background: parse_color(
+                "surface.background",
+                self.surface_background.as_deref(),
+            )?,
+            elevated_surface_background: parse_color(
                 "elevated_surface.background",
-                &self.elevated_surface_background,
+                self.elevated_surface_background.as_deref(),
             )?,
-            panel_background: required_color("panel.background", &self.panel_background)?,
-            border: required_color("border", &self.border)?,
-            border_variant: required_color("border.variant", &self.border_variant)?,
-            border_focused: required_color("border.focused", &self.border_focused)?,
-            border_disabled: required_color("border.disabled", &self.border_disabled)?,
-            text: required_color("text", &self.text)?,
-            text_muted: required_color("text.muted", &self.text_muted)?,
-            text_placeholder: required_color("text.placeholder", &self.text_placeholder)?,
-            text_disabled: required_color("text.disabled", &self.text_disabled)?,
-            text_accent: required_color("text.accent", &self.text_accent)?,
-            icon: required_color("icon", &self.icon)?,
-            icon_muted: required_color("icon.muted", &self.icon_muted)?,
-            icon_disabled: required_color("icon.disabled", &self.icon_disabled)?,
-            icon_accent: required_color("icon.accent", &self.icon_accent)?,
-            element_background: required_color("element.background", &self.element_background)?,
-            element_hover: required_color("element.hover", &self.element_hover)?,
-            element_active: required_color("element.active", &self.element_active)?,
-            element_selected: required_color("element.selected", &self.element_selected)?,
-            element_selection_background: required_color(
+            panel_background: parse_color("panel.background", self.panel_background.as_deref())?,
+            border: parse_color("border", self.border.as_deref())?,
+            border_variant: parse_color("border.variant", self.border_variant.as_deref())?,
+            border_focused: parse_color("border.focused", self.border_focused.as_deref())?,
+            border_disabled: parse_color("border.disabled", self.border_disabled.as_deref())?,
+            text: parse_color("text", self.text.as_deref())?,
+            text_muted: parse_color("text.muted", self.text_muted.as_deref())?,
+            text_placeholder: parse_color("text.placeholder", self.text_placeholder.as_deref())?,
+            text_disabled: parse_color("text.disabled", self.text_disabled.as_deref())?,
+            text_accent: parse_color("text.accent", self.text_accent.as_deref())?,
+            icon: parse_color("icon", self.icon.as_deref())?,
+            icon_muted: parse_color("icon.muted", self.icon_muted.as_deref())?,
+            icon_disabled: parse_color("icon.disabled", self.icon_disabled.as_deref())?,
+            icon_accent: parse_color("icon.accent", self.icon_accent.as_deref())?,
+            element_background: parse_color(
+                "element.background",
+                self.element_background.as_deref(),
+            )?,
+            element_hover: parse_color("element.hover", self.element_hover.as_deref())?,
+            element_active: parse_color("element.active", self.element_active.as_deref())?,
+            element_selected: parse_color("element.selected", self.element_selected.as_deref())?,
+            element_selection_background: parse_color(
                 "element.selection_background",
-                &self.element_selection_background,
+                self.element_selection_background.as_deref(),
             )?,
-            element_disabled: required_color("element.disabled", &self.element_disabled)?,
-            ghost_element_background: required_color(
+            element_disabled: parse_color("element.disabled", self.element_disabled.as_deref())?,
+            ghost_element_background: parse_color(
                 "ghost_element.background",
-                &self.ghost_element_background,
+                self.ghost_element_background.as_deref(),
             )?,
-            ghost_element_hover: required_color("ghost_element.hover", &self.ghost_element_hover)?,
-            ghost_element_active: required_color(
+            ghost_element_hover: parse_color(
+                "ghost_element.hover",
+                self.ghost_element_hover.as_deref(),
+            )?,
+            ghost_element_active: parse_color(
                 "ghost_element.active",
-                &self.ghost_element_active,
+                self.ghost_element_active.as_deref(),
             )?,
-            ghost_element_selected: required_color(
+            ghost_element_selected: parse_color(
                 "ghost_element.selected",
-                &self.ghost_element_selected,
+                self.ghost_element_selected.as_deref(),
             )?,
-            ghost_element_disabled: required_color(
+            ghost_element_disabled: parse_color(
                 "ghost_element.disabled",
-                &self.ghost_element_disabled,
+                self.ghost_element_disabled.as_deref(),
             )?,
-            status_bar_background: required_color(
+            status_bar_background: parse_color(
                 "status_bar.background",
-                &self.status_bar_background,
+                self.status_bar_background.as_deref(),
             )?,
-            editor_background: required_color("editor.background", &self.editor_background)?,
-            editor_foreground: required_color("editor.foreground", &self.editor_foreground)?,
-            editor_active_line_background: required_color(
+            editor_background: parse_color("editor.background", self.editor_background.as_deref())?,
+            editor_foreground: parse_color("editor.foreground", self.editor_foreground.as_deref())?,
+            editor_active_line_background: parse_color(
                 "editor.active_line_background",
-                &self.editor_active_line_background,
+                self.editor_active_line_background.as_deref(),
             )?,
-            scrollbar_track_background: required_color(
+            scrollbar_track_background: parse_color(
                 "scrollbar.track.background",
-                &self.scrollbar_track_background,
+                self.scrollbar_track_background.as_deref(),
             )?,
-            scrollbar_track_border: required_color(
+            scrollbar_track_border: parse_color(
                 "scrollbar.track.border",
-                &self.scrollbar_track_border,
+                self.scrollbar_track_border.as_deref(),
             )?,
-            scrollbar_thumb_background: required_color(
+            scrollbar_thumb_background: parse_color(
                 "scrollbar.thumb.background",
-                &self.scrollbar_thumb_background,
+                self.scrollbar_thumb_background.as_deref(),
             )?,
-            scrollbar_thumb_hover_background: required_color(
+            scrollbar_thumb_hover_background: parse_color(
                 "scrollbar.thumb.hover_background",
-                &self.scrollbar_thumb_hover_background,
+                self.scrollbar_thumb_hover_background.as_deref(),
             )?,
-            scrollbar_thumb_active_background: required_color(
+            scrollbar_thumb_active_background: parse_color(
                 "scrollbar.thumb.active_background",
-                &self.scrollbar_thumb_active_background,
+                self.scrollbar_thumb_active_background.as_deref(),
             )?,
-            scrollbar_thumb_border: required_color(
+            scrollbar_thumb_border: parse_color(
                 "scrollbar.thumb.border",
-                &self.scrollbar_thumb_border,
+                self.scrollbar_thumb_border.as_deref(),
             )?,
         };
 
         let status = StatusColors {
-            conflict: required_color("conflict", &self.conflict)?,
-            conflict_background: required_color("conflict.background", &self.conflict_background)?,
-            conflict_border: required_color("conflict.border", &self.conflict_border)?,
-
-            created: required_color("created", &self.created)?,
-            created_background: required_color("created.background", &self.created_background)?,
-            created_border: required_color("created.border", &self.created_border)?,
-
-            deleted: required_color("deleted", &self.deleted)?,
-            deleted_background: required_color("deleted.background", &self.deleted_background)?,
-            deleted_border: required_color("deleted.border", &self.deleted_border)?,
-
-            error: required_color("error", &self.error)?,
-            error_background: required_color("error.background", &self.error_background)?,
-            error_border: required_color("error.border", &self.error_border)?,
-
-            hidden: required_color("hidden", &self.hidden)?,
-            hidden_background: required_color("hidden.background", &self.hidden_background)?,
-            hidden_border: required_color("hidden.border", &self.hidden_border)?,
-
-            hint: required_color("hint", &self.hint)?,
-            hint_background: required_color("hint.background", &self.hint_background)?,
-            hint_border: required_color("hint.border", &self.hint_border)?,
-
-            ignored: required_color("ignored", &self.ignored)?,
-            ignored_background: required_color("ignored.background", &self.ignored_background)?,
-            ignored_border: required_color("ignored.border", &self.ignored_border)?,
-
-            info: required_color("info", &self.info)?,
-            info_background: required_color("info.background", &self.info_background)?,
-            info_border: required_color("info.border", &self.info_border)?,
-
-            modified: required_color("modified", &self.modified)?,
-            modified_background: required_color("modified.background", &self.modified_background)?,
-            modified_border: required_color("modified.border", &self.modified_border)?,
-
-            renamed: required_color("renamed", &self.renamed)?,
-            renamed_background: required_color("renamed.background", &self.renamed_background)?,
-            renamed_border: required_color("renamed.border", &self.renamed_border)?,
-
-            success: required_color("success", &self.success)?,
-            success_background: required_color("success.background", &self.success_background)?,
-            success_border: required_color("success.border", &self.success_border)?,
-
-            unreachable: required_color("unreachable", &self.unreachable)?,
-            unreachable_background: required_color(
-                "unreachable.background",
-                &self.unreachable_background,
+            conflict: parse_color("conflict", self.conflict.as_deref())?,
+            conflict_background: parse_color(
+                "conflict.background",
+                self.conflict_background.as_deref(),
             )?,
-            unreachable_border: required_color("unreachable.border", &self.unreachable_border)?,
+            conflict_border: parse_color("conflict.border", self.conflict_border.as_deref())?,
 
-            warning: required_color("warning", &self.warning)?,
-            warning_background: required_color("warning.background", &self.warning_background)?,
-            warning_border: required_color("warning.border", &self.warning_border)?,
+            created: parse_color("created", self.created.as_deref())?,
+            created_background: parse_color(
+                "created.background",
+                self.created_background.as_deref(),
+            )?,
+            created_border: parse_color("created.border", self.created_border.as_deref())?,
+
+            deleted: parse_color("deleted", self.deleted.as_deref())?,
+            deleted_background: parse_color(
+                "deleted.background",
+                self.deleted_background.as_deref(),
+            )?,
+            deleted_border: parse_color("deleted.border", self.deleted_border.as_deref())?,
+
+            error: parse_color("error", self.error.as_deref())?,
+            error_background: parse_color("error.background", self.error_background.as_deref())?,
+            error_border: parse_color("error.border", self.error_border.as_deref())?,
+
+            hidden: parse_color("hidden", self.hidden.as_deref())?,
+            hidden_background: parse_color("hidden.background", self.hidden_background.as_deref())?,
+            hidden_border: parse_color("hidden.border", self.hidden_border.as_deref())?,
+
+            hint: parse_color("hint", self.hint.as_deref())?,
+            hint_background: parse_color("hint.background", self.hint_background.as_deref())?,
+            hint_border: parse_color("hint.border", self.hint_border.as_deref())?,
+
+            ignored: parse_color("ignored", self.ignored.as_deref())?,
+            ignored_background: parse_color(
+                "ignored.background",
+                self.ignored_background.as_deref(),
+            )?,
+            ignored_border: parse_color("ignored.border", self.ignored_border.as_deref())?,
+
+            info: parse_color("info", self.info.as_deref())?,
+            info_background: parse_color("info.background", self.info_background.as_deref())?,
+            info_border: parse_color("info.border", self.info_border.as_deref())?,
+
+            modified: parse_color("modified", self.modified.as_deref())?,
+            modified_background: parse_color(
+                "modified.background",
+                self.modified_background.as_deref(),
+            )?,
+            modified_border: parse_color("modified.border", self.modified_border.as_deref())?,
+
+            renamed: parse_color("renamed", self.renamed.as_deref())?,
+            renamed_background: parse_color(
+                "renamed.background",
+                self.renamed_background.as_deref(),
+            )?,
+            renamed_border: parse_color("renamed.border", self.renamed_border.as_deref())?,
+
+            success: parse_color("success", self.success.as_deref())?,
+            success_background: parse_color(
+                "success.background",
+                self.success_background.as_deref(),
+            )?,
+            success_border: parse_color("success.border", self.success_border.as_deref())?,
+
+            unreachable: parse_color("unreachable", self.unreachable.as_deref())?,
+            unreachable_background: parse_color(
+                "unreachable.background",
+                self.unreachable_background.as_deref(),
+            )?,
+            unreachable_border: parse_color(
+                "unreachable.border",
+                self.unreachable_border.as_deref(),
+            )?,
+
+            warning: parse_color("warning", self.warning.as_deref())?,
+            warning_background: parse_color(
+                "warning.background",
+                self.warning_background.as_deref(),
+            )?,
+            warning_border: parse_color("warning.border", self.warning_border.as_deref())?,
         };
 
         Ok(ThemeStyles { colors, status })
     }
 }
 
-fn required_color(field: &'static str, value: &Option<String>) -> anyhow::Result<Hsla> {
-    let Some(value) = value.as_ref() else {
+fn parse_color(field: &'static str, value: Option<&str>) -> anyhow::Result<Hsla> {
+    let Some(value) = value else {
         return Err(anyhow!("missing required theme style field: {field}"));
     };
 
@@ -708,13 +741,12 @@ impl ThemeRegistry {
             .filter(|path| path.ends_with(".json"));
 
         for path in theme_paths {
-            let bytes = match self
+            let Some(bytes) = self
                 .assets
                 .load(&path)
                 .with_context(|| format!("loading {path:?}"))?
-            {
-                Some(bytes) => bytes,
-                None => continue,
+            else {
+                continue;
             };
 
             let content: ThemeFamilyContent = match serde_json::from_slice(&bytes) {
