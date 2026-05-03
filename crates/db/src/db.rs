@@ -78,7 +78,7 @@ pub async fn open_db(db_dir: &Path) -> ThreadSafeConnection {
 async fn try_open_db(db_dir: &Path) -> Option<ThreadSafeConnection> {
     match ensure_directory(db_dir)
         .await
-        .and_then(|_| database_path(db_dir))
+        .and_then(|()| database_path(db_dir))
     {
         Ok(db_path) => open_main_db(&db_path).await,
         Err(error) => {
@@ -201,10 +201,7 @@ impl ThreadSafeConnectionBuilder {
                     connection
                         .exec(db_init_query)
                         .with_context(|| {
-                            format!(
-                                "database initialize query failed to execute: {}",
-                                db_init_query
-                            )
+                            format!("database initialize query failed to execute: {db_init_query}")
                         })
                         .and_then(|mut f| f())?;
                 }
@@ -311,10 +308,7 @@ fn init_connection(
         connection
             .exec(connection_init_query)
             .with_context(|| {
-                format!(
-                    "connection initialize query failed to execute: {}",
-                    connection_init_query
-                )
+                format!("connection initialize query failed to execute: {connection_init_query}")
             })
             .and_then(|mut f| f())?;
     }
@@ -375,6 +369,12 @@ pub fn database_dir() -> PathBuf {
 pub struct AppDatabase(pub ThreadSafeConnection);
 
 impl Global for AppDatabase {}
+
+impl Default for AppDatabase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl AppDatabase {
     pub fn new() -> Self {

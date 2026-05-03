@@ -385,9 +385,7 @@ pub async fn restore_or_create_workspace(
         let mut error_count = 0;
 
         for session_workspace in workspaces {
-            let path = match session_workspace.location {
-                SerializedWorkspaceLocation::Local(path) => path,
-            };
+            let SerializedWorkspaceLocation::Local(path) = session_workspace.location;
             let result = cx
                 .update(|cx| {
                     Workspace::open_local(path, shared_state.clone(), None, OpenMode::NewWindow, cx)
@@ -416,8 +414,8 @@ pub async fn restore_or_create_workspace(
                             workspace.show_toast(
                                 Toast::new(NotificationId::unique::<()>(), message.clone()),
                                 cx,
-                            )
-                        })
+                            );
+                        });
                     })
                     .ok();
                     return true;
@@ -443,7 +441,7 @@ pub async fn restore_or_create_workspace(
                                 workspace.show_toast(
                                     Toast::new(NotificationId::unique::<()>(), message),
                                     cx,
-                                )
+                                );
                             });
 
                             Root::new(workspace)

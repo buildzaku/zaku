@@ -24,7 +24,7 @@ impl RelPath {
     }
 
     #[track_caller]
-    pub fn new<'a>(path: &'a Path, path_style: PathStyle) -> anyhow::Result<Cow<'a, Self>> {
+    pub fn new(path: &Path, path_style: PathStyle) -> anyhow::Result<Cow<'_, Self>> {
         let mut path = path.to_str().context("non utf-8 path")?;
 
         let (prefixes, suffixes): (&[_], &[_]) = match path_style {
@@ -57,7 +57,7 @@ impl RelPath {
 
         if result
             .components()
-            .any(|component| component == "" || component == "." || component == "..")
+            .any(|component| component.is_empty() || component == "." || component == "..")
         {
             let mut normalized = RelPathBuf::new();
             for component in result.components() {
@@ -90,7 +90,7 @@ impl RelPath {
     fn new_unchecked(value: &str) -> &Self {
         // Safety: `RelPath` is a transparent wrapper around `str` and adds no
         // extra invariants, so this shared reference cast is valid.
-        unsafe { &*(value as *const str as *const Self) }
+        unsafe { &*(std::ptr::from_ref::<str>(value) as *const Self) }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -216,6 +216,12 @@ impl fmt::Debug for RelPathBuf {
     }
 }
 
+impl Default for RelPathBuf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RelPathBuf {
     pub fn new() -> Self {
         Self(String::new())
@@ -336,7 +342,7 @@ impl<'a> Iterator for RelPathComponents<'a> {
     }
 }
 
-impl<'a> DoubleEndedIterator for RelPathComponents<'a> {
+impl DoubleEndedIterator for RelPathComponents<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if let Some(index) = self.0.rfind(SEPARATOR) {
             let (head, tail) = self.0.split_at(index);

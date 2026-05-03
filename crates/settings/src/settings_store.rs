@@ -91,7 +91,7 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
 
                     match value {
                         FeatureValue::Bool(enable) => {
-                            feature_map.insert(key, if enable { 1 } else { 0 });
+                            feature_map.insert(key, u32::from(enable));
                         }
                         FeatureValue::Number(value) => {
                             if let Some(value) = value.as_u64() {

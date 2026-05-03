@@ -698,7 +698,7 @@ impl Entry {
 impl Item for Entry {
     type Summary = EntrySummary;
 
-    fn summary(&self, _: ()) -> Self::Summary {
+    fn summary(&self, (): ()) -> Self::Summary {
         EntrySummary {
             count: 1,
             file_count: usize::from(self.is_file()),
@@ -906,11 +906,11 @@ impl Default for PathKey {
 }
 
 impl<'a> Dimension<'a, EntrySummary> for PathKey {
-    fn zero(_: ()) -> Self {
+    fn zero((): ()) -> Self {
         Default::default()
     }
 
-    fn add_summary(&mut self, summary: &'a EntrySummary, _: ()) {
+    fn add_summary(&mut self, summary: &'a EntrySummary, (): ()) {
         self.0 = summary.max_path.clone();
     }
 }
@@ -924,7 +924,7 @@ struct PathEntry {
 impl Item for PathEntry {
     type Summary = PathEntrySummary;
 
-    fn summary(&self, _: ()) -> Self::Summary {
+    fn summary(&self, (): ()) -> Self::Summary {
         PathEntrySummary { max_id: self.id }
     }
 }
@@ -953,11 +953,11 @@ impl ContextLessSummary for PathEntrySummary {
 }
 
 impl<'a> Dimension<'a, PathEntrySummary> for ProjectEntryId {
-    fn zero(_: ()) -> Self {
+    fn zero((): ()) -> Self {
         Self::default()
     }
 
-    fn add_summary(&mut self, summary: &'a PathEntrySummary, _: ()) {
+    fn add_summary(&mut self, summary: &'a PathEntrySummary, (): ()) {
         *self = summary.max_id;
     }
 }
@@ -1168,7 +1168,7 @@ impl BackgroundScanner {
 
         self.reload_entries_for_paths(
             root_path.as_ref(),
-            &root_canonical_path,
+            root_canonical_path,
             &request.relative_paths,
             abs_paths,
             None,
@@ -1443,7 +1443,7 @@ impl BackgroundScanner {
                                         return;
                                     }
                                 }
-                                _ = progress_update_timer => {
+                                () = progress_update_timer => {
                                     match progress_update_count.compare_exchange(
                                         last_progress_update_count,
                                         last_progress_update_count + 1,
@@ -1712,10 +1712,10 @@ impl BackgroundScanner {
                                 EntryKind::Dir
                             };
                         state.insert_entry(entry.clone());
-                        if let Some(scan_queue_tx) = scan_queue_tx.as_ref() {
-                            if entry.kind == EntryKind::PendingDir {
-                                state.enqueue_scan_dir(abs_path.clone(), &entry, scan_queue_tx);
-                            }
+                        if let Some(scan_queue_tx) = scan_queue_tx.as_ref()
+                            && entry.kind == EntryKind::PendingDir
+                        {
+                            state.enqueue_scan_dir(abs_path.clone(), &entry, scan_queue_tx);
                         }
                     } else if let Some(request) = request {
                         let entry_id = state.entry_id_for(
@@ -1758,7 +1758,7 @@ impl BackgroundScanner {
             return futures::future::pending().await;
         }
 
-        self.executor.timer(FS_WATCH_LATENCY).await
+        self.executor.timer(FS_WATCH_LATENCY).await;
     }
 }
 
@@ -1851,7 +1851,7 @@ impl BackgroundScannerState {
         {
             parent_entry.clone()
         } else {
-            log::warn!("Populating a directory {parent_path:?} that has been removed",);
+            log::warn!("Populating a directory {parent_path:?} that has been removed");
             return;
         };
 
@@ -1994,11 +1994,11 @@ impl TraversalProgress<'_> {
 }
 
 impl<'a> Dimension<'a, EntrySummary> for TraversalProgress<'a> {
-    fn zero(_: ()) -> Self {
+    fn zero((): ()) -> Self {
         Self::default()
     }
 
-    fn add_summary(&mut self, summary: &'a EntrySummary, _: ()) {
+    fn add_summary(&mut self, summary: &'a EntrySummary, (): ()) {
         self.max_path = summary.max_path.as_ref();
         self.count += summary.count;
         self.file_count += summary.file_count;
@@ -2137,7 +2137,7 @@ impl PathTarget<'_> {
 }
 
 impl<'a> SeekTarget<'a, EntrySummary, TraversalProgress<'a>> for PathTarget<'_> {
-    fn cmp(&self, cursor_location: &TraversalProgress<'a>, _: ()) -> Ordering {
+    fn cmp(&self, cursor_location: &TraversalProgress<'a>, (): ()) -> Ordering {
         self.cmp_path(cursor_location.max_path)
     }
 }
@@ -2174,7 +2174,7 @@ impl<'a> TraversalTarget<'a> {
 }
 
 impl<'a> SeekTarget<'a, EntrySummary, TraversalProgress<'a>> for TraversalTarget<'_> {
-    fn cmp(&self, cursor_location: &TraversalProgress<'a>, _: ()) -> Ordering {
+    fn cmp(&self, cursor_location: &TraversalProgress<'a>, (): ()) -> Ordering {
         self.cmp_progress(cursor_location)
     }
 }
@@ -2238,7 +2238,7 @@ fn build_diff(
     new_snapshot: &Snapshot,
     event_roots: &[EventRoot],
 ) -> UpdatedEntriesSet {
-    use BackgroundScannerPhase::*;
+    use BackgroundScannerPhase::{EventsReceivedDuringInitialScan, InitialScan};
     use PathChange::{Added, AddedOrUpdated, Loaded, Removed, Updated};
 
     let mut changes = Vec::new();

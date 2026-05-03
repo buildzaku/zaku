@@ -2,7 +2,6 @@
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, prelude::*};
-use gpui_platform;
 use indoc::formatdoc;
 
 #[cfg(unix)]
@@ -147,7 +146,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     let message = "Zaku failed to launch";
     let error_details = errors
         .into_iter()
-        .flat_map(|(kind, paths)| {
+        .filter_map(|(kind, paths)| {
             #[allow(unused_mut)]
             let mut error_kind_details = match paths.len() {
                 0 => return None,
@@ -206,9 +205,9 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                     );
                 }
             } else {
-                fail_to_open_window(anyhow::anyhow!("{message}: {error_details}"), cx)
+                fail_to_open_window(anyhow::anyhow!("{message}: {error_details}"), cx);
             }
-        })
+        });
 }
 
 fn fail_to_open_window(error: anyhow::Error, _cx: &mut App) {

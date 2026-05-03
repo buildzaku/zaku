@@ -381,8 +381,7 @@ impl WorkspaceDb {
 
 fn parse_timestamp(text: &str) -> DateTime<Utc> {
     NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
-        .map(|naive| naive.and_utc())
-        .unwrap_or_else(|_| Utc::now())
+        .map_or_else(|_| Utc::now(), |naive| naive.and_utc())
 }
 
 fn serialize_window_id(window_id: Option<u64>) -> anyhow::Result<Option<i64>> {

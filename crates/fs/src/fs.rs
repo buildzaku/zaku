@@ -457,7 +457,7 @@ impl Fs for NativeFs {
         #[cfg(target_os = "windows")]
         let is_fifo = false;
 
-        let path_buf = path.to_path_buf();
+        let path_buf = path.clone();
         let is_executable = self
             .executor
             .spawn(async move { path_buf.is_executable() })
@@ -578,9 +578,8 @@ impl Fs for NativeFs {
         if use_metadata_fallback && smol::fs::metadata(target).await.is_ok() {
             if options.ignore_if_exists {
                 return Ok(());
-            } else {
-                anyhow::bail!("{target:?} already exists");
             }
+            anyhow::bail!("{target:?} already exists");
         }
 
         smol::fs::rename(source, target).await?;
@@ -657,7 +656,7 @@ impl Fs for NativeFs {
             );
         }
 
-        if let Some(mut target) = self.read_link(path).await.ok() {
+        if let Ok(mut target) = self.read_link(path).await {
             log::trace!("Watching symlink target {path:?} -> {target:?}");
 
             if target.is_relative()
@@ -682,7 +681,7 @@ impl Fs for NativeFs {
                 let watcher = watcher.clone();
                 let executor = executor.clone();
 
-                move |_| {
+                move |()| {
                     let _ = watcher.clone();
                     let pending_paths = pending_paths.clone();
                     let executor = executor.clone();
@@ -802,7 +801,7 @@ impl TempFs {
             }
         }
 
-        inner(self.path(), Arc::from(path.as_ref()), tree)
+        inner(self.path(), Arc::from(path.as_ref()), tree);
     }
 }
 

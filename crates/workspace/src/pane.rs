@@ -205,24 +205,21 @@ impl Pane {
             .spawn(cx, {
                 let response_panel = response_panel.clone();
                 async move |cx| {
-                    let mut request_url = match normalize_url(request_url) {
-                        Some(request_url) => request_url,
-                        None => {
-                            if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                                response_panel.set_state(
-                                    request_id,
-                                    ResponseState::Error {
-                                        bytes_received: 0,
-                                        elapsed_duration: request_started_at.elapsed(),
-                                    },
-                                    cx,
-                                );
-                                response_panel.set_payload(request_id, "Error: invalid URL", cx);
-                            }) {
-                                log::debug!("Failed to update response panel: {error:?}");
-                            }
-                            return;
+                    let mut request_url = if let Some(request_url) = normalize_url(request_url) { request_url } else {
+                        if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
+                            response_panel.set_state(
+                                request_id,
+                                ResponseState::Error {
+                                    bytes_received: 0,
+                                    elapsed_duration: request_started_at.elapsed(),
+                                },
+                                cx,
+                            );
+                            response_panel.set_payload(request_id, "Error: invalid URL", cx);
+                        }) {
+                            log::debug!("Failed to update response panel: {error:?}");
                         }
+                        return;
                     };
 
                     {
@@ -283,7 +280,7 @@ impl Pane {
                                     }
                                 }
                             }
-                            _ = progress_timer => {
+                            () = progress_timer => {
                                 let still_active = response_panel.update(cx, |response_panel, cx| {
                                     response_panel.set_state(
                                         request_id,
@@ -329,7 +326,7 @@ impl Pane {
                                     }
                                 }
                             }
-                            _ = progress_timer => {
+                            () = progress_timer => {
                                 let still_active = response_panel.update(cx, |response_panel, cx| {
                                     response_panel.set_state(
                                         request_id,

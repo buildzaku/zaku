@@ -8,7 +8,6 @@ use std::ops::Bound;
 
 use std::{
     collections::{BTreeMap, HashMap},
-    ops::DerefMut,
     path::Path,
     sync::{Arc, OnceLock},
 };
@@ -38,7 +37,7 @@ impl Drop for FsWatcher {
         let mut registrations = BTreeMap::new();
         {
             let old = &mut self.registrations.lock();
-            std::mem::swap(old.deref_mut(), &mut registrations);
+            std::mem::swap(&mut **old, &mut registrations);
         }
 
         let _ = global(|watcher| {
@@ -191,9 +190,9 @@ impl Watcher for FsWatcher {
 fn canonicalize_path(path: &Path) -> Arc<Path> {
     #[cfg(target_os = "macos")]
     {
-        return std::fs::canonicalize(path)
+        std::fs::canonicalize(path)
             .unwrap_or_else(|_| path.to_path_buf())
-            .into();
+            .into()
     }
 
     #[cfg(any(target_os = "linux", target_os = "windows"))]

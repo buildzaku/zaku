@@ -106,8 +106,7 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
                     let compact = (n - 4.).max(0.);
                     let comfortable = n + 4.;
                     format!(
-                        "`{}px`|`{}px`|`{}px (@16px/rem)` - Scales with the user's rem size.",
-                        compact, n, comfortable
+                        "`{compact}px`|`{n}px`|`{comfortable}px (@16px/rem)` - Scales with the user's rem size."
                     )
                 }
                 DynamicSpacingValue::Tuple(a, b, c) => {
@@ -115,8 +114,7 @@ pub fn derive_spacing(input: TokenStream) -> TokenStream {
                     let b = b.base10_parse::<f32>().unwrap();
                     let c = c.base10_parse::<f32>().unwrap();
                     format!(
-                        "`{}px`|`{}px`|`{}px (@16px/rem)` - Scales with the user's rem size.",
-                        a, b, c
+                        "`{a}px`|`{b}px`|`{c}px (@16px/rem)` - Scales with the user's rem size."
                     )
                 }
             };

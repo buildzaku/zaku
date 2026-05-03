@@ -139,9 +139,7 @@ impl Workspace {
         });
         if toast.autohide {
             cx.spawn(async move |workspace, cx| {
-                cx.background_executor()
-                    .timer(Duration::from_millis(5000))
-                    .await;
+                cx.background_executor().timer(Duration::from_secs(5)).await;
                 workspace
                     .update(cx, |workspace, cx| workspace.dismiss_toast(&toast.id, cx))
                     .ok();
@@ -181,6 +179,12 @@ pub struct NotificationFrame {
     close: Option<Box<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
     contents: Option<AnyElement>,
     suffix: Option<AnyElement>,
+}
+
+impl Default for NotificationFrame {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NotificationFrame {
@@ -286,7 +290,7 @@ impl RenderOnce for NotificationFrame {
                                         let close = self.close.take();
                                         move |_, window, cx| {
                                             if let Some(close) = &close {
-                                                close(&suppress, window, cx)
+                                                close(&suppress, window, cx);
                                             }
                                         }
                                     }),
@@ -519,9 +523,9 @@ pub mod simple_message_notification {
                                 .variant(ButtonVariant::Solid)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(on_click) = this.primary_on_click.as_ref() {
-                                        (on_click)(window, cx)
-                                    };
-                                    this.dismiss(cx)
+                                        (on_click)(window, cx);
+                                    }
+                                    this.dismiss(cx);
                                 }));
 
                             if let Some(icon) = self.primary_icon {
@@ -539,9 +543,9 @@ pub mod simple_message_notification {
                                 .label_size(LabelSize::Small)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(on_click) = this.secondary_on_click.as_ref() {
-                                        (on_click)(window, cx)
-                                    };
-                                    this.dismiss(cx)
+                                        (on_click)(window, cx);
+                                    }
+                                    this.dismiss(cx);
                                 }));
 
                             if let Some(icon) = self.secondary_icon {

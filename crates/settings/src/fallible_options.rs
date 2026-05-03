@@ -55,7 +55,7 @@ where
         Ok(value) => Ok(value),
         Err(error) => ERRORS.with_borrow_mut(|errors| {
             if let Some(errors) = errors {
-                errors.push(anyhow::anyhow!("{}", error));
+                errors.push(anyhow::anyhow!("{error}"));
                 Ok(Default::default())
             } else {
                 Err(error)

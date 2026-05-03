@@ -98,9 +98,10 @@ pub fn marked_text_ranges(
         match marker {
             "ˇ" => {
                 if current_range_start.is_some() {
-                    if current_range_cursor.is_some() {
-                        panic!("duplicate point marker 'ˇ' at index {marked_index}");
-                    }
+                    assert!(
+                        current_range_cursor.is_none(),
+                        "duplicate point marker 'ˇ' at index {marked_index}"
+                    );
 
                     current_range_cursor = Some(unmarked_len);
                 } else {
@@ -108,9 +109,10 @@ pub fn marked_text_ranges(
                 }
             }
             "«" => {
-                if current_range_start.is_some() {
-                    panic!("unexpected range start marker '«' at index {marked_index}");
-                }
+                assert!(
+                    current_range_start.is_none(),
+                    "unexpected range start marker '«' at index {marked_index}"
+                );
                 current_range_start = Some(unmarked_len);
             }
             "»" => {
@@ -183,16 +185,11 @@ pub fn generate_marked_text(
                     marked_text.insert_str(range.end, "«ˇ");
                 }
             }
+        } else if range.start.cmp(&range.end) == Ordering::Equal {
+            marked_text.insert(range.start, 'ˇ');
         } else {
-            match range.start.cmp(&range.end) {
-                Ordering::Equal => {
-                    marked_text.insert(range.start, 'ˇ');
-                }
-                _ => {
-                    marked_text.insert(range.end, '»');
-                    marked_text.insert(range.start, '«');
-                }
-            }
+            marked_text.insert(range.end, '»');
+            marked_text.insert(range.start, '«');
         }
     }
     marked_text

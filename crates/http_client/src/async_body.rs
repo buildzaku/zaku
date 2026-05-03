@@ -40,7 +40,7 @@ impl Default for AsyncBody {
 }
 
 impl From<()> for AsyncBody {
-    fn from(_: ()) -> Self {
+    fn from((): ()) -> Self {
         Self(Inner::Empty)
     }
 }

@@ -48,7 +48,7 @@ impl StatusBar {
     {
         let active_pane = self.active_pane.clone();
         item.update(cx, |item, cx| {
-            item.set_active_pane(&active_pane, window, cx)
+            item.set_active_pane(&active_pane, window, cx);
         });
         self.left_items.push(Box::new(item));
         cx.notify();
@@ -64,7 +64,7 @@ impl StatusBar {
     {
         let active_pane = self.active_pane.clone();
         item.update(cx, |item, cx| {
-            item.set_active_pane(&active_pane, window, cx)
+            item.set_active_pane(&active_pane, window, cx);
         });
         self.right_items.push(Box::new(item));
         cx.notify();

@@ -11,7 +11,7 @@ pub fn path(input: TokenStream) -> TokenStream {
     let path = if cfg!(target_os = "windows") {
         let path = path_str.value().replace('/', "\\");
         if path.starts_with('\\') {
-            format!("C:{}", path)
+            format!("C:{path}")
         } else {
             path
         }
