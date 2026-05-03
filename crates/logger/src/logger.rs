@@ -213,7 +213,7 @@ macro_rules! crate_name {
 }
 
 pub mod private {
-    use super::*;
+    use super::{Logger, SCOPE_DEPTH_MAX, Scope, ScopeAlloc, ScopeRef};
 
     pub const fn extract_crate_name_from_module_path(module_path: &str) -> &str {
         let module_path_bytes = module_path.as_bytes();
