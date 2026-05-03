@@ -40,7 +40,7 @@ impl Connection {
         let result_code = unsafe {
             sqlite3::sqlite3_open_v2(
                 path.as_ptr(),
-                &mut connection.sqlite3,
+                &raw mut connection.sqlite3,
                 SQLITE_OPEN_CREATE
                     | SQLITE_OPEN_EXRESCODE
                     | SQLITE_OPEN_NOMUTEX
@@ -91,7 +91,7 @@ impl Connection {
                     String::from_utf8_lossy(
                         // Safety: The null check above guarantees message_ptr is non-null and SQLite
                         // returns a NUL-terminated error message string for CStr::from_ptr to consume.
-                        unsafe { CStr::from_ptr(message_ptr as *const std::ffi::c_char) }
+                        unsafe { CStr::from_ptr(message_ptr.cast::<std::ffi::c_char>()) }
                             .to_bytes(),
                     )
                     .into_owned(),

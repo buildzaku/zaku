@@ -723,10 +723,9 @@ impl Workspace {
 
             if let Some(database_id) =
                 workspace.read_with(cx, |workspace, _| workspace.database_id())
+                && let Err(error) = workspace_db.update_activation_order(database_id).await
             {
-                if let Err(error) = workspace_db.update_activation_order(database_id).await {
-                    log::error!("Failed to update workspace activation order: {error}");
-                }
+                log::error!("Failed to update workspace activation order: {error}");
             }
 
             Ok(OpenResult { window, workspace })
@@ -861,7 +860,7 @@ impl Workspace {
 
                 let workspace_db = WorkspaceDb::global(cx);
                 window.spawn(cx, async move |_| {
-                    workspace_db.save_workspace(serialized_workspace).await
+                    workspace_db.save_workspace(serialized_workspace).await;
                 })
             }
             None => Task::ready(()),
@@ -899,11 +898,11 @@ impl Workspace {
             }
             dock.set_open(!was_visible, window, cx);
 
-            if let Some(active_panel) = dock.active_panel() {
-                if !was_visible {
-                    let focus_handle = active_panel.panel_focus_handle(cx);
-                    window.focus(&focus_handle, cx);
-                }
+            if let Some(active_panel) = dock.active_panel()
+                && !was_visible
+            {
+                let focus_handle = active_panel.panel_focus_handle(cx);
+                window.focus(&focus_handle, cx);
             }
         });
 
@@ -1027,7 +1026,7 @@ impl Workspace {
         let size = size.min(max_size).max(MIN_DOCK_WIDTH.min(max_size));
         self.left_dock.update(cx, |dock, cx| {
             dock.resize_active_panel(Some(size), window, cx);
-        })
+        });
     }
 
     fn resize_bottom_dock(&mut self, size: Pixels, window: &mut Window, cx: &mut App) {
@@ -1038,7 +1037,7 @@ impl Workspace {
             .max(MIN_RESPONSE_PANE_HEIGHT.min(max_size));
         self.bottom_dock.update(cx, |dock, cx| {
             dock.resize_active_panel(Some(size), window, cx);
-        })
+        });
     }
 
     fn toggle_panel_focus<T: panel::Panel>(
@@ -1110,16 +1109,16 @@ impl Workspace {
         context.add(KEY_CONTEXT);
         context.set("keyboard_layout", cx.keyboard_layout().name().to_string());
 
-        if self.left_dock.read(cx).is_open() {
-            if let Some(active_panel) = self.left_dock.read(cx).active_panel() {
-                context.set("left_dock", active_panel.panel_key());
-            }
+        if self.left_dock.read(cx).is_open()
+            && let Some(active_panel) = self.left_dock.read(cx).active_panel()
+        {
+            context.set("left_dock", active_panel.panel_key());
         }
 
-        if self.bottom_dock.read(cx).is_open() {
-            if let Some(active_panel) = self.bottom_dock.read(cx).active_panel() {
-                context.set("bottom_dock", active_panel.panel_key());
-            }
+        if self.bottom_dock.read(cx).is_open()
+            && let Some(active_panel) = self.bottom_dock.read(cx).active_panel()
+        {
+            context.set("bottom_dock", active_panel.panel_key());
         }
 
         context
@@ -1158,7 +1157,7 @@ impl Workspace {
         self.workspace_actions.push(Box::new(move |div, _, _, cx| {
             let callback = callback.clone();
             div.on_action(cx.listener(move |workspace, event, window, cx| {
-                (callback)(workspace, event, window, cx)
+                (callback)(workspace, event, window, cx);
             }))
         }));
         self
@@ -1178,7 +1177,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
-        for action in self.workspace_actions.iter() {
+        for action in &self.workspace_actions {
             div = (action)(div, self, window, cx);
         }
         div
@@ -1296,7 +1295,7 @@ impl Render for Workspace {
                                     }
                                 });
                             },
-                            |_, _, _, _| {},
+                            |_, (), _, _| {},
                         )
                         .absolute()
                         .size_full()

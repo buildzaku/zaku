@@ -67,8 +67,8 @@ impl<'conn> Statement<'conn> {
                     connection.sqlite3,
                     remaining_sql.as_ptr(),
                     -1,
-                    &mut raw_statement_ptr,
-                    &mut remaining_sql_ptr,
+                    &raw mut raw_statement_ptr,
+                    &raw mut remaining_sql_ptr,
                 )
             };
 
@@ -170,7 +170,7 @@ impl<'conn> Statement<'conn> {
 
     pub fn bind_blob(&self, index: i32, blob: &[u8]) -> anyhow::Result<()> {
         let index = index as std::ffi::c_int;
-        let blob_ptr = blob.as_ptr() as *const std::ffi::c_void;
+        let blob_ptr = blob.as_ptr().cast::<std::ffi::c_void>();
         let blob_len = sqlite3::sqlite3_uint64::try_from(blob.len())
             .context("blob length exceeds sqlite3_uint64 range")?;
 
@@ -233,7 +233,7 @@ impl<'conn> Statement<'conn> {
 
     pub fn bind_text(&self, index: i32, text: &str) -> anyhow::Result<()> {
         let index = index as std::ffi::c_int;
-        let text_ptr = text.as_ptr() as *const std::ffi::c_char;
+        let text_ptr = text.as_ptr().cast::<std::ffi::c_char>();
         let text_len = sqlite3::sqlite3_uint64::try_from(text.len())
             .context("text length exceeds sqlite3_uint64 range")?;
 
@@ -408,7 +408,7 @@ impl<'conn> Statement<'conn> {
     }
 }
 
-impl<'stmt, 'conn> Row<'stmt, 'conn> {
+impl Row<'_, '_> {
     pub fn column_blob(&mut self, index: i32) -> anyhow::Result<&[u8]> {
         anyhow::ensure!(
             !matches!(self.column_type(index)?, SqlType::Null),
@@ -449,7 +449,7 @@ impl<'stmt, 'conn> Row<'stmt, 'conn> {
 
         // Safety: blob_ptr and blob_len came from SQLite for the current row and the
         // checks above guarantee a valid non-null pointer with blob_len > 0.
-        let result = unsafe { std::slice::from_raw_parts(blob_ptr as *const u8, blob_len) };
+        let result = unsafe { std::slice::from_raw_parts(blob_ptr.cast::<u8>(), blob_len) };
 
         Ok(result)
     }

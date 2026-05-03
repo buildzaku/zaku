@@ -694,7 +694,7 @@ impl ThemeRegistry {
 
     fn insert_themes(&self, themes: impl IntoIterator<Item = Theme>) {
         let mut state = self.state.write();
-        for theme in themes.into_iter() {
+        for theme in themes {
             state.themes.insert(theme.name.clone(), Arc::new(theme));
         }
     }
