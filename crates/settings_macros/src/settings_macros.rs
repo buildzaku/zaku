@@ -76,12 +76,12 @@ pub fn with_fallible_options(_args: TokenStream, input: TokenStream) -> TokenStr
             Fields::Unit => {}
             Fields::Named(fields) => {
                 for field in &mut fields.named {
-                    add_if_option(field)
+                    add_if_option(field);
                 }
             }
             Fields::Unnamed(fields) => {
                 for field in &mut fields.unnamed {
-                    add_if_option(field)
+                    add_if_option(field);
                 }
             }
         }

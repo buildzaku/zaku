@@ -34,9 +34,21 @@ edition = "2024"
 publish = false
 
 [workspace.lints.clippy]
-type_complexity = { level = "allow" }
+pedantic = { level = "deny", priority = -1 }
+dbg_macro = { level = "deny" }
+todo = { level = "deny" }
+missing_errors_doc = { level = "allow" }
+missing_panics_doc = { level = "allow" }
+module_inception = { level = "allow" }
+module_name_repetitions = { level = "allow" }
+must_use_candidate = { level = "allow" }
+redundant_closure_for_method_calls = { level = "allow" }
+return_self_not_must_use = { level = "allow" }
+struct_excessive_bools = { level = "allow" }
+too_many_lines = { level = "allow" }
 too_many_arguments = { level = "allow" }
-style = { level = "allow" }
+type_complexity = { level = "allow" }
+unreadable_literal = { level = "allow" }
 
 [workspace.dependencies]
 ##################################################

@@ -1,7 +1,5 @@
 pub mod worktree_store;
 
-use anyhow;
-
 #[cfg(any(test, feature = "test-support"))]
 use gpui::TestAppContext;
 

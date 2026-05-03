@@ -107,7 +107,7 @@ impl RenderOnce for SectionButton {
                     ),
             )
             .on_click(move |_, window, cx| {
-                self.focus_handle.dispatch_action(&*self.action, window, cx)
+                self.focus_handle.dispatch_action(&*self.action, window, cx);
             })
     }
 }
@@ -258,10 +258,10 @@ impl WelcomePage {
     ) -> impl IntoElement {
         let (icon, title) = match location {
             SerializedWorkspaceLocation::Local(path) => {
-                let title = path
-                    .file_name()
-                    .map(|file_name| file_name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                let title = path.file_name().map_or_else(
+                    || path.to_string_lossy().into_owned(),
+                    |file_name| file_name.to_string_lossy().into_owned(),
+                );
                 (IconName::Folder, title)
             }
         };
@@ -324,10 +324,10 @@ impl Render for WelcomePage {
             )
             .child(CONTENT.render(0, &self.focus_handle, cx));
 
-        let welcome_content = if !recent_projects.is_empty() {
-            welcome_content.child(self.render_recent_project_section(recent_projects))
-        } else {
+        let welcome_content = if recent_projects.is_empty() {
             welcome_content
+        } else {
+            welcome_content.child(self.render_recent_project_section(recent_projects))
         };
 
         ui::h_flex()
