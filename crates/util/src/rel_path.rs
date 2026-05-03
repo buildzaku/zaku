@@ -62,8 +62,7 @@ impl RelPath {
             let mut normalized = RelPathBuf::new();
             for component in result.components() {
                 match component {
-                    "" => {}
-                    "." => {}
+                    "" | "." => {}
                     ".." => {
                         if !normalized.pop() {
                             return Err(anyhow!("path is not relative: {result:?}"));
@@ -166,9 +165,8 @@ impl RelPath {
 
     pub fn display(&self, path_style: PathStyle) -> Cow<'_, str> {
         match path_style {
-            PathStyle::Posix => Cow::Borrowed(&self.0),
             PathStyle::Windows if self.0.contains('/') => Cow::Owned(self.0.replace('/', "\\")),
-            PathStyle::Windows => Cow::Borrowed(&self.0),
+            PathStyle::Posix | PathStyle::Windows => Cow::Borrowed(&self.0),
         }
     }
 

@@ -26,11 +26,12 @@ const DEFAULT_FILTERS: &[(&str, LevelFilter)] = &[
 
 pub fn init_env_filter(filter: EnvFilter) {
     if let Some(level_max) = filter.level_global {
-        LEVEL_ENABLED_MAX_STATIC.store(level_max as u8, Ordering::Release)
+        LEVEL_ENABLED_MAX_STATIC.store(level_max as u8, Ordering::Release);
     }
-    if ENV_FILTER.set(filter).is_err() {
-        panic!("Environment filter cannot be initialized twice");
-    }
+    assert!(
+        ENV_FILTER.set(filter).is_ok(),
+        "Environment filter cannot be initialized twice"
+    );
 }
 
 pub fn is_possibly_enabled_level(level: Level) -> bool {
@@ -93,8 +94,7 @@ fn level_enabled_max(scope_map: &ScopeMap) -> u8 {
 
 fn level_filter_from_str(level_str: &str) -> Option<LevelFilter> {
     let level = match level_str.to_ascii_lowercase().as_str() {
-        "" => LevelFilter::Trace,
-        "trace" => LevelFilter::Trace,
+        "" | "trace" => LevelFilter::Trace,
         "debug" => LevelFilter::Debug,
         "info" => LevelFilter::Info,
         "warn" => LevelFilter::Warn,
@@ -194,7 +194,7 @@ impl ScopeMap {
 
         let all_filters = default_filters
             .iter()
-            .cloned()
+            .copied()
             .chain(env_filters)
             .chain(new_filters);
 
@@ -302,10 +302,10 @@ impl ScopeMap {
 
             let result_entries_end = this.entries.len();
 
-            if parent_index != usize::MAX {
-                this.entries[parent_index].descendants = result_entries_start..result_entries_end;
-            } else {
+            if parent_index == usize::MAX {
                 this.root_count = result_entries_end;
+            } else {
+                this.entries[parent_index].descendants = result_entries_start..result_entries_end;
             }
         }
 

@@ -81,9 +81,8 @@ impl futures::Stream for StreamReader {
     ) -> Poll<Option<Self::Item>> {
         let mut this = self.as_mut();
 
-        let mut reader = match this.reader.take() {
-            Some(reader) => reader,
-            None => return Poll::Ready(None),
+        let Some(mut reader) = this.reader.take() else {
+            return Poll::Ready(None);
         };
 
         if this.buffer.capacity() == 0 {

@@ -194,7 +194,7 @@ pub fn submit(mut record: Record) {
                 Ok(Some(file)) => *file_guard = Some(file),
                 Ok(None) => {}
                 Err(error) => {
-                    eprintln!("Failed to open log file: {error}")
+                    eprintln!("Failed to open log file: {error}");
                 }
             }
             SINK_FILE_SIZE_BYTES.store(0, Ordering::Release);

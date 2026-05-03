@@ -5,7 +5,7 @@ pub fn marked_text_offsets_by(
     marked_text: &str,
     markers: Vec<char>,
 ) -> (String, HashMap<char, Vec<usize>>) {
-    let mut extracted_markers: HashMap<char, Vec<usize>> = Default::default();
+    let mut extracted_markers: HashMap<char, Vec<usize>> = HashMap::default();
     let mut unmarked_text = String::new();
 
     for character in marked_text.chars() {
@@ -116,9 +116,7 @@ pub fn marked_text_ranges(
                 current_range_start = Some(unmarked_len);
             }
             "»" => {
-                let current_range_start = if let Some(start) = current_range_start.take() {
-                    start
-                } else {
+                let Some(current_range_start) = current_range_start.take() else {
                     panic!("unexpected range end marker '»' at index {marked_index}");
                 };
 
@@ -206,8 +204,10 @@ impl TextRangeMarker {
     fn markers(&self) -> Vec<char> {
         match self {
             Self::Empty(marker) => vec![*marker],
-            Self::Range(start_marker, end_marker) => vec![*start_marker, *end_marker],
-            Self::ReverseRange(start_marker, end_marker) => vec![*start_marker, *end_marker],
+            Self::Range(start_marker, end_marker)
+            | Self::ReverseRange(start_marker, end_marker) => {
+                vec![*start_marker, *end_marker]
+            }
         }
     }
 }

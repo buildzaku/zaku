@@ -12,24 +12,21 @@ pub fn parse(filter: &str) -> anyhow::Result<EnvFilter> {
     let mut directive_levels = Vec::new();
 
     for directive in filter.split(',') {
-        match directive.split_once('=') {
-            Some((name, level)) => {
-                anyhow::ensure!(!level.contains('='), "Invalid directive: {directive}");
+        if let Some((name, level)) = directive.split_once('=') {
+            anyhow::ensure!(!level.contains('='), "Invalid directive: {directive}");
 
-                let level = parse_level(level.trim())?;
-                directive_names.push(name.trim().trim_end_matches(".rs").to_string());
-                directive_levels.push(level);
-            }
-            None => {
-                let Ok(level) = parse_level(directive.trim()) else {
-                    directive_names.push(directive.trim().trim_end_matches(".rs").to_string());
-                    directive_levels.push(LevelFilter::max());
-                    continue;
-                };
-                anyhow::ensure!(max_level.is_none(), "Cannot set multiple max levels");
-                max_level.replace(level);
-            }
-        };
+            let level = parse_level(level.trim())?;
+            directive_names.push(name.trim().trim_end_matches(".rs").to_string());
+            directive_levels.push(level);
+        } else {
+            let Ok(level) = parse_level(directive.trim()) else {
+                directive_names.push(directive.trim().trim_end_matches(".rs").to_string());
+                directive_levels.push(LevelFilter::max());
+                continue;
+            };
+            anyhow::ensure!(max_level.is_none(), "Cannot set multiple max levels");
+            max_level.replace(level);
+        }
     }
 
     Ok(EnvFilter {
@@ -41,17 +38,17 @@ pub fn parse(filter: &str) -> anyhow::Result<EnvFilter> {
 
 fn parse_level(level: &str) -> anyhow::Result<LevelFilter> {
     if level.eq_ignore_ascii_case("TRACE") {
-        return Ok(LevelFilter::Trace);
+        Ok(LevelFilter::Trace)
     } else if level.eq_ignore_ascii_case("DEBUG") {
-        return Ok(LevelFilter::Debug);
+        Ok(LevelFilter::Debug)
     } else if level.eq_ignore_ascii_case("INFO") {
-        return Ok(LevelFilter::Info);
+        Ok(LevelFilter::Info)
     } else if level.eq_ignore_ascii_case("WARN") {
-        return Ok(LevelFilter::Warn);
+        Ok(LevelFilter::Warn)
     } else if level.eq_ignore_ascii_case("ERROR") {
-        return Ok(LevelFilter::Error);
+        Ok(LevelFilter::Error)
     } else if level.eq_ignore_ascii_case("OFF") || level.eq_ignore_ascii_case("NONE") {
-        return Ok(LevelFilter::Off);
+        Ok(LevelFilter::Off)
     } else {
         anyhow::bail!("Invalid level: {level}")
     }
