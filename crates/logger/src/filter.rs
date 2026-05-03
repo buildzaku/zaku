@@ -1,7 +1,6 @@
 use log::{Level, LevelFilter};
 use std::{
     collections::{HashMap, VecDeque},
-    hash::BuildHasher,
     ops::Range,
     sync::{
         OnceLock, RwLock,
@@ -60,7 +59,7 @@ pub fn is_scope_enabled(scope: &ScopeRef<'_>, module_path: Option<&str>, level: 
     }
 }
 
-pub fn refresh_from_settings<S: BuildHasher>(settings: &HashMap<String, String, S>) {
+pub fn refresh_from_settings<S: std::hash::BuildHasher>(settings: &HashMap<String, String, S>) {
     let env_config = ENV_FILTER.get();
     let map_new = ScopeMap::new_from_settings_and_env(settings, env_config, DEFAULT_FILTERS);
     let level_enabled_max = level_enabled_max(&map_new);
@@ -174,7 +173,7 @@ pub enum EnabledStatus {
 }
 
 impl ScopeMap {
-    pub fn new_from_settings_and_env<S: BuildHasher>(
+    pub fn new_from_settings_and_env<S: std::hash::BuildHasher>(
         items_input_map: &HashMap<String, String, S>,
         env_config: Option<&EnvFilter>,
         default_filters: &[(&str, LevelFilter)],
@@ -843,9 +842,8 @@ mod tests {
                 is_possibly_enabled_level(expected_level),
                 "configured module logs should survive the max enabled level check before module matching runs",
             );
-            assert_eq!(
+            assert!(
                 is_scope_enabled(&scope_new(&[""]), Some("crate::module"), expected_level),
-                true,
                 "exact module matching should allow the configured module level once the filter is checked",
             );
         }

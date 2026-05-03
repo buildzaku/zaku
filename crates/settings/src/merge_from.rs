@@ -1,4 +1,5 @@
 use gpui::Pixels;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub trait MergeFrom {
     fn merge_from(&mut self, other: &Self);
@@ -15,7 +16,7 @@ macro_rules! merge_from_overwrites {
         $(
             impl MergeFrom for $type {
                 fn merge_from(&mut self, other: &Self) {
-                    *self = other.clone();
+                    self.clone_from(other);
                 }
             }
         )+
@@ -60,7 +61,7 @@ impl<T: Clone + MergeFrom> MergeFrom for Option<T> {
 
 impl<T: Clone> MergeFrom for Vec<T> {
     fn merge_from(&mut self, other: &Self) {
-        *self = other.clone();
+        self.clone_from(other);
     }
 }
 
@@ -70,10 +71,11 @@ impl<T: MergeFrom> MergeFrom for Box<T> {
     }
 }
 
-impl<K, V> MergeFrom for std::collections::HashMap<K, V>
+impl<K, V, S> MergeFrom for HashMap<K, V, S>
 where
     K: Clone + std::hash::Hash + Eq,
     V: Clone + MergeFrom,
+    S: std::hash::BuildHasher,
 {
     fn merge_from(&mut self, other: &Self) {
         for (key, value) in other {
@@ -86,7 +88,7 @@ where
     }
 }
 
-impl<K, V> MergeFrom for std::collections::BTreeMap<K, V>
+impl<K, V> MergeFrom for BTreeMap<K, V>
 where
     K: Clone + std::hash::Hash + Eq + Ord,
     V: Clone + MergeFrom,
@@ -118,7 +120,7 @@ where
     }
 }
 
-impl<T> MergeFrom for std::collections::BTreeSet<T>
+impl<T> MergeFrom for BTreeSet<T>
 where
     T: Clone + Ord,
 {
@@ -129,9 +131,10 @@ where
     }
 }
 
-impl<T> MergeFrom for std::collections::HashSet<T>
+impl<T, S> MergeFrom for HashSet<T, S>
 where
     T: Clone + std::hash::Hash + Eq,
+    S: std::hash::BuildHasher,
 {
     fn merge_from(&mut self, other: &Self) {
         for item in other {

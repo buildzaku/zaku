@@ -478,7 +478,7 @@ mod tests {
                     Path::new(lhs).cmp(Path::new(rhs)),
                     RelPath::unix(lhs)
                         .unwrap()
-                        .cmp(&RelPath::unix(*rhs).unwrap())
+                        .cmp(RelPath::unix(*rhs).unwrap())
                 );
             }
         }

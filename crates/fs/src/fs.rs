@@ -579,7 +579,7 @@ impl Fs for NativeFs {
             if options.ignore_if_exists {
                 return Ok(());
             }
-            anyhow::bail!("{target:?} already exists");
+            anyhow::bail!("{} already exists", target.display());
         }
 
         smol::fs::rename(source, target).await?;
@@ -642,7 +642,7 @@ impl Fs for NativeFs {
     ) {
         let executor = self.executor.clone();
         let (tx, rx) = smol::channel::unbounded();
-        let pending_paths: Arc<Mutex<Vec<PathEvent>>> = Default::default();
+        let pending_paths: Arc<Mutex<Vec<PathEvent>>> = Arc::default();
         let watcher = Arc::new(FsWatcher::new(tx, pending_paths.clone()));
 
         if let Err(error) = watcher.add(path)
@@ -657,7 +657,11 @@ impl Fs for NativeFs {
         }
 
         if let Ok(mut target) = self.read_link(path).await {
-            log::trace!("Watching symlink target {path:?} -> {target:?}");
+            log::trace!(
+                "Watching symlink target {} -> {}",
+                path.display(),
+                target.display()
+            );
 
             if target.is_relative()
                 && let Some(parent) = path.parent()
@@ -773,23 +777,23 @@ impl TempFs {
     }
 
     pub fn insert_tree(&self, path: impl AsRef<Path>, tree: Value) {
-        fn inner(directory: &Path, path: Arc<Path>, tree: Value) {
+        fn inner(directory: &Path, path: &Path, tree: Value) {
             match tree {
                 Value::Object(map) => {
-                    let absolute_path = resolve_path(directory, path.as_ref());
+                    let absolute_path = resolve_path(directory, path);
                     std::fs::create_dir_all(&absolute_path).unwrap();
                     for (name, contents) in map {
-                        let mut new_path = PathBuf::from(path.as_ref());
+                        let mut new_path = PathBuf::from(path);
                         new_path.push(name);
-                        inner(directory, Arc::from(new_path), contents);
+                        inner(directory, &new_path, contents);
                     }
                 }
                 Value::Null => {
-                    let absolute_path = resolve_path(directory, path.as_ref());
+                    let absolute_path = resolve_path(directory, path);
                     std::fs::create_dir_all(&absolute_path).unwrap();
                 }
                 Value::String(contents) => {
-                    let absolute_path = resolve_path(directory, path.as_ref());
+                    let absolute_path = resolve_path(directory, path);
                     if let Some(parent) = absolute_path.parent() {
                         std::fs::create_dir_all(parent).unwrap();
                     }
@@ -801,7 +805,7 @@ impl TempFs {
             }
         }
 
-        inner(self.path(), Arc::from(path.as_ref()), tree);
+        inner(self.path(), path.as_ref(), tree);
     }
 }
 

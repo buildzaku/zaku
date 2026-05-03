@@ -27,7 +27,7 @@ impl FsWatcher {
         Self {
             tx,
             pending_path_events,
-            registrations: Default::default(),
+            registrations: Mutex::default(),
         }
     }
 }
@@ -50,7 +50,7 @@ impl Drop for FsWatcher {
 
 impl Watcher for FsWatcher {
     fn add(&self, path: &Path) -> anyhow::Result<()> {
-        log::trace!("Adding watch for {path:?}");
+        log::trace!("Adding watch for {}", path.display());
 
         let tx = self.tx.clone();
         let pending_paths = self.pending_path_events.clone();
@@ -64,7 +64,11 @@ impl Watcher for FsWatcher {
                 .next_back()
                 && path.starts_with(watched_path.as_ref())
             {
-                log::trace!("Skipping watch for {path:?}; covered by {watched_path:?}");
+                log::trace!(
+                    "Skipping watch for {}; covered by {}",
+                    path.display(),
+                    watched_path.display()
+                );
                 return Ok(());
             }
         }
@@ -72,7 +76,7 @@ impl Watcher for FsWatcher {
         #[cfg(target_os = "linux")]
         {
             if self.registrations.lock().contains_key(path) {
-                log::trace!("Skipping watch for {path:?}; already watched");
+                log::trace!("Skipping watch for {}; already watched", path.display());
                 return Ok(());
             }
         }
@@ -85,7 +89,11 @@ impl Watcher for FsWatcher {
 
         #[cfg(target_os = "macos")]
         if original_watch_path.as_ref() != watch_path.as_ref() {
-            log::trace!("Canonicalized watched path {original_watch_path:?} -> {watch_path:?}");
+            log::trace!(
+                "Canonicalized watched path {} -> {}",
+                original_watch_path.display(),
+                watch_path.display()
+            );
         }
 
         #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -142,7 +150,8 @@ impl Watcher for FsWatcher {
 
                     if event.need_rescan() {
                         log::warn!(
-                            "Filesystem watcher lost sync for {original_watch_path:?}; scheduling rescan"
+                            "Filesystem watcher lost sync for {}; scheduling rescan",
+                            original_watch_path.display()
                         );
                         path_events
                             .retain(|path_event| path_event.path != original_watch_path.as_ref());
@@ -177,7 +186,7 @@ impl Watcher for FsWatcher {
     }
 
     fn remove(&self, path: &Path) -> anyhow::Result<()> {
-        log::trace!("Removing watch for {path:?}");
+        log::trace!("Removing watch for {}", path.display());
 
         let Some(registration) = self.registrations.lock().remove(path) else {
             return Ok(());
@@ -282,7 +291,6 @@ pub struct GlobalWatcher {
 }
 
 impl GlobalWatcher {
-    #[must_use]
     fn add(
         &self,
         path: Arc<Path>,
@@ -376,9 +384,9 @@ pub fn global<T>(callback: impl FnOnce(&GlobalWatcher) -> T) -> anyhow::Result<T
     let result = FS_WATCHER_INSTANCE.get_or_init(|| {
         notify::recommended_watcher(handle_event).map(|watcher| GlobalWatcher {
             state: Mutex::new(WatcherState {
-                watchers: Default::default(),
-                path_registrations: Default::default(),
-                last_registration: Default::default(),
+                watchers: HashMap::default(),
+                path_registrations: HashMap::default(),
+                last_registration: WatcherRegistrationId::default(),
             }),
             watcher: Mutex::new(watcher),
         })

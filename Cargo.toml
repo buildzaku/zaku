@@ -49,6 +49,7 @@ too_many_lines = { level = "allow" }
 too_many_arguments = { level = "allow" }
 type_complexity = { level = "allow" }
 unreadable_literal = { level = "allow" }
+unsafe_derive_deserialize = { level = "allow" }
 
 [workspace.dependencies]
 ##################################################
