@@ -17,7 +17,8 @@ use util::test::{generate_marked_text, marked_text_ranges};
 
 use crate::{
     DEFAULT_TAB_SIZE, Editor, EditorMode, SelectionEffects, SelectionHistory,
-    display_map::HighlightKey, next_buffer_id,
+    display_map::{DisplayMap, HighlightKey},
+    next_buffer_id,
 };
 
 pub struct EditorTestContext {
@@ -83,17 +84,14 @@ impl EditorTestContext {
         ));
         let (text, mut ranges) = marked_text_ranges(marked_text, true);
         let selection = ranges.pop().unwrap_or(0..0);
-        if !ranges.is_empty() {
-            panic!("expected a single selection range");
-        }
+        assert!(ranges.is_empty(), "expected a single selection range");
 
         self.update_editor(|editor, _, cx| {
             let text_buffer =
                 cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text.as_str()));
             let buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer.clone(), cx));
             editor.buffer = buffer.clone();
-            editor.display_map =
-                cx.new(|cx| crate::display_map::DisplayMap::new(buffer, DEFAULT_TAB_SIZE, cx));
+            editor.display_map = cx.new(|cx| DisplayMap::new(buffer, DEFAULT_TAB_SIZE, cx));
             editor.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
                 selections.select_ranges([
                     MultiBufferOffset(selection.start)..MultiBufferOffset(selection.end)
@@ -114,9 +112,7 @@ impl EditorTestContext {
     pub fn assert_state(&mut self, marked_text: &str) {
         let (expected_text, mut ranges) = marked_text_ranges(marked_text, true);
         let expected_selection = ranges.pop().unwrap_or(0..0);
-        if !ranges.is_empty() {
-            panic!("expected a single selection range");
-        }
+        assert!(ranges.is_empty(), "expected a single selection range");
 
         let (actual_text, actual_selection) = self.editor.read_with(&self.cx, |editor, cx| {
             (editor.buffer_snapshot(cx).text(), editor.selection(cx))

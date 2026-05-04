@@ -208,7 +208,7 @@ pub struct MutableSelectionsCollection<'snap, 'a> {
     selections_changed: bool,
 }
 
-impl<'snap, 'a> fmt::Debug for MutableSelectionsCollection<'snap, 'a> {
+impl fmt::Debug for MutableSelectionsCollection<'_, '_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("MutableSelectionsCollection")
@@ -312,9 +312,12 @@ impl MutableSelectionsCollection<'_, '_> {
             }
         }
 
-        let new_disjoint = Arc::from_iter(selections.into_iter().map(|selection| {
-            selection_to_anchor_selection(selection, self.snapshot.buffer_snapshot())
-        }));
+        let new_disjoint = selections
+            .into_iter()
+            .map(|selection| {
+                selection_to_anchor_selection(&selection, self.snapshot.buffer_snapshot())
+            })
+            .collect::<Arc<_>>();
 
         let had_pending = self.collection.pending.is_some();
         self.collection.pending = None;
@@ -324,11 +327,10 @@ impl MutableSelectionsCollection<'_, '_> {
         }
     }
 
-    pub fn select_anchors(&mut self, selections: Vec<Selection<Anchor>>) {
+    pub fn select_anchors(&mut self, selections: &[Selection<Anchor>]) {
         let map = self.display_snapshot();
-        let resolved =
-            resolve_selections_wrapping_blocks::<MultiBufferOffset, _>(selections.iter(), &map)
-                .collect::<Vec<_>>();
+        let resolved = resolve_selections_wrapping_blocks::<MultiBufferOffset, _>(selections, &map)
+            .collect::<Vec<_>>();
         self.select(resolved);
     }
 
@@ -454,7 +456,7 @@ impl DerefMut for MutableSelectionsCollection<'_, '_> {
 }
 
 fn selection_to_anchor_selection(
-    selection: Selection<MultiBufferOffset>,
+    selection: &Selection<MultiBufferOffset>,
     buffer: &MultiBufferSnapshot,
 ) -> Selection<Anchor> {
     let end_bias = if selection.start == selection.end {
@@ -488,11 +490,9 @@ fn resolve_selections_point<'a>(
         let end = summaries.next().expect("end summary must exist");
         assert!(
             start <= end,
-            "anchors: start: {:?}, end: {:?}; resolved to: start: {:?}, end: {:?}",
+            "anchors: start: {:?}, end: {:?}; resolved to: start: {start:?}, end: {end:?}",
             selection.start,
             selection.end,
-            start,
-            end
         );
 
         Selection {
@@ -521,9 +521,7 @@ fn resolve_selections_display<'a>(
         );
         assert!(
             display_start <= display_end,
-            "display_start: {:?}, display_end: {:?}",
-            display_start,
-            display_end
+            "display_start: {display_start:?}, display_end: {display_end:?}",
         );
 
         Selection {
@@ -551,7 +549,7 @@ where
             .dimensions_from_points::<D>(to_convert.flat_map(|selection| {
                 let start = map.display_point_to_point(selection.start, Bias::Left);
                 let end = map.display_point_to_point(selection.end, Bias::Right);
-                assert!(start <= end, "start: {:?}, end: {:?}", start, end);
+                assert!(start <= end, "start: {start:?}, end: {end:?}");
                 [start, end]
             }));
 
@@ -562,7 +560,7 @@ where
         let end = converted_endpoints
             .next()
             .expect("end converted endpoint must exist");
-        assert!(start <= end, "start: {:?}, end: {:?}", start, end);
+        assert!(start <= end, "start: {start:?}, end: {end:?}");
         Selection {
             id: selection.id,
             start,
@@ -604,7 +602,7 @@ fn coalesce_selections<D: Ord + fmt::Debug + Copy>(
             "selection.start: {:?}, selection.end: {:?}, selection.reversed: {:?}",
             selection.start,
             selection.end,
-            selection.reversed
+            selection.reversed,
         );
         Some(selection)
     })

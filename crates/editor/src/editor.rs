@@ -15,6 +15,7 @@ use multi_buffer::{
     Anchor, Capability, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
     MultiBufferSnapshot, ToOffset, ToPoint,
 };
+use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::{
     any::TypeId,
@@ -741,7 +742,9 @@ impl Editor {
                 .get(..column_bytes)
                 .unwrap_or("")
                 .chars()
-                .count() as f64;
+                .count()
+                .to_f64()
+                .unwrap();
             let goal_column = match self.selection_goal {
                 SelectionGoal::HorizontalPosition(x) => x,
                 SelectionGoal::HorizontalRange { end, .. } => end,
@@ -760,8 +763,13 @@ impl Editor {
                     .min(buffer_snapshot.max_point().row)
             };
             let target_line = buffer_line_text(display_snapshot.buffer_snapshot(), target_row);
+            let goal_column = goal_column
+                .max(0.0)
+                .to_usize()
+                .expect("goal column should fit in usize");
             let target_column =
-                byte_offset_from_char_count(&target_line, goal_column as usize) as u32;
+                u32::try_from(byte_offset_from_char_count(&target_line, goal_column))
+                    .expect("target column should fit in u32");
 
             return buffer_snapshot
                 .point_to_offset(text::Point {
@@ -1208,7 +1216,7 @@ impl Editor {
             let offset = self.offset_for_horizontal_move(-1, cx);
             self.move_to(offset, cx);
         } else {
-            self.move_to(selected_range.start, cx)
+            self.move_to(selected_range.start, cx);
         }
     }
 
@@ -1218,7 +1226,7 @@ impl Editor {
             let offset = self.offset_for_horizontal_move(1, cx);
             self.move_to(offset, cx);
         } else {
-            self.move_to(selected_range.end, cx)
+            self.move_to(selected_range.end, cx);
         }
     }
 
@@ -1765,8 +1773,8 @@ impl Editor {
 
     pub fn do_paste(
         &mut self,
-        text: &String,
-        clipboard_selections: Option<Vec<ClipboardSelection>>,
+        text: &str,
+        clipboard_selections: Option<&[ClipboardSelection]>,
         handle_entire_lines: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1776,13 +1784,10 @@ impl Editor {
         }
 
         let selected_range = self.selected_range(cx);
-        let mut text_to_insert = text.as_str();
+        let mut text_to_insert = text;
         let mut is_entire_line = false;
 
-        if let Some(selection) = clipboard_selections
-            .as_ref()
-            .and_then(|selections| selections.first())
-        {
+        if let Some(selection) = clipboard_selections.and_then(|selections| selections.first()) {
             is_entire_line = selection.is_entire_line;
 
             if let Some(slice) = text.get(..selection.len.min(text.len())) {
@@ -1830,9 +1835,11 @@ impl Editor {
             match entries.first() {
                 // For now, we only support applying metadata if there's one string.
                 Some(ClipboardEntry::String(clipboard_string)) if entries.len() == 1 => {
+                    let clipboard_selections =
+                        clipboard_string.metadata_json::<Vec<ClipboardSelection>>();
                     self.do_paste(
                         clipboard_string.text(),
-                        clipboard_string.metadata_json::<Vec<ClipboardSelection>>(),
+                        clipboard_selections.as_deref(),
                         true,
                         window,
                         cx,
@@ -1875,7 +1882,7 @@ impl Editor {
             .cloned()
         {
             self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_anchors(selections.to_vec());
+                s.select_anchors(&selections);
             });
         }
         self.clear_highlights(HighlightKey::InputComposition, cx);
@@ -1903,7 +1910,7 @@ impl Editor {
             .cloned()
         {
             self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_anchors(selections.to_vec());
+                s.select_anchors(&selections);
             });
         }
         self.clear_highlights(HighlightKey::InputComposition, cx);
@@ -1923,7 +1930,7 @@ impl Editor {
                     SelectionEffects::scroll(scroll::Autoscroll::newest()),
                     cx,
                     |s| {
-                        s.select_anchors(entry.selections.to_vec());
+                        s.select_anchors(&entry.selections);
                     },
                 );
             });
@@ -1941,7 +1948,7 @@ impl Editor {
                     SelectionEffects::scroll(scroll::Autoscroll::newest()),
                     cx,
                     |s| {
-                        s.select_anchors(entry.selections.to_vec());
+                        s.select_anchors(&entry.selections);
                     },
                 );
             });
@@ -2221,7 +2228,13 @@ impl Editor {
         let point_for_position = position_map.point_for_position(position);
         let offset = if position_map.masked {
             let row = point_for_position.previous_valid.row().0;
-            let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
+            let scroll_row = position_map
+                .scroll_position
+                .y
+                .max(0.0)
+                .to_u32()
+                .expect("scroll row should fit in u32");
+            let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
             let Some(line) = position_map.line_layouts.get(line_index) else {
                 return snapshot.len().0;
             };
@@ -2233,8 +2246,11 @@ impl Editor {
                 .previous_valid
                 .column()
                 .saturating_add(point_for_position.column_overshoot_after_line_end);
+            let line_display_column_start = u32::try_from(line.line_display_column_start)
+                .expect("line display column should fit in u32");
             let local_display_column =
-                unclipped_column.saturating_sub(line.line_display_column_start as u32) as usize;
+                usize::try_from(unclipped_column.saturating_sub(line_display_column_start))
+                    .unwrap();
             let local_display_column = local_display_column.min(line.len);
             let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
             line.line_start_offset + buffer_column
@@ -2477,10 +2493,10 @@ impl EntityInputHandler for Editor {
                     .iter()
                     .any(|range| range.start != range.end);
                 this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-                    selections.select_ranges(new_selected_ranges)
+                    selections.select_ranges(new_selected_ranges);
                 });
                 if should_backspace {
-                    this.backspace(&Default::default(), window, cx);
+                    this.backspace(&Backspace, window, cx);
                 }
             }
 
@@ -2530,7 +2546,7 @@ impl EntityInputHandler for Editor {
 
             if let Some(ranges) = ranges_to_replace {
                 this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-                    selections.select_ranges(ranges)
+                    selections.select_ranges(ranges);
                 });
             }
 
@@ -2582,7 +2598,7 @@ impl EntityInputHandler for Editor {
                     })
                     .collect::<Vec<_>>();
                 this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-                    selections.select_ranges(new_selected_ranges)
+                    selections.select_ranges(new_selected_ranges);
                 });
             }
         });
@@ -2622,10 +2638,14 @@ impl EntityInputHandler for Editor {
             ));
 
         let row = start_point.row;
-        let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
-        let Some(line) = position_map.line_layouts.get(line_index) else {
-            return None;
-        };
+        let scroll_row = position_map
+            .scroll_position
+            .y
+            .max(0.0)
+            .to_u32()
+            .expect("scroll row should fit in u32");
+        let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
+        let line = position_map.line_layouts.get(line_index)?;
         if line.row.0 != row {
             return None;
         }
@@ -2673,7 +2693,13 @@ impl EntityInputHandler for Editor {
         let point_for_position = position_map.point_for_position(point);
         let offset = if position_map.masked {
             let row = point_for_position.previous_valid.row().0;
-            let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
+            let scroll_row = position_map
+                .scroll_position
+                .y
+                .max(0.0)
+                .to_u32()
+                .expect("scroll row should fit in u32");
+            let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
             let line = position_map.line_layouts.get(line_index)?;
             if line.row.0 != row {
                 return None;
@@ -2682,8 +2708,11 @@ impl EntityInputHandler for Editor {
                 .previous_valid
                 .column()
                 .saturating_add(point_for_position.column_overshoot_after_line_end);
+            let line_display_column_start = u32::try_from(line.line_display_column_start)
+                .expect("line display column should fit in u32");
             let local_display_column =
-                unclipped_column.saturating_sub(line.line_display_column_start as u32) as usize;
+                usize::try_from(unclipped_column.saturating_sub(line_display_column_start))
+                    .unwrap();
             let local_display_column = local_display_column.min(line.len);
             let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
             line.line_start_offset + buffer_column
@@ -2830,8 +2859,7 @@ fn byte_offset_from_char_count(text: &str, char_count: usize) -> usize {
 
     text.char_indices()
         .nth(char_count)
-        .map(|(index, _)| index)
-        .unwrap_or_else(|| text.len())
+        .map_or_else(|| text.len(), |(index, _)| index)
 }
 
 #[cfg(test)]

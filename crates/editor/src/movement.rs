@@ -323,12 +323,10 @@ pub fn adjust_greedy_deletion(
     };
 
     closest_whitespace_end
-        .unwrap_or_else(|| {
-            if is_backward {
-                trimmed_delete_range.start
-            } else {
-                trimmed_delete_range.end
-            }
+        .unwrap_or(if is_backward {
+            trimmed_delete_range.start
+        } else {
+            trimmed_delete_range.end
         })
         .to_display_point(map)
 }
@@ -460,7 +458,7 @@ mod tests {
     fn test_previous_word_start(cx: &mut App) {
         init_test(cx);
 
-        fn assert_previous_word_start(marked_text: &str, cx: &mut App) {
+        let assert_previous_word_start = |marked_text: &str, cx: &mut App| {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -473,7 +471,7 @@ mod tests {
                 actual, expected,
                 "previous_word_start mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
             );
-        }
+        };
 
         assert_previous_word_start("ˇ   ˇquick", cx);
         assert_previous_word_start(
@@ -518,7 +516,7 @@ mod tests {
     fn test_previous_subword_start(cx: &mut App) {
         init_test(cx);
 
-        fn assert_previous_subword_start(marked_text: &str, cx: &mut App) {
+        let assert_previous_subword_start = |marked_text: &str, cx: &mut App| {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -529,7 +527,7 @@ mod tests {
                 previous_subword_start(&snapshot, display_points[1]),
                 display_points[0]
             );
-        }
+        };
 
         assert_previous_subword_start("quick_ˇbrˇown", cx);
         assert_previous_subword_start("quick_ˇbrownˇ", cx);
@@ -574,27 +572,24 @@ mod tests {
     fn test_find_preceding_boundary(cx: &mut App) {
         init_test(cx);
 
-        fn assert_preceding_boundary(
-            marked_text: &str,
-            cx: &mut App,
-            is_boundary: &mut dyn FnMut(char, char) -> bool,
-        ) {
-            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
-            assert_eq!(
-                display_points.len(),
-                2,
-                "expected exactly 2 markers in: {marked_text:?}"
-            );
-            assert_eq!(
-                find_preceding_boundary_display_point(
-                    &snapshot,
-                    display_points[1],
-                    FindRange::MultiLine,
-                    is_boundary,
-                ),
-                display_points[0]
-            );
-        }
+        let assert_preceding_boundary =
+            |marked_text: &str, cx: &mut App, is_boundary: &mut dyn FnMut(char, char) -> bool| {
+                let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+                assert_eq!(
+                    display_points.len(),
+                    2,
+                    "expected exactly 2 markers in: {marked_text:?}"
+                );
+                assert_eq!(
+                    find_preceding_boundary_display_point(
+                        &snapshot,
+                        display_points[1],
+                        FindRange::MultiLine,
+                        is_boundary,
+                    ),
+                    display_points[0]
+                );
+            };
 
         assert_preceding_boundary(
             indoc! {"
@@ -637,7 +632,7 @@ mod tests {
     fn test_next_word_end(cx: &mut App) {
         init_test(cx);
 
-        fn assert_next_word_end(marked_text: &str, cx: &mut App) {
+        let assert_next_word_end = |marked_text: &str, cx: &mut App| {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -650,7 +645,7 @@ mod tests {
                 actual, expected,
                 "next_word_end mismatch for '{marked_text}': actual={actual:?}, expected={expected:?}",
             );
-        }
+        };
 
         assert_next_word_end(
             indoc! {"
@@ -693,7 +688,7 @@ mod tests {
     fn test_next_subword_end(cx: &mut App) {
         init_test(cx);
 
-        fn assert_next_subword_end(marked_text: &str, cx: &mut App) {
+        let assert_next_subword_end = |marked_text: &str, cx: &mut App| {
             let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
             assert_eq!(
                 display_points.len(),
@@ -704,7 +699,7 @@ mod tests {
                 next_subword_end(&snapshot, display_points[0]),
                 display_points[1]
             );
-        }
+        };
 
         assert_next_subword_end("quˇickˇ_brown", cx);
         assert_next_subword_end("ˇquickˇ_brown", cx);
@@ -748,27 +743,24 @@ mod tests {
     fn test_find_boundary(cx: &mut App) {
         init_test(cx);
 
-        fn assert_find_boundary(
-            marked_text: &str,
-            cx: &mut App,
-            is_boundary: &mut dyn FnMut(char, char) -> bool,
-        ) {
-            let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
-            assert_eq!(
-                display_points.len(),
-                2,
-                "expected exactly 2 markers in: {marked_text:?}"
-            );
-            assert_eq!(
-                find_boundary(
-                    &snapshot,
-                    display_points[0],
-                    FindRange::MultiLine,
-                    is_boundary,
-                ),
-                display_points[1]
-            );
-        }
+        let assert_find_boundary =
+            |marked_text: &str, cx: &mut App, is_boundary: &mut dyn FnMut(char, char) -> bool| {
+                let (snapshot, display_points) = marked_display_snapshot(marked_text, cx);
+                assert_eq!(
+                    display_points.len(),
+                    2,
+                    "expected exactly 2 markers in: {marked_text:?}"
+                );
+                assert_eq!(
+                    find_boundary(
+                        &snapshot,
+                        display_points[0],
+                        FindRange::MultiLine,
+                        is_boundary,
+                    ),
+                    display_points[1]
+                );
+            };
 
         assert_find_boundary(
             indoc! {"

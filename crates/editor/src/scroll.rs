@@ -2,6 +2,7 @@ pub(crate) mod autoscroll;
 
 use gpui::{Axis, Context, Pixels, Point};
 use multi_buffer::Anchor;
+use num_traits::ToPrimitive;
 use std::time::{Duration, Instant};
 
 use crate::{
@@ -37,7 +38,7 @@ impl ScrollAnchor {
         let scroll_top_row = if self.anchor == Anchor::Min {
             0.0
         } else {
-            self.anchor.to_display_point(snapshot).row().0 as f64
+            f64::from(self.anchor.to_display_point(snapshot).row().0)
         };
         position.y = (position.y + scroll_top_row).max(0.0);
 
@@ -54,7 +55,9 @@ pub struct OngoingScroll {
 impl OngoingScroll {
     fn new() -> Self {
         Self {
-            last_event: Instant::now() - SCROLL_EVENT_SEPARATION,
+            last_event: Instant::now()
+                .checked_sub(SCROLL_EVENT_SEPARATION)
+                .expect("current time should allow scroll event separation"),
             axis: None,
         }
     }
@@ -75,17 +78,13 @@ impl OngoingScroll {
             };
         } else if x.max(y) >= UNLOCK_LOWER_BOUND {
             match axis {
-                Some(Axis::Vertical) => {
-                    if x > y && x >= y * UNLOCK_PERCENT {
-                        axis = None;
-                    }
+                Some(Axis::Vertical) if x > y && x >= y * UNLOCK_PERCENT => {
+                    axis = None;
                 }
-                Some(Axis::Horizontal) => {
-                    if y > x && y >= x * UNLOCK_PERCENT {
-                        axis = None;
-                    }
+                Some(Axis::Horizontal) if y > x && y >= x * UNLOCK_PERCENT => {
+                    axis = None;
                 }
-                None => {}
+                Some(Axis::Vertical | Axis::Horizontal) | None => {}
             }
         }
 
@@ -144,13 +143,26 @@ impl ScrollManager {
     fn set_scroll_position(&mut self, snapshot: &DisplaySnapshot, position: Point<ScrollOffset>) {
         let max_row = snapshot.buffer_snapshot().max_point().row;
         let scroll_top = position.y.max(0.0);
-        let row = DisplayRow(scroll_top.floor().clamp(0.0, max_row as f64) as u32);
+        let row = DisplayRow(
+            scroll_top
+                .floor()
+                .clamp(0.0, f64::from(max_row))
+                .to_u32()
+                .expect("scroll row should fit in u32"),
+        );
         let display_point = snapshot.clip_point(
-            DisplayPoint::new(row, position.x.max(0.0) as u32),
+            DisplayPoint::new(
+                row,
+                position
+                    .x
+                    .clamp(0.0, f64::from(u32::MAX))
+                    .to_u32()
+                    .expect("scroll column should fit in u32"),
+            ),
             text::Bias::Left,
         );
         let anchor = snapshot.display_point_to_anchor(display_point, text::Bias::Left);
-        let anchor_row = anchor.to_display_point(snapshot).row().0 as f64;
+        let anchor_row = f64::from(anchor.to_display_point(snapshot).row().0);
         let offset_y = scroll_top - anchor_row;
 
         self.autoscroll_request.take();
@@ -193,11 +205,15 @@ impl Editor {
     }
 
     pub fn vertical_scroll_margin(&self) -> usize {
-        self.scroll_manager.vertical_scroll_margin as usize
+        self.scroll_manager
+            .vertical_scroll_margin
+            .max(0.0)
+            .to_usize()
+            .expect("vertical scroll margin should fit in usize")
     }
 
     pub fn set_vertical_scroll_margin(&mut self, margin_rows: usize, cx: &mut Context<Self>) {
-        self.scroll_manager.vertical_scroll_margin = margin_rows as ScrollOffset;
+        self.scroll_manager.vertical_scroll_margin = margin_rows.to_f64().unwrap();
         cx.notify();
     }
 }

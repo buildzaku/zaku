@@ -22,10 +22,8 @@ pub struct TabMap(TabSnapshot);
 
 impl TabMap {
     pub fn new(buffer_snapshot: MultiBufferSnapshot, tab_size: NonZeroU32) -> (Self, TabSnapshot) {
-        let max_tabs = NonZeroU32::new(
-            u32::try_from(text::Chunk::MASK_BITS).expect("chunk mask bits should fit in u32"),
-        )
-        .unwrap();
+        let mask_bits = u32::try_from(text::Chunk::MASK_BITS).unwrap();
+        let max_tabs = NonZeroU32::new(mask_bits).unwrap();
 
         let snapshot = TabSnapshot {
             buffer_snapshot,
@@ -43,10 +41,8 @@ impl TabMap {
         tab_size: NonZeroU32,
     ) -> (TabSnapshot, Vec<TabEdit>) {
         let old_snapshot = &mut self.0;
-        let max_tabs = NonZeroU32::new(
-            u32::try_from(text::Chunk::MASK_BITS).expect("chunk mask bits should fit in u32"),
-        )
-        .unwrap();
+        let mask_bits = u32::try_from(text::Chunk::MASK_BITS).unwrap();
+        let max_tabs = NonZeroU32::new(mask_bits).unwrap();
 
         let mut new_snapshot = TabSnapshot {
             buffer_snapshot,
@@ -109,8 +105,7 @@ impl TabMap {
                         remaining_tabs &= remaining_tabs - 1;
                     }
 
-                    let chunk_len =
-                        u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
+                    let chunk_len = u32::try_from(chunk.text.len()).unwrap();
                     offset_from_edit += chunk_len;
                     if old_end.column + offset_from_edit >= old_snapshot.max_expansion_column
                         && new_end.column + offset_from_edit >= new_snapshot.max_expansion_column
@@ -331,8 +326,7 @@ impl TabSnapshot {
         let left_over_char_bytes = if cursor.is_char_boundary() {
             0
         } else {
-            u32::try_from(cursor.bytes_until_next_char().unwrap_or(0))
-                .expect("character bytes should fit in u32")
+            u32::try_from(cursor.bytes_until_next_char().unwrap_or(0)).unwrap()
         };
 
         let collapsed_bytes = cursor.byte_offset() + left_over_char_bytes;
@@ -496,7 +490,7 @@ impl<'a> Iterator for TabChunks<'a> {
 
         let prefix_len = first_tab_idx;
         let (prefix, suffix) = self.chunk.text.split_at(prefix_len);
-        let prefix_len = u32::try_from(prefix_len).expect("chunk prefix length should fit in u32");
+        let prefix_len = u32::try_from(prefix_len).unwrap();
 
         let mask = 1u128.unbounded_shl(prefix_len).wrapping_sub(1);
         let prefix_chars = self.chunk.chars & mask;
@@ -604,8 +598,7 @@ where
             .or_else(|| self.chunks.next().zip(Some(0)))
         {
             if chunk.tabs == 0 {
-                let chunk_len =
-                    u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
+                let chunk_len = u32::try_from(chunk.text.len()).unwrap();
                 let chunk_distance = chunk_len - chunk_position;
                 if chunk_distance + traversed >= distance {
                     let overshoot = traversed.abs_diff(distance);
@@ -745,7 +738,7 @@ mod tests {
                 }
             } else {
                 expanded_chars += 1;
-                expanded_bytes += character.len_utf8() as u32;
+                expanded_bytes += u32::try_from(character.len_utf8()).unwrap();
             }
 
             if expanded_bytes > column && matches!(bias, Bias::Left) {
@@ -753,7 +746,7 @@ mod tests {
                 break;
             }
 
-            collapsed_bytes += character.len_utf8() as u32;
+            collapsed_bytes += u32::try_from(character.len_utf8()).unwrap();
         }
 
         (
@@ -783,10 +776,10 @@ mod tests {
                 expanded_bytes += tab_length;
                 expanded_chars += tab_length;
             } else {
-                expanded_bytes += character.len_utf8() as u32;
+                expanded_bytes += u32::try_from(character.len_utf8()).unwrap();
                 expanded_chars += 1;
             }
-            collapsed_bytes += character.len_utf8() as u32;
+            collapsed_bytes += u32::try_from(character.len_utf8()).unwrap();
         }
 
         expanded_bytes + column.saturating_sub(collapsed_bytes)
@@ -837,9 +830,10 @@ mod tests {
         assert_eq!(tab_snapshot_text(&tab_snapshot), output);
 
         for (index, character) in input.char_indices() {
+            let input_column = u32::try_from(index).unwrap();
             assert_eq!(
                 tab_snapshot
-                    .chunks(TabPoint::new(0, index as u32)..tab_snapshot.max_point())
+                    .chunks(TabPoint::new(0, input_column)..tab_snapshot.max_point())
                     .map(|chunk| chunk.text)
                     .collect::<String>(),
                 &output[index..],
@@ -847,11 +841,13 @@ mod tests {
             );
 
             if character != '\t' {
-                let input_point = Point::new(0, index as u32);
-                let output_column = output
-                    .find(character)
-                    .expect("character from input must exist in output")
-                    as u32;
+                let input_point = Point::new(0, input_column);
+                let output_column = u32::try_from(
+                    output
+                        .find(character)
+                        .expect("character from input must exist in output"),
+                )
+                .unwrap();
                 let output_point = TabPoint::new(0, output_column);
 
                 assert_eq!(
@@ -884,7 +880,7 @@ mod tests {
         let input = "\t \thello";
         let tab_snapshot = tab_snapshot_for_text(input, cx);
 
-        fn chunks(snapshot: &TabSnapshot, start: TabPoint) -> Vec<(String, bool)> {
+        let chunks = |snapshot: &TabSnapshot, start: TabPoint| -> Vec<(String, bool)> {
             let mut chunks = Vec::new();
             let mut was_tab = false;
             let mut text = String::new();
@@ -902,7 +898,7 @@ mod tests {
                 chunks.push((text, was_tab));
             }
             chunks
-        }
+        };
 
         assert_eq!(
             chunks(&tab_snapshot, TabPoint::zero()),
@@ -937,11 +933,11 @@ mod tests {
         let mut byte_offset = 0;
 
         for (offset, character) in text.char_indices() {
-            byte_offset += character.len_utf8() as u32;
+            byte_offset += u32::try_from(character.len_utf8()).unwrap();
             if character == '\t' {
                 all_tab_stops.push(TabStop {
                     byte_offset,
-                    char_offset: offset as u32 + 1,
+                    char_offset: u32::try_from(offset).unwrap() + 1,
                 });
             }
         }
@@ -966,11 +962,11 @@ mod tests {
         let mut byte_offset = 0;
 
         for (offset, character) in input.char_indices() {
-            byte_offset += character.len_utf8() as u32;
+            byte_offset += u32::try_from(character.len_utf8()).unwrap();
             if character == '\t' {
                 expected_tab_stops.push(TabStop {
                     byte_offset,
-                    char_offset: offset as u32 + 1,
+                    char_offset: u32::try_from(offset).unwrap() + 1,
                 });
             }
         }
@@ -1005,8 +1001,8 @@ mod tests {
 
             let chunks = [Chunk {
                 text,
-                tabs,
                 chars,
+                tabs,
                 ..Default::default()
             }];
 
@@ -1026,7 +1022,8 @@ mod tests {
         let tab_snapshot = tab_snapshot_for_text(input, cx);
 
         for (index, _) in input.char_indices() {
-            let range = TabPoint::new(0, index as u32)..tab_snapshot.max_point();
+            let input_column = u32::try_from(index).unwrap();
+            let range = TabPoint::new(0, input_column)..tab_snapshot.max_point();
 
             assert_eq!(
                 expected_buffer_point(&tab_snapshot, range.start, Bias::Left),
