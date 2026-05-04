@@ -1558,6 +1558,7 @@ dependencies = [
  "input",
  "itertools 0.14.0",
  "multi_buffer",
+ "num-traits",
  "pretty_assertions",
  "serde",
  "settings",

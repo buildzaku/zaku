@@ -7,6 +7,7 @@ use gpui::{
     TextStyle, UnderlineStyle, Window, prelude::*,
 };
 use multi_buffer::{MultiBufferOffset, MultiBufferRow};
+use num_traits::ToPrimitive;
 use std::{
     any::TypeId,
     cmp::{self, Ordering},
@@ -61,35 +62,41 @@ impl PositionMap {
     pub(crate) fn point_for_position(&self, position: Point<Pixels>) -> PointForPosition {
         let local_position = position - self.bounds.origin;
         let y = local_position.y.max(gpui::px(0.0)).min(self.size.height);
-        let x = local_position.x + self.scroll_position.x as f32 * self.em_layout_width;
-        let row = ((y / self.line_height) as f64 + self.scroll_position.y.max(0.0)) as u32;
+        let scroll_x_pixels =
+            Pixels::from(self.scroll_position.x * f64::from(self.em_layout_width));
+        let x = local_position.x + scroll_x_pixels;
+        let scroll_y = self.scroll_position.y.max(0.0);
+        let row = (f64::from(y / self.line_height) + scroll_y)
+            .to_u32()
+            .expect("display row should fit in u32");
+        let scroll_row = scroll_y.to_u32().expect("scroll row should fit in u32");
+        let line_index = usize::try_from(row.saturating_sub(scroll_row))
+            .expect("line index should fit in usize");
 
-        let (column, x_overshoot_after_line_end) = if let Some(line) = self
-            .line_layouts
-            .get(row.saturating_sub(self.scroll_position.y as u32) as usize)
-        {
-            let x_relative_to_text = x
-                - line.alignment_offset(self.text_align, self.content_width)
-                - self.em_layout_width * line.line_display_column_start as f32;
-            if let Some(index) = line.index_for_x(x_relative_to_text) {
-                let display_column = line
-                    .line_display_column_start
-                    .saturating_add(index)
-                    .min(u32::MAX as usize);
-                (display_column as u32, gpui::px(0.0))
+        let (column, x_overshoot_after_line_end) =
+            if let Some(line) = self.line_layouts.get(line_index) {
+                let x_relative_to_text = x
+                    - line.alignment_offset(self.text_align, self.content_width)
+                    - self.em_layout_width * line.line_display_column_start as f32;
+                if let Some(index) = line.index_for_x(x_relative_to_text) {
+                    let display_column = line
+                        .line_display_column_start
+                        .saturating_add(index)
+                        .min(u32::MAX as usize);
+                    (display_column as u32, gpui::px(0.0))
+                } else {
+                    let display_column = line
+                        .line_display_column_start
+                        .saturating_add(line.len)
+                        .min(u32::MAX as usize);
+                    (
+                        display_column as u32,
+                        gpui::px(0.0).max(x_relative_to_text - line.width),
+                    )
+                }
             } else {
-                let display_column = line
-                    .line_display_column_start
-                    .saturating_add(line.len)
-                    .min(u32::MAX as usize);
-                (
-                    display_column as u32,
-                    gpui::px(0.0).max(x_relative_to_text - line.width),
-                )
-            }
-        } else {
-            (0, x.max(gpui::px(0.0)))
-        };
+                (0, x.max(gpui::px(0.0)))
+            };
 
         let mut exact_unclipped =
             crate::display_map::DisplayPoint::new(crate::display_map::DisplayRow(row), column);
