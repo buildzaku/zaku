@@ -6,10 +6,7 @@ use multi_buffer::{MultiBufferOffset, MultiBufferRow, MultiBufferSnapshot};
 use super::raw_chunks::RawChunks;
 
 const MAX_EXPANSION_COLUMN: u32 = 256;
-
-// Handles a tab width <= 128
 const SPACES: &[u8; text::Chunk::MASK_BITS] = &[b' '; text::Chunk::MASK_BITS];
-const MAX_TABS: NonZeroU32 = NonZeroU32::new(SPACES.len() as u32).expect("non-zero tab width");
 
 #[derive(Clone, Debug, Default)]
 pub struct Chunk<'a> {
@@ -25,9 +22,14 @@ pub struct TabMap(TabSnapshot);
 
 impl TabMap {
     pub fn new(buffer_snapshot: MultiBufferSnapshot, tab_size: NonZeroU32) -> (Self, TabSnapshot) {
+        let max_tabs = NonZeroU32::new(
+            u32::try_from(text::Chunk::MASK_BITS).expect("chunk mask bits should fit in u32"),
+        )
+        .unwrap();
+
         let snapshot = TabSnapshot {
             buffer_snapshot,
-            tab_size: tab_size.min(MAX_TABS),
+            tab_size: tab_size.min(max_tabs),
             max_expansion_column: MAX_EXPANSION_COLUMN,
             version: 0,
         };
@@ -41,9 +43,14 @@ impl TabMap {
         tab_size: NonZeroU32,
     ) -> (TabSnapshot, Vec<TabEdit>) {
         let old_snapshot = &mut self.0;
+        let max_tabs = NonZeroU32::new(
+            u32::try_from(text::Chunk::MASK_BITS).expect("chunk mask bits should fit in u32"),
+        )
+        .unwrap();
+
         let mut new_snapshot = TabSnapshot {
             buffer_snapshot,
-            tab_size: tab_size.min(MAX_TABS),
+            tab_size: tab_size.min(max_tabs),
             max_expansion_column: old_snapshot.max_expansion_column,
             version: old_snapshot.version,
         };
@@ -102,7 +109,9 @@ impl TabMap {
                         remaining_tabs &= remaining_tabs - 1;
                     }
 
-                    offset_from_edit += chunk.text.len() as u32;
+                    let chunk_len =
+                        u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
+                    offset_from_edit += chunk_len;
                     if old_end.column + offset_from_edit >= old_snapshot.max_expansion_column
                         && new_end.column + offset_from_edit >= new_snapshot.max_expansion_column
                     {
@@ -209,7 +218,7 @@ impl TabSnapshot {
         }
     }
 
-    pub(crate) fn chunks<'a>(&'a self, range: Range<TabPoint>) -> TabChunks<'a> {
+    pub(crate) fn chunks(&self, range: Range<TabPoint>) -> TabChunks<'_> {
         let (input_start, expanded_char_column, to_next_stop) =
             self.tab_point_to_buffer_point(range.start, Bias::Left);
         let input_column = input_start.column;
@@ -295,7 +304,7 @@ impl TabSnapshot {
         )
     }
 
-    fn raw_chunks<'a>(&'a self, range: Range<MultiBufferOffset>) -> RawChunks<'a> {
+    fn raw_chunks(&self, range: Range<MultiBufferOffset>) -> RawChunks<'_> {
         RawChunks::new(range, &self.buffer_snapshot)
     }
 
@@ -319,10 +328,11 @@ impl TabSnapshot {
             seek_target = end_column.saturating_sub(cursor.byte_offset());
         }
 
-        let left_over_char_bytes = if !cursor.is_char_boundary() {
-            cursor.bytes_until_next_char().unwrap_or(0) as u32
-        } else {
+        let left_over_char_bytes = if cursor.is_char_boundary() {
             0
+        } else {
+            u32::try_from(cursor.bytes_until_next_char().unwrap_or(0))
+                .expect("character bytes should fit in u32")
         };
 
         let collapsed_bytes = cursor.byte_offset() + left_over_char_bytes;
@@ -366,13 +376,13 @@ impl TabSnapshot {
                     ),
                     Bias::Right => (cursor.byte_offset(), expanded_chars, 0),
                 };
-            } else {
-                collapsed_column = collapsed_column - tab_len + 1;
-                seek_target = (collapsed_column.saturating_sub(cursor.byte_offset())).min(
-                    self.max_expansion_column
-                        .saturating_sub(cursor.byte_offset()),
-                );
             }
+
+            collapsed_column = collapsed_column - tab_len + 1;
+            seek_target = (collapsed_column.saturating_sub(cursor.byte_offset())).min(
+                self.max_expansion_column
+                    .saturating_sub(cursor.byte_offset()),
+            );
         }
 
         let collapsed_bytes = cursor.byte_offset();
@@ -486,23 +496,24 @@ impl<'a> Iterator for TabChunks<'a> {
 
         let prefix_len = first_tab_idx;
         let (prefix, suffix) = self.chunk.text.split_at(prefix_len);
+        let prefix_len = u32::try_from(prefix_len).expect("chunk prefix length should fit in u32");
 
-        let mask = 1u128.unbounded_shl(prefix_len as u32).wrapping_sub(1);
+        let mask = 1u128.unbounded_shl(prefix_len).wrapping_sub(1);
         let prefix_chars = self.chunk.chars & mask;
         let prefix_tabs = self.chunk.tabs & mask;
         let prefix_newlines = self.chunk.newlines & mask;
 
         self.chunk.text = suffix;
-        self.chunk.tabs = self.chunk.tabs.unbounded_shr(prefix_len as u32);
-        self.chunk.chars = self.chunk.chars.unbounded_shr(prefix_len as u32);
-        self.chunk.newlines = self.chunk.newlines.unbounded_shr(prefix_len as u32);
+        self.chunk.tabs = self.chunk.tabs.unbounded_shr(prefix_len);
+        self.chunk.chars = self.chunk.chars.unbounded_shr(prefix_len);
+        self.chunk.newlines = self.chunk.newlines.unbounded_shr(prefix_len);
 
         let newline_count = prefix_newlines.count_ones();
         if newline_count > 0 {
             let last_newline_bit = 128 - prefix_newlines.leading_zeros();
             let chars_after_last_newline =
                 prefix_chars.unbounded_shr(last_newline_bit).count_ones();
-            let bytes_after_last_newline = prefix_len as u32 - last_newline_bit;
+            let bytes_after_last_newline = prefix_len - last_newline_bit;
 
             self.column = chars_after_last_newline;
             self.input_column = bytes_after_last_newline;
@@ -514,9 +525,9 @@ impl<'a> Iterator for TabChunks<'a> {
             let char_count = prefix_chars.count_ones();
             self.column += char_count;
             if !self.inside_leading_tab {
-                self.input_column += prefix_len as u32;
+                self.input_column += prefix_len;
             }
-            self.output_position.column += prefix_len as u32;
+            self.output_position.column += prefix_len;
         }
 
         Some(Chunk {
@@ -593,7 +604,9 @@ where
             .or_else(|| self.chunks.next().zip(Some(0)))
         {
             if chunk.tabs == 0 {
-                let chunk_distance = chunk.text.len() as u32 - chunk_position;
+                let chunk_len =
+                    u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
+                let chunk_distance = chunk_len - chunk_position;
                 if chunk_distance + traversed >= distance {
                     let overshoot = traversed.abs_diff(distance);
 
@@ -663,16 +676,11 @@ where
     }
 }
 
-#[inline(always)]
 fn get_char_offset(range: Range<u32>, bit_map: u128) -> u32 {
     if range.start == range.end {
-        return if (1u128 << range.start) & bit_map == 0 {
-            0
-        } else {
-            1
-        };
+        return u32::from((1u128 << range.start) & bit_map != 0);
     }
-    let end_shift = 127u128 - range.end as u128;
+    let end_shift = 127u128 - u128::from(range.end);
     let mut bit_mask = (u128::MAX >> range.start) << range.start;
     bit_mask = (bit_mask << end_shift) >> end_shift;
     let masked = bit_map & bit_mask;

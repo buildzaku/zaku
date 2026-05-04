@@ -126,7 +126,7 @@ pub struct ContextMenu {
     clicked: bool,
     end_slot_action: Option<Box<dyn Action>>,
     key_context: SharedString,
-    _on_blur_subscription: Subscription,
+    on_blur_subscription: Subscription,
     keep_open_on_confirm: bool,
     fixed_width: Option<DefiniteLength>,
 }
@@ -148,10 +148,12 @@ impl ContextMenu {
         builder: impl FnOnce(Self, &mut Window, &mut Context<Self>) -> Self,
     ) -> Self {
         let focus_handle = cx.focus_handle();
-        let _on_blur_subscription = cx.on_blur(
+        let on_blur_subscription = cx.on_blur(
             &focus_handle,
             window,
-            |this: &mut ContextMenu, window, cx| this.cancel(&menu::Cancel, window, cx),
+            |this: &mut ContextMenu, window, cx| {
+                this.cancel(&menu::Cancel, window, cx);
+            },
         );
 
         window.refresh();
@@ -159,8 +161,8 @@ impl ContextMenu {
         let menu = Self {
             builder: None,
             focus_handle,
-            _on_blur_subscription,
-            items: Default::default(),
+            on_blur_subscription,
+            items: Vec::default(),
             action_context: None,
             selected_index: None,
             delayed: false,
@@ -194,10 +196,12 @@ impl ContextMenu {
         cx.new(|cx| {
             let builder = Rc::new(builder);
             let focus_handle = cx.focus_handle();
-            let _on_blur_subscription = cx.on_blur(
+            let on_blur_subscription = cx.on_blur(
                 &focus_handle,
                 window,
-                |this: &mut ContextMenu, window, cx| this.cancel(&menu::Cancel, window, cx),
+                |this: &mut ContextMenu, window, cx| {
+                    this.cancel(&menu::Cancel, window, cx);
+                },
             );
 
             window.refresh();
@@ -205,8 +209,8 @@ impl ContextMenu {
             let menu = Self {
                 builder: Some(builder.clone()),
                 focus_handle,
-                _on_blur_subscription,
-                items: Default::default(),
+                on_blur_subscription,
+                items: Vec::default(),
                 action_context: None,
                 selected_index: None,
                 delayed: false,
@@ -222,7 +226,7 @@ impl ContextMenu {
     }
 
     /// Used to refresh the menu entries when entries are toggled when the menu is configured with
-    /// keep_open_on_confirm = true`.
+    /// `keep_open_on_confirm = true`.
     ///
     /// This only works if the [`ContextMenu`] was constructed using [`ContextMenu::build_persistent`].
     /// Otherwise it is a no-op.
@@ -232,16 +236,18 @@ impl ContextMenu {
         };
 
         let focus_handle = cx.focus_handle();
-        let _on_blur_subscription = cx.on_blur(
+        let on_blur_subscription = cx.on_blur(
             &focus_handle,
             window,
-            |this: &mut ContextMenu, window, cx| this.cancel(&menu::Cancel, window, cx),
+            |this: &mut ContextMenu, window, cx| {
+                this.cancel(&menu::Cancel, window, cx);
+            },
         );
         let menu = Self {
             builder: Some(builder.clone()),
             focus_handle: focus_handle.clone(),
-            _on_blur_subscription,
-            items: Default::default(),
+            on_blur_subscription,
+            items: Vec::default(),
             action_context: None,
             selected_index: None,
             delayed: false,
@@ -563,7 +569,7 @@ impl ContextMenu {
             ..
         })) = self.items.get(idx)
         {
-            (handler)(context, window, cx)
+            (handler)(context, window, cx);
         }
 
         if self.keep_open_on_confirm {
@@ -593,9 +599,9 @@ impl ContextMenu {
         })) = self.items.get(idx)
         {
             if let Some(secondary) = secondary_handler {
-                (secondary)(context, window, cx)
+                (secondary)(context, window, cx);
             } else {
-                (handler)(context, window, cx)
+                (handler)(context, window, cx);
             }
         }
 
@@ -657,13 +663,13 @@ impl ContextMenu {
             if self.items.len() <= next_index {
                 self.select_first(&SelectFirst, window, cx);
                 return;
-            } else {
-                for (idx, item) in self.items.iter().enumerate().skip(next_index) {
-                    if item.is_selectable() {
-                        self.select_index(idx, window, cx);
-                        cx.notify();
-                        return;
-                    }
+            }
+
+            for (idx, item) in self.items.iter().enumerate().skip(next_index) {
+                if item.is_selectable() {
+                    self.select_index(idx, window, cx);
+                    cx.notify();
+                    return;
                 }
             }
         }
@@ -741,12 +747,12 @@ impl ContextMenu {
             })
             .detach_and_log_err(cx);
         } else {
-            cx.propagate()
+            cx.propagate();
         }
     }
 
     pub fn on_blur_subscription(mut self, new_subscription: Subscription) -> Self {
-        self._on_blur_subscription = new_subscription;
+        self.on_blur_subscription = new_subscription;
         self
     }
 
@@ -764,7 +770,7 @@ impl ContextMenu {
                 .into_any_element(),
             ContextMenuItem::HeaderWithLink(header, label, url) => {
                 let url = url.clone();
-                let link_id = ElementId::Name(format!("link-{}", url).into());
+                let link_id = ElementId::Name(format!("link-{url}").into());
                 ListSubHeader::new(header.clone())
                     .inset(true)
                     .end_slot(
@@ -888,15 +894,12 @@ impl ContextMenu {
                             .w_full()
                             .justify_between()
                             .child(label_element)
-                            .debug_selector(|| format!("MENU_ITEM-{}", label))
+                            .debug_selector(|| format!("MENU_ITEM-{label}"))
                             .children(action.as_ref().map(|action| {
-                                let binding = self
-                                    .action_context
-                                    .as_ref()
-                                    .map(|focus| {
-                                        KeyBinding::for_action_in(action.as_ref(), focus, cx)
-                                    })
-                                    .unwrap_or_else(|| KeyBinding::for_action(action.as_ref(), cx));
+                                let binding = self.action_context.as_ref().map_or_else(
+                                    || KeyBinding::for_action(action.as_ref(), cx),
+                                    |focus| KeyBinding::for_action_in(action.as_ref(), focus, cx),
+                                );
 
                                 gpui::div().ml_4().child(binding.disabled(*disabled))
                             })),
@@ -916,19 +919,16 @@ impl ContextMenu {
                                         let title = title.clone();
                                         let action = action.boxed_clone();
                                         move |_window, cx| {
-                                            action_context
-                                                .as_ref()
-                                                .map(|focus| {
-                                                    Tooltip::for_action_in(
-                                                        title.clone(),
-                                                        &*action,
-                                                        focus,
-                                                        cx,
-                                                    )
-                                                })
-                                                .unwrap_or_else(|| {
-                                                    Tooltip::for_action(title.clone(), &*action, cx)
-                                                })
+                                            if let Some(focus) = action_context.as_ref() {
+                                                Tooltip::for_action_in(
+                                                    title.clone(),
+                                                    &*action,
+                                                    focus,
+                                                    cx,
+                                                )
+                                            } else {
+                                                Tooltip::for_action(title.clone(), &*action, cx)
+                                            }
                                         }
                                     })
                                     .on_click({
@@ -1018,13 +1018,13 @@ impl Render for ContextMenu {
                     .on_action(cx.listener(ContextMenu::secondary_confirm))
                     .on_action(cx.listener(ContextMenu::cancel))
                     .on_mouse_down_out(cx.listener(|this, _event: &MouseDownEvent, window, cx| {
-                        this.cancel(&menu::Cancel, window, cx)
+                        this.cancel(&menu::Cancel, window, cx);
                     }))
                     .when_some(self.end_slot_action.as_ref(), |el, action| {
                         el.on_boxed_action(action.as_ref(), cx.listener(ContextMenu::end_slot))
                     })
                     .when(!self.delayed, |mut el| {
-                        for item in self.items.iter() {
+                        for item in &self.items {
                             if let ContextMenuItem::Entry(ContextMenuEntry {
                                 action: Some(action),
                                 disabled: false,

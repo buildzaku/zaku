@@ -11,6 +11,7 @@ use std::{
     any::TypeId,
     cmp::{self, Ordering},
     ops::Range,
+    panic,
 };
 
 use actions::editor::HandleInput;
@@ -875,7 +876,7 @@ impl Element for EditorElement {
         None
     }
 
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+    fn source_location(&self) -> Option<&'static panic::Location<'static>> {
         None
     }
 

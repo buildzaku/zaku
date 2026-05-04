@@ -47,7 +47,7 @@ impl Checkbox {
         handler: impl Fn(&ToggleState, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_click = Some(Box::new(move |state, _, window, cx| {
-            handler(state, window, cx)
+            handler(state, window, cx);
         }));
         self
     }
@@ -176,7 +176,7 @@ impl RenderOnce for Checkbox {
                 self.on_click.filter(|_| !self.disabled),
                 |this, on_click| {
                     this.on_click(move |click, window, cx| {
-                        on_click(&self.toggle_state.inverse(), click, window, cx)
+                        on_click(&self.toggle_state.inverse(), click, window, cx);
                     })
                 },
             )

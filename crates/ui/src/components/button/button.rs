@@ -511,10 +511,8 @@ impl RenderOnce for Button {
         let text_accent = cx.theme().colors().text_accent;
         let icon_size = self.icon_size.unwrap_or(match self.size {
             ButtonSize::Large => IconSize::Medium,
-            ButtonSize::Medium => IconSize::Small,
-            ButtonSize::Default => IconSize::Small,
-            ButtonSize::Compact => IconSize::XSmall,
-            ButtonSize::None => IconSize::XSmall,
+            ButtonSize::Medium | ButtonSize::Default => IconSize::Small,
+            ButtonSize::Compact | ButtonSize::None => IconSize::XSmall,
         });
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
@@ -532,8 +530,7 @@ impl RenderOnce for Button {
             text_accent
         } else {
             self.label_color
-                .map(|color| color.color(cx))
-                .unwrap_or(style.label_color)
+                .map_or(style.label_color, |color| color.color(cx))
         };
 
         let icon_color = if self.disabled || self.selected {

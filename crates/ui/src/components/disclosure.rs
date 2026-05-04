@@ -85,9 +85,10 @@ impl RenderOnce for Disclosure {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         IconButton::new(
             self.id,
-            match self.is_open {
-                true => self.opened_icon,
-                false => self.closed_icon,
+            if self.is_open {
+                self.opened_icon
+            } else {
+                self.closed_icon
             },
         )
         .shape(IconButtonShape::Square)
