@@ -16,7 +16,7 @@ use util::{
     path::{PathStyle, SanitizedPath},
     rel_path::RelPath,
 };
-use worktree::{Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent, WorktreeId};
+use worktree::{LocalWorktree, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent, WorktreeId};
 
 #[derive(Clone)]
 pub struct WorktreeIdCounter(Arc<AtomicUsize>);
@@ -124,7 +124,7 @@ impl WorktreeStore {
         let scan_complete = worktree
             .read(cx)
             .as_local()
-            .map(|worktree| worktree.scan_complete());
+            .map(LocalWorktree::scan_complete);
         cx.spawn(async move |this, cx| {
             if let Some(scan_complete) = scan_complete {
                 scan_complete.await;

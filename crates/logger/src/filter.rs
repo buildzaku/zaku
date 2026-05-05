@@ -141,7 +141,7 @@ fn scope_alloc_from_scope_str(scope_str: &str) -> Option<ScopeAlloc> {
         return None;
     }
 
-    let scope = scope_buffer.map(|scope_name| scope_name.to_string());
+    let scope = scope_buffer.map(ToString::to_string);
     Some(scope)
 }
 

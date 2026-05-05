@@ -26,7 +26,7 @@ pub fn marked_text_ranges_by(
     marked_text: &str,
     markers: Vec<TextRangeMarker>,
 ) -> (String, HashMap<TextRangeMarker, Vec<Range<usize>>>) {
-    let all_markers: Vec<_> = markers.iter().flat_map(|marker| marker.markers()).collect();
+    let all_markers: Vec<_> = markers.iter().flat_map(TextRangeMarker::markers).collect();
 
     let (unmarked_text, mut marker_offsets) = marked_text_offsets_by(marked_text, &all_markers);
     let range_lookup = markers
