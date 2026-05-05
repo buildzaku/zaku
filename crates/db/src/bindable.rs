@@ -1,4 +1,5 @@
 use anyhow::Context;
+use num_traits::ToPrimitive;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -127,7 +128,8 @@ impl Column for f32 {
         let result = row
             .column_double(start_index)
             .with_context(|| format!("failed to parse f32 at index {start_index}"))?
-            as f32;
+            .to_f32()
+            .unwrap();
 
         Ok((result, start_index + 1))
     }

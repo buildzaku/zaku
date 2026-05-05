@@ -1371,6 +1371,7 @@ dependencies = [
  "indoc",
  "libsqlite3-sys",
  "log",
+ "num-traits",
  "parking_lot",
  "settings",
  "smol",
