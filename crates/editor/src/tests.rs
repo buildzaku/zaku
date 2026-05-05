@@ -47,7 +47,7 @@ fn display_ranges(editor: &Editor, cx: &mut Context<'_, Editor>) -> Vec<Range<Di
 }
 
 #[gpui::test]
-async fn test_handle_input(cx: &mut TestAppContext) {
+fn test_handle_input(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 

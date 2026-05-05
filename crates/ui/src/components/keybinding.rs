@@ -187,7 +187,7 @@ pub fn render_keybinding_keystroke(
 
     if use_text {
         let element = Key::new(
-            keystroke_text(keystroke.modifiers(), keystroke.key(), platform_style),
+            keystroke_text(*keystroke.modifiers(), keystroke.key(), platform_style),
             color,
         )
         .size(size)
@@ -278,24 +278,24 @@ pub fn render_modifiers(
 
     let separator = match platform_style {
         PlatformStyle::Mac => None,
-        PlatformStyle::Linux => Some(KeyOrIcon::Plus),
-        PlatformStyle::Windows => Some(KeyOrIcon::Plus),
+        PlatformStyle::Linux | PlatformStyle::Windows => Some(KeyOrIcon::Plus),
     };
 
     let mut keys: Vec<KeyOrIcon> = Vec::new();
     for key in platform_keys.flatten() {
-        if !keys.is_empty() {
-            if let Some(separator) = separator.clone() {
-                keys.push(separator);
-            }
+        if !keys.is_empty()
+            && let Some(separator) = separator.clone()
+        {
+            keys.push(separator);
         }
         keys.push(key);
     }
 
-    if modifiers.modified() && trailing_separator {
-        if let Some(separator) = separator {
-            keys.push(separator);
-        }
+    if modifiers.modified()
+        && trailing_separator
+        && let Some(separator) = separator
+    {
+        keys.push(separator);
     }
 
     keys.into_iter().map(move |key_or_icon| match key_or_icon {
@@ -307,14 +307,14 @@ pub fn render_modifiers(
 
 #[derive(IntoElement)]
 pub struct Key {
-    key: SharedString,
+    label: SharedString,
     color: Option<Color>,
     size: Option<AbsoluteLength>,
 }
 
 impl RenderOnce for Key {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let single_char = self.key.len() == 1;
+        let single_char = self.label.len() == 1;
         let size = self
             .size
             .unwrap_or_else(|| TextSize::default().rems(cx).into());
@@ -332,14 +332,14 @@ impl RenderOnce for Key {
             .text_size(size)
             .line_height(gpui::relative(1.0))
             .text_color(self.color.unwrap_or(Color::Muted).color(cx))
-            .child(self.key)
+            .child(self.label)
     }
 }
 
 impl Key {
-    pub fn new(key: impl Into<SharedString>, color: Option<Color>) -> Self {
+    pub fn new(label: impl Into<SharedString>, color: Option<Color>) -> Self {
         Self {
-            key: key.into(),
+            label: label.into(),
             color,
             size: None,
         }
@@ -392,7 +392,7 @@ pub fn text_for_keystrokes(keystrokes: &[Keystroke], _cx: &App) -> String {
     let platform_style = PlatformStyle::platform();
     keystrokes
         .iter()
-        .map(|keystroke| keystroke_text(&keystroke.modifiers, &keystroke.key, platform_style))
+        .map(|keystroke| keystroke_text(keystroke.modifiers, &keystroke.key, platform_style))
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -401,16 +401,16 @@ pub fn text_for_keybinding_keystrokes(keystrokes: &[KeybindingKeystroke], _cx: &
     let platform_style = PlatformStyle::platform();
     keystrokes
         .iter()
-        .map(|keystroke| keystroke_text(keystroke.modifiers(), keystroke.key(), platform_style))
+        .map(|keystroke| keystroke_text(*keystroke.modifiers(), keystroke.key(), platform_style))
         .collect::<Vec<_>>()
         .join(" ")
 }
 
 pub fn text_for_keystroke(modifiers: &Modifiers, key: &str, _cx: &App) -> String {
-    keystroke_text(modifiers, key, PlatformStyle::platform())
+    keystroke_text(*modifiers, key, PlatformStyle::platform())
 }
 
-fn keystroke_text(modifiers: &Modifiers, key: &str, platform_style: PlatformStyle) -> String {
+fn keystroke_text(modifiers: Modifiers, key: &str, platform_style: PlatformStyle) -> String {
     let mut text = String::new();
     let delimiter = '-';
 
@@ -466,29 +466,29 @@ mod tests {
     fn test_text_for_keystroke() {
         let keystroke = Keystroke::parse("cmd-c").unwrap();
         assert_eq!(
-            keystroke_text(&keystroke.modifiers, &keystroke.key, PlatformStyle::Mac),
+            keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Mac),
             "Command-C".to_string()
         );
         assert_eq!(
-            keystroke_text(&keystroke.modifiers, &keystroke.key, PlatformStyle::Linux),
+            keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Linux),
             "Super-C".to_string()
         );
         assert_eq!(
-            keystroke_text(&keystroke.modifiers, &keystroke.key, PlatformStyle::Windows),
+            keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Windows),
             "Win-C".to_string()
         );
 
         let keystroke = Keystroke::parse("ctrl-alt-delete").unwrap();
         assert_eq!(
-            keystroke_text(&keystroke.modifiers, &keystroke.key, PlatformStyle::Mac),
+            keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Mac),
             "Control-Option-Delete".to_string()
         );
         assert_eq!(
-            keystroke_text(&keystroke.modifiers, &keystroke.key, PlatformStyle::Linux),
+            keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Linux),
             "Ctrl-Alt-Delete".to_string()
         );
         assert_eq!(
-            keystroke_text(&keystroke.modifiers, &keystroke.key, PlatformStyle::Windows),
+            keystroke_text(keystroke.modifiers, &keystroke.key, PlatformStyle::Windows),
             "Ctrl-Alt-Delete".to_string()
         );
     }

@@ -257,7 +257,7 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
-        ..Default::default()
+        ..WindowOptions::default()
     }
 }
 
@@ -461,7 +461,7 @@ impl Render for Root {
 
 pub struct Workspace {
     shared_state: Arc<SharedState>,
-    workspace_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
+    registered_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
     session_id: Option<String>,
     project: Entity<Project>,
@@ -474,8 +474,8 @@ pub struct Workspace {
     suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
-    _schedule_serialize_workspace: Option<Task<()>>,
-    _serialize_workspace_task: Option<Task<()>>,
+    scheduled_serialization_task: Option<Task<()>>,
+    serialization_task: Option<Task<()>>,
     _window_activation_subscription: Subscription,
     _window_appearance_subscription: Subscription,
 }
@@ -569,7 +569,7 @@ impl Workspace {
 
     #[cfg(test)]
     pub(crate) fn set_random_database_id(&mut self) {
-        self.database_id = Some(WorkspaceId(Uuid::new_v4().as_u64_pair().0 as i64));
+        self.database_id = Some(WorkspaceId(Uuid::new_v4().as_u64_pair().0.cast_signed()));
     }
 
     pub fn prompt_open_path(
@@ -582,9 +582,8 @@ impl Workspace {
         let path_prompt = cx.prompt_for_paths(options);
 
         cx.spawn_in(window, async move |workspace, cx| {
-            let selection = match path_prompt.await {
-                Ok(selection) => selection,
-                Err(_) => return Ok::<(), anyhow::Error>(()),
+            let Ok(selection) = path_prompt.await else {
+                return Ok::<(), anyhow::Error>(());
             };
 
             match selection {
@@ -723,10 +722,9 @@ impl Workspace {
 
             if let Some(database_id) =
                 workspace.read_with(cx, |workspace, _| workspace.database_id())
+                && let Err(error) = workspace_db.update_activation_order(database_id).await
             {
-                if let Err(error) = workspace_db.update_activation_order(database_id).await {
-                    log::error!("Failed to update workspace activation order: {error}");
-                }
+                log::error!("Failed to update workspace activation order: {error}");
             }
 
             Ok(OpenResult { window, workspace })
@@ -812,8 +810,8 @@ impl Workspace {
     }
 
     pub fn flush_serialization(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
-        self._schedule_serialize_workspace.take();
-        self._serialize_workspace_task.take();
+        self.scheduled_serialization_task.take();
+        self.serialization_task.take();
 
         let serialize_task = self.serialize_workspace_internal(window, cx);
         cx.spawn(async move |_| serialize_task.await)
@@ -825,20 +823,18 @@ impl Workspace {
     }
 
     fn serialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self._schedule_serialize_workspace.is_none() {
-            self._schedule_serialize_workspace =
-                Some(cx.spawn_in(window, async move |this, cx| {
-                    cx.background_executor()
-                        .timer(SERIALIZATION_THROTTLE_TIME)
-                        .await;
-                    if let Err(error) = this.update_in(cx, |this, window, cx| {
-                        this._serialize_workspace_task =
-                            Some(this.serialize_workspace_internal(window, cx));
-                        this._schedule_serialize_workspace.take();
-                    }) {
-                        log::debug!("Failed to schedule workspace serialization: {error}");
-                    }
-                }));
+        if self.scheduled_serialization_task.is_none() {
+            self.scheduled_serialization_task = Some(cx.spawn_in(window, async move |this, cx| {
+                cx.background_executor()
+                    .timer(SERIALIZATION_THROTTLE_TIME)
+                    .await;
+                if let Err(error) = this.update_in(cx, |this, window, cx| {
+                    this.serialization_task = Some(this.serialize_workspace_internal(window, cx));
+                    this.scheduled_serialization_task.take();
+                }) {
+                    log::debug!("Failed to schedule workspace serialization: {error}");
+                }
+            }));
         }
     }
 
@@ -861,7 +857,7 @@ impl Workspace {
 
                 let workspace_db = WorkspaceDb::global(cx);
                 window.spawn(cx, async move |_| {
-                    workspace_db.save_workspace(serialized_workspace).await
+                    workspace_db.save_workspace(serialized_workspace).await;
                 })
             }
             None => Task::ready(()),
@@ -899,11 +895,11 @@ impl Workspace {
             }
             dock.set_open(!was_visible, window, cx);
 
-            if let Some(active_panel) = dock.active_panel() {
-                if !was_visible {
-                    let focus_handle = active_panel.panel_focus_handle(cx);
-                    window.focus(&focus_handle, cx);
-                }
+            if let Some(active_panel) = dock.active_panel()
+                && !was_visible
+            {
+                let focus_handle = active_panel.panel_focus_handle(cx);
+                window.focus(&focus_handle, cx);
             }
         });
 
@@ -955,15 +951,14 @@ impl Workspace {
         let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, window, cx));
 
         let pane_handle = pane.downgrade();
-        let project_panel =
-            cx.new(|cx| ProjectPanel::new(project.clone(), pane_handle.clone(), cx));
+        let project_panel = cx.new(|cx| ProjectPanel::new(&project, pane_handle.clone(), cx));
         left_dock.update(cx, |left_dock, cx| {
-            left_dock.add_panel(project_panel.clone(), window, cx);
+            left_dock.add_panel(&project_panel, window, cx);
         });
 
         let response_panel = cx.new(|cx| ResponsePanel::new(pane_handle, window, cx));
         bottom_dock.update(cx, |bottom_dock, cx| {
-            bottom_dock.add_panel(response_panel.clone(), window, cx);
+            bottom_dock.add_panel(&response_panel, window, cx);
         });
 
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
@@ -984,7 +979,7 @@ impl Workspace {
 
         Self {
             shared_state,
-            workspace_actions: Default::default(),
+            registered_actions: Vec::default(),
             database_id,
             session_id,
             project,
@@ -997,8 +992,8 @@ impl Workspace {
             suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
-            _schedule_serialize_workspace: None,
-            _serialize_workspace_task: None,
+            scheduled_serialization_task: None,
+            serialization_task: None,
             _window_activation_subscription: window_activation_subscription,
             _window_appearance_subscription: window_appearance_subscription,
         }
@@ -1027,7 +1022,7 @@ impl Workspace {
         let size = size.min(max_size).max(MIN_DOCK_WIDTH.min(max_size));
         self.left_dock.update(cx, |dock, cx| {
             dock.resize_active_panel(Some(size), window, cx);
-        })
+        });
     }
 
     fn resize_bottom_dock(&mut self, size: Pixels, window: &mut Window, cx: &mut App) {
@@ -1038,7 +1033,7 @@ impl Workspace {
             .max(MIN_RESPONSE_PANE_HEIGHT.min(max_size));
         self.bottom_dock.update(cx, |dock, cx| {
             dock.resize_active_panel(Some(size), window, cx);
-        })
+        });
     }
 
     fn toggle_panel_focus<T: panel::Panel>(
@@ -1110,23 +1105,23 @@ impl Workspace {
         context.add(KEY_CONTEXT);
         context.set("keyboard_layout", cx.keyboard_layout().name().to_string());
 
-        if self.left_dock.read(cx).is_open() {
-            if let Some(active_panel) = self.left_dock.read(cx).active_panel() {
-                context.set("left_dock", active_panel.panel_key());
-            }
+        if self.left_dock.read(cx).is_open()
+            && let Some(active_panel) = self.left_dock.read(cx).active_panel()
+        {
+            context.set("left_dock", active_panel.panel_key());
         }
 
-        if self.bottom_dock.read(cx).is_open() {
-            if let Some(active_panel) = self.bottom_dock.read(cx).active_panel() {
-                context.set("bottom_dock", active_panel.panel_key());
-            }
+        if self.bottom_dock.read(cx).is_open()
+            && let Some(active_panel) = self.bottom_dock.read(cx).active_panel()
+        {
+            context.set("bottom_dock", active_panel.panel_key());
         }
 
         context
     }
 
     pub fn actions(&self, div: Div, window: &mut Window, cx: &mut Context<Self>) -> Div {
-        self.add_workspace_actions_listeners(div, window, cx)
+        self.with_registered_actions(div, window, cx)
             .on_action(cx.listener(
                 |_workspace, action_sequence: &settings::ActionSequence, window, cx| {
                     for action in &action_sequence.0 {
@@ -1155,10 +1150,10 @@ impl Workspace {
     ) -> &mut Self {
         let callback = Arc::new(callback);
 
-        self.workspace_actions.push(Box::new(move |div, _, _, cx| {
+        self.registered_actions.push(Box::new(move |div, _, _, cx| {
             let callback = callback.clone();
             div.on_action(cx.listener(move |workspace, event, window, cx| {
-                (callback)(workspace, event, window, cx)
+                (callback)(workspace, event, window, cx);
             }))
         }));
         self
@@ -1168,17 +1163,17 @@ impl Workspace {
         &mut self,
         callback: impl Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div + 'static,
     ) -> &mut Self {
-        self.workspace_actions.push(Box::new(callback));
+        self.registered_actions.push(Box::new(callback));
         self
     }
 
-    fn add_workspace_actions_listeners(
+    fn with_registered_actions(
         &self,
         mut div: Div,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
-        for action in self.workspace_actions.iter() {
+        for action in &self.registered_actions {
             div = (action)(div, self, window, cx);
         }
         div
@@ -1296,7 +1291,7 @@ impl Render for Workspace {
                                     }
                                 });
                             },
-                            |_, _, _, _| {},
+                            |_, (), _, _| {},
                         )
                         .absolute()
                         .size_full()
@@ -1658,7 +1653,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
+    fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
@@ -1744,7 +1739,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
+    fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
         let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
         init_test(shared_state.clone(), cx);
@@ -1758,7 +1753,7 @@ mod tests {
         let panel = workspace.update_in(cx, |workspace, window, cx| {
             let panel = cx.new(|cx| TestPanel::new(100, cx));
             workspace.left_dock.update(cx, |left_dock, cx| {
-                left_dock.add_panel(panel.clone(), window, cx);
+                left_dock.add_panel(&panel, window, cx);
                 left_dock.set_open(true, window, cx);
             });
             panel

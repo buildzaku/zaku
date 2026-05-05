@@ -78,7 +78,7 @@ pub async fn open_db(db_dir: &Path) -> ThreadSafeConnection {
 async fn try_open_db(db_dir: &Path) -> Option<ThreadSafeConnection> {
     match ensure_directory(db_dir)
         .await
-        .and_then(|_| database_path(db_dir))
+        .and_then(|()| database_path(db_dir))
     {
         Ok(db_path) => open_main_db(&db_path).await,
         Err(error) => {
@@ -103,7 +103,7 @@ async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
         connection: ThreadSafeConnection {
             target: ConnectionTarget::file(path),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         },
     }
     .with_db_init_query(DB_INIT_QUERY)
@@ -128,7 +128,7 @@ async fn open_fallback_db() -> ThreadSafeConnection {
         connection: ThreadSafeConnection {
             target: ConnectionTarget::memory(FALLBACK_MEMORY_DB_NAME),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         },
     }
     .with_db_init_query(DB_INIT_QUERY)
@@ -146,7 +146,7 @@ pub async fn open_test_db(db_name: &str) -> ThreadSafeConnection {
         connection: ThreadSafeConnection {
             target: ConnectionTarget::memory(db_name),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         },
     }
     .with_db_init_query(DB_INIT_QUERY)
@@ -201,10 +201,7 @@ impl ThreadSafeConnectionBuilder {
                     connection
                         .exec(db_init_query)
                         .with_context(|| {
-                            format!(
-                                "database initialize query failed to execute: {}",
-                                db_init_query
-                            )
+                            format!("database initialize query failed to execute: {db_init_query}")
                         })
                         .and_then(|mut f| f())?;
                 }
@@ -311,10 +308,7 @@ fn init_connection(
         connection
             .exec(connection_init_query)
             .with_context(|| {
-                format!(
-                    "connection initialize query failed to execute: {}",
-                    connection_init_query
-                )
+                format!("connection initialize query failed to execute: {connection_init_query}")
             })
             .and_then(|mut f| f())?;
     }
@@ -375,6 +369,12 @@ pub fn database_dir() -> PathBuf {
 pub struct AppDatabase(pub ThreadSafeConnection);
 
 impl Global for AppDatabase {}
+
+impl Default for AppDatabase {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl AppDatabase {
     pub fn new() -> Self {
@@ -523,7 +523,7 @@ mod tests {
                     connection: ThreadSafeConnection {
                         target: ConnectionTarget::memory("test.sqlite"),
                         connection_init_query: None,
-                        connections: Default::default(),
+                        connections: Arc::default(),
                     },
                 }
                 .with_db_init_query(DB_INIT_QUERY)
@@ -662,7 +662,7 @@ mod tests {
             connection: ThreadSafeConnection {
                 target: ConnectionTarget::memory("test_db_init_query_applies_to_worker_connection"),
                 connection_init_query: None,
-                connections: Default::default(),
+                connections: Arc::default(),
             },
         }
         .with_db_init_query(DB_INIT_QUERY)
@@ -692,7 +692,7 @@ mod tests {
         let connection = ThreadSafeConnection {
             target: ConnectionTarget::file(&db_path),
             connection_init_query: None,
-            connections: Default::default(),
+            connections: Arc::default(),
         };
         connection.initialize_queues(Some(locking_queue()));
 

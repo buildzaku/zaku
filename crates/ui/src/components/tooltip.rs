@@ -248,7 +248,7 @@ pub struct LinkPreview {
 }
 
 impl LinkPreview {
-    pub fn new(url: &str, cx: &mut App) -> AnyView {
+    pub fn new(url: &str) -> Self {
         let mut wrapped_url = String::new();
         for (i, ch) in url.chars().enumerate() {
             if i == 500 {
@@ -260,10 +260,13 @@ impl LinkPreview {
             }
             wrapped_url.push(ch);
         }
-        cx.new(|_| LinkPreview {
+        Self {
             link: wrapped_url.into(),
-        })
-        .into()
+        }
+    }
+
+    pub fn view(url: &str, cx: &mut App) -> AnyView {
+        cx.new(|_| Self::new(url)).into()
     }
 }
 

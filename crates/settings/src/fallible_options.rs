@@ -55,7 +55,7 @@ where
         Ok(value) => Ok(value),
         Err(error) => ERRORS.with_borrow_mut(|errors| {
             if let Some(errors) = errors {
-                errors.push(anyhow::anyhow!("{}", error));
+                errors.push(anyhow::anyhow!("{error}"));
                 Ok(Default::default())
             } else {
                 Err(error)
@@ -76,7 +76,7 @@ mod tests {
 
     #[with_fallible_options]
     #[derive(Debug, Deserialize, PartialEq)]
-    struct Foo {
+    struct FooSettings {
         foo: Option<String>,
         bar: Option<usize>,
         baz: Option<bool>,
@@ -92,7 +92,7 @@ mod tests {
             }
         "#};
 
-        let (value, parse_status) = parse_json::<Foo>(input);
+        let (value, parse_status) = parse_json::<FooSettings>(input);
         let value = value.expect("Expected partial settings value");
         let ParseStatus::Failed { error } = parse_status else {
             panic!("Expected parse to fail")
@@ -100,7 +100,7 @@ mod tests {
 
         assert_eq!(
             value,
-            Foo {
+            FooSettings {
                 foo: Some("bar".into()),
                 bar: None,
                 baz: None,

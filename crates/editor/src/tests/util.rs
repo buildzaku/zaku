@@ -6,7 +6,7 @@ use util::test::marked_text_offsets;
 
 use crate::{
     DEFAULT_TAB_SIZE,
-    display_map::{DisplayPoint, DisplaySnapshot, ToDisplayPoint},
+    display_map::{DisplayMap, DisplayPoint, DisplaySnapshot, ToDisplayPoint},
 };
 
 pub fn marked_display_snapshot(
@@ -17,8 +17,7 @@ pub fn marked_display_snapshot(
     let text_buffer =
         cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text.as_str()));
     let multibuffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
-    let display_map =
-        cx.new(|cx| crate::display_map::DisplayMap::new(multibuffer, DEFAULT_TAB_SIZE, cx));
+    let display_map = cx.new(|cx| DisplayMap::new(multibuffer, DEFAULT_TAB_SIZE, cx));
     let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
     let display_points = marker_offsets
         .into_iter()

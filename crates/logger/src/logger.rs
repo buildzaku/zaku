@@ -24,7 +24,7 @@ pub fn try_init(filter: Option<String>) -> anyhow::Result<()> {
     log::set_logger(&LOGGER)?;
     log::set_max_level(LevelFilter::max());
     process_env(filter);
-    filter::refresh_from_settings(&HashMap::default());
+    filter::refresh_from_settings(&HashMap::<String, String>::default());
     Ok(())
 }
 
@@ -213,7 +213,7 @@ macro_rules! crate_name {
 }
 
 pub mod private {
-    use super::*;
+    use super::{Logger, SCOPE_DEPTH_MAX, Scope, ScopeAlloc, ScopeRef};
 
     pub const fn extract_crate_name_from_module_path(module_path: &str) -> &str {
         let module_path_bytes = module_path.as_bytes();
@@ -275,11 +275,11 @@ pub mod private {
         assert!(scopes.len() <= SCOPE_DEPTH_MAX);
         let mut scope = [""; SCOPE_DEPTH_MAX];
         scope[0..scopes.len()].copy_from_slice(scopes);
-        scope.map(|scope_name| scope_name.to_string())
+        scope.map(ToString::to_string)
     }
 
     pub fn scope_to_alloc(scope: &Scope) -> ScopeAlloc {
-        scope.map(|scope_name| scope_name.to_string())
+        scope.map(ToString::to_string)
     }
 }
 

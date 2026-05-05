@@ -3,7 +3,7 @@ use gpui::{
     Focusable, GlobalElementId, HitboxBehavior, HitboxId, InspectorElementId, LayoutId, Length,
     ManagedView, MouseDownEvent, Pixels, Point, Style, Window, prelude::*,
 };
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, panic, rc::Rc};
 
 use crate::prelude::*;
 
@@ -155,7 +155,7 @@ impl<M: ManagedView> PopoverMenu<M> {
             t.toggle_state(open)
                 .when_some(builder, |el, builder| {
                     el.on_click(move |_event, window, cx| {
-                        show_menu(&builder, &menu, on_open.clone(), window, cx)
+                        show_menu(&builder, &menu, on_open.clone(), window, cx);
                     })
                 })
                 .into_any_element()
@@ -174,7 +174,7 @@ impl<M: ManagedView> PopoverMenu<M> {
             t.toggle_state(open)
                 .when_some(builder, |el, builder| {
                     el.on_click(move |_, window, cx| {
-                        show_menu(&builder, &menu, on_open.clone(), window, cx)
+                        show_menu(&builder, &menu, on_open.clone(), window, cx);
                     })
                     .when(!open, |t| {
                         t.tooltip(move |window, cx| tooltip_builder(window, cx))
@@ -245,9 +245,8 @@ fn show_menu<M: ManagedView>(
     cx: &mut App,
 ) {
     let previous_focus_handle = window.focused(cx);
-    let new_menu = match builder(window, cx) {
-        Some(menu) => menu,
-        None => return,
+    let Some(new_menu) = builder(window, cx) else {
+        return;
     };
 
     let menu_clone = menu.clone();
@@ -316,7 +315,7 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
         Some(self.id.clone())
     }
 
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+    fn source_location(&self) -> Option<&'static panic::Location<'static>> {
         None
     }
 
@@ -454,7 +453,7 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
                         }
                         cx.stop_propagation();
                     }
-                })
+                });
             }
         }
     }

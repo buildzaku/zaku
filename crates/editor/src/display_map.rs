@@ -129,8 +129,8 @@ impl DisplaySnapshot {
     pub fn display_point_to_anchor(&self, point: DisplayPoint, bias: Bias) -> Anchor {
         let offset = point.to_offset(self, bias);
         match bias {
-            Bias::Left => self.buffer_snapshot().anchor_before(offset),
-            Bias::Right => self.buffer_snapshot().anchor_after(offset),
+            Bias::Left => self.buffer_snapshot().anchor_before(&offset),
+            Bias::Right => self.buffer_snapshot().anchor_after(&offset),
         }
     }
 
@@ -214,7 +214,7 @@ impl DisplaySnapshot {
         details: &TextLayoutDetails,
     ) -> u32 {
         let layout_line = self.layout_row(display_row, details);
-        layout_line.closest_index_for_x(x) as u32
+        u32::try_from(layout_line.closest_index_for_x(x)).expect("display column should fit in u32")
     }
 }
 
@@ -360,7 +360,7 @@ mod tests {
     use settings::SettingsStore;
     use text::{Buffer as TextBuffer, ReplicaId};
 
-    use crate::tests::util::marked_display_snapshot;
+    use crate::{DEFAULT_TAB_SIZE, tests::util::marked_display_snapshot};
 
     fn init_test(cx: &mut App) {
         let settings_store = SettingsStore::test(cx);
@@ -373,9 +373,7 @@ mod tests {
         let text_buffer =
             cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text));
         let multi_buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
-        let display_map = cx.new(|cx| {
-            crate::display_map::DisplayMap::new(multi_buffer, crate::DEFAULT_TAB_SIZE, cx)
-        });
+        let display_map = cx.new(|cx| DisplayMap::new(multi_buffer, DEFAULT_TAB_SIZE, cx));
         display_map.update(cx, |display_map, cx| display_map.snapshot(cx))
     }
 
@@ -387,9 +385,7 @@ mod tests {
         let text_buffer =
             cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text));
         let multi_buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
-        let display_map = cx.new(|cx| {
-            crate::display_map::DisplayMap::new(multi_buffer.clone(), crate::DEFAULT_TAB_SIZE, cx)
-        });
+        let display_map = cx.new(|cx| DisplayMap::new(multi_buffer.clone(), DEFAULT_TAB_SIZE, cx));
 
         multi_buffer.update(cx, |multi_buffer, cx| {
             multi_buffer.edit(
@@ -435,7 +431,7 @@ mod tests {
     fn test_clip_point(cx: &mut App) {
         init_test(cx);
 
-        fn assert(marked_text: &str, shift_right: bool, bias: Bias, cx: &mut App) {
+        let assert_clip = |marked_text: &str, shift_right: bool, bias: Bias, cx: &mut App| {
             let (unmarked_snapshot, mut markers) = marked_display_snapshot(marked_text, cx);
 
             match bias {
@@ -454,30 +450,30 @@ mod tests {
                     assert_eq!(unmarked_snapshot.clip_point(markers[0], bias), markers[1]);
                 }
             }
-        }
+        };
 
-        assert("ˇˇα", false, Bias::Left, cx);
-        assert("ˇˇα", true, Bias::Left, cx);
-        assert("ˇˇα", false, Bias::Right, cx);
-        assert("ˇαˇ", true, Bias::Right, cx);
-        assert("ˇˇ🌙", false, Bias::Left, cx);
-        assert("ˇˇ🌙", true, Bias::Left, cx);
-        assert("ˇˇ🌙", false, Bias::Right, cx);
-        assert("ˇ🌙ˇ", true, Bias::Right, cx);
-        assert("ˇˇ⚽", false, Bias::Left, cx);
-        assert("ˇˇ⚽", true, Bias::Left, cx);
-        assert("ˇˇ⚽", false, Bias::Right, cx);
-        assert("ˇ⚽ˇ", true, Bias::Right, cx);
-        assert("ˇˇ\t", false, Bias::Left, cx);
-        assert("ˇˇ\t", true, Bias::Left, cx);
-        assert("ˇˇ\t", false, Bias::Right, cx);
-        assert("ˇ\tˇ", true, Bias::Right, cx);
-        assert(" ˇˇ\t", false, Bias::Left, cx);
-        assert(" ˇˇ\t", true, Bias::Left, cx);
-        assert(" ˇˇ\t", false, Bias::Right, cx);
-        assert(" ˇ\tˇ", true, Bias::Right, cx);
-        assert("   ˇˇ\t", false, Bias::Left, cx);
-        assert("   ˇˇ\t", false, Bias::Right, cx);
+        assert_clip("ˇˇα", false, Bias::Left, cx);
+        assert_clip("ˇˇα", true, Bias::Left, cx);
+        assert_clip("ˇˇα", false, Bias::Right, cx);
+        assert_clip("ˇαˇ", true, Bias::Right, cx);
+        assert_clip("ˇˇ🌙", false, Bias::Left, cx);
+        assert_clip("ˇˇ🌙", true, Bias::Left, cx);
+        assert_clip("ˇˇ🌙", false, Bias::Right, cx);
+        assert_clip("ˇ🌙ˇ", true, Bias::Right, cx);
+        assert_clip("ˇˇ⚽", false, Bias::Left, cx);
+        assert_clip("ˇˇ⚽", true, Bias::Left, cx);
+        assert_clip("ˇˇ⚽", false, Bias::Right, cx);
+        assert_clip("ˇ⚽ˇ", true, Bias::Right, cx);
+        assert_clip("ˇˇ\t", false, Bias::Left, cx);
+        assert_clip("ˇˇ\t", true, Bias::Left, cx);
+        assert_clip("ˇˇ\t", false, Bias::Right, cx);
+        assert_clip("ˇ\tˇ", true, Bias::Right, cx);
+        assert_clip(" ˇˇ\t", false, Bias::Left, cx);
+        assert_clip(" ˇˇ\t", true, Bias::Left, cx);
+        assert_clip(" ˇˇ\t", false, Bias::Right, cx);
+        assert_clip(" ˇ\tˇ", true, Bias::Right, cx);
+        assert_clip("   ˇˇ\t", false, Bias::Left, cx);
+        assert_clip("   ˇˇ\t", false, Bias::Right, cx);
     }
 
     #[gpui::test]
@@ -498,43 +494,46 @@ mod tests {
             "🏀β      γ"
         );
 
-        let point = MultiBufferPoint::new(0, "🌙\t\t".len() as u32);
-        let display_point = DisplayPoint::new(DisplayRow(0), "🌙       ".len() as u32);
+        let point = MultiBufferPoint::new(0, u32::try_from("🌙\t\t".len()).unwrap());
+        let display_point =
+            DisplayPoint::new(DisplayRow(0), u32::try_from("🌙       ".len()).unwrap());
         assert_eq!(point.to_display_point(&map), display_point);
         assert_eq!(display_point.to_point(&map), point);
 
-        let point = MultiBufferPoint::new(1, "β\t".len() as u32);
-        let display_point = DisplayPoint::new(DisplayRow(1), "β   ".len() as u32);
+        let point = MultiBufferPoint::new(1, u32::try_from("β\t".len()).unwrap());
+        let display_point = DisplayPoint::new(DisplayRow(1), u32::try_from("β   ".len()).unwrap());
         assert_eq!(point.to_display_point(&map), display_point);
         assert_eq!(display_point.to_point(&map), point);
 
-        let point = MultiBufferPoint::new(2, "🏀β\t\t".len() as u32);
-        let display_point = DisplayPoint::new(DisplayRow(2), "🏀β      ".len() as u32);
+        let point = MultiBufferPoint::new(2, u32::try_from("🏀β\t\t".len()).unwrap());
+        let display_point =
+            DisplayPoint::new(DisplayRow(2), u32::try_from("🏀β      ".len()).unwrap());
         assert_eq!(point.to_display_point(&map), display_point);
         assert_eq!(display_point.to_point(&map), point);
 
         assert_eq!(
-            DisplayPoint::new(DisplayRow(0), "🌙      ".len() as u32).to_point(&map),
-            MultiBufferPoint::new(0, "🌙\t".len() as u32),
+            DisplayPoint::new(DisplayRow(0), u32::try_from("🌙      ".len()).unwrap(),)
+                .to_point(&map),
+            MultiBufferPoint::new(0, u32::try_from("🌙\t".len()).unwrap(),),
         );
         assert_eq!(
-            DisplayPoint::new(DisplayRow(0), "🌙 ".len() as u32).to_point(&map),
-            MultiBufferPoint::new(0, "🌙".len() as u32),
+            DisplayPoint::new(DisplayRow(0), u32::try_from("🌙 ".len()).unwrap(),).to_point(&map),
+            MultiBufferPoint::new(0, u32::try_from("🌙".len()).unwrap(),),
         );
 
         assert_eq!(
             map.clip_point(
-                DisplayPoint::new(DisplayRow(0), "🌙".len() as u32 - 1),
+                DisplayPoint::new(DisplayRow(0), u32::try_from("🌙".len()).unwrap() - 1,),
                 Bias::Left,
             ),
             DisplayPoint::new(DisplayRow(0), 0),
         );
         assert_eq!(
             map.clip_point(
-                DisplayPoint::new(DisplayRow(0), "🌙".len() as u32 - 1),
+                DisplayPoint::new(DisplayRow(0), u32::try_from("🌙".len()).unwrap() - 1,),
                 Bias::Right,
             ),
-            DisplayPoint::new(DisplayRow(0), "🌙".len() as u32),
+            DisplayPoint::new(DisplayRow(0), u32::try_from("🌙".len()).unwrap(),),
         );
     }
 

@@ -98,10 +98,7 @@ fn floor_char_boundary(text: &str, mut index: usize) -> usize {
         return index;
     }
 
-    text.chars()
-        .next()
-        .map(|character| character.len_utf8())
-        .unwrap_or(0)
+    text.chars().next().map_or(0, char::len_utf8)
 }
 
 fn compute_bitmaps(text: &str) -> (u128, u128, u128) {
@@ -110,7 +107,9 @@ fn compute_bitmaps(text: &str) -> (u128, u128, u128) {
     let mut newlines = 0u128;
 
     for (index, character) in text.char_indices() {
-        if let Some(mask) = bit(index as u32) {
+        if let Ok(index) = u32::try_from(index)
+            && let Some(mask) = bit(index)
+        {
             chars |= mask;
             if character == '\t' {
                 tabs |= mask;

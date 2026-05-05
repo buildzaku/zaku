@@ -408,9 +408,9 @@ impl Fs for NativeFs {
 
                 if !status.success() {
                     return Err(anyhow::anyhow!(
-                        "Failed to create junction from {:?} to {:?}",
-                        path,
-                        target
+                        "Failed to create junction from {} to {}",
+                        path.display(),
+                        target.display()
                     ));
                 }
             } else {
@@ -457,7 +457,7 @@ impl Fs for NativeFs {
         #[cfg(target_os = "windows")]
         let is_fifo = false;
 
-        let path_buf = path.to_path_buf();
+        let path_buf = path.clone();
         let is_executable = self
             .executor
             .spawn(async move { path_buf.is_executable() })
@@ -578,9 +578,8 @@ impl Fs for NativeFs {
         if use_metadata_fallback && smol::fs::metadata(target).await.is_ok() {
             if options.ignore_if_exists {
                 return Ok(());
-            } else {
-                anyhow::bail!("{target:?} already exists");
             }
+            anyhow::bail!("{} already exists", target.display());
         }
 
         smol::fs::rename(source, target).await?;
@@ -643,7 +642,7 @@ impl Fs for NativeFs {
     ) {
         let executor = self.executor.clone();
         let (tx, rx) = smol::channel::unbounded();
-        let pending_paths: Arc<Mutex<Vec<PathEvent>>> = Default::default();
+        let pending_paths: Arc<Mutex<Vec<PathEvent>>> = Arc::default();
         let watcher = Arc::new(FsWatcher::new(tx, pending_paths.clone()));
 
         if let Err(error) = watcher.add(path)
@@ -657,8 +656,12 @@ impl Fs for NativeFs {
             );
         }
 
-        if let Some(mut target) = self.read_link(path).await.ok() {
-            log::trace!("Watching symlink target {path:?} -> {target:?}");
+        if let Ok(mut target) = self.read_link(path).await {
+            log::trace!(
+                "Watching symlink target {} -> {}",
+                path.display(),
+                target.display()
+            );
 
             if target.is_relative()
                 && let Some(parent) = path.parent()
@@ -682,7 +685,7 @@ impl Fs for NativeFs {
                 let watcher = watcher.clone();
                 let executor = executor.clone();
 
-                move |_| {
+                move |()| {
                     let _ = watcher.clone();
                     let pending_paths = pending_paths.clone();
                     let executor = executor.clone();
@@ -774,23 +777,23 @@ impl TempFs {
     }
 
     pub fn insert_tree(&self, path: impl AsRef<Path>, tree: Value) {
-        fn inner(directory: &Path, path: Arc<Path>, tree: Value) {
+        fn inner(directory: &Path, path: &Path, tree: Value) {
             match tree {
                 Value::Object(map) => {
-                    let absolute_path = resolve_path(directory, path.as_ref());
+                    let absolute_path = resolve_path(directory, path);
                     std::fs::create_dir_all(&absolute_path).unwrap();
                     for (name, contents) in map {
-                        let mut new_path = PathBuf::from(path.as_ref());
+                        let mut new_path = PathBuf::from(path);
                         new_path.push(name);
-                        inner(directory, Arc::from(new_path), contents);
+                        inner(directory, &new_path, contents);
                     }
                 }
                 Value::Null => {
-                    let absolute_path = resolve_path(directory, path.as_ref());
+                    let absolute_path = resolve_path(directory, path);
                     std::fs::create_dir_all(&absolute_path).unwrap();
                 }
                 Value::String(contents) => {
-                    let absolute_path = resolve_path(directory, path.as_ref());
+                    let absolute_path = resolve_path(directory, path);
                     if let Some(parent) = absolute_path.parent() {
                         std::fs::create_dir_all(parent).unwrap();
                     }
@@ -802,7 +805,7 @@ impl TempFs {
             }
         }
 
-        inner(self.path(), Arc::from(path.as_ref()), tree)
+        inner(self.path(), path.as_ref(), tree);
     }
 }
 
@@ -1022,7 +1025,7 @@ async fn file_id(path: impl AsRef<Path>) -> anyhow::Result<u64> {
         // that the output buffer was filled.
         let info = unsafe { info.assume_init() };
 
-        Ok(((info.nFileIndexHigh as u64) << 32) | (info.nFileIndexLow as u64))
+        Ok((u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow))
     })
     .await
 }

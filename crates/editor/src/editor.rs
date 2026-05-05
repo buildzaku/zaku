@@ -15,6 +15,7 @@ use multi_buffer::{
     Anchor, Capability, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
     MultiBufferSnapshot, ToOffset, ToPoint,
 };
+use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::{
     any::TypeId,
@@ -741,7 +742,9 @@ impl Editor {
                 .get(..column_bytes)
                 .unwrap_or("")
                 .chars()
-                .count() as f64;
+                .count()
+                .to_f64()
+                .unwrap();
             let goal_column = match self.selection_goal {
                 SelectionGoal::HorizontalPosition(x) => x,
                 SelectionGoal::HorizontalRange { end, .. } => end,
@@ -760,8 +763,13 @@ impl Editor {
                     .min(buffer_snapshot.max_point().row)
             };
             let target_line = buffer_line_text(display_snapshot.buffer_snapshot(), target_row);
+            let goal_column = goal_column
+                .max(0.0)
+                .to_usize()
+                .expect("goal column should fit in usize");
             let target_column =
-                byte_offset_from_char_count(&target_line, goal_column as usize) as u32;
+                u32::try_from(byte_offset_from_char_count(&target_line, goal_column))
+                    .expect("target column should fit in u32");
 
             return buffer_snapshot
                 .point_to_offset(text::Point {
@@ -1068,15 +1076,26 @@ impl Editor {
         let newest_selection = self
             .selections
             .newest::<MultiBufferOffsetUtf16>(&display_snapshot);
-        let start_delta = range.start.0.0 as isize - newest_selection.start.0.0 as isize;
-        let end_delta = range.end.0.0 as isize - newest_selection.end.0.0 as isize;
+        let start_delta = isize::try_from(range.start.abs_diff(newest_selection.start))
+            .expect("selection replacement start delta should fit in isize");
+        let start_delta = if range.start >= newest_selection.start {
+            start_delta
+        } else {
+            -start_delta
+        };
+        let end_delta = isize::try_from(range.end.abs_diff(newest_selection.end))
+            .expect("selection replacement end delta should fit in isize");
+        let end_delta = if range.end >= newest_selection.end {
+            end_delta
+        } else {
+            -end_delta
+        };
         let snapshot = self.buffer_snapshot(cx);
         selections
             .into_iter()
             .map(|mut selection| {
-                selection.start.0.0 =
-                    (selection.start.0.0 as isize).saturating_add(start_delta) as usize;
-                selection.end.0.0 = (selection.end.0.0 as isize).saturating_add(end_delta) as usize;
+                selection.start = selection.start.saturating_add_signed(start_delta);
+                selection.end = selection.end.saturating_add_signed(end_delta);
                 snapshot.clip_offset_utf16(selection.start, Bias::Left)
                     ..snapshot.clip_offset_utf16(selection.end, Bias::Right)
             })
@@ -1208,7 +1227,7 @@ impl Editor {
             let offset = self.offset_for_horizontal_move(-1, cx);
             self.move_to(offset, cx);
         } else {
-            self.move_to(selected_range.start, cx)
+            self.move_to(selected_range.start, cx);
         }
     }
 
@@ -1218,7 +1237,7 @@ impl Editor {
             let offset = self.offset_for_horizontal_move(1, cx);
             self.move_to(offset, cx);
         } else {
-            self.move_to(selected_range.end, cx)
+            self.move_to(selected_range.end, cx);
         }
     }
 
@@ -1765,8 +1784,8 @@ impl Editor {
 
     pub fn do_paste(
         &mut self,
-        text: &String,
-        clipboard_selections: Option<Vec<ClipboardSelection>>,
+        text: &str,
+        clipboard_selections: Option<&[ClipboardSelection]>,
         handle_entire_lines: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1776,13 +1795,10 @@ impl Editor {
         }
 
         let selected_range = self.selected_range(cx);
-        let mut text_to_insert = text.as_str();
+        let mut text_to_insert = text;
         let mut is_entire_line = false;
 
-        if let Some(selection) = clipboard_selections
-            .as_ref()
-            .and_then(|selections| selections.first())
-        {
+        if let Some(selection) = clipboard_selections.and_then(|selections| selections.first()) {
             is_entire_line = selection.is_entire_line;
 
             if let Some(slice) = text.get(..selection.len.min(text.len())) {
@@ -1830,9 +1846,11 @@ impl Editor {
             match entries.first() {
                 // For now, we only support applying metadata if there's one string.
                 Some(ClipboardEntry::String(clipboard_string)) if entries.len() == 1 => {
+                    let clipboard_selections =
+                        clipboard_string.metadata_json::<Vec<ClipboardSelection>>();
                     self.do_paste(
                         clipboard_string.text(),
-                        clipboard_string.metadata_json::<Vec<ClipboardSelection>>(),
+                        clipboard_selections.as_deref(),
                         true,
                         window,
                         cx,
@@ -1875,7 +1893,7 @@ impl Editor {
             .cloned()
         {
             self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_anchors(selections.to_vec());
+                s.select_anchors(&selections);
             });
         }
         self.clear_highlights(HighlightKey::InputComposition, cx);
@@ -1903,7 +1921,7 @@ impl Editor {
             .cloned()
         {
             self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
-                s.select_anchors(selections.to_vec());
+                s.select_anchors(&selections);
             });
         }
         self.clear_highlights(HighlightKey::InputComposition, cx);
@@ -1923,7 +1941,7 @@ impl Editor {
                     SelectionEffects::scroll(scroll::Autoscroll::newest()),
                     cx,
                     |s| {
-                        s.select_anchors(entry.selections.to_vec());
+                        s.select_anchors(&entry.selections);
                     },
                 );
             });
@@ -1941,7 +1959,7 @@ impl Editor {
                     SelectionEffects::scroll(scroll::Autoscroll::newest()),
                     cx,
                     |s| {
-                        s.select_anchors(entry.selections.to_vec());
+                        s.select_anchors(&entry.selections);
                     },
                 );
             });
@@ -1976,14 +1994,14 @@ impl Editor {
 
         let (start, end, mode) = match click_count {
             1 => {
-                let start = buffer.anchor_before(position.to_point(&display_snapshot));
+                let start = buffer.anchor_before(&position.to_point(&display_snapshot));
                 (start, start, SelectMode::Character)
             }
             2 => {
                 let position = position.to_offset(&display_snapshot, Bias::Left);
-                let (word_range, _) = buffer.surrounding_word(position, None);
-                let start = buffer.anchor_before(word_range.start);
-                let end = buffer.anchor_before(word_range.end);
+                let (word_range, _) = buffer.surrounding_word(&position, None);
+                let start = buffer.anchor_before(&word_range.start);
+                let end = buffer.anchor_before(&word_range.end);
                 (start, end, SelectMode::Word(start..end))
             }
             3 => {
@@ -1993,13 +2011,13 @@ impl Editor {
                     text::Point::new(position.row.saturating_add(1), 0),
                     Bias::Left,
                 );
-                let start = buffer.anchor_before(line_start);
-                let end = buffer.anchor_before(next_line_start);
+                let start = buffer.anchor_before(&line_start);
+                let end = buffer.anchor_before(&next_line_start);
                 (start, end, SelectMode::Line(start..end))
             }
             _ => {
-                let start = buffer.anchor_before(MultiBufferOffset::ZERO);
-                let end = buffer.anchor_before(buffer.len());
+                let start = buffer.anchor_before(&MultiBufferOffset::ZERO);
+                let end = buffer.anchor_before(&buffer.len());
                 (start, end, SelectMode::All)
             }
         };
@@ -2029,7 +2047,7 @@ impl Editor {
         });
         self.begin_selection(position, click_count, cx);
 
-        let tail_anchor = display_snapshot.buffer_snapshot().anchor_before(tail);
+        let tail_anchor = display_snapshot.buffer_snapshot().anchor_before(&tail);
         let current_selection = match self.selections.select_mode() {
             SelectMode::Character | SelectMode::All => tail_anchor..tail_anchor,
             SelectMode::Word(range) | SelectMode::Line(range) => range.clone(),
@@ -2088,10 +2106,10 @@ impl Editor {
                 let original_start = original_range.start.to_offset(buffer);
                 let original_end = original_range.end.to_offset(buffer);
 
-                let head_offset = if buffer.is_inside_word(offset, None)
+                let head_offset = if buffer.is_inside_word(&offset, None)
                     || (original_start..original_end).contains(&offset)
                 {
-                    let (word_range, _) = buffer.surrounding_word(offset, None);
+                    let (word_range, _) = buffer.surrounding_word(&offset, None);
                     if word_range.start < original_start {
                         word_range.start
                     } else {
@@ -2139,12 +2157,12 @@ impl Editor {
         };
 
         if head < tail {
-            pending.start = buffer.anchor_before(head);
-            pending.end = buffer.anchor_before(tail);
+            pending.start = buffer.anchor_before(&head);
+            pending.end = buffer.anchor_before(&tail);
             pending.reversed = true;
         } else {
-            pending.start = buffer.anchor_before(tail);
-            pending.end = buffer.anchor_before(head);
+            pending.start = buffer.anchor_before(&tail);
+            pending.end = buffer.anchor_before(&head);
             pending.reversed = false;
         }
 
@@ -2221,7 +2239,13 @@ impl Editor {
         let point_for_position = position_map.point_for_position(position);
         let offset = if position_map.masked {
             let row = point_for_position.previous_valid.row().0;
-            let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
+            let scroll_row = position_map
+                .scroll_position
+                .y
+                .max(0.0)
+                .to_u32()
+                .expect("scroll row should fit in u32");
+            let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
             let Some(line) = position_map.line_layouts.get(line_index) else {
                 return snapshot.len().0;
             };
@@ -2233,8 +2257,11 @@ impl Editor {
                 .previous_valid
                 .column()
                 .saturating_add(point_for_position.column_overshoot_after_line_end);
+            let line_display_column_start = u32::try_from(line.line_display_column_start)
+                .expect("line display column should fit in u32");
             let local_display_column =
-                unclipped_column.saturating_sub(line.line_display_column_start as u32) as usize;
+                usize::try_from(unclipped_column.saturating_sub(line_display_column_start))
+                    .unwrap();
             let local_display_column = local_display_column.min(line.len);
             let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
             line.line_start_offset + buffer_column
@@ -2477,10 +2504,10 @@ impl EntityInputHandler for Editor {
                     .iter()
                     .any(|range| range.start != range.end);
                 this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-                    selections.select_ranges(new_selected_ranges)
+                    selections.select_ranges(new_selected_ranges);
                 });
                 if should_backspace {
-                    this.backspace(&Default::default(), window, cx);
+                    this.backspace(&Backspace, window, cx);
                 }
             }
 
@@ -2530,7 +2557,7 @@ impl EntityInputHandler for Editor {
 
             if let Some(ranges) = ranges_to_replace {
                 this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-                    selections.select_ranges(ranges)
+                    selections.select_ranges(ranges);
                 });
             }
 
@@ -2582,7 +2609,7 @@ impl EntityInputHandler for Editor {
                     })
                     .collect::<Vec<_>>();
                 this.change_selections(SelectionEffects::no_scroll(), cx, |selections| {
-                    selections.select_ranges(new_selected_ranges)
+                    selections.select_ranges(new_selected_ranges);
                 });
             }
         });
@@ -2622,10 +2649,14 @@ impl EntityInputHandler for Editor {
             ));
 
         let row = start_point.row;
-        let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
-        let Some(line) = position_map.line_layouts.get(line_index) else {
-            return None;
-        };
+        let scroll_row = position_map
+            .scroll_position
+            .y
+            .max(0.0)
+            .to_u32()
+            .expect("scroll row should fit in u32");
+        let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
+        let line = position_map.line_layouts.get(line_index)?;
         if line.row.0 != row {
             return None;
         }
@@ -2673,7 +2704,13 @@ impl EntityInputHandler for Editor {
         let point_for_position = position_map.point_for_position(point);
         let offset = if position_map.masked {
             let row = point_for_position.previous_valid.row().0;
-            let line_index = row.saturating_sub(position_map.scroll_position.y as u32) as usize;
+            let scroll_row = position_map
+                .scroll_position
+                .y
+                .max(0.0)
+                .to_u32()
+                .expect("scroll row should fit in u32");
+            let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
             let line = position_map.line_layouts.get(line_index)?;
             if line.row.0 != row {
                 return None;
@@ -2682,8 +2719,11 @@ impl EntityInputHandler for Editor {
                 .previous_valid
                 .column()
                 .saturating_add(point_for_position.column_overshoot_after_line_end);
+            let line_display_column_start = u32::try_from(line.line_display_column_start)
+                .expect("line display column should fit in u32");
             let local_display_column =
-                unclipped_column.saturating_sub(line.line_display_column_start as u32) as usize;
+                usize::try_from(unclipped_column.saturating_sub(line_display_column_start))
+                    .unwrap();
             let local_display_column = local_display_column.min(line.len);
             let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
             line.line_start_offset + buffer_column
@@ -2830,8 +2870,7 @@ fn byte_offset_from_char_count(text: &str, char_count: usize) -> usize {
 
     text.char_indices()
         .nth(char_count)
-        .map(|(index, _)| index)
-        .unwrap_or_else(|| text.len())
+        .map_or_else(|| text.len(), |(index, _)| index)
 }
 
 #[cfg(test)]

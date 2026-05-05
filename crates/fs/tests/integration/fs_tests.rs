@@ -35,7 +35,7 @@ async fn test_native_fs_parallel_rename_without_overwrite_preserves_failed_sourc
 
     assert_ne!(first_result.is_ok(), second_result.is_ok());
     assert!(target.exists());
-    assert_eq!(source_a.exists() as u8 + source_b.exists() as u8, 1);
+    assert_eq!(u8::from(source_a.exists()) + u8::from(source_b.exists()), 1);
 }
 
 #[gpui::test]
@@ -125,7 +125,7 @@ async fn test_native_fs_canonicalize(executor: BackgroundExecutor) {
     let file = temp_dir.path().join("test (1).txt");
     let file = SanitizedPath::new(&file);
 
-    std::fs::write(&file, "test").unwrap();
+    std::fs::write(file, "test").unwrap();
 
     let canonicalized = fs.canonicalize(file.as_path()).await;
     assert!(canonicalized.is_ok());

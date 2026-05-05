@@ -3,9 +3,9 @@ use std::{cmp::Ordering, collections::HashMap, ops::Range};
 /// Build a string and offsets from embedded position markers.
 pub fn marked_text_offsets_by(
     marked_text: &str,
-    markers: Vec<char>,
+    markers: &[char],
 ) -> (String, HashMap<char, Vec<usize>>) {
-    let mut extracted_markers: HashMap<char, Vec<usize>> = Default::default();
+    let mut extracted_markers: HashMap<char, Vec<usize>> = HashMap::default();
     let mut unmarked_text = String::new();
 
     for character in marked_text.chars() {
@@ -26,9 +26,9 @@ pub fn marked_text_ranges_by(
     marked_text: &str,
     markers: Vec<TextRangeMarker>,
 ) -> (String, HashMap<TextRangeMarker, Vec<Range<usize>>>) {
-    let all_markers = markers.iter().flat_map(|marker| marker.markers()).collect();
+    let all_markers: Vec<_> = markers.iter().flat_map(TextRangeMarker::markers).collect();
 
-    let (unmarked_text, mut marker_offsets) = marked_text_offsets_by(marked_text, all_markers);
+    let (unmarked_text, mut marker_offsets) = marked_text_offsets_by(marked_text, &all_markers);
     let range_lookup = markers
         .into_iter()
         .map(|marker| {
@@ -98,9 +98,10 @@ pub fn marked_text_ranges(
         match marker {
             "ˇ" => {
                 if current_range_start.is_some() {
-                    if current_range_cursor.is_some() {
-                        panic!("duplicate point marker 'ˇ' at index {marked_index}");
-                    }
+                    assert!(
+                        current_range_cursor.is_none(),
+                        "duplicate point marker 'ˇ' at index {marked_index}"
+                    );
 
                     current_range_cursor = Some(unmarked_len);
                 } else {
@@ -108,15 +109,14 @@ pub fn marked_text_ranges(
                 }
             }
             "«" => {
-                if current_range_start.is_some() {
-                    panic!("unexpected range start marker '«' at index {marked_index}");
-                }
+                assert!(
+                    current_range_start.is_none(),
+                    "unexpected range start marker '«' at index {marked_index}"
+                );
                 current_range_start = Some(unmarked_len);
             }
             "»" => {
-                let current_range_start = if let Some(start) = current_range_start.take() {
-                    start
-                } else {
+                let Some(current_range_start) = current_range_start.take() else {
                     panic!("unexpected range end marker '»' at index {marked_index}");
                 };
 
@@ -183,16 +183,11 @@ pub fn generate_marked_text(
                     marked_text.insert_str(range.end, "«ˇ");
                 }
             }
+        } else if range.start.cmp(&range.end) == Ordering::Equal {
+            marked_text.insert(range.start, 'ˇ');
         } else {
-            match range.start.cmp(&range.end) {
-                Ordering::Equal => {
-                    marked_text.insert(range.start, 'ˇ');
-                }
-                _ => {
-                    marked_text.insert(range.end, '»');
-                    marked_text.insert(range.start, '«');
-                }
-            }
+            marked_text.insert(range.end, '»');
+            marked_text.insert(range.start, '«');
         }
     }
     marked_text
@@ -209,8 +204,10 @@ impl TextRangeMarker {
     fn markers(&self) -> Vec<char> {
         match self {
             Self::Empty(marker) => vec![*marker],
-            Self::Range(start_marker, end_marker) => vec![*start_marker, *end_marker],
-            Self::ReverseRange(start_marker, end_marker) => vec![*start_marker, *end_marker],
+            Self::Range(start_marker, end_marker)
+            | Self::ReverseRange(start_marker, end_marker) => {
+                vec![*start_marker, *end_marker]
+            }
         }
     }
 }

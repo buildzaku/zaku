@@ -26,11 +26,12 @@ const DEFAULT_FILTERS: &[(&str, LevelFilter)] = &[
 
 pub fn init_env_filter(filter: EnvFilter) {
     if let Some(level_max) = filter.level_global {
-        LEVEL_ENABLED_MAX_STATIC.store(level_max as u8, Ordering::Release)
+        LEVEL_ENABLED_MAX_STATIC.store(level_max as u8, Ordering::Release);
     }
-    if ENV_FILTER.set(filter).is_err() {
-        panic!("Environment filter cannot be initialized twice");
-    }
+    assert!(
+        ENV_FILTER.set(filter).is_ok(),
+        "Environment filter cannot be initialized twice"
+    );
 }
 
 pub fn is_possibly_enabled_level(level: Level) -> bool {
@@ -58,7 +59,7 @@ pub fn is_scope_enabled(scope: &ScopeRef<'_>, module_path: Option<&str>, level: 
     }
 }
 
-pub fn refresh_from_settings(settings: &HashMap<String, String>) {
+pub fn refresh_from_settings<S: std::hash::BuildHasher>(settings: &HashMap<String, String, S>) {
     let env_config = ENV_FILTER.get();
     let map_new = ScopeMap::new_from_settings_and_env(settings, env_config, DEFAULT_FILTERS);
     let level_enabled_max = level_enabled_max(&map_new);
@@ -93,8 +94,7 @@ fn level_enabled_max(scope_map: &ScopeMap) -> u8 {
 
 fn level_filter_from_str(level_str: &str) -> Option<LevelFilter> {
     let level = match level_str.to_ascii_lowercase().as_str() {
-        "" => LevelFilter::Trace,
-        "trace" => LevelFilter::Trace,
+        "" | "trace" => LevelFilter::Trace,
         "debug" => LevelFilter::Debug,
         "info" => LevelFilter::Info,
         "warn" => LevelFilter::Warn,
@@ -141,7 +141,7 @@ fn scope_alloc_from_scope_str(scope_str: &str) -> Option<ScopeAlloc> {
         return None;
     }
 
-    let scope = scope_buffer.map(|scope_name| scope_name.to_string());
+    let scope = scope_buffer.map(ToString::to_string);
     Some(scope)
 }
 
@@ -159,6 +159,12 @@ pub struct ScopeMapEntry {
     descendants: Range<usize>,
 }
 
+struct ProcessQueueEntry {
+    parent_index: usize,
+    depth: usize,
+    items_range: Range<usize>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnabledStatus {
     Enabled,
@@ -167,8 +173,8 @@ pub enum EnabledStatus {
 }
 
 impl ScopeMap {
-    pub fn new_from_settings_and_env(
-        items_input_map: &HashMap<String, String>,
+    pub fn new_from_settings_and_env<S: std::hash::BuildHasher>(
+        items_input_map: &HashMap<String, String, S>,
         env_config: Option<&EnvFilter>,
         default_filters: &[(&str, LevelFilter)],
     ) -> Self {
@@ -194,7 +200,7 @@ impl ScopeMap {
 
         let all_filters = default_filters
             .iter()
-            .cloned()
+            .copied()
             .chain(env_filters)
             .chain(new_filters);
 
@@ -231,11 +237,6 @@ impl ScopeMap {
 
         let items_count = items.len();
 
-        struct ProcessQueueEntry {
-            parent_index: usize,
-            depth: usize,
-            items_range: Range<usize>,
-        }
         let mut process_queue = VecDeque::new();
         process_queue.push_back(ProcessQueueEntry {
             parent_index: usize::MAX,
@@ -302,10 +303,10 @@ impl ScopeMap {
 
             let result_entries_end = this.entries.len();
 
-            if parent_index != usize::MAX {
-                this.entries[parent_index].descendants = result_entries_start..result_entries_end;
-            } else {
+            if parent_index == usize::MAX {
                 this.root_count = result_entries_end;
+            } else {
+                this.entries[parent_index].descendants = result_entries_start..result_entries_end;
             }
         }
 
@@ -841,9 +842,8 @@ mod tests {
                 is_possibly_enabled_level(expected_level),
                 "configured module logs should survive the max enabled level check before module matching runs",
             );
-            assert_eq!(
+            assert!(
                 is_scope_enabled(&scope_new(&[""]), Some("crate::module"), expected_level),
-                true,
                 "exact module matching should allow the configured module level once the filter is checked",
             );
         }

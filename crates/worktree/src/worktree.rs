@@ -49,7 +49,7 @@ pub struct LocalWorktree {
     scan_requests_tx: channel::Sender<ScanRequest>,
     path_prefixes_to_scan_tx: channel::Sender<PathPrefixScanRequest>,
     is_scanning: (watch::Sender<bool>, watch::Receiver<bool>),
-    _background_scanner_tasks: Vec<Task<()>>,
+    background_scanner_tasks: Vec<Task<()>>,
     fs: Arc<dyn Fs>,
     fs_case_sensitive: bool,
     visible: bool,
@@ -164,11 +164,11 @@ impl LocalWorktree {
                 state: Mutex::new(BackgroundScannerState {
                     prev_snapshot: snapshot.snapshot.clone(),
                     snapshot,
-                    scanned_dirs: Default::default(),
-                    path_prefixes_to_scan: Default::default(),
-                    paths_to_scan: Default::default(),
-                    removed_entries: Default::default(),
-                    changed_paths: Default::default(),
+                    scanned_dirs: HashSet::default(),
+                    path_prefixes_to_scan: HashSet::default(),
+                    paths_to_scan: HashSet::default(),
+                    removed_entries: HashMap::default(),
+                    changed_paths: Vec::default(),
                     scanning_enabled,
                 }),
                 fs,
@@ -216,7 +216,7 @@ impl LocalWorktree {
             }
         });
 
-        self._background_scanner_tasks = vec![background_scanner, scan_state_updater];
+        self.background_scanner_tasks = vec![background_scanner, scan_state_updater];
         self.is_scanning.0.send_replace(true);
     }
 
@@ -345,7 +345,7 @@ impl Worktree {
                 scan_requests_tx,
                 path_prefixes_to_scan_tx,
                 is_scanning: watch::channel(true),
-                _background_scanner_tasks: Vec::new(),
+                background_scanner_tasks: Vec::new(),
                 fs,
                 fs_case_sensitive,
                 visible,
@@ -632,7 +632,7 @@ impl fmt::Debug for Snapshot {
             .field("root_name", &self.root_name)
             .field("entries_by_path", &EntriesByPath(&self.entries_by_path))
             .field("entries_by_id", &EntriesById(&self.entries_by_id))
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -698,7 +698,7 @@ impl Entry {
 impl Item for Entry {
     type Summary = EntrySummary;
 
-    fn summary(&self, _: ()) -> Self::Summary {
+    fn summary(&self, (): ()) -> Self::Summary {
         EntrySummary {
             count: 1,
             file_count: usize::from(self.is_file()),
@@ -796,6 +796,8 @@ impl LocalSnapshot {
 
     #[cfg(feature = "test-support")]
     pub fn check_invariants(&self) {
+        use std::collections::BTreeSet;
+
         assert_eq!(
             self.snapshot
                 .entries_by_path
@@ -806,7 +808,7 @@ impl LocalSnapshot {
                 .entries_by_id
                 .cursor::<()>(())
                 .map(|entry| (&entry.path, entry.id))
-                .collect::<std::collections::BTreeSet<_>>()
+                .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect::<Vec<_>>(),
             "entries_by_path and entries_by_id are inconsistent"
@@ -906,11 +908,11 @@ impl Default for PathKey {
 }
 
 impl<'a> Dimension<'a, EntrySummary> for PathKey {
-    fn zero(_: ()) -> Self {
-        Default::default()
+    fn zero((): ()) -> Self {
+        PathKey::default()
     }
 
-    fn add_summary(&mut self, summary: &'a EntrySummary, _: ()) {
+    fn add_summary(&mut self, summary: &'a EntrySummary, (): ()) {
         self.0 = summary.max_path.clone();
     }
 }
@@ -924,7 +926,7 @@ struct PathEntry {
 impl Item for PathEntry {
     type Summary = PathEntrySummary;
 
-    fn summary(&self, _: ()) -> Self::Summary {
+    fn summary(&self, (): ()) -> Self::Summary {
         PathEntrySummary { max_id: self.id }
     }
 }
@@ -953,11 +955,11 @@ impl ContextLessSummary for PathEntrySummary {
 }
 
 impl<'a> Dimension<'a, PathEntrySummary> for ProjectEntryId {
-    fn zero(_: ()) -> Self {
+    fn zero((): ()) -> Self {
         Self::default()
     }
 
-    fn add_summary(&mut self, summary: &'a PathEntrySummary, _: ()) {
+    fn add_summary(&mut self, summary: &'a PathEntrySummary, (): ()) {
         *self = summary.max_id;
     }
 }
@@ -1168,7 +1170,7 @@ impl BackgroundScanner {
 
         self.reload_entries_for_paths(
             root_path.as_ref(),
-            &root_canonical_path,
+            root_canonical_path,
             &request.relative_paths,
             abs_paths,
             None,
@@ -1233,9 +1235,9 @@ impl BackgroundScanner {
 
                 if let Some(new_path) = new_path {
                     log::info!(
-                        "Root renamed from {:?} to {:?}",
-                        root_path.as_path(),
-                        new_path.as_path(),
+                        "Root renamed from {} to {}",
+                        root_path.as_path().display(),
+                        new_path.as_path().display(),
                     );
                     self.status_updates_tx
                         .unbounded_send(ScanState::RootUpdated { new_path })
@@ -1250,12 +1252,7 @@ impl BackgroundScanner {
         let mut relative_paths = Vec::with_capacity(events.len());
         events.sort_unstable_by(|left, right| left.path.cmp(&right.path));
         events.dedup_by(|left, right| {
-            if left.path == right.path {
-                if matches!(left.kind, Some(PathEventKind::Rescan)) {
-                    right.kind = left.kind;
-                }
-                true
-            } else if left.path.starts_with(&right.path) {
+            if left.path == right.path || left.path.starts_with(&right.path) {
                 if matches!(left.kind, Some(PathEventKind::Rescan)) {
                     right.kind = left.kind;
                 }
@@ -1265,9 +1262,6 @@ impl BackgroundScanner {
             }
         });
         {
-            let snapshot = &self.state.lock().await.snapshot;
-            let mut ranges_to_drop = SmallVec::<[Range<usize>; 4]>::new();
-
             fn skip_idx(ranges: &mut SmallVec<[Range<usize>; 4]>, idx: usize) {
                 if let Some(last_range) = ranges.last_mut()
                     && last_range.end == idx
@@ -1277,6 +1271,9 @@ impl BackgroundScanner {
                     ranges.push(idx..idx + 1);
                 }
             }
+
+            let snapshot = &self.state.lock().await.snapshot;
+            let mut ranges_to_drop = SmallVec::<[Range<usize>; 4]>::new();
 
             for (idx, event) in events.iter().enumerate() {
                 let abs_path = SanitizedPath::new(&event.path);
@@ -1443,7 +1440,7 @@ impl BackgroundScanner {
                                         return;
                                     }
                                 }
-                                _ = progress_update_timer => {
+                                () = progress_update_timer => {
                                     match progress_update_count.compare_exchange(
                                         last_progress_update_count,
                                         last_progress_update_count + 1,
@@ -1466,7 +1463,10 @@ impl BackgroundScanner {
                                     let Ok(job) = job else { break };
                                     if let Err(error) = self.scan_dir(&job).await
                                         && job.path.is_empty() {
-                                            log::error!("Error scanning directory {:?}: {error:#}", job.abs_path);
+                                            log::error!(
+                                                "Error scanning directory {}: {error:#}",
+                                                job.abs_path.display()
+                                            );
                                         }
                                 }
                             }
@@ -1605,7 +1605,7 @@ impl BackgroundScanner {
                     }
                 }
             }
-            state.populate_dir(job.path.clone(), new_entries);
+            state.populate_dir(&job.path, new_entries);
         }
 
         self.watcher.add(job.abs_path.as_ref()).log_err();
@@ -1712,10 +1712,10 @@ impl BackgroundScanner {
                                 EntryKind::Dir
                             };
                         state.insert_entry(entry.clone());
-                        if let Some(scan_queue_tx) = scan_queue_tx.as_ref() {
-                            if entry.kind == EntryKind::PendingDir {
-                                state.enqueue_scan_dir(abs_path.clone(), &entry, scan_queue_tx);
-                            }
+                        if let Some(scan_queue_tx) = scan_queue_tx.as_ref()
+                            && entry.kind == EntryKind::PendingDir
+                        {
+                            state.enqueue_scan_dir(abs_path.clone(), &entry, scan_queue_tx);
                         }
                     } else if let Some(request) = request {
                         let entry_id = state.entry_id_for(
@@ -1758,7 +1758,7 @@ impl BackgroundScanner {
             return futures::future::pending().await;
         }
 
-        self.executor.timer(FS_WATCH_LATENCY).await
+        self.executor.timer(FS_WATCH_LATENCY).await;
     }
 }
 
@@ -1841,24 +1841,24 @@ impl BackgroundScannerState {
 
     fn populate_dir(
         &mut self,
-        parent_path: Arc<RelPath>,
+        parent_path: &Arc<RelPath>,
         entries: impl IntoIterator<Item = Entry>,
     ) {
         let mut parent_entry = if let Some(parent_entry) = self
             .snapshot
             .entries_by_path
-            .get(&PathKey(parent_path.clone()), ())
+            .get(&PathKey(Arc::clone(parent_path)), ())
         {
             parent_entry.clone()
         } else {
-            log::warn!("Populating a directory {parent_path:?} that has been removed",);
+            log::warn!("Populating a directory {parent_path:?} that has been removed");
             return;
         };
 
         match parent_entry.kind {
             EntryKind::PendingDir | EntryKind::UnloadedDir => parent_entry.kind = EntryKind::Dir,
             EntryKind::Dir => {}
-            _ => return,
+            EntryKind::File => return,
         }
 
         let parent_entry_id = parent_entry.id;
@@ -1877,8 +1877,8 @@ impl BackgroundScannerState {
             .edit(entries_by_path_edits, ());
         self.snapshot.entries_by_id.edit(entries_by_id_edits, ());
 
-        if let Err(index) = self.changed_paths.binary_search(&parent_path) {
-            self.changed_paths.insert(index, parent_path.clone());
+        if let Err(index) = self.changed_paths.binary_search(parent_path) {
+            self.changed_paths.insert(index, Arc::clone(parent_path));
         }
 
         #[cfg(feature = "test-support")]
@@ -1994,11 +1994,11 @@ impl TraversalProgress<'_> {
 }
 
 impl<'a> Dimension<'a, EntrySummary> for TraversalProgress<'a> {
-    fn zero(_: ()) -> Self {
+    fn zero((): ()) -> Self {
         Self::default()
     }
 
-    fn add_summary(&mut self, summary: &'a EntrySummary, _: ()) {
+    fn add_summary(&mut self, summary: &'a EntrySummary, (): ()) {
         self.max_path = summary.max_path.as_ref();
         self.count += summary.count;
         self.file_count += summary.file_count;
@@ -2137,7 +2137,7 @@ impl PathTarget<'_> {
 }
 
 impl<'a> SeekTarget<'a, EntrySummary, TraversalProgress<'a>> for PathTarget<'_> {
-    fn cmp(&self, cursor_location: &TraversalProgress<'a>, _: ()) -> Ordering {
+    fn cmp(&self, cursor_location: &TraversalProgress<'a>, (): ()) -> Ordering {
         self.cmp_path(cursor_location.max_path)
     }
 }
@@ -2174,11 +2174,12 @@ impl<'a> TraversalTarget<'a> {
 }
 
 impl<'a> SeekTarget<'a, EntrySummary, TraversalProgress<'a>> for TraversalTarget<'_> {
-    fn cmp(&self, cursor_location: &TraversalProgress<'a>, _: ()) -> Ordering {
+    fn cmp(&self, cursor_location: &TraversalProgress<'a>, (): ()) -> Ordering {
         self.cmp_progress(cursor_location)
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct ChildEntriesOptions {
     pub include_files: bool,
     pub include_dirs: bool,
@@ -2238,7 +2239,7 @@ fn build_diff(
     new_snapshot: &Snapshot,
     event_roots: &[EventRoot],
 ) -> UpdatedEntriesSet {
-    use BackgroundScannerPhase::*;
+    use BackgroundScannerPhase::{EventsReceivedDuringInitialScan, InitialScan};
     use PathChange::{Added, AddedOrUpdated, Loaded, Removed, Updated};
 
     let mut changes = Vec::new();

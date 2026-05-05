@@ -91,11 +91,13 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
 
                     match value {
                         FeatureValue::Bool(enable) => {
-                            feature_map.insert(key, if enable { 1 } else { 0 });
+                            feature_map.insert(key, u32::from(enable));
                         }
                         FeatureValue::Number(value) => {
-                            if let Some(value) = value.as_u64() {
-                                feature_map.insert(key, value as u32);
+                            if let Some(value) =
+                                value.as_u64().and_then(|value| u32::try_from(value).ok())
+                            {
+                                feature_map.insert(key, value);
                             } else {
                                 log::error!(
                                     "Invalid font feature value {value} for feature tag {key}",

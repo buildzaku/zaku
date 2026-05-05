@@ -29,9 +29,6 @@ impl ElevationIndex {
         let is_light = cx.theme().appearance() == Appearance::Light;
 
         match self {
-            ElevationIndex::Surface => vec![],
-            ElevationIndex::EditorSurface => vec![],
-
             ElevationIndex::ElevatedSurface => vec![
                 BoxShadow {
                     color: gpui::hsla(0., 0., 0., 0.12),
@@ -46,7 +43,6 @@ impl ElevationIndex {
                     spread_radius: gpui::px(0.),
                 },
             ],
-
             ElevationIndex::ModalSurface => vec![
                 BoxShadow {
                     color: gpui::hsla(0., 0., 0., if is_light { 0.06 } else { 0.12 }),
@@ -73,8 +69,11 @@ impl ElevationIndex {
                     spread_radius: gpui::px(0.),
                 },
             ],
-
-            _ => vec![],
+            ElevationIndex::Background
+            | ElevationIndex::Surface
+            | ElevationIndex::EditorSurface => {
+                vec![]
+            }
         }
     }
 
@@ -83,18 +82,21 @@ impl ElevationIndex {
             ElevationIndex::Background => cx.theme().colors().background,
             ElevationIndex::Surface => cx.theme().colors().surface_background,
             ElevationIndex::EditorSurface => cx.theme().colors().editor_background,
-            ElevationIndex::ElevatedSurface => cx.theme().colors().elevated_surface_background,
-            ElevationIndex::ModalSurface => cx.theme().colors().elevated_surface_background,
+            ElevationIndex::ElevatedSurface | ElevationIndex::ModalSurface => {
+                cx.theme().colors().elevated_surface_background
+            }
         }
     }
 
     pub fn on_elevation_bg(&self, cx: &App) -> Hsla {
         match self {
-            ElevationIndex::Background => cx.theme().colors().surface_background,
             ElevationIndex::Surface => cx.theme().colors().background,
-            ElevationIndex::EditorSurface => cx.theme().colors().surface_background,
-            ElevationIndex::ElevatedSurface => cx.theme().colors().background,
-            ElevationIndex::ModalSurface => cx.theme().colors().background,
+            ElevationIndex::Background | ElevationIndex::EditorSurface => {
+                cx.theme().colors().surface_background
+            }
+            ElevationIndex::ElevatedSurface | ElevationIndex::ModalSurface => {
+                cx.theme().colors().background
+            }
         }
     }
 
@@ -103,11 +105,12 @@ impl ElevationIndex {
     /// If the current background color is already dark, it will return a lighter color instead.
     pub fn darker_bg(&self, cx: &App) -> Hsla {
         match self {
-            ElevationIndex::Background => cx.theme().colors().surface_background,
-            ElevationIndex::Surface => cx.theme().colors().editor_background,
-            ElevationIndex::EditorSurface => cx.theme().colors().surface_background,
-            ElevationIndex::ElevatedSurface => cx.theme().colors().editor_background,
-            ElevationIndex::ModalSurface => cx.theme().colors().editor_background,
+            ElevationIndex::Background | ElevationIndex::EditorSurface => {
+                cx.theme().colors().surface_background
+            }
+            ElevationIndex::Surface
+            | ElevationIndex::ElevatedSurface
+            | ElevationIndex::ModalSurface => cx.theme().colors().editor_background,
         }
     }
 }

@@ -7,10 +7,12 @@ use gpui::{
     TextStyle, UnderlineStyle, Window, prelude::*,
 };
 use multi_buffer::{MultiBufferOffset, MultiBufferRow};
+use num_traits::ToPrimitive;
 use std::{
     any::TypeId,
     cmp::{self, Ordering},
     ops::Range,
+    panic,
 };
 
 use actions::editor::HandleInput;
@@ -18,7 +20,7 @@ use theme::ActiveTheme;
 
 use crate::{
     ActiveLineHighlight, Editor, EditorMode, EditorStyle, MAX_LINE_LEN, SizingBehavior,
-    display_map::{DisplayPoint, DisplaySnapshot},
+    display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, TabPoint},
     scroll::ScrollOffset,
 };
 
@@ -40,14 +42,14 @@ pub(crate) struct PositionMap {
 
 #[derive(Debug, Copy, Clone)]
 pub struct PointForPosition {
-    pub previous_valid: crate::display_map::DisplayPoint,
-    pub next_valid: crate::display_map::DisplayPoint,
-    pub exact_unclipped: crate::display_map::DisplayPoint,
+    pub previous_valid: DisplayPoint,
+    pub next_valid: DisplayPoint,
+    pub exact_unclipped: DisplayPoint,
     pub column_overshoot_after_line_end: u32,
 }
 
 impl PointForPosition {
-    pub fn as_valid(&self) -> Option<crate::display_map::DisplayPoint> {
+    pub fn as_valid(&self) -> Option<DisplayPoint> {
         if self.previous_valid == self.exact_unclipped && self.next_valid == self.exact_unclipped {
             Some(self.previous_valid)
         } else {
@@ -59,46 +61,52 @@ impl PointForPosition {
 impl PositionMap {
     pub(crate) fn point_for_position(&self, position: Point<Pixels>) -> PointForPosition {
         let local_position = position - self.bounds.origin;
-        let y = local_position.y.max(gpui::px(0.0)).min(self.size.height);
-        let x = local_position.x + self.scroll_position.x as f32 * self.em_layout_width;
-        let row = ((y / self.line_height) as f64 + self.scroll_position.y.max(0.0)) as u32;
+        let y = local_position.y.clamp(gpui::px(0.0), self.size.height);
+        let scroll_x_pixels =
+            Pixels::from(self.scroll_position.x * f64::from(self.em_layout_width));
+        let x = local_position.x + scroll_x_pixels;
+        let scroll_y = self.scroll_position.y.max(0.0);
+        let row = (f64::from(y / self.line_height) + scroll_y)
+            .to_u32()
+            .expect("display row should fit in u32");
+        let scroll_row = scroll_y.to_u32().expect("scroll row should fit in u32");
+        let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
 
-        let (column, x_overshoot_after_line_end) = if let Some(line) = self
-            .line_layouts
-            .get(row.saturating_sub(self.scroll_position.y as u32) as usize)
-        {
-            let x_relative_to_text = x
-                - line.alignment_offset(self.text_align, self.content_width)
-                - self.em_layout_width * line.line_display_column_start as f32;
-            if let Some(index) = line.index_for_x(x_relative_to_text) {
-                let display_column = line
-                    .line_display_column_start
-                    .saturating_add(index)
-                    .min(u32::MAX as usize);
-                (display_column as u32, gpui::px(0.0))
+        let (column, x_overshoot_after_line_end) =
+            if let Some(line) = self.line_layouts.get(line_index) {
+                let x_relative_to_text = x
+                    - line.alignment_offset(self.text_align, self.content_width)
+                    - self.em_layout_width * line.line_display_column_start.to_f32().unwrap();
+                if let Some(index) = line.index_for_x(x_relative_to_text) {
+                    let display_column = line
+                        .line_display_column_start
+                        .saturating_add(index)
+                        .min(u32::MAX as usize);
+                    (u32::try_from(display_column).unwrap(), gpui::px(0.0))
+                } else {
+                    let display_column = line
+                        .line_display_column_start
+                        .saturating_add(line.len)
+                        .min(u32::MAX as usize);
+                    (
+                        u32::try_from(display_column).unwrap(),
+                        gpui::px(0.0).max(x_relative_to_text - line.width),
+                    )
+                }
             } else {
-                let display_column = line
-                    .line_display_column_start
-                    .saturating_add(line.len)
-                    .min(u32::MAX as usize);
-                (
-                    display_column as u32,
-                    gpui::px(0.0).max(x_relative_to_text - line.width),
-                )
-            }
-        } else {
-            (0, x.max(gpui::px(0.0)))
-        };
+                (0, x.max(gpui::px(0.0)))
+            };
 
-        let mut exact_unclipped =
-            crate::display_map::DisplayPoint::new(crate::display_map::DisplayRow(row), column);
+        let mut exact_unclipped = DisplayPoint::new(DisplayRow(row), column);
         let previous_valid = self.snapshot.clip_point(exact_unclipped, text::Bias::Left);
         let next_valid = self.snapshot.clip_point(exact_unclipped, text::Bias::Right);
 
         let column_overshoot_after_line_end = if self.em_layout_width == gpui::px(0.0) {
             0
         } else {
-            (x_overshoot_after_line_end / self.em_layout_width) as u32
+            (x_overshoot_after_line_end / self.em_layout_width)
+                .to_u32()
+                .expect("column overshoot should fit in u32")
         };
         *exact_unclipped.column_mut() += column_overshoot_after_line_end;
 
@@ -112,7 +120,7 @@ impl PositionMap {
 }
 
 pub(crate) struct LineWithInvisibles {
-    pub row: crate::display_map::DisplayRow,
+    pub row: DisplayRow,
     pub origin: Point<Pixels>,
     pub line_start_offset: usize,
     pub line_display_column_start: usize,
@@ -281,7 +289,6 @@ impl EditorElement {
     }
 
     fn paint_highlights(
-        &self,
         prepaint: &PrepaintState,
         text_bounds: Bounds<Pixels>,
         window: &mut Window,
@@ -289,7 +296,7 @@ impl EditorElement {
     ) {
         let corner_radius = 0.15 * prepaint.line_height;
         for range in &prepaint.selection_ranges {
-            self.paint_highlighted_range(
+            Self::paint_highlighted_range(
                 range.clone(),
                 true,
                 cx.theme().colors().element_selection_background,
@@ -303,7 +310,6 @@ impl EditorElement {
     }
 
     fn paint_highlighted_range(
-        &self,
         range: Range<DisplayPoint>,
         fill: bool,
         color: Hsla,
@@ -321,7 +327,9 @@ impl EditorElement {
             return;
         };
         let start_row = first_line.row;
-        let end_row = start_row + prepaint.line_layouts.len() as u32;
+        let visible_row_count = u32::try_from(prepaint.line_layouts.len())
+            .expect("visible row count should fit in u32");
+        let end_row = start_row + visible_row_count;
         let row_range = if range.end.column() == 0 {
             cmp::max(range.start.row(), start_row)..cmp::min(range.end.row(), end_row)
         } else {
@@ -340,7 +348,7 @@ impl EditorElement {
         let mut lines =
             Vec::with_capacity(row_range.end.0.saturating_sub(row_range.start.0) as usize);
         for row in row_range.start.0..row_range.end.0 {
-            let row = crate::display_map::DisplayRow(row);
+            let row = DisplayRow(row);
             let line_index = row.0.saturating_sub(start_row.0) as usize;
             let Some(line_layout) = prepaint.line_layouts.get(line_index) else {
                 continue;
@@ -384,7 +392,7 @@ impl EditorElement {
     }
 
     fn paint_mouse_listeners(&mut self, prepaint: &PrepaintState, window: &mut Window) {
-        let Some(hitbox) = prepaint.hitbox.as_ref().cloned() else {
+        let Some(hitbox) = prepaint.hitbox.clone() else {
             return;
         };
         let mut text_bounds = hitbox.bounds;
@@ -520,12 +528,12 @@ impl EditorElement {
     ) {
         let editor = self.editor.clone();
         let is_scrollbar_dragging = self.editor.read(cx).scrollbar_drag.is_some();
-        let hitbox = prepaint.hitbox.as_ref().cloned();
+        let hitbox = prepaint.hitbox.clone();
         let column_width = prepaint.column_width;
         let line_height = prepaint.line_height;
         let scroll_max = prepaint.scroll_max;
-        let vertical_scrollbar_prepaint = prepaint.vertical_scrollbar.as_ref().cloned();
-        let horizontal_scrollbar_prepaint = prepaint.horizontal_scrollbar.as_ref().cloned();
+        let vertical_scrollbar_prepaint = prepaint.vertical_scrollbar.clone();
+        let horizontal_scrollbar_prepaint = prepaint.horizontal_scrollbar.clone();
 
         if let Some(scrollbar) = prepaint.vertical_scrollbar.as_ref() {
             window.set_cursor_style(CursorStyle::Arrow, &scrollbar.track_hitbox);
@@ -562,13 +570,13 @@ impl EditorElement {
                             ScrollDelta::Pixels(mut pixels) => {
                                 editor.filter_ongoing_scroll(&mut pixels);
                                 (
-                                    (pixels.x / column_width) as f64,
-                                    (pixels.y / line_height) as f64,
+                                    f64::from(pixels.x / column_width),
+                                    f64::from(pixels.y / line_height),
                                 )
                             }
                             ScrollDelta::Lines(lines) => {
                                 editor.clear_ongoing_scroll();
-                                (lines.x as f64, lines.y as f64)
+                                (f64::from(lines.x), f64::from(lines.y))
                             }
                         };
 
@@ -656,7 +664,7 @@ impl EditorElement {
                             let fraction = if available == gpui::px(0.0) {
                                 0.0
                             } else {
-                                ((desired_thumb_start - track_bounds.top()) / available) as f64
+                                f64::from((desired_thumb_start - track_bounds.top()) / available)
                             };
 
                             let snapshot = editor.display_snapshot(cx);
@@ -698,7 +706,7 @@ impl EditorElement {
                             let fraction = if available == gpui::px(0.0) {
                                 0.0
                             } else {
-                                ((desired_thumb_start - track_bounds.left()) / available) as f64
+                                f64::from((desired_thumb_start - track_bounds.left()) / available)
                             };
 
                             let snapshot = editor.display_snapshot(cx);
@@ -800,7 +808,7 @@ impl EditorElement {
                     let fraction = if available == gpui::px(0.0) {
                         0.0
                     } else {
-                        ((desired_thumb_start - track_start) / available) as f64
+                        f64::from((desired_thumb_start - track_start) / available)
                     };
                     let snapshot = editor.display_snapshot(cx);
                     let current = editor.scroll_position(&snapshot);
@@ -875,7 +883,7 @@ impl Element for EditorElement {
         None
     }
 
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+    fn source_location(&self) -> Option<&'static panic::Location<'static>> {
         None
     }
 
@@ -905,7 +913,7 @@ impl Element for EditorElement {
                     let line_count = line_count.max(min_lines);
                     let line_count =
                         max_lines.map_or(line_count, |max_lines| line_count.min(max_lines));
-                    style.size.height = (line_height * line_count as f32).into();
+                    style.size.height = (line_height * line_count.to_f32().unwrap()).into();
                 }
                 EditorMode::Full { .. } => {
                     style.size.height = gpui::relative(1.0).into();
@@ -980,7 +988,7 @@ impl Element for EditorElement {
                 .editor
                 .update(cx, |editor, cx| editor.display_snapshot(cx));
             let height_in_lines = f64::from(bounds.size.height / line_height);
-            let max_row = display_snapshot.buffer_snapshot().max_point().row as f64;
+            let max_row = f64::from(display_snapshot.buffer_snapshot().max_point().row);
             let max_scroll_y = if matches!(
                 mode,
                 EditorMode::SingleLine
@@ -1009,12 +1017,12 @@ impl Element for EditorElement {
 
             let longest_row = display_snapshot.longest_row();
             let content_columns = f64::from(display_snapshot.line_len(longest_row));
-            let viewport_columns = (viewport_width / column_width) as f64;
+            let viewport_columns = f64::from(viewport_width / column_width);
             let scrollable_columns = content_columns;
             let max_scroll_x = (scrollable_columns - viewport_columns).max(0.0);
 
             let scroll_max = gpui::point(max_scroll_x, max_scroll_y);
-            let scroll_width = column_width * scrollable_columns as f32;
+            let scroll_width = Pixels::from(f64::from(column_width) * scrollable_columns);
             let (autoscroll_request, needs_horizontal_autoscroll, mut scroll_position) =
                 self.editor.update(cx, |editor, cx| {
                     let autoscroll_request = editor.take_autoscroll_request();
@@ -1062,12 +1070,19 @@ impl Element for EditorElement {
 
             let clamped_scroll_position_y = scroll_position.y.clamp(0.0, scroll_max.y);
             let row_offset_y = clamped_scroll_position_y - clamped_scroll_position_y.floor();
-            let scroll_y_pixels = line_height * row_offset_y as f32;
+            let scroll_y_pixels = Pixels::from(f64::from(line_height) * row_offset_y);
 
-            let top_row = clamped_scroll_position_y.floor().max(0.0) as u32;
+            let top_row = clamped_scroll_position_y
+                .floor()
+                .max(0.0)
+                .to_u32()
+                .expect("top row should fit in u32");
             let first_row_origin_y = bounds.top() - scroll_y_pixels;
-            let visible_row_count =
-                ((bounds.bottom() - bounds.top()) / line_height).ceil() as u32 + 1;
+            let viewport_height = bounds.bottom() - bounds.top();
+            let visible_rows = (viewport_height / line_height).ceil() + 1.0;
+            let visible_row_count = visible_rows
+                .to_u32()
+                .expect("visible row count should fit in u32");
             let mut line_scroll_x = scroll_position.x.clamp(0.0, max_scroll_x);
             let mut lines = build_visible_lines(
                 &display_snapshot,
@@ -1092,7 +1107,7 @@ impl Element for EditorElement {
             if needs_horizontal_autoscroll.0 && max_scroll_x > 0.0 {
                 scroll_position = self.editor.update(cx, |editor, cx| {
                     editor.autoscroll_horizontally(
-                        crate::display_map::DisplayRow(top_row),
+                        DisplayRow(top_row),
                         viewport_width,
                         scroll_width,
                         column_width,
@@ -1182,7 +1197,7 @@ impl Element for EditorElement {
 
             let mut active_line_background = None;
             let mut cursor = None;
-            for line in lines.iter() {
+            for line in &lines {
                 let line_text = line.line_text.as_str();
                 let line_display_column_start = line.line_display_column_start;
 
@@ -1200,7 +1215,9 @@ impl Element for EditorElement {
                 }
 
                 if cursor.is_none() && cursor_row == line.row.0 {
-                    let cursor_column = cursor_offset.saturating_sub(line.line_start_offset) as u32;
+                    let cursor_column =
+                        u32::try_from(cursor_offset.saturating_sub(line.line_start_offset))
+                            .expect("cursor column should fit in u32");
                     let cursor_x = if masked {
                         let cursor_column = (cursor_column as usize).min(line_text.len());
                         let display_column =
@@ -1216,15 +1233,20 @@ impl Element for EditorElement {
                         let line_display_column_end =
                             line_display_column_start.saturating_add(line.len);
                         if cursor_display_column < line_display_column_start {
-                            line.origin.x
-                                - column_width
-                                    * (line_display_column_start - cursor_display_column) as f32
+                            let leading_columns = line_display_column_start - cursor_display_column;
+                            let leading_width = Pixels::from(
+                                f64::from(column_width) * leading_columns.to_f64().unwrap(),
+                            );
+                            line.origin.x - leading_width
                         } else if cursor_display_column <= line_display_column_end {
                             let local_column = cursor_display_column - line_display_column_start;
                             line.origin.x + line.x_for_index(local_column.min(line.len))
                         } else {
                             let trailing_columns = cursor_display_column - line_display_column_end;
-                            line.origin.x + line.width + column_width * trailing_columns as f32
+                            let trailing_width = Pixels::from(
+                                f64::from(column_width) * trailing_columns.to_f64().unwrap(),
+                            );
+                            line.origin.x + line.width + trailing_width
                         }
                     };
                     cursor = Some(gpui::fill(
@@ -1287,7 +1309,7 @@ impl Element for EditorElement {
         let rem_size = self.rem_size(cx);
         window.with_rem_size(rem_size, |window| {
             let focus_handle = self.editor.read(cx).focus_handle.clone();
-            let hitbox = prepaint.hitbox.as_ref().cloned().expect("hitbox to be set");
+            let hitbox = prepaint.hitbox.clone().expect("hitbox to be set");
 
             window.set_cursor_style(CursorStyle::IBeam, &hitbox);
             let key_context = self
@@ -1333,9 +1355,9 @@ impl Element for EditorElement {
                         window.paint_quad(active_line_background);
                     }
 
-                    self.paint_highlights(prepaint, text_bounds, window, cx);
+                    Self::paint_highlights(prepaint, text_bounds, window, cx);
 
-                    for line in prepaint.line_layouts.iter() {
+                    for line in &prepaint.line_layouts {
                         line.shaped_line
                             .paint(line.origin, line_height, TextAlign::Left, None, window, cx)
                             .ok();
@@ -1377,7 +1399,7 @@ impl Element for EditorElement {
 }
 
 fn build_visible_lines(
-    display_snapshot: &crate::display_map::DisplaySnapshot,
+    display_snapshot: &DisplaySnapshot,
     bounds: Bounds<Pixels>,
     line_height: Pixels,
     style: &TextStyle,
@@ -1395,7 +1417,7 @@ fn build_visible_lines(
     em_layout_width: Pixels,
     window: &mut Window,
 ) -> Vec<LineWithInvisibles> {
-    let scroll_x_pixels = em_layout_width * line_scroll_x as f32;
+    let scroll_x_pixels = Pixels::from(f64::from(em_layout_width) * line_scroll_x);
     let mut lines = Vec::new();
 
     for visible_row_index in 0..visible_row_count {
@@ -1404,7 +1426,7 @@ fn build_visible_lines(
             break;
         }
 
-        let row = crate::display_map::DisplayRow(row);
+        let row = DisplayRow(row);
         let line_start_offset = display_snapshot
             .buffer_snapshot()
             .point_to_offset(text::Point::new(row.0, 0));
@@ -1442,10 +1464,14 @@ fn build_visible_lines(
 
             0usize
         } else {
-            let requested_start_column = line_scroll_x.floor().max(0.0) as u32;
+            let requested_start_column = line_scroll_x
+                .floor()
+                .clamp(0.0, f64::from(u32::MAX))
+                .to_u32()
+                .expect("requested start column should fit in u32");
             let mut line_display_column_start = display_snapshot
                 .clip_point(
-                    crate::display_map::DisplayPoint::new(row, requested_start_column),
+                    DisplayPoint::new(row, requested_start_column),
                     text::Bias::Left,
                 )
                 .column() as usize;
@@ -1458,19 +1484,21 @@ fn build_visible_lines(
                 line_display_column_start = 0;
             }
 
-            let target_end_column = line_display_column_start.saturating_add(MAX_LINE_LEN);
+            let target_end_column = line_display_column_start
+                .saturating_add(MAX_LINE_LEN)
+                .min(usize::try_from(u32::MAX).unwrap());
             let line_display_column_end = display_snapshot
                 .clip_point(
-                    crate::display_map::DisplayPoint::new(row, target_end_column as u32),
+                    DisplayPoint::new(row, u32::try_from(target_end_column).unwrap()),
                     text::Bias::Right,
                 )
                 .column() as usize;
 
             if line_display_column_start < line_display_column_end {
                 let chunk_start =
-                    crate::display_map::TabPoint::new(row.0, line_display_column_start as u32);
+                    TabPoint::new(row.0, u32::try_from(line_display_column_start).unwrap());
                 let chunk_end =
-                    crate::display_map::TabPoint::new(row.0, line_display_column_end as u32);
+                    TabPoint::new(row.0, u32::try_from(line_display_column_end).unwrap());
                 for chunk in display_snapshot
                     .tab_snapshot()
                     .chunks(chunk_start..chunk_end)
@@ -1482,17 +1510,15 @@ fn build_visible_lines(
                         (chunk_text, false)
                     };
 
-                    if !chunk.is_empty() {
-                        if line_text.len() < MAX_LINE_LEN {
-                            let remaining_capacity = MAX_LINE_LEN - line_text.len();
-                            let mut bounded_end = remaining_capacity.min(chunk.len());
-                            while bounded_end > 0 && !chunk.is_char_boundary(bounded_end) {
-                                bounded_end -= 1;
-                            }
-                            if bounded_end > 0 {
-                                chunk = &chunk[..bounded_end];
-                                line_text.push_str(chunk);
-                            }
+                    if !chunk.is_empty() && line_text.len() < MAX_LINE_LEN {
+                        let remaining_capacity = MAX_LINE_LEN - line_text.len();
+                        let mut bounded_end = remaining_capacity.min(chunk.len());
+                        while bounded_end > 0 && !chunk.is_char_boundary(bounded_end) {
+                            bounded_end -= 1;
+                        }
+                        if bounded_end > 0 {
+                            chunk = &chunk[..bounded_end];
+                            line_text.push_str(chunk);
                         }
                     }
 
@@ -1514,9 +1540,13 @@ fn build_visible_lines(
         };
         let expanded_len = expanded.len();
 
+        let line_x_offset =
+            Pixels::from(f64::from(em_layout_width) * line_display_column_start.to_f64().unwrap());
+        let line_y_offset =
+            Pixels::from(f64::from(line_height) * visible_row_index.to_f64().unwrap());
         let origin = gpui::point(
-            bounds.left() - scroll_x_pixels + em_layout_width * line_display_column_start as f32,
-            first_row_origin_y + line_height * visible_row_index as f32,
+            bounds.left() - scroll_x_pixels + line_x_offset,
+            first_row_origin_y + line_y_offset,
         );
 
         let base_run = TextRun {
@@ -1532,8 +1562,10 @@ fn build_visible_lines(
             let marked_start = marked_range.start.max(line_start_offset.0);
             let marked_end = marked_range.end.min(line_end_offset.0);
             if marked_start < marked_end {
-                let start_column = (marked_start - line_start_offset.0) as u32;
-                let end_column = (marked_end - line_start_offset.0) as u32;
+                let start_column = u32::try_from(marked_start - line_start_offset.0)
+                    .expect("marked range start column should fit in u32");
+                let end_column = u32::try_from(marked_end - line_start_offset.0)
+                    .expect("marked range end column should fit in u32");
                 let (mut display_start, mut display_end) = if masked {
                     let start_column = (start_column as usize).min(line_text.len());
                     let end_column = (end_column as usize).min(line_text.len());
@@ -1690,8 +1722,10 @@ impl HighlightedRange {
 
         let mut iter = lines.iter().enumerate().peekable();
         while let Some((index, line)) = iter.next() {
-            let bottom_right =
-                gpui::point(line.end_x, start_y + (index + 1) as f32 * self.line_height);
+            let line_count = index + 1;
+            let line_height_offset =
+                Pixels::from(line_count.to_f64().unwrap() * f64::from(self.line_height));
+            let bottom_right = gpui::point(line.end_x, start_y + line_height_offset);
 
             if let Some((_, next_line)) = iter.peek() {
                 let next_top_right = gpui::point(next_line.end_x, bottom_right.y);
@@ -1789,7 +1823,7 @@ pub fn register_action<T: Action>(
                 listener(editor, action, window, cx);
             });
         }
-    })
+    });
 }
 
 fn measure_column_width(style: &TextStyle, window: &mut Window) -> Pixels {
@@ -1895,11 +1929,12 @@ fn prepaint_scrollbar(
         } else {
             (viewport_size / content).clamp(0.0, 1.0)
         };
-        let thumb_len = (track_length * ratio as f32)
+        let thumb_len = Pixels::from(f64::from(track_length) * ratio)
             .max(SCROLLBAR_MIN_THUMB_LEN)
             .min(track_length);
         let available = (track_length - thumb_len).max(gpui::px(0.0));
-        let thumb_start = available * (scroll_position / scroll_max).clamp(0.0, 1.0) as f32;
+        let scroll_ratio = (scroll_position / scroll_max).clamp(0.0, 1.0);
+        let thumb_start = Pixels::from(f64::from(available) * scroll_ratio);
 
         let thumb_bounds = match axis {
             Axis::Vertical => Bounds::new(

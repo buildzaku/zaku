@@ -1,7 +1,5 @@
 pub mod worktree_store;
 
-use anyhow;
-
 #[cfg(any(test, feature = "test-support"))]
 use gpui::TestAppContext;
 
@@ -34,12 +32,12 @@ impl EventEmitter<ProjectEvent> for Project {}
 
 impl Project {
     pub fn new(fs: Arc<dyn Fs>, cx: &mut Context<Self>) -> Self {
-        let worktree_store = cx.new({
-            let fs = fs.clone();
-            move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx))
-        });
-        cx.subscribe(&worktree_store, Self::on_worktree_store_event)
-            .detach();
+        let worktree_store =
+            cx.new(move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx)));
+        cx.subscribe(&worktree_store, |_, _, event, cx| {
+            Self::on_worktree_store_event(event, cx);
+        })
+        .detach();
 
         Self { worktree_store }
     }
@@ -49,10 +47,7 @@ impl Project {
         abs_path: PathBuf,
         cx: &mut App,
     ) -> Task<anyhow::Result<Entity<Self>>> {
-        let project = cx.new({
-            let fs = fs.clone();
-            move |cx| Self::new(fs.clone(), cx)
-        });
+        let project = cx.new(move |cx| Self::new(fs.clone(), cx));
         let open_task = project.update(cx, |project, cx| {
             project.find_or_create_worktree(abs_path, true, cx)
         });
@@ -92,12 +87,7 @@ impl Project {
         project
     }
 
-    fn on_worktree_store_event(
-        &mut self,
-        _: Entity<WorktreeStore>,
-        event: &WorktreeStoreEvent,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_worktree_store_event(event: &WorktreeStoreEvent, cx: &mut Context<Self>) {
         match event {
             WorktreeStoreEvent::WorktreeAdded => cx.emit(ProjectEvent::WorktreeAdded),
             WorktreeStoreEvent::WorktreeRemoved => cx.emit(ProjectEvent::WorktreeRemoved),

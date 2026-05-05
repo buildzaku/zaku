@@ -1,6 +1,6 @@
 use gpui::TestAppContext;
 use indoc::indoc;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -18,8 +18,8 @@ async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    temp_fs.insert_tree(path!("first"), Default::default());
-    temp_fs.insert_tree(path!("second"), Default::default());
+    temp_fs.insert_tree(path!("first"), Value::default());
+    temp_fs.insert_tree(path!("second"), Value::default());
 
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
@@ -62,8 +62,8 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    temp_fs.insert_tree(path!("first"), Default::default());
-    temp_fs.insert_tree(path!("second"), Default::default());
+    temp_fs.insert_tree(path!("first"), Value::default());
+    temp_fs.insert_tree(path!("second"), Value::default());
 
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
@@ -99,7 +99,7 @@ async fn test_open_local_project_creates_worktree(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    temp_fs.insert_tree(path!("project"), Default::default());
+    temp_fs.insert_tree(path!("project"), Value::default());
     let project_path = temp_fs.path().join("project");
 
     let project = cx
@@ -125,8 +125,8 @@ async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAp
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    temp_fs.insert_tree(path!("first"), Default::default());
-    temp_fs.insert_tree(path!("second"), Default::default());
+    temp_fs.insert_tree(path!("first"), Value::default());
+    temp_fs.insert_tree(path!("second"), Value::default());
 
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
@@ -175,7 +175,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    temp_fs.insert_tree(path!("project"), Default::default());
+    temp_fs.insert_tree(path!("project"), Value::default());
 
     let canonical_project_path = temp_fs.path().join("project");
     let alternate_project_path = canonical_project_path.join("..").join("project");
@@ -214,7 +214,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    temp_fs.insert_tree(path!("project"), Default::default());
+    temp_fs.insert_tree(path!("project"), Value::default());
 
     let project_path = temp_fs.path().join("project");
     let alias_project_path = temp_fs.path().join("project-alias");
@@ -265,10 +265,10 @@ async fn test_absolute_path_resolves_relative_paths_against_current_root(cx: &mu
         path!("project"),
         json!({
             "nested": {
-                "request.toml": indoc! {r#"
+                "request.toml": indoc! {"
                     [meta]
                     version = 1
-                "#}
+                "}
             }
         }),
     );
@@ -294,7 +294,7 @@ async fn test_initial_scan_complete(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    temp_fs.insert_tree(path!("project"), Default::default());
+    temp_fs.insert_tree(path!("project"), Value::default());
 
     let project_path = temp_fs.path().join("project");
     let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;

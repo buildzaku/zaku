@@ -22,7 +22,7 @@ pub struct ListItem {
     disabled: bool,
     selected: bool,
     spacing: ListItemSpacing,
-    indent_level: usize,
+    indent_level: u16,
     indent_step_size: Pixels,
     start_slot: Option<AnyElement>,
     end_slot: Option<AnyElement>,
@@ -124,7 +124,7 @@ impl ListItem {
         self
     }
 
-    pub fn indent_level(mut self, indent_level: usize) -> Self {
+    pub fn indent_level(mut self, indent_level: u16) -> Self {
         self.indent_level = indent_level;
         self
     }
@@ -199,7 +199,7 @@ impl Toggleable for ListItem {
 
 impl ParentElement for ListItem {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.children.extend(elements)
+        self.children.extend(elements);
     }
 }
 
@@ -212,7 +212,7 @@ impl RenderOnce for ListItem {
             .relative()
             // When an item is inset draw the indent spacing outside of the item
             .when(self.inset, |this| {
-                this.ml(self.indent_level as f32 * self.indent_step_size)
+                this.ml(f32::from(self.indent_level) * self.indent_step_size)
                     .px(DynamicSpacing::Base04.rems(cx))
             })
             .when(!self.inset && !self.disabled, |this| {
@@ -277,7 +277,7 @@ impl RenderOnce for ListItem {
                     })
                     .when_some(self.on_secondary_mouse_down, |this, on_mouse_down| {
                         this.on_mouse_down(MouseButton::Right, move |event, window, cx| {
-                            (on_mouse_down)(event, window, cx)
+                            (on_mouse_down)(event, window, cx);
                         })
                     })
                     .when_some(self.tooltip, |this, tooltip| this.tooltip(tooltip))
@@ -286,7 +286,7 @@ impl RenderOnce for ListItem {
                             this.rounded_sm()
                         } else {
                             // When an item is not inset draw the indent spacing inside of the item
-                            this.ml(self.indent_level as f32 * self.indent_step_size)
+                            this.ml(f32::from(self.indent_level) * self.indent_step_size)
                         }
                     })
                     .children(self.toggle.map(|is_open| {

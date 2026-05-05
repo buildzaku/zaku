@@ -71,11 +71,11 @@ impl Workspace {
 
     pub fn show_notification<V: Notification>(
         &mut self,
-        id: NotificationId,
+        id: &NotificationId,
         cx: &mut Context<Self>,
         build_notification: impl FnOnce(&mut Context<Self>) -> Entity<V>,
     ) {
-        self.show_notification_without_handling_dismiss_events(&id, cx, |cx| {
+        self.show_notification_without_handling_dismiss_events(id, cx, |cx| {
             let notification = build_notification(cx);
             cx.subscribe(&notification, {
                 let id = id.clone();
@@ -123,8 +123,9 @@ impl Workspace {
     }
 
     pub fn show_toast(&mut self, toast: Toast, cx: &mut Context<Self>) {
-        self.dismiss_notification(&toast.id, cx);
-        self.show_notification(toast.id.clone(), cx, |cx| {
+        let toast_id = toast.id.clone();
+        self.dismiss_notification(&toast_id, cx);
+        self.show_notification(&toast_id, cx, |cx| {
             cx.new(|cx| match toast.on_click.as_ref() {
                 Some((click_msg, on_click)) => {
                     let on_click = on_click.clone();
@@ -139,9 +140,7 @@ impl Workspace {
         });
         if toast.autohide {
             cx.spawn(async move |workspace, cx| {
-                cx.background_executor()
-                    .timer(Duration::from_millis(5000))
-                    .await;
+                cx.background_executor().timer(Duration::from_secs(5)).await;
                 workspace
                     .update(cx, |workspace, cx| workspace.dismiss_toast(&toast.id, cx))
                     .ok();
@@ -164,12 +163,12 @@ impl Workspace {
         self.suppressed_notifications.insert(id.clone());
     }
 
-    pub fn is_notification_suppressed(&self, notification_id: NotificationId) -> bool {
-        self.suppressed_notifications.contains(&notification_id)
+    pub fn is_notification_suppressed(&self, notification_id: &NotificationId) -> bool {
+        self.suppressed_notifications.contains(notification_id)
     }
 
-    pub fn unsuppress(&mut self, notification_id: NotificationId) {
-        self.suppressed_notifications.remove(&notification_id);
+    pub fn unsuppress(&mut self, notification_id: &NotificationId) {
+        self.suppressed_notifications.remove(notification_id);
     }
 }
 
@@ -181,6 +180,12 @@ pub struct NotificationFrame {
     close: Option<Box<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
     contents: Option<AnyElement>,
     suffix: Option<AnyElement>,
+}
+
+impl Default for NotificationFrame {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NotificationFrame {
@@ -286,7 +291,7 @@ impl RenderOnce for NotificationFrame {
                                         let close = self.close.take();
                                         move |_, window, cx| {
                                             if let Some(close) = &close {
-                                                close(&suppress, window, cx)
+                                                close(&suppress, window, cx);
                                             }
                                         }
                                     }),
@@ -519,9 +524,9 @@ pub mod simple_message_notification {
                                 .variant(ButtonVariant::Solid)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(on_click) = this.primary_on_click.as_ref() {
-                                        (on_click)(window, cx)
-                                    };
-                                    this.dismiss(cx)
+                                        (on_click)(window, cx);
+                                    }
+                                    this.dismiss(cx);
                                 }));
 
                             if let Some(icon) = self.primary_icon {
@@ -539,9 +544,9 @@ pub mod simple_message_notification {
                                 .label_size(LabelSize::Small)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(on_click) = this.secondary_on_click.as_ref() {
-                                        (on_click)(window, cx)
-                                    };
-                                    this.dismiss(cx)
+                                        (on_click)(window, cx);
+                                    }
+                                    this.dismiss(cx);
                                 }));
 
                             if let Some(icon) = self.secondary_icon {

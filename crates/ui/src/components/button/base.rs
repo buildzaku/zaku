@@ -145,7 +145,7 @@ impl ButtonCommon for ButtonLike {
 
 impl ParentElement for ButtonLike {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.children.extend(elements)
+        self.children.extend(elements);
     }
 }
 
@@ -212,7 +212,7 @@ impl RenderOnce for ButtonLike {
                     })
                     .on_click(move |event, window, cx| {
                         cx.stop_propagation();
-                        on_click(event, window, cx)
+                        on_click(event, window, cx);
                     })
                 },
             )

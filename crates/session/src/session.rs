@@ -10,22 +10,22 @@ const SESSION_ID_KEY: &str = "session_id";
 const SESSION_WINDOW_STACK_KEY: &str = "session_window_stack";
 
 pub struct Session {
-    session_id: String,
+    id: String,
     old_session_id: Option<String>,
     old_window_ids: Option<Vec<WindowId>>,
 }
 
 impl Session {
-    pub async fn new(session_id: String, kv_store: KeyValueStore) -> Self {
+    pub async fn new(id: String, kv_store: KeyValueStore) -> Self {
         let old_session_id = kv_store.read_kv(SESSION_ID_KEY).ok().flatten();
 
         kv_store
-            .write_kv(SESSION_ID_KEY.to_string(), session_id.clone())
+            .write_kv(SESSION_ID_KEY.to_string(), id.clone())
             .await
             .log_err();
 
         Self {
-            session_id,
+            id,
             old_session_id,
             old_window_ids: load_window_stack(&kv_store),
         }
@@ -34,14 +34,14 @@ impl Session {
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_new() -> Self {
         Self {
-            session_id: uuid::Uuid::new_v4().to_string(),
+            id: uuid::Uuid::new_v4().to_string(),
             old_session_id: None,
             old_window_ids: None,
         }
     }
 
     pub fn id(&self) -> &str {
-        &self.session_id
+        &self.id
     }
 }
 
@@ -53,10 +53,10 @@ pub struct AppSession {
 
 impl AppSession {
     pub fn new(session: Session, cx: &Context<Self>) -> Self {
-        let _subscriptions = vec![cx.on_app_quit(Self::before_quit)];
+        let subscriptions = vec![cx.on_app_quit(|_, cx| Self::before_quit(cx))];
 
         #[cfg(not(any(test, feature = "test-support")))]
-        let _serialization_task = {
+        let serialization_task = {
             let kv_store = KeyValueStore::global(cx);
             cx.spawn(async move |_, cx| {
                 let mut current_window_stack = Vec::new();
@@ -76,16 +76,16 @@ impl AppSession {
         };
 
         #[cfg(any(test, feature = "test-support"))]
-        let _serialization_task = Task::ready(());
+        let serialization_task = Task::ready(());
 
         Self {
             session,
-            _serialization_task,
-            _subscriptions,
+            _serialization_task: serialization_task,
+            _subscriptions: subscriptions,
         }
     }
 
-    fn before_quit(&mut self, cx: &mut Context<Self>) -> Task<()> {
+    fn before_quit(cx: &mut Context<Self>) -> Task<()> {
         if let Some(window_stack) = window_stack(cx) {
             let kv_store = KeyValueStore::global(cx);
             cx.background_spawn(async move { save_window_stack(kv_store, &window_stack).await })

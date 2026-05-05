@@ -18,6 +18,7 @@ gpui = { workspace = true }
 input = { workspace = true }
 itertools = { workspace = true }
 multi_buffer = { workspace = true }
+num-traits = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }

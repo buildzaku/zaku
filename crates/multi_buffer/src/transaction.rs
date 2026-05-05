@@ -1,6 +1,6 @@
 use gpui::{App, Context};
 use std::time::Instant;
-use text::TransactionId;
+use text::{HistoryEntry, TransactionId};
 
 use crate::MultiBuffer;
 
@@ -38,7 +38,7 @@ impl MultiBuffer {
             return buffer
                 .read(cx)
                 .peek_undo_stack()
-                .map(|history_entry| history_entry.transaction_id());
+                .map(HistoryEntry::transaction_id);
         }
 
         None

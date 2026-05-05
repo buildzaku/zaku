@@ -445,8 +445,8 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
 async fn test_renaming_case_only(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    const OLD_NAME: &str = "aaa.toml";
-    const NEW_NAME: &str = "AAA.toml";
+    let old_name = "aaa.toml";
+    let new_name = "AAA.toml";
 
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
     if temp_fs.is_case_sensitive().await {
@@ -456,7 +456,7 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
     temp_fs.insert_tree(
         "project",
         json!({
-            OLD_NAME: indoc! {"
+            old_name: indoc! {"
                 [meta]
                 version = 1
             "},
@@ -484,12 +484,12 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
                 .entries(0)
                 .map(|entry| entry.path.as_ref())
                 .collect::<Vec<_>>(),
-            vec![rel_path(""), rel_path(OLD_NAME)]
+            vec![rel_path(""), rel_path(old_name)]
         );
     });
 
-    let old_path = std::path::Path::new("project").join(OLD_NAME);
-    let new_path = std::path::Path::new("project").join(NEW_NAME);
+    let old_path = std::path::Path::new("project").join(old_name);
+    let new_path = std::path::Path::new("project").join(new_name);
 
     temp_fs
         .rename(
@@ -512,7 +512,7 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
                 .entries(0)
                 .map(|entry| entry.path.as_ref())
                 .collect::<Vec<_>>(),
-            vec![rel_path(""), rel_path(NEW_NAME)]
+            vec![rel_path(""), rel_path(new_name)]
         );
     });
 }

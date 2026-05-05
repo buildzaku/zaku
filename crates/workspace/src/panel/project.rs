@@ -2,6 +2,7 @@ use gpui::{
     Action, App, Context, Entity, FocusHandle, Focusable, Pixels, Render, Subscription, Task,
     WeakEntity, Window, prelude::*,
 };
+use num_traits::ToPrimitive;
 
 use actions::workspace::project_panel;
 use project::{EntryKind, Project, ProjectEvent, Snapshot};
@@ -50,14 +51,14 @@ impl ProjectPanel {
     const DEFAULT_SIZE: Pixels = gpui::px(250.0);
     const PANEL_KEY: &str = "ProjectPanel";
 
-    pub fn new(project: Entity<Project>, pane: WeakEntity<Pane>, cx: &mut Context<Self>) -> Self {
+    pub fn new(project: &Entity<Project>, pane: WeakEntity<Pane>, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
             focus_handle: cx.focus_handle(),
             project: project.clone(),
             pane,
             update_visible_entries_task: Task::ready(()),
             visible_entries: None,
-            _project_subscription: cx.subscribe(&project, |this, _, _: &ProjectEvent, cx| {
+            _project_subscription: cx.subscribe(project, |this, _, _: &ProjectEvent, cx| {
                 this.update_visible_entries(cx);
             }),
         };
@@ -147,7 +148,8 @@ impl ProjectPanel {
             EntryKind::File => IconName::File,
             EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => IconName::FolderOpen,
         };
-        let indentation = gpui::px((details.depth as f32) * 12.0);
+        let depth = details.depth.to_f64().unwrap();
+        let indentation = Pixels::from(depth * 12.0);
 
         ui::h_flex()
             .w_full()

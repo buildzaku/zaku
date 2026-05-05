@@ -158,14 +158,14 @@ impl SanitizedPath {
     pub fn unchecked_new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
         // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this shared reference cast is valid.
-        unsafe { std::mem::transmute::<&Path, &Self>(path.as_ref()) }
+        unsafe { &*(std::ptr::from_ref::<Path>(path.as_ref()) as *const Self) }
     }
 
     pub fn from_arc(path: Arc<Path>) -> Arc<Self> {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
-        return unsafe { std::mem::transmute::<Arc<Path>, Arc<Self>>(path) };
+        return unsafe { Arc::from_raw(Arc::into_raw(path) as *const Self) };
 
         #[cfg(target_os = "windows")]
         {
@@ -173,7 +173,7 @@ impl SanitizedPath {
             if simplified == path.as_ref() {
                 // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
                 // extra invariants, so this `Arc` cast is valid.
-                unsafe { std::mem::transmute::<Arc<Path>, Arc<Self>>(path) }
+                unsafe { Arc::from_raw(Arc::into_raw(path) as *const Self) }
             } else {
                 Self::unchecked_new(simplified).into()
             }
@@ -187,13 +187,13 @@ impl SanitizedPath {
     pub fn cast_arc(path: Arc<Self>) -> Arc<Path> {
         // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
-        unsafe { std::mem::transmute::<Arc<Self>, Arc<Path>>(path) }
+        unsafe { Arc::from_raw(Arc::into_raw(path) as *const Path) }
     }
 
     pub fn cast_arc_ref(path: &Arc<Self>) -> &Arc<Path> {
         // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this reference to `Arc` cast is valid.
-        unsafe { std::mem::transmute::<&Arc<Self>, &Arc<Path>>(path) }
+        unsafe { &*std::ptr::from_ref::<Arc<Self>>(path).cast::<Arc<Path>>() }
     }
 
     pub fn starts_with(&self, prefix: &Self) -> bool {
@@ -223,7 +223,7 @@ impl From<&SanitizedPath> for Arc<SanitizedPath> {
 
         // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
-        unsafe { std::mem::transmute(path) }
+        unsafe { Arc::from_raw(Arc::into_raw(path) as *const SanitizedPath) }
     }
 }
 

@@ -33,7 +33,8 @@ impl Add<usize> for MultiBufferRow {
     type Output = Self;
 
     fn add(self, rhs: usize) -> Self::Output {
-        MultiBufferRow(self.0 + rhs as u32)
+        let rhs = u32::try_from(rhs).unwrap_or(u32::MAX);
+        MultiBufferRow(self.0.saturating_add(rhs))
     }
 }
 
@@ -153,7 +154,7 @@ impl ops::Add<isize> for MultiBufferOffset {
     type Output = Self;
 
     fn add(self, rhs: isize) -> Self::Output {
-        MultiBufferOffset((self.0 as isize + rhs) as usize)
+        MultiBufferOffset(self.0.wrapping_add_signed(rhs))
     }
 }
 
@@ -173,6 +174,16 @@ impl ops::AddAssign<MultiBufferOffset> for MultiBufferOffset {
 
 #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq)]
 pub struct MultiBufferOffsetUtf16(pub OffsetUtf16);
+
+impl MultiBufferOffsetUtf16 {
+    pub fn abs_diff(self, other: Self) -> usize {
+        self.0.0.abs_diff(other.0.0)
+    }
+
+    pub fn saturating_add_signed(self, rhs: isize) -> Self {
+        Self(OffsetUtf16(self.0.0.saturating_add_signed(rhs)))
+    }
+}
 
 impl ops::Add<usize> for MultiBufferOffsetUtf16 {
     type Output = MultiBufferOffsetUtf16;
@@ -586,7 +597,7 @@ impl MultiBufferSnapshot {
         self.buffer.max_point()
     }
 
-    pub fn char_classifier_at<T: ToOffset>(&self, point: T) -> CharClassifier {
+    pub fn char_classifier_at<T: ToOffset>(&self, point: &T) -> CharClassifier {
         let _ = point.to_offset(self);
         CharClassifier::default()
     }
@@ -662,15 +673,15 @@ impl MultiBufferSnapshot {
         MultiBufferOffsetUtf16(self.buffer.offset_to_offset_utf16(offset.0))
     }
 
-    pub fn anchor_before<T: ToOffset>(&self, position: T) -> Anchor {
+    pub fn anchor_before<T: ToOffset>(&self, position: &T) -> Anchor {
         self.anchor_at(position, Bias::Left)
     }
 
-    pub fn anchor_after<T: ToOffset>(&self, position: T) -> Anchor {
+    pub fn anchor_after<T: ToOffset>(&self, position: &T) -> Anchor {
         self.anchor_at(position, Bias::Right)
     }
 
-    pub fn anchor_at<T: ToOffset>(&self, position: T, bias: Bias) -> Anchor {
+    pub fn anchor_at<T: ToOffset>(&self, position: &T, bias: Bias) -> Anchor {
         let position = self.clip_offset(position.to_offset(self), bias);
         let text_anchor = match bias {
             Bias::Left => self.buffer.anchor_before(position.0),
@@ -778,18 +789,21 @@ impl MultiBufferSnapshot {
         })
     }
 
-    pub fn chars_at<T: ToOffset>(&self, position: T) -> impl Iterator<Item = char> + '_ {
+    pub fn chars_at<T: ToOffset>(&self, position: &T) -> impl Iterator<Item = char> + '_ {
         let offset = position.to_offset(self);
         self.text_for_range(offset..self.len())
             .flat_map(|chunk| chunk.chars())
     }
 
-    pub fn is_inside_word<T: ToOffset>(&self, position: T, _: Option<CharScopeContext>) -> bool {
+    pub fn is_inside_word<T: ToOffset>(&self, position: &T, _: Option<CharScopeContext>) -> bool {
         let position = position.to_offset(self);
-        let classifier = self.char_classifier_at(position);
-        let next_char_kind = self.chars_at(position).next().map(|ch| classifier.kind(ch));
+        let classifier = self.char_classifier_at(&position);
+        let next_char_kind = self
+            .chars_at(&position)
+            .next()
+            .map(|ch| classifier.kind(ch));
         let prev_char_kind = self
-            .reversed_chars_at(position)
+            .reversed_chars_at(&position)
             .next()
             .map(|ch| classifier.kind(ch));
         prev_char_kind.zip(next_char_kind) == Some((CharKind::Word, CharKind::Word))
@@ -797,14 +811,14 @@ impl MultiBufferSnapshot {
 
     pub fn surrounding_word<T: ToOffset>(
         &self,
-        start: T,
+        start: &T,
         _: Option<CharScopeContext>,
     ) -> (Range<MultiBufferOffset>, Option<CharKind>) {
         let mut start = start.to_offset(self);
         let mut end = start;
-        let mut next_chars = self.chars_at(start).peekable();
-        let mut prev_chars = self.reversed_chars_at(start).peekable();
-        let classifier = self.char_classifier_at(start);
+        let mut next_chars = self.chars_at(&start).peekable();
+        let mut prev_chars = self.reversed_chars_at(&start).peekable();
+        let classifier = self.char_classifier_at(&start);
 
         let word_kind = cmp::max(
             prev_chars.peek().copied().map(|ch| classifier.kind(ch)),
@@ -830,7 +844,7 @@ impl MultiBufferSnapshot {
         (start..end, word_kind)
     }
 
-    pub fn reversed_chars_at<T: ToOffset>(&self, position: T) -> impl Iterator<Item = char> + '_ {
+    pub fn reversed_chars_at<T: ToOffset>(&self, position: &T) -> impl Iterator<Item = char> + '_ {
         self.reversed_chunks_in_range(MultiBufferOffset::ZERO..position.to_offset(self))
             .flat_map(|chunk| chunk.chars().rev())
     }

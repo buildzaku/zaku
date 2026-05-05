@@ -2,7 +2,6 @@
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, prelude::*};
-use gpui_platform;
 use indoc::formatdoc;
 
 #[cfg(unix)]
@@ -147,15 +146,15 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     let message = "Zaku failed to launch";
     let error_details = errors
         .into_iter()
-        .flat_map(|(kind, paths)| {
+        .filter_map(|(kind, paths)| {
             #[allow(unused_mut)]
-            let mut error_kind_details = match paths.len() {
-                0 => return None,
-                1 => format!(
-                    "{kind} when creating directory {:?}",
-                    paths.first().expect("match arm checks for a single entry")
+            let mut error_kind_details = match paths.as_slice() {
+                [] => return None,
+                [path] => format!(
+                    "{kind} when creating directory {}",
+                    path.display()
                 ),
-                _many => format!("{kind} when creating directories {paths:?}"),
+                [_, ..] => format!("{kind} when creating directories {paths:?}"),
             };
 
             #[cfg(unix)]
@@ -196,53 +195,51 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                     })
                     .detach_and_log_err(cx);
                 }) {
-                    fail_to_open_window(
-                        anyhow::anyhow!(formatdoc! {"
+                    let error = anyhow::anyhow!(formatdoc! {"
                             {message}: {error_details}
 
                             Failed to show launch failure prompt: {error:?}
-                        "}),
-                        cx,
-                    );
+                        "});
+                    fail_to_open_window(&error, cx);
                 }
             } else {
-                fail_to_open_window(anyhow::anyhow!("{message}: {error_details}"), cx)
+                let error = anyhow::anyhow!("{message}: {error_details}");
+                fail_to_open_window(&error, cx);
             }
-        })
+        });
 }
 
-fn fail_to_open_window(error: anyhow::Error, _cx: &mut App) {
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
+    eprintln!("Zaku failed to open a window: {error:?}.");
+    std::process::exit(1);
+}
+
+#[cfg(target_os = "linux")]
+fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
     eprintln!("Zaku failed to open a window: {error:?}.");
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        std::process::exit(1);
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        _cx.spawn(async move |_| {
-            let Ok(proxy) = NotificationProxy::new().await else {
-                std::process::exit(1);
-            };
-
-            let notification_id = "dev.zaku.Oops";
-            let notification_body = format!("{error:?}.");
-            proxy
-                .add_notification(
-                    notification_id,
-                    Notification::new("Zaku failed to launch")
-                        .body(Some(notification_body.as_str()))
-                        .priority(Priority::High)
-                        .icon(ashpd::desktop::Icon::with_names(&[
-                            "dialog-question-symbolic",
-                        ])),
-                )
-                .await
-                .ok();
-
+    let notification_body = format!("{error:?}.");
+    cx.spawn(async move |_| {
+        let Ok(proxy) = NotificationProxy::new().await else {
             std::process::exit(1);
-        })
-        .detach();
-    }
+        };
+
+        let notification_id = "dev.zaku.Oops";
+        proxy
+            .add_notification(
+                notification_id,
+                Notification::new("Zaku failed to launch")
+                    .body(Some(notification_body.as_str()))
+                    .priority(Priority::High)
+                    .icon(ashpd::desktop::Icon::with_names([
+                        "dialog-question-symbolic",
+                    ])),
+            )
+            .await
+            .ok();
+
+        std::process::exit(1);
+    })
+    .detach();
 }

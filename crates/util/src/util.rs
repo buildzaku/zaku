@@ -5,7 +5,7 @@ pub mod serde;
 pub mod test;
 
 use log::{Level, Record};
-use std::{borrow::Cow, cmp::Ordering, fmt::Debug, panic::Location};
+use std::{borrow::Cow, cmp::Ordering, fmt::Debug, panic};
 
 /// Get an embedded file as a string.
 pub fn asset_str<A: rust_embed::RustEmbed>(path: &str) -> Cow<'static, str> {
@@ -40,14 +40,14 @@ where
         match self {
             Ok(value) => Some(value),
             Err(error) => {
-                log_error_with_caller(*Location::caller(), error);
+                log_error_with_caller(*panic::Location::caller(), error);
                 None
             }
         }
     }
 }
 
-fn log_error_with_caller<E>(caller: Location<'_>, error: E)
+fn log_error_with_caller<E>(caller: panic::Location<'_>, error: E)
 where
     E: Debug,
 {

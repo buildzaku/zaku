@@ -75,25 +75,25 @@ fn test_singleton_multibuffer_anchors(cx: &mut App) {
 
     assert_eq!(
         old_snapshot
-            .anchor_before(MultiBufferOffset(0))
+            .anchor_before(&MultiBufferOffset(0))
             .to_offset(&new_snapshot),
         MultiBufferOffset(0)
     );
     assert_eq!(
         old_snapshot
-            .anchor_after(MultiBufferOffset(0))
+            .anchor_after(&MultiBufferOffset(0))
             .to_offset(&new_snapshot),
         MultiBufferOffset(1)
     );
     assert_eq!(
         old_snapshot
-            .anchor_before(MultiBufferOffset(4))
+            .anchor_before(&MultiBufferOffset(4))
             .to_offset(&new_snapshot),
         MultiBufferOffset(5)
     );
     assert_eq!(
         old_snapshot
-            .anchor_after(MultiBufferOffset(4))
+            .anchor_after(&MultiBufferOffset(4))
             .to_offset(&new_snapshot),
         MultiBufferOffset(6)
     );
@@ -231,8 +231,8 @@ fn test_random_multibuffer(cx: &mut App, mut rng: StdRng) {
             let utf16_offset = snapshot.offset_to_offset_utf16(offset);
             assert_eq!(snapshot.offset_utf16_to_offset(utf16_offset), offset);
 
-            let before = snapshot.anchor_before(offset);
-            let after = snapshot.anchor_after(offset);
+            let before = snapshot.anchor_before(&offset);
+            let after = snapshot.anchor_after(&offset);
             assert!(before.to_offset(&snapshot) <= after.to_offset(&snapshot));
         }
     }

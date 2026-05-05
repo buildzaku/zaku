@@ -1,4 +1,5 @@
 use anyhow::Context;
+use num_traits::ToPrimitive;
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -18,10 +19,7 @@ pub trait Bind {
 }
 
 pub trait Column: Sized {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)>;
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)>;
 }
 
 impl StaticColumnCount for bool {}
@@ -35,10 +33,7 @@ impl Bind for bool {
 }
 
 impl Column for bool {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         i32::column(row, start_index)
             .map(|(value, next_index)| (value != 0, next_index))
             .with_context(|| format!("failed to read bool at index {start_index}"))
@@ -68,10 +63,7 @@ impl<const COUNT: usize> Bind for &[u8; COUNT] {
 }
 
 impl<const COUNT: usize> Column for [u8; COUNT] {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let bytes_slice = row.column_blob(start_index)?;
         let array = bytes_slice.try_into()?;
         Ok((array, start_index + 1))
@@ -90,10 +82,7 @@ impl Bind for Vec<u8> {
 }
 
 impl Column for Vec<u8> {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let result = row
             .column_blob(start_index)
             .with_context(|| format!("failed to read Vec<u8> at index {start_index}"))?;
@@ -114,10 +103,7 @@ impl Bind for f64 {
 }
 
 impl Column for f64 {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let result = row
             .column_double(start_index)
             .with_context(|| format!("failed to parse f64 at index {start_index}"))?;
@@ -131,21 +117,19 @@ impl StaticColumnCount for f32 {}
 impl Bind for f32 {
     fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
         statement
-            .bind_double(start_index, *self as f64)
+            .bind_double(start_index, f64::from(*self))
             .with_context(|| format!("failed to bind f32 at index {start_index}"))?;
         Ok(start_index + 1)
     }
 }
 
 impl Column for f32 {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let result = row
             .column_double(start_index)
             .with_context(|| format!("failed to parse f32 at index {start_index}"))?
-            as f32;
+            .to_f32()
+            .unwrap();
 
         Ok((result, start_index + 1))
     }
@@ -163,10 +147,7 @@ impl Bind for i32 {
 }
 
 impl Column for i32 {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let result = row.column_int(start_index)?;
         Ok((result, start_index + 1))
     }
@@ -184,10 +165,7 @@ impl Bind for i64 {
 }
 
 impl Column for i64 {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let result = row.column_int64(start_index)?;
         Ok((result, start_index + 1))
     }
@@ -205,10 +183,7 @@ impl Bind for u64 {
 }
 
 impl Column for u64 {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let raw = row.column_int64(start_index)?;
         let result = u64::try_from(raw).with_context(|| {
             format!("negative or out-of-range u64 at index {start_index}: {raw}")
@@ -228,10 +203,7 @@ impl Bind for u32 {
 }
 
 impl Column for u32 {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let raw = row.column_int64(start_index)?;
         let result = u32::try_from(raw).with_context(|| {
             format!("negative or out-of-range u32 at index {start_index}: {raw}")
@@ -251,10 +223,7 @@ impl Bind for u16 {
 }
 
 impl Column for u16 {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let raw = row.column_int64(start_index)?;
         let result = u16::try_from(raw).with_context(|| {
             format!("negative or out-of-range u16 at index {start_index}: {raw}")
@@ -275,10 +244,7 @@ impl Bind for usize {
 }
 
 impl Column for usize {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let raw = row.column_int64(start_index)?;
         let result = usize::try_from(raw).with_context(|| {
             format!("negative or out-of-range usize at index {start_index}: {raw}")
@@ -315,20 +281,14 @@ impl Bind for String {
 }
 
 impl Column for Arc<str> {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let result = row.column_text(start_index)?;
         Ok((Arc::from(result), start_index + 1))
     }
 }
 
 impl Column for String {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let result = row.column_text(start_index)?;
         Ok((result.to_owned(), start_index + 1))
     }
@@ -355,12 +315,14 @@ impl<T: Bind + StaticColumnCount> Bind for Option<T> {
 }
 
 impl<T: Column + StaticColumnCount> Column for Option<T> {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         if let SqlType::Null = row.column_type(start_index)? {
-            Ok((None, start_index + T::column_count() as i32))
+            let column_count =
+                i32::try_from(T::column_count()).context("column count exceeds i32 range")?;
+            let next_index = start_index
+                .checked_add(column_count)
+                .context("column index overflow")?;
+            Ok((None, next_index))
         } else {
             T::column(row, start_index).map(|(result, next_index)| (Some(result), next_index))
         }
@@ -403,10 +365,7 @@ impl Bind for Arc<Path> {
 }
 
 impl Column for Arc<Path> {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let blob = row.column_blob(start_index)?;
         let path = PathBuf::try_from_bytes(blob)?;
         Ok((Arc::from(path.as_path()), start_index + 1))
@@ -422,10 +381,7 @@ impl Bind for PathBuf {
 }
 
 impl Column for PathBuf {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let blob = row.column_blob(start_index)?;
         let path = PathBuf::try_from_bytes(blob)?;
         Ok((path, start_index + 1))
@@ -445,10 +401,7 @@ impl Bind for uuid::Uuid {
 }
 
 impl Column for uuid::Uuid {
-    fn column<'stmt, 'conn>(
-        row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let (bytes, next_index) = Column::column(row, start_index)?;
         Ok((uuid::Uuid::from_bytes(bytes), next_index))
     }
@@ -467,10 +420,7 @@ impl Bind for () {
 }
 
 impl Column for () {
-    fn column<'stmt, 'conn>(
-        _row: &mut Row<'stmt, 'conn>,
-        start_index: i32,
-    ) -> anyhow::Result<(Self, i32)> {
+    fn column(_row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         Ok(((), start_index))
     }
 }
@@ -495,8 +445,8 @@ macro_rules! impl_tuple_row_traits {
         }
 
         impl<$($type: Column),+> Column for ($($type,)+) {
-            fn column<'stmt, 'conn>(
-                row: &mut Row<'stmt, 'conn>,
+            fn column(
+                row: &mut Row<'_, '_>,
                 start_index: i32,
             ) -> anyhow::Result<(Self, i32)> {
                 let mut next_index = start_index;

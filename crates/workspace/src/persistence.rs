@@ -208,7 +208,7 @@ impl WorkspaceDb {
                 .and_then(|mut f| f().context("failed to count recent workspaces"))?
                 .context("recent workspace count query returned no row")?;
 
-            Ok(count as usize)
+            usize::try_from(count).context("recent workspace count should fit in usize")
         })
     }
 
@@ -381,8 +381,7 @@ impl WorkspaceDb {
 
 fn parse_timestamp(text: &str) -> DateTime<Utc> {
     NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
-        .map(|naive| naive.and_utc())
-        .unwrap_or_else(|_| Utc::now())
+        .map_or_else(|_| Utc::now(), |naive| naive.and_utc())
 }
 
 fn serialize_window_id(window_id: Option<u64>) -> anyhow::Result<Option<i64>> {
@@ -769,7 +768,7 @@ mod tests {
         assert!(serialized_workspace.window_id.is_some());
 
         root.update_in(cx, |root, window, cx| {
-            root.close_window(&CloseWindow, window, cx)
+            root.close_window(&CloseWindow, window, cx);
         });
         cx.run_until_parked();
 

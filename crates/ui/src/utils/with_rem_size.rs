@@ -3,6 +3,7 @@ use gpui::{
     InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement, Pixels,
     StyleRefinement, Styled, Window,
 };
+use std::panic;
 
 /// An element that sets a particular rem size for its children.
 pub struct WithRemSize {
@@ -33,7 +34,7 @@ impl Styled for WithRemSize {
 
 impl ParentElement for WithRemSize {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.div.extend(elements)
+        self.div.extend(elements);
     }
 }
 
@@ -45,7 +46,7 @@ impl Element for WithRemSize {
         Element::id(&self.div)
     }
 
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+    fn source_location(&self) -> Option<&'static panic::Location<'static>> {
         Element::source_location(&self.div)
     }
 
@@ -95,8 +96,8 @@ impl Element for WithRemSize {
                 prepaint,
                 window,
                 cx,
-            )
-        })
+            );
+        });
     }
 }
 

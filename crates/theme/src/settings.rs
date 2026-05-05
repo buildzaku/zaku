@@ -110,7 +110,7 @@ pub fn setup_ui_font(window: &mut Window, cx: &mut App) -> Font {
 }
 
 fn font_fallbacks_from_settings(fallbacks: Option<&[String]>) -> Option<FontFallbacks> {
-    fallbacks.map(|fallbacks| FontFallbacks::from_fonts(fallbacks.iter().cloned().collect()))
+    fallbacks.map(|fallbacks| FontFallbacks::from_fonts(fallbacks.to_vec()))
 }
 
 fn font_features_from_settings(features: Option<&settings::FontFeaturesContent>) -> FontFeatures {

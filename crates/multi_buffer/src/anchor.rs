@@ -124,12 +124,9 @@ impl Anchor {
 
     pub fn cmp(&self, other: &Anchor, snapshot: &MultiBufferSnapshot) -> Ordering {
         match (self, other) {
-            (Anchor::Min, Anchor::Min) => Ordering::Equal,
-            (Anchor::Max, Anchor::Max) => Ordering::Equal,
-            (Anchor::Min, _) => Ordering::Less,
-            (Anchor::Max, _) => Ordering::Greater,
-            (_, Anchor::Max) => Ordering::Less,
-            (_, Anchor::Min) => Ordering::Greater,
+            (Anchor::Min, Anchor::Min) | (Anchor::Max, Anchor::Max) => Ordering::Equal,
+            (Anchor::Min, _) | (_, Anchor::Max) => Ordering::Less,
+            (Anchor::Max, _) | (_, Anchor::Min) => Ordering::Greater,
             (Anchor::Excerpt(self_excerpt_anchor), Anchor::Excerpt(other_excerpt_anchor)) => {
                 self_excerpt_anchor.cmp(other_excerpt_anchor, snapshot)
             }
@@ -147,7 +144,7 @@ impl Anchor {
     pub fn bias_left(&self, snapshot: &MultiBufferSnapshot) -> Anchor {
         match self {
             Anchor::Min => *self,
-            Anchor::Max => snapshot.anchor_before(snapshot.max_point()),
+            Anchor::Max => snapshot.anchor_before(&snapshot.max_point()),
             Anchor::Excerpt(excerpt_anchor) => Anchor::Excerpt(excerpt_anchor.bias_left(snapshot)),
         }
     }
@@ -155,7 +152,7 @@ impl Anchor {
     pub fn bias_right(&self, snapshot: &MultiBufferSnapshot) -> Anchor {
         match self {
             Anchor::Max => *self,
-            Anchor::Min => snapshot.anchor_after(Point::zero()),
+            Anchor::Min => snapshot.anchor_after(&Point::zero()),
             Anchor::Excerpt(excerpt_anchor) => Anchor::Excerpt(excerpt_anchor.bias_right(snapshot)),
         }
     }

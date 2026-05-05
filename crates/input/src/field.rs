@@ -111,11 +111,11 @@ impl InputField {
     }
 
     pub fn clear(&self, window: &mut Window, cx: &mut App) {
-        self.editor().clear(window, cx)
+        self.editor().clear(window, cx);
     }
 
     pub fn set_text(&self, text: &str, window: &mut Window, cx: &mut App) {
-        self.editor().set_text(text, window, cx)
+        self.editor().set_text(text, window, cx);
     }
 }
 
