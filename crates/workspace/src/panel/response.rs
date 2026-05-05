@@ -2,6 +2,7 @@ use gpui::{
     Action, App, Context, Entity, FocusHandle, Focusable, Pixels, Render, SharedString,
     Subscription, WeakEntity, Window, prelude::*,
 };
+use num_traits::ToPrimitive;
 use std::time::Duration;
 
 use actions::workspace::response_panel;
@@ -24,11 +25,11 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-fn format_bytes_received(bytes_received: usize) -> SharedString {
+fn format_bytes_received(bytes_received: u64) -> SharedString {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
     const DECIMAL_BYTE_UNIT: f64 = 1000.0;
 
-    let mut value = bytes_received as f64;
+    let mut value = bytes_received.to_f64().unwrap();
     let mut unit_index = 0;
 
     while value >= DECIMAL_BYTE_UNIT && unit_index < UNITS.len() - 1 {
@@ -73,16 +74,16 @@ pub(crate) enum ResponseState {
     #[default]
     Idle,
     Fetching {
-        bytes_received: usize,
+        bytes_received: u64,
         elapsed_duration: Duration,
     },
     Completed {
         status_code: StatusCode,
-        bytes_received: usize,
+        bytes_received: u64,
         elapsed_duration: Duration,
     },
     Error {
-        bytes_received: usize,
+        bytes_received: u64,
         elapsed_duration: Duration,
     },
 }
@@ -168,7 +169,7 @@ impl ResponsePanel {
             pane,
             response: Response {
                 payload: Some(payload),
-                ..Default::default()
+                ..Response::default()
             },
             editor,
             _subscriptions: vec![focus_subscription],
@@ -380,7 +381,7 @@ mod tests {
             "999 ms"
         );
         assert_eq!(
-            format_elapsed_duration(Duration::from_millis(1000)).to_string(),
+            format_elapsed_duration(Duration::from_secs(1)).to_string(),
             "1.00 s"
         );
         assert_eq!(

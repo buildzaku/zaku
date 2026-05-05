@@ -21,7 +21,7 @@ use ui::{
 
 use crate::{Workspace, panel::response::ResponseState, welcome::WelcomePage};
 
-fn normalize_url(url: String) -> Option<Url> {
+fn normalize_url(url: &str) -> Option<Url> {
     let url = url.trim();
     if url.is_empty() {
         return None;
@@ -205,7 +205,7 @@ impl Pane {
             .spawn(cx, {
                 let response_panel = response_panel.clone();
                 async move |cx| {
-                    let mut request_url = if let Some(request_url) = normalize_url(request_url) { request_url } else {
+                    let Some(mut request_url) = normalize_url(&request_url) else {
                         if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
                             response_panel.set_state(
                                 request_id,
@@ -303,7 +303,7 @@ impl Pane {
                     };
 
                     let status_code = response.status();
-                    let mut bytes_received = 0;
+                    let mut bytes_received = 0_u64;
                     let mut payload = Vec::new();
                     let mut buffer = [0; 8192];
                     let mut read_error = None;
@@ -317,7 +317,7 @@ impl Pane {
                                 match read_result {
                                     Ok(0) => break,
                                     Ok(chunk) => {
-                                        bytes_received += chunk;
+                                        bytes_received += u64::try_from(chunk).unwrap();
                                         payload.extend_from_slice(&buffer[..chunk]);
                                     }
                                     Err(error) => {
