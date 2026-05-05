@@ -408,9 +408,9 @@ impl Fs for NativeFs {
 
                 if !status.success() {
                     return Err(anyhow::anyhow!(
-                        "Failed to create junction from {:?} to {:?}",
-                        path,
-                        target
+                        "Failed to create junction from {} to {}",
+                        path.display(),
+                        target.display()
                     ));
                 }
             } else {
@@ -1025,7 +1025,7 @@ async fn file_id(path: impl AsRef<Path>) -> anyhow::Result<u64> {
         // that the output buffer was filled.
         let info = unsafe { info.assume_init() };
 
-        Ok(((info.nFileIndexHigh as u64) << 32) | (info.nFileIndexLow as u64))
+        Ok((u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow))
     })
     .await
 }

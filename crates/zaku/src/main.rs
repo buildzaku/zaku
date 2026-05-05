@@ -209,38 +209,37 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
         });
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
     eprintln!("Zaku failed to open a window: {error:?}.");
+    std::process::exit(1);
+}
 
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        std::process::exit(1);
-    }
+#[cfg(target_os = "linux")]
+fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
+    eprintln!("Zaku failed to open a window: {error:?}.");
 
-    #[cfg(target_os = "linux")]
-    {
-        let notification_body = format!("{error:?}.");
-        _cx.spawn(async move |_| {
-            let Ok(proxy) = NotificationProxy::new().await else {
-                std::process::exit(1);
-            };
-
-            let notification_id = "dev.zaku.Oops";
-            proxy
-                .add_notification(
-                    notification_id,
-                    Notification::new("Zaku failed to launch")
-                        .body(Some(notification_body.as_str()))
-                        .priority(Priority::High)
-                        .icon(ashpd::desktop::Icon::with_names(&[
-                            "dialog-question-symbolic",
-                        ])),
-                )
-                .await
-                .ok();
-
+    let notification_body = format!("{error:?}.");
+    cx.spawn(async move |_| {
+        let Ok(proxy) = NotificationProxy::new().await else {
             std::process::exit(1);
-        })
-        .detach();
-    }
+        };
+
+        let notification_id = "dev.zaku.Oops";
+        proxy
+            .add_notification(
+                notification_id,
+                Notification::new("Zaku failed to launch")
+                    .body(Some(notification_body.as_str()))
+                    .priority(Priority::High)
+                    .icon(ashpd::desktop::Icon::with_names([
+                        "dialog-question-symbolic",
+                    ])),
+            )
+            .await
+            .ok();
+
+        std::process::exit(1);
+    })
+    .detach();
 }
