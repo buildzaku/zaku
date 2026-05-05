@@ -26,8 +26,7 @@ fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
 fn action_namespace(action_name: &str) -> &str {
     action_name
         .rsplit_once("::")
-        .map(|(namespace, _)| namespace)
-        .unwrap_or("")
+        .map_or("", |(namespace, _)| namespace)
 }
 
 #[track_caller]
@@ -91,8 +90,8 @@ async fn wait_until(cx: &TestAppContext, condition: impl Fn(&TestAppContext) -> 
 
     while !condition(cx) {
         select_biased! {
-            _ = cx.background_executor.timer(Duration::from_millis(10)).fuse() => {}
-            _ = timeout => panic!("timed out waiting for polled condition"),
+            () = cx.background_executor.timer(Duration::from_millis(10)).fuse() => {}
+            () = timeout => panic!("timed out waiting for polled condition"),
         }
     }
 }
@@ -117,7 +116,7 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
     let settings_path = PathBuf::from("settings.json");
     let keymap_path = PathBuf::from("keymap.json");
 
-    temp_fs.write(&settings_path, br#"{}"#).await.unwrap();
+    temp_fs.write(&settings_path, br"{}").await.unwrap();
     temp_fs
         .write(
             &keymap_path,
@@ -208,7 +207,7 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
 
     let settings_path = PathBuf::from("settings.json");
     let keymap_path = PathBuf::from("keymap.json");
-    temp_fs.write(&settings_path, br#"{}"#).await.unwrap();
+    temp_fs.write(&settings_path, br"{}").await.unwrap();
     temp_fs
         .write(
             &keymap_path,
@@ -253,7 +252,7 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-async fn test_action_namespaces(cx: &mut TestAppContext) {
+fn test_action_namespaces(cx: &mut TestAppContext) {
     let temp_fs = Arc::new(TempFs::new(cx.executor()));
     let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
     init_test(shared_state, cx);
@@ -268,10 +267,10 @@ async fn test_action_namespaces(cx: &mut TestAppContext) {
             "test_only",
         ]);
 
-        for action_name in all_actions.iter() {
+        for &action_name in all_actions {
             let namespace = action_namespace(action_name);
             if namespace.is_empty() {
-                actions_without_namespace.push(*action_name);
+                actions_without_namespace.push(action_name);
                 continue;
             }
 

@@ -128,12 +128,18 @@ impl Dock {
             }) {
             Ok(index) => {
                 #[cfg(debug_assertions)]
-                panic!(
-                    "Panels `{}` and `{}` have the same activation priority. Each panel must have a unique priority so the status bar order is deterministic.",
-                    T::panel_key(),
-                    self.panel_entries[index].panel().panel_key()
-                );
-                index
+                {
+                    panic!(
+                        "Panels `{}` and `{}` have the same activation priority. Each panel must have a unique priority so the status bar order is deterministic.",
+                        T::panel_key(),
+                        self.panel_entries[index].panel().panel_key()
+                    );
+                }
+
+                #[cfg(not(debug_assertions))]
+                {
+                    index
+                }
             }
             Err(index) => index,
         };
