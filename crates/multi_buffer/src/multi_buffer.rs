@@ -175,6 +175,16 @@ impl ops::AddAssign<MultiBufferOffset> for MultiBufferOffset {
 #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq)]
 pub struct MultiBufferOffsetUtf16(pub OffsetUtf16);
 
+impl MultiBufferOffsetUtf16 {
+    pub fn abs_diff(self, other: Self) -> usize {
+        self.0.0.abs_diff(other.0.0)
+    }
+
+    pub fn saturating_add_signed(self, rhs: isize) -> Self {
+        Self(OffsetUtf16(self.0.0.saturating_add_signed(rhs)))
+    }
+}
+
 impl ops::Add<usize> for MultiBufferOffsetUtf16 {
     type Output = MultiBufferOffsetUtf16;
 

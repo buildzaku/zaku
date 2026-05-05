@@ -1076,15 +1076,26 @@ impl Editor {
         let newest_selection = self
             .selections
             .newest::<MultiBufferOffsetUtf16>(&display_snapshot);
-        let start_delta = range.start.0.0 as isize - newest_selection.start.0.0 as isize;
-        let end_delta = range.end.0.0 as isize - newest_selection.end.0.0 as isize;
+        let start_delta = isize::try_from(range.start.abs_diff(newest_selection.start))
+            .expect("selection replacement start delta should fit in isize");
+        let start_delta = if range.start >= newest_selection.start {
+            start_delta
+        } else {
+            -start_delta
+        };
+        let end_delta = isize::try_from(range.end.abs_diff(newest_selection.end))
+            .expect("selection replacement end delta should fit in isize");
+        let end_delta = if range.end >= newest_selection.end {
+            end_delta
+        } else {
+            -end_delta
+        };
         let snapshot = self.buffer_snapshot(cx);
         selections
             .into_iter()
             .map(|mut selection| {
-                selection.start.0.0 =
-                    (selection.start.0.0 as isize).saturating_add(start_delta) as usize;
-                selection.end.0.0 = (selection.end.0.0 as isize).saturating_add(end_delta) as usize;
+                selection.start = selection.start.saturating_add_signed(start_delta);
+                selection.end = selection.end.saturating_add_signed(end_delta);
                 snapshot.clip_offset_utf16(selection.start, Bias::Left)
                     ..snapshot.clip_offset_utf16(selection.end, Bias::Right)
             })
