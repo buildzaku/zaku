@@ -25,7 +25,7 @@ pub struct StatusBar {
     left_items: Vec<Box<dyn StatusItemViewHandle>>,
     right_items: Vec<Box<dyn StatusItemViewHandle>>,
     active_pane: Entity<Pane>,
-    _observe_active_pane: Subscription,
+    active_pane_subscription: Subscription,
 }
 
 impl StatusBar {
@@ -34,7 +34,7 @@ impl StatusBar {
             left_items: Vec::new(),
             right_items: Vec::new(),
             active_pane: active_pane.clone(),
-            _observe_active_pane: cx.observe_in(active_pane, window, |this, _, window, cx| {
+            active_pane_subscription: cx.observe_in(active_pane, window, |this, _, window, cx| {
                 this.update_active_pane(window, cx);
             }),
         };
@@ -77,9 +77,10 @@ impl StatusBar {
         cx: &mut Context<Self>,
     ) {
         self.active_pane = active_pane.clone();
-        self._observe_active_pane = cx.observe_in(active_pane, window, |this, _, window, cx| {
-            this.update_active_pane(window, cx);
-        });
+        self.active_pane_subscription =
+            cx.observe_in(active_pane, window, |this, _, window, cx| {
+                this.update_active_pane(window, cx);
+            });
         self.update_active_pane(window, cx);
     }
 

@@ -8269,6 +8269,7 @@ dependencies = [
  "log",
  "metadata",
  "multi_buffer",
+ "num-traits",
  "project",
  "reqwest_client",
  "serde",

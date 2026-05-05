@@ -82,9 +82,10 @@ impl RenderOnce for SectionButton {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let id = format!("welcome-button-{}-{}", self.label, self.tab_index);
         let action_ref = self.action.as_ref();
+        let tab_index = isize::try_from(self.tab_index).unwrap();
 
         ButtonLike::new(id)
-            .tab_index(self.tab_index as isize)
+            .tab_index(tab_index)
             .full_width()
             .size(ButtonSize::Medium)
             .child(
@@ -206,12 +207,17 @@ impl WelcomePage {
         }
     }
 
-    fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_next(_: &mut Self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
         window.focus_next(cx);
         cx.notify();
     }
 
-    fn select_previous(&mut self, _: &SelectPrevious, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_previous(
+        _: &mut Self,
+        _: &SelectPrevious,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         window.focus_prev(cx);
         cx.notify();
     }
@@ -240,10 +246,7 @@ impl WelcomePage {
         }
     }
 
-    fn render_recent_project_section(
-        &self,
-        recent_projects: Vec<impl IntoElement>,
-    ) -> impl IntoElement {
+    fn render_recent_project_section(recent_projects: Vec<impl IntoElement>) -> impl IntoElement {
         ui::v_flex()
             .w_full()
             .child(SectionHeader::new("Recent Projects"))
@@ -327,7 +330,7 @@ impl Render for WelcomePage {
         let welcome_content = if recent_projects.is_empty() {
             welcome_content
         } else {
-            welcome_content.child(self.render_recent_project_section(recent_projects))
+            welcome_content.child(Self::render_recent_project_section(recent_projects))
         };
 
         ui::h_flex()

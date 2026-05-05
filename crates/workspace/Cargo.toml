@@ -37,6 +37,7 @@ input = { workspace = true }
 log = { workspace = true }
 metadata = { workspace = true }
 multi_buffer = { workspace = true }
+num-traits = { workspace = true }
 project = { workspace = true }
 reqwest_client = { workspace = true }
 session = { workspace = true }

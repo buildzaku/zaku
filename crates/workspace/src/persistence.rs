@@ -208,7 +208,7 @@ impl WorkspaceDb {
                 .and_then(|mut f| f().context("failed to count recent workspaces"))?
                 .context("recent workspace count query returned no row")?;
 
-            Ok(count as usize)
+            usize::try_from(count).context("recent workspace count should fit in usize")
         })
     }
 
@@ -768,7 +768,7 @@ mod tests {
         assert!(serialized_workspace.window_id.is_some());
 
         root.update_in(cx, |root, window, cx| {
-            root.close_window(&CloseWindow, window, cx)
+            root.close_window(&CloseWindow, window, cx);
         });
         cx.run_until_parked();
 

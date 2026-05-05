@@ -71,11 +71,11 @@ impl Workspace {
 
     pub fn show_notification<V: Notification>(
         &mut self,
-        id: NotificationId,
+        id: &NotificationId,
         cx: &mut Context<Self>,
         build_notification: impl FnOnce(&mut Context<Self>) -> Entity<V>,
     ) {
-        self.show_notification_without_handling_dismiss_events(&id, cx, |cx| {
+        self.show_notification_without_handling_dismiss_events(id, cx, |cx| {
             let notification = build_notification(cx);
             cx.subscribe(&notification, {
                 let id = id.clone();
@@ -123,8 +123,9 @@ impl Workspace {
     }
 
     pub fn show_toast(&mut self, toast: Toast, cx: &mut Context<Self>) {
-        self.dismiss_notification(&toast.id, cx);
-        self.show_notification(toast.id.clone(), cx, |cx| {
+        let toast_id = toast.id.clone();
+        self.dismiss_notification(&toast_id, cx);
+        self.show_notification(&toast_id, cx, |cx| {
             cx.new(|cx| match toast.on_click.as_ref() {
                 Some((click_msg, on_click)) => {
                     let on_click = on_click.clone();
@@ -162,12 +163,12 @@ impl Workspace {
         self.suppressed_notifications.insert(id.clone());
     }
 
-    pub fn is_notification_suppressed(&self, notification_id: NotificationId) -> bool {
-        self.suppressed_notifications.contains(&notification_id)
+    pub fn is_notification_suppressed(&self, notification_id: &NotificationId) -> bool {
+        self.suppressed_notifications.contains(notification_id)
     }
 
-    pub fn unsuppress(&mut self, notification_id: NotificationId) {
-        self.suppressed_notifications.remove(&notification_id);
+    pub fn unsuppress(&mut self, notification_id: &NotificationId) {
+        self.suppressed_notifications.remove(notification_id);
     }
 }
 

@@ -68,7 +68,7 @@ impl Dock {
 
         Self {
             position,
-            panel_entries: Default::default(),
+            panel_entries: Vec::default(),
             is_open: false,
             active_panel_index: None,
             focus_handle: focus_handle.clone(),
@@ -111,10 +111,11 @@ impl Dock {
 
     pub fn add_panel<T: Panel>(
         &mut self,
-        panel: Entity<T>,
+        panel: &Entity<T>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let panel = panel.clone();
         let observe_panel_subscription = cx.observe(&panel, |_, _, cx| cx.notify());
         let panel_priority = panel.read(cx).activation_priority();
         let panel_starts_open = panel.read(cx).starts_open(window, cx);
@@ -126,8 +127,8 @@ impl Dock {
                 entry.panel().activation_priority(cx)
             }) {
             Ok(index) => {
-                assert!(
-                    !cfg!(debug_assertions),
+                #[cfg(debug_assertions)]
+                panic!(
                     "Panels `{}` and `{}` have the same activation priority. Each panel must have a unique priority so the status bar order is deterministic.",
                     T::panel_key(),
                     self.panel_entries[index].panel().panel_key()
@@ -262,7 +263,7 @@ impl Dock {
         }
     }
 
-    fn resolved_panel_size(&self, entry: &PanelEntry, window: &Window, cx: &App) -> Pixels {
+    fn resolved_panel_size(entry: &PanelEntry, window: &Window, cx: &App) -> Pixels {
         entry
             .size_state
             .size
@@ -279,7 +280,7 @@ impl Focusable for Dock {
 impl Render for Dock {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(entry) = self.visible_entry() {
-            let size = self.resolved_panel_size(entry, window, cx);
+            let size = Self::resolved_panel_size(entry, window, cx);
             let position = self.position;
 
             let create_resize_handle = || {
