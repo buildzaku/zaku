@@ -248,40 +248,34 @@ impl Render for ProjectPanel {
                 },
             )
             .child(
-                gpui::div()
-                    .id("project-panel-entries-container")
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        gpui::uniform_list(
-                            "project-panel-entries",
-                            entry_count,
-                            cx.processor(|this, range: Range<usize>, _window, _cx| {
-                                let Some(visible_entries) = this.visible_entries.as_ref() else {
-                                    return Vec::new();
-                                };
+                gpui::uniform_list(
+                    "project-panel-entries",
+                    entry_count,
+                    cx.processor(|this, range: Range<usize>, _window, _cx| {
+                        let Some(visible_entries) = this.visible_entries.as_ref() else {
+                            return Vec::new();
+                        };
 
-                                range
-                                    .filter_map(|index| visible_entries.entries.get(index))
-                                    .map(|entry| Self::render_entry(Self::entry_details(entry)))
-                                    .collect::<Vec<_>>()
-                            }),
-                        )
-                        .with_sizing_behavior(ListSizingBehavior::Infer)
-                        .track_scroll(&self.scroll_handle)
-                        .size_full(),
+                        range
+                            .filter_map(|index| visible_entries.entries.get(index))
+                            .map(|entry| Self::render_entry(Self::entry_details(entry)))
+                            .collect::<Vec<_>>()
+                    }),
+                )
+                .with_sizing_behavior(ListSizingBehavior::Infer)
+                .track_scroll(&self.scroll_handle)
+                .size_full(),
+            )
+            .custom_scrollbars(
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .tracked_scroll_handle(&self.scroll_handle)
+                    .with_track_along(
+                        ScrollAxes::Vertical,
+                        theme_colors.scrollbar_track_background,
                     )
-                    .custom_scrollbars(
-                        Scrollbars::new(ScrollAxes::Vertical)
-                            .tracked_scroll_handle(&self.scroll_handle)
-                            .with_track_along(
-                                ScrollAxes::Vertical,
-                                theme_colors.scrollbar_track_background,
-                            )
-                            .notify_content(),
-                        window,
-                        cx,
-                    ),
+                    .notify_content(),
+                window,
+                cx,
             )
     }
 }
