@@ -1,13 +1,17 @@
 use gpui::{
-    Action, App, Context, Entity, FocusHandle, Focusable, Pixels, Render, Subscription, Task,
-    WeakEntity, Window, prelude::*,
+    Action, App, Context, Entity, FocusHandle, Focusable, ListSizingBehavior, Pixels, Render,
+    Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
+use std::ops::Range;
 
 use actions::workspace::project_panel;
 use project::{EntryKind, Project, ProjectEvent, Snapshot};
 use theme::ActiveTheme;
-use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
+use ui::{
+    Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, ScrollAxes, Scrollbars,
+    WithScrollbar,
+};
 
 use crate::{Workspace, pane::Pane, panel::Panel};
 
@@ -26,6 +30,7 @@ pub struct ProjectPanel {
     focus_handle: FocusHandle,
     project: Entity<Project>,
     pane: WeakEntity<Pane>,
+    scroll_handle: UniformListScrollHandle,
     update_visible_entries_task: Task<()>,
     visible_entries: Option<VisibleEntries>,
     _project_subscription: Subscription,
@@ -56,6 +61,7 @@ impl ProjectPanel {
             focus_handle: cx.focus_handle(),
             project: project.clone(),
             pane,
+            scroll_handle: UniformListScrollHandle::new(),
             update_visible_entries_task: Task::ready(()),
             visible_entries: None,
             _project_subscription: cx.subscribe(project, |this, _, _: &ProjectEvent, cx| {
@@ -209,16 +215,13 @@ impl Panel for ProjectPanel {
 }
 
 impl Render for ProjectPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
         let snapshot = self.snapshot(cx);
-        let entries = self
+        let entry_count = self
             .visible_entries
             .as_ref()
-            .into_iter()
-            .flat_map(|visible_entries| visible_entries.entries.iter())
-            .map(|entry| Self::render_entry(Self::entry_details(entry)))
-            .collect::<Vec<_>>();
+            .map_or(0, |visible_entries| visible_entries.entries.len());
 
         gpui::div()
             .track_focus(&self.focus_handle)
@@ -246,10 +249,39 @@ impl Render for ProjectPanel {
             )
             .child(
                 gpui::div()
-                    .id("project-panel-entries")
+                    .id("project-panel-entries-container")
                     .flex_1()
-                    .overflow_y_scroll()
-                    .children(entries),
+                    .min_h_0()
+                    .child(
+                        gpui::uniform_list(
+                            "project-panel-entries",
+                            entry_count,
+                            cx.processor(|this, range: Range<usize>, _window, _cx| {
+                                let Some(visible_entries) = this.visible_entries.as_ref() else {
+                                    return Vec::new();
+                                };
+
+                                range
+                                    .filter_map(|index| visible_entries.entries.get(index))
+                                    .map(|entry| Self::render_entry(Self::entry_details(entry)))
+                                    .collect::<Vec<_>>()
+                            }),
+                        )
+                        .with_sizing_behavior(ListSizingBehavior::Infer)
+                        .track_scroll(&self.scroll_handle)
+                        .size_full(),
+                    )
+                    .custom_scrollbars(
+                        Scrollbars::new(ScrollAxes::Vertical)
+                            .tracked_scroll_handle(&self.scroll_handle)
+                            .with_track_along(
+                                ScrollAxes::Vertical,
+                                theme_colors.scrollbar_track_background,
+                            )
+                            .notify_content(),
+                        window,
+                        cx,
+                    ),
             )
     }
 }
