@@ -1083,12 +1083,14 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let prepaint_state = self
-            .state
-            .read(cx)
-            .disabled()
-            .not()
-            .then(|| ScrollbarPrepaintState {
+        let prepaint_state = self.state.read(cx).disabled().not().then(|| {
+            let hitbox_behavior = if self.state.read(cx).thumb_state.is_dragging() {
+                HitboxBehavior::BlockMouseExceptScroll
+            } else {
+                HitboxBehavior::Normal
+            };
+
+            ScrollbarPrepaintState {
                 thumbs: {
                     let state = self.state.read(cx);
                     let scrollbar_layouts = state.scrollbar_layouts().collect::<Vec<_>>();
@@ -1173,8 +1175,9 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                         })
                         .collect()
                 },
-                parent_bounds_hitbox: window.insert_hitbox(bounds, HitboxBehavior::Normal),
-            });
+                parent_bounds_hitbox: window.insert_hitbox(bounds, hitbox_behavior),
+            }
+        });
         if prepaint_state
             .as_ref()
             .is_some_and(|state| Some(state) != self.state.read(cx).last_prepaint_state.as_ref())
