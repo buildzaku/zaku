@@ -12,7 +12,7 @@ use project::{
 use theme::ActiveTheme;
 use ui::{
     Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, ListItem, ListItemSpacing,
-    ScrollAxes, Scrollbars, WithScrollbar,
+    ScrollAxes, Scrollbars, TrackLayout, WithScrollbar,
 };
 
 use crate::{Workspace, pane::Pane, panel::Panel};
@@ -406,7 +406,8 @@ impl Render for ProjectPanel {
                     .tracked_scroll_handle(&self.scroll_handle)
                     .with_track_along(
                         ScrollAxes::Vertical,
-                        theme_colors.scrollbar_track_background,
+                        theme_colors.panel_background,
+                        TrackLayout::Overlay,
                     )
                     .notify_content(),
                 window,
