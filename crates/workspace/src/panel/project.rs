@@ -2,11 +2,10 @@ use gpui::{
     Action, App, Context, Entity, FocusHandle, Focusable, ListSizingBehavior, Pixels, Render,
     Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
-use num_traits::ToPrimitive;
 use std::ops::Range;
 
 use actions::workspace::project_panel;
-use project::{EntryKind, Project, ProjectEvent, Snapshot};
+use project::{EntryKind, Project, ProjectEntryId, ProjectEvent, Snapshot};
 use theme::ActiveTheme;
 use ui::{
     Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, ScrollAxes, Scrollbars,
@@ -32,8 +31,14 @@ pub struct ProjectPanel {
     pane: WeakEntity<Pane>,
     scroll_handle: UniformListScrollHandle,
     update_visible_entries_task: Task<()>,
-    visible_entries: Option<VisibleEntries>,
+    tree_state: TreeState,
     _project_subscription: Subscription,
+}
+
+#[derive(Default)]
+struct TreeState {
+    visible_entries: Vec<VisibleEntry>,
+    expanded_dir_ids: Option<Vec<ProjectEntryId>>,
 }
 
 struct VisibleEntries {
@@ -41,13 +46,15 @@ struct VisibleEntries {
 }
 
 struct VisibleEntry {
-    depth: usize,
+    id: ProjectEntryId,
+    depth: u16,
     kind: EntryKind,
     label: String,
 }
 
 struct EntryDetails {
-    depth: usize,
+    id: ProjectEntryId,
+    depth: u16,
     kind: EntryKind,
     label: String,
 }
@@ -63,7 +70,7 @@ impl ProjectPanel {
             pane,
             scroll_handle: UniformListScrollHandle::new(),
             update_visible_entries_task: Task::ready(()),
-            visible_entries: None,
+            tree_state: TreeState::default(),
             _project_subscription: cx.subscribe(project, |this, _, _: &ProjectEvent, cx| {
                 this.update_visible_entries(cx);
             }),
@@ -76,17 +83,6 @@ impl ProjectPanel {
         self.project.read(cx).snapshot(cx)
     }
 
-    fn root_label(snapshot: &Snapshot) -> String {
-        if snapshot.root_name().is_empty() {
-            snapshot.abs_path().to_string_lossy().into_owned()
-        } else {
-            snapshot
-                .root_name()
-                .display(snapshot.path_style())
-                .into_owned()
-        }
-    }
-
     fn visible_entry(snapshot: &Snapshot, entry: &project::Entry) -> VisibleEntry {
         let file_name = entry.path.file_name().unwrap_or_default();
         let label = match entry.kind {
@@ -95,46 +91,64 @@ impl ProjectPanel {
                 .unwrap_or(file_name)
                 .to_string(),
             EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
-                if Some(entry) == snapshot.root_entry() && !snapshot.root_name().is_empty() {
-                    snapshot
-                        .root_name()
-                        .display(snapshot.path_style())
-                        .into_owned()
+                if Some(entry) == snapshot.root_entry() {
+                    snapshot.root_name().as_unix_str().to_string()
                 } else {
                     file_name.to_string()
                 }
             }
         };
+        let depth = u16::try_from(entry.path.components().count()).unwrap_or(u16::MAX);
 
         VisibleEntry {
-            depth: entry.path.component_count().saturating_sub(1),
+            id: entry.id,
+            depth,
             kind: entry.kind,
             label,
         }
     }
 
     fn update_visible_entries(&mut self, cx: &mut Context<Self>) {
-        let snapshot = self
-            .project
-            .read(cx)
-            .worktree(cx)
-            .map(|worktree| worktree.read(cx).snapshot());
+        let snapshot = self.snapshot(cx);
+
+        if let Some(snapshot) = snapshot.as_ref() {
+            if let Some(root_entry) = snapshot.root_entry()
+                && self.tree_state.expanded_dir_ids.is_none()
+            {
+                self.tree_state.expanded_dir_ids = Some(vec![root_entry.id]);
+            }
+        } else {
+            self.tree_state.expanded_dir_ids = None;
+        }
+
+        let expanded_dir_ids = self.tree_state.expanded_dir_ids.clone().unwrap_or_default();
 
         self.update_visible_entries_task = cx.spawn(async move |this, cx| {
             let visible_entries = cx
                 .background_spawn(async move {
-                    snapshot.map(|snapshot| VisibleEntries {
-                        entries: snapshot
-                            .entries(0)
-                            .filter(|entry| !entry.path.is_empty())
-                            .map(|entry| Self::visible_entry(&snapshot, entry))
-                            .collect(),
+                    snapshot.map(|snapshot| {
+                        let mut entries = Vec::new();
+                        let mut traversal = snapshot.entries(0);
+
+                        while let Some(entry) = traversal.entry() {
+                            entries.push(Self::visible_entry(&snapshot, entry));
+
+                            if entry.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_err()
+                            {
+                                traversal.advance_to_sibling();
+                            } else {
+                                traversal.advance();
+                            }
+                        }
+
+                        VisibleEntries { entries }
                     })
                 })
                 .await;
 
             this.update(cx, |this, cx| {
-                this.visible_entries = visible_entries;
+                this.tree_state.visible_entries = visible_entries
+                    .map_or_else(Vec::new, |visible_entries| visible_entries.entries);
                 cx.notify();
             })
             .ok();
@@ -143,6 +157,7 @@ impl ProjectPanel {
 
     fn entry_details(entry: &VisibleEntry) -> EntryDetails {
         EntryDetails {
+            id: entry.id,
             depth: entry.depth,
             kind: entry.kind,
             label: entry.label.clone(),
@@ -154,10 +169,10 @@ impl ProjectPanel {
             EntryKind::File => IconName::File,
             EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => IconName::FolderOpen,
         };
-        let depth = details.depth.to_f64().unwrap();
-        let indentation = Pixels::from(depth * 12.0);
+        let indentation = gpui::px(f32::from(details.depth) * 12.0);
 
         ui::h_flex()
+            .id(details.id.to_usize())
             .w_full()
             .items_center()
             .gap_2()
@@ -217,11 +232,7 @@ impl Panel for ProjectPanel {
 impl Render for ProjectPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
-        let snapshot = self.snapshot(cx);
-        let entry_count = self
-            .visible_entries
-            .as_ref()
-            .map_or(0, |visible_entries| visible_entries.entries.len());
+        let entry_count = self.tree_state.visible_entries.len();
 
         gpui::div()
             .track_focus(&self.focus_handle)
@@ -229,35 +240,13 @@ impl Render for ProjectPanel {
             .flex_col()
             .size_full()
             .bg(theme_colors.surface_background)
-            .when_some(
-                snapshot.as_ref().map(Self::root_label),
-                |panel, root_label| {
-                    panel.child(
-                        ui::h_flex()
-                            .items_center()
-                            .gap_2()
-                            .px_3()
-                            .py_1()
-                            .child(
-                                Icon::new(IconName::FolderOpen)
-                                    .size(IconSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .child(Label::new(root_label).size(LabelSize::Small)),
-                    )
-                },
-            )
             .child(
                 gpui::uniform_list(
                     "project-panel-entries",
                     entry_count,
                     cx.processor(|this, range: Range<usize>, _window, _cx| {
-                        let Some(visible_entries) = this.visible_entries.as_ref() else {
-                            return Vec::new();
-                        };
-
                         range
-                            .filter_map(|index| visible_entries.entries.get(index))
+                            .filter_map(|index| this.tree_state.visible_entries.get(index))
                             .map(|entry| Self::render_entry(Self::entry_details(entry)))
                             .collect::<Vec<_>>()
                     }),
