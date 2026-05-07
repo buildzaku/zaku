@@ -20,6 +20,7 @@ pub enum IconName {
     Dash,
     File,
     Folder,
+    FolderClose,
     FolderOpen,
     Info,
     Minimize,

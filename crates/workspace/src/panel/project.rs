@@ -213,7 +213,7 @@ impl ProjectPanel {
             let icon = if details.is_expanded {
                 IconName::FolderOpen
             } else {
-                IconName::Folder
+                IconName::FolderClose
             };
 
             ui::h_flex()
