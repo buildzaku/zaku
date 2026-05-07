@@ -278,7 +278,9 @@ impl ProjectPanel {
             .cursor_pointer()
             .rounded_none()
             .bg(bg_color)
-            .hover(move |style| style.bg(bg_hover_color))
+            .border_1()
+            .border_color(bg_color)
+            .hover(move |style| style.bg(bg_hover_color).border_color(bg_hover_color))
             .on_click(
                 cx.listener(move |project_panel, event: &ClickEvent, window, cx| {
                     if event.is_right_click() {
@@ -307,11 +309,9 @@ impl ProjectPanel {
                     .selectable(false)
                     .child(icon)
                     .child(
-                        ui::h_flex().h_6().child(
-                            Label::new(details.file_name)
-                                .single_line()
-                                .size(LabelSize::Small),
-                        ),
+                        ui::h_flex()
+                            .h_6()
+                            .child(Label::new(details.file_name).single_line()),
                     )
                     .overflow_x(),
             )
