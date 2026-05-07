@@ -14,7 +14,7 @@ use fs::Fs;
 use util::{path::PathStyle, rel_path::RelPath};
 use worktree::UpdatedEntriesSet;
 
-pub use worktree::{Entry, EntryKind, ProjectEntryId, Snapshot, Worktree};
+pub use worktree::{Entry, EntryKind, ProjectEntryId, RequestFileState, Snapshot, Worktree};
 
 use crate::worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent};
 
