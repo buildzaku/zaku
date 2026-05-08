@@ -355,8 +355,8 @@ impl Render for Dock {
                 .child(
                     gpui::div()
                         .map(|this| match position.axis() {
-                            Axis::Horizontal => this.min_w(size).h_full(),
-                            Axis::Vertical => this.min_h(size).w_full(),
+                            Axis::Horizontal => this.w_full().h_full(),
+                            Axis::Vertical => this.h_full().w_full(),
                         })
                         .child(entry.panel().to_any()),
                 )

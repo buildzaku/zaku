@@ -1,6 +1,6 @@
 use gpui::{
     Action, AnyElement, App, ClickEvent, Context, Div, Entity, FocusHandle, Focusable, KeyContext,
-    ListSizingBehavior, Pixels, Render, ScrollStrategy, Stateful, Subscription, Task,
+    ListSizingBehavior, MouseButton, Pixels, Render, ScrollStrategy, Stateful, Subscription, Task,
     UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use std::ops::Range;
@@ -40,6 +40,7 @@ pub struct ProjectPanel {
     tree_state: TreeState,
     marked_entries: Vec<SelectedEntry>,
     selection: Option<SelectedEntry>,
+    mouse_down: bool,
     _project_subscription: Subscription,
 }
 
@@ -56,6 +57,7 @@ struct EntryDetails {
     kind: EntryKind,
     is_expanded: bool,
     is_invalid: bool,
+    is_selected: bool,
     is_marked: bool,
 }
 
@@ -78,6 +80,7 @@ impl ProjectPanel {
             tree_state: TreeState::default(),
             marked_entries: Vec::new(),
             selection: None,
+            mouse_down: false,
             _project_subscription: cx.subscribe(project, |this, _, _: &ProjectEvent, cx| {
                 this.update_visible_entries(cx);
             }),
@@ -140,6 +143,7 @@ impl ProjectPanel {
             kind: entry.kind,
             is_expanded,
             is_invalid,
+            is_selected: self.selection == Some(selection),
             is_marked: self.marked_entries.contains(&selection),
         }
     }
@@ -435,8 +439,10 @@ impl ProjectPanel {
     }
 
     fn render_entry(
+        &self,
         entry_id: ProjectEntryId,
         details: EntryDetails,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let icon: AnyElement = if details.kind.is_dir() {
@@ -489,6 +495,7 @@ impl ProjectPanel {
         };
         let is_dir = details.kind.is_dir();
         let selection = SelectedEntry(entry_id);
+        let is_active = details.is_selected;
         let theme_colors = cx.theme().colors();
         let bg_color = if details.is_marked {
             theme_colors.element_selected
@@ -500,6 +507,18 @@ impl ProjectPanel {
         } else {
             theme_colors.element_hover
         };
+        let border_color =
+            if !self.mouse_down && is_active && self.focus_handle.contains_focused(window, cx) {
+                theme_colors.border_focused
+            } else {
+                bg_color
+            };
+        let border_hover_color =
+            if !self.mouse_down && is_active && self.focus_handle.contains_focused(window, cx) {
+                theme_colors.border_focused
+            } else {
+                bg_hover_color
+            };
 
         gpui::div()
             .id(entry_id.to_usize())
@@ -509,12 +528,22 @@ impl ProjectPanel {
             .rounded_none()
             .bg(bg_color)
             .border_1()
-            .border_color(bg_color)
-            .hover(move |style| style.bg(bg_hover_color).border_color(bg_hover_color))
+            .border_color(border_color)
+            .hover(move |style| style.bg(bg_hover_color).border_color(border_hover_color))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |project_panel, _, _, cx| {
+                    project_panel.mouse_down = true;
+                    cx.propagate();
+                }),
+            )
             .on_click(
                 cx.listener(move |project_panel, event: &ClickEvent, window, cx| {
                     if event.is_right_click() {
                         return;
+                    }
+                    if event.standard_click() {
+                        project_panel.mouse_down = false;
                     }
 
                     cx.stop_propagation();
@@ -618,7 +647,7 @@ impl Render for ProjectPanel {
                 gpui::uniform_list(
                     "project-panel-entries",
                     entry_count,
-                    cx.processor(|this, range: Range<usize>, _window, cx| {
+                    cx.processor(|this, range: Range<usize>, window, cx| {
                         let Some(snapshot) = this.snapshot(cx) else {
                             return Vec::new();
                         };
@@ -626,9 +655,10 @@ impl Render for ProjectPanel {
 
                         for index in range {
                             if let Some(entry) = this.tree_state.visible_entries.get(index) {
-                                items.push(Self::render_entry(
+                                items.push(this.render_entry(
                                     entry.id,
                                     this.details_for_entry(&snapshot, entry),
+                                    window,
                                     cx,
                                 ));
                             }
