@@ -1,8 +1,9 @@
 use gpui::{
-    Action, AnyElement, App, ClickEvent, Context, Div, Entity, FocusHandle, Focusable, KeyContext,
-    ListSizingBehavior, MouseButton, Pixels, Render, ScrollStrategy, Stateful, Subscription, Task,
-    UniformListScrollHandle, WeakEntity, Window, prelude::*,
+    Action, AnyElement, App, Bounds, ClickEvent, Context, Div, Entity, FocusHandle, Focusable,
+    KeyContext, ListSizingBehavior, MouseButton, Pixels, Render, ScrollStrategy, Stateful,
+    Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
+use smallvec::SmallVec;
 use std::ops::Range;
 
 use actions::{
@@ -14,8 +15,9 @@ use project::{
 };
 use theme::ActiveTheme;
 use ui::{
-    Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, ListItem, ListItemSpacing,
-    ScrollAxes, Scrollbars, TrackLayout, WithScrollbar,
+    Color, DynamicSpacing, Icon, IconName, IconSize, IndentGuideColors, IndentGuideLayout, Label,
+    LabelCommon, LabelSize, ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars,
+    TrackLayout, WithScrollbar,
 };
 
 use crate::{Workspace, pane::Pane, panel::Panel};
@@ -65,9 +67,10 @@ struct EntryDetails {
 struct SelectedEntry(ProjectEntryId);
 
 impl ProjectPanel {
-    const DEFAULT_SIZE: Pixels = gpui::px(250.0);
-    const INDENT_SIZE: Pixels = gpui::px(13.0);
     const PANEL_KEY: &str = "ProjectPanel";
+    const DEFAULT_SIZE: Pixels = gpui::px(250.0);
+    const INDENT_SIZE: Pixels = gpui::px(9.0);
+    const DISCLOSURE_SLOT_WIDTH: Pixels = gpui::px(13.0);
     const PREFIX_LABEL_SLOT_WIDTH: Pixels = gpui::px(26.0);
 
     pub fn new(project: &Entity<Project>, pane: WeakEntity<Pane>, cx: &mut Context<Self>) -> Self {
@@ -438,6 +441,133 @@ impl ProjectPanel {
         cx.notify();
     }
 
+    fn find_active_indent_guide(&self, indent_guides: &[IndentGuideLayout]) -> Option<usize> {
+        let selection = self.selection?;
+        let selection_row = self.index_for_selection(selection)?;
+        let selected_entry = self.tree_state.visible_entries.get(selection_row)?;
+        let expanded_dir_ids = self.tree_state.expanded_dir_ids.as_deref().unwrap_or(&[]);
+        let mut parent_row = selection_row;
+        let mut depth = selected_entry.path.components().count();
+
+        let is_expanded_dir = selected_entry.kind.is_dir()
+            && expanded_dir_ids.binary_search(&selected_entry.id).is_ok();
+        if !is_expanded_dir {
+            depth = depth.checked_sub(1)?;
+            parent_row = self.tree_state.visible_entries[..selection_row]
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(row, entry)| {
+                    (entry.path.components().count() == depth).then_some(row)
+                })?;
+        }
+
+        let start = parent_row.checked_add(1)?;
+        let end = self.tree_state.visible_entries[start..]
+            .iter()
+            .position(|entry| entry.path.components().count() <= depth)
+            .map_or(self.tree_state.visible_entries.len(), |offset| {
+                start + offset
+            });
+        let active_range = start..end;
+
+        indent_guides.iter().enumerate().find_map(|(index, guide)| {
+            if guide.offset.x == depth
+                && active_range.start <= guide.offset.y + guide.length
+                && guide.offset.y <= active_range.end
+            {
+                Some(index)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn render_entry_prefix(details: &EntryDetails) -> AnyElement {
+        if details.kind.is_dir() {
+            let icon = if details.is_expanded {
+                IconName::FolderOpen
+            } else {
+                IconName::FolderClose
+            };
+            let disclosure_icon = if details.is_expanded {
+                IconName::CaretDown
+            } else {
+                IconName::CaretRight
+            };
+
+            ui::h_flex()
+                .flex_none()
+                .items_center()
+                .gap_0p5()
+                .child(
+                    gpui::div()
+                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .flex_none()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            Icon::new(disclosure_icon)
+                                .size(IconSize::Small)
+                                .color(Color::Muted),
+                        ),
+                )
+                .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
+                .into_any_element()
+        } else if details.is_invalid {
+            ui::h_flex()
+                .flex_none()
+                .items_center()
+                .gap_0p5()
+                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(
+                    ui::h_flex()
+                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .flex_none()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            Icon::new(IconName::Close)
+                                .size(IconSize::Small)
+                                .color(Color::Error),
+                        ),
+                )
+                .into_any_element()
+        } else if let Some(prefix_label) = details.prefix_label.as_ref() {
+            ui::h_flex()
+                .flex_none()
+                .items_center()
+                .gap_0p5()
+                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(
+                    ui::h_flex()
+                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .flex_none()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            Label::new(prefix_label.clone())
+                                .size(LabelSize::XSmall)
+                                .color(Color::Muted)
+                                .single_line(),
+                        ),
+                )
+                .into_any_element()
+        } else {
+            ui::h_flex()
+                .flex_none()
+                .items_center()
+                .gap_0p5()
+                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(
+                    Icon::new(IconName::File)
+                        .size(IconSize::Medium)
+                        .color(Color::Muted),
+                )
+                .into_any_element()
+        }
+    }
+
     fn render_entry(
         &self,
         entry_id: ProjectEntryId,
@@ -445,54 +575,6 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let icon: AnyElement = if details.kind.is_dir() {
-            let icon = if details.is_expanded {
-                IconName::FolderOpen
-            } else {
-                IconName::FolderClose
-            };
-
-            ui::h_flex()
-                .flex_none()
-                .items_center()
-                .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
-                .into_any_element()
-        } else if details.is_invalid {
-            ui::h_flex()
-                .w(Self::PREFIX_LABEL_SLOT_WIDTH)
-                .flex_none()
-                .items_center()
-                .justify_end()
-                .child(
-                    Icon::new(IconName::Close)
-                        .size(IconSize::Small)
-                        .color(Color::Error),
-                )
-                .into_any_element()
-        } else if let Some(prefix_label) = details.prefix_label {
-            ui::h_flex()
-                .w(Self::PREFIX_LABEL_SLOT_WIDTH)
-                .flex_none()
-                .items_center()
-                .justify_end()
-                .child(
-                    Label::new(prefix_label)
-                        .size(LabelSize::XSmall)
-                        .color(Color::Muted)
-                        .single_line(),
-                )
-                .into_any_element()
-        } else {
-            ui::h_flex()
-                .flex_none()
-                .items_center()
-                .child(
-                    Icon::new(IconName::File)
-                        .size(IconSize::Medium)
-                        .color(Color::Muted),
-                )
-                .into_any_element()
-        };
         let is_dir = details.kind.is_dir();
         let selection = SelectedEntry(entry_id);
         let is_active = details.is_selected;
@@ -568,7 +650,7 @@ impl ProjectPanel {
                     .indent_step_size(Self::INDENT_SIZE)
                     .spacing(ListItemSpacing::Dense)
                     .selectable(false)
-                    .child(icon)
+                    .child(Self::render_entry_prefix(&details))
                     .child(
                         ui::h_flex()
                             .h_6()
@@ -666,6 +748,94 @@ impl Render for ProjectPanel {
 
                         items
                     }),
+                )
+                .with_decoration(
+                    ui::indent_guides(Self::INDENT_SIZE, IndentGuideColors::panel(cx))
+                        .with_compute_indents_fn(cx.entity(), |this, range, _window, _cx| {
+                            let mut items =
+                                SmallVec::with_capacity(range.end.saturating_sub(range.start));
+                            for index in range {
+                                if let Some(entry) = this.tree_state.visible_entries.get(index) {
+                                    items.push(entry.path.components().count());
+                                }
+                            }
+                            items
+                        })
+                        .on_click(cx.listener(
+                            |this, active_indent_guide: &IndentGuideLayout, window, cx| {
+                                if !window.modifiers().secondary() {
+                                    return;
+                                }
+
+                                let row = active_indent_guide.offset.y;
+                                let Some(snapshot) = this.snapshot(cx) else {
+                                    return;
+                                };
+                                let Some(parent_entry_id) = this
+                                    .tree_state
+                                    .visible_entries
+                                    .get(row)
+                                    .and_then(|entry| entry.path.parent())
+                                    .and_then(|path| snapshot.entry_for_path(path))
+                                    .map(|entry| entry.id)
+                                else {
+                                    return;
+                                };
+                                let Some(expanded_dir_ids) =
+                                    this.tree_state.expanded_dir_ids.as_mut()
+                                else {
+                                    return;
+                                };
+                                let Ok(index) = expanded_dir_ids.binary_search(&parent_entry_id)
+                                else {
+                                    return;
+                                };
+
+                                expanded_dir_ids.remove(index);
+                                this.update_visible_entries(cx);
+                                window.focus(&this.focus_handle, cx);
+                                cx.notify();
+                            },
+                        ))
+                        .with_render_fn(cx.entity(), |this, params, _, cx| {
+                            const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
+                            const PADDING_Y: Pixels = gpui::px(1.0);
+
+                            let active_guide = this.find_active_indent_guide(&params.indent_guides);
+                            let indent_size = params.indent_size;
+                            let item_height = params.item_height;
+                            let left_offset = DynamicSpacing::Base06.px(cx)
+                                + Self::DISCLOSURE_SLOT_WIDTH * 0.5
+                                - gpui::px(0.5);
+
+                            params
+                                .indent_guides
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, layout)| {
+                                    let guide_x = layout.offset.x * indent_size + left_offset;
+                                    let guide_y = layout.offset.y * item_height + PADDING_Y;
+                                    let guide_height =
+                                        layout.length * item_height - PADDING_Y * 2.0;
+                                    let bounds = Bounds::new(
+                                        gpui::point(guide_x, guide_y),
+                                        gpui::size(gpui::px(1.0), guide_height),
+                                    );
+                                    let hitbox_x = bounds.origin.x - HITBOX_OVERDRAW;
+                                    let hitbox_width = bounds.size.width + HITBOX_OVERDRAW * 2.0;
+
+                                    RenderedIndentGuide {
+                                        bounds,
+                                        layout,
+                                        is_active: Some(index) == active_guide,
+                                        hitbox: Some(Bounds::new(
+                                            gpui::point(hitbox_x, bounds.origin.y),
+                                            gpui::size(hitbox_width, bounds.size.height),
+                                        )),
+                                    }
+                                })
+                                .collect()
+                        }),
                 )
                 .with_sizing_behavior(ListSizingBehavior::Infer)
                 .track_scroll(&self.scroll_handle)

@@ -145,6 +145,9 @@ pub struct ThemeColors {
     pub surface_background: Hsla,
     pub elevated_surface_background: Hsla,
     pub panel_background: Hsla,
+    pub panel_indent_guide: Hsla,
+    pub panel_indent_guide_hover: Hsla,
+    pub panel_indent_guide_active: Hsla,
 
     pub border: Hsla,
     pub border_variant: Hsla,
@@ -275,6 +278,12 @@ pub struct ThemeStyleContent {
     pub elevated_surface_background: Option<String>,
     #[serde(rename = "panel.background")]
     pub panel_background: Option<String>,
+    #[serde(rename = "panel.indent_guide")]
+    pub panel_indent_guide: Option<String>,
+    #[serde(rename = "panel.indent_guide_hover")]
+    pub panel_indent_guide_hover: Option<String>,
+    #[serde(rename = "panel.indent_guide_active")]
+    pub panel_indent_guide_active: Option<String>,
 
     #[serde(rename = "border")]
     pub border: Option<String>,
@@ -457,6 +466,18 @@ impl ThemeStyleContent {
                 self.elevated_surface_background.as_deref(),
             )?,
             panel_background: parse_color("panel.background", self.panel_background.as_deref())?,
+            panel_indent_guide: parse_color(
+                "panel.indent_guide",
+                self.panel_indent_guide.as_deref(),
+            )?,
+            panel_indent_guide_hover: parse_color(
+                "panel.indent_guide_hover",
+                self.panel_indent_guide_hover.as_deref(),
+            )?,
+            panel_indent_guide_active: parse_color(
+                "panel.indent_guide_active",
+                self.panel_indent_guide_active.as_deref(),
+            )?,
             border: parse_color("border", self.border.as_deref())?,
             border_variant: parse_color("border.variant", self.border_variant.as_deref())?,
             border_focused: parse_color("border.focused", self.border_focused.as_deref())?,
