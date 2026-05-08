@@ -37,6 +37,8 @@
   {
     "context": "ProjectPanel",
     "bindings": {
+      "tab": null,
+      "shift-tab": null,
       "left": "project_panel::CollapseSelectedEntry",
       "right": "project_panel::ExpandSelectedEntry"
     }
