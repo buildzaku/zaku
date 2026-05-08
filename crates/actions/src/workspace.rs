@@ -52,6 +52,12 @@ pub mod project_panel {
     gpui::actions!(
         project_panel,
         [
+            /// Expand the selected entry in the project tree.
+            ExpandSelectedEntry,
+            /// Collapse the selected entry in the project tree.
+            CollapseSelectedEntry,
+            /// Open the selected entry.
+            Open,
             /// Toggle focus on the project panel.
             ToggleFocus
         ]

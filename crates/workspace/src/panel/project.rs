@@ -1,11 +1,14 @@
 use gpui::{
-    Action, AnyElement, App, ClickEvent, Context, Div, Entity, FocusHandle, Focusable,
-    ListSizingBehavior, Pixels, Render, Stateful, Subscription, Task, UniformListScrollHandle,
-    WeakEntity, Window, prelude::*,
+    Action, AnyElement, App, ClickEvent, Context, Div, Entity, FocusHandle, Focusable, KeyContext,
+    ListSizingBehavior, Pixels, Render, ScrollStrategy, Stateful, Subscription, Task,
+    UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use std::ops::Range;
 
-use actions::workspace::project_panel;
+use actions::{
+    menu::{SelectFirst, SelectLast, SelectNext, SelectPrevious},
+    workspace::project_panel,
+};
 use project::{
     Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, RequestFileState, Snapshot,
 };
@@ -85,6 +88,14 @@ impl ProjectPanel {
 
     fn snapshot(&self, cx: &App) -> Option<Snapshot> {
         self.project.read(cx).snapshot(cx)
+    }
+
+    fn dispatch_context() -> KeyContext {
+        let mut dispatch_context = KeyContext::new_with_defaults();
+        dispatch_context.add(Self::PANEL_KEY);
+        dispatch_context.add("menu");
+        dispatch_context.add("not_editing");
+        dispatch_context
     }
 
     fn details_for_entry(&self, snapshot: &Snapshot, entry: &Entry) -> EntryDetails {
@@ -178,6 +189,225 @@ impl ProjectPanel {
             })
             .ok();
         });
+    }
+
+    fn index_for_selection(&self, selection: SelectedEntry) -> Option<usize> {
+        self.tree_state
+            .visible_entries
+            .iter()
+            .position(|entry| entry.id == selection.0)
+    }
+
+    fn autoscroll(&mut self, cx: &mut Context<Self>) {
+        if let Some(index) = self
+            .selection
+            .and_then(|selection| self.index_for_selection(selection))
+        {
+            self.scroll_handle
+                .scroll_to_item(index, ScrollStrategy::Center);
+            cx.notify();
+        }
+    }
+
+    fn select_previous(&mut self, _: &SelectPrevious, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(selection) = self.selection {
+            let Some(current_index) = self.index_for_selection(selection) else {
+                return;
+            };
+            let Some(target_index) = current_index.checked_sub(1) else {
+                return;
+            };
+            let Some(entry) = self.tree_state.visible_entries.get(target_index) else {
+                return;
+            };
+
+            let selection = SelectedEntry(entry.id);
+            self.selection = Some(selection);
+            if window.modifiers().shift {
+                self.marked_entries.push(selection);
+            } else {
+                self.marked_entries.clear();
+                self.marked_entries.push(selection);
+            }
+            window.focus(&self.focus_handle, cx);
+            self.autoscroll(cx);
+        } else {
+            self.select_first(&SelectFirst, window, cx);
+        }
+    }
+
+    fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(selection) = self.selection {
+            let Some(current_index) = self.index_for_selection(selection) else {
+                return;
+            };
+            let Some(target_index) = current_index.checked_add(1) else {
+                return;
+            };
+            let Some(entry) = self.tree_state.visible_entries.get(target_index) else {
+                return;
+            };
+
+            let selection = SelectedEntry(entry.id);
+            self.selection = Some(selection);
+            if window.modifiers().shift {
+                self.marked_entries.push(selection);
+            } else {
+                self.marked_entries.clear();
+                self.marked_entries.push(selection);
+            }
+            window.focus(&self.focus_handle, cx);
+            self.autoscroll(cx);
+        } else {
+            self.select_first(&SelectFirst, window, cx);
+        }
+    }
+
+    fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(entry) = self.tree_state.visible_entries.first() {
+            let selection = SelectedEntry(entry.id);
+            self.selection = Some(selection);
+            if window.modifiers().shift {
+                self.marked_entries.push(selection);
+            } else {
+                self.marked_entries.clear();
+                self.marked_entries.push(selection);
+            }
+            window.focus(&self.focus_handle, cx);
+            self.autoscroll(cx);
+        }
+    }
+
+    fn select_last(&mut self, _: &SelectLast, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(entry) = self.tree_state.visible_entries.last() {
+            let selection = SelectedEntry(entry.id);
+            self.selection = Some(selection);
+            if window.modifiers().shift {
+                self.marked_entries.push(selection);
+            } else {
+                self.marked_entries.clear();
+                self.marked_entries.push(selection);
+            }
+            window.focus(&self.focus_handle, cx);
+            self.autoscroll(cx);
+        }
+    }
+
+    fn expand_selected_entry(
+        &mut self,
+        _: &project_panel::ExpandSelectedEntry,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(selection) = self.selection else {
+            return;
+        };
+        let Some((entry_id, entry_kind)) = self
+            .tree_state
+            .visible_entries
+            .iter()
+            .find(|entry| entry.id == selection.0)
+            .map(|entry| (entry.id, entry.kind))
+        else {
+            return;
+        };
+
+        if !entry_kind.is_dir() {
+            return;
+        }
+
+        let search_result = {
+            let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_ref() else {
+                return;
+            };
+            expanded_dir_ids.binary_search(&entry_id)
+        };
+
+        match search_result {
+            Ok(_) => self.select_next(&SelectNext, window, cx),
+            Err(index) => {
+                let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() else {
+                    return;
+                };
+                expanded_dir_ids.insert(index, entry_id);
+                self.update_visible_entries(cx);
+                window.focus(&self.focus_handle, cx);
+                cx.notify();
+            }
+        }
+    }
+
+    fn collapse_selected_entry(
+        &mut self,
+        _: &project_panel::CollapseSelectedEntry,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(selection) = self.selection else {
+            return;
+        };
+        let Some(snapshot) = self.snapshot(cx) else {
+            return;
+        };
+        let Some(mut entry) = snapshot.entry_for_id(selection.0).cloned() else {
+            return;
+        };
+
+        let collapsed_entry_id = {
+            let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() else {
+                return;
+            };
+            let mut collapsed_entry_id = None;
+
+            loop {
+                if let Ok(index) = expanded_dir_ids.binary_search(&entry.id) {
+                    expanded_dir_ids.remove(index);
+                    collapsed_entry_id = Some(entry.id);
+                    break;
+                }
+
+                let Some(parent_entry) = entry
+                    .path
+                    .parent()
+                    .and_then(|path| snapshot.entry_for_path(path))
+                    .cloned()
+                else {
+                    break;
+                };
+                entry = parent_entry;
+            }
+
+            collapsed_entry_id
+        };
+
+        if let Some(entry_id) = collapsed_entry_id {
+            let selection = SelectedEntry(entry_id);
+            self.selection = Some(selection);
+            self.marked_entries.clear();
+            self.marked_entries.push(selection);
+            self.update_visible_entries(cx);
+            window.focus(&self.focus_handle, cx);
+            self.autoscroll(cx);
+        }
+    }
+
+    fn open(&mut self, _: &project_panel::Open, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(selection) = self.selection else {
+            return;
+        };
+        let Some((entry_id, entry_kind)) = self
+            .tree_state
+            .visible_entries
+            .iter()
+            .find(|entry| entry.id == selection.0)
+            .map(|entry| (entry.id, entry.kind))
+        else {
+            return;
+        };
+
+        if entry_kind.is_dir() {
+            self.toggle_expanded(entry_id, window, cx);
+        }
     }
 
     fn toggle_expanded(
@@ -291,6 +521,8 @@ impl ProjectPanel {
 
                     if is_dir {
                         project_panel.marked_entries.clear();
+                        project_panel.marked_entries.push(selection);
+                        project_panel.selection = Some(selection);
                         project_panel.toggle_expanded(entry_id, window, cx);
                     } else {
                         project_panel.marked_entries.clear();
@@ -370,6 +602,14 @@ impl Render for ProjectPanel {
 
         gpui::div()
             .track_focus(&self.focus_handle)
+            .key_context(Self::dispatch_context())
+            .on_action(cx.listener(Self::select_next))
+            .on_action(cx.listener(Self::select_previous))
+            .on_action(cx.listener(Self::select_first))
+            .on_action(cx.listener(Self::select_last))
+            .on_action(cx.listener(Self::expand_selected_entry))
+            .on_action(cx.listener(Self::collapse_selected_entry))
+            .on_action(cx.listener(Self::open))
             .flex()
             .flex_col()
             .size_full()

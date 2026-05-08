@@ -35,6 +35,19 @@
     }
   },
   {
+    "context": "ProjectPanel",
+    "bindings": {
+      "left": "project_panel::CollapseSelectedEntry",
+      "right": "project_panel::ExpandSelectedEntry"
+    }
+  },
+  {
+    "context": "ProjectPanel && not_editing",
+    "bindings": {
+      "space": "project_panel::Open"
+    }
+  },
+  {
     "context": "Welcome",
     "bindings": {
       "ctrl-1": ["welcome::OpenRecentProject", 0],
