@@ -56,6 +56,10 @@ pub mod project_panel {
             ExpandSelectedEntry,
             /// Collapse the selected entry in the project tree.
             CollapseSelectedEntry,
+            /// Collapse the selected entry and its children in the project tree.
+            CollapseSelectedEntryAndChildren,
+            /// Collapse all entries in the project tree.
+            CollapseAllEntries,
             /// Open the selected entry.
             Open,
             /// Toggle focus on the project panel.

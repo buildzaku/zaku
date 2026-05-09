@@ -46,6 +46,7 @@
       "tab": null,
       "shift-tab": null,
       "left": "project_panel::CollapseSelectedEntry",
+      "cmd-left": "project_panel::CollapseAllEntries",
       "right": "project_panel::ExpandSelectedEntry"
     }
   },

@@ -443,6 +443,48 @@ impl ProjectPanel {
         }
     }
 
+    fn collapse_selected_entry_and_children(
+        &mut self,
+        _: &project_panel::CollapseSelectedEntryAndChildren,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(selection) = self.selection else {
+            return;
+        };
+
+        self.collapse_all_for_entry(selection.0, cx);
+        self.update_visible_entries(cx);
+        cx.notify();
+    }
+
+    fn collapse_all_entries(
+        &mut self,
+        _: &project_panel::CollapseAllEntries,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let snapshot = self.snapshot(cx);
+        let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() else {
+            return;
+        };
+        let Some(snapshot) = snapshot else {
+            expanded_dir_ids.clear();
+            self.update_visible_entries(cx);
+            cx.notify();
+            return;
+        };
+
+        if let Some(root_entry) = snapshot.root_entry() {
+            expanded_dir_ids.retain(|entry_id| entry_id == &root_entry.id);
+        } else {
+            expanded_dir_ids.clear();
+        }
+
+        self.update_visible_entries(cx);
+        cx.notify();
+    }
+
     fn open(&mut self, _: &project_panel::Open, window: &mut Window, cx: &mut Context<Self>) {
         let Some(selection) = self.selection else {
             return;
@@ -484,6 +526,82 @@ impl ProjectPanel {
         self.update_visible_entries(cx);
         window.focus(&self.focus_handle, cx);
         cx.notify();
+    }
+
+    fn toggle_expand_all(
+        &mut self,
+        entry_id: ProjectEntryId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_ref() else {
+            return;
+        };
+        let is_expanded = expanded_dir_ids.binary_search(&entry_id).is_ok();
+        if is_expanded {
+            self.collapse_all_for_entry(entry_id, cx);
+        } else {
+            self.expand_all_for_entry(entry_id, cx);
+        }
+
+        self.update_visible_entries(cx);
+        window.focus(&self.focus_handle, cx);
+        cx.notify();
+    }
+
+    fn expand_all_for_entry(&mut self, entry_id: ProjectEntryId, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.snapshot(cx) else {
+            return;
+        };
+        let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() else {
+            return;
+        };
+
+        let mut dirs_to_expand = vec![entry_id];
+        while let Some(current_id) = dirs_to_expand.pop() {
+            let Some(current_entry) = snapshot.entry_for_id(current_id) else {
+                continue;
+            };
+            if !current_entry.is_dir() {
+                continue;
+            }
+
+            if let Err(index) = expanded_dir_ids.binary_search(&current_id) {
+                expanded_dir_ids.insert(index, current_id);
+            }
+
+            for child in snapshot.child_entries(&current_entry.path) {
+                if child.is_dir() {
+                    dirs_to_expand.push(child.id);
+                }
+            }
+        }
+    }
+
+    fn collapse_all_for_entry(&mut self, entry_id: ProjectEntryId, cx: &mut Context<Self>) {
+        let Some(snapshot) = self.snapshot(cx) else {
+            return;
+        };
+        let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() else {
+            return;
+        };
+
+        let mut dirs_to_collapse = vec![entry_id];
+        while let Some(current_id) = dirs_to_collapse.pop() {
+            let Some(current_entry) = snapshot.entry_for_id(current_id) else {
+                continue;
+            };
+
+            if let Ok(index) = expanded_dir_ids.binary_search(&current_id) {
+                expanded_dir_ids.remove(index);
+            }
+
+            for child in snapshot.child_entries(&current_entry.path) {
+                if child.is_dir() {
+                    dirs_to_collapse.push(child.id);
+                }
+            }
+        }
     }
 
     fn find_active_indent_guide(&self, indent_guides: &[IndentGuideLayout]) -> Option<usize> {
@@ -679,7 +797,11 @@ impl ProjectPanel {
                         project_panel.marked_entries.clear();
                         project_panel.marked_entries.push(selection);
                         project_panel.selection = Some(selection);
-                        project_panel.toggle_expanded(entry_id, window, cx);
+                        if window.modifiers().alt {
+                            project_panel.toggle_expand_all(entry_id, window, cx);
+                        } else {
+                            project_panel.toggle_expanded(entry_id, window, cx);
+                        }
                     } else {
                         project_panel.marked_entries.clear();
                         project_panel.marked_entries.push(selection);
@@ -781,6 +903,8 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::select_last))
             .on_action(cx.listener(Self::expand_selected_entry))
             .on_action(cx.listener(Self::collapse_selected_entry))
+            .on_action(cx.listener(Self::collapse_all_entries))
+            .on_action(cx.listener(Self::collapse_selected_entry_and_children))
             .on_action(cx.listener(Self::open))
             .flex()
             .flex_col()
