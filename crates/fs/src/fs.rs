@@ -22,7 +22,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::ffi::CString;
 
 #[cfg(target_os = "windows")]
@@ -30,16 +30,16 @@ use util::command::new_command;
 
 use util::{ResultExt, path::SanitizedPath};
 
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::fd::{AsFd, AsRawFd};
 
 #[cfg(target_os = "macos")]
 use std::ffi::{CStr, OsStr};
 
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::unix::ffi::OsStrExt;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -383,7 +383,7 @@ impl Fs for NativeFs {
     }
 
     async fn create_symlink(&self, path: &Path, target: PathBuf) -> anyhow::Result<()> {
-        #[cfg(unix)]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         {
             smol::fs::unix::symlink(target, path).await?;
         }
@@ -445,13 +445,13 @@ impl Fs for NativeFs {
             return Ok(None);
         };
 
-        #[cfg(unix)]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let inode = metadata.ino();
 
         #[cfg(target_os = "windows")]
         let inode = file_id(&path).await?;
 
-        #[cfg(unix)]
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let is_fifo = metadata.file_type().is_fifo();
 
         #[cfg(target_os = "windows")]

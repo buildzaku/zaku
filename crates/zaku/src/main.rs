@@ -4,7 +4,7 @@ use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, prelude::*};
 use indoc::formatdoc;
 
-#[cfg(unix)]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use indoc::indoc;
 
 use std::{
@@ -157,7 +157,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                 [_, ..] => format!("{kind} when creating directories {paths:?}"),
             };
 
-            #[cfg(unix)]
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
                 if kind == ErrorKind::PermissionDenied {
                     error_kind_details.push_str("\n\n");

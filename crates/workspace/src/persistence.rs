@@ -397,7 +397,7 @@ mod tests {
     use gpui::{TestAppContext, WindowId};
     use serde_json::json;
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
     use std::sync::Arc;
@@ -457,7 +457,7 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[gpui::test]
     async fn test_save_workspace_preserves_non_utf8_paths(_cx: &mut TestAppContext) {
         let workspace_db =
