@@ -24,7 +24,6 @@ const SCROLLBAR_HIDE_DELAY_INTERVAL: Duration = Duration::from_secs(1);
 const SCROLLBAR_HIDE_DURATION: Duration = Duration::from_millis(75);
 const SCROLLBAR_SHOW_DURATION: Duration = Duration::from_millis(25);
 const SCROLLBAR_PADDING: Pixels = Pixels::ZERO;
-const SCROLLBAR_THUMB_RADIUS: Pixels = gpui::px(2.0);
 
 pub mod scrollbars {
     use gpui::{App, Global};
@@ -273,12 +272,12 @@ impl ReservedSpace {
         matches!(self, ReservedSpace::Track { .. })
     }
 
-    fn reserves_track_space(&self) -> bool {
+    fn reserves_track_space(&self, max_offset: Pixels) -> bool {
         matches!(
             self,
             ReservedSpace::Track {
                 layout: TrackLayout::Classic
-            }
+            } if !max_offset.is_zero()
         )
     }
 }
@@ -651,8 +650,12 @@ impl<T: ScrollableHandle> ScrollbarState<T> {
     }
 
     fn space_to_reserve_for(&self, axis: ScrollbarAxis) -> Option<Pixels> {
-        (self.show_state.is_disabled().not() && self.visibility.along(axis).reserves_track_space())
-            .then(|| self.space_to_reserve())
+        (self.show_state.is_disabled().not()
+            && self
+                .visibility
+                .along(axis)
+                .reserves_track_space(self.scroll_handle().max_offset().along(axis)))
+        .then(|| self.space_to_reserve())
     }
 
     fn space_to_reserve(&self) -> Pixels {
@@ -769,11 +772,9 @@ impl<T: ScrollableHandle> ScrollbarState<T> {
                 let reserved_space = self.visibility.along(axis);
                 let thumb_range = self.thumb_range_for_axis(axis);
 
-                (reserved_space.reserves_track_space() || thumb_range.is_some()).then_some((
-                    axis,
-                    thumb_range,
-                    reserved_space,
-                ))
+                (reserved_space.reserves_track_space(self.scroll_handle().max_offset().along(axis))
+                    || thumb_range.is_some())
+                .then_some((axis, thumb_range, reserved_space))
             })
     }
 
@@ -1027,14 +1028,10 @@ impl ScrollbarPrepaintState {
     }
 
     fn hit_for_position(&self, position: Point<Pixels>) -> Option<&ScrollbarLayout> {
-        self.thumbs.iter().find(|info| {
-            if info.reserved_space.has_track_hitbox() {
-                info.track_bounds.contains(&position)
-            } else {
-                info.thumb_bounds
-                    .as_ref()
-                    .is_some_and(|bounds| bounds.contains(&position))
-            }
+        self.thumb_for_position(position).or_else(|| {
+            self.thumbs.iter().find(|info| {
+                info.reserved_space.has_track_hitbox() && info.track_bounds.contains(&position)
+            })
         })
     }
 }
@@ -1096,6 +1093,7 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                     let scrollbar_layouts = state.scrollbar_layouts().collect::<Vec<_>>();
                     let width = state.width.to_pixels();
                     let track_color = state.track_color;
+                    let max_offset = state.scroll_handle().max_offset();
 
                     let additional_padding = if scrollbar_layouts.len() == 2 {
                         width
@@ -1133,7 +1131,6 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                                     ..Default::default()
                                 },
                             });
-
                             let available_space =
                                 padded_bounds.size.along(axis) - additional_padding;
 
@@ -1150,7 +1147,9 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                                 )
                             });
 
-                            let reserves_track_space = reserved_space.reserves_track_space();
+                            let max_offset = max_offset.along(axis);
+                            let reserves_track_space =
+                                reserved_space.reserves_track_space(max_offset);
                             let cursor_bounds = if reserved_space.has_track_hitbox() {
                                 padded_bounds
                             } else if let Some(thumb_bounds) = thumb_bounds {
@@ -1251,7 +1250,6 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                     thumb_bounds,
                     cursor_hitbox,
                     axis,
-                    reserved_space,
                     track_background,
                     ..
                 } in &prepaint_state.thumbs
@@ -1284,7 +1282,7 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
                             _ => (colors.scrollbar_thumb_background, false),
                         };
 
-                        let blending_color = if hovered || reserved_space.reserves_track_space() {
+                        let blending_color = if hovered || track_background.is_some() {
                             track_background
                                 .map_or(colors.surface_background, |(_, background)| background)
                         } else {
@@ -1300,7 +1298,7 @@ impl<T: ScrollableHandle> Element for ScrollbarElement<T> {
 
                         window.paint_quad(gpui::quad(
                             *thumb_bounds,
-                            Corners::all(SCROLLBAR_THUMB_RADIUS),
+                            Corners::default(),
                             thumb_color,
                             Edges::default(),
                             Hsla::transparent_black(),

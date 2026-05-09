@@ -575,7 +575,7 @@ impl Render for Pane {
                                             .w_full()
                                             .min_w_0()
                                             .pl_2()
-                                            .pr(gpui::px(10.0))
+                                            .pr(gpui::px(20.0))
                                             .gap_2()
                                             .pb_3()
                                             .child(
@@ -612,7 +612,7 @@ impl Render for Pane {
                                     .with_track_along(
                                         ScrollAxes::Vertical,
                                         theme_colors.scrollbar_track_background,
-                                        TrackLayout::Classic,
+                                        TrackLayout::Overlay,
                                     ),
                                 window,
                                 cx,

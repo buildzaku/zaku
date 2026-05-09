@@ -1,7 +1,8 @@
 use gpui::{
     Action, AnyElement, App, Bounds, ClickEvent, Context, Div, Entity, FocusHandle, Focusable,
-    KeyContext, ListSizingBehavior, MouseButton, Pixels, Render, ScrollStrategy, Stateful,
-    Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
+    KeyContext, ListHorizontalSizingBehavior, ListSizingBehavior, MouseButton, Pixels, Render,
+    ScrollStrategy, Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity, Window,
+    prelude::*,
 };
 use smallvec::SmallVec;
 use std::{cmp, ops::Range};
@@ -51,6 +52,7 @@ pub struct ProjectPanel {
 struct TreeState {
     visible_entries: Vec<Entry>,
     expanded_dir_ids: Option<Vec<ProjectEntryId>>,
+    max_width_item_index: Option<usize>,
 }
 
 struct EntryDetails {
@@ -171,7 +173,7 @@ impl ProjectPanel {
             let visible_entries = cx
                 .background_spawn(async move {
                     let Some(snapshot) = snapshot else {
-                        return Vec::new();
+                        return (Vec::new(), None);
                     };
                     let mut entries = Vec::new();
                     let mut traversal = snapshot.entries(0);
@@ -195,12 +197,46 @@ impl ProjectPanel {
                             SortOrder::Default,
                         )
                     });
-                    entries
+
+                    let mut max_width_item = None;
+                    for (index, entry) in entries.iter().enumerate() {
+                        let entry_label = match entry.kind {
+                            EntryKind::File => {
+                                let name = entry.path.file_name().unwrap_or_default();
+                                name.strip_suffix(".toml").unwrap_or(name)
+                            }
+                            EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
+                                entry
+                                    .path
+                                    .file_name()
+                                    .unwrap_or_else(|| snapshot.root_name().as_unix_str())
+                            }
+                        };
+                        let prefix_chars = usize::from(entry.request.is_some()) * 5;
+                        let width_estimate = item_width_estimate(
+                            entry.path.components().count(),
+                            entry_label.chars().count() + prefix_chars,
+                            false,
+                        );
+
+                        match max_width_item.as_mut() {
+                            Some((widest_index, width)) if *width < width_estimate => {
+                                *widest_index = index;
+                                *width = width_estimate;
+                            }
+                            None => max_width_item = Some((index, width_estimate)),
+                            _ => {}
+                        }
+                    }
+
+                    (entries, max_width_item.map(|(index, _)| index))
                 })
                 .await;
 
             this.update(cx, |this, cx| {
+                let (visible_entries, max_width_item_index) = visible_entries;
                 this.tree_state.visible_entries = visible_entries;
+                this.tree_state.max_width_item_index = max_width_item_index;
                 cx.notify();
             })
             .ok();
@@ -677,6 +713,15 @@ fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) 
     util::path::compare_rel_paths_by(a, b, mode, order)
 }
 
+fn item_width_estimate(depth: usize, item_text_chars: usize, is_symlink: bool) -> usize {
+    const ICON_SIZE_FACTOR: usize = 2;
+    let mut item_width = depth * ICON_SIZE_FACTOR + item_text_chars;
+    if is_symlink {
+        item_width += ICON_SIZE_FACTOR;
+    }
+    item_width
+}
+
 impl Focusable for ProjectPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -854,16 +899,23 @@ impl Render for ProjectPanel {
                         }),
                 )
                 .with_sizing_behavior(ListSizingBehavior::Infer)
+                .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
+                .with_width_from_item(self.tree_state.max_width_item_index)
                 .track_scroll(&self.scroll_handle)
                 .size_full(),
             )
             .custom_scrollbars(
-                Scrollbars::new(ScrollAxes::Vertical)
+                Scrollbars::new(ScrollAxes::Both)
                     .tracked_scroll_handle(&self.scroll_handle)
                     .with_track_along(
                         ScrollAxes::Vertical,
                         theme_colors.panel_background,
                         TrackLayout::Overlay,
+                    )
+                    .with_track_along(
+                        ScrollAxes::Horizontal,
+                        theme_colors.panel_background,
+                        TrackLayout::Classic,
                     )
                     .notify_content(),
                 window,
