@@ -282,9 +282,6 @@ impl ProjectPanel {
             self.selection = Some(selection);
             if window.modifiers().shift {
                 self.marked_entries.push(selection);
-            } else {
-                self.marked_entries.clear();
-                self.marked_entries.push(selection);
             }
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
@@ -309,9 +306,6 @@ impl ProjectPanel {
             self.selection = Some(selection);
             if window.modifiers().shift {
                 self.marked_entries.push(selection);
-            } else {
-                self.marked_entries.clear();
-                self.marked_entries.push(selection);
             }
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
@@ -326,9 +320,6 @@ impl ProjectPanel {
             self.selection = Some(selection);
             if window.modifiers().shift {
                 self.marked_entries.push(selection);
-            } else {
-                self.marked_entries.clear();
-                self.marked_entries.push(selection);
             }
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
@@ -339,12 +330,6 @@ impl ProjectPanel {
         if let Some(entry) = self.tree_state.visible_entries.last() {
             let selection = SelectedEntry(entry.id);
             self.selection = Some(selection);
-            if window.modifiers().shift {
-                self.marked_entries.push(selection);
-            } else {
-                self.marked_entries.clear();
-                self.marked_entries.push(selection);
-            }
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
         }
