@@ -4,7 +4,7 @@ use gpui::{
     Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use smallvec::SmallVec;
-use std::ops::Range;
+use std::{cmp, ops::Range};
 
 use actions::{
     menu::{SelectFirst, SelectLast, SelectNext, SelectPrevious},
@@ -19,6 +19,7 @@ use ui::{
     LabelCommon, LabelSize, ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars,
     TrackLayout, WithScrollbar,
 };
+use util::path::{SortMode, SortOrder};
 
 use crate::{Workspace, pane::Pane, panel::Panel};
 
@@ -186,6 +187,14 @@ impl ProjectPanel {
                         }
                     }
 
+                    entries.sort_by(|lhs, rhs| {
+                        cmp_worktree_entries(
+                            lhs,
+                            rhs,
+                            SortMode::DirectoriesFirst,
+                            SortOrder::Default,
+                        )
+                    });
                     entries
                 })
                 .await;
@@ -661,6 +670,13 @@ impl ProjectPanel {
     }
 }
 
+#[inline]
+fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) -> cmp::Ordering {
+    let a = (a.path.as_ref(), a.is_file());
+    let b = (b.path.as_ref(), b.is_file());
+    util::path::compare_rel_paths_by(a, b, mode, order)
+}
+
 impl Focusable for ProjectPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -853,5 +869,88 @@ impl Render for ProjectPanel {
                 window,
                 cx,
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    use fs::TempFs;
+    use util_macros::path;
+
+    fn visible_entries_as_strings(
+        panel: &ProjectPanel,
+        range: Range<usize>,
+        cx: &App,
+    ) -> Vec<String> {
+        let snapshot = panel
+            .snapshot(cx)
+            .expect("project panel should have a snapshot");
+
+        panel
+            .tree_state
+            .visible_entries
+            .iter()
+            .skip(range.start)
+            .take(range.end.saturating_sub(range.start))
+            .map(|entry| {
+                let details = panel.details_for_entry(&snapshot, entry);
+                let indent = "    ".repeat(usize::from(details.depth));
+                let icon = if details.kind.is_dir() {
+                    if details.is_expanded { "v " } else { "> " }
+                } else {
+                    "  "
+                };
+                let marked = if details.is_marked {
+                    "  <== marked"
+                } else {
+                    ""
+                };
+
+                format!("{indent}{icon}{}{marked}", details.file_name)
+            })
+            .collect()
+    }
+
+    #[gpui::test]
+    async fn test_sort_mode_directories_first(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "zebra.toml": "",
+                "Apple": {},
+                "banana.toml": "",
+                "Carrot": {},
+                "aardvark.toml": "",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let panel = cx.new(|cx| ProjectPanel::new(&project, WeakEntity::new_invalid(), cx));
+
+        cx.run_until_parked();
+
+        let actual = panel.read_with(cx, |panel, cx| visible_entries_as_strings(panel, 0..50, cx));
+
+        assert_eq!(
+            actual,
+            vec![
+                String::from("v project"),
+                String::from("    > Apple"),
+                String::from("    > Carrot"),
+                String::from("      aardvark"),
+                String::from("      banana"),
+                String::from("      zebra"),
+            ]
+        );
     }
 }
