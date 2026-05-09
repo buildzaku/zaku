@@ -1,8 +1,8 @@
 use gpui::{
     Action, AnyElement, App, Bounds, ClickEvent, Context, Div, Entity, FocusHandle, Focusable,
-    KeyContext, ListHorizontalSizingBehavior, ListSizingBehavior, MouseButton, Pixels, Render,
-    ScrollStrategy, Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity, Window,
-    prelude::*,
+    FontWeight, KeyContext, ListHorizontalSizingBehavior, ListSizingBehavior, MouseButton, Pixels,
+    Render, ScrollStrategy, Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity,
+    Window, prelude::*,
 };
 use smallvec::SmallVec;
 use std::{cmp, ops::Range};
@@ -74,7 +74,7 @@ impl ProjectPanel {
     const DEFAULT_SIZE: Pixels = gpui::px(250.0);
     const INDENT_SIZE: Pixels = gpui::px(9.0);
     const DISCLOSURE_SLOT_WIDTH: Pixels = gpui::px(13.0);
-    const PREFIX_LABEL_SLOT_WIDTH: Pixels = gpui::px(26.0);
+    const PREFIX_LABEL_SLOT_WIDTH: Pixels = gpui::px(32.0);
 
     pub fn new(project: &Entity<Project>, pane: WeakEntity<Pane>, cx: &mut Context<Self>) -> Self {
         let mut this = Self {
@@ -128,11 +128,16 @@ impl ProjectPanel {
         let prefix_label = match entry.request.as_ref() {
             Some(RequestFileState::Parsed(request)) => {
                 let method = request.config.method.trim().to_ascii_uppercase();
-                if method == "DELETE" {
-                    Some("DEL".to_string())
-                } else {
-                    Some(method.chars().take(5).collect())
-                }
+                Some(match method.as_str() {
+                    "GET" => "GET".to_string(),
+                    "POST" => "POST".to_string(),
+                    "PUT" => "PUT".to_string(),
+                    "PATCH" => "PATCH".to_string(),
+                    "DELETE" => "DEL".to_string(),
+                    "HEAD" => "HEAD".to_string(),
+                    "OPTIONS" => "OPT".to_string(),
+                    _ => method.chars().take(5).collect(),
+                })
             }
             Some(RequestFileState::Invalid(_)) => {
                 is_invalid = true;
@@ -710,8 +715,10 @@ impl ProjectPanel {
                         .justify_end()
                         .child(
                             Label::new(prefix_label.clone())
-                                .size(LabelSize::XSmall)
+                                .size(LabelSize::Small)
+                                .weight(FontWeight::MEDIUM)
                                 .color(Color::Muted)
+                                .alpha(0.7)
                                 .single_line(),
                         ),
                 )
