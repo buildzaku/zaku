@@ -732,30 +732,22 @@ impl ProjectPanel {
     ) -> Stateful<Div> {
         let is_dir = details.kind.is_dir();
         let selection = SelectedEntry(entry_id);
-        let is_active = details.is_selected;
         let theme_colors = cx.theme().colors();
+        let is_active = details.is_selected && self.focus_handle.contains_focused(window, cx);
         let bg_color = if details.is_marked {
             theme_colors.element_selected
+        } else if is_active {
+            theme_colors.element_selection_background
         } else {
             theme_colors.panel_background
         };
         let bg_hover_color = if details.is_marked {
             theme_colors.element_selected
+        } else if is_active {
+            theme_colors.element_selection_background
         } else {
             theme_colors.element_hover
         };
-        let border_color =
-            if !self.mouse_down && is_active && self.focus_handle.contains_focused(window, cx) {
-                theme_colors.border_focused
-            } else {
-                bg_color
-            };
-        let border_hover_color =
-            if !self.mouse_down && is_active && self.focus_handle.contains_focused(window, cx) {
-                theme_colors.border_focused
-            } else {
-                bg_hover_color
-            };
 
         gpui::div()
             .id(entry_id.to_usize())
@@ -765,8 +757,8 @@ impl ProjectPanel {
             .rounded_none()
             .bg(bg_color)
             .border_1()
-            .border_color(border_color)
-            .hover(move |style| style.bg(bg_hover_color).border_color(border_hover_color))
+            .border_color(gpui::transparent_black())
+            .hover(move |style| style.bg(bg_hover_color))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |project_panel, _, _, cx| {
