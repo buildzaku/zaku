@@ -30,6 +30,8 @@ pub enum IconName {
     Shift,
     Trash,
     Tree,
+    Warning,
+    WarningCircle,
 }
 
 impl IconName {

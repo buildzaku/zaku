@@ -690,7 +690,7 @@ impl ProjectPanel {
                         .items_center()
                         .justify_end()
                         .child(
-                            Icon::new(IconName::Close)
+                            Icon::new(IconName::WarningCircle)
                                 .size(IconSize::Small)
                                 .color(Color::Error),
                         ),
