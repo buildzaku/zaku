@@ -16,7 +16,7 @@ use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
     DropdownStyle, FixedWidth, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
-    Label, ScrollAxes, Scrollbars, ToggleState, Tooltip, WithScrollbar,
+    Label, ScrollAxes, Scrollbars, ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
 
 use crate::{Workspace, panel::response::ResponseState, welcome::WelcomePage};
@@ -575,7 +575,7 @@ impl Render for Pane {
                                             .w_full()
                                             .min_w_0()
                                             .pl_2()
-                                            .pr(gpui::px(10.0))
+                                            .pr(gpui::px(20.0))
                                             .gap_2()
                                             .pb_3()
                                             .child(
@@ -612,6 +612,7 @@ impl Render for Pane {
                                     .with_track_along(
                                         ScrollAxes::Vertical,
                                         theme_colors.scrollbar_track_background,
+                                        TrackLayout::Overlay,
                                     ),
                                 window,
                                 cx,

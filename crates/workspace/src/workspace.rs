@@ -56,8 +56,6 @@ use crate::{
 };
 
 const KEY_CONTEXT: &str = "Workspace";
-const MIN_DOCK_WIDTH: Pixels = gpui::px(110.0);
-const MIN_PANE_WIDTH: Pixels = gpui::px(250.0);
 const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
@@ -1018,8 +1016,9 @@ impl Workspace {
     }
 
     fn resize_left_dock(&mut self, size: Pixels, window: &mut Window, cx: &mut App) {
-        let max_size = (self.bounds.size.width - MIN_PANE_WIDTH).max(dock::RESIZE_HANDLE_SIZE);
-        let size = size.min(max_size).max(MIN_DOCK_WIDTH.min(max_size));
+        let max_size =
+            (self.bounds.size.width - dock::RESIZE_HANDLE_SIZE).max(dock::RESIZE_HANDLE_SIZE);
+        let size = size.min(max_size);
         self.left_dock.update(cx, |dock, cx| {
             dock.resize_active_panel(Some(size), window, cx);
         });
@@ -1276,7 +1275,7 @@ impl Render for Workspace {
 
                                     if bounds_changed {
                                         let max_left_dock_size = (bounds.size.width
-                                            - MIN_PANE_WIDTH)
+                                            - dock::RESIZE_HANDLE_SIZE)
                                             .max(dock::RESIZE_HANDLE_SIZE);
                                         this.left_dock.update(cx, |dock, cx| {
                                             dock.clamp_panel_size(max_left_dock_size, window, cx);

@@ -20,6 +20,7 @@ pub enum IconName {
     Dash,
     File,
     Folder,
+    FolderClose,
     FolderOpen,
     Info,
     Minimize,
@@ -29,6 +30,8 @@ pub enum IconName {
     Shift,
     Trash,
     Tree,
+    Warning,
+    WarningCircle,
 }
 
 impl IconName {
