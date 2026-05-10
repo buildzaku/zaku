@@ -179,6 +179,9 @@ pub struct ThemeColors {
     pub ghost_element_disabled: Hsla,
 
     pub status_bar_background: Hsla,
+    pub tab_bar_background: Hsla,
+    pub tab_inactive_background: Hsla,
+    pub tab_active_background: Hsla,
 
     pub editor_background: Hsla,
     pub editor_foreground: Hsla,
@@ -340,6 +343,12 @@ pub struct ThemeStyleContent {
 
     #[serde(rename = "status_bar.background")]
     pub status_bar_background: Option<String>,
+    #[serde(rename = "tab_bar.background")]
+    pub tab_bar_background: Option<String>,
+    #[serde(rename = "tab.inactive_background")]
+    pub tab_inactive_background: Option<String>,
+    #[serde(rename = "tab.active_background")]
+    pub tab_active_background: Option<String>,
 
     #[serde(rename = "editor.background")]
     pub editor_background: Option<String>,
@@ -526,6 +535,18 @@ impl ThemeStyleContent {
             status_bar_background: parse_color(
                 "status_bar.background",
                 self.status_bar_background.as_deref(),
+            )?,
+            tab_bar_background: parse_color(
+                "tab_bar.background",
+                self.tab_bar_background.as_deref(),
+            )?,
+            tab_inactive_background: parse_color(
+                "tab.inactive_background",
+                self.tab_inactive_background.as_deref(),
+            )?,
+            tab_active_background: parse_color(
+                "tab.active_background",
+                self.tab_active_background.as_deref(),
             )?,
             editor_background: parse_color("editor.background", self.editor_background.as_deref())?,
             editor_foreground: parse_color("editor.foreground", self.editor_foreground.as_deref())?,
