@@ -14,9 +14,43 @@ use fs::Fs;
 use util::{path::PathStyle, rel_path::RelPath};
 use worktree::UpdatedEntriesSet;
 
-pub use worktree::{Entry, EntryKind, ProjectEntryId, RequestFileState, Snapshot, Worktree};
+pub use worktree::{
+    Entry, EntryKind, ProjectEntryId, RequestFileState, Snapshot, Worktree, WorktreeId,
+};
 
 use crate::worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent};
+
+pub trait ProjectItem: 'static {
+    fn try_open(
+        project: &Entity<Project>,
+        path: &ProjectPath,
+        cx: &mut App,
+    ) -> Option<Task<anyhow::Result<Entity<Self>>>>
+    where
+        Self: Sized;
+    fn entry_id(&self, cx: &App) -> Option<ProjectEntryId>;
+    fn project_path(&self, cx: &App) -> Option<ProjectPath>;
+    fn is_dirty(&self) -> bool;
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
+pub struct ProjectPath {
+    pub worktree_id: WorktreeId,
+    pub path: Arc<RelPath>,
+}
+
+impl ProjectPath {
+    pub fn root_path(worktree_id: WorktreeId) -> Self {
+        Self {
+            worktree_id,
+            path: RelPath::empty().into(),
+        }
+    }
+
+    pub fn starts_with(&self, other: &ProjectPath) -> bool {
+        self.worktree_id == other.worktree_id && self.path.starts_with(&other.path)
+    }
+}
 
 pub struct Project {
     worktree_store: Entity<WorktreeStore>,
@@ -101,6 +135,27 @@ impl Project {
         self.worktree_store.read(cx).worktree()
     }
 
+    #[inline]
+    pub fn worktree_for_id(&self, id: WorktreeId, cx: &App) -> Option<Entity<Worktree>> {
+        self.worktree_store.read(cx).worktree_for_id(id, cx)
+    }
+
+    pub fn worktree_for_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        cx: &App,
+    ) -> Option<Entity<Worktree>> {
+        self.worktree_store
+            .read(cx)
+            .worktree_for_entry(entry_id, cx)
+    }
+
+    #[inline]
+    pub fn worktree_id_for_entry(&self, entry_id: ProjectEntryId, cx: &App) -> Option<WorktreeId> {
+        self.worktree_for_entry(entry_id, cx)
+            .map(|worktree| worktree.read(cx).id())
+    }
+
     pub fn snapshot(&self, cx: &App) -> Option<Snapshot> {
         self.worktree_store.read(cx).snapshot(cx)
     }
@@ -138,7 +193,34 @@ impl Project {
         });
     }
 
+    pub fn entry_for_path<'a>(&'a self, path: &ProjectPath, cx: &'a App) -> Option<&'a Entry> {
+        self.worktree_store.read(cx).entry_for_path(path, cx)
+    }
+
+    pub fn path_for_entry(&self, entry_id: ProjectEntryId, cx: &App) -> Option<ProjectPath> {
+        let worktree = self.worktree_for_entry(entry_id, cx)?;
+        let worktree = worktree.read(cx);
+        let worktree_id = worktree.id();
+        let path = worktree.entry_for_id(entry_id)?.path.clone();
+        Some(ProjectPath { worktree_id, path })
+    }
+
+    pub fn absolute_path(&self, project_path: &ProjectPath, cx: &App) -> Option<PathBuf> {
+        Some(
+            self.worktree_for_id(project_path.worktree_id, cx)?
+                .read(cx)
+                .absolutize(&project_path.path),
+        )
+    }
+
+    pub fn project_path_for_absolute_path(&self, abs_path: &Path, cx: &App) -> Option<ProjectPath> {
+        self.worktree_store
+            .read(cx)
+            .project_path_for_absolute_path(abs_path, cx)
+    }
+
     pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {
-        self.worktree_store.read(cx).absolutize(path, cx)
+        let worktree = self.worktree_store.read(cx).worktree()?;
+        Some(worktree.read(cx).absolutize(path))
     }
 }

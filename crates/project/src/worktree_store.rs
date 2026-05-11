@@ -16,7 +16,12 @@ use util::{
     path::{PathStyle, SanitizedPath},
     rel_path::RelPath,
 };
-use worktree::{LocalWorktree, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent, WorktreeId};
+use worktree::{
+    Entry, LocalWorktree, ProjectEntryId, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent,
+    WorktreeId,
+};
+
+use crate::ProjectPath;
 
 #[derive(Clone)]
 pub struct WorktreeIdCounter(Arc<AtomicUsize>);
@@ -93,6 +98,24 @@ impl WorktreeStore {
         self.worktree.clone()
     }
 
+    pub fn worktree_for_id(&self, id: WorktreeId, cx: &App) -> Option<Entity<Worktree>> {
+        self.worktree
+            .as_ref()
+            .filter(|worktree| worktree.read(cx).id() == id)
+            .cloned()
+    }
+
+    pub fn worktree_for_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        cx: &App,
+    ) -> Option<Entity<Worktree>> {
+        self.worktree
+            .as_ref()
+            .filter(|worktree| worktree.read(cx).contains_entry(entry_id))
+            .cloned()
+    }
+
     pub fn wait_for_initial_scan(&self) -> impl std::future::Future<Output = ()> + use<> {
         let mut rx = self.initial_scan_complete.1.clone();
         async move {
@@ -150,7 +173,7 @@ impl WorktreeStore {
             .map(|worktree| worktree.read(cx).abs_path().as_ref().to_path_buf())
     }
 
-    fn find_worktree(
+    pub fn find_worktree(
         &self,
         abs_path: impl AsRef<Path>,
         cx: &App,
@@ -161,18 +184,32 @@ impl WorktreeStore {
         if let Some(relative_path) =
             path_style.strip_prefix(abs_path.as_path(), worktree.read(cx).abs_path().as_ref())
         {
-            return Some((worktree.clone(), Arc::from(relative_path.as_ref())));
+            return Some((worktree.clone(), relative_path.into_arc()));
         }
         None
     }
 
-    pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {
-        let worktree = self.worktree.as_ref()?;
-        Some(worktree.read(cx).absolutize(path))
+    pub fn project_path_for_absolute_path(&self, abs_path: &Path, cx: &App) -> Option<ProjectPath> {
+        self.find_worktree(abs_path, cx)
+            .map(|(worktree, relative_path)| ProjectPath {
+                worktree_id: worktree.read(cx).id(),
+                path: relative_path,
+            })
+    }
+
+    pub fn absolutize(&self, project_path: &ProjectPath, cx: &App) -> Option<PathBuf> {
+        let worktree = self.worktree_for_id(project_path.worktree_id, cx)?;
+        Some(worktree.read(cx).absolutize(&project_path.path))
     }
 
     pub fn path_style(&self) -> PathStyle {
         PathStyle::local()
+    }
+
+    pub fn entry_for_path<'a>(&'a self, path: &ProjectPath, cx: &'a App) -> Option<&'a Entry> {
+        self.worktree_for_id(path.worktree_id, cx)?
+            .read(cx)
+            .entry_for_path(&path.path)
     }
 
     pub fn find_or_create_worktree(
