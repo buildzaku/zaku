@@ -1,4 +1,5 @@
 pub mod dock;
+pub mod item;
 pub mod notifications;
 pub mod pane;
 pub mod panel;
@@ -6,6 +7,10 @@ mod persistence;
 pub mod status_bar;
 pub mod welcome;
 
+pub use item::{
+    Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
+    WeakItemHandle,
+};
 pub use persistence::{
     WorkspaceDb,
     model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
