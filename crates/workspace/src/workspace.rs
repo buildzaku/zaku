@@ -4,6 +4,7 @@ pub mod notifications;
 pub mod pane;
 pub mod panel;
 mod persistence;
+pub mod request_editor;
 pub mod status_bar;
 pub mod welcome;
 
@@ -15,6 +16,7 @@ pub use persistence::{
     WorkspaceDb,
     model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
 };
+pub use request_editor::{RequestBuffer, RequestEditor};
 
 use futures::channel::oneshot;
 use gpui::{
