@@ -1488,7 +1488,7 @@ impl Focusable for Workspace {
 mod tests {
     use super::*;
 
-    use gpui::TestAppContext;
+    use gpui::{EventEmitter, IntoElement, SharedString, TestAppContext};
     use indoc::indoc;
     use serde_json::json;
     use std::sync::Arc;
@@ -1502,6 +1502,44 @@ mod tests {
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
+
+    struct TestItem {
+        focus_handle: FocusHandle,
+    }
+
+    impl TestItem {
+        fn new(cx: &mut Context<Self>) -> Self {
+            Self {
+                focus_handle: cx.focus_handle(),
+            }
+        }
+    }
+
+    impl EventEmitter<ItemEvent> for TestItem {}
+
+    impl Focusable for TestItem {
+        fn focus_handle(&self, _cx: &App) -> FocusHandle {
+            self.focus_handle.clone()
+        }
+    }
+
+    impl Render for TestItem {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            Empty
+        }
+    }
+
+    impl Item for TestItem {
+        type Event = ItemEvent;
+
+        fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
+            "Test Item".into()
+        }
+
+        fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+            f(*event);
+        }
+    }
 
     pub fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -1839,6 +1877,38 @@ mod tests {
             assert!(workspace.left_dock.read(cx).is_open());
             assert_eq!(active_panel_id, Some(Entity::entity_id(&panel)));
             assert!(panel.read(cx).focus_handle(cx).contains_focused(window, cx));
+        });
+    }
+
+    #[gpui::test]
+    fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state, cx);
+
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        let item = cx.new(TestItem::new);
+        let item_id = Entity::entity_id(&item);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.add_item(Box::new(item), true, true, true, None, window, cx);
+        });
+
+        pane.update_in(cx, |pane, window, cx| {
+            assert!(pane.has_focus(window, cx));
+            pane.remove_item(item_id, true, true, window, cx);
+            assert!(pane.focus_handle(cx).contains_focused(window, cx));
+        });
+
+        root.update_in(cx, |_, window, cx| {
+            assert!(window.is_action_available(&NewWindow, cx));
+            assert!(window.is_action_available(&Open::default(), cx));
+            assert!(window.is_action_available(&CloseProject, cx));
         });
     }
 
