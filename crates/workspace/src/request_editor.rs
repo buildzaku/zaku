@@ -1,7 +1,7 @@
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    Anchor, App, Context, Div, Entity, EntityId, EventEmitter, FocusHandle, Focusable, FontWeight,
-    ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, prelude::*,
+    Anchor, AnyElement, App, Context, Div, Entity, EntityId, EventEmitter, FocusHandle, Focusable,
+    FontWeight, ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, prelude::*,
 };
 use std::{
     sync::Arc,
@@ -11,20 +11,26 @@ use std::{
 use actions::workspace::SendRequest;
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
-use project::{Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileState};
+use project::{
+    Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileConfig, RequestFileMeta,
+    RequestFileParam, RequestFileState,
+};
 use reqwest_client::ReqwestClient;
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownStyle, FixedWidth, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
+    DropdownStyle, FixedWidth, Icon, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
     Label, LabelCommon, LabelSize, ScrollAxes, Scrollbars, ToggleState, Tooltip, TrackLayout,
     WithScrollbar,
 };
+use util::{path::PathStyle, truncate_and_trailoff};
 
 use crate::{
-    Item, ItemBufferKind, ItemEvent, ProjectItem, Workspace, pane::Pane,
+    Item, ItemBufferKind, ItemEvent, ProjectItem, TabContentParams, Workspace, pane::Pane,
     panel::response::ResponseState,
 };
+
+const MAX_TAB_TITLE_LEN: usize = 24;
 
 fn normalize_url(url: &str) -> Option<Url> {
     let url = url.trim();
@@ -41,6 +47,20 @@ fn normalize_url(url: &str) -> Option<Url> {
     Url::parse(&url).ok()
 }
 
+fn request_method_label(method: &Method) -> String {
+    let method = method.as_str().trim().to_ascii_uppercase();
+    match method.as_str() {
+        "GET" => "GET".to_string(),
+        "POST" => "POST".to_string(),
+        "PUT" => "PUT".to_string(),
+        "PATCH" => "PATCH".to_string(),
+        "DELETE" => "DEL".to_string(),
+        "HEAD" => "HEAD".to_string(),
+        "OPTIONS" => "OPT".to_string(),
+        _ => method.chars().take(5).collect(),
+    }
+}
+
 pub struct RequestBuffer {
     entry_id: Option<ProjectEntryId>,
     project_path: Option<ProjectPath>,
@@ -51,12 +71,6 @@ pub struct RequestBuffer {
 impl RequestBuffer {
     fn request(&self) -> &RequestFileState {
         &self.request
-    }
-
-    fn mark_edited(&mut self) -> bool {
-        let was_dirty = self.is_dirty;
-        self.is_dirty = true;
-        !was_dirty
     }
 
     fn is_dirty(&self) -> bool {
@@ -100,9 +114,19 @@ impl project::ProjectItem for RequestBuffer {
 }
 
 enum RequestEditorState {
-    Ready(RequestConfig),
-    Invalid(String),
+    Ready(Request),
+    Invalid {
+        error: String,
+        snapshot: Option<RequestSnapshot>,
+    },
 }
+
+struct Request {
+    meta: RequestMeta,
+    config: RequestConfig,
+}
+
+type RequestMeta = RequestFileMeta;
 
 struct RequestConfig {
     method: Method,
@@ -110,15 +134,7 @@ struct RequestConfig {
     params: Vec<RequestParam>,
 }
 
-impl RequestConfig {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
-        Self {
-            method: Method::GET,
-            url: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
-            params: Vec::new(),
-        }
-    }
-
+impl Request {
     fn from_request_file(
         request_file: &RequestFile,
         window: &mut Window,
@@ -135,21 +151,74 @@ impl RequestConfig {
         url.update(cx, |url, cx| {
             url.set_text(&request_file.config.url, window, cx);
         });
+        let mut params = Vec::new();
+        for request_file_param in &request_file.config.params {
+            let mut request_param = RequestParam::new(window, cx);
+            request_param.name.update(cx, |name, cx| {
+                name.set_text(&request_file_param.name, window, cx);
+            });
+            request_param.value.update(cx, |value, cx| {
+                value.set_text(&request_file_param.value, window, cx);
+            });
+            if request_file_param.disabled {
+                request_param.set_disabled(true, window, cx);
+            }
+            params.push(request_param);
+        }
 
         Ok(Self {
-            method,
-            url,
-            params: Vec::new(),
+            meta: request_file.meta.clone(),
+            config: RequestConfig {
+                method,
+                url,
+                params,
+            },
         })
     }
 
     fn delete_param(&mut self, index: usize) -> bool {
-        if index < self.params.len() {
-            self.params.remove(index);
+        if index < self.config.params.len() {
+            self.config.params.remove(index);
             true
         } else {
             false
         }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct RequestSnapshot(RequestFile);
+
+impl RequestSnapshot {
+    fn from_request(request: &Request, cx: &App) -> Self {
+        Self(RequestFile {
+            meta: request.meta.clone(),
+            config: RequestFileConfig {
+                method: request.config.method.as_str().to_owned(),
+                url: request.config.url.read(cx).text(cx),
+                params: request
+                    .config
+                    .params
+                    .iter()
+                    .map(|request_param| RequestFileParam {
+                        name: request_param.name.read(cx).text(cx),
+                        value: request_param.value.read(cx).text(cx),
+                        disabled: request_param.disabled,
+                    })
+                    .collect(),
+            },
+        })
+    }
+
+    fn from_request_file(request_file: &RequestFile) -> Self {
+        Self(request_file.clone())
+    }
+
+    fn name(&self) -> Option<&str> {
+        self.0.meta.name.as_deref().and_then(|name| {
+            let name = name.trim();
+            if name.is_empty() { None } else { Some(name) }
+        })
     }
 }
 
@@ -183,35 +252,14 @@ pub struct RequestEditor {
     project: Option<Entity<Project>>,
     buffer: Option<Entity<RequestBuffer>>,
     request: RequestEditorState,
+    request_snapshot: Option<RequestSnapshot>,
     http_client: Arc<dyn HttpClient>,
     scroll_handle: ScrollHandle,
     is_dirty: bool,
-    subscriptions: Vec<Subscription>,
+    input_subscriptions: Vec<Subscription>,
 }
 
 impl RequestEditor {
-    pub fn new(
-        workspace: WeakEntity<Workspace>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let focus_handle = cx.focus_handle();
-        let request = RequestConfig::new(window, cx);
-        let subscriptions = Self::subscribe_to_request_config(&request, window, cx);
-
-        Self {
-            focus_handle,
-            workspace,
-            project: None,
-            buffer: None,
-            request: RequestEditorState::Ready(request),
-            http_client: Arc::new(ReqwestClient::new()),
-            scroll_handle: ScrollHandle::new(),
-            is_dirty: false,
-            subscriptions,
-        }
-    }
-
     fn for_buffer(
         workspace: WeakEntity<Workspace>,
         project: Entity<Project>,
@@ -222,19 +270,27 @@ impl RequestEditor {
         let focus_handle = cx.focus_handle();
         let request = match buffer.read(cx).request().clone() {
             RequestFileState::Parsed(request_file) => {
-                match RequestConfig::from_request_file(&request_file, window, cx) {
+                match Request::from_request_file(&request_file, window, cx) {
                     Ok(request) => RequestEditorState::Ready(request),
-                    Err(error) => RequestEditorState::Invalid(error),
+                    Err(error) => RequestEditorState::Invalid {
+                        error,
+                        snapshot: Some(RequestSnapshot::from_request_file(&request_file)),
+                    },
                 }
             }
-            RequestFileState::Invalid(error) => RequestEditorState::Invalid(error),
+            RequestFileState::Invalid(error) => RequestEditorState::Invalid {
+                error,
+                snapshot: None,
+            },
+        };
+        let request_snapshot = match &request {
+            RequestEditorState::Ready(request) => Some(RequestSnapshot::from_request(request, cx)),
+            RequestEditorState::Invalid { snapshot, .. } => snapshot.clone(),
         };
 
-        let subscriptions = match &request {
-            RequestEditorState::Ready(request) => {
-                Self::subscribe_to_request_config(request, window, cx)
-            }
-            RequestEditorState::Invalid(_) => Vec::new(),
+        let input_subscriptions = match &request {
+            RequestEditorState::Ready(request) => Self::subscribe_to_request(request, window, cx),
+            RequestEditorState::Invalid { .. } => Vec::new(),
         };
 
         Self {
@@ -243,21 +299,98 @@ impl RequestEditor {
             project: Some(project),
             buffer: Some(buffer),
             request,
+            request_snapshot,
             http_client: Arc::new(ReqwestClient::new()),
             scroll_handle: ScrollHandle::new(),
             is_dirty: false,
-            subscriptions,
+            input_subscriptions,
         }
     }
 
-    fn subscribe_to_request_config(
-        request: &RequestConfig,
+    fn project_path(&self, cx: &App) -> Option<ProjectPath> {
+        self.buffer
+            .as_ref()
+            .and_then(|buffer| project::ProjectItem::project_path(buffer.read(cx), cx))
+    }
+
+    fn path_style(&self, cx: &App) -> PathStyle {
+        self.project
+            .as_ref()
+            .map_or_else(PathStyle::local, |project| project.read(cx).path_style(cx))
+    }
+
+    fn title(&self, cx: &App) -> SharedString {
+        let display_name = match &self.request {
+            RequestEditorState::Ready(request) => request.meta.name.as_deref().and_then(|name| {
+                let name = name.trim();
+                if name.is_empty() { None } else { Some(name) }
+            }),
+            RequestEditorState::Invalid { snapshot, .. } => {
+                snapshot.as_ref().and_then(RequestSnapshot::name)
+            }
+        };
+
+        if let Some(display_name) = display_name {
+            return SharedString::from(display_name.to_owned());
+        }
+
+        self.project_path(cx)
+            .and_then(|project_path| {
+                project_path.path.file_name().map(|file_name| {
+                    let file_name = file_name.strip_suffix(".toml").unwrap_or(file_name);
+                    SharedString::from(file_name.to_owned())
+                })
+            })
+            .unwrap_or_else(|| SharedString::from("HTTP Request"))
+    }
+
+    fn path_for_request(
+        &self,
+        height: usize,
+        include_filename: bool,
+        cx: &App,
+    ) -> Option<SharedString> {
+        let project_path = self.project_path(cx)?;
+        let path_style = self.path_style(cx);
+        let height = height.saturating_add(1);
+        let mut components = project_path
+            .path
+            .components()
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+
+        if components.is_empty() {
+            return None;
+        }
+
+        let start = components.len().saturating_sub(height);
+        let mut components = components.split_off(start);
+
+        if include_filename {
+            if let Some(file_name) = components.last_mut() {
+                *file_name = self.title(cx).to_string();
+            }
+        } else {
+            components.pop()?;
+        }
+
+        if components.is_empty() {
+            return None;
+        }
+
+        Some(SharedString::from(
+            components.join(path_style.primary_separator()),
+        ))
+    }
+
+    fn subscribe_to_request(
+        request: &Request,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
-        subscriptions.push(Self::subscribe_to_input(&request.url, window, cx));
-        for request_param in &request.params {
+        subscriptions.push(Self::subscribe_to_input(&request.config.url, window, cx));
+        for request_param in &request.config.params {
             subscriptions.push(Self::subscribe_to_input(&request_param.name, window, cx));
             subscriptions.push(Self::subscribe_to_input(&request_param.value, window, cx));
         }
@@ -287,12 +420,27 @@ impl RequestEditor {
     }
 
     fn mark_edited(&mut self, cx: &mut Context<Self>) {
-        let dirty_changed = if let Some(buffer) = self.buffer.as_ref() {
-            buffer.update(cx, |buffer, _| buffer.mark_edited())
+        let is_dirty = if let (Some(request_snapshot), RequestEditorState::Ready(request)) =
+            (self.request_snapshot.as_ref(), &self.request)
+        {
+            RequestSnapshot::from_request(request, cx) != *request_snapshot
         } else {
-            let was_dirty = self.is_dirty;
-            self.is_dirty = true;
-            !was_dirty
+            false
+        };
+        let dirty_changed = if let Some(buffer) = self.buffer.as_ref() {
+            buffer.update(cx, |buffer, cx| {
+                let dirty_changed = buffer.is_dirty != is_dirty;
+                if dirty_changed {
+                    buffer.is_dirty = is_dirty;
+                    cx.notify();
+                }
+                dirty_changed
+            })
+        } else if self.is_dirty == is_dirty {
+            false
+        } else {
+            self.is_dirty = is_dirty;
+            true
         };
 
         cx.emit(ItemEvent::Edit);
@@ -311,10 +459,10 @@ impl RequestEditor {
         let name_subscription = Self::subscribe_to_input(&request_param.name, window, cx);
         let value_subscription = Self::subscribe_to_input(&request_param.value, window, cx);
         if let RequestEditorState::Ready(request) = &mut self.request {
-            request.params.push(request_param);
+            request.config.params.push(request_param);
         }
-        self.subscriptions.push(name_subscription);
-        self.subscriptions.push(value_subscription);
+        self.input_subscriptions.push(name_subscription);
+        self.input_subscriptions.push(value_subscription);
         self.mark_edited(cx);
     }
 
@@ -323,9 +471,10 @@ impl RequestEditor {
             return;
         };
 
-        let request_method = request.method.clone();
-        let request_url = request.url.read(cx).text(cx);
+        let request_method = request.config.method.clone();
+        let request_url = request.config.url.read(cx).text(cx);
         let request_params = request
+            .config
             .params
             .iter()
             .filter_map(|request_param| {
@@ -589,12 +738,13 @@ impl RequestEditor {
 
     fn render_request(
         &self,
-        request: &RequestConfig,
+        request: &Request,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
-        let url = request.url.clone();
+        let url = request.config.url.clone();
         let request_params = request
+            .config
             .params
             .iter()
             .enumerate()
@@ -616,7 +766,8 @@ impl RequestEditor {
                                     let mut edited = false;
                                     if let RequestEditorState::Ready(request) =
                                         &mut request_editor.request
-                                        && let Some(request_param) = request.params.get_mut(index)
+                                        && let Some(request_param) =
+                                            request.config.params.get_mut(index)
                                     {
                                         let disabled = !new_state.selected();
                                         if request_param.disabled != disabled {
@@ -670,7 +821,7 @@ impl RequestEditor {
                 Method::HEAD,
                 Method::OPTIONS,
             ];
-            let selected_request_method = request.method.clone();
+            let selected_request_method = request.config.method.clone();
             let request_editor = cx.weak_entity();
 
             ContextMenu::build(window, cx, move |menu, _, _| {
@@ -689,9 +840,9 @@ impl RequestEditor {
                                 let mut edited = false;
                                 if let RequestEditorState::Ready(request) =
                                     &mut request_editor.request
-                                    && request.method != request_method_for_handler
+                                    && request.config.method != request_method_for_handler
                                 {
-                                    request.method = request_method_for_handler.clone();
+                                    request.config.method = request_method_for_handler.clone();
                                     edited = true;
                                 }
 
@@ -736,7 +887,7 @@ impl RequestEditor {
                     .child(
                         DropdownMenu::new(
                             "request-method",
-                            request.method.as_str().to_owned(),
+                            request.config.method.as_str().to_owned(),
                             request_method_menu,
                         )
                         .style(DropdownStyle::Outlined)
@@ -838,7 +989,7 @@ impl Render for RequestEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match &self.request {
             RequestEditorState::Ready(request) => self.render_request(request, window, cx),
-            RequestEditorState::Invalid(error) => self.render_invalid(error, cx),
+            RequestEditorState::Invalid { error, .. } => self.render_invalid(error, cx),
         }
     }
 }
@@ -850,18 +1001,68 @@ impl Item for RequestEditor {
         f(*event);
     }
 
-    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
-        self.buffer
-            .as_ref()
-            .and_then(|buffer| project::ProjectItem::project_path(buffer.read(cx), cx))
-            .and_then(|project_path| {
-                project_path
-                    .path
-                    .file_name()
-                    .map(|file_name| file_name.strip_suffix(".toml").unwrap_or(file_name))
-                    .map(SharedString::from)
+    fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
+        self.path_for_request(detail, true, cx)
+            .unwrap_or_else(|| self.title(cx))
+    }
+
+    fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
+        let method_label = match &self.request {
+            RequestEditorState::Ready(request) => {
+                Some(request_method_label(&request.config.method))
+            }
+            RequestEditorState::Invalid { .. } => None,
+        };
+        let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
+            .color(params.text_color())
+            .when(params.preview, |this| this.italic());
+        let description = params.detail.and_then(|detail| {
+            let path = self.path_for_request(detail, false, cx)?;
+            let description = path.trim();
+
+            if description.is_empty() {
+                return None;
+            }
+
+            Some(truncate_and_trailoff(description, MAX_TAB_TITLE_LEN))
+        });
+
+        ui::h_flex()
+            .min_w_0()
+            .gap_2()
+            .when(
+                matches!(&self.request, RequestEditorState::Invalid { .. }),
+                |this| {
+                    this.child(
+                        ui::h_flex().flex_none().items_center().child(
+                            Icon::new(IconName::WarningCircle)
+                                .size(IconSize::Small)
+                                .color(Color::Error),
+                        ),
+                    )
+                },
+            )
+            .when_some(method_label, |this, method| {
+                this.child(
+                    ui::h_flex().flex_none().items_center().child(
+                        Label::new(method)
+                            .size(LabelSize::Small)
+                            .weight(FontWeight::MEDIUM)
+                            .color(Color::Muted)
+                            .alpha(0.7)
+                            .single_line(),
+                    ),
+                )
             })
-            .unwrap_or_else(|| SharedString::from("HTTP Request"))
+            .child(title)
+            .when_some(description, |this, description| {
+                this.child(
+                    Label::new(description)
+                        .size(LabelSize::XSmall)
+                        .color(Color::Muted),
+                )
+            })
+            .into_any_element()
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {

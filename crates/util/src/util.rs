@@ -1,4 +1,5 @@
 pub mod command;
+pub mod disambiguate;
 pub mod path;
 pub mod rel_path;
 pub mod serde;
@@ -20,6 +21,20 @@ pub fn capitalize(str: &str) -> String {
     match chars.next() {
         Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         None => String::new(),
+    }
+}
+
+pub fn truncate_and_trailoff(text: &str, max_chars: usize) -> String {
+    debug_assert!(max_chars >= 5);
+
+    if text.len() <= max_chars {
+        return text.to_string();
+    }
+
+    let truncation_index = text.char_indices().map(|(index, _)| index).nth(max_chars);
+    match truncation_index {
+        Some(index) => text[..index].to_string() + "…",
+        None => text.to_string(),
     }
 }
 

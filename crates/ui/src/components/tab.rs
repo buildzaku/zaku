@@ -9,8 +9,7 @@ use theme::ActiveTheme;
 
 use crate::{DynamicSpacing, Toggleable, h_flex};
 
-const START_TAB_SLOT_SIZE: Pixels = gpui::px(12.0);
-const END_TAB_SLOT_SIZE: Pixels = gpui::px(14.0);
+const TAB_SLOT_SIZE: Pixels = gpui::px(14.0);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TabPosition {
@@ -107,22 +106,27 @@ impl RenderOnce for Tab {
     #[allow(refining_impl_trait)]
     fn render(self, _: &mut Window, cx: &mut App) -> Stateful<Div> {
         let colors = cx.theme().colors();
-        let (text_color, tab_bg) = if self.selected {
-            (colors.text, colors.tab_active_background)
+        let text_color = colors.text_muted;
+        let background_color = if self.selected {
+            colors.tab_active_background
         } else {
-            (colors.text_muted, colors.tab_inactive_background)
+            colors.tab_inactive_background
         };
 
-        let start_slot = h_flex()
-            .size(START_TAB_SLOT_SIZE)
-            .justify_center()
-            .children(self.start_slot);
-
-        let end_slot = h_flex()
-            .size(END_TAB_SLOT_SIZE)
-            .justify_center()
-            .children(self.end_slot);
-
+        let start_slot = self.start_slot.map(|start_slot| {
+            h_flex()
+                .size(TAB_SLOT_SIZE)
+                .justify_center()
+                .child(start_slot)
+                .into_any_element()
+        });
+        let end_slot = self.end_slot.map(|end_slot| {
+            h_flex()
+                .size(TAB_SLOT_SIZE)
+                .justify_center()
+                .child(end_slot)
+                .into_any_element()
+        });
         let (start_slot, end_slot) = match self.close_side {
             TabCloseSide::End => (start_slot, end_slot),
             TabCloseSide::Start => (end_slot, start_slot),
@@ -130,7 +134,7 @@ impl RenderOnce for Tab {
 
         self.div
             .h(Self::container_height(cx))
-            .bg(tab_bg)
+            .bg(background_color)
             .border_color(colors.border)
             .map(|this| match self.position {
                 TabPosition::First => {
@@ -152,17 +156,20 @@ impl RenderOnce for Tab {
                 TabPosition::Middle(Ordering::Greater) => this.border_r_1().pl_px().border_b_1(),
             })
             .cursor_pointer()
+            .when(self.selected, |this| {
+                this.child(gpui::div().absolute().top_0().h_px().bg(colors.text_accent))
+            })
             .child(
                 h_flex()
-                    .group("")
+                    .group("tab")
                     .relative()
                     .h(Self::content_height(cx))
-                    .px(DynamicSpacing::Base04.px(cx))
-                    .gap(DynamicSpacing::Base04.rems(cx))
+                    .px(DynamicSpacing::Base08.px(cx))
+                    .gap(DynamicSpacing::Base08.px(cx))
                     .text_color(text_color)
-                    .child(start_slot)
+                    .when_some(start_slot, |this, start_slot| this.child(start_slot))
                     .children(self.children)
-                    .child(end_slot),
+                    .when_some(end_slot, |this, end_slot| this.child(end_slot)),
             )
     }
 }
