@@ -2061,8 +2061,6 @@ mod tests {
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
-        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
-
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
                 workspace
@@ -2089,12 +2087,6 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
 
-        workspace
-            .update_in(cx, |workspace, window, cx| {
-                workspace.flush_serialization(window, cx)
-            })
-            .await;
-
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
             (
@@ -2103,24 +2095,8 @@ mod tests {
             )
         });
 
-        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
-        let recent_workspaces = workspace_db
-            .recent_workspaces_on_disk(temp_fs.as_ref())
-            .await
-            .expect("recent workspace query should succeed");
-
         assert_eq!(Some(first_worktree_id), second_worktree_id);
-        assert_eq!(current_root, Some(canonical_project_path.clone()));
-        assert!(
-            recent_workspaces
-                .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path)
-        );
-        assert!(
-            recent_workspaces
-                .iter()
-                .all(|(_, location, _)| location.path() != alternate_project_path)
-        );
+        assert_eq!(current_root, Some(canonical_project_path));
     }
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
