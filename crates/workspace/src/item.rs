@@ -28,13 +28,7 @@ pub struct TabContentParams {
 impl TabContentParams {
     pub fn text_color(&self) -> Color {
         if self.deemphasized {
-            if self.selected {
-                Color::Muted
-            } else {
-                Color::Hidden
-            }
-        } else if self.selected {
-            Color::Default
+            Color::Hidden
         } else {
             Color::Muted
         }
