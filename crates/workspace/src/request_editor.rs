@@ -742,6 +742,10 @@ impl RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
+        let request_relative_path = self.project_path(cx).map(|project_path| {
+            SharedString::from(project_path.path.display(self.path_style(cx)).into_owned())
+        });
+
         let url = request.config.url.clone();
         let request_params = request
             .config
@@ -865,13 +869,15 @@ impl RequestEditor {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(theme_colors.panel_background)
-            .child(
-                ui::h_flex()
-                    .w_full()
-                    .px_3()
-                    .pt_3()
-                    .child(Label::new("HTTP Request")),
-            )
+            .when_some(request_relative_path, |this, request_relative_path| {
+                this.child(
+                    ui::h_flex()
+                        .w_full()
+                        .px_3()
+                        .pt_2()
+                        .child(Label::new(request_relative_path)),
+                )
+            })
             .child(
                 ui::h_flex()
                     .w_full()
