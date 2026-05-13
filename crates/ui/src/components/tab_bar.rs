@@ -95,7 +95,7 @@ impl RenderOnce for TabBar {
 
         gpui::div()
             .id(self.id)
-            .group("tab_bar")
+            .group("tab-bar")
             .flex()
             .flex_none()
             .w_full()

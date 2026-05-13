@@ -5,7 +5,7 @@ use gpui::{
 use std::mem;
 
 use project::{Project, ProjectEntryId, ProjectPath};
-use theme::ActiveTheme;
+use theme::{ActiveTheme, ThemeSettings};
 use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, IconButton, IconButtonShape, IconName, IconSize,
     Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
@@ -29,6 +29,15 @@ pub struct Pane {
     tab_bar_scroll_handle: ScrollHandle,
     item_subscriptions: Vec<(EntityId, Subscription)>,
     _focus_subscriptions: Vec<Subscription>,
+}
+
+#[derive(Clone)]
+pub struct DraggedTab {
+    pub pane: Entity<Pane>,
+    pub item: Box<dyn ItemHandle>,
+    pub index: usize,
+    pub detail: usize,
+    pub is_active: bool,
 }
 
 impl Pane {
@@ -500,9 +509,27 @@ impl Pane {
             })
             .collect::<Vec<_>>();
 
-        TabBar::new("tab_bar")
+        TabBar::new("tab-bar")
             .track_scroll(&self.tab_bar_scroll_handle)
             .children(tab_items)
+            .child(Self::render_tab_bar_drop_target(cx))
+            .into_any_element()
+    }
+
+    fn render_tab_bar_drop_target(cx: &mut Context<Pane>) -> AnyElement {
+        gpui::div()
+            .id("tab-bar-drop-target")
+            .min_w_6()
+            .h(Tab::container_height(cx))
+            .flex_1()
+            .drag_over::<DraggedTab>(|bar, _, _, cx| {
+                bar.bg(cx.theme().colors().drop_target_background)
+            })
+            .on_drop(
+                cx.listener(move |pane, dragged_tab: &DraggedTab, window, cx| {
+                    pane.handle_tab_drop(dragged_tab, pane.items.len(), window, cx);
+                }),
+            )
             .into_any_element()
     }
 
@@ -591,6 +618,35 @@ impl Pane {
                     pane.activate_item(item_index, true, true, window, cx);
                 }),
             )
+            .on_drag(
+                DraggedTab {
+                    item: item.boxed_clone(),
+                    pane: cx.entity(),
+                    detail,
+                    is_active,
+                    index: item_index,
+                },
+                |tab, _, _, cx| cx.new(|_| tab.clone()),
+            )
+            .drag_over::<DraggedTab>(move |tab, dragged_tab: &DraggedTab, _, cx| {
+                let mut styled_tab = tab
+                    .bg(cx.theme().colors().drop_target_background)
+                    .border_color(cx.theme().colors().drop_target_border)
+                    .border_0();
+
+                if item_index < dragged_tab.index {
+                    styled_tab = styled_tab.border_l_2();
+                } else if item_index > dragged_tab.index {
+                    styled_tab = styled_tab.border_r_2();
+                }
+
+                styled_tab
+            })
+            .on_drop(
+                cx.listener(move |pane, dragged_tab: &DraggedTab, window, cx| {
+                    pane.handle_tab_drop(dragged_tab, item_index, window, cx);
+                }),
+            )
             .end_slot(tab_control)
             .child(
                 ui::h_flex()
@@ -607,6 +663,31 @@ impl Pane {
                     }),
             )
             .into_any_element()
+    }
+
+    pub fn handle_tab_drop(
+        &mut self,
+        dragged_tab: &DraggedTab,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if dragged_tab.pane != cx.entity() {
+            return;
+        }
+
+        let item_id = dragged_tab.item.item_id();
+        self.unpreview_item_if_preview(item_id);
+        self.add_item(
+            dragged_tab.item.clone(),
+            true,
+            true,
+            true,
+            Some(index),
+            window,
+            cx,
+        );
+        window.focus(&self.focus_handle(cx), cx);
     }
 
     pub fn set_should_display_welcome_page(&mut self, should_display_welcome_page: bool) {
@@ -651,6 +732,28 @@ impl Pane {
 impl Focusable for Pane {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
+    }
+}
+
+impl Render for DraggedTab {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let label = self.item.tab_content(
+            TabContentParams {
+                detail: Some(self.detail),
+                selected: false,
+                preview: false,
+                deemphasized: false,
+            },
+            window,
+            cx,
+        );
+        let ui_font = ThemeSettings::get_global(cx).ui_font.clone();
+
+        Tab::new("dragged-tab")
+            .toggle_state(self.is_active)
+            .child(label)
+            .render(window, cx)
+            .font(ui_font)
     }
 }
 
@@ -718,4 +821,61 @@ fn tab_details(items: &[Box<dyn ItemHandle>], _window: &Window, cx: &App) -> Vec
     util::disambiguate::compute_disambiguation_details(items, |item, detail| {
         item.tab_content_text(detail, cx)
     })
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    use gpui::VisualTestContext;
+
+    use crate::item::test::TestItem;
+
+    pub fn add_labeled_item(
+        pane: &Entity<Pane>,
+        label: &str,
+        is_dirty: bool,
+        cx: &mut VisualTestContext,
+    ) -> Box<Entity<TestItem>> {
+        pane.update_in(cx, |pane, window, cx| {
+            let labeled_item =
+                Box::new(cx.new(|cx| TestItem::new(cx).with_label(label).with_dirty(is_dirty)));
+            pane.add_item(labeled_item.clone(), false, false, true, None, window, cx);
+            labeled_item
+        })
+    }
+
+    #[track_caller]
+    pub fn assert_item_labels<const COUNT: usize>(
+        pane: &Entity<Pane>,
+        expected_states: [&str; COUNT],
+        cx: &mut VisualTestContext,
+    ) {
+        let actual_states = pane.update(cx, |pane, cx| {
+            pane.items()
+                .enumerate()
+                .map(|(index, item)| {
+                    let mut state = item
+                        .to_any_view()
+                        .downcast::<TestItem>()
+                        .unwrap()
+                        .read(cx)
+                        .label
+                        .clone();
+                    if index == pane.active_item_index() {
+                        state.push('*');
+                    }
+                    if item.is_dirty(cx) {
+                        state.push('^');
+                    }
+                    state
+                })
+                .collect::<Vec<_>>()
+        });
+
+        assert_eq!(
+            actual_states, expected_states,
+            "pane items do not match expectation"
+        );
+    }
 }

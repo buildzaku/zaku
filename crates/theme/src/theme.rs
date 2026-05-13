@@ -171,6 +171,8 @@ pub struct ThemeColors {
     pub element_selected: Hsla,
     pub element_selection_background: Hsla,
     pub element_disabled: Hsla,
+    pub drop_target_background: Hsla,
+    pub drop_target_border: Hsla,
 
     pub ghost_element_background: Hsla,
     pub ghost_element_hover: Hsla,
@@ -329,6 +331,10 @@ pub struct ThemeStyleContent {
     pub element_selection_background: Option<String>,
     #[serde(rename = "element.disabled")]
     pub element_disabled: Option<String>,
+    #[serde(rename = "drop_target.background")]
+    pub drop_target_background: Option<String>,
+    #[serde(rename = "drop_target.border")]
+    pub drop_target_border: Option<String>,
 
     #[serde(rename = "ghost_element.background")]
     pub ghost_element_background: Option<String>,
@@ -512,6 +518,14 @@ impl ThemeStyleContent {
                 self.element_selection_background.as_deref(),
             )?,
             element_disabled: parse_color("element.disabled", self.element_disabled.as_deref())?,
+            drop_target_background: parse_color(
+                "drop_target.background",
+                self.drop_target_background.as_deref(),
+            )?,
+            drop_target_border: parse_color(
+                "drop_target.border",
+                self.drop_target_border.as_deref(),
+            )?,
             ghost_element_background: parse_color(
                 "ghost_element.background",
                 self.ghost_element_background.as_deref(),

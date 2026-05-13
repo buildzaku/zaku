@@ -1488,12 +1488,19 @@ impl Focusable for Workspace {
 mod tests {
     use super::*;
 
-    use gpui::{EventEmitter, IntoElement, SharedString, TestAppContext};
+    use gpui::{Modifiers, MouseMoveEvent, MouseUpEvent, TestAppContext};
     use indoc::indoc;
-    use serde_json::json;
+    use serde_json::{Value, json};
     use std::sync::Arc;
 
-    use crate::dock::test::TestPanel;
+    use crate::{
+        dock::test::TestPanel,
+        item::test::TestItem,
+        pane::{
+            DraggedTab,
+            test::{add_labeled_item, assert_item_labels},
+        },
+    };
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     use fs::Fs;
@@ -1502,44 +1509,6 @@ mod tests {
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-
-    struct TestItem {
-        focus_handle: FocusHandle,
-    }
-
-    impl TestItem {
-        fn new(cx: &mut Context<Self>) -> Self {
-            Self {
-                focus_handle: cx.focus_handle(),
-            }
-        }
-    }
-
-    impl EventEmitter<ItemEvent> for TestItem {}
-
-    impl Focusable for TestItem {
-        fn focus_handle(&self, _cx: &App) -> FocusHandle {
-            self.focus_handle.clone()
-        }
-    }
-
-    impl Render for TestItem {
-        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            Empty
-        }
-    }
-
-    impl Item for TestItem {
-        type Event = ItemEvent;
-
-        fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-            "Test Item".into()
-        }
-
-        fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
-            f(*event);
-        }
-    }
 
     pub fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -1910,6 +1879,137 @@ mod tests {
             assert!(window.is_action_available(&Open::default(), cx));
             assert!(window.is_action_available(&CloseProject, cx));
         });
+    }
+
+    #[gpui::test]
+    async fn test_drag_first_tab_to_last_position(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let first_item = add_labeled_item(&pane, "First", false, cx);
+        add_labeled_item(&pane, "Second", false, cx);
+        add_labeled_item(&pane, "Third", false, cx);
+        assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            let dragged_tab = DraggedTab {
+                pane: cx.entity(),
+                item: first_item.boxed_clone(),
+                index: 0,
+                detail: 0,
+                is_active: true,
+            };
+            pane.handle_tab_drop(&dragged_tab, 2, window, cx);
+        });
+
+        assert_item_labels(&pane, ["Second", "Third", "First*"], cx);
+    }
+
+    #[gpui::test]
+    async fn test_drag_last_tab_to_first_position(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        add_labeled_item(&pane, "First", false, cx);
+        add_labeled_item(&pane, "Second", false, cx);
+        let third_item = add_labeled_item(&pane, "Third", false, cx);
+        assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            let dragged_tab = DraggedTab {
+                pane: cx.entity(),
+                item: third_item.boxed_clone(),
+                index: 2,
+                detail: 0,
+                is_active: true,
+            };
+            pane.handle_tab_drop(&dragged_tab, 0, window, cx);
+        });
+
+        assert_item_labels(&pane, ["Third*", "First", "Second"], cx);
+    }
+
+    #[gpui::test]
+    async fn test_drag_tab_to_middle_tab_with_mouse_events(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        add_labeled_item(&pane, "First", false, cx);
+        add_labeled_item(&pane, "Second", false, cx);
+        add_labeled_item(&pane, "Third", false, cx);
+        add_labeled_item(&pane, "Fourth", false, cx);
+        assert_item_labels(&pane, ["First", "Second", "Third", "Fourth*"], cx);
+        cx.run_until_parked();
+
+        let first_tab_bounds = cx
+            .debug_bounds("TAB-0")
+            .expect("First tab should have debug bounds");
+        let third_tab_bounds = cx
+            .debug_bounds("TAB-2")
+            .expect("Third tab should have debug bounds");
+
+        cx.simulate_event(MouseDownEvent {
+            position: first_tab_bounds.center(),
+            button: MouseButton::Left,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+            first_mouse: false,
+        });
+        cx.run_until_parked();
+        cx.simulate_event(MouseMoveEvent {
+            position: third_tab_bounds.center(),
+            pressed_button: Some(MouseButton::Left),
+            modifiers: Modifiers::default(),
+        });
+        cx.run_until_parked();
+        cx.simulate_event(MouseUpEvent {
+            position: third_tab_bounds.center(),
+            button: MouseButton::Left,
+            modifiers: Modifiers::default(),
+            click_count: 1,
+        });
+        cx.run_until_parked();
+
+        assert_item_labels(&pane, ["Second", "Third", "First*", "Fourth"], cx);
     }
 
     #[gpui::test]

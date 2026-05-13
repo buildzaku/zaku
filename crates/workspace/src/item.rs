@@ -307,3 +307,66 @@ pub trait ProjectItem: Item {
     where
         Self: Sized;
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    use gpui::{Empty, IntoElement};
+
+    pub struct TestItem {
+        pub label: String,
+        pub is_dirty: bool,
+        focus_handle: FocusHandle,
+    }
+
+    impl TestItem {
+        pub fn new(cx: &mut Context<Self>) -> Self {
+            Self {
+                label: String::new(),
+                is_dirty: false,
+                focus_handle: cx.focus_handle(),
+            }
+        }
+
+        pub fn with_label(mut self, label: &str) -> Self {
+            self.label = label.to_string();
+            self
+        }
+
+        pub fn with_dirty(mut self, is_dirty: bool) -> Self {
+            self.is_dirty = is_dirty;
+            self
+        }
+    }
+
+    impl Render for TestItem {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            Empty
+        }
+    }
+
+    impl EventEmitter<ItemEvent> for TestItem {}
+
+    impl Focusable for TestItem {
+        fn focus_handle(&self, _cx: &App) -> FocusHandle {
+            self.focus_handle.clone()
+        }
+    }
+
+    impl Item for TestItem {
+        type Event = ItemEvent;
+
+        fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
+            self.label.clone().into()
+        }
+
+        fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+            f(*event);
+        }
+
+        fn is_dirty(&self, _cx: &App) -> bool {
+            self.is_dirty
+        }
+    }
+}
