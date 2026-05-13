@@ -73,11 +73,11 @@ impl Tab {
     }
 
     pub fn content_height(cx: &App) -> Pixels {
-        DynamicSpacing::Base32.px(cx) - gpui::px(1.0)
+        DynamicSpacing::Base36.px(cx) - gpui::px(1.0)
     }
 
     pub fn container_height(cx: &App) -> Pixels {
-        DynamicSpacing::Base32.px(cx)
+        DynamicSpacing::Base36.px(cx)
     }
 }
 
