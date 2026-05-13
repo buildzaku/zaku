@@ -13,8 +13,10 @@ members = [
   "crates/metadata",
   "crates/multi_buffer",
   "crates/project",
+  "crates/project_panel",
   "crates/request_editor",
   "crates/reqwest_client",
+  "crates/response_panel",
   "crates/session",
   "crates/settings",
   "crates/settings_macros",
@@ -134,8 +136,10 @@ logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }
 project = { path = "crates/project" }
+project_panel = { path = "crates/project_panel" }
 request_editor = { path = "crates/request_editor" }
 reqwest_client = { path = "crates/reqwest_client" }
+response_panel = { path = "crates/response_panel" }
 session = { path = "crates/session" }
 settings = { path = "crates/settings" }
 settings_macros = { path = "crates/settings_macros" }

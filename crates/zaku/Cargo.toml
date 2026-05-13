@@ -47,7 +47,9 @@ log = { workspace = true }
 logger = { workspace = true }
 metadata = { workspace = true }
 mimalloc = { workspace = true, optional = true }
+project_panel = { workspace = true }
 request_editor = { workspace = true }
+response_panel = { workspace = true }
 session = { workspace = true }
 settings = { workspace = true }
 theme = { workspace = true }

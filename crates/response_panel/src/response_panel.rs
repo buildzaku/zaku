@@ -12,7 +12,7 @@ use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{Color, IconName, Label, LabelCommon, LabelSize};
 
-use crate::{Workspace, pane::Pane, panel::Panel};
+use workspace::{Panel, Workspace, pane::Pane};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(

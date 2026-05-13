@@ -4651,6 +4651,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "project_panel"
+version = "0.0.0"
+dependencies = [
+ "actions",
+ "editor",
+ "fs",
+ "gpui",
+ "indoc",
+ "project",
+ "request_editor",
+ "serde_json",
+ "settings",
+ "smallvec",
+ "theme",
+ "ui",
+ "util 0.0.0",
+ "util_macros 0.0.0",
+ "workspace",
+]
+
+[[package]]
 name = "proptest"
 version = "1.10.0"
 source = "git+https://github.com/proptest-rs/proptest?rev=3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b#3dca198a8fef1b32e3a66f1e1897c955b4dc5b5b"
@@ -5116,6 +5137,7 @@ dependencies = [
  "log",
  "project",
  "reqwest_client",
+ "response_panel",
  "serde_json",
  "settings",
  "theme",
@@ -5177,6 +5199,21 @@ dependencies = [
  "http_client 0.0.0",
  "reqwest",
  "tokio",
+]
+
+[[package]]
+name = "response_panel"
+version = "0.0.0"
+dependencies = [
+ "actions",
+ "editor",
+ "gpui",
+ "http_client 0.0.0",
+ "multi_buffer",
+ "num-traits",
+ "theme",
+ "ui",
+ "workspace",
 ]
 
 [[package]]
@@ -8180,12 +8217,9 @@ dependencies = [
  "fs",
  "futures",
  "gpui",
- "http_client 0.0.0",
  "indoc",
  "log",
  "metadata",
- "multi_buffer",
- "num-traits",
  "project",
  "serde",
  "serde_json",
@@ -8415,7 +8449,9 @@ dependencies = [
  "logger",
  "metadata",
  "mimalloc",
+ "project_panel",
  "request_editor",
+ "response_panel",
  "serde_json",
  "session",
  "settings",

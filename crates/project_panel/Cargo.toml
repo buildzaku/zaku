@@ -1,5 +1,5 @@
 [package]
-name = "request_editor"
+name = "project_panel"
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,20 +9,14 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "request_editor"
-path = "src/request_editor.rs"
+name = "project_panel"
+path = "src/project_panel.rs"
 
 [dependencies]
 actions = { workspace = true }
-anyhow = { workspace = true }
-futures = { workspace = true }
 gpui = { workspace = true }
-http_client = { workspace = true }
-input = { workspace = true }
-log = { workspace = true }
 project = { workspace = true }
-reqwest_client = { workspace = true }
-response_panel = { workspace = true }
+smallvec = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
 util = { workspace = true }
@@ -33,7 +27,7 @@ editor = { workspace = true }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
-project = { workspace = true, features = ["test-support"] }
+request_editor = { workspace = true }
 serde_json = { workspace = true }
 settings = { workspace = true, features = ["test-support"] }
 util_macros = { workspace = true }

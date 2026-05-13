@@ -16,6 +16,7 @@ use project::{
     RequestFileParam, RequestFileState,
 };
 use reqwest_client::ReqwestClient;
+use response_panel::{ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
@@ -27,7 +28,6 @@ use util::{path::PathStyle, truncate_and_trailoff};
 
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ProjectItem, TabContentParams, Workspace, pane::Pane,
-    panel::response::ResponseState,
 };
 
 const MAX_TAB_TITLE_LEN: usize = 24;
@@ -528,8 +528,9 @@ impl RequestEditor {
             })
             .collect::<Vec<_>>();
 
-        let Ok(response_panel) = self.workspace.update(cx, |workspace, cx| {
-            workspace.open_response_panel(window, cx)
+        let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
+            workspace.open_panel::<ResponsePanel>(window, cx);
+            workspace.panel::<ResponsePanel>(cx)
         }) else {
             return;
         };
@@ -1162,26 +1163,26 @@ impl ProjectItem for RequestEditor {
 mod tests {
     use super::*;
 
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext};
     use indoc::indoc;
     use serde_json::json;
 
     use fs::TempFs;
+    use project::Project;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{Root, SharedState};
+    use workspace::{DockPosition, Root, SharedState};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
+            workspace::init(shared_state, cx);
             editor::init(cx);
             crate::init(cx);
-            workspace::init(shared_state, cx);
-            workspace::panel::project::init(cx);
-            workspace::panel::response::init(cx);
+            response_panel::init(cx);
         });
     }
 
@@ -1218,6 +1219,12 @@ mod tests {
             Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let response_panel = workspace.update_in(cx, |workspace, window, cx| {
+            let pane = workspace.pane().downgrade();
+            let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
+            workspace.add_panel(response_panel.clone(), DockPosition::Bottom, window, cx);
+            response_panel
+        });
 
         let request_path = workspace.update_in(cx, |workspace, _, cx| {
             workspace
@@ -1242,7 +1249,7 @@ mod tests {
         });
 
         workspace.update_in(cx, |workspace, _, cx| {
-            let response_panel_id = Entity::entity_id(workspace.response_panel());
+            let response_panel_id = Entity::entity_id(&response_panel);
             let active_panel_id = workspace
                 .bottom_dock()
                 .read(cx)

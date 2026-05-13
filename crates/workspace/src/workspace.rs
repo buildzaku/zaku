@@ -2,11 +2,11 @@ pub mod dock;
 pub mod item;
 pub mod notifications;
 pub mod pane;
-pub mod panel;
 mod persistence;
 pub mod status_bar;
 pub mod welcome;
 
+pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
 pub use item::{
     Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
     WeakItemHandle,
@@ -18,10 +18,9 @@ pub use persistence::{
 
 use futures::channel::oneshot;
 use gpui::{
-    Action, App, Axis, Bounds, Context, Div, DragMoveEvent, Empty, Entity, FocusHandle, Focusable,
-    Global, KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel,
-    Size, Subscription, Task, Window, WindowBounds, WindowHandle, WindowId, WindowOptions,
-    prelude::*,
+    Action, App, Bounds, Context, Div, DragMoveEvent, Entity, FocusHandle, Focusable, Global,
+    KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, Size,
+    Subscription, Task, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -54,10 +53,9 @@ use session::Session;
 use uuid::Uuid;
 
 use crate::{
-    dock::Dock,
+    dock::{Dock, PanelButtons},
     notifications::{NotificationId, Notifications},
     pane::Pane,
-    panel::{Panel, ProjectPanel, ResponsePanel, buttons::PanelButtons},
     status_bar::StatusBar,
 };
 
@@ -405,28 +403,6 @@ fn prompt_and_open_workspace(
     .detach();
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DockPosition {
-    Left,
-    Bottom,
-}
-
-impl DockPosition {
-    pub fn label(&self) -> &'static str {
-        match self {
-            DockPosition::Left => "Left",
-            DockPosition::Bottom => "Bottom",
-        }
-    }
-
-    pub fn axis(&self) -> Axis {
-        match self {
-            DockPosition::Left => Axis::Horizontal,
-            DockPosition::Bottom => Axis::Vertical,
-        }
-    }
-}
-
 pub struct Root {
     workspace: Entity<Workspace>,
 }
@@ -525,7 +501,6 @@ pub struct Workspace {
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
     pane: Entity<Pane>,
-    response_panel: Entity<ResponsePanel>,
     status_bar: Entity<StatusBar>,
     notifications: Notifications,
     suppressed_notifications: HashSet<NotificationId>,
@@ -535,15 +510,6 @@ pub struct Workspace {
     serialization_task: Option<Task<()>>,
     _window_activation_subscription: Subscription,
     _window_appearance_subscription: Subscription,
-}
-
-#[derive(Clone)]
-pub struct DraggedDock(pub DockPosition);
-
-impl Render for DraggedDock {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        Empty
-    }
 }
 
 impl Workspace {
@@ -929,18 +895,15 @@ impl Workspace {
         &self.bottom_dock
     }
 
-    pub fn response_panel(&self) -> &Entity<ResponsePanel> {
-        &self.response_panel
-    }
-
     pub fn add_panel<T: Panel>(
         &mut self,
         panel: Entity<T>,
+        position: DockPosition,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.left_dock
-            .update(cx, move |dock, cx| dock.add_panel(&panel, window, cx));
+        let dock = self.dock_at_position(position).clone();
+        dock.update(cx, move |dock, cx| dock.add_panel(&panel, window, cx));
     }
 
     fn root(&self, cx: &App) -> Option<PathBuf> {
@@ -1101,12 +1064,6 @@ impl Workspace {
         let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, window, cx));
         let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, window, cx));
 
-        let pane_handle = pane.downgrade();
-        let response_panel = cx.new(|cx| ResponsePanel::new(pane_handle, window, cx));
-        bottom_dock.update(cx, |bottom_dock, cx| {
-            bottom_dock.add_panel(&response_panel, window, cx);
-        });
-
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
 
@@ -1120,7 +1077,7 @@ impl Workspace {
             status_bar.add_right_item(bottom_dock_buttons, window, cx);
         });
 
-        let mut this = Self {
+        let this = Self {
             shared_state,
             registered_actions: Vec::default(),
             database_id,
@@ -1129,7 +1086,6 @@ impl Workspace {
             left_dock,
             bottom_dock,
             pane,
-            response_panel,
             status_bar,
             notifications: Notifications::default(),
             suppressed_notifications: HashSet::default(),
@@ -1141,8 +1097,6 @@ impl Workspace {
             _window_appearance_subscription: window_appearance_subscription,
         };
 
-        let project_panel = ProjectPanel::new(&mut this, window, cx);
-        this.add_panel(project_panel, window, cx);
         let pane_focus_handle = this.pane.read(cx).focus_handle(cx);
         window.focus(&pane_focus_handle, cx);
 
@@ -1187,7 +1141,7 @@ impl Workspace {
         });
     }
 
-    fn toggle_panel_focus<T: panel::Panel>(
+    pub fn toggle_panel_focus<T: Panel>(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1241,18 +1195,21 @@ impl Workspace {
         did_focus_panel
     }
 
-    pub fn open_response_panel(
-        &mut self,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Entity<ResponsePanel> {
-        self.bottom_dock.update(cx, |dock, cx| {
-            if let Some(panel_index) = dock.panel_index_for_type::<ResponsePanel>() {
-                dock.activate_panel(panel_index, window, cx);
-                dock.set_open(true, window, cx);
+    pub fn open_panel<T: Panel>(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for dock in [self.left_dock.clone(), self.bottom_dock.clone()] {
+            if let Some(panel_index) = dock.read(cx).panel_index_for_type::<T>() {
+                dock.update(cx, |dock, cx| {
+                    dock.activate_panel(panel_index, window, cx);
+                    dock.set_open(true, window, cx);
+                });
             }
-        });
-        self.response_panel.clone()
+        }
+    }
+
+    pub fn panel<T: Panel>(&self, cx: &App) -> Option<Entity<T>> {
+        [self.left_dock.clone(), self.bottom_dock.clone()]
+            .into_iter()
+            .find_map(|dock| dock.read(cx).panel::<T>())
     }
 
     pub fn key_context(&self, cx: &App) -> KeyContext {
@@ -1515,8 +1472,8 @@ mod tests {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            editor::init(cx);
             crate::init(shared_state, cx);
+            editor::init(cx);
         });
     }
 
@@ -1783,8 +1740,8 @@ mod tests {
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
             let panel = cx.new(|cx| TestPanel::new(100, cx));
+            workspace.add_panel(panel.clone(), DockPosition::Left, window, cx);
             workspace.left_dock.update(cx, |left_dock, cx| {
-                left_dock.add_panel(&panel, window, cx);
                 left_dock.set_open(true, window, cx);
             });
             panel

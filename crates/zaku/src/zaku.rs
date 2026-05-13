@@ -13,14 +13,30 @@ use actions::{
     workspace::CloseWindow,
     zaku::{About, Quit},
 };
+use project_panel::ProjectPanel;
+use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use workspace::{
-    CloseIntent, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace, SharedState, Toast,
-    Workspace, WorkspaceDb, notifications::NotificationId,
+    CloseIntent, DockPosition, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace,
+    SharedState, Toast, Workspace, WorkspaceDb, notifications::NotificationId,
 };
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
+
+    cx.observe_new(|workspace: &mut Workspace, window, cx| {
+        let Some(window) = window else {
+            return;
+        };
+
+        let project_panel = ProjectPanel::new(workspace, window, cx);
+        workspace.add_panel(project_panel, DockPosition::Left, window, cx);
+
+        let pane = workspace.pane().downgrade();
+        let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
+        workspace.add_panel(response_panel, DockPosition::Bottom, window, cx);
+    })
+    .detach();
 
     cx.observe_new(|_root: &mut Root, window, cx| {
         let Some(window) = window else {

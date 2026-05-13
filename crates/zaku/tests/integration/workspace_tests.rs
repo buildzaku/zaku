@@ -19,11 +19,11 @@ fn init_test(shared_state: Arc<SharedState>, app_db: AppDatabase, cx: &mut TestA
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
         theme::init(LoadThemes::JustBase, cx);
+        workspace::init(shared_state, cx);
+        project_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
-        workspace::init(shared_state, cx);
-        workspace::panel::project::init(cx);
-        workspace::panel::response::init(cx);
+        response_panel::init(cx);
     });
 }
 

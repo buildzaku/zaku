@@ -16,11 +16,11 @@ fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         settings::init(cx);
         settings::log_settings::init(cx);
         theme::init(LoadThemes::JustBase, cx);
+        workspace::init(shared_state, cx);
+        project_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
-        workspace::init(shared_state, cx);
-        workspace::panel::project::init(cx);
-        workspace::panel::response::init(cx);
+        response_panel::init(cx);
     });
 }
 

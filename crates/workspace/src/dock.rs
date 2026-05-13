@@ -1,19 +1,137 @@
 use anyhow::Context as AnyhowContext;
 use gpui::{
-    Action, App, Axis, Entity, FocusHandle, Focusable, KeyContext, MouseButton, MouseDownEvent,
-    MouseUpEvent, Pixels, Subscription, Window, prelude::*,
+    Action, AnyView, App, Axis, Context, Empty, Entity, EntityId, FocusHandle, Focusable,
+    IntoElement, KeyContext, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Render,
+    Subscription, Window, prelude::*,
 };
 use std::sync::Arc;
 
 use actions::workspace::{ToggleBottomDock, ToggleLeftDock};
 use theme::ActiveTheme;
-
-use crate::{
-    DockPosition, DraggedDock,
-    panel::{Panel, PanelHandle},
+use ui::{
+    ButtonCommon, Clickable, Color, Disableable, IconButton, IconButtonShape, IconSize,
+    StyledTypography, Toggleable, Tooltip,
 };
 
+use crate::{pane::Pane, status_bar::StatusItemView};
+
 pub(crate) const RESIZE_HANDLE_SIZE: Pixels = gpui::px(6.);
+
+pub trait Panel: Focusable + Render + Sized {
+    fn panel_key() -> &'static str;
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels;
+    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
+    fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
+    fn toggle_action(&self) -> Box<dyn Action>;
+    fn starts_open(&self, _window: &Window, _cx: &App) -> bool {
+        false
+    }
+    fn set_active(&mut self, _active: bool, _window: &mut Window, _cx: &mut Context<Self>) {}
+    fn activation_priority(&self) -> u32;
+    fn enabled(&self, _cx: &App) -> bool {
+        true
+    }
+}
+
+pub trait PanelHandle: Send + Sync {
+    fn panel_id(&self) -> EntityId;
+    fn panel_key(&self) -> &'static str;
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels;
+    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
+    fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
+    fn toggle_action(&self, window: &Window, cx: &App) -> Box<dyn Action>;
+    fn set_active(&self, active: bool, window: &mut Window, cx: &mut App);
+    fn activation_priority(&self, cx: &App) -> u32;
+    fn enabled(&self, cx: &App) -> bool;
+    fn panel_focus_handle(&self, cx: &App) -> FocusHandle;
+    fn to_any(&self) -> AnyView;
+}
+
+impl<T> PanelHandle for Entity<T>
+where
+    T: Panel,
+{
+    fn panel_id(&self) -> EntityId {
+        Entity::entity_id(self)
+    }
+
+    fn panel_key(&self) -> &'static str {
+        T::panel_key()
+    }
+
+    fn default_size(&self, window: &Window, cx: &App) -> Pixels {
+        self.read(cx).default_size(window, cx)
+    }
+
+    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName> {
+        self.read(cx).icon(window, cx)
+    }
+
+    fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str> {
+        self.read(cx).icon_tooltip(window, cx)
+    }
+
+    fn toggle_action(&self, _window: &Window, cx: &App) -> Box<dyn Action> {
+        self.read(cx).toggle_action()
+    }
+
+    fn set_active(&self, active: bool, window: &mut Window, cx: &mut App) {
+        self.update(cx, |this, cx| this.set_active(active, window, cx));
+    }
+
+    fn activation_priority(&self, cx: &App) -> u32 {
+        self.read(cx).activation_priority()
+    }
+
+    fn enabled(&self, cx: &App) -> bool {
+        self.read(cx).enabled(cx)
+    }
+
+    fn panel_focus_handle(&self, cx: &App) -> FocusHandle {
+        self.read(cx).focus_handle(cx)
+    }
+
+    fn to_any(&self) -> AnyView {
+        self.clone().into()
+    }
+}
+
+impl From<&dyn PanelHandle> for AnyView {
+    fn from(value: &dyn PanelHandle) -> Self {
+        value.to_any()
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum DockPosition {
+    Left,
+    Bottom,
+}
+
+impl DockPosition {
+    pub fn label(&self) -> &'static str {
+        match self {
+            DockPosition::Left => "Left",
+            DockPosition::Bottom => "Bottom",
+        }
+    }
+
+    pub fn axis(&self) -> Axis {
+        match self {
+            DockPosition::Left => Axis::Horizontal,
+            DockPosition::Bottom => Axis::Vertical,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct DraggedDock(pub DockPosition);
+
+impl Render for DraggedDock {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        Empty
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct PanelSizeState {
@@ -366,6 +484,86 @@ impl Render for Dock {
                 .key_context(Self::dispatch_context())
                 .track_focus(&self.focus_handle)
         }
+    }
+}
+
+pub struct PanelButtons {
+    dock: Entity<Dock>,
+}
+
+impl PanelButtons {
+    pub fn new(dock: Entity<Dock>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&dock, |_, _, cx| cx.notify()).detach();
+        Self { dock }
+    }
+}
+
+impl Render for PanelButtons {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let dock = self.dock.read(cx);
+        let is_disabled = !dock
+            .panel_entries()
+            .iter()
+            .any(|entry| entry.panel().enabled(cx));
+        let active_index = dock.active_panel_index();
+        let is_open = dock.is_open();
+        let focus_handle = dock.focus_handle(cx);
+        let buttons = dock
+            .panel_entries()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let icon = entry.panel().icon(window, cx)?;
+                let icon_tooltip = entry.panel().icon_tooltip(window, cx)?;
+                let panel_key = entry.panel().panel_key();
+
+                let is_active_button = Some(index) == active_index && is_open;
+                let (action, tooltip) = if is_active_button {
+                    let action = dock.toggle_action();
+                    (action, format!("Close {} Dock", dock.position().label()))
+                } else {
+                    let action = entry.panel().toggle_action(window, cx);
+                    (action, icon_tooltip.to_string())
+                };
+
+                let action = action.boxed_clone();
+                let tooltip = tooltip.clone();
+                let focus_handle = focus_handle.clone();
+
+                Some(
+                    IconButton::new(format!("{panel_key}-button-{is_active_button}"), icon)
+                        .variant(ui::ButtonVariant::Subtle)
+                        .icon_size(IconSize::Small)
+                        .shape(IconButtonShape::Square)
+                        .icon_color(Color::Muted)
+                        .disabled(is_disabled)
+                        .toggle_state(is_active_button)
+                        .tooltip(Tooltip::for_action_title(tooltip, action.as_ref()))
+                        .on_click(move |_, window, cx| {
+                            window.focus(&focus_handle, cx);
+                            window.dispatch_action(action.boxed_clone(), cx);
+                        }),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        gpui::div()
+            .flex()
+            .flex_row()
+            .gap_1()
+            .children(buttons)
+            .font_ui(cx)
+            .text_ui_sm(cx)
+    }
+}
+
+impl StatusItemView for PanelButtons {
+    fn set_active_pane(
+        &mut self,
+        _active_pane: &Entity<Pane>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
     }
 }
 
