@@ -157,7 +157,15 @@ impl RenderOnce for Tab {
             })
             .cursor_pointer()
             .when(self.selected, |this| {
-                this.child(gpui::div().absolute().top_0().h_px().bg(colors.text_accent))
+                this.child(
+                    gpui::div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .h_px()
+                        .bg(colors.text_accent),
+                )
             })
             .child(
                 h_flex()
