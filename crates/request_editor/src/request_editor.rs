@@ -16,7 +16,7 @@ use project::{
     RequestFileParam, RequestFileState,
 };
 use reqwest_client::ReqwestClient;
-use response_panel::{ResponsePanel, ResponseState};
+use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
@@ -36,7 +36,13 @@ pub fn init(cx: &mut App) {
     workspace::register_project_item::<RequestEditor>(cx);
 
     cx.observe_new(
-        |workspace: &mut Workspace, _: Option<&mut Window>, _cx: &mut Context<Workspace>| {
+        |workspace: &mut Workspace, _: Option<&mut Window>, cx: &mut Context<Workspace>| {
+            let pane = workspace.pane().clone();
+            cx.observe(&pane, |workspace, _, cx| {
+                update_response_panel(workspace, cx);
+            })
+            .detach();
+
             workspace.register_action(|workspace, _: &SendRequest, window, cx| {
                 let Some(request_editor) = workspace.active_item_as::<RequestEditor>(cx) else {
                     return;
@@ -49,6 +55,18 @@ pub fn init(cx: &mut App) {
         },
     )
     .detach();
+}
+
+fn update_response_panel(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
+    let response = workspace
+        .active_item_as::<RequestEditor>(cx)
+        .and_then(|request_editor| request_editor.read(cx).response());
+
+    if let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) {
+        response_panel.update(cx, |response_panel, cx| {
+            response_panel.set_response(response, cx);
+        });
+    }
 }
 
 pub trait RequestPaneExt: Sized {
@@ -289,6 +307,7 @@ pub struct RequestEditor {
     buffer: Option<Entity<RequestBuffer>>,
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
+    response: Option<Entity<Response>>,
     http_client: Arc<dyn HttpClient>,
     scroll_handle: ScrollHandle,
     is_dirty: bool,
@@ -336,6 +355,7 @@ impl RequestEditor {
             buffer: Some(buffer),
             request,
             request_snapshot,
+            response: None,
             http_client: Arc::new(ReqwestClient::new()),
             scroll_handle: ScrollHandle::new(),
             is_dirty: false,
@@ -353,6 +373,10 @@ impl RequestEditor {
         self.project
             .as_ref()
             .map_or_else(PathStyle::local, |project| project.read(cx).path_style(cx))
+    }
+
+    fn response(&self) -> Option<Entity<Response>> {
+        self.response.clone()
     }
 
     fn title(&self, cx: &App) -> SharedString {
@@ -534,10 +558,17 @@ impl RequestEditor {
         }) else {
             return;
         };
+        let response = self
+            .response
+            .get_or_insert_with(|| cx.new(|cx| Response::new(window, cx)))
+            .clone();
+        response_panel.update(cx, |panel, cx| {
+            panel.set_response(Some(response.clone()), cx);
+        });
 
-        let request_id = response_panel.update(cx, |response_panel, cx| {
-            let request_id = response_panel.begin_response(window, cx);
-            response_panel.set_state(
+        let request_id = response.update(cx, |response, cx| response.begin_response(window, cx));
+        response.update(cx, |response, cx| {
+            response.set_state(
                 request_id,
                 ResponseState::Fetching {
                     bytes_received: 0,
@@ -545,7 +576,6 @@ impl RequestEditor {
                 },
                 cx,
             );
-            request_id
         });
 
         let request_started_at = Instant::now();
@@ -553,11 +583,10 @@ impl RequestEditor {
 
         window
             .spawn(cx, {
-                let response_panel = response_panel.clone();
                 async move |cx| {
                     let Some(mut request_url) = normalize_url(&request_url) else {
-                        if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                            response_panel.set_state(
+                        response.update(cx, |response, cx| {
+                            response.set_state(
                                 request_id,
                                 ResponseState::Error {
                                     bytes_received: 0,
@@ -565,10 +594,8 @@ impl RequestEditor {
                                 },
                                 cx,
                             );
-                            response_panel.set_payload(request_id, "Error: invalid URL", cx);
-                        }) {
-                            log::debug!("Failed to update response panel: {error:?}");
-                        }
+                            response.set_payload(request_id, "Error: invalid URL", cx);
+                        });
                         return;
                     };
 
@@ -587,25 +614,17 @@ impl RequestEditor {
                     {
                         Ok(request) => request,
                         Err(error) => {
-                            if let Err(error) =
-                                response_panel.update_in(cx, |response_panel, _, cx| {
-                                    response_panel.set_state(
-                                        request_id,
-                                        ResponseState::Error {
-                                            bytes_received: 0,
-                                            elapsed_duration: request_started_at.elapsed(),
-                                        },
-                                        cx,
-                                    );
-                                    response_panel.set_payload(
-                                        request_id,
-                                        format!("Error: {error}"),
-                                        cx,
-                                    );
-                                })
-                            {
-                                log::debug!("Failed to update response panel: {error:?}");
-                            }
+                            response.update(cx, |response, cx| {
+                                response.set_state(
+                                    request_id,
+                                    ResponseState::Error {
+                                        bytes_received: 0,
+                                        elapsed_duration: request_started_at.elapsed(),
+                                    },
+                                    cx,
+                                );
+                                response.set_payload(request_id, format!("Error: {error}"), cx);
+                            });
                             return;
                         }
                     };
@@ -619,41 +638,34 @@ impl RequestEditor {
                     let send_request = http_client.send(request).fuse();
                     futures::pin_mut!(send_request);
 
-                    let mut response = loop {
+                    let mut received = loop {
                         futures::select_biased! {
-                            response = send_request => {
-                                match response {
+                            send_result = send_request => {
+                                match send_result {
                                     Ok(response) => break response,
                                     Err(error) => {
-                                        if let Err(error) =
-                                            response_panel.update_in(cx, |response_panel, _, cx| {
-                                                response_panel.set_state(
-                                                    request_id,
-                                                    ResponseState::Error {
-                                                        bytes_received: 0,
-                                                        elapsed_duration: request_started_at
-                                                            .elapsed(),
-                                                    },
-                                                    cx,
-                                                );
-                                                response_panel.set_payload(
-                                                    request_id,
-                                                    format!("Error: {error}"),
-                                                    cx,
-                                                );
-                                            })
-                                        {
-                                            log::debug!(
-                                                "Failed to update response panel: {error:?}"
+                                        response.update(cx, |response, cx| {
+                                            response.set_state(
+                                                request_id,
+                                                ResponseState::Error {
+                                                    bytes_received: 0,
+                                                    elapsed_duration: request_started_at.elapsed(),
+                                                },
+                                                cx,
                                             );
-                                        }
+                                            response.set_payload(
+                                                request_id,
+                                                format!("Error: {error}"),
+                                                cx,
+                                            );
+                                        });
                                         return;
                                     }
                                 }
                             }
                             () = progress_timer => {
-                                let still_active = response_panel.update(cx, |response_panel, cx| {
-                                    response_panel.set_state(
+                                let still_active = response.update(cx, |response, cx| {
+                                    response.set_state(
                                         request_id,
                                         ResponseState::Fetching {
                                             bytes_received: 0,
@@ -675,14 +687,14 @@ impl RequestEditor {
                         }
                     };
 
-                    let status_code = response.status();
+                    let status_code = received.status();
                     let mut bytes_received = 0_u64;
                     let mut payload = Vec::new();
                     let mut buffer = [0; 8192];
                     let mut read_error = None;
 
                     loop {
-                        let read_response_body = response.body_mut().read(&mut buffer).fuse();
+                        let read_response_body = received.body_mut().read(&mut buffer).fuse();
                         futures::pin_mut!(read_response_body);
 
                         futures::select_biased! {
@@ -705,8 +717,8 @@ impl RequestEditor {
                                 }
                             }
                             () = progress_timer => {
-                                let still_active = response_panel.update(cx, |response_panel, cx| {
-                                    response_panel.set_state(
+                                let still_active = response.update(cx, |response, cx| {
+                                    response.set_state(
                                         request_id,
                                         ResponseState::Fetching {
                                             bytes_received,
@@ -747,12 +759,10 @@ impl RequestEditor {
                         ),
                     };
 
-                    if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                        response_panel.set_state(request_id, response_state, cx);
-                        response_panel.set_payload(request_id, payload, cx);
-                    }) {
-                        log::debug!("Failed to update response panel: {error:?}");
-                    }
+                    response.update(cx, |response, cx| {
+                        response.set_state(request_id, response_state, cx);
+                        response.set_payload(request_id, payload, cx);
+                    });
                 }
             })
             .detach();
