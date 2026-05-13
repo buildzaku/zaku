@@ -356,8 +356,8 @@ impl Pane {
     ) -> Option<Box<dyn ItemHandle>> {
         let item_index = self.index_for_item_id(item_id)?;
         let was_active = item_index == self.active_item_index;
-        let should_activate = focus_item || self.has_focus(window, cx);
-        let should_focus_pane = was_active && self.items.len() == 1 && should_activate;
+        let should_focus_pane =
+            was_active && self.items.len() == 1 && (focus_item || self.has_focus(window, cx));
         let item = self.items.remove(item_index);
 
         if should_focus_pane {
