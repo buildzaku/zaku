@@ -54,6 +54,7 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
 
         Label::new(text)
             .color(params.text_color())
+            .when(params.preview, |label| label.italic())
             .into_any_element()
     }
 
