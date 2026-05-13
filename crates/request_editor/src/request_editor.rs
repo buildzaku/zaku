@@ -25,12 +25,48 @@ use ui::{
 };
 use util::{path::PathStyle, truncate_and_trailoff};
 
-use crate::{
+use workspace::{
     Item, ItemBufferKind, ItemEvent, ProjectItem, TabContentParams, Workspace, pane::Pane,
     panel::response::ResponseState,
 };
 
 const MAX_TAB_TITLE_LEN: usize = 24;
+
+pub fn init(cx: &mut App) {
+    workspace::register_project_item::<RequestEditor>(cx);
+
+    cx.observe_new(
+        |workspace: &mut Workspace, _: Option<&mut Window>, _cx: &mut Context<Workspace>| {
+            workspace.register_action(|workspace, _: &SendRequest, window, cx| {
+                let Some(request_editor) = workspace.active_item_as::<RequestEditor>(cx) else {
+                    return;
+                };
+
+                request_editor.update(cx, |request_editor, cx| {
+                    request_editor.send_request(window, cx);
+                });
+            });
+        },
+    )
+    .detach();
+}
+
+pub trait RequestPaneExt: Sized {
+    fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>);
+}
+
+impl RequestPaneExt for Pane {
+    fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(request_editor) = self
+            .active_item()
+            .and_then(|item| item.downcast::<RequestEditor>())
+        {
+            request_editor.update(cx, |request_editor, cx| {
+                request_editor.send_request(window, cx);
+            });
+        }
+    }
+}
 
 fn normalize_url(url: &str) -> Option<Url> {
     let url = url.trim();
@@ -1119,5 +1155,102 @@ impl ProjectItem for RequestEditor {
     {
         let workspace = pane.map_or_else(WeakEntity::new_invalid, Pane::workspace);
         Self::for_buffer(workspace, project, item, window, cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::TestAppContext;
+    use indoc::indoc;
+    use serde_json::json;
+
+    use fs::TempFs;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+    use workspace::{Root, SharedState};
+
+    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            editor::init(cx);
+            crate::init(cx);
+            workspace::init(shared_state, cx);
+            workspace::panel::project::init(cx);
+            workspace::panel::response::init(cx);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": indoc! {"
+                    .DS_Store
+                "},
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        let request_path = workspace.update_in(cx, |workspace, _, cx| {
+            workspace
+                .project()
+                .read(cx)
+                .project_path_for_absolute_path(
+                    &project_path.join(path!("collection/request.toml")),
+                    cx,
+                )
+                .unwrap()
+        });
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap();
+
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        workspace.update_in(cx, |workspace, _, cx| {
+            let response_panel_id = Entity::entity_id(workspace.response_panel());
+            let active_panel_id = workspace
+                .bottom_dock()
+                .read(cx)
+                .active_panel()
+                .map(|panel| panel.panel_id());
+
+            assert!(workspace.bottom_dock().read(cx).is_open());
+            assert_eq!(active_panel_id, Some(response_panel_id));
+        });
     }
 }

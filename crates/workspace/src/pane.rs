@@ -12,8 +12,8 @@ use ui::{
 };
 
 use crate::{
-    ItemBufferKind, ItemEvent, ItemHandle, RequestEditor, TabContentParams, TabTooltipContent,
-    Workspace, WorkspaceItemBuilder, welcome::WelcomePage,
+    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Workspace,
+    WorkspaceItemBuilder, welcome::WelcomePage,
 };
 
 pub struct Pane {
@@ -639,17 +639,6 @@ impl Pane {
     fn focus_out(&mut self, _event: FocusOutEvent, _window: &mut Window, cx: &mut Context<Self>) {
         self.was_focused = false;
         cx.notify();
-    }
-
-    pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(request_editor) = self
-            .active_item()
-            .and_then(|item| item.downcast::<RequestEditor>())
-        {
-            request_editor.update(cx, |request_editor, cx| {
-                request_editor.send_request(window, cx);
-            });
-        }
     }
 }
 

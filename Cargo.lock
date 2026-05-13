@@ -5101,6 +5101,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
+name = "request_editor"
+version = "0.0.0"
+dependencies = [
+ "actions",
+ "anyhow",
+ "editor",
+ "fs",
+ "futures",
+ "gpui",
+ "http_client 0.0.0",
+ "indoc",
+ "input",
+ "log",
+ "project",
+ "reqwest_client",
+ "serde_json",
+ "settings",
+ "theme",
+ "ui",
+ "util 0.0.0",
+ "util_macros 0.0.0",
+ "workspace",
+]
+
+[[package]]
 name = "reqwest"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8157,13 +8182,11 @@ dependencies = [
  "gpui",
  "http_client 0.0.0",
  "indoc",
- "input",
  "log",
  "metadata",
  "multi_buffer",
  "num-traits",
  "project",
- "reqwest_client",
  "serde",
  "serde_json",
  "session",
@@ -8392,6 +8415,7 @@ dependencies = [
  "logger",
  "metadata",
  "mimalloc",
+ "request_editor",
  "serde_json",
  "session",
  "settings",

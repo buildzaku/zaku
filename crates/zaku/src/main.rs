@@ -72,6 +72,7 @@ fn main() {
         theme::init(LoadThemes::All(Box::new(Assets)), cx);
         register_embedded_fonts(cx);
         editor::init(cx);
+        request_editor::init(cx);
         let session = cx.foreground_executor().block_on(session);
         let app_session = cx.new(|cx| AppSession::new(session, cx));
         let shared_state = Arc::new(SharedState::new(fs, app_session));

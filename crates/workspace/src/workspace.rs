@@ -4,7 +4,6 @@ pub mod notifications;
 pub mod pane;
 pub mod panel;
 mod persistence;
-pub mod request_editor;
 pub mod status_bar;
 pub mod welcome;
 
@@ -16,7 +15,6 @@ pub use persistence::{
     WorkspaceDb,
     model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
 };
-pub use request_editor::{RequestBuffer, RequestEditor};
 
 use futures::channel::oneshot;
 use gpui::{
@@ -182,7 +180,6 @@ impl SharedState {
 
 pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
     SharedState::set_global(shared_state.clone(), cx);
-    register_project_item::<RequestEditor>(cx);
     smol::block_on(WorkspaceDb::global(cx).initialize_schema())
         .expect("workspace persistence schema should initialize");
 
@@ -912,8 +909,28 @@ impl Workspace {
         &self.project
     }
 
+    pub fn pane(&self) -> &Entity<Pane> {
+        &self.pane
+    }
+
+    pub fn active_item(&self, cx: &App) -> Option<Box<dyn ItemHandle>> {
+        self.pane.read(cx).active_item()
+    }
+
+    pub fn active_item_as<I: 'static>(&self, cx: &App) -> Option<Entity<I>> {
+        self.active_item(cx)?.to_any_view().downcast::<I>().ok()
+    }
+
     pub fn left_dock(&self) -> &Entity<Dock> {
         &self.left_dock
+    }
+
+    pub fn bottom_dock(&self) -> &Entity<Dock> {
+        &self.bottom_dock
+    }
+
+    pub fn response_panel(&self) -> &Entity<ResponsePanel> {
+        &self.response_panel
     }
 
     pub fn add_panel<T: Panel>(
@@ -1224,7 +1241,11 @@ impl Workspace {
         did_focus_panel
     }
 
-    fn open_response_panel(&mut self, window: &mut Window, cx: &mut App) -> Entity<ResponsePanel> {
+    pub fn open_response_panel(
+        &mut self,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<ResponsePanel> {
         self.bottom_dock.update(cx, |dock, cx| {
             if let Some(panel_index) = dock.panel_index_for_type::<ResponsePanel>() {
                 dock.activate_panel(panel_index, window, cx);
@@ -1818,77 +1839,6 @@ mod tests {
             assert!(workspace.left_dock.read(cx).is_open());
             assert_eq!(active_panel_id, Some(Entity::entity_id(&panel)));
             assert!(panel.read(cx).focus_handle(cx).contains_focused(window, cx));
-        });
-    }
-
-    #[gpui::test]
-    async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
-        cx.executor().allow_parking();
-
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
-        init_test(shared_state.clone(), cx);
-
-        temp_fs.insert_tree(
-            path!("project"),
-            json!({
-                ".gitignore": indoc! {"
-                    .DS_Store
-                "},
-                "collection": {
-                    "request.toml": indoc! {r#"
-                        [meta]
-                        version = 1
-
-                        [config]
-                        method = "GET"
-                        url = "https://api.zaku.dev/me"
-                    "#}
-                }
-            }),
-        );
-
-        let project_path = temp_fs.path().join(path!("project"));
-        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
-
-        workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
-
-        let request_path = workspace.update_in(cx, |workspace, _, cx| {
-            workspace
-                .project()
-                .read(cx)
-                .project_path_for_absolute_path(
-                    &project_path.join(path!("collection/request.toml")),
-                    cx,
-                )
-                .expect("request path should exist in project")
-        });
-        workspace
-            .update_in(cx, |workspace, window, cx| {
-                workspace.open_path(request_path, None, true, window, cx)
-            })
-            .await
-            .expect("request should open");
-
-        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane.clone());
-        pane.update_in(cx, |pane, window, cx| {
-            pane.send_request(window, cx);
-        });
-
-        workspace.update_in(cx, |workspace, _, cx| {
-            let response_panel_id = Entity::entity_id(&workspace.response_panel);
-            let active_panel_id = workspace
-                .bottom_dock
-                .read(cx)
-                .active_panel()
-                .map(|panel| panel.panel_id());
-
-            assert!(workspace.bottom_dock.read(cx).is_open());
-            assert_eq!(active_panel_id, Some(response_panel_id));
         });
     }
 
