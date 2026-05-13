@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+pub const REQUEST_FILE_VERSION: u32 = 1;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RequestFileState {
     Parsed(RequestFile),
@@ -24,28 +26,15 @@ pub struct RequestFileConfig {
     pub method: String,
     pub url: String,
     #[serde(default)]
-    pub headers: Vec<RequestFileHeader>,
-    #[serde(default)]
-    pub body: Option<RequestFileBody>,
+    pub params: Vec<RequestFileParam>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct RequestFileHeader {
+pub struct RequestFileParam {
     pub name: String,
     pub value: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-pub struct RequestFileBody {
-    pub kind: RequestFileBodyKind,
-    pub content: String,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum RequestFileBodyKind {
-    Text,
-    Json,
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 pub(crate) fn parse_request_file(contents: &str) -> RequestFileState {

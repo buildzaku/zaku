@@ -1,8 +1,8 @@
 use gpui::{
-    Action, AnyElement, App, Bounds, ClickEvent, Context, Div, Entity, FocusHandle, Focusable,
-    FontWeight, KeyContext, ListHorizontalSizingBehavior, ListSizingBehavior, MouseButton, Pixels,
-    Render, ScrollStrategy, Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity,
-    Window, prelude::*,
+    Action, AnyElement, App, Bounds, ClickEvent, Context, Div, Entity, EventEmitter, FocusHandle,
+    Focusable, FontWeight, KeyContext, ListHorizontalSizingBehavior, ListSizingBehavior,
+    MouseButton, Pixels, Render, ScrollStrategy, Stateful, Subscription, Task,
+    UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use smallvec::SmallVec;
 use std::{cmp, ops::Range};
@@ -12,7 +12,8 @@ use actions::{
     workspace::project_panel,
 };
 use project::{
-    Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, RequestFileState, Snapshot,
+    Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, ProjectPath, RequestFileState,
+    Snapshot,
 };
 use theme::ActiveTheme;
 use ui::{
@@ -22,7 +23,7 @@ use ui::{
 };
 use util::path::{SortMode, SortOrder};
 
-use crate::{Workspace, pane::Pane, panel::Panel};
+use workspace::{Panel, Workspace, pane::Pane};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(
@@ -66,6 +67,17 @@ struct EntryDetails {
     is_marked: bool,
 }
 
+#[derive(Debug)]
+pub enum Event {
+    OpenedEntry {
+        entry_id: ProjectEntryId,
+        focus_opened_item: bool,
+        allow_preview: bool,
+    },
+}
+
+impl EventEmitter<Event> for ProjectPanel {}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SelectedEntry(ProjectEntryId);
 
@@ -76,23 +88,90 @@ impl ProjectPanel {
     const DISCLOSURE_SLOT_WIDTH: Pixels = gpui::px(13.0);
     const PREFIX_LABEL_SLOT_WIDTH: Pixels = gpui::px(32.0);
 
-    pub fn new(project: &Entity<Project>, pane: WeakEntity<Pane>, cx: &mut Context<Self>) -> Self {
-        let mut this = Self {
-            focus_handle: cx.focus_handle(),
-            project: project.clone(),
-            pane,
-            scroll_handle: UniformListScrollHandle::new(),
-            update_visible_entries_task: Task::ready(()),
-            tree_state: TreeState::default(),
-            marked_entries: Vec::new(),
-            selection: None,
-            mouse_down: false,
-            _project_subscription: cx.subscribe(project, |this, _, _: &ProjectEvent, cx| {
-                this.update_visible_entries(cx);
-            }),
-        };
-        this.update_visible_entries(cx);
-        this
+    pub fn new(
+        workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) -> Entity<Self> {
+        let project = workspace.project().clone();
+        let pane = workspace.pane().downgrade();
+        let project_panel = cx.new(|cx| {
+            let project_subscription = cx.subscribe(
+                &project,
+                |this: &mut ProjectPanel, _, _: &ProjectEvent, cx| {
+                    this.update_visible_entries(None, cx);
+                },
+            );
+
+            let mut this = Self {
+                focus_handle: cx.focus_handle(),
+                project: project.clone(),
+                pane: pane.clone(),
+                scroll_handle: UniformListScrollHandle::new(),
+                update_visible_entries_task: Task::ready(()),
+                tree_state: TreeState::default(),
+                marked_entries: Vec::new(),
+                selection: None,
+                mouse_down: false,
+                _project_subscription: project_subscription,
+            };
+            this.update_visible_entries(None, cx);
+            this
+        });
+
+        cx.subscribe_in(&project_panel, window, {
+            let project_panel = project_panel.downgrade();
+            move |workspace, _, event, window, cx| match event {
+                &Event::OpenedEntry {
+                    entry_id,
+                    focus_opened_item,
+                    allow_preview,
+                } => {
+                    let Some(worktree) = project.read(cx).worktree_for_entry(entry_id, cx) else {
+                        return;
+                    };
+                    let Some(entry) = worktree.read(cx).entry_for_id(entry_id) else {
+                        return;
+                    };
+
+                    let file_path = entry.path.clone();
+                    let worktree_id = worktree.read(cx).id();
+                    let entry_id = entry.id;
+
+                    workspace
+                        .open_path_preview(
+                            ProjectPath {
+                                worktree_id,
+                                path: file_path,
+                            },
+                            None,
+                            focus_opened_item,
+                            allow_preview,
+                            true,
+                            window,
+                            cx,
+                        )
+                        .detach_and_log_err(cx);
+
+                    if let Some(project_panel) = project_panel.upgrade() {
+                        let entry = SelectedEntry(entry_id);
+                        project_panel.update(cx, |project_panel, _| {
+                            project_panel.marked_entries.clear();
+                            project_panel.marked_entries.push(entry);
+                            project_panel.selection = Some(entry);
+                        });
+
+                        if !focus_opened_item {
+                            let focus_handle = project_panel.read(cx).focus_handle.clone();
+                            window.focus(&focus_handle, cx);
+                        }
+                    }
+                }
+            }
+        })
+        .detach();
+
+        project_panel
     }
 
     fn snapshot(&self, cx: &App) -> Option<Snapshot> {
@@ -110,19 +189,7 @@ impl ProjectPanel {
     fn details_for_entry(&self, snapshot: &Snapshot, entry: &Entry) -> EntryDetails {
         let expanded_dir_ids = self.tree_state.expanded_dir_ids.as_deref().unwrap_or(&[]);
         let is_expanded = entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_ok();
-        let raw_file_name = entry.path.file_name().unwrap_or_default();
-        let file_name = match entry.kind {
-            EntryKind::File => raw_file_name
-                .strip_suffix(".toml")
-                .unwrap_or(raw_file_name)
-                .to_string(),
-            EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
-                entry.path.file_name().map_or_else(
-                    || snapshot.root_name().as_unix_str().to_string(),
-                    |name| name.to_string(),
-                )
-            }
-        };
+        let file_name = file_name_for_entry(snapshot, entry);
         let depth = u16::try_from(entry.path.components().count()).unwrap_or(u16::MAX);
         let mut is_invalid = false;
         let prefix_label = match entry.request.as_ref() {
@@ -159,7 +226,11 @@ impl ProjectPanel {
         }
     }
 
-    fn update_visible_entries(&mut self, cx: &mut Context<Self>) {
+    fn update_visible_entries(
+        &mut self,
+        new_selected_entry: Option<ProjectEntryId>,
+        cx: &mut Context<Self>,
+    ) {
         let snapshot = self.snapshot(cx);
 
         if let Some(snapshot) = snapshot.as_ref() {
@@ -205,18 +276,7 @@ impl ProjectPanel {
 
                     let mut max_width_item = None;
                     for (index, entry) in entries.iter().enumerate() {
-                        let entry_label = match entry.kind {
-                            EntryKind::File => {
-                                let name = entry.path.file_name().unwrap_or_default();
-                                name.strip_suffix(".toml").unwrap_or(name)
-                            }
-                            EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
-                                entry
-                                    .path
-                                    .file_name()
-                                    .unwrap_or_else(|| snapshot.root_name().as_unix_str())
-                            }
-                        };
+                        let entry_label = file_name_for_entry(&snapshot, entry);
                         let prefix_chars = usize::from(entry.request.is_some()) * 5;
                         let width_estimate = item_width_estimate(
                             entry.path.components().count(),
@@ -242,6 +302,9 @@ impl ProjectPanel {
                 let (visible_entries, max_width_item_index) = visible_entries;
                 this.tree_state.visible_entries = visible_entries;
                 this.tree_state.max_width_item_index = max_width_item_index;
+                if let Some(entry_id) = new_selected_entry {
+                    this.selection = Some(SelectedEntry(entry_id));
+                }
                 cx.notify();
             })
             .ok();
@@ -372,7 +435,7 @@ impl ProjectPanel {
                     return;
                 };
                 expanded_dir_ids.insert(index, entry_id);
-                self.update_visible_entries(cx);
+                self.update_visible_entries(None, cx);
                 window.focus(&self.focus_handle, cx);
                 cx.notify();
             }
@@ -427,7 +490,7 @@ impl ProjectPanel {
             self.selection = Some(selection);
             self.marked_entries.clear();
             self.marked_entries.push(selection);
-            self.update_visible_entries(cx);
+            self.update_visible_entries(None, cx);
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
         }
@@ -444,7 +507,7 @@ impl ProjectPanel {
         };
 
         self.collapse_all_for_entry(selection.0, cx);
-        self.update_visible_entries(cx);
+        self.update_visible_entries(None, cx);
         cx.notify();
     }
 
@@ -460,7 +523,7 @@ impl ProjectPanel {
         };
         let Some(snapshot) = snapshot else {
             expanded_dir_ids.clear();
-            self.update_visible_entries(cx);
+            self.update_visible_entries(None, cx);
             cx.notify();
             return;
         };
@@ -471,7 +534,7 @@ impl ProjectPanel {
             expanded_dir_ids.clear();
         }
 
-        self.update_visible_entries(cx);
+        self.update_visible_entries(None, cx);
         cx.notify();
     }
 
@@ -491,7 +554,23 @@ impl ProjectPanel {
 
         if entry_kind.is_dir() {
             self.toggle_expanded(entry_id, window, cx);
+        } else {
+            Self::open_entry(entry_id, false, true, cx);
+            cx.notify();
         }
+    }
+
+    fn open_entry(
+        entry_id: ProjectEntryId,
+        focus_opened_item: bool,
+        allow_preview: bool,
+        cx: &mut Context<Self>,
+    ) {
+        cx.emit(Event::OpenedEntry {
+            entry_id,
+            focus_opened_item,
+            allow_preview,
+        });
     }
 
     fn toggle_expanded(
@@ -513,7 +592,7 @@ impl ProjectPanel {
             }
         }
 
-        self.update_visible_entries(cx);
+        self.update_visible_entries(None, cx);
         window.focus(&self.focus_handle, cx);
         cx.notify();
     }
@@ -534,7 +613,7 @@ impl ProjectPanel {
             self.expand_all_for_entry(entry_id, cx);
         }
 
-        self.update_visible_entries(cx);
+        self.update_visible_entries(None, cx);
         window.focus(&self.focus_handle, cx);
         cx.notify();
     }
@@ -787,11 +866,10 @@ impl ProjectPanel {
                             project_panel.toggle_expanded(entry_id, window, cx);
                         }
                     } else {
-                        project_panel.marked_entries.clear();
-                        project_panel.marked_entries.push(selection);
-                        project_panel.selection = Some(selection);
-                        window.focus(&project_panel.focus_handle, cx);
-                        cx.notify();
+                        let click_count = event.click_count();
+                        let focus_opened_item = click_count > 1;
+                        let allow_preview = click_count == 1;
+                        Self::open_entry(entry_id, focus_opened_item, allow_preview, cx);
                     }
                 }),
             )
@@ -817,6 +895,37 @@ fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) 
     let a = (a.path.as_ref(), a.is_file());
     let b = (b.path.as_ref(), b.is_file());
     util::path::compare_rel_paths_by(a, b, mode, order)
+}
+
+fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
+    match entry.kind {
+        EntryKind::File => request_name(entry).map_or_else(
+            || file_stem_for_entry(entry).to_string(),
+            ToString::to_string,
+        ),
+        EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
+            entry.path.file_name().map_or_else(
+                || snapshot.root_name().as_unix_str().to_string(),
+                ToString::to_string,
+            )
+        }
+    }
+}
+
+fn request_name(entry: &Entry) -> Option<&str> {
+    let Some(RequestFileState::Parsed(request)) = entry.request.as_ref() else {
+        return None;
+    };
+
+    request.meta.name.as_deref().and_then(|name| {
+        let name = name.trim();
+        if name.is_empty() { None } else { Some(name) }
+    })
+}
+
+fn file_stem_for_entry(entry: &Entry) -> &str {
+    let file_name = entry.path.file_name().unwrap_or_default();
+    file_name.strip_suffix(".toml").unwrap_or(file_name)
 }
 
 fn item_width_estimate(depth: usize, item_text_chars: usize, is_symlink: bool) -> usize {
@@ -961,7 +1070,7 @@ impl Render for ProjectPanel {
                                 };
 
                                 expanded_dir_ids.remove(index);
-                                this.update_visible_entries(cx);
+                                this.update_visible_entries(None, cx);
                                 window.focus(&this.focus_handle, cx);
                                 cx.notify();
                             },
@@ -1036,45 +1145,139 @@ impl Render for ProjectPanel {
 mod tests {
     use super::*;
 
-    use gpui::TestAppContext;
+    use gpui::{Entity, TestAppContext, VisualTestContext};
+    use indoc::indoc;
     use serde_json::json;
-    use std::sync::Arc;
+    use std::{ops::Range, sync::Arc};
 
+    use actions::workspace::project_panel;
     use fs::TempFs;
+    use project::{Project, ProjectPath};
+    use request_editor::RequestEditor;
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util::rel_path::rel_path;
     use util_macros::path;
+    use workspace::{Root, SharedState, Workspace};
+
+    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            workspace::init(shared_state, cx);
+            crate::init(cx);
+            editor::init(cx);
+            request_editor::init(cx);
+        });
+    }
+
+    fn toggle_expand_dir(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
+        let path = rel_path(path);
+        panel.update_in(cx, |panel, window, cx| {
+            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+                let worktree = worktree.read(cx);
+                if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
+                    && let Some(entry) = worktree.entry_for_path(relative_path)
+                {
+                    panel.toggle_expanded(entry.id, window, cx);
+                    return;
+                }
+            }
+
+            panic!("No worktree for path {path:?}");
+        });
+        cx.run_until_parked();
+    }
+
+    fn select_path(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
+        let path = rel_path(path);
+        panel.update(cx, |panel, cx| {
+            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+                let worktree = worktree.read(cx);
+                if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
+                    && let Some(entry) = worktree.entry_for_path(relative_path)
+                {
+                    panel.update_visible_entries(Some(entry.id), cx);
+                    return;
+                }
+            }
+
+            panic!("No worktree for path {path:?}");
+        });
+        cx.run_until_parked();
+    }
 
     fn visible_entries_as_strings(
-        panel: &ProjectPanel,
+        panel: &Entity<ProjectPanel>,
         range: Range<usize>,
-        cx: &App,
+        cx: &mut VisualTestContext,
     ) -> Vec<String> {
-        let snapshot = panel
-            .snapshot(cx)
-            .expect("project panel should have a snapshot");
+        panel.update(cx, |panel, cx| {
+            let snapshot = panel
+                .snapshot(cx)
+                .expect("project panel should have a snapshot");
 
-        panel
-            .tree_state
-            .visible_entries
-            .iter()
-            .skip(range.start)
-            .take(range.end.saturating_sub(range.start))
-            .map(|entry| {
-                let details = panel.details_for_entry(&snapshot, entry);
-                let indent = "    ".repeat(usize::from(details.depth));
-                let icon = if details.kind.is_dir() {
-                    if details.is_expanded { "v " } else { "> " }
-                } else {
-                    "  "
-                };
-                let marked = if details.is_marked {
-                    "  <== marked"
-                } else {
-                    ""
-                };
+            panel
+                .tree_state
+                .visible_entries
+                .iter()
+                .skip(range.start)
+                .take(range.end.saturating_sub(range.start))
+                .map(|entry| {
+                    let details = panel.details_for_entry(&snapshot, entry);
+                    let indent = "    ".repeat(usize::from(details.depth));
+                    let icon = if details.kind.is_dir() {
+                        if details.is_expanded { "v " } else { "> " }
+                    } else {
+                        "  "
+                    };
+                    let selected = if details.is_selected {
+                        "  <== selected"
+                    } else {
+                        ""
+                    };
+                    let marked = if details.is_marked {
+                        "  <== marked"
+                    } else {
+                        ""
+                    };
 
-                format!("{indent}{icon}{}{marked}", details.file_name)
-            })
-            .collect()
+                    format!("{indent}{icon}{}{selected}{marked}", details.file_name)
+                })
+                .collect()
+        })
+    }
+
+    fn ensure_single_file_is_opened(
+        workspace: &Entity<Workspace>,
+        expected_path: &str,
+        cx: &mut VisualTestContext,
+    ) {
+        workspace.update_in(cx, |workspace, _, cx| {
+            let worktree = workspace
+                .project()
+                .read(cx)
+                .worktree(cx)
+                .expect("workspace should have a worktree");
+            let worktree_id = worktree.read(cx).id();
+
+            let open_project_paths = workspace
+                .pane()
+                .read(cx)
+                .active_item()
+                .and_then(|item| item.project_path(cx))
+                .into_iter()
+                .collect::<Vec<_>>();
+            assert_eq!(
+                open_project_paths,
+                vec![ProjectPath {
+                    worktree_id,
+                    path: Arc::from(rel_path(expected_path)),
+                }],
+                "Should have opened file, selected in project panel"
+            );
+        });
     }
 
     #[gpui::test]
@@ -1082,6 +1285,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state, cx);
+
         temp_fs.insert_tree(
             path!("project"),
             json!({
@@ -1095,11 +1301,14 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let panel = cx.new(|cx| ProjectPanel::new(&project, WeakEntity::new_invalid(), cx));
-
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        let actual = panel.read_with(cx, |panel, cx| visible_entries_as_strings(panel, 0..50, cx));
+        let actual = visible_entries_as_strings(&panel, 0..50, cx);
 
         assert_eq!(
             actual,
@@ -1112,5 +1321,104 @@ mod tests {
                 String::from("      zebra"),
             ]
         );
+    }
+
+    #[gpui::test]
+    async fn test_file_open_in_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "First"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/first"
+                    "#},
+                    "second.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Second"
+
+                        [config]
+                        method = "POST"
+                        url = "https://api.zaku.dev/second"
+                    "#},
+                    "third.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Third"
+
+                        [config]
+                        method = "PUT"
+                        url = "https://api.zaku.dev/third"
+                    "#},
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/collection", cx);
+        select_path(&panel, "project/collection/first.toml", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open(&project_panel::Open, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          First  <== selected  <== marked"),
+                String::from("          Second"),
+                String::from("          Third"),
+            ]
+        );
+
+        ensure_single_file_is_opened(&workspace, "collection/first.toml", cx);
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert!(workspace.active_item_as::<RequestEditor>(cx).is_some());
+        });
+
+        select_path(&panel, "project/collection/second.toml", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open(&project_panel::Open, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          First"),
+                String::from("          Second  <== selected  <== marked"),
+                String::from("          Third"),
+            ]
+        );
+
+        ensure_single_file_is_opened(&workspace, "collection/second.toml", cx);
+        workspace.update_in(cx, |workspace, _, cx| {
+            assert!(workspace.active_item_as::<RequestEditor>(cx).is_some());
+        });
     }
 }

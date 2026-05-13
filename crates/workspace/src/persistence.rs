@@ -506,21 +506,16 @@ mod tests {
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(Workspace::create(workspace_id, shared_state, window, cx))
         });
-        root.update_in(cx, |root, window, cx| {
-            root.replace_workspace(window, cx);
-        });
-        cx.run_until_parked();
-
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
-        let workspace_id = workspace
-            .read_with(cx, |workspace, _| workspace.database_id())
-            .expect("workspace should have a database_id after initialization");
 
         let project_path = temp_fs.path().join(path!("project"));
         let open_workspace = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
         });
-        open_workspace.await.expect("workspace open should succeed");
+        let workspace = open_workspace.await.unwrap();
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .unwrap();
 
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
@@ -678,7 +673,7 @@ mod tests {
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));
 
-        workspace
+        let workspace = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_workspace_for_path(
                     project_path.clone(),
@@ -737,7 +732,7 @@ mod tests {
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));
 
-        workspace
+        let workspace = workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_workspace_for_path(
                     project_path.clone(),

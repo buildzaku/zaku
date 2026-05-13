@@ -12,7 +12,7 @@ use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{Color, IconName, Label, LabelCommon, LabelSize};
 
-use crate::{Workspace, pane::Pane, panel::Panel};
+use workspace::{Panel, Workspace, pane::Pane};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(
@@ -70,7 +70,7 @@ struct ResponseSummary {
 }
 
 #[derive(Clone, Default)]
-pub(crate) enum ResponseState {
+pub enum ResponseState {
     #[default]
     Idle,
     Fetching {
@@ -176,7 +176,7 @@ impl ResponsePanel {
         }
     }
 
-    pub(crate) fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) -> usize {
+    pub fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) -> usize {
         let was_focused = self.focus_handle.is_focused(window)
             || self.editor.focus_handle(cx).contains_focused(window, cx);
         let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer("", cx), cx));
@@ -200,7 +200,7 @@ impl ResponsePanel {
         request_id
     }
 
-    pub(crate) fn set_state(
+    pub fn set_state(
         &mut self,
         request_id: usize,
         state: ResponseState,
@@ -215,7 +215,7 @@ impl ResponsePanel {
         true
     }
 
-    pub(crate) fn set_payload<T: Into<String>>(
+    pub fn set_payload<T: Into<String>>(
         &mut self,
         request_id: usize,
         payload: T,

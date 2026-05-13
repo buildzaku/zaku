@@ -71,13 +71,14 @@ fn main() {
         zaku::handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
         theme::init(LoadThemes::All(Box::new(Assets)), cx);
         register_embedded_fonts(cx);
-        editor::init(cx);
         let session = cx.foreground_executor().block_on(session);
         let app_session = cx.new(|cx| AppSession::new(session, cx));
         let shared_state = Arc::new(SharedState::new(fs, app_session));
         workspace::init(shared_state.clone(), cx);
-        workspace::panel::project::init(cx);
-        workspace::panel::response::init(cx);
+        project_panel::init(cx);
+        editor::init(cx);
+        request_editor::init(cx);
+        response_panel::init(cx);
         zaku::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);

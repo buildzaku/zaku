@@ -174,6 +174,7 @@ impl RenderOnce for ButtonLike {
             .flex_row()
             .items_center()
             .justify_center()
+            .flex_none()
             .h(self.height.unwrap_or(self.size.rems().into()))
             .when_some(self.width, |this, width| this.w(width))
             .text_center()

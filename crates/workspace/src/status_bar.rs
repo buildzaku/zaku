@@ -90,6 +90,7 @@ impl StatusBar {
             .flex_row()
             .items_center()
             .gap_1()
+            .min_w_0()
             .overflow_x_hidden()
             .children(self.left_items.iter().map(|item| item.to_any()))
     }
@@ -100,6 +101,7 @@ impl StatusBar {
             .flex_row()
             .items_center()
             .gap_1()
+            .flex_shrink_0()
             .overflow_x_hidden()
             .children(self.right_items.iter().rev().map(|item| item.to_any()))
     }

@@ -1,90 +1,20 @@
-use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    Anchor, App, Context, Entity, FocusHandle, FocusOutEvent, Focusable, FontWeight, ScrollHandle,
-    Subscription, WeakEntity, Window, prelude::*,
+    AnyElement, App, ClickEvent, Context, Empty, Entity, EntityId, FocusHandle, FocusOutEvent,
+    Focusable, ScrollHandle, Subscription, WeakEntity, Window, prelude::*,
 };
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::mem;
 
-use actions::workspace::SendRequest;
-use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
-use input::InputField;
-use reqwest_client::ReqwestClient;
-use theme::ActiveTheme;
+use project::{Project, ProjectEntryId, ProjectPath};
+use theme::{ActiveTheme, ThemeSettings};
 use ui::{
-    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownStyle, FixedWidth, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
-    Label, ScrollAxes, Scrollbars, ToggleState, Tooltip, TrackLayout, WithScrollbar,
+    ButtonCommon, ButtonSize, Clickable, Color, IconButton, IconButtonShape, IconName, IconSize,
+    Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
 };
 
-use crate::{Workspace, panel::response::ResponseState, welcome::WelcomePage};
-
-fn normalize_url(url: &str) -> Option<Url> {
-    let url = url.trim();
-    if url.is_empty() {
-        return None;
-    }
-
-    let url = if url.starts_with("http://") || url.starts_with("https://") {
-        url.to_string()
-    } else {
-        format!("http://{url}")
-    };
-
-    Url::parse(&url).ok()
-}
-
-struct RequestConfig {
-    method: Method,
-    url: Entity<InputField>,
-    params: Vec<RequestParam>,
-}
-
-impl RequestConfig {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
-        Self {
-            method: Method::GET,
-            url: cx.new(|cx| InputField::new(window, cx, "https://example.com")),
-            params: Vec::new(),
-        }
-    }
-
-    fn add_param(&mut self, window: &mut Window, cx: &mut App) {
-        self.params.push(RequestParam::new(window, cx));
-    }
-
-    fn delete_param(&mut self, index: usize) {
-        if index < self.params.len() {
-            self.params.remove(index);
-        }
-    }
-}
-
-struct RequestParam {
-    name: Entity<InputField>,
-    value: Entity<InputField>,
-    disabled: bool,
-}
-
-impl RequestParam {
-    fn new(window: &mut Window, cx: &mut App) -> Self {
-        Self {
-            name: cx.new(|cx| InputField::new(window, cx, "Key")),
-            value: cx.new(|cx| InputField::new(window, cx, "Value")),
-            disabled: false,
-        }
-    }
-
-    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
-        self.disabled = disabled;
-        self.name
-            .update(cx, |name, cx| name.set_muted(disabled, window, cx));
-        self.value
-            .update(cx, |value, cx| value.set_muted(disabled, window, cx));
-    }
-}
+use crate::{
+    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Workspace,
+    WorkspaceItemBuilder, welcome::WelcomePage,
+};
 
 pub struct Pane {
     focus_handle: FocusHandle,
@@ -92,20 +22,33 @@ pub struct Pane {
     should_display_welcome_page: bool,
     welcome_page: Option<Entity<WelcomePage>>,
     workspace: WeakEntity<Workspace>,
-    http_client: Arc<dyn HttpClient>,
-    request: RequestConfig,
-    scroll_handle: ScrollHandle,
-    _subscriptions: Vec<Subscription>,
+    project: WeakEntity<Project>,
+    items: Vec<Box<dyn ItemHandle>>,
+    active_item_index: usize,
+    preview_item_id: Option<EntityId>,
+    tab_bar_scroll_handle: ScrollHandle,
+    item_subscriptions: Vec<(EntityId, Subscription)>,
+    _focus_subscriptions: Vec<Subscription>,
+}
+
+#[derive(Clone)]
+pub struct DraggedTab {
+    pub pane: Entity<Pane>,
+    pub item: Box<dyn ItemHandle>,
+    pub index: usize,
+    pub detail: usize,
+    pub is_active: bool,
 }
 
 impl Pane {
     pub fn new(
         workspace: WeakEntity<Workspace>,
+        project: &Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let focus_handle = cx.focus_handle();
-        let subscriptions = vec![
+        let focus_subscriptions = vec![
             cx.on_focus(&focus_handle, window, Pane::focus_in),
             cx.on_focus_in(&focus_handle, window, Pane::focus_in),
             cx.on_focus_out(&focus_handle, window, Pane::focus_out),
@@ -117,11 +60,634 @@ impl Pane {
             should_display_welcome_page: false,
             welcome_page: None,
             workspace,
-            http_client: Arc::new(ReqwestClient::new()),
-            request: RequestConfig::new(window, cx),
-            scroll_handle: ScrollHandle::new(),
-            _subscriptions: subscriptions,
+            project: project.downgrade(),
+            items: vec![],
+            active_item_index: 0,
+            preview_item_id: None,
+            tab_bar_scroll_handle: ScrollHandle::new(),
+            item_subscriptions: Vec::new(),
+            _focus_subscriptions: focus_subscriptions,
         }
+    }
+
+    pub fn workspace(&self) -> WeakEntity<Workspace> {
+        self.workspace.clone()
+    }
+
+    pub fn has_focus(&self, window: &Window, cx: &App) -> bool {
+        self.focus_handle.contains_focused(window, cx)
+            || self
+                .active_item()
+                .is_some_and(|item| item.item_focus_handle(cx).contains_focused(window, cx))
+    }
+
+    pub fn items(&self) -> impl DoubleEndedIterator<Item = &Box<dyn ItemHandle>> {
+        self.items.iter()
+    }
+
+    pub fn items_len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn active_item(&self) -> Option<Box<dyn ItemHandle>> {
+        self.items.get(self.active_item_index).cloned()
+    }
+
+    pub fn active_item_index(&self) -> usize {
+        self.active_item_index
+    }
+
+    pub(crate) fn set_preview_item_id(&mut self, preview_item_id: Option<EntityId>, _cx: &App) {
+        self.preview_item_id = preview_item_id;
+    }
+
+    pub fn preview_item(&self) -> Option<Box<dyn ItemHandle>> {
+        self.preview_item_id
+            .and_then(|id| self.items.iter().find(|item| item.item_id() == id))
+            .cloned()
+    }
+
+    pub fn preview_item_idx(&self) -> Option<usize> {
+        if let Some(preview_item_id) = self.preview_item_id {
+            self.items
+                .iter()
+                .position(|item| item.item_id() == preview_item_id)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_active_preview_item(&self, item_id: EntityId) -> bool {
+        self.preview_item_id == Some(item_id)
+    }
+
+    pub fn unpreview_item_if_preview(&mut self, item_id: EntityId) {
+        if self.is_active_preview_item(item_id) {
+            self.preview_item_id = None;
+        }
+    }
+
+    pub fn handle_item_edit(&mut self, item_id: EntityId, cx: &App) {
+        if let Some(preview_item) = self.preview_item()
+            && preview_item.item_id() == item_id
+            && !preview_item.preserve_preview(cx)
+        {
+            self.unpreview_item_if_preview(item_id);
+        }
+    }
+
+    pub fn item_for_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        cx: &App,
+    ) -> Option<Box<dyn ItemHandle>> {
+        self.items.iter().find_map(|item| {
+            if item.buffer_kind(cx) == ItemBufferKind::Singleton
+                && item.project_entry_ids(cx).as_slice() == [entry_id]
+            {
+                Some(item.boxed_clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn item_for_path(
+        &self,
+        project_path: ProjectPath,
+        cx: &App,
+    ) -> Option<Box<dyn ItemHandle>> {
+        self.items.iter().find_map(move |item| {
+            if item.buffer_kind(cx) == ItemBufferKind::Singleton
+                && item.project_path(cx).as_slice() == [project_path.clone()]
+            {
+                Some(item.boxed_clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn add_item(
+        &mut self,
+        item: Box<dyn ItemHandle>,
+        activate_pane: bool,
+        focus_item: bool,
+        activate: bool,
+        destination_index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let insertion_index = destination_index
+            .unwrap_or(self.active_item_index + 1)
+            .min(self.items.len());
+
+        let project_entry_id = if item.buffer_kind(cx) == ItemBufferKind::Singleton {
+            item.project_entry_ids(cx).first().copied()
+        } else {
+            None
+        };
+        let existing_item_index = self.items.iter().position(|existing_item| {
+            if existing_item.item_id() == item.item_id() {
+                true
+            } else if existing_item.buffer_kind(cx) == ItemBufferKind::Singleton {
+                existing_item
+                    .project_entry_ids(cx)
+                    .first()
+                    .is_some_and(|existing_entry_id| {
+                        Some(existing_entry_id) == project_entry_id.as_ref()
+                    })
+            } else {
+                false
+            }
+        });
+
+        if let Some(existing_item_index) = existing_item_index {
+            let mut insertion_index = insertion_index;
+
+            if existing_item_index != insertion_index {
+                let existing_item_is_active = existing_item_index == self.active_item_index;
+
+                if existing_item_is_active && destination_index.is_none() {
+                    insertion_index = existing_item_index;
+                } else {
+                    self.items.remove(existing_item_index);
+
+                    if existing_item_index < self.active_item_index {
+                        self.active_item_index -= 1;
+                    }
+
+                    insertion_index = insertion_index.min(self.items.len());
+                    self.items.insert(insertion_index, item.clone());
+
+                    if existing_item_is_active {
+                        self.active_item_index = insertion_index;
+                    } else if insertion_index <= self.active_item_index {
+                        self.active_item_index += 1;
+                    }
+
+                    cx.notify();
+                }
+            }
+
+            if activate {
+                self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
+            }
+
+            return;
+        }
+
+        let item_id = item.item_id();
+        let pane = cx.weak_entity();
+        let subscription = item.subscribe_to_item_events(
+            window,
+            cx,
+            Box::new(move |event, window, cx| {
+                if let Err(error) = pane.update(cx, |pane, cx| {
+                    pane.handle_item_event(item_id, event, window, cx);
+                }) {
+                    log::debug!("Failed to handle pane item event: {error:?}");
+                }
+            }),
+        );
+
+        self.items.insert(insertion_index, item);
+        self.item_subscriptions.push((item_id, subscription));
+        cx.notify();
+
+        if activate {
+            if insertion_index <= self.active_item_index
+                && self.preview_item_idx() != Some(self.active_item_index)
+            {
+                self.active_item_index += 1;
+            }
+
+            self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
+        } else if insertion_index <= self.active_item_index && self.items.len() > 1 {
+            self.active_item_index += 1;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn open_item(
+        &mut self,
+        project_entry_id: Option<ProjectEntryId>,
+        project_path: &ProjectPath,
+        focus_item: bool,
+        allow_preview: bool,
+        activate: bool,
+        suggested_position: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        build_item: WorkspaceItemBuilder,
+    ) -> Box<dyn ItemHandle> {
+        let mut existing_item = None;
+        if let Some(project_entry_id) = project_entry_id {
+            for (index, item) in self.items.iter().enumerate() {
+                if item.buffer_kind(cx) == ItemBufferKind::Singleton
+                    && item.project_entry_ids(cx).as_slice() == [project_entry_id]
+                {
+                    existing_item = Some((index, item.boxed_clone()));
+                    break;
+                }
+            }
+        } else {
+            for (index, item) in self.items.iter().enumerate() {
+                if item.buffer_kind(cx) == ItemBufferKind::Singleton
+                    && item.project_path(cx).as_ref() == Some(project_path)
+                {
+                    existing_item = Some((index, item.boxed_clone()));
+                    break;
+                }
+            }
+        }
+
+        let preview_was_active = self.preview_item_idx() == Some(self.active_item_index);
+
+        let set_up_existing_item =
+            |index: usize, pane: &mut Self, window: &mut Window, cx: &mut Context<Self>| {
+                if !allow_preview && let Some(item) = pane.items.get(index) {
+                    pane.unpreview_item_if_preview(item.item_id());
+                }
+
+                if activate {
+                    pane.activate_item(index, focus_item, focus_item, window, cx);
+                }
+            };
+        let set_up_new_item = |new_item: Box<dyn ItemHandle>,
+                               destination_index: Option<usize>,
+                               pane: &mut Self,
+                               window: &mut Window,
+                               cx: &mut Context<Self>| {
+            let new_item_id = new_item.item_id();
+
+            if allow_preview && preview_was_active {
+                pane.set_preview_item_id(Some(new_item_id), cx);
+            }
+
+            pane.add_item(
+                new_item,
+                true,
+                focus_item,
+                activate,
+                destination_index,
+                window,
+                cx,
+            );
+
+            if allow_preview && !preview_was_active {
+                pane.set_preview_item_id(Some(new_item_id), cx);
+            }
+        };
+
+        if let Some((index, existing_item)) = existing_item {
+            set_up_existing_item(index, self, window, cx);
+            existing_item
+        } else {
+            let destination_index = if allow_preview {
+                self.close_current_preview_item(window, cx)
+            } else {
+                suggested_position
+            };
+            let new_item = build_item(self, window, cx);
+            set_up_new_item(new_item.clone(), destination_index, self, window, cx);
+            new_item
+        }
+    }
+
+    pub fn remove_item(
+        &mut self,
+        item_id: EntityId,
+        activate: bool,
+        focus_item: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Box<dyn ItemHandle>> {
+        let item_index = self.index_for_item_id(item_id)?;
+        let was_active = item_index == self.active_item_index;
+        let should_focus_pane =
+            was_active && self.items.len() == 1 && (focus_item || self.has_focus(window, cx));
+        let item = self.items.remove(item_index);
+
+        if should_focus_pane {
+            self.focus_handle.focus(window, cx);
+        }
+
+        self.item_subscriptions
+            .retain(|(subscription_item_id, _)| *subscription_item_id != item_id);
+
+        item.deactivated(window, cx);
+        item.on_removed(cx);
+
+        if self.is_active_preview_item(item_id) {
+            self.preview_item_id = None;
+        }
+
+        if self.items.is_empty() {
+            self.active_item_index = 0;
+        } else if item_index < self.active_item_index {
+            self.active_item_index -= 1;
+        } else if self.active_item_index >= self.items.len() {
+            self.active_item_index = self.items.len() - 1;
+        }
+
+        if activate && was_active && !self.items.is_empty() {
+            self.activate_item(self.active_item_index, false, focus_item, window, cx);
+        } else {
+            cx.notify();
+        }
+
+        Some(item)
+    }
+
+    pub fn close_current_preview_item(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        let item_index = self.preview_item_idx()?;
+        let item_id = self.preview_item_id?;
+
+        self.preview_item_id = None;
+        let previous_active_item_index = self.active_item_index;
+        self.remove_item(item_id, false, false, window, cx);
+        self.active_item_index = previous_active_item_index;
+
+        if item_index < previous_active_item_index {
+            self.active_item_index -= 1;
+        }
+
+        if item_index < self.items.len() {
+            Some(item_index)
+        } else {
+            None
+        }
+    }
+
+    pub fn activate_item(
+        &mut self,
+        item_index: usize,
+        _activate_pane: bool,
+        focus_item: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if item_index >= self.items.len() {
+            return;
+        }
+
+        let previous_active_item_index = mem::replace(&mut self.active_item_index, item_index);
+        if previous_active_item_index != self.active_item_index
+            && let Some(previous_item) = self.items.get(previous_active_item_index)
+        {
+            previous_item.deactivated(window, cx);
+        }
+
+        if focus_item {
+            self.focus_active_item(window, cx);
+        }
+
+        self.update_active_tab(item_index);
+        cx.notify();
+    }
+
+    fn update_active_tab(&mut self, item_index: usize) {
+        self.tab_bar_scroll_handle.scroll_to_item(item_index);
+    }
+
+    fn focus_active_item(&self, window: &mut Window, cx: &mut App) {
+        if let Some(active_item) = self.active_item() {
+            active_item.item_focus_handle(cx).focus(window, cx);
+        }
+    }
+
+    pub fn index_for_item(&self, item: &dyn ItemHandle) -> Option<usize> {
+        self.index_for_item_id(item.item_id())
+    }
+
+    fn index_for_item_id(&self, item_id: EntityId) -> Option<usize> {
+        self.items.iter().position(|item| item.item_id() == item_id)
+    }
+
+    pub fn item_for_index(&self, index: usize) -> Option<&dyn ItemHandle> {
+        self.items.get(index).map(|item| item.as_ref())
+    }
+
+    fn handle_item_event(
+        &mut self,
+        item_id: EntityId,
+        event: ItemEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            ItemEvent::CloseItem => {
+                self.remove_item(item_id, true, true, window, cx);
+            }
+            ItemEvent::UpdateTab => {
+                cx.notify();
+            }
+            ItemEvent::Edit => {
+                self.handle_item_edit(item_id, cx);
+                cx.notify();
+            }
+        }
+    }
+
+    fn render_tab_bar(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.workspace.upgrade().is_none() {
+            return Empty.into_any();
+        }
+
+        let tab_items = self
+            .items
+            .iter()
+            .enumerate()
+            .zip(tab_details(&self.items, window, cx))
+            .map(|((item_index, item), detail)| {
+                self.render_tab(item_index, item.as_ref(), detail, window, cx)
+            })
+            .collect::<Vec<_>>();
+
+        TabBar::new("tab-bar")
+            .track_scroll(&self.tab_bar_scroll_handle)
+            .children(tab_items)
+            .child(Self::render_tab_bar_drop_target(cx))
+            .into_any_element()
+    }
+
+    fn render_tab_bar_drop_target(cx: &mut Context<Pane>) -> AnyElement {
+        gpui::div()
+            .id("tab-bar-drop-target")
+            .min_w_6()
+            .h(Tab::container_height(cx))
+            .flex_1()
+            .drag_over::<DraggedTab>(|bar, _, _, cx| {
+                bar.bg(cx.theme().colors().drop_target_background)
+            })
+            .on_drop(
+                cx.listener(move |pane, dragged_tab: &DraggedTab, window, cx| {
+                    pane.handle_tab_drop(dragged_tab, pane.items.len(), window, cx);
+                }),
+            )
+            .into_any_element()
+    }
+
+    fn render_tab(
+        &self,
+        item_index: usize,
+        item: &dyn ItemHandle,
+        detail: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let is_active = item_index == self.active_item_index;
+        let is_preview = self
+            .preview_item_id
+            .is_some_and(|preview_item_id| preview_item_id == item.item_id());
+        let item_id = item.item_id();
+        let is_first_item = item_index == 0;
+        let is_last_item = item_index + 1 == self.items.len();
+        let position_relative_to_active_item = item_index.cmp(&self.active_item_index);
+
+        let label = item.tab_content(
+            TabContentParams {
+                detail: Some(detail),
+                selected: is_active,
+                preview: is_preview,
+                deemphasized: !self.has_focus(window, cx),
+            },
+            window,
+            cx,
+        );
+        let icon = item
+            .tab_icon(window, cx)
+            .map(|icon| icon.size(IconSize::Small).color(Color::Muted));
+        let is_dirty = item.is_dirty(cx);
+        let tab_tooltip_content = item.tab_tooltip_content(cx);
+        let tab_control_group_name = format!("tab-control-{item_index}");
+
+        let close_button = IconButton::new(("close-tab", item_index), IconName::Close)
+            .shape(IconButtonShape::Square)
+            .icon_color(Color::Muted)
+            .size(ButtonSize::None)
+            .icon_size(IconSize::Small)
+            .tooltip(Tooltip::text("Close Tab"))
+            .on_click(cx.listener(move |pane, _, window, cx| {
+                pane.remove_item(item_id, true, true, window, cx);
+            }));
+        let tab_control = if is_dirty {
+            ui::h_flex()
+                .group(tab_control_group_name.clone())
+                .relative()
+                .size(gpui::px(14.0))
+                .justify_center()
+                .child(render_item_indicator(tab_control_group_name.clone(), cx))
+                .child(
+                    ui::h_flex()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .justify_center()
+                        .visible_on_hover(tab_control_group_name)
+                        .child(close_button),
+                )
+                .into_any_element()
+        } else if is_active {
+            close_button.into_any_element()
+        } else {
+            close_button.visible_on_hover("tab").into_any_element()
+        };
+
+        Tab::new(item_index)
+            .position(if is_first_item {
+                TabPosition::First
+            } else if is_last_item {
+                TabPosition::Last
+            } else {
+                TabPosition::Middle(position_relative_to_active_item)
+            })
+            .toggle_state(is_active)
+            .on_click(
+                cx.listener(move |pane: &mut Self, event: &ClickEvent, window, cx| {
+                    if event.click_count() > 1 {
+                        pane.unpreview_item_if_preview(item_id);
+                    }
+
+                    pane.activate_item(item_index, true, true, window, cx);
+                }),
+            )
+            .on_drag(
+                DraggedTab {
+                    item: item.boxed_clone(),
+                    pane: cx.entity(),
+                    detail,
+                    is_active,
+                    index: item_index,
+                },
+                |tab, _, _, cx| cx.new(|_| tab.clone()),
+            )
+            .drag_over::<DraggedTab>(move |tab, dragged_tab: &DraggedTab, _, cx| {
+                let mut styled_tab = tab
+                    .bg(cx.theme().colors().drop_target_background)
+                    .border_color(cx.theme().colors().drop_target_border)
+                    .border_0();
+
+                if item_index < dragged_tab.index {
+                    styled_tab = styled_tab.border_l_2();
+                } else if item_index > dragged_tab.index {
+                    styled_tab = styled_tab.border_r_2();
+                }
+
+                styled_tab
+            })
+            .on_drop(
+                cx.listener(move |pane, dragged_tab: &DraggedTab, window, cx| {
+                    pane.handle_tab_drop(dragged_tab, item_index, window, cx);
+                }),
+            )
+            .end_slot(tab_control)
+            .child(
+                ui::h_flex()
+                    .id(("pane-tab-content", item_index))
+                    .gap_1()
+                    .when_some(icon, |this, icon| this.child(icon))
+                    .child(label)
+                    .map(|this| match tab_tooltip_content {
+                        Some(TabTooltipContent::Text(text)) => this.tooltip(Tooltip::text(text)),
+                        Some(TabTooltipContent::Custom(element_fn)) => {
+                            this.tooltip(move |window, cx| element_fn(window, cx))
+                        }
+                        None => this,
+                    }),
+            )
+            .into_any_element()
+    }
+
+    pub fn handle_tab_drop(
+        &mut self,
+        dragged_tab: &DraggedTab,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if dragged_tab.pane != cx.entity() {
+            return;
+        }
+
+        let item_id = dragged_tab.item.item_id();
+        self.unpreview_item_if_preview(item_id);
+        self.add_item(
+            dragged_tab.item.clone(),
+            true,
+            true,
+            true,
+            Some(index),
+            window,
+            cx,
+        );
+        window.focus(&self.focus_handle(cx), cx);
     }
 
     pub fn set_should_display_welcome_page(&mut self, should_display_welcome_page: bool) {
@@ -135,16 +701,21 @@ impl Pane {
     fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.was_focused {
             self.was_focused = true;
+            if self.items.get(self.active_item_index).is_some() {
+                self.update_active_tab(self.active_item_index);
+            }
             cx.notify();
         }
 
-        if self.focus_handle.is_focused(window) {
-            cx.on_next_frame(window, |_, _, cx| {
-                cx.notify();
-            });
-        }
+        if let Some(active_item) = self.active_item() {
+            if self.focus_handle.is_focused(window) {
+                cx.on_next_frame(window, |_, _, cx| {
+                    cx.notify();
+                });
 
-        if self.should_display_welcome_page()
+                active_item.item_focus_handle(cx).focus(window, cx);
+            }
+        } else if self.should_display_welcome_page()
             && let Some(welcome_page) = self.welcome_page.as_ref()
             && self.focus_handle.is_focused(window)
         {
@@ -156,227 +727,6 @@ impl Pane {
         self.was_focused = false;
         cx.notify();
     }
-
-    pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let request_method = self.request.method.clone();
-        let request_url = self.request.url.read(cx).text(cx);
-        let request_params = self
-            .request
-            .params
-            .iter()
-            .filter_map(|request_param| {
-                if request_param.disabled {
-                    return None;
-                }
-
-                let name = request_param.name.read(cx).text(cx).trim().to_string();
-                if name.is_empty() {
-                    return None;
-                }
-
-                let value = request_param.value.read(cx).text(cx);
-                Some((name, value))
-            })
-            .collect::<Vec<_>>();
-
-        let Ok(response_panel) = self.workspace.update(cx, |workspace, cx| {
-            workspace.open_response_panel(window, cx)
-        }) else {
-            return;
-        };
-
-        let request_id = response_panel.update(cx, |response_panel, cx| {
-            let request_id = response_panel.begin_response(window, cx);
-            response_panel.set_state(
-                request_id,
-                ResponseState::Fetching {
-                    bytes_received: 0,
-                    elapsed_duration: Duration::default(),
-                },
-                cx,
-            );
-            request_id
-        });
-
-        let request_started_at = Instant::now();
-        let http_client = self.http_client.clone();
-
-        window
-            .spawn(cx, {
-                let response_panel = response_panel.clone();
-                async move |cx| {
-                    let Some(mut request_url) = normalize_url(&request_url) else {
-                        if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                            response_panel.set_state(
-                                request_id,
-                                ResponseState::Error {
-                                    bytes_received: 0,
-                                    elapsed_duration: request_started_at.elapsed(),
-                                },
-                                cx,
-                            );
-                            response_panel.set_payload(request_id, "Error: invalid URL", cx);
-                        }) {
-                            log::debug!("Failed to update response panel: {error:?}");
-                        }
-                        return;
-                    };
-
-                    {
-                        let mut query_pairs = request_url.query_pairs_mut();
-                        for (name, value) in request_params {
-                            query_pairs.append_pair(&name, &value);
-                        }
-                    }
-
-                    let request = match Builder::new()
-                        .method(request_method)
-                        .uri(request_url.as_str())
-                        .follow_redirects(RedirectPolicy::FollowAll)
-                        .body(AsyncBody::empty())
-                    {
-                        Ok(request) => request,
-                        Err(error) => {
-                            if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                                response_panel.set_state(
-                                    request_id,
-                                    ResponseState::Error {
-                                        bytes_received: 0,
-                                        elapsed_duration: request_started_at.elapsed(),
-                                    },
-                                    cx,
-                                );
-                                response_panel.set_payload(request_id, format!("Error: {error}"), cx);
-                            }) {
-                                log::debug!("Failed to update response panel: {error:?}");
-                            }
-                            return;
-                        }
-                    };
-
-                    let progress_timer =
-                        cx.background_executor().timer(Duration::from_millis(50)).fuse();
-                    futures::pin_mut!(progress_timer);
-
-                    let send_request = http_client.send(request).fuse();
-                    futures::pin_mut!(send_request);
-
-                    let mut response = loop {
-                        futures::select_biased! {
-                            response = send_request => {
-                                match response {
-                                    Ok(response) => break response,
-                                    Err(error) => {
-                                        if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                                            response_panel.set_state(request_id, ResponseState::Error {
-                                                bytes_received: 0,
-                                                elapsed_duration: request_started_at.elapsed(),
-                                            }, cx);
-                                            response_panel.set_payload(request_id, format!("Error: {error}"), cx);
-                                        }) {
-                                            log::debug!("Failed to update response panel: {error:?}");
-                                        }
-                                        return;
-                                    }
-                                }
-                            }
-                            () = progress_timer => {
-                                let still_active = response_panel.update(cx, |response_panel, cx| {
-                                    response_panel.set_state(
-                                        request_id,
-                                        ResponseState::Fetching {
-                                            bytes_received: 0,
-                                            elapsed_duration: request_started_at.elapsed(),
-                                        },
-                                        cx,
-                                    )
-                                });
-                                if !still_active {
-                                    return;
-                                }
-
-                                progress_timer.set(
-                                    cx.background_executor().timer(Duration::from_millis(50)).fuse(),
-                                );
-                            }
-                        }
-                    };
-
-                    let status_code = response.status();
-                    let mut bytes_received = 0_u64;
-                    let mut payload = Vec::new();
-                    let mut buffer = [0; 8192];
-                    let mut read_error = None;
-
-                    loop {
-                        let read_response_body = response.body_mut().read(&mut buffer).fuse();
-                        futures::pin_mut!(read_response_body);
-
-                        futures::select_biased! {
-                            read_result = read_response_body => {
-                                match read_result {
-                                    Ok(0) => break,
-                                    Ok(chunk) => {
-                                        bytes_received += u64::try_from(chunk).unwrap();
-                                        payload.extend_from_slice(&buffer[..chunk]);
-                                    }
-                                    Err(error) => {
-                                        read_error = Some(error);
-                                        break;
-                                    }
-                                }
-                            }
-                            () = progress_timer => {
-                                let still_active = response_panel.update(cx, |response_panel, cx| {
-                                    response_panel.set_state(
-                                        request_id,
-                                        ResponseState::Fetching {
-                                            bytes_received,
-                                            elapsed_duration: request_started_at.elapsed(),
-                                        },
-                                        cx,
-                                    )
-                                });
-                                if !still_active {
-                                    return;
-                                }
-
-                                progress_timer.set(
-                                    cx.background_executor().timer(Duration::from_millis(50)).fuse(),
-                                );
-                            }
-                        }
-                    }
-
-                    let elapsed_duration = request_started_at.elapsed();
-                    let (payload, response_state) = match read_error {
-                        Some(ref error) => (
-                            format!("(failed to read response body: {error})"),
-                            ResponseState::Error {
-                                bytes_received,
-                                elapsed_duration,
-                            },
-                        ),
-                        None => (
-                            String::from_utf8_lossy(&payload).into_owned(),
-                            ResponseState::Completed {
-                                status_code,
-                                bytes_received,
-                                elapsed_duration,
-                            },
-                        ),
-                    };
-
-                    if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                        response_panel.set_state(request_id, response_state, cx);
-                        response_panel.set_payload(request_id, payload, cx);
-                    }) {
-                        log::debug!("Failed to update response panel: {error:?}");
-                    }
-                }
-            })
-            .detach();
-    }
 }
 
 impl Focusable for Pane {
@@ -385,12 +735,34 @@ impl Focusable for Pane {
     }
 }
 
+impl Render for DraggedTab {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let label = self.item.tab_content(
+            TabContentParams {
+                detail: Some(self.detail),
+                selected: false,
+                preview: false,
+                deemphasized: false,
+            },
+            window,
+            cx,
+        );
+        let ui_font = ThemeSettings::get_global(cx).ui_font.clone();
+
+        Tab::new("dragged-tab")
+            .toggle_state(self.is_active)
+            .child(label)
+            .render(window, cx)
+            .font(ui_font)
+    }
+}
+
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let has_worktree = self
-            .workspace
+            .project
             .upgrade()
-            .is_some_and(|workspace| workspace.read(cx).has_worktree(cx));
+            .is_some_and(|project| project.read(cx).worktree(cx).is_some());
 
         if !has_worktree && self.should_display_welcome_page() {
             if self.welcome_page.is_none() {
@@ -413,211 +785,97 @@ impl Render for Pane {
                 );
         }
 
-        let url = self.request.url.clone();
-        let request_params = self
-            .request
-            .params
-            .iter()
-            .enumerate()
-            .map(|(index, request_param)| {
-                let name = request_param.name.clone();
-                let value = request_param.value.clone();
+        let active_item = self.active_item().map(|item| item.to_any_view());
+        let should_render_tab_bar = !self.items.is_empty();
 
-                ui::h_flex()
-                    .id(("request-param-row", index))
-                    .w_full()
-                    .child(
-                        gpui::div().pr_1p5().child(
-                            ui::checkbox(
-                                ("request-param-disabled", index),
-                                ToggleState::from(!request_param.disabled),
-                            )
-                            .on_click(cx.listener(
-                                move |pane, new_state: &ToggleState, window, cx| {
-                                    if let Some(request_param) = pane.request.params.get_mut(index)
-                                    {
-                                        request_param.set_disabled(
-                                            !new_state.selected(),
-                                            window,
-                                            cx,
-                                        );
-                                        cx.notify();
-                                    }
-                                },
-                            )),
-                        ),
-                    )
-                    .child(
-                        ui::h_flex()
-                            .flex_1()
-                            .gap_2p5()
-                            .child(gpui::div().flex_1().child(name))
-                            .child(gpui::div().flex_1().child(value))
-                            .child(
-                                IconButton::new(("request-param-delete", index), IconName::Trash)
-                                    .shape(IconButtonShape::Square)
-                                    .variant(ButtonVariant::Outline)
-                                    .icon_color(Color::Muted)
-                                    .tooltip(Tooltip::text("Delete"))
-                                    .on_click(cx.listener(move |pane, _, _, cx| {
-                                        pane.request.delete_param(index);
-                                        cx.notify();
-                                    })),
-                            ),
-                    )
-            })
-            .collect::<Vec<_>>();
-        let request_method_menu = {
-            let available_request_methods = [
-                Method::GET,
-                Method::POST,
-                Method::PUT,
-                Method::PATCH,
-                Method::DELETE,
-                Method::HEAD,
-                Method::OPTIONS,
-            ];
-            let selected_request_method = self.request.method.clone();
-            let pane = cx.weak_entity();
-
-            ContextMenu::build(window, cx, move |menu, _, _| {
-                let mut menu = menu;
-                for request_method in available_request_methods {
-                    let toggled = request_method == selected_request_method;
-                    let pane = pane.clone();
-                    let request_method_for_handler = request_method.clone();
-                    menu = menu.toggleable_entry(
-                        request_method.as_str().to_owned(),
-                        toggled,
-                        IconPosition::End,
-                        None,
-                        move |_, cx| {
-                            if let Err(error) = pane.update(cx, |pane, cx| {
-                                pane.request.method = request_method_for_handler.clone();
-                                cx.notify();
-                            }) {
-                                log::debug!("Failed to update request method: {error:?}");
-                            }
-                        },
-                    );
-                }
-                menu
-            })
-        };
-
-        let theme_colors = cx.theme().colors();
-
-        ui::v_flex()
+        gpui::div()
             .track_focus(&self.focus_handle)
+            .key_context("Pane")
+            .flex()
+            .flex_col()
             .size_full()
-            .bg(theme_colors.panel_background)
+            .overflow_hidden()
+            .bg(cx.theme().colors().panel_background)
+            .when(should_render_tab_bar, |this| {
+                this.child(self.render_tab_bar(window, cx))
+            })
             .child(
-                ui::h_flex()
-                    .w_full()
-                    .px_3()
-                    .pt_3()
-                    .child(Label::new("HTTP Request")),
-            )
-            .child(
-                ui::h_flex()
-                    .w_full()
-                    .px_3()
-                    .py_2()
-                    .gap_2()
-                    .key_context("RequestUrl")
-                    .on_action(cx.listener(move |pane, _: &SendRequest, window, cx| {
-                        pane.send_request(window, cx);
-                    }))
-                    .child(
-                        DropdownMenu::new(
-                            "request-method",
-                            self.request.method.as_str().to_owned(),
-                            request_method_menu,
-                        )
-                        .style(DropdownStyle::Outlined)
-                        .attach(Anchor::BottomLeft)
-                        .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
-                        .trigger_size(ButtonSize::Large),
-                    )
-                    .child(gpui::div().flex_1().child(url))
-                    .child(
-                        Button::new("request-send", "Send")
-                            .variant(ButtonVariant::Accent)
-                            .size(ButtonSize::Large)
-                            .width(ui::rems_from_px(60.0))
-                            .font_weight(FontWeight::MEDIUM)
-                            .on_click(cx.listener(move |pane, _, window, cx| {
-                                pane.send_request(window, cx);
-                            })),
-                    ),
-            )
-            .child(
-                ui::v_flex()
-                    .id("request-params")
-                    .w_full()
+                gpui::div()
                     .flex_1()
-                    .min_h_0()
-                    .child(
-                        gpui::div()
-                            .id("request-params-scroll")
-                            .w_full()
-                            .flex_1()
-                            .min_h_0()
-                            .child(
-                                ui::v_flex()
-                                    .id("request-params-content")
-                                    .track_scroll(&self.scroll_handle)
-                                    .size_full()
-                                    .min_w_0()
-                                    .overflow_y_scroll()
-                                    .child(
-                                        ui::v_flex()
-                                            .w_full()
-                                            .min_w_0()
-                                            .pl_2()
-                                            .pr(gpui::px(20.0))
-                                            .gap_2()
-                                            .pb_3()
-                                            .child(
-                                                ui::h_flex()
-                                                    .w_full()
-                                                    .pl_1()
-                                                    .child(Label::new("Query Parameters")),
-                                            )
-                                            .children(request_params)
-                                            .child(
-                                                ui::h_flex().pl_1().child(
-                                                    Button::new(
-                                                        "request-param-add",
-                                                        "Add Parameter",
-                                                    )
-                                                    .icon(IconName::Plus)
-                                                    .icon_size(IconSize::Small)
-                                                    .icon_color(Color::Muted)
-                                                    .variant(ButtonVariant::Outline)
-                                                    .size(ButtonSize::Medium)
-                                                    .on_click(cx.listener(
-                                                        move |pane, _, window, cx| {
-                                                            pane.request.add_param(window, cx);
-                                                            cx.notify();
-                                                        },
-                                                    )),
-                                                ),
-                                            ),
-                                    ),
-                            )
-                            .custom_scrollbars(
-                                Scrollbars::new(ScrollAxes::Vertical)
-                                    .tracked_scroll_handle(&self.scroll_handle)
-                                    .with_track_along(
-                                        ScrollAxes::Vertical,
-                                        theme_colors.scrollbar_track_background,
-                                        TrackLayout::Overlay,
-                                    ),
-                                window,
-                                cx,
-                            ),
-                    ),
+                    .overflow_hidden()
+                    .when_some(active_item, |this, active_item| this.child(active_item)),
             )
+    }
+}
+
+fn render_item_indicator(group_name: String, cx: &App) -> AnyElement {
+    gpui::div()
+        .size(gpui::px(6.0))
+        .rounded_sm()
+        .bg(cx.theme().colors().text_accent)
+        .group_hover(group_name, |style| style.invisible())
+        .into_any_element()
+}
+
+fn tab_details(items: &[Box<dyn ItemHandle>], _window: &Window, cx: &App) -> Vec<usize> {
+    util::disambiguate::compute_disambiguation_details(items, |item, detail| {
+        item.tab_content_text(detail, cx)
+    })
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    use gpui::VisualTestContext;
+
+    use crate::item::test::TestItem;
+
+    pub fn add_labeled_item(
+        pane: &Entity<Pane>,
+        label: &str,
+        is_dirty: bool,
+        cx: &mut VisualTestContext,
+    ) -> Box<Entity<TestItem>> {
+        pane.update_in(cx, |pane, window, cx| {
+            let labeled_item =
+                Box::new(cx.new(|cx| TestItem::new(cx).with_label(label).with_dirty(is_dirty)));
+            pane.add_item(labeled_item.clone(), false, false, true, None, window, cx);
+            labeled_item
+        })
+    }
+
+    #[track_caller]
+    pub fn assert_item_labels<const COUNT: usize>(
+        pane: &Entity<Pane>,
+        expected_states: [&str; COUNT],
+        cx: &mut VisualTestContext,
+    ) {
+        let actual_states = pane.update(cx, |pane, cx| {
+            pane.items()
+                .enumerate()
+                .map(|(index, item)| {
+                    let mut state = item
+                        .to_any_view()
+                        .downcast::<TestItem>()
+                        .unwrap()
+                        .read(cx)
+                        .label
+                        .clone();
+                    if index == pane.active_item_index() {
+                        state.push('*');
+                    }
+                    if item.is_dirty(cx) {
+                        state.push('^');
+                    }
+                    state
+                })
+                .collect::<Vec<_>>()
+        });
+
+        assert_eq!(
+            actual_states, expected_states,
+            "pane items do not match expectation"
+        );
     }
 }
