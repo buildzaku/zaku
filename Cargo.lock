@@ -8235,6 +8235,7 @@ dependencies = [
  "util 0.0.0",
  "util_macros 0.0.0",
  "uuid",
+ "worktree",
 ]
 
 [[package]]

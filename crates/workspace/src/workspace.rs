@@ -39,6 +39,10 @@ use actions::{
     },
     zaku::{Minimize, Zoom},
 };
+
+#[cfg(any(test, feature = "test-support"))]
+use fs::TempFs;
+
 use http_client::HttpClient;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectPath};
@@ -169,7 +173,7 @@ impl SharedState {
     pub fn test(cx: &mut App) -> Arc<Self> {
         use http_client::FakeHttpClient;
 
-        let fs = fs::TempFs::new(cx.background_executor().clone());
+        let fs = TempFs::new(cx.background_executor().clone());
         let http_client = FakeHttpClient::with_404_response();
         let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
 
@@ -1475,6 +1479,7 @@ mod tests {
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
+    use worktree::WorktreeModelHandle;
 
     use crate::{
         dock::test::TestPanel,
@@ -1556,6 +1561,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -1632,6 +1641,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let second_open = workspace.update_in(cx, |workspace, _, cx| {
             workspace.project().update(cx, |project, cx| {
@@ -1724,6 +1737,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -2034,6 +2051,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
@@ -2083,6 +2104,10 @@ mod tests {
         first_workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = first_workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         assert_eq!(cx.windows().len(), 1);
         let root_window_id = cx.update(|window, _| window.window_handle().window_id());
@@ -2152,6 +2177,10 @@ mod tests {
         first_workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = first_workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         assert_eq!(cx.windows().len(), 1);
 
@@ -2231,6 +2260,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
@@ -2318,6 +2351,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -2412,6 +2449,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let (current_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);

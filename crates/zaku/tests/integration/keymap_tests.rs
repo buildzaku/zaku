@@ -1,4 +1,4 @@
-use futures::{FutureExt, select_biased};
+use futures::FutureExt;
 use gpui::{Action, AnyWindowHandle, NoAction, TestAppContext, Unbind};
 use std::{collections::BTreeSet, path::PathBuf, sync::Arc, time::Duration};
 
@@ -90,7 +90,7 @@ async fn wait_until(cx: &TestAppContext, condition: impl Fn(&TestAppContext) -> 
     futures::pin_mut!(timeout);
 
     while !condition(cx) {
-        select_biased! {
+        futures::select_biased! {
             () = cx.background_executor.timer(Duration::from_millis(10)).fuse() => {}
             () = timeout => panic!("timed out waiting for polled condition"),
         }

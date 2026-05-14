@@ -57,3 +57,4 @@ settings = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
 util_macros = { workspace = true }
 uuid = { workspace = true }
+worktree = { workspace = true, features = ["test-support"] }

@@ -402,6 +402,7 @@ mod tests {
 
     use fs::TempFs;
     use util_macros::path;
+    use worktree::WorktreeModelHandle;
 
     use crate::{CloseWindow, OpenMode, Root, SharedState, Workspace, tests::init_test};
 
@@ -518,6 +519,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -685,6 +690,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
         workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.flush_serialization(window, cx)
@@ -744,6 +753,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
         workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.flush_serialization(window, cx)

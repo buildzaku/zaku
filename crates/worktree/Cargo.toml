@@ -17,7 +17,7 @@ name = "worktree_tests"
 path = "tests/integration/worktree_tests.rs"
 
 [features]
-test-support = []
+test-support = ["gpui/test-support"]
 
 [dependencies]
 anyhow = { workspace = true }

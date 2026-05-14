@@ -1,19 +1,17 @@
-#[path = "../common.rs"]
-mod common;
-
 use gpui::TestAppContext;
 use indoc::indoc;
 use parking_lot::Mutex;
 use serde_json::json;
 use std::{
     mem,
+    path::Path,
     sync::{Arc, atomic::AtomicUsize},
 };
 
 use fs::{Fs, RenameOptions, TempFs};
 use util::rel_path::{RelPath, rel_path};
 use util_macros::path;
-use worktree::{EntryKind, PathChange, Worktree, WorktreeEvent, WorktreeId};
+use worktree::{EntryKind, PathChange, Worktree, WorktreeEvent, WorktreeId, WorktreeModelHandle};
 
 #[gpui::test]
 async fn test_traversal(cx: &mut TestAppContext) {
@@ -154,7 +152,7 @@ async fn test_circular_symlinks(cx: &mut TestAppContext) {
         )
         .await
         .unwrap();
-    common::flush_fs_events(&worktree, cx).await;
+    worktree.flush_fs_events(cx).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
@@ -488,8 +486,8 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
         );
     });
 
-    let old_path = std::path::Path::new("project").join(old_name);
-    let new_path = std::path::Path::new("project").join(new_name);
+    let old_path = Path::new("project").join(old_name);
+    let new_path = Path::new("project").join(new_name);
 
     temp_fs
         .rename(
@@ -504,7 +502,7 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
         .await
         .unwrap();
 
-    common::flush_fs_events(&worktree, cx).await;
+    worktree.flush_fs_events(cx).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
