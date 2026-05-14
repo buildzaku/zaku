@@ -146,14 +146,6 @@ fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
 }
 
 impl HttpClient for ReqwestClient {
-    fn user_agent(&self) -> Option<&http::HeaderValue> {
-        None
-    }
-
-    fn proxy(&self) -> Option<&Url> {
-        None
-    }
-
     fn send(
         &self,
         request: http::Request<AsyncBody>,
@@ -213,5 +205,13 @@ impl HttpClient for ReqwestClient {
             builder.body(body).map_err(|error| anyhow!(error))
         }
         .boxed()
+    }
+
+    fn user_agent(&self) -> Option<&http::HeaderValue> {
+        None
+    }
+
+    fn proxy(&self) -> Option<&Url> {
+        None
     }
 }
