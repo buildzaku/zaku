@@ -1314,4 +1314,319 @@ mod tests {
             .unwrap();
         assert!(tx.send(Ok(response)).is_ok());
     }
+
+    #[gpui::test]
+    async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (first_tx, first_rx) = oneshot::channel();
+        let (second_tx, second_rx) = oneshot::channel();
+        let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+        let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+        let first_response_delay = Duration::from_secs(5);
+        let second_response_delay = Duration::from_secs(3);
+        let executor = cx.executor();
+
+        http_client.replace_handler({
+            move |_, request| {
+                let (rx, response_delay) = match request.uri().path() {
+                    "/first" => (first_rx.lock().take().unwrap(), first_response_delay),
+                    "/second" => (second_rx.lock().take().unwrap(), second_response_delay),
+                    path => panic!("Unexpected request path: {path}"),
+                };
+                let executor = executor.clone();
+
+                async move {
+                    let response = rx
+                        .await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?;
+                    executor.timer(response_delay).await;
+                    response
+                }
+            }
+        });
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "First"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/first"
+                    "#},
+                    "second.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Second"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/second"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let first_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/first.toml")),
+        };
+        let second_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/second.toml")),
+        };
+        let first_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(first_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        let second_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(second_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("first response"))
+            .unwrap();
+        assert!(first_tx.send(Ok(response)).is_ok());
+
+        cx.executor().advance_clock(first_response_delay);
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            ""
+        );
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("second response"))
+            .unwrap();
+        assert!(second_tx.send(Ok(response)).is_ok());
+
+        cx.executor().advance_clock(second_response_delay);
+        cx.run_until_parked();
+
+        assert_eq!(
+            first_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "first response"
+        );
+        assert_eq!(
+            second_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "second response"
+        );
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "second response"
+        );
+
+        let first_item_id = Entity::entity_id(&first_editor);
+        let item_index = pane.read_with(cx, |pane, _| {
+            pane.items()
+                .position(|item| item.item_id() == first_item_id)
+                .unwrap()
+        });
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_item(item_index, true, false, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "first response"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (first_tx, first_rx) = oneshot::channel();
+        let (second_tx, second_rx) = oneshot::channel();
+        let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+        let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+
+        http_client.replace_handler({
+            move |_, request| {
+                let rx = match request.uri().path() {
+                    "/first" => first_rx.lock().take().unwrap(),
+                    "/second" => second_rx.lock().take().unwrap(),
+                    path => panic!("Unexpected request path: {path}"),
+                };
+                async move {
+                    rx.await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                }
+            }
+        });
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "First"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/first"
+                    "#},
+                    "second.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Second"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/second"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let first_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/first.toml")),
+        };
+        let second_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/second.toml")),
+        };
+        let first_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path_preview(first_path, None, false, true, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        assert!(pane.read_with(cx, |pane, _| pane.preview_item_idx().is_none()));
+
+        let second_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path_preview(second_path, None, false, true, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        let first_item_id = Entity::entity_id(&first_editor);
+        assert!(pane.read_with(cx, |pane, _| {
+            pane.items().any(|item| item.item_id() == first_item_id)
+        }));
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("first response"))
+            .unwrap();
+        assert!(first_tx.send(Ok(response)).is_ok());
+
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            ""
+        );
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("second response"))
+            .unwrap();
+        assert!(second_tx.send(Ok(response)).is_ok());
+
+        cx.run_until_parked();
+
+        assert_eq!(
+            first_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "first response"
+        );
+        assert_eq!(
+            second_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "second response"
+        );
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "second response"
+        );
+
+        let item_index = pane.read_with(cx, |pane, _| {
+            pane.items()
+                .position(|item| item.item_id() == first_item_id)
+                .unwrap()
+        });
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_item(item_index, true, false, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "first response"
+        );
+    }
 }
