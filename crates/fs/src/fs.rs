@@ -16,7 +16,7 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
-        Arc,
+        Arc, Weak,
         atomic::{AtomicU8, Ordering},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -142,6 +142,10 @@ pub trait Fs: Send + Sync {
     );
     async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()>;
     async fn is_case_sensitive(&self) -> bool;
+    #[cfg(feature = "test-support")]
+    fn as_temp(&self) -> Arc<TempFs> {
+        panic!("as_temp should only be called for TempFs");
+    }
 }
 
 pub trait FileHandle: Send + Sync + std::fmt::Debug {
@@ -754,22 +758,26 @@ impl Fs for NativeFs {
 
 #[cfg(feature = "test-support")]
 pub struct TempFs {
-    _temp_dir: TempDir,
+    this: Weak<Self>,
     path: PathBuf,
     executor: BackgroundExecutor,
+    _temp_dir: TempDir,
 }
 
 #[cfg(feature = "test-support")]
 impl TempFs {
-    pub fn new(executor: BackgroundExecutor) -> Self {
-        let temp_dir = TempDir::new().unwrap();
-        let path = NativeFs::canonicalize(temp_dir.path()).unwrap();
+    pub fn new(executor: BackgroundExecutor) -> Arc<Self> {
+        Arc::new_cyclic(|this| {
+            let temp_dir = TempDir::new().unwrap();
+            let path = NativeFs::canonicalize(temp_dir.path()).unwrap();
 
-        Self {
-            _temp_dir: temp_dir,
-            path,
-            executor,
-        }
+            Self {
+                this: this.clone(),
+                path,
+                executor,
+                _temp_dir: temp_dir,
+            }
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -930,6 +938,10 @@ impl Fs for TempFs {
                 })
             })
             .await
+    }
+
+    fn as_temp(&self) -> Arc<TempFs> {
+        self.this.upgrade().unwrap()
     }
 }
 

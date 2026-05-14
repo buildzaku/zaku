@@ -79,6 +79,11 @@ pub trait HttpClient: 'static + Send + Sync {
             Err(error) => Box::pin(async move { Err(error.into()) }),
         }
     }
+
+    #[cfg(feature = "test-support")]
+    fn as_fake(&self) -> &FakeHttpClient {
+        panic!("as_fake should only be called for FakeHttpClient");
+    }
 }
 
 #[cfg(feature = "test-support")]
@@ -163,5 +168,9 @@ impl HttpClient for FakeHttpClient {
 
     fn proxy(&self) -> Option<&Url> {
         None
+    }
+
+    fn as_fake(&self) -> &FakeHttpClient {
+        self
     }
 }

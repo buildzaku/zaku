@@ -400,12 +400,10 @@ mod tests {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
-    use std::sync::Arc;
-
     use fs::TempFs;
     use util_macros::path;
 
-    use crate::{CloseWindow, OpenMode, Root, SharedState, Workspace};
+    use crate::{CloseWindow, OpenMode, Root, SharedState, Workspace, tests::init_test};
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
@@ -440,7 +438,7 @@ mod tests {
             .await;
 
         let recent_workspaces = workspace_db
-            .recent_workspaces_on_disk(&temp_fs)
+            .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
             .expect("recent workspace query should succeed");
 
@@ -482,9 +480,9 @@ mod tests {
     async fn test_create_workspace_serialization(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
-        crate::tests::init_test(shared_state.clone(), cx);
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -576,7 +574,7 @@ mod tests {
                     WindowId::from(5_u64),
                     WindowId::from(9_u64),
                 ])),
-                &temp_fs,
+                temp_fs.as_ref(),
             )
             .await
             .expect("last session workspace query should succeed");
@@ -639,7 +637,7 @@ mod tests {
             .await;
 
         let locations = workspace_db
-            .last_session_workspace_locations("session-uuid", None, &temp_fs)
+            .last_session_workspace_locations("session-uuid", None, temp_fs.as_ref())
             .await
             .expect("last session workspace query should succeed");
 
@@ -659,9 +657,9 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
-        crate::tests::init_test(shared_state.clone(), cx);
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
@@ -718,9 +716,9 @@ mod tests {
     async fn test_close_window_removes_workspace_from_current_session(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
-        crate::tests::init_test(shared_state.clone(), cx);
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
 

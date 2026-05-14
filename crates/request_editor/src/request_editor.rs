@@ -15,7 +15,6 @@ use project::{
     Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileConfig, RequestFileMeta,
     RequestFileParam, RequestFileState,
 };
-use reqwest_client::ReqwestClient;
 use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
@@ -27,7 +26,8 @@ use ui::{
 use util::{path::PathStyle, truncate_and_trailoff};
 
 use workspace::{
-    Item, ItemBufferKind, ItemEvent, ProjectItem, TabContentParams, Workspace, pane::Pane,
+    Item, ItemBufferKind, ItemEvent, ProjectItem, SharedState, TabContentParams, Workspace,
+    pane::Pane,
 };
 
 const MAX_TAB_TITLE_LEN: usize = 24;
@@ -354,7 +354,7 @@ impl RequestEditor {
             request,
             request_snapshot,
             response: None,
-            http_client: Arc::new(ReqwestClient::new()),
+            http_client: SharedState::global(cx).http_client.clone(),
             scroll_handle: ScrollHandle::new(),
             is_dirty: false,
             input_subscriptions,
@@ -1185,14 +1185,16 @@ impl ProjectItem for RequestEditor {
 mod tests {
     use super::*;
 
-    use gpui::{Entity, TestAppContext};
+    use futures::channel::oneshot;
+    use gpui::{TestAppContext, VisualTestContext};
     use indoc::indoc;
+    use parking_lot::Mutex;
     use serde_json::json;
 
-    use fs::TempFs;
-    use project::Project;
+    use http_client::{Response, StatusCode};
     use settings::SettingsStore;
     use theme::LoadThemes;
+    use util::rel_path::rel_path;
     use util_macros::path;
     use workspace::{DockPosition, Root, SharedState};
 
@@ -1208,20 +1210,56 @@ mod tests {
         });
     }
 
+    fn build_workspace<'a>(
+        project: &Entity<Project>,
+        cx: &'a mut TestAppContext,
+    ) -> (
+        Entity<Workspace>,
+        Entity<ResponsePanel>,
+        &'a mut VisualTestContext,
+    ) {
+        let project = project.clone();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let response_panel = workspace.update_in(cx, |workspace, window, cx| {
+            let pane = workspace.pane().downgrade();
+            let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
+            workspace.add_panel(response_panel.clone(), DockPosition::Bottom, window, cx);
+            response_panel
+        });
+
+        (workspace, response_panel, cx)
+    }
+
     #[gpui::test]
     async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (tx, rx) = oneshot::channel();
+        let rx = Arc::new(Mutex::new(Some(rx)));
+
+        http_client.replace_handler({
+            move |_, request| {
+                assert_eq!(request.uri().path(), "/me");
+                let rx = rx.lock().take().unwrap();
+
+                async move {
+                    rx.await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                }
+            }
+        });
+
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                ".gitignore": indoc! {"
-                    .DS_Store
-                "},
                 "collection": {
                     "request.toml": indoc! {r#"
                         [meta]
@@ -1237,39 +1275,26 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
-        let response_panel = workspace.update_in(cx, |workspace, window, cx| {
-            let pane = workspace.pane().downgrade();
-            let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
-            workspace.add_panel(response_panel.clone(), DockPosition::Bottom, window, cx);
-            response_panel
-        });
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
-        let request_path = workspace.update_in(cx, |workspace, _, cx| {
-            workspace
-                .project()
-                .read(cx)
-                .project_path_for_absolute_path(
-                    &project_path.join(path!("collection/request.toml")),
-                    cx,
-                )
-                .unwrap()
-        });
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path(path!("collection/request.toml"))),
+        };
+
         workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(request_path, None, true, window, cx)
             })
             .await
+            .unwrap()
+            .downcast::<RequestEditor>()
             .unwrap();
-
-        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         pane.update_in(cx, |pane, window, cx| {
             pane.send_request(window, cx);
         });
-
         workspace.update_in(cx, |workspace, _, cx| {
             let response_panel_id = Entity::entity_id(&response_panel);
             let active_panel_id = workspace
@@ -1281,5 +1306,12 @@ mod tests {
             assert!(workspace.bottom_dock().read(cx).is_open());
             assert_eq!(active_panel_id, Some(response_panel_id));
         });
+        cx.run_until_parked();
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("response"))
+            .unwrap();
+        assert!(tx.send(Ok(response)).is_ok());
     }
 }

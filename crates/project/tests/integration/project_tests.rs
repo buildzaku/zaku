@@ -1,7 +1,6 @@
 use gpui::TestAppContext;
 use indoc::indoc;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use fs::Fs;
@@ -17,7 +16,7 @@ async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
 ) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(path!("first"), Value::default());
     temp_fs.insert_tree(path!("second"), Value::default());
 
@@ -61,7 +60,7 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
 ) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(path!("first"), Value::default());
     temp_fs.insert_tree(path!("second"), Value::default());
 
@@ -98,7 +97,7 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
 async fn test_open_local_project_creates_worktree(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(path!("project"), Value::default());
     let project_path = temp_fs.path().join("project");
 
@@ -124,7 +123,7 @@ async fn test_open_local_project_creates_worktree(cx: &mut TestAppContext) {
 async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(path!("first"), Value::default());
     temp_fs.insert_tree(path!("second"), Value::default());
 
@@ -174,7 +173,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
 ) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(path!("project"), Value::default());
 
     let canonical_project_path = temp_fs.path().join("project");
@@ -213,7 +212,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
 ) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(path!("project"), Value::default());
 
     let project_path = temp_fs.path().join("project");
@@ -260,7 +259,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
 async fn test_absolute_path_resolves_relative_paths_against_current_root(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(
         path!("project"),
         json!({
@@ -293,7 +292,7 @@ async fn test_absolute_path_resolves_relative_paths_against_current_root(cx: &mu
 async fn test_initial_scan_complete(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(path!("project"), Value::default());
 
     let project_path = temp_fs.path().join("project");

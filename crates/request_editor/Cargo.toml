@@ -21,7 +21,6 @@ http_client = { workspace = true }
 input = { workspace = true }
 log = { workspace = true }
 project = { workspace = true }
-reqwest_client = { workspace = true }
 response_panel = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
@@ -32,7 +31,9 @@ workspace = { workspace = true }
 editor = { workspace = true }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
+http_client = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
+parking_lot = { workspace = true }
 project = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
 settings = { workspace = true, features = ["test-support"] }

@@ -167,6 +167,10 @@ impl Response {
         self.editor.clone()
     }
 
+    pub fn text(&self, cx: &App) -> String {
+        self.payload.read(cx).snapshot(cx).text()
+    }
+
     pub fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) -> usize {
         let was_focused = self.editor.focus_handle(cx).contains_focused(window, cx);
         let (payload, editor) = Self::new_editor(window, cx);
@@ -272,6 +276,12 @@ impl ResponsePanel {
         self.response
             .as_ref()
             .map(|response| response.read(cx).editor())
+    }
+
+    pub fn text(&self, cx: &App) -> String {
+        self.response
+            .as_ref()
+            .map_or_else(String::new, |response| response.read(cx).text(cx))
     }
 }
 

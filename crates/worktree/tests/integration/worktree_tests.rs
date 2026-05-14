@@ -19,7 +19,7 @@ use worktree::{EntryKind, PathChange, Worktree, WorktreeEvent, WorktreeId};
 async fn test_traversal(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(
         "project",
         json!({
@@ -76,7 +76,7 @@ async fn test_traversal(cx: &mut TestAppContext) {
 async fn test_circular_symlinks(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(
         "project",
         json!({
@@ -180,7 +180,7 @@ async fn test_circular_symlinks(cx: &mut TestAppContext) {
 async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(
         "project",
         json!({
@@ -448,7 +448,7 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
     let old_name = "aaa.toml";
     let new_name = "AAA.toml";
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     if temp_fs.is_case_sensitive().await {
         return;
     }
@@ -521,7 +521,7 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
 async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
+    let temp_fs = TempFs::new(cx.executor());
     temp_fs.insert_tree(
         "project",
         json!({

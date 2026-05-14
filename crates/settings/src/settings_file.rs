@@ -50,7 +50,7 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let temp_fs = TempFs::new(cx.executor());
         let settings_path = temp_fs.path().join("settings.json");
         let (mut receiver, _watcher) =
             watch_config_file(&cx.background_executor, temp_fs, settings_path);
@@ -62,7 +62,7 @@ mod tests {
     async fn test_watch_config_file_reloads_after_file_change(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
+        let temp_fs = TempFs::new(cx.executor());
         let settings_path = temp_fs.path().join("settings.json");
         temp_fs
             .write(

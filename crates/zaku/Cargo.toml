@@ -49,6 +49,7 @@ metadata = { workspace = true }
 mimalloc = { workspace = true, optional = true }
 project_panel = { workspace = true }
 request_editor = { workspace = true }
+reqwest_client = { workspace = true }
 response_panel = { workspace = true }
 session = { workspace = true }
 settings = { workspace = true }

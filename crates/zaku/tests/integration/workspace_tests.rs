@@ -1,11 +1,10 @@
-use gpui::{AppContext, TestAppContext};
+use gpui::TestAppContext;
 use indoc::indoc;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
-use fs::TempFs;
-use session::{AppSession, Session};
+use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::{
@@ -34,10 +33,14 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     let app_db = AppDatabase::test_new();
     let kv_store = KeyValueStore::from_app_db(&app_db);
     let session = Session::new(Uuid::new_v4().to_string(), kv_store.clone()).await;
-    let app_session = cx.new(|cx| AppSession::new(session, cx));
 
-    let temp_fs = Arc::new(TempFs::new(cx.executor()));
-    let shared_state = Arc::new(SharedState::new(temp_fs.clone(), app_session));
+    let shared_state = cx.update(SharedState::test);
+    let temp_fs = shared_state.fs.as_temp();
+    cx.update(|cx| {
+        shared_state
+            .session
+            .update(cx, |app_session, _cx| app_session.replace_session(session));
+    });
     init_test(shared_state.clone(), app_db, cx);
 
     for project_path in ["first", "second", "third", "fourth"] {
