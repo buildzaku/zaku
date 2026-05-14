@@ -16,11 +16,14 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
-        Arc, Weak,
+        Arc,
         atomic::{AtomicU8, Ordering},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(feature = "test-support")]
+use std::sync::Weak;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::ffi::CString;
