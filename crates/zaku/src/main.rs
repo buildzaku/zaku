@@ -18,6 +18,7 @@ use uuid::Uuid;
 use assets::Assets;
 use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
+use reqwest_client::ReqwestClient;
 use session::{AppSession, Session};
 use theme::LoadThemes;
 use workspace::SharedState;
@@ -73,7 +74,8 @@ fn main() {
         register_embedded_fonts(cx);
         let session = cx.foreground_executor().block_on(session);
         let app_session = cx.new(|cx| AppSession::new(session, cx));
-        let shared_state = Arc::new(SharedState::new(fs, app_session));
+        let http_client = Arc::new(ReqwestClient::new());
+        let shared_state = Arc::new(SharedState::new(fs, http_client, app_session));
         workspace::init(shared_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);

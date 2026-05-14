@@ -15,8 +15,7 @@ use project::{
     Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileConfig, RequestFileMeta,
     RequestFileParam, RequestFileState,
 };
-use reqwest_client::ReqwestClient;
-use response_panel::{ResponsePanel, ResponseState};
+use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
@@ -27,7 +26,8 @@ use ui::{
 use util::{path::PathStyle, truncate_and_trailoff};
 
 use workspace::{
-    Item, ItemBufferKind, ItemEvent, ProjectItem, TabContentParams, Workspace, pane::Pane,
+    Item, ItemBufferKind, ItemEvent, ProjectItem, SharedState, TabContentParams, Workspace,
+    pane::Pane,
 };
 
 const MAX_TAB_TITLE_LEN: usize = 24;
@@ -36,19 +36,33 @@ pub fn init(cx: &mut App) {
     workspace::register_project_item::<RequestEditor>(cx);
 
     cx.observe_new(
-        |workspace: &mut Workspace, _: Option<&mut Window>, _cx: &mut Context<Workspace>| {
-            workspace.register_action(|workspace, _: &SendRequest, window, cx| {
-                let Some(request_editor) = workspace.active_item_as::<RequestEditor>(cx) else {
-                    return;
-                };
+        |workspace: &mut Workspace, _: Option<&mut Window>, cx: &mut Context<Workspace>| {
+            let pane = workspace.pane().clone();
+            cx.observe(&pane, |workspace, _, cx| {
+                update_response_panel(workspace, cx);
+            })
+            .detach();
 
-                request_editor.update(cx, |request_editor, cx| {
-                    request_editor.send_request(window, cx);
+            workspace.register_action(|workspace, _: &SendRequest, window, cx| {
+                workspace.pane().update(cx, |pane, cx| {
+                    pane.send_request(window, cx);
                 });
             });
         },
     )
     .detach();
+}
+
+fn update_response_panel(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
+    let response = workspace
+        .active_item_as::<RequestEditor>(cx)
+        .and_then(|request_editor| request_editor.read(cx).response());
+
+    if let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) {
+        response_panel.update(cx, |response_panel, cx| {
+            response_panel.set_response(response, cx);
+        });
+    }
 }
 
 pub trait RequestPaneExt: Sized {
@@ -57,10 +71,12 @@ pub trait RequestPaneExt: Sized {
 
 impl RequestPaneExt for Pane {
     fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(request_editor) = self
-            .active_item()
-            .and_then(|item| item.downcast::<RequestEditor>())
+        if let Some(active_item) = self.active_item()
+            && let Some(request_editor) = active_item.downcast::<RequestEditor>()
         {
+            let item_id = active_item.item_id();
+            self.unpreview_item_if_preview(item_id);
+            cx.notify();
             request_editor.update(cx, |request_editor, cx| {
                 request_editor.send_request(window, cx);
             });
@@ -289,6 +305,7 @@ pub struct RequestEditor {
     buffer: Option<Entity<RequestBuffer>>,
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
+    response: Option<Entity<Response>>,
     http_client: Arc<dyn HttpClient>,
     scroll_handle: ScrollHandle,
     is_dirty: bool,
@@ -336,7 +353,8 @@ impl RequestEditor {
             buffer: Some(buffer),
             request,
             request_snapshot,
-            http_client: Arc::new(ReqwestClient::new()),
+            response: None,
+            http_client: SharedState::global(cx).http_client.clone(),
             scroll_handle: ScrollHandle::new(),
             is_dirty: false,
             input_subscriptions,
@@ -353,6 +371,22 @@ impl RequestEditor {
         self.project
             .as_ref()
             .map_or_else(PathStyle::local, |project| project.read(cx).path_style(cx))
+    }
+
+    fn response(&self) -> Option<Entity<Response>> {
+        self.response.clone()
+    }
+
+    fn unpreview_tab(&self, cx: &mut Context<Self>) {
+        let request_editor_id = cx.entity().entity_id();
+        if let Err(error) = self.workspace.update(cx, |workspace, cx| {
+            workspace.pane().update(cx, |pane, cx| {
+                pane.unpreview_item_if_preview(request_editor_id);
+                cx.notify();
+            });
+        }) {
+            log::debug!("Failed to unpreview request editor: {error:?}");
+        }
     }
 
     fn title(&self, cx: &App) -> SharedString {
@@ -534,10 +568,17 @@ impl RequestEditor {
         }) else {
             return;
         };
+        let response = self
+            .response
+            .get_or_insert_with(|| cx.new(|cx| Response::new(window, cx)))
+            .clone();
+        response_panel.update(cx, |panel, cx| {
+            panel.set_response(Some(response.clone()), cx);
+        });
 
-        let request_id = response_panel.update(cx, |response_panel, cx| {
-            let request_id = response_panel.begin_response(window, cx);
-            response_panel.set_state(
+        let request_id = response.update(cx, |response, cx| response.begin_response(window, cx));
+        response.update(cx, |response, cx| {
+            response.set_state(
                 request_id,
                 ResponseState::Fetching {
                     bytes_received: 0,
@@ -545,7 +586,6 @@ impl RequestEditor {
                 },
                 cx,
             );
-            request_id
         });
 
         let request_started_at = Instant::now();
@@ -553,11 +593,10 @@ impl RequestEditor {
 
         window
             .spawn(cx, {
-                let response_panel = response_panel.clone();
                 async move |cx| {
                     let Some(mut request_url) = normalize_url(&request_url) else {
-                        if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                            response_panel.set_state(
+                        response.update(cx, |response, cx| {
+                            response.set_state(
                                 request_id,
                                 ResponseState::Error {
                                     bytes_received: 0,
@@ -565,10 +604,8 @@ impl RequestEditor {
                                 },
                                 cx,
                             );
-                            response_panel.set_payload(request_id, "Error: invalid URL", cx);
-                        }) {
-                            log::debug!("Failed to update response panel: {error:?}");
-                        }
+                            response.set_payload(request_id, "Error: invalid URL", cx);
+                        });
                         return;
                     };
 
@@ -587,25 +624,17 @@ impl RequestEditor {
                     {
                         Ok(request) => request,
                         Err(error) => {
-                            if let Err(error) =
-                                response_panel.update_in(cx, |response_panel, _, cx| {
-                                    response_panel.set_state(
-                                        request_id,
-                                        ResponseState::Error {
-                                            bytes_received: 0,
-                                            elapsed_duration: request_started_at.elapsed(),
-                                        },
-                                        cx,
-                                    );
-                                    response_panel.set_payload(
-                                        request_id,
-                                        format!("Error: {error}"),
-                                        cx,
-                                    );
-                                })
-                            {
-                                log::debug!("Failed to update response panel: {error:?}");
-                            }
+                            response.update(cx, |response, cx| {
+                                response.set_state(
+                                    request_id,
+                                    ResponseState::Error {
+                                        bytes_received: 0,
+                                        elapsed_duration: request_started_at.elapsed(),
+                                    },
+                                    cx,
+                                );
+                                response.set_payload(request_id, format!("Error: {error}"), cx);
+                            });
                             return;
                         }
                     };
@@ -619,41 +648,34 @@ impl RequestEditor {
                     let send_request = http_client.send(request).fuse();
                     futures::pin_mut!(send_request);
 
-                    let mut response = loop {
+                    let mut received = loop {
                         futures::select_biased! {
-                            response = send_request => {
-                                match response {
+                            send_result = send_request => {
+                                match send_result {
                                     Ok(response) => break response,
                                     Err(error) => {
-                                        if let Err(error) =
-                                            response_panel.update_in(cx, |response_panel, _, cx| {
-                                                response_panel.set_state(
-                                                    request_id,
-                                                    ResponseState::Error {
-                                                        bytes_received: 0,
-                                                        elapsed_duration: request_started_at
-                                                            .elapsed(),
-                                                    },
-                                                    cx,
-                                                );
-                                                response_panel.set_payload(
-                                                    request_id,
-                                                    format!("Error: {error}"),
-                                                    cx,
-                                                );
-                                            })
-                                        {
-                                            log::debug!(
-                                                "Failed to update response panel: {error:?}"
+                                        response.update(cx, |response, cx| {
+                                            response.set_state(
+                                                request_id,
+                                                ResponseState::Error {
+                                                    bytes_received: 0,
+                                                    elapsed_duration: request_started_at.elapsed(),
+                                                },
+                                                cx,
                                             );
-                                        }
+                                            response.set_payload(
+                                                request_id,
+                                                format!("Error: {error}"),
+                                                cx,
+                                            );
+                                        });
                                         return;
                                     }
                                 }
                             }
                             () = progress_timer => {
-                                let still_active = response_panel.update(cx, |response_panel, cx| {
-                                    response_panel.set_state(
+                                let still_active = response.update(cx, |response, cx| {
+                                    response.set_state(
                                         request_id,
                                         ResponseState::Fetching {
                                             bytes_received: 0,
@@ -675,14 +697,14 @@ impl RequestEditor {
                         }
                     };
 
-                    let status_code = response.status();
+                    let status_code = received.status();
                     let mut bytes_received = 0_u64;
                     let mut payload = Vec::new();
                     let mut buffer = [0; 8192];
                     let mut read_error = None;
 
                     loop {
-                        let read_response_body = response.body_mut().read(&mut buffer).fuse();
+                        let read_response_body = received.body_mut().read(&mut buffer).fuse();
                         futures::pin_mut!(read_response_body);
 
                         futures::select_biased! {
@@ -705,8 +727,8 @@ impl RequestEditor {
                                 }
                             }
                             () = progress_timer => {
-                                let still_active = response_panel.update(cx, |response_panel, cx| {
-                                    response_panel.set_state(
+                                let still_active = response.update(cx, |response, cx| {
+                                    response.set_state(
                                         request_id,
                                         ResponseState::Fetching {
                                             bytes_received,
@@ -747,12 +769,10 @@ impl RequestEditor {
                         ),
                     };
 
-                    if let Err(error) = response_panel.update_in(cx, |response_panel, _, cx| {
-                        response_panel.set_state(request_id, response_state, cx);
-                        response_panel.set_payload(request_id, payload, cx);
-                    }) {
-                        log::debug!("Failed to update response panel: {error:?}");
-                    }
+                    response.update(cx, |response, cx| {
+                        response.set_state(request_id, response_state, cx);
+                        response.set_payload(request_id, payload, cx);
+                    });
                 }
             })
             .detach();
@@ -924,6 +944,7 @@ impl RequestEditor {
                     .key_context("RequestUrl")
                     .on_action(
                         cx.listener(move |request_editor, _: &SendRequest, window, cx| {
+                            request_editor.unpreview_tab(cx);
                             request_editor.send_request(window, cx);
                         }),
                     )
@@ -946,6 +967,7 @@ impl RequestEditor {
                             .width(ui::rems_from_px(60.0))
                             .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |request_editor, _, window, cx| {
+                                request_editor.unpreview_tab(cx);
                                 request_editor.send_request(window, cx);
                             })),
                     ),
@@ -1163,14 +1185,16 @@ impl ProjectItem for RequestEditor {
 mod tests {
     use super::*;
 
-    use gpui::{Entity, TestAppContext};
+    use futures::channel::oneshot;
+    use gpui::{TestAppContext, VisualTestContext};
     use indoc::indoc;
+    use parking_lot::Mutex;
     use serde_json::json;
 
-    use fs::TempFs;
-    use project::Project;
+    use http_client::{Response, StatusCode};
     use settings::SettingsStore;
     use theme::LoadThemes;
+    use util::rel_path::rel_path;
     use util_macros::path;
     use workspace::{DockPosition, Root, SharedState};
 
@@ -1186,20 +1210,56 @@ mod tests {
         });
     }
 
+    fn build_workspace<'a>(
+        project: &Entity<Project>,
+        cx: &'a mut TestAppContext,
+    ) -> (
+        Entity<Workspace>,
+        Entity<ResponsePanel>,
+        &'a mut VisualTestContext,
+    ) {
+        let project = project.clone();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let response_panel = workspace.update_in(cx, |workspace, window, cx| {
+            let pane = workspace.pane().downgrade();
+            let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
+            workspace.add_panel(response_panel.clone(), DockPosition::Bottom, window, cx);
+            response_panel
+        });
+
+        (workspace, response_panel, cx)
+    }
+
     #[gpui::test]
     async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (tx, rx) = oneshot::channel();
+        let rx = Arc::new(Mutex::new(Some(rx)));
+
+        http_client.replace_handler({
+            move |_, request| {
+                assert_eq!(request.uri().path(), "/me");
+                let rx = rx.lock().take().unwrap();
+
+                async move {
+                    rx.await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                }
+            }
+        });
+
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
             json!({
-                ".gitignore": indoc! {"
-                    .DS_Store
-                "},
                 "collection": {
                     "request.toml": indoc! {r#"
                         [meta]
@@ -1215,39 +1275,26 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
-        let response_panel = workspace.update_in(cx, |workspace, window, cx| {
-            let pane = workspace.pane().downgrade();
-            let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
-            workspace.add_panel(response_panel.clone(), DockPosition::Bottom, window, cx);
-            response_panel
-        });
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
-        let request_path = workspace.update_in(cx, |workspace, _, cx| {
-            workspace
-                .project()
-                .read(cx)
-                .project_path_for_absolute_path(
-                    &project_path.join(path!("collection/request.toml")),
-                    cx,
-                )
-                .unwrap()
-        });
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
         workspace
             .update_in(cx, |workspace, window, cx| {
                 workspace.open_path(request_path, None, true, window, cx)
             })
             .await
+            .unwrap()
+            .downcast::<RequestEditor>()
             .unwrap();
-
-        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         pane.update_in(cx, |pane, window, cx| {
             pane.send_request(window, cx);
         });
-
         workspace.update_in(cx, |workspace, _, cx| {
             let response_panel_id = Entity::entity_id(&response_panel);
             let active_panel_id = workspace
@@ -1259,5 +1306,327 @@ mod tests {
             assert!(workspace.bottom_dock().read(cx).is_open());
             assert_eq!(active_panel_id, Some(response_panel_id));
         });
+        cx.run_until_parked();
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("response"))
+            .unwrap();
+        assert!(tx.send(Ok(response)).is_ok());
+    }
+
+    #[gpui::test]
+    async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (first_tx, first_rx) = oneshot::channel();
+        let (second_tx, second_rx) = oneshot::channel();
+        let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+        let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+        let first_response_delay = Duration::from_secs(5);
+        let second_response_delay = Duration::from_secs(3);
+        let executor = cx.executor();
+
+        http_client.replace_handler({
+            move |_, request| {
+                let (rx, response_delay) = match request.uri().path() {
+                    "/first" => (first_rx.lock().take().unwrap(), first_response_delay),
+                    "/second" => (second_rx.lock().take().unwrap(), second_response_delay),
+                    path => panic!("Unexpected request path: {path}"),
+                };
+                let executor = executor.clone();
+
+                async move {
+                    let response = rx
+                        .await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?;
+                    executor.timer(response_delay).await;
+                    response
+                }
+            }
+        });
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "First"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/first"
+                    "#},
+                    "second.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Second"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/second"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let first_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/first.toml")),
+        };
+        let second_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/second.toml")),
+        };
+        let first_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(first_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        let second_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(second_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("first response"))
+            .unwrap();
+        assert!(first_tx.send(Ok(response)).is_ok());
+
+        cx.executor().advance_clock(first_response_delay);
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            ""
+        );
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("second response"))
+            .unwrap();
+        assert!(second_tx.send(Ok(response)).is_ok());
+
+        cx.executor().advance_clock(second_response_delay);
+        cx.run_until_parked();
+
+        assert_eq!(
+            first_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "first response"
+        );
+        assert_eq!(
+            second_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "second response"
+        );
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "second response"
+        );
+
+        let first_item_id = Entity::entity_id(&first_editor);
+        let item_index = pane.read_with(cx, |pane, _| {
+            pane.items()
+                .position(|item| item.item_id() == first_item_id)
+                .unwrap()
+        });
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_item(item_index, true, false, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "first response"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (first_tx, first_rx) = oneshot::channel();
+        let (second_tx, second_rx) = oneshot::channel();
+        let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+        let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+
+        http_client.replace_handler({
+            move |_, request| {
+                let rx = match request.uri().path() {
+                    "/first" => first_rx.lock().take().unwrap(),
+                    "/second" => second_rx.lock().take().unwrap(),
+                    path => panic!("Unexpected request path: {path}"),
+                };
+                async move {
+                    rx.await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                }
+            }
+        });
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "First"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/first"
+                    "#},
+                    "second.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Second"
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/second"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, response_panel, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let first_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/first.toml")),
+        };
+        let second_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/second.toml")),
+        };
+        let first_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path_preview(first_path, None, false, true, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        assert!(pane.read_with(cx, |pane, _| pane.preview_item_idx().is_none()));
+
+        let second_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path_preview(second_path, None, false, true, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+
+        let first_item_id = Entity::entity_id(&first_editor);
+        assert!(pane.read_with(cx, |pane, _| {
+            pane.items().any(|item| item.item_id() == first_item_id)
+        }));
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("first response"))
+            .unwrap();
+        assert!(first_tx.send(Ok(response)).is_ok());
+
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            ""
+        );
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::from("second response"))
+            .unwrap();
+        assert!(second_tx.send(Ok(response)).is_ok());
+
+        cx.run_until_parked();
+
+        assert_eq!(
+            first_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "first response"
+        );
+        assert_eq!(
+            second_editor.read_with(cx, |request_editor, cx| {
+                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            }),
+            "second response"
+        );
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "second response"
+        );
+
+        let item_index = pane.read_with(cx, |pane, _| {
+            pane.items()
+                .position(|item| item.item_id() == first_item_id)
+                .unwrap()
+        });
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_item(item_index, true, false, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+            "first response"
+        );
     }
 }

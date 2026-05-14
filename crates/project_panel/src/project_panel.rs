@@ -1151,7 +1151,6 @@ mod tests {
     use std::{ops::Range, sync::Arc};
 
     use actions::workspace::project_panel;
-    use fs::TempFs;
     use project::{Project, ProjectPath};
     use request_editor::RequestEditor;
     use settings::SettingsStore;
@@ -1284,8 +1283,8 @@ mod tests {
     async fn test_sort_mode_directories_first(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -1327,8 +1326,8 @@ mod tests {
     async fn test_file_open_in_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(

@@ -39,6 +39,11 @@ use actions::{
     },
     zaku::{Minimize, Zoom},
 };
+
+#[cfg(any(test, feature = "test-support"))]
+use fs::TempFs;
+
+use http_client::HttpClient;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectPath};
 use session::AppSession;
@@ -143,6 +148,7 @@ pub struct OpenResult {
 #[derive(Clone)]
 pub struct SharedState {
     pub fs: Arc<dyn fs::Fs>,
+    pub http_client: Arc<dyn HttpClient>,
     pub session: Entity<AppSession>,
 }
 
@@ -151,14 +157,31 @@ struct GlobalSharedState(Arc<SharedState>);
 impl Global for GlobalSharedState {}
 
 impl SharedState {
-    pub fn new(fs: Arc<dyn fs::Fs>, session: Entity<AppSession>) -> Self {
-        Self { fs, session }
+    pub fn new(
+        fs: Arc<dyn fs::Fs>,
+        http_client: Arc<dyn HttpClient>,
+        session: Entity<AppSession>,
+    ) -> Self {
+        Self {
+            fs,
+            http_client,
+            session,
+        }
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn test_new(fs: Arc<dyn fs::Fs>, cx: &mut App) -> Self {
+    pub fn test(cx: &mut App) -> Arc<Self> {
+        use http_client::FakeHttpClient;
+
+        let fs = TempFs::new(cx.background_executor().clone());
+        let http_client = FakeHttpClient::with_404_response();
         let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
-        Self { fs, session }
+
+        Arc::new(Self {
+            fs,
+            http_client,
+            session,
+        })
     }
 
     #[track_caller]
@@ -1450,6 +1473,14 @@ mod tests {
     use serde_json::{Value, json};
     use std::sync::Arc;
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    use fs::Fs;
+
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+    use worktree::WorktreeModelHandle;
+
     use crate::{
         dock::test::TestPanel,
         item::test::TestItem,
@@ -1458,14 +1489,6 @@ mod tests {
             test::{add_labeled_item, assert_item_labels},
         },
     };
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    use fs::Fs;
-
-    use fs::TempFs;
-    use settings::SettingsStore;
-    use theme::LoadThemes;
-    use util_macros::path;
 
     pub fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -1483,8 +1506,8 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
@@ -1538,6 +1561,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -1569,8 +1596,8 @@ mod tests {
     async fn test_remove_worktree_invalidates_pending_direct_project_open(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (root, cx) = cx.add_window_view(move |window, cx| {
@@ -1614,6 +1641,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let second_open = workspace.update_in(cx, |workspace, _, cx| {
             workspace.project().update(cx, |project, cx| {
@@ -1642,8 +1673,8 @@ mod tests {
 
     #[gpui::test]
     fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (root, cx) = cx.add_window_view(move |window, cx| {
@@ -1668,8 +1699,8 @@ mod tests {
     async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
         let (root, cx) = cx.add_window_view(move |window, cx| {
@@ -1706,6 +1737,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -1728,8 +1763,8 @@ mod tests {
 
     #[gpui::test]
     fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
@@ -1808,8 +1843,8 @@ mod tests {
 
     #[gpui::test]
     fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state, cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
@@ -1842,8 +1877,8 @@ mod tests {
     async fn test_drag_first_tab_to_last_position(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -1879,8 +1914,8 @@ mod tests {
     async fn test_drag_last_tab_to_first_position(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -1916,8 +1951,8 @@ mod tests {
     async fn test_drag_tab_to_middle_tab_with_mouse_events(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -1973,8 +2008,8 @@ mod tests {
     async fn test_opening_same_workspace_reuses_current_worktree(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -2016,6 +2051,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
@@ -2033,8 +2072,8 @@ mod tests {
     async fn test_opening_same_workspace_in_new_window_with_activate(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -2065,6 +2104,10 @@ mod tests {
         first_workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = first_workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         assert_eq!(cx.windows().len(), 1);
         let root_window_id = cx.update(|window, _| window.window_handle().window_id());
@@ -2102,8 +2145,8 @@ mod tests {
     async fn test_opening_same_workspace_in_new_window(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -2134,6 +2177,10 @@ mod tests {
         first_workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = first_workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         assert_eq!(cx.windows().len(), 1);
 
@@ -2164,8 +2211,8 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -2213,6 +2260,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
@@ -2233,8 +2284,8 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -2300,6 +2351,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -2339,8 +2394,8 @@ mod tests {
     async fn test_opening_different_workspace_replaces_current_worktree(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let temp_fs = Arc::new(TempFs::new(cx.executor()));
-        let shared_state = cx.update(|cx| Arc::new(SharedState::test_new(temp_fs.clone(), cx)));
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -2394,6 +2449,10 @@ mod tests {
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
 
         let (current_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);

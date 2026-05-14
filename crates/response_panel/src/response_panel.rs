@@ -129,74 +129,62 @@ impl ResponseState {
     }
 }
 
-#[derive(Clone, Default)]
-struct Response {
+pub struct Response {
     request_id: usize,
     state: ResponseState,
-    payload: Option<Entity<MultiBuffer>>,
-}
-
-pub struct ResponsePanel {
-    focus_handle: FocusHandle,
-    pane: WeakEntity<Pane>,
-    response: Response,
     editor: Entity<Editor>,
-    _subscriptions: Vec<Subscription>,
+    payload: Entity<MultiBuffer>,
 }
 
-impl ResponsePanel {
-    const DEFAULT_SIZE: Pixels = gpui::px(440.0);
-    const PANEL_KEY: &str = "ResponsePanel";
-
-    pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer("", cx), cx));
-        let editor = cx.new(|cx| {
-            let mut editor = Editor::for_multibuffer(payload.clone(), window, cx);
-            editor.set_read_only(true);
-            editor
-        });
-        let focus_handle = cx.focus_handle();
-        let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
-            cx.on_next_frame(window, |response_panel, window, cx| {
-                if response_panel.focus_handle.is_focused(window) {
-                    response_panel.editor.focus_handle(cx).focus(window, cx);
-                }
-            });
-        });
+impl Response {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let (payload, editor) = Self::new_editor(window, cx);
 
         Self {
-            focus_handle,
-            pane,
-            response: Response {
-                payload: Some(payload),
-                ..Response::default()
-            },
+            request_id: 0,
+            state: ResponseState::default(),
             editor,
-            _subscriptions: vec![focus_subscription],
+            payload,
         }
     }
 
-    pub fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) -> usize {
-        let was_focused = self.focus_handle.is_focused(window)
-            || self.editor.focus_handle(cx).contains_focused(window, cx);
+    fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<MultiBuffer>, Entity<Editor>) {
         let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer("", cx), cx));
         let editor = cx.new(|cx| {
             let mut editor = Editor::for_multibuffer(payload.clone(), window, cx);
             editor.set_read_only(true);
             editor
         });
-        let request_id = self.response.request_id.wrapping_add(1);
 
-        self.response = Response {
-            request_id,
-            state: ResponseState::default(),
-            payload: Some(payload),
-        };
+        (payload, editor)
+    }
+
+    fn summary(&self) -> Option<ResponseSummary> {
+        self.state.summary()
+    }
+
+    fn editor(&self) -> Entity<Editor> {
+        self.editor.clone()
+    }
+
+    pub fn text(&self, cx: &App) -> String {
+        self.payload.read(cx).snapshot(cx).text()
+    }
+
+    pub fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) -> usize {
+        let was_focused = self.editor.focus_handle(cx).contains_focused(window, cx);
+        let (payload, editor) = Self::new_editor(window, cx);
+        let request_id = self.request_id.wrapping_add(1);
+
+        self.request_id = request_id;
+        self.state = ResponseState::default();
         self.editor = editor;
+        self.payload = payload;
         if was_focused {
             let focus_handle = self.editor.focus_handle(cx);
             window.focus(&focus_handle, cx);
         }
+        cx.notify();
         request_id
     }
 
@@ -206,11 +194,11 @@ impl ResponsePanel {
         state: ResponseState,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.response.request_id != request_id {
+        if self.request_id != request_id {
             return false;
         }
 
-        self.response.state = state;
+        self.state = state;
         cx.notify();
         true
     }
@@ -221,19 +209,79 @@ impl ResponsePanel {
         payload: T,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.response.request_id != request_id {
+        if self.request_id != request_id {
             return false;
         }
 
-        let Some(payload_buffer) = self.response.payload.as_ref() else {
-            return false;
-        };
-
-        payload_buffer.update(cx, |payload_buffer, cx| {
+        self.payload.update(cx, |payload_buffer, cx| {
             payload_buffer.set_text(payload.into(), cx);
         });
         cx.notify();
         true
+    }
+}
+
+pub struct ResponsePanel {
+    focus_handle: FocusHandle,
+    pane: WeakEntity<Pane>,
+    response: Option<Entity<Response>>,
+    response_subscription: Option<Subscription>,
+    _focus_subscription: Subscription,
+}
+
+impl ResponsePanel {
+    const PANEL_KEY: &str = "ResponsePanel";
+    const DEFAULT_SIZE: Pixels = gpui::px(440.0);
+
+    pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let focus_handle = cx.focus_handle();
+        let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
+            cx.on_next_frame(window, |response_panel, window, cx| {
+                if response_panel.focus_handle.is_focused(window)
+                    && let Some(editor) = response_panel.editor(cx)
+                {
+                    editor.focus_handle(cx).focus(window, cx);
+                }
+            });
+        });
+
+        Self {
+            focus_handle,
+            pane,
+            response: None,
+            response_subscription: None,
+            _focus_subscription: focus_subscription,
+        }
+    }
+
+    pub fn set_response(&mut self, response: Option<Entity<Response>>, cx: &mut Context<Self>) {
+        let unchanged = match (&self.response, &response) {
+            (Some(old_response), Some(new_response)) => old_response == new_response,
+            (None, None) => true,
+            _ => false,
+        };
+        if unchanged {
+            return;
+        }
+
+        let _previous_subscription = self.response_subscription.take();
+        self.response_subscription = response
+            .as_ref()
+            .map(|response| cx.observe(response, |_, _, cx| cx.notify()));
+        self.response = response;
+        cx.notify();
+    }
+
+    fn editor(&self, cx: &App) -> Option<Entity<Editor>> {
+        self.response
+            .as_ref()
+            .map(|response| response.read(cx).editor())
+    }
+
+    pub fn text(&self, cx: &App) -> String {
+        self.response
+            .as_ref()
+            .map_or_else(String::new, |response| response.read(cx).text(cx))
     }
 }
 
@@ -279,15 +327,18 @@ impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme_colors = cx.theme().colors();
         let focus_handle = self.focus_handle(cx);
-        let response_summary = self.response.state.summary();
-        let editor = self.editor.clone();
+        let response_summary = self
+            .response
+            .as_ref()
+            .and_then(|response| response.read(cx).summary());
+        let editor = self.editor(cx);
 
         gpui::div()
             .track_focus(&focus_handle)
             .flex()
             .flex_col()
             .size_full()
-            .bg(theme_colors.surface_background)
+            .bg(theme_colors.panel_background)
             .child(
                 gpui::div()
                     .w_full()
@@ -350,7 +401,13 @@ impl Render for ResponsePanel {
                         )
                     }),
             )
-            .child(editor)
+            .child(
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .bg(theme_colors.panel_background)
+                    .when_some(editor, |this, editor| this.child(editor)),
+            )
     }
 }
 

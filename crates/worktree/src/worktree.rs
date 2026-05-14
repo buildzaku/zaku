@@ -2,7 +2,15 @@ mod request;
 
 use anyhow::{Context as AnyhowContext, anyhow};
 use async_lock::Mutex;
-use futures::{FutureExt, Stream, StreamExt, select_biased};
+
+#[cfg(feature = "test-support")]
+use futures::future::LocalBoxFuture;
+
+use futures::{FutureExt, Stream, StreamExt};
+
+#[cfg(feature = "test-support")]
+use gpui::TestAppContext;
+
 use gpui::{
     AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Priority, Task,
 };
@@ -32,6 +40,9 @@ pub use request::{
     REQUEST_FILE_VERSION, RequestFile, RequestFileConfig, RequestFileMeta, RequestFileParam,
     RequestFileState,
 };
+
+#[cfg(feature = "test-support")]
+use fs::RemoveOptions;
 
 use fs::{
     FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, Watcher as FsWatcher,
@@ -755,6 +766,67 @@ pub enum WorktreeEvent {
 
 impl EventEmitter<WorktreeEvent> for Worktree {}
 
+pub trait WorktreeModelHandle {
+    #[cfg(feature = "test-support")]
+    fn flush_fs_events<'a>(&self, cx: &'a mut TestAppContext) -> LocalBoxFuture<'a, ()>;
+}
+
+impl WorktreeModelHandle for Entity<Worktree> {
+    #[cfg(feature = "test-support")]
+    fn flush_fs_events<'a>(&self, cx: &'a mut TestAppContext) -> LocalBoxFuture<'a, ()> {
+        let file_name = "marker.toml";
+        let worktree = self.clone();
+        let (fs, root_path) = self.read_with(cx, |worktree, _| {
+            let worktree = worktree.as_local().unwrap();
+            (worktree.fs().clone(), worktree.abs_path().to_path_buf())
+        });
+
+        async move {
+            let mut events = cx.events(&worktree);
+
+            fs.write(&root_path.join(file_name), &[]).await.unwrap();
+
+            let file_exists = || {
+                worktree.read_with(cx, |worktree, _| {
+                    worktree
+                        .entry_for_path(RelPath::unix(file_name).unwrap())
+                        .is_some()
+                })
+            };
+
+            while !file_exists() {
+                futures::select_biased! {
+                    _ = events.next() => {}
+                    () = cx.background_executor.timer(Duration::from_millis(10)).fuse() => {}
+                }
+            }
+
+            fs.remove_file(&root_path.join(file_name), RemoveOptions::default())
+                .await
+                .unwrap();
+
+            let file_gone = || {
+                worktree.read_with(cx, |worktree, _| {
+                    worktree
+                        .entry_for_path(RelPath::unix(file_name).unwrap())
+                        .is_none()
+                })
+            };
+
+            while !file_gone() {
+                futures::select_biased! {
+                    _ = events.next() => {}
+                    () = cx.background_executor.timer(Duration::from_millis(10)).fuse() => {}
+                }
+            }
+
+            cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
+                .await;
+        }
+        .boxed_local()
+    }
+}
+
 impl Deref for LocalWorktree {
     type Target = LocalSnapshot;
 
@@ -1059,7 +1131,7 @@ impl BackgroundScanner {
         self.phase = BackgroundScannerPhase::Events;
 
         loop {
-            select_biased! {
+            futures::select_biased! {
                 request = self.next_scan_request().fuse() => {
                     let Ok(request) = request else {
                         break;
@@ -1433,7 +1505,7 @@ impl BackgroundScanner {
                         futures::pin_mut!(progress_update_timer);
 
                         loop {
-                            select_biased! {
+                            futures::select_biased! {
                                 request = self.next_scan_request().fuse() => {
                                     let Ok(request) = request else { break };
                                     if !self.process_scan_request(request, true).await {

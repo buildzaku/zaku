@@ -8,6 +8,9 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+test-support = []
+
 [lib]
 name = "http_client"
 path = "src/http_client.rs"
@@ -18,4 +21,6 @@ bytes = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 http-body = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
 url = { workspace = true }
