@@ -1281,7 +1281,7 @@ mod tests {
 
         let request_path = ProjectPath {
             worktree_id,
-            path: Arc::from(rel_path(path!("collection/request.toml"))),
+            path: Arc::from(rel_path("collection/request.toml")),
         };
 
         workspace
