@@ -27,6 +27,10 @@ pub struct RequestFileConfig {
     pub url: String,
     #[serde(default)]
     pub params: Vec<RequestFileParam>,
+    #[serde(default)]
+    pub headers: Vec<RequestFileHeader>,
+    #[serde(default)]
+    pub body: Option<RequestFileBody>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -35,6 +39,29 @@ pub struct RequestFileParam {
     pub value: String,
     #[serde(default)]
     pub disabled: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct RequestFileHeader {
+    pub name: String,
+    pub value: String,
+    #[serde(default)]
+    pub disabled: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct RequestFileBody {
+    pub r#type: RequestFileBodyType,
+    #[serde(default)]
+    pub data: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RequestFileBodyType {
+    Text,
+    Json,
+    Xml,
 }
 
 pub(crate) fn parse_request_file(contents: &str) -> RequestFileState {

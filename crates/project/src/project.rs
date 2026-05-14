@@ -15,8 +15,9 @@ use util::{path::PathStyle, rel_path::RelPath};
 use worktree::UpdatedEntriesSet;
 
 pub use worktree::{
-    Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileConfig,
-    RequestFileMeta, RequestFileParam, RequestFileState, Snapshot, Worktree, WorktreeId,
+    Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
+    RequestFileBodyType, RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam,
+    RequestFileState, Snapshot, Worktree, WorktreeId,
 };
 
 use crate::worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent};

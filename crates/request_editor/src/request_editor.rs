@@ -12,8 +12,8 @@ use actions::workspace::SendRequest;
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
 use project::{
-    Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileConfig, RequestFileMeta,
-    RequestFileParam, RequestFileState,
+    Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileBody, RequestFileBodyType,
+    RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState,
 };
 use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
@@ -184,6 +184,8 @@ struct RequestConfig {
     method: Method,
     url: Entity<InputField>,
     params: Vec<RequestParam>,
+    headers: Vec<RequestHeader>,
+    body: Option<RequestBody>,
 }
 
 impl Request {
@@ -204,19 +206,38 @@ impl Request {
             url.set_text(&request_file.config.url, window, cx);
         });
         let mut params = Vec::new();
-        for request_file_param in &request_file.config.params {
+        for param in &request_file.config.params {
             let mut request_param = RequestParam::new(window, cx);
             request_param.name.update(cx, |name, cx| {
-                name.set_text(&request_file_param.name, window, cx);
+                name.set_text(&param.name, window, cx);
             });
             request_param.value.update(cx, |value, cx| {
-                value.set_text(&request_file_param.value, window, cx);
+                value.set_text(&param.value, window, cx);
             });
-            if request_file_param.disabled {
+            if param.disabled {
                 request_param.set_disabled(true, window, cx);
             }
             params.push(request_param);
         }
+        let mut headers = Vec::new();
+        for header in &request_file.config.headers {
+            let mut request_header = RequestHeader::new(window, cx);
+            request_header.name.update(cx, |name, cx| {
+                name.set_text(&header.name, window, cx);
+            });
+            request_header.value.update(cx, |value, cx| {
+                value.set_text(&header.value, window, cx);
+            });
+            if header.disabled {
+                request_header.set_disabled(true, window, cx);
+            }
+            headers.push(request_header);
+        }
+        let body = request_file
+            .config
+            .body
+            .as_ref()
+            .map(RequestBody::from_request_file_body);
 
         Ok(Self {
             meta: request_file.meta.clone(),
@@ -224,6 +245,8 @@ impl Request {
                 method,
                 url,
                 params,
+                headers,
+                body,
             },
         })
     }
@@ -252,12 +275,26 @@ impl RequestSnapshot {
                     .config
                     .params
                     .iter()
-                    .map(|request_param| RequestFileParam {
-                        name: request_param.name.read(cx).text(cx),
-                        value: request_param.value.read(cx).text(cx),
-                        disabled: request_param.disabled,
+                    .map(|param| RequestFileParam {
+                        name: param.name.read(cx).text(cx),
+                        value: param.value.read(cx).text(cx),
+                        disabled: param.disabled,
                     })
                     .collect(),
+                headers: request
+                    .config
+                    .headers
+                    .iter()
+                    .map(|header| RequestFileHeader {
+                        name: header.name.read(cx).text(cx),
+                        value: header.value.read(cx).text(cx),
+                        disabled: header.disabled,
+                    })
+                    .collect(),
+                body: request.config.body.as_ref().map(|body| RequestFileBody {
+                    r#type: body.r#type.clone(),
+                    data: body.data.clone(),
+                }),
             },
         })
     }
@@ -295,6 +332,44 @@ impl RequestParam {
             .update(cx, |name, cx| name.set_muted(disabled, window, cx));
         self.value
             .update(cx, |value, cx| value.set_muted(disabled, window, cx));
+    }
+}
+
+struct RequestHeader {
+    name: Entity<InputField>,
+    value: Entity<InputField>,
+    disabled: bool,
+}
+
+impl RequestHeader {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            name: cx.new(|cx| InputField::new(window, cx, "Key")),
+            value: cx.new(|cx| InputField::new(window, cx, "Value")),
+            disabled: false,
+        }
+    }
+
+    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
+        self.disabled = disabled;
+        self.name
+            .update(cx, |name, cx| name.set_muted(disabled, window, cx));
+        self.value
+            .update(cx, |value, cx| value.set_muted(disabled, window, cx));
+    }
+}
+
+struct RequestBody {
+    r#type: RequestFileBodyType,
+    data: String,
+}
+
+impl RequestBody {
+    fn from_request_file_body(request_file_body: &RequestFileBody) -> Self {
+        Self {
+            r#type: request_file_body.r#type.clone(),
+            data: request_file_body.data.clone(),
+        }
     }
 }
 
@@ -460,9 +535,13 @@ impl RequestEditor {
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
         subscriptions.push(Self::subscribe_to_input(&request.config.url, window, cx));
-        for request_param in &request.config.params {
-            subscriptions.push(Self::subscribe_to_input(&request_param.name, window, cx));
-            subscriptions.push(Self::subscribe_to_input(&request_param.value, window, cx));
+        for param in &request.config.params {
+            subscriptions.push(Self::subscribe_to_input(&param.name, window, cx));
+            subscriptions.push(Self::subscribe_to_input(&param.value, window, cx));
+        }
+        for header in &request.config.headers {
+            subscriptions.push(Self::subscribe_to_input(&header.name, window, cx));
+            subscriptions.push(Self::subscribe_to_input(&header.value, window, cx));
         }
         subscriptions
     }
@@ -547,20 +626,44 @@ impl RequestEditor {
             .config
             .params
             .iter()
-            .filter_map(|request_param| {
-                if request_param.disabled {
+            .filter_map(|param| {
+                if param.disabled {
                     return None;
                 }
 
-                let name = request_param.name.read(cx).text(cx).trim().to_string();
+                let name = param.name.read(cx).text(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = request_param.value.read(cx).text(cx);
+                let value = param.value.read(cx).text(cx);
                 Some((name, value))
             })
             .collect::<Vec<_>>();
+        let request_headers = request
+            .config
+            .headers
+            .iter()
+            .filter_map(|header| {
+                if header.disabled {
+                    return None;
+                }
+
+                let name = header.name.read(cx).text(cx).trim().to_string();
+                if name.is_empty() {
+                    return None;
+                }
+
+                let value = header.value.read(cx).text(cx);
+                Some((name, value))
+            })
+            .collect::<Vec<_>>();
+        let request_body = request
+            .config
+            .body
+            .as_ref()
+            .map(|body| body.data.clone())
+            .filter(|body| !body.is_empty());
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
             workspace.open_panel::<ResponsePanel>(window, cx);
@@ -616,12 +719,17 @@ impl RequestEditor {
                         }
                     }
 
-                    let request = match Builder::new()
+                    let mut builder = Builder::new()
                         .method(request_method)
                         .uri(request_url.as_str())
-                        .follow_redirects(RedirectPolicy::FollowAll)
-                        .body(AsyncBody::empty())
-                    {
+                        .follow_redirects(RedirectPolicy::FollowAll);
+
+                    for (name, value) in request_headers {
+                        builder = builder.header(name.as_str(), value.as_str());
+                    }
+
+                    let request_body = request_body.map_or_else(AsyncBody::empty, AsyncBody::from);
+                    let request = match builder.body(request_body) {
                         Ok(request) => request,
                         Err(error) => {
                             response.update(cx, |response, cx| {
