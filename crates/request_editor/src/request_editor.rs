@@ -44,12 +44,8 @@ pub fn init(cx: &mut App) {
             .detach();
 
             workspace.register_action(|workspace, _: &SendRequest, window, cx| {
-                let Some(request_editor) = workspace.active_item_as::<RequestEditor>(cx) else {
-                    return;
-                };
-
-                request_editor.update(cx, |request_editor, cx| {
-                    request_editor.send_request(window, cx);
+                workspace.pane().update(cx, |pane, cx| {
+                    pane.send_request(window, cx);
                 });
             });
         },
@@ -75,10 +71,12 @@ pub trait RequestPaneExt: Sized {
 
 impl RequestPaneExt for Pane {
     fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(request_editor) = self
-            .active_item()
-            .and_then(|item| item.downcast::<RequestEditor>())
+        if let Some(active_item) = self.active_item()
+            && let Some(request_editor) = active_item.downcast::<RequestEditor>()
         {
+            let item_id = active_item.item_id();
+            self.unpreview_item_if_preview(item_id);
+            cx.notify();
             request_editor.update(cx, |request_editor, cx| {
                 request_editor.send_request(window, cx);
             });
@@ -377,6 +375,18 @@ impl RequestEditor {
 
     fn response(&self) -> Option<Entity<Response>> {
         self.response.clone()
+    }
+
+    fn unpreview_tab(&self, cx: &mut Context<Self>) {
+        let request_editor_id = cx.entity().entity_id();
+        if let Err(error) = self.workspace.update(cx, |workspace, cx| {
+            workspace.pane().update(cx, |pane, cx| {
+                pane.unpreview_item_if_preview(request_editor_id);
+                cx.notify();
+            });
+        }) {
+            log::debug!("Failed to unpreview request editor: {error:?}");
+        }
     }
 
     fn title(&self, cx: &App) -> SharedString {
@@ -934,6 +944,7 @@ impl RequestEditor {
                     .key_context("RequestUrl")
                     .on_action(
                         cx.listener(move |request_editor, _: &SendRequest, window, cx| {
+                            request_editor.unpreview_tab(cx);
                             request_editor.send_request(window, cx);
                         }),
                     )
@@ -956,6 +967,7 @@ impl RequestEditor {
                             .width(ui::rems_from_px(60.0))
                             .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |request_editor, _, window, cx| {
+                                request_editor.unpreview_tab(cx);
                                 request_editor.send_request(window, cx);
                             })),
                     ),
