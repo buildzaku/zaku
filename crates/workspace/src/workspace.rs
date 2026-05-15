@@ -2189,6 +2189,14 @@ mod tests {
         });
         let second_workspace = second_open.await.unwrap();
 
+        second_workspace
+            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+            .await;
+        let second_worktree = second_workspace.update_in(cx, |workspace, _, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        second_worktree.flush_fs_events(cx).await;
+
         assert_eq!(
             root.read_with(cx, |root, _| Entity::entity_id(root.workspace())),
             Entity::entity_id(&first_workspace)

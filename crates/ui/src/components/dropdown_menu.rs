@@ -8,10 +8,11 @@ use crate::{ButtonLike, ContextMenu, PopoverMenu, prelude::*};
 use super::PopoverMenuHandle;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DropdownStyle {
+pub enum DropdownVariant {
     #[default]
     Solid,
     Outlined,
+    OutlinedGhost,
     Subtle,
     Ghost,
 }
@@ -28,7 +29,7 @@ pub struct DropdownMenu {
     trigger_size: ButtonSize,
     trigger_tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     trigger_icon: Option<IconName>,
-    style: DropdownStyle,
+    variant: DropdownVariant,
     menu: Entity<ContextMenu>,
     full_width: bool,
     disabled: bool,
@@ -51,7 +52,7 @@ impl DropdownMenu {
             trigger_size: ButtonSize::Default,
             trigger_tooltip: None,
             trigger_icon: Some(IconName::CaretUpDown),
-            style: DropdownStyle::default(),
+            variant: DropdownVariant::default(),
             menu,
             full_width: false,
             disabled: false,
@@ -74,7 +75,7 @@ impl DropdownMenu {
             trigger_size: ButtonSize::Default,
             trigger_tooltip: None,
             trigger_icon: Some(IconName::CaretUpDown),
-            style: DropdownStyle::default(),
+            variant: DropdownVariant::default(),
             menu,
             full_width: false,
             disabled: false,
@@ -86,8 +87,8 @@ impl DropdownMenu {
         }
     }
 
-    pub fn style(mut self, style: DropdownStyle) -> Self {
-        self.style = style;
+    pub fn variant(mut self, variant: DropdownVariant) -> Self {
+        self.variant = variant;
         self
     }
 
@@ -149,11 +150,12 @@ impl Disableable for DropdownMenu {
 
 impl RenderOnce for DropdownMenu {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let button_variant = match self.style {
-            DropdownStyle::Solid => ButtonVariant::Solid,
-            DropdownStyle::Subtle => ButtonVariant::Subtle,
-            DropdownStyle::Outlined => ButtonVariant::Outline,
-            DropdownStyle::Ghost => ButtonVariant::Ghost,
+        let button_variant = match self.variant {
+            DropdownVariant::Solid => ButtonVariant::Solid,
+            DropdownVariant::Subtle => ButtonVariant::Subtle,
+            DropdownVariant::Outlined => ButtonVariant::Outline,
+            DropdownVariant::OutlinedGhost => ButtonVariant::OutlinedGhost,
+            DropdownVariant::Ghost => ButtonVariant::Ghost,
         };
 
         let full_width = self.full_width;

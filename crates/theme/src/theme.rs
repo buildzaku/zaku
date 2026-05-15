@@ -181,6 +181,11 @@ pub struct ThemeColors {
     pub ghost_element_disabled: Hsla,
 
     pub status_bar_background: Hsla,
+    pub panel_tab_bar_background: Hsla,
+    pub panel_tab_inactive_background: Hsla,
+    pub panel_tab_active_background: Hsla,
+    pub panel_tab_inactive_foreground: Hsla,
+    pub panel_tab_active_foreground: Hsla,
     pub tab_bar_background: Hsla,
     pub tab_inactive_background: Hsla,
     pub tab_active_background: Hsla,
@@ -349,6 +354,16 @@ pub struct ThemeStyleContent {
 
     #[serde(rename = "status_bar.background")]
     pub status_bar_background: Option<String>,
+    #[serde(rename = "panel.tab_bar.background")]
+    pub panel_tab_bar_background: Option<String>,
+    #[serde(rename = "panel.tab.inactive_background")]
+    pub panel_tab_inactive_background: Option<String>,
+    #[serde(rename = "panel.tab.active_background")]
+    pub panel_tab_active_background: Option<String>,
+    #[serde(rename = "panel.tab.inactive_foreground")]
+    pub panel_tab_inactive_foreground: Option<String>,
+    #[serde(rename = "panel.tab.active_foreground")]
+    pub panel_tab_active_foreground: Option<String>,
     #[serde(rename = "tab_bar.background")]
     pub tab_bar_background: Option<String>,
     #[serde(rename = "tab.inactive_background")]
@@ -549,6 +564,26 @@ impl ThemeStyleContent {
             status_bar_background: parse_color(
                 "status_bar.background",
                 self.status_bar_background.as_deref(),
+            )?,
+            panel_tab_bar_background: parse_color(
+                "panel.tab_bar.background",
+                self.panel_tab_bar_background.as_deref(),
+            )?,
+            panel_tab_inactive_background: parse_color(
+                "panel.tab.inactive_background",
+                self.panel_tab_inactive_background.as_deref(),
+            )?,
+            panel_tab_active_background: parse_color(
+                "panel.tab.active_background",
+                self.panel_tab_active_background.as_deref(),
+            )?,
+            panel_tab_inactive_foreground: parse_color(
+                "panel.tab.inactive_foreground",
+                self.panel_tab_inactive_foreground.as_deref(),
+            )?,
+            panel_tab_active_foreground: parse_color(
+                "panel.tab.active_foreground",
+                self.panel_tab_active_foreground.as_deref(),
             )?,
             tab_bar_background: parse_color(
                 "tab_bar.background",

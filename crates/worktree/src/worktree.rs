@@ -37,8 +37,8 @@ use tokio::sync::{oneshot, watch};
 
 use request::parse_request_file;
 pub use request::{
-    REQUEST_FILE_VERSION, RequestFile, RequestFileConfig, RequestFileMeta, RequestFileParam,
-    RequestFileState,
+    REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileConfig,
+    RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState,
 };
 
 #[cfg(feature = "test-support")]

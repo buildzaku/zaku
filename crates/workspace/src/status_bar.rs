@@ -3,7 +3,7 @@ use gpui::{
 };
 
 use theme::ActiveTheme;
-use ui::StyledTypography;
+use ui::{DynamicSpacing, StyledTypography};
 
 use crate::pane::Pane;
 
@@ -115,21 +115,21 @@ impl StatusBar {
 
 impl Render for StatusBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
+        let colors = cx.theme().colors();
 
         gpui::div()
             .flex()
             .flex_row()
             .items_center()
             .w_full()
-            .h(gpui::px(26.))
-            .px_3()
-            .gap_2()
+            .gap(DynamicSpacing::Base08.rems(cx))
+            .px(DynamicSpacing::Base12.rems(cx))
+            .py(DynamicSpacing::Base04.rems(cx))
             .font_ui(cx)
             .text_ui_sm(cx)
-            .bg(theme_colors.status_bar_background)
+            .bg(colors.status_bar_background)
             .border_t_1()
-            .border_color(theme_colors.border_variant)
+            .border_color(colors.border_variant)
             .child(self.render_left_tools())
             .child(gpui::div().flex_1())
             .child(self.render_right_tools())

@@ -162,7 +162,10 @@ impl RenderOnce for ButtonLike {
         };
         let hovered_style = variant.hovered(cx);
         let active_style = variant.active(cx);
-        let is_outlined = matches!(self.variant, ButtonVariant::Outline);
+        let is_outlined = matches!(
+            self.variant,
+            ButtonVariant::Outline | ButtonVariant::OutlinedGhost
+        );
 
         self.base
             .id(self.id.clone())

@@ -10,7 +10,7 @@ use editor::Editor;
 use http_client::StatusCode;
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
-use ui::{Color, IconName, Label, LabelCommon, LabelSize};
+use ui::{Color, DynamicSpacing, IconName, Label, LabelCommon, LabelSize};
 
 use workspace::{Panel, Workspace, pane::Pane};
 
@@ -342,13 +342,14 @@ impl Render for ResponsePanel {
             .child(
                 gpui::div()
                     .w_full()
-                    .h(gpui::px(26.0))
+                    .h(DynamicSpacing::Base36.px(cx))
                     .px_3()
                     .flex()
                     .items_center()
                     .justify_between()
                     .border_b_1()
-                    .border_color(theme_colors.border_variant)
+                    .border_color(theme_colors.border)
+                    .bg(theme_colors.panel_tab_bar_background)
                     .child(Label::new("Response").size(LabelSize::Small))
                     .when_some(response_summary, |header, response_summary| {
                         header.child(

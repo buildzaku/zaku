@@ -77,6 +77,7 @@ pub enum ButtonVariant {
     Solid,
     Accent,
     Outline,
+    OutlinedGhost,
     Ghost,
     Tinted(TintColor),
 }
@@ -88,6 +89,7 @@ impl From<ButtonVariant> for Color {
             | ButtonVariant::Solid
             | ButtonVariant::Accent
             | ButtonVariant::Outline
+            | ButtonVariant::OutlinedGhost
             | ButtonVariant::Ghost => Color::Default,
             ButtonVariant::Tinted(tint) => tint.into(),
         }
@@ -128,6 +130,15 @@ impl ButtonVariant {
                 let colors = cx.theme().colors();
                 ButtonStyle {
                     background: colors.ghost_element_background,
+                    border_color: colors.border_variant,
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::OutlinedGhost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
                     border_color: colors.border_variant,
                     label_color: colors.text,
                     icon_color: colors.text,
@@ -180,6 +191,15 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_hover,
                     border_color: colors.border,
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
+            ButtonVariant::OutlinedGhost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
+                    border_color: colors.border_variant,
                     label_color: colors.text,
                     icon_color: colors.text,
                 }
@@ -240,6 +260,15 @@ impl ButtonVariant {
                     icon_color: colors.text,
                 }
             }
+            ButtonVariant::OutlinedGhost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
+                    border_color: colors.border_variant,
+                    label_color: colors.text,
+                    icon_color: colors.text,
+                }
+            }
             ButtonVariant::Ghost => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
@@ -268,6 +297,15 @@ impl ButtonVariant {
                 let colors = cx.theme().colors();
                 ButtonStyle {
                     background: colors.element_disabled,
+                    border_color: colors.border_disabled,
+                    label_color: colors.text_disabled,
+                    icon_color: colors.text_disabled,
+                }
+            }
+            ButtonVariant::OutlinedGhost => {
+                let colors = cx.theme().colors();
+                ButtonStyle {
+                    background: gpui::transparent_black(),
                     border_color: colors.border_disabled,
                     label_color: colors.text_disabled,
                     icon_color: colors.text_disabled,
@@ -508,6 +546,10 @@ impl RenderOnce for Button {
         };
         let hovered_style = variant.hovered(cx);
         let active_style = variant.active(cx);
+        let is_outlined = matches!(
+            self.variant,
+            ButtonVariant::Outline | ButtonVariant::OutlinedGhost
+        );
         let text_accent = cx.theme().colors().text_accent;
         let icon_size = self.icon_size.unwrap_or(match self.size {
             ButtonSize::Large => IconSize::Medium,
@@ -613,7 +655,7 @@ impl RenderOnce for Button {
                     })
                 },
             )
-            .when(self.variant == ButtonVariant::Outline, |this| {
+            .when(is_outlined, |this| {
                 this.border_1().border_color(style.border_color)
             })
             .when_some(start_icon, |this, icon| {

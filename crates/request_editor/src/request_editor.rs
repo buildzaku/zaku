@@ -1,7 +1,8 @@
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    Anchor, AnyElement, App, Context, Div, Entity, EntityId, EventEmitter, FocusHandle, Focusable,
-    FontWeight, ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, prelude::*,
+    Anchor, AnyElement, App, Context, Div, ElementId, Entity, EntityId, EventEmitter, FocusHandle,
+    Focusable, FontWeight, ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window,
+    prelude::*,
 };
 use std::{
     sync::Arc,
@@ -9,19 +10,21 @@ use std::{
 };
 
 use actions::workspace::SendRequest;
+use editor::{Editor, EditorEvent};
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
+use multi_buffer::MultiBuffer;
 use project::{
-    Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileConfig, RequestFileMeta,
-    RequestFileParam, RequestFileState,
+    Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileBody, RequestFileBodyType,
+    RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState,
 };
 use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownStyle, FixedWidth, Icon, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
-    Label, LabelCommon, LabelSize, ScrollAxes, Scrollbars, ToggleState, Tooltip, TrackLayout,
-    WithScrollbar,
+    DropdownVariant, DynamicSpacing, FixedWidth, Icon, IconButton, IconButtonShape, IconName,
+    IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
+    ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
 use util::{path::PathStyle, truncate_and_trailoff};
 
@@ -99,7 +102,7 @@ fn normalize_url(url: &str) -> Option<Url> {
     Url::parse(&url).ok()
 }
 
-fn request_method_label(method: &Method) -> String {
+fn method_label(method: &Method) -> String {
     let method = method.as_str().trim().to_ascii_uppercase();
     match method.as_str() {
         "GET" => "GET".to_string(),
@@ -110,6 +113,15 @@ fn request_method_label(method: &Method) -> String {
         "HEAD" => "HEAD".to_string(),
         "OPTIONS" => "OPT".to_string(),
         _ => method.chars().take(5).collect(),
+    }
+}
+
+fn body_type_label(r#type: Option<RequestBodyType>) -> &'static str {
+    match r#type {
+        None => "None",
+        Some(RequestBodyType::Text) => "Text",
+        Some(RequestBodyType::Json) => "JSON",
+        Some(RequestBodyType::Xml) => "XML",
     }
 }
 
@@ -173,6 +185,13 @@ enum RequestEditorState {
     },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RequestEditorTab {
+    Parameters,
+    Headers,
+    Body,
+}
+
 struct Request {
     meta: RequestMeta,
     config: RequestConfig,
@@ -180,10 +199,15 @@ struct Request {
 
 type RequestMeta = RequestFileMeta;
 
+type RequestBodyType = RequestFileBodyType;
+
 struct RequestConfig {
     method: Method,
     url: Entity<InputField>,
     params: Vec<RequestParam>,
+    headers: Vec<RequestHeader>,
+    body_type: Option<RequestBodyType>,
+    body: Option<RequestBody>,
 }
 
 impl Request {
@@ -204,19 +228,39 @@ impl Request {
             url.set_text(&request_file.config.url, window, cx);
         });
         let mut params = Vec::new();
-        for request_file_param in &request_file.config.params {
+        for param in &request_file.config.params {
             let mut request_param = RequestParam::new(window, cx);
             request_param.name.update(cx, |name, cx| {
-                name.set_text(&request_file_param.name, window, cx);
+                name.set_text(&param.name, window, cx);
             });
             request_param.value.update(cx, |value, cx| {
-                value.set_text(&request_file_param.value, window, cx);
+                value.set_text(&param.value, window, cx);
             });
-            if request_file_param.disabled {
+            if param.disabled {
                 request_param.set_disabled(true, window, cx);
             }
             params.push(request_param);
         }
+        let mut headers = Vec::new();
+        for header in &request_file.config.headers {
+            let mut request_header = RequestHeader::new(window, cx);
+            request_header.name.update(cx, |name, cx| {
+                name.set_text(&header.name, window, cx);
+            });
+            request_header.value.update(cx, |value, cx| {
+                value.set_text(&header.value, window, cx);
+            });
+            if header.disabled {
+                request_header.set_disabled(true, window, cx);
+            }
+            headers.push(request_header);
+        }
+        let body_type = request_file.config.body.as_ref().map(|body| body.r#type);
+        let body = request_file
+            .config
+            .body
+            .as_ref()
+            .map(|body| RequestBody::from_request_file_body(body, window, cx));
 
         Ok(Self {
             meta: request_file.meta.clone(),
@@ -224,6 +268,9 @@ impl Request {
                 method,
                 url,
                 params,
+                headers,
+                body_type,
+                body,
             },
         })
     }
@@ -231,6 +278,15 @@ impl Request {
     fn delete_param(&mut self, index: usize) -> bool {
         if index < self.config.params.len() {
             self.config.params.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn delete_header(&mut self, index: usize) -> bool {
+        if index < self.config.headers.len() {
+            self.config.headers.remove(index);
             true
         } else {
             false
@@ -252,12 +308,28 @@ impl RequestSnapshot {
                     .config
                     .params
                     .iter()
-                    .map(|request_param| RequestFileParam {
-                        name: request_param.name.read(cx).text(cx),
-                        value: request_param.value.read(cx).text(cx),
-                        disabled: request_param.disabled,
+                    .map(|param| RequestFileParam {
+                        name: param.name.read(cx).text(cx),
+                        value: param.value.read(cx).text(cx),
+                        disabled: param.disabled,
                     })
                     .collect(),
+                headers: request
+                    .config
+                    .headers
+                    .iter()
+                    .map(|header| RequestFileHeader {
+                        name: header.name.read(cx).text(cx),
+                        value: header.value.read(cx).text(cx),
+                        disabled: header.disabled,
+                    })
+                    .collect(),
+                body: request.config.body_type.and_then(|r#type| {
+                    request.config.body.as_ref().map(|body| RequestFileBody {
+                        r#type,
+                        data: body.data(cx),
+                    })
+                }),
             },
         })
     }
@@ -298,6 +370,61 @@ impl RequestParam {
     }
 }
 
+struct RequestHeader {
+    name: Entity<InputField>,
+    value: Entity<InputField>,
+    disabled: bool,
+}
+
+impl RequestHeader {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            name: cx.new(|cx| InputField::new(window, cx, "Key")),
+            value: cx.new(|cx| InputField::new(window, cx, "Value")),
+            disabled: false,
+        }
+    }
+
+    fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
+        self.disabled = disabled;
+        self.name
+            .update(cx, |name, cx| name.set_muted(disabled, window, cx));
+        self.value
+            .update(cx, |value, cx| value.set_muted(disabled, window, cx));
+    }
+}
+
+struct RequestBody {
+    editor: Entity<Editor>,
+    payload: Entity<MultiBuffer>,
+}
+
+impl RequestBody {
+    fn new(data: impl Into<String>, window: &mut Window, cx: &mut App) -> Self {
+        let data = data.into();
+        let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer(data, cx), cx));
+        let editor = cx.new(|cx| Editor::for_multibuffer(payload.clone(), window, cx));
+
+        Self { editor, payload }
+    }
+
+    fn from_request_file_body(
+        request_file_body: &RequestFileBody,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        Self::new(request_file_body.data.clone(), window, cx)
+    }
+
+    fn data(&self, cx: &App) -> String {
+        self.payload.read(cx).snapshot(cx).text()
+    }
+
+    fn editor(&self) -> Entity<Editor> {
+        self.editor.clone()
+    }
+}
+
 pub struct RequestEditor {
     focus_handle: FocusHandle,
     workspace: WeakEntity<Workspace>,
@@ -305,11 +432,14 @@ pub struct RequestEditor {
     buffer: Option<Entity<RequestBuffer>>,
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
+    active_tab: RequestEditorTab,
     response: Option<Entity<Response>>,
     http_client: Arc<dyn HttpClient>,
-    scroll_handle: ScrollHandle,
+    params_scroll_handle: ScrollHandle,
+    headers_scroll_handle: ScrollHandle,
     is_dirty: bool,
     input_subscriptions: Vec<Subscription>,
+    body_subscription: Option<Subscription>,
 }
 
 impl RequestEditor {
@@ -345,6 +475,14 @@ impl RequestEditor {
             RequestEditorState::Ready(request) => Self::subscribe_to_request(request, window, cx),
             RequestEditorState::Invalid { .. } => Vec::new(),
         };
+        let body_subscription = match &request {
+            RequestEditorState::Ready(request) => request
+                .config
+                .body
+                .as_ref()
+                .map(|body| Self::subscribe_to_body(&body.editor, window, cx)),
+            RequestEditorState::Invalid { .. } => None,
+        };
 
         Self {
             focus_handle,
@@ -353,11 +491,14 @@ impl RequestEditor {
             buffer: Some(buffer),
             request,
             request_snapshot,
+            active_tab: RequestEditorTab::Parameters,
             response: None,
             http_client: SharedState::global(cx).http_client.clone(),
-            scroll_handle: ScrollHandle::new(),
+            params_scroll_handle: ScrollHandle::new(),
+            headers_scroll_handle: ScrollHandle::new(),
             is_dirty: false,
             input_subscriptions,
+            body_subscription,
         }
     }
 
@@ -460,9 +601,13 @@ impl RequestEditor {
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
         subscriptions.push(Self::subscribe_to_input(&request.config.url, window, cx));
-        for request_param in &request.config.params {
-            subscriptions.push(Self::subscribe_to_input(&request_param.name, window, cx));
-            subscriptions.push(Self::subscribe_to_input(&request_param.value, window, cx));
+        for param in &request.config.params {
+            subscriptions.push(Self::subscribe_to_input(&param.name, window, cx));
+            subscriptions.push(Self::subscribe_to_input(&param.value, window, cx));
+        }
+        for header in &request.config.headers {
+            subscriptions.push(Self::subscribe_to_input(&header.name, window, cx));
+            subscriptions.push(Self::subscribe_to_input(&header.value, window, cx));
         }
         subscriptions
     }
@@ -487,6 +632,23 @@ impl RequestEditor {
             window,
             cx,
         )
+    }
+
+    fn subscribe_to_body(
+        editor: &Entity<Editor>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        let request_editor = cx.weak_entity();
+        window.subscribe(editor, cx, move |_, event: &EditorEvent, _, cx| {
+            if *event == EditorEvent::BufferEdited
+                && let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                    request_editor.mark_edited(cx);
+                })
+            {
+                log::debug!("Failed to update request editor edit state: {error:?}");
+            }
+        })
     }
 
     fn mark_edited(&mut self, cx: &mut Context<Self>) {
@@ -525,15 +687,67 @@ impl RequestEditor {
             return;
         }
 
-        let request_param = RequestParam::new(window, cx);
-        let name_subscription = Self::subscribe_to_input(&request_param.name, window, cx);
-        let value_subscription = Self::subscribe_to_input(&request_param.value, window, cx);
+        let param = RequestParam::new(window, cx);
+        let name_subscription = Self::subscribe_to_input(&param.name, window, cx);
+        let value_subscription = Self::subscribe_to_input(&param.value, window, cx);
         if let RequestEditorState::Ready(request) = &mut self.request {
-            request.config.params.push(request_param);
+            request.config.params.push(param);
         }
         self.input_subscriptions.push(name_subscription);
         self.input_subscriptions.push(value_subscription);
         self.mark_edited(cx);
+    }
+
+    fn add_header(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(&self.request, RequestEditorState::Ready(_)) {
+            return;
+        }
+
+        let header = RequestHeader::new(window, cx);
+        let name_subscription = Self::subscribe_to_input(&header.name, window, cx);
+        let value_subscription = Self::subscribe_to_input(&header.value, window, cx);
+        if let RequestEditorState::Ready(request) = &mut self.request {
+            request.config.headers.push(header);
+        }
+        self.input_subscriptions.push(name_subscription);
+        self.input_subscriptions.push(value_subscription);
+        self.mark_edited(cx);
+    }
+
+    fn set_body_type(
+        &mut self,
+        r#type: Option<RequestBodyType>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut edited = false;
+
+        if let RequestEditorState::Ready(request) = &mut self.request {
+            match r#type {
+                Some(r#type) => {
+                    if request.config.body.is_none() {
+                        let body = RequestBody::new("", window, cx);
+                        self.body_subscription =
+                            Some(Self::subscribe_to_body(&body.editor, window, cx));
+                        request.config.body = Some(body);
+                    }
+
+                    if request.config.body_type != Some(r#type) {
+                        request.config.body_type = Some(r#type);
+                        edited = true;
+                    }
+                }
+                None => {
+                    if request.config.body_type.take().is_some() {
+                        edited = true;
+                    }
+                }
+            }
+        }
+
+        if edited {
+            self.mark_edited(cx);
+        }
     }
 
     pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -547,20 +761,43 @@ impl RequestEditor {
             .config
             .params
             .iter()
-            .filter_map(|request_param| {
-                if request_param.disabled {
+            .filter_map(|param| {
+                if param.disabled {
                     return None;
                 }
 
-                let name = request_param.name.read(cx).text(cx).trim().to_string();
+                let name = param.name.read(cx).text(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = request_param.value.read(cx).text(cx);
+                let value = param.value.read(cx).text(cx);
                 Some((name, value))
             })
             .collect::<Vec<_>>();
+        let request_headers = request
+            .config
+            .headers
+            .iter()
+            .filter_map(|header| {
+                if header.disabled {
+                    return None;
+                }
+
+                let name = header.name.read(cx).text(cx).trim().to_string();
+                if name.is_empty() {
+                    return None;
+                }
+
+                let value = header.value.read(cx).text(cx);
+                Some((name, value))
+            })
+            .collect::<Vec<_>>();
+        let request_body = request
+            .config
+            .body_type
+            .and_then(|_| request.config.body.as_ref().map(|body| body.data(cx)))
+            .filter(|body| !body.is_empty());
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
             workspace.open_panel::<ResponsePanel>(window, cx);
@@ -616,12 +853,17 @@ impl RequestEditor {
                         }
                     }
 
-                    let request = match Builder::new()
+                    let mut builder = Builder::new()
                         .method(request_method)
                         .uri(request_url.as_str())
-                        .follow_redirects(RedirectPolicy::FollowAll)
-                        .body(AsyncBody::empty())
-                    {
+                        .follow_redirects(RedirectPolicy::FollowAll);
+
+                    for (name, value) in request_headers {
+                        builder = builder.header(name.as_str(), value.as_str());
+                    }
+
+                    let request_body = request_body.map_or_else(AsyncBody::empty, AsyncBody::from);
+                    let request = match builder.body(request_body) {
                         Ok(request) => request,
                         Err(error) => {
                             response.update(cx, |response, cx| {
@@ -793,6 +1035,384 @@ impl RequestEditor {
             .child(Label::new(error.to_string()).color(Color::Muted))
     }
 
+    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let active_tab = self.active_tab;
+
+        let tab =
+            |id: ElementId, active: bool, label: SharedString, set_active_tab: RequestEditorTab| {
+                let colors = cx.theme().colors();
+
+                gpui::div()
+                    .id(id)
+                    .relative()
+                    .flex_none()
+                    .h(DynamicSpacing::Base24.px(cx))
+                    .px(DynamicSpacing::Base08.px(cx))
+                    .flex()
+                    .items_center()
+                    .rounded_sm()
+                    .border_1()
+                    .when(active, |this| {
+                        this.border_color(colors.border)
+                            .bg(colors.panel_tab_active_background)
+                    })
+                    .when(!active, |this| {
+                        this.border_color(gpui::transparent_black())
+                            .bg(gpui::transparent_black())
+                    })
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |request_editor, _, _, cx| {
+                        cx.stop_propagation();
+                        if request_editor.active_tab != set_active_tab {
+                            request_editor.active_tab = set_active_tab;
+                            cx.notify();
+                        }
+                    }))
+                    .child(
+                        Label::new(label)
+                            .size(LabelSize::Small)
+                            .line_height_style(LineHeightStyle::UiLabel)
+                            .weight(FontWeight::MEDIUM)
+                            .color(if active {
+                                Color::Custom(colors.panel_tab_active_foreground)
+                            } else {
+                                Color::Custom(colors.panel_tab_inactive_foreground)
+                            })
+                            .single_line(),
+                    )
+            };
+
+        let colors = cx.theme().colors();
+
+        ui::h_flex()
+            .id("request-editor-tabs")
+            .w_full()
+            .h(DynamicSpacing::Base36.px(cx))
+            .gap_1()
+            .px_1()
+            .border_y_1()
+            .border_color(colors.border)
+            .bg(colors.panel_tab_bar_background)
+            .child(tab(
+                ElementId::Name("parameters-tab".into()),
+                active_tab == RequestEditorTab::Parameters,
+                "Parameters".into(),
+                RequestEditorTab::Parameters,
+            ))
+            .child(tab(
+                ElementId::Name("headers-tab".into()),
+                active_tab == RequestEditorTab::Headers,
+                "Headers".into(),
+                RequestEditorTab::Headers,
+            ))
+            .child(tab(
+                ElementId::Name("body-tab".into()),
+                active_tab == RequestEditorTab::Body,
+                "Body".into(),
+                RequestEditorTab::Body,
+            ))
+            .into_any_element()
+    }
+
+    fn render_tab_content(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        match self.active_tab {
+            RequestEditorTab::Parameters => self.render_parameters(request, window, cx),
+            RequestEditorTab::Headers => self.render_headers(request, window, cx),
+            RequestEditorTab::Body => Self::render_body(request, window, cx),
+        }
+    }
+
+    fn render_parameters(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut rows = Vec::new();
+        for (index, param) in request.config.params.iter().enumerate() {
+            let checkbox = ui::checkbox(
+                ("param-disabled", index),
+                ToggleState::from(!param.disabled),
+            )
+            .on_click(cx.listener(
+                move |request_editor, new_state: &ToggleState, window, cx| {
+                    let disabled = !new_state.selected();
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request
+                        && let Some(param) = request.config.params.get_mut(index)
+                        && param.disabled != disabled
+                    {
+                        param.set_disabled(disabled, window, cx);
+                        edited = true;
+                    }
+
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                },
+            ));
+            let delete_button = IconButton::new(("param-delete", index), IconName::Trash)
+                .shape(IconButtonShape::Square)
+                .variant(ButtonVariant::Outline)
+                .icon_color(Color::Muted)
+                .tooltip(Tooltip::text("Delete"))
+                .on_click(cx.listener(move |request_editor, _, _, cx| {
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
+                        edited = request.delete_param(index);
+                    }
+
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                }));
+
+            rows.push(
+                ui::h_flex()
+                    .id(("param-row", index))
+                    .w_full()
+                    .child(gpui::div().pr_1p5().child(checkbox))
+                    .child(
+                        ui::h_flex()
+                            .flex_1()
+                            .gap_2p5()
+                            .child(gpui::div().flex_1().child(param.name.clone()))
+                            .child(gpui::div().flex_1().child(param.value.clone()))
+                            .child(delete_button),
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        let add_button = Button::new("param-add", "Add Parameter")
+            .icon(IconName::Plus)
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .variant(ButtonVariant::Outline)
+            .size(ButtonSize::Medium)
+            .on_click(cx.listener(|request_editor, _, window, cx| {
+                request_editor.add_param(window, cx);
+            }));
+        let colors = cx.theme().colors();
+
+        ui::v_flex()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                ui::v_flex()
+                    .id("parameters")
+                    .track_scroll(&self.params_scroll_handle)
+                    .size_full()
+                    .min_w_0()
+                    .overflow_y_scroll()
+                    .pl_2()
+                    .pr_6()
+                    .gap_2()
+                    .py_3()
+                    .children(rows)
+                    .child(ui::h_flex().pl_1().child(add_button)),
+            )
+            .custom_scrollbars(
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id("parameters-scrollbar")
+                    .tracked_scroll_handle(&self.params_scroll_handle)
+                    .with_track_along(
+                        ScrollAxes::Vertical,
+                        colors.scrollbar_track_background,
+                        TrackLayout::Overlay,
+                    ),
+                window,
+                cx,
+            )
+            .into_any_element()
+    }
+
+    fn render_headers(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut rows = Vec::new();
+        for (index, header) in request.config.headers.iter().enumerate() {
+            let checkbox = ui::checkbox(
+                ("header-disabled", index),
+                ToggleState::from(!header.disabled),
+            )
+            .on_click(cx.listener(
+                move |request_editor, new_state: &ToggleState, window, cx| {
+                    let disabled = !new_state.selected();
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request
+                        && let Some(header) = request.config.headers.get_mut(index)
+                        && header.disabled != disabled
+                    {
+                        header.set_disabled(disabled, window, cx);
+                        edited = true;
+                    }
+
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                },
+            ));
+            let delete_button = IconButton::new(("header-delete", index), IconName::Trash)
+                .shape(IconButtonShape::Square)
+                .variant(ButtonVariant::Outline)
+                .icon_color(Color::Muted)
+                .tooltip(Tooltip::text("Delete"))
+                .on_click(cx.listener(move |request_editor, _, _, cx| {
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
+                        edited = request.delete_header(index);
+                    }
+
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                }));
+
+            rows.push(
+                ui::h_flex()
+                    .id(("header-row", index))
+                    .w_full()
+                    .child(gpui::div().pr_1p5().child(checkbox))
+                    .child(
+                        ui::h_flex()
+                            .flex_1()
+                            .gap_2p5()
+                            .child(gpui::div().flex_1().child(header.name.clone()))
+                            .child(gpui::div().flex_1().child(header.value.clone()))
+                            .child(delete_button),
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        let add_button = Button::new("header-add", "Add Header")
+            .icon(IconName::Plus)
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .variant(ButtonVariant::Outline)
+            .size(ButtonSize::Medium)
+            .on_click(cx.listener(|request_editor, _, window, cx| {
+                request_editor.add_header(window, cx);
+            }));
+        let colors = cx.theme().colors();
+
+        ui::v_flex()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                ui::v_flex()
+                    .id("headers")
+                    .track_scroll(&self.headers_scroll_handle)
+                    .size_full()
+                    .min_w_0()
+                    .overflow_y_scroll()
+                    .pl_2()
+                    .pr_6()
+                    .gap_2()
+                    .py_3()
+                    .children(rows)
+                    .child(ui::h_flex().pl_1().child(add_button)),
+            )
+            .custom_scrollbars(
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id("headers-scrollbar")
+                    .tracked_scroll_handle(&self.headers_scroll_handle)
+                    .with_track_along(
+                        ScrollAxes::Vertical,
+                        colors.scrollbar_track_background,
+                        TrackLayout::Overlay,
+                    ),
+                window,
+                cx,
+            )
+            .into_any_element()
+    }
+
+    fn render_body(request: &Request, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let selected_body_type = request.config.body_type;
+        let selected_body_type_label = body_type_label(selected_body_type);
+        let body = selected_body_type.and(request.config.body.as_ref());
+        let request_editor = cx.weak_entity();
+        let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
+            let mut menu = menu;
+            for body_type in [
+                None,
+                Some(RequestBodyType::Text),
+                Some(RequestBodyType::Json),
+                Some(RequestBodyType::Xml),
+            ] {
+                let request_editor = request_editor.clone();
+                menu = menu.toggleable_entry(
+                    body_type_label(body_type),
+                    body_type == selected_body_type,
+                    IconPosition::End,
+                    None,
+                    move |window, cx| {
+                        if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                            request_editor.set_body_type(body_type, window, cx);
+                        }) {
+                            log::debug!("Failed to update request body type: {error:?}");
+                        }
+                    },
+                );
+            }
+            menu
+        });
+        let colors = cx.theme().colors();
+
+        ui::v_flex()
+            .id("body")
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .bg(colors.panel_background)
+            .child(
+                ui::h_flex()
+                    .w_full()
+                    .h(DynamicSpacing::Base36.px(cx))
+                    .px_3()
+                    .gap_2()
+                    .border_b_1()
+                    .border_color(colors.border)
+                    .bg(colors.panel_tab_bar_background.opacity(0.5))
+                    .child(
+                        Label::new("Content Type")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                    )
+                    .child(
+                        DropdownMenu::new("body-type", selected_body_type_label, context_menu)
+                            .variant(DropdownVariant::OutlinedGhost)
+                            .attach(Anchor::BottomLeft)
+                            .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+                            .trigger_size(ButtonSize::Default),
+                    ),
+            )
+            .when_some(body, |this, body| {
+                this.child(
+                    gpui::div()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .min_w_0()
+                        .child(body.editor()),
+                )
+            })
+            .into_any_element()
+    }
+
     fn render_request(
         &self,
         request: &Request,
@@ -802,76 +1422,7 @@ impl RequestEditor {
         let request_relative_path = self.project_path(cx).map(|project_path| {
             SharedString::from(project_path.path.display(self.path_style(cx)).into_owned())
         });
-
         let url = request.config.url.clone();
-        let request_params = request
-            .config
-            .params
-            .iter()
-            .enumerate()
-            .map(|(index, request_param)| {
-                let name = request_param.name.clone();
-                let value = request_param.value.clone();
-
-                ui::h_flex()
-                    .id(("request-param-row", index))
-                    .w_full()
-                    .child(
-                        gpui::div().pr_1p5().child(
-                            ui::checkbox(
-                                ("request-param-disabled", index),
-                                ToggleState::from(!request_param.disabled),
-                            )
-                            .on_click(cx.listener(
-                                move |request_editor, new_state: &ToggleState, window, cx| {
-                                    let mut edited = false;
-                                    if let RequestEditorState::Ready(request) =
-                                        &mut request_editor.request
-                                        && let Some(request_param) =
-                                            request.config.params.get_mut(index)
-                                    {
-                                        let disabled = !new_state.selected();
-                                        if request_param.disabled != disabled {
-                                            request_param.set_disabled(disabled, window, cx);
-                                            edited = true;
-                                        }
-                                    }
-
-                                    if edited {
-                                        request_editor.mark_edited(cx);
-                                    }
-                                },
-                            )),
-                        ),
-                    )
-                    .child(
-                        ui::h_flex()
-                            .flex_1()
-                            .gap_2p5()
-                            .child(gpui::div().flex_1().child(name))
-                            .child(gpui::div().flex_1().child(value))
-                            .child(
-                                IconButton::new(("request-param-delete", index), IconName::Trash)
-                                    .shape(IconButtonShape::Square)
-                                    .variant(ButtonVariant::Outline)
-                                    .icon_color(Color::Muted)
-                                    .tooltip(Tooltip::text("Delete"))
-                                    .on_click(cx.listener(move |request_editor, _, _, cx| {
-                                        let mut edited = false;
-                                        if let RequestEditorState::Ready(request) =
-                                            &mut request_editor.request
-                                        {
-                                            edited = request.delete_param(index);
-                                        }
-
-                                        if edited {
-                                            request_editor.mark_edited(cx);
-                                        }
-                                    })),
-                            ),
-                    )
-            })
-            .collect::<Vec<_>>();
         let request_method_menu = {
             let available_request_methods = [
                 Method::GET,
@@ -919,13 +1470,12 @@ impl RequestEditor {
                 menu
             })
         };
-
-        let theme_colors = cx.theme().colors();
+        let colors = cx.theme().colors();
 
         ui::v_flex()
             .track_focus(&self.focus_handle)
             .size_full()
-            .bg(theme_colors.panel_background)
+            .bg(colors.panel_background)
             .when_some(request_relative_path, |this, request_relative_path| {
                 this.child(
                     ui::h_flex()
@@ -939,7 +1489,7 @@ impl RequestEditor {
                 ui::h_flex()
                     .w_full()
                     .px_3()
-                    .py_2()
+                    .py_3()
                     .gap_2()
                     .key_context("RequestUrl")
                     .on_action(
@@ -954,7 +1504,7 @@ impl RequestEditor {
                             request.config.method.as_str().to_owned(),
                             request_method_menu,
                         )
-                        .style(DropdownStyle::Outlined)
+                        .variant(DropdownVariant::Outlined)
                         .attach(Anchor::BottomLeft)
                         .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
@@ -972,73 +1522,8 @@ impl RequestEditor {
                             })),
                     ),
             )
-            .child(
-                ui::v_flex()
-                    .id("request-params")
-                    .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        gpui::div()
-                            .id("request-params-scroll")
-                            .w_full()
-                            .flex_1()
-                            .min_h_0()
-                            .child(
-                                ui::v_flex()
-                                    .id("request-params-content")
-                                    .track_scroll(&self.scroll_handle)
-                                    .size_full()
-                                    .min_w_0()
-                                    .overflow_y_scroll()
-                                    .child(
-                                        ui::v_flex()
-                                            .w_full()
-                                            .min_w_0()
-                                            .pl_2()
-                                            .pr(gpui::px(10.0))
-                                            .gap_2()
-                                            .pb_3()
-                                            .child(
-                                                ui::h_flex()
-                                                    .w_full()
-                                                    .pl_1()
-                                                    .child(Label::new("Query Parameters")),
-                                            )
-                                            .children(request_params)
-                                            .child(
-                                                ui::h_flex().pl_1().child(
-                                                    Button::new(
-                                                        "request-param-add",
-                                                        "Add Parameter",
-                                                    )
-                                                    .icon(IconName::Plus)
-                                                    .icon_size(IconSize::Small)
-                                                    .icon_color(Color::Muted)
-                                                    .variant(ButtonVariant::Outline)
-                                                    .size(ButtonSize::Medium)
-                                                    .on_click(cx.listener(
-                                                        move |request_editor, _, window, cx| {
-                                                            request_editor.add_param(window, cx);
-                                                        },
-                                                    )),
-                                                ),
-                                            ),
-                                    ),
-                            )
-                            .custom_scrollbars(
-                                Scrollbars::new(ScrollAxes::Vertical)
-                                    .tracked_scroll_handle(&self.scroll_handle)
-                                    .with_track_along(
-                                        ScrollAxes::Vertical,
-                                        theme_colors.scrollbar_track_background,
-                                        TrackLayout::Overlay,
-                                    ),
-                                window,
-                                cx,
-                            ),
-                    ),
-            )
+            .child(self.render_tab_bar(cx))
+            .child(self.render_tab_content(request, window, cx))
     }
 }
 
@@ -1072,10 +1557,8 @@ impl Item for RequestEditor {
     }
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
-        let method_label = match &self.request {
-            RequestEditorState::Ready(request) => {
-                Some(request_method_label(&request.config.method))
-            }
+        let selected_method_label = match &self.request {
+            RequestEditorState::Ready(request) => Some(method_label(&request.config.method)),
             RequestEditorState::Invalid { .. } => None,
         };
         let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
@@ -1107,7 +1590,7 @@ impl Item for RequestEditor {
                     )
                 },
             )
-            .when_some(method_label, |this, method| {
+            .when_some(selected_method_label, |this, method| {
                 this.child(
                     ui::h_flex().flex_none().items_center().child(
                         Label::new(method)
@@ -1311,6 +1794,116 @@ mod tests {
         let response = Response::builder()
             .status(StatusCode::OK)
             .body(AsyncBody::from("response"))
+            .unwrap();
+        assert!(tx.send(Ok(response)).is_ok());
+    }
+
+    #[gpui::test]
+    async fn test_send_request_respects_disabled(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (tx, rx) = oneshot::channel();
+        let rx = Arc::new(Mutex::new(Some(rx)));
+
+        http_client.replace_handler({
+            move |_, request| {
+                assert_eq!(request.uri().path(), "/search");
+                assert_eq!(request.uri().query(), Some("query=zaku&test=1"));
+                assert_eq!(
+                    request
+                        .headers()
+                        .get("Content-Type")
+                        .and_then(|value| value.to_str().ok()),
+                    Some("application/json")
+                );
+                assert!(request.headers().get("X-Debug").is_none());
+                let rx = rx.lock().take().unwrap();
+
+                async move {
+                    let mut body = request.into_body();
+                    let mut data = String::new();
+                    body.read_to_string(&mut data).await?;
+                    assert_eq!(
+                        data,
+                        indoc! {r#"
+                            {
+                              "hello": "world"
+                            }
+                        "#}
+                    );
+
+                    rx.await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                }
+            }
+        });
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Search"
+
+                        [config]
+                        method = "POST"
+                        url = "https://api.zaku.dev/search"
+                        params = [
+                            { name = "query", value = "zaku" },
+                            { name = "debug", value = "1", disabled = true },
+                            { name = "test", value = "1", disabled = false },
+                        ]
+                        headers = [
+                            { name = "Content-Type", value = "application/json" },
+                            { name = "X-Debug", value = "1", disabled = true },
+                        ]
+
+                        [config.body]
+                        type = "json"
+                        data = '''
+                        {
+                          "hello": "world"
+                        }
+                        '''
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::empty())
             .unwrap();
         assert!(tx.send(Ok(response)).is_ok());
     }
