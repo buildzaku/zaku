@@ -10,8 +10,10 @@ use std::{
 };
 
 use actions::workspace::SendRequest;
+use editor::{Editor, EditorEvent};
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
+use multi_buffer::MultiBuffer;
 use project::{
     Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileBody, RequestFileBodyType,
     RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState,
@@ -20,7 +22,7 @@ use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownStyle, DynamicSpacing, FixedWidth, Icon, IconButton, IconButtonShape, IconName,
+    DropdownVariant, DynamicSpacing, FixedWidth, Icon, IconButton, IconButtonShape, IconName,
     IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
@@ -100,7 +102,7 @@ fn normalize_url(url: &str) -> Option<Url> {
     Url::parse(&url).ok()
 }
 
-fn request_method_label(method: &Method) -> String {
+fn method_label(method: &Method) -> String {
     let method = method.as_str().trim().to_ascii_uppercase();
     match method.as_str() {
         "GET" => "GET".to_string(),
@@ -111,6 +113,15 @@ fn request_method_label(method: &Method) -> String {
         "HEAD" => "HEAD".to_string(),
         "OPTIONS" => "OPT".to_string(),
         _ => method.chars().take(5).collect(),
+    }
+}
+
+fn body_type_label(r#type: Option<RequestBodyType>) -> &'static str {
+    match r#type {
+        None => "None",
+        Some(RequestBodyType::Text) => "Text",
+        Some(RequestBodyType::Json) => "JSON",
+        Some(RequestBodyType::Xml) => "XML",
     }
 }
 
@@ -178,6 +189,7 @@ enum RequestEditorState {
 enum RequestEditorTab {
     Parameters,
     Headers,
+    Body,
 }
 
 struct Request {
@@ -186,6 +198,8 @@ struct Request {
 }
 
 type RequestMeta = RequestFileMeta;
+
+type RequestBodyType = RequestFileBodyType;
 
 struct RequestConfig {
     method: Method,
@@ -244,7 +258,7 @@ impl Request {
             .config
             .body
             .as_ref()
-            .map(RequestBody::from_request_file_body);
+            .map(|body| RequestBody::from_request_file_body(body, window, cx));
 
         Ok(Self {
             meta: request_file.meta.clone(),
@@ -308,8 +322,8 @@ impl RequestSnapshot {
                     })
                     .collect(),
                 body: request.config.body.as_ref().map(|body| RequestFileBody {
-                    r#type: body.r#type.clone(),
-                    data: body.data.clone(),
+                    r#type: body.r#type,
+                    data: body.data(cx),
                 }),
             },
         })
@@ -376,16 +390,48 @@ impl RequestHeader {
 }
 
 struct RequestBody {
-    r#type: RequestFileBodyType,
-    data: String,
+    r#type: RequestBodyType,
+    editor: Entity<Editor>,
+    payload: Entity<MultiBuffer>,
 }
 
 impl RequestBody {
-    fn from_request_file_body(request_file_body: &RequestFileBody) -> Self {
+    fn new(
+        r#type: RequestBodyType,
+        data: impl Into<String>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        let data = data.into();
+        let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer(data, cx), cx));
+        let editor = cx.new(|cx| Editor::for_multibuffer(payload.clone(), window, cx));
+
         Self {
-            r#type: request_file_body.r#type.clone(),
-            data: request_file_body.data.clone(),
+            r#type,
+            editor,
+            payload,
         }
+    }
+
+    fn from_request_file_body(
+        request_file_body: &RequestFileBody,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        Self::new(
+            request_file_body.r#type,
+            request_file_body.data.clone(),
+            window,
+            cx,
+        )
+    }
+
+    fn data(&self, cx: &App) -> String {
+        self.payload.read(cx).snapshot(cx).text()
+    }
+
+    fn editor(&self) -> Entity<Editor> {
+        self.editor.clone()
     }
 }
 
@@ -403,6 +449,7 @@ pub struct RequestEditor {
     headers_scroll_handle: ScrollHandle,
     is_dirty: bool,
     input_subscriptions: Vec<Subscription>,
+    body_subscription: Option<Subscription>,
 }
 
 impl RequestEditor {
@@ -438,6 +485,14 @@ impl RequestEditor {
             RequestEditorState::Ready(request) => Self::subscribe_to_request(request, window, cx),
             RequestEditorState::Invalid { .. } => Vec::new(),
         };
+        let body_subscription = match &request {
+            RequestEditorState::Ready(request) => request
+                .config
+                .body
+                .as_ref()
+                .map(|body| Self::subscribe_to_body(&body.editor, window, cx)),
+            RequestEditorState::Invalid { .. } => None,
+        };
 
         Self {
             focus_handle,
@@ -453,6 +508,7 @@ impl RequestEditor {
             headers_scroll_handle: ScrollHandle::new(),
             is_dirty: false,
             input_subscriptions,
+            body_subscription,
         }
     }
 
@@ -588,6 +644,23 @@ impl RequestEditor {
         )
     }
 
+    fn subscribe_to_body(
+        editor: &Entity<Editor>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Subscription {
+        let request_editor = cx.weak_entity();
+        window.subscribe(editor, cx, move |_, event: &EditorEvent, _, cx| {
+            if *event == EditorEvent::BufferEdited
+                && let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                    request_editor.mark_edited(cx);
+                })
+            {
+                log::debug!("Failed to update request editor edit state: {error:?}");
+            }
+        })
+    }
+
     fn mark_edited(&mut self, cx: &mut Context<Self>) {
         let is_dirty = if let (Some(request_snapshot), RequestEditorState::Ready(request)) =
             (self.request_snapshot.as_ref(), &self.request)
@@ -651,6 +724,44 @@ impl RequestEditor {
         self.mark_edited(cx);
     }
 
+    fn set_body_type(
+        &mut self,
+        r#type: Option<RequestBodyType>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut edited = false;
+
+        if let RequestEditorState::Ready(request) = &mut self.request {
+            match r#type {
+                Some(r#type) => {
+                    if let Some(body) = &mut request.config.body {
+                        if body.r#type != r#type {
+                            body.r#type = r#type;
+                            edited = true;
+                        }
+                    } else {
+                        let body = RequestBody::new(r#type, "", window, cx);
+                        self.body_subscription =
+                            Some(Self::subscribe_to_body(&body.editor, window, cx));
+                        request.config.body = Some(body);
+                        edited = true;
+                    }
+                }
+                None => {
+                    if request.config.body.take().is_some() {
+                        self.body_subscription = None;
+                        edited = true;
+                    }
+                }
+            }
+        }
+
+        if edited {
+            self.mark_edited(cx);
+        }
+    }
+
     pub fn send_request(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let RequestEditorState::Ready(request) = &self.request else {
             return;
@@ -698,7 +809,7 @@ impl RequestEditor {
             .config
             .body
             .as_ref()
-            .map(|body| body.data.clone())
+            .map(|body| body.data(cx))
             .filter(|body| !body.is_empty());
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
@@ -1007,6 +1118,12 @@ impl RequestEditor {
                 "Headers".into(),
                 RequestEditorTab::Headers,
             ))
+            .child(tab(
+                ElementId::Name("body-tab".into()),
+                active_tab == RequestEditorTab::Body,
+                "Body".into(),
+                RequestEditorTab::Body,
+            ))
             .into_any_element()
     }
 
@@ -1017,69 +1134,42 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match self.active_tab {
-            RequestEditorTab::Parameters => {
-                self.render_key_value_section(RequestEditorTab::Parameters, request, window, cx)
-            }
-            RequestEditorTab::Headers => {
-                self.render_key_value_section(RequestEditorTab::Headers, request, window, cx)
-            }
+            RequestEditorTab::Parameters => self.render_parameters(request, window, cx),
+            RequestEditorTab::Headers => self.render_headers(request, window, cx),
+            RequestEditorTab::Body => Self::render_body(request, window, cx),
         }
     }
 
-    fn render_key_value_section(
+    fn render_parameters(
         &self,
-        tab: RequestEditorTab,
         request: &Request,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let colors = cx.theme().colors();
-        let rows = {
-            let render_row = |index: usize, name, value, disabled: bool| {
-                let checkbox = ui::checkbox(
-                    match tab {
-                        RequestEditorTab::Parameters => ("param-disabled", index),
-                        RequestEditorTab::Headers => ("header-disabled", index),
-                    },
-                    ToggleState::from(!disabled),
-                )
-                .on_click(cx.listener(
-                    move |request_editor, new_state: &ToggleState, window, cx| {
-                        let disabled = !new_state.selected();
-                        let mut edited = false;
-                        if let RequestEditorState::Ready(request) = &mut request_editor.request {
-                            match tab {
-                                RequestEditorTab::Parameters => {
-                                    if let Some(param) = request.config.params.get_mut(index)
-                                        && param.disabled != disabled
-                                    {
-                                        param.set_disabled(disabled, window, cx);
-                                        edited = true;
-                                    }
-                                }
-                                RequestEditorTab::Headers => {
-                                    if let Some(header) = request.config.headers.get_mut(index)
-                                        && header.disabled != disabled
-                                    {
-                                        header.set_disabled(disabled, window, cx);
-                                        edited = true;
-                                    }
-                                }
-                            }
-                        }
+        let mut rows = Vec::new();
+        for (index, param) in request.config.params.iter().enumerate() {
+            let checkbox = ui::checkbox(
+                ("param-disabled", index),
+                ToggleState::from(!param.disabled),
+            )
+            .on_click(cx.listener(
+                move |request_editor, new_state: &ToggleState, window, cx| {
+                    let disabled = !new_state.selected();
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request
+                        && let Some(param) = request.config.params.get_mut(index)
+                        && param.disabled != disabled
+                    {
+                        param.set_disabled(disabled, window, cx);
+                        edited = true;
+                    }
 
-                        if edited {
-                            request_editor.mark_edited(cx);
-                        }
-                    },
-                ));
-                let delete_button = IconButton::new(
-                    match tab {
-                        RequestEditorTab::Parameters => ("param-delete", index),
-                        RequestEditorTab::Headers => ("header-delete", index),
-                    },
-                    IconName::Trash,
-                )
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                },
+            ));
+            let delete_button = IconButton::new(("param-delete", index), IconName::Trash)
                 .shape(IconButtonShape::Square)
                 .variant(ButtonVariant::Outline)
                 .icon_color(Color::Muted)
@@ -1087,10 +1177,7 @@ impl RequestEditor {
                 .on_click(cx.listener(move |request_editor, _, _, cx| {
                     let mut edited = false;
                     if let RequestEditorState::Ready(request) = &mut request_editor.request {
-                        edited = match tab {
-                            RequestEditorTab::Parameters => request.delete_param(index),
-                            RequestEditorTab::Headers => request.delete_header(index),
-                        };
+                        edited = request.delete_param(index);
                     }
 
                     if edited {
@@ -1098,88 +1185,42 @@ impl RequestEditor {
                     }
                 }));
 
+            rows.push(
                 ui::h_flex()
-                    .id(match tab {
-                        RequestEditorTab::Parameters => ("param-row", index),
-                        RequestEditorTab::Headers => ("header-row", index),
-                    })
+                    .id(("param-row", index))
                     .w_full()
                     .child(gpui::div().pr_1p5().child(checkbox))
                     .child(
                         ui::h_flex()
                             .flex_1()
                             .gap_2p5()
-                            .child(gpui::div().flex_1().child(name))
-                            .child(gpui::div().flex_1().child(value))
+                            .child(gpui::div().flex_1().child(param.name.clone()))
+                            .child(gpui::div().flex_1().child(param.value.clone()))
                             .child(delete_button),
                     )
-                    .into_any_element()
-            };
+                    .into_any_element(),
+            );
+        }
 
-            let mut rows = Vec::new();
-            match tab {
-                RequestEditorTab::Parameters => {
-                    for (index, param) in request.config.params.iter().enumerate() {
-                        rows.push(render_row(
-                            index,
-                            param.name.clone(),
-                            param.value.clone(),
-                            param.disabled,
-                        ));
-                    }
-                }
-                RequestEditorTab::Headers => {
-                    for (index, header) in request.config.headers.iter().enumerate() {
-                        rows.push(render_row(
-                            index,
-                            header.name.clone(),
-                            header.value.clone(),
-                            header.disabled,
-                        ));
-                    }
-                }
-            }
-            rows
-        };
-        let add_button = match tab {
-            RequestEditorTab::Parameters => Button::new("param-add", "Add Parameter")
-                .icon(IconName::Plus)
-                .icon_size(IconSize::Small)
-                .icon_color(Color::Muted)
-                .variant(ButtonVariant::Outline)
-                .size(ButtonSize::Medium)
-                .on_click(cx.listener(|request_editor, _, window, cx| {
-                    request_editor.add_param(window, cx);
-                })),
-            RequestEditorTab::Headers => Button::new("header-add", "Add Header")
-                .icon(IconName::Plus)
-                .icon_size(IconSize::Small)
-                .icon_color(Color::Muted)
-                .variant(ButtonVariant::Outline)
-                .size(ButtonSize::Medium)
-                .on_click(cx.listener(|request_editor, _, window, cx| {
-                    request_editor.add_header(window, cx);
-                })),
-        };
+        let add_button = Button::new("param-add", "Add Parameter")
+            .icon(IconName::Plus)
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .variant(ButtonVariant::Outline)
+            .size(ButtonSize::Medium)
+            .on_click(cx.listener(|request_editor, _, window, cx| {
+                request_editor.add_param(window, cx);
+            }));
+        let colors = cx.theme().colors();
 
         ui::v_flex()
-            .id(match tab {
-                RequestEditorTab::Parameters => "params",
-                RequestEditorTab::Headers => "headers",
-            })
             .w_full()
             .flex_1()
             .min_h_0()
             .child(
                 ui::v_flex()
-                    .id(match tab {
-                        RequestEditorTab::Parameters => "params-content",
-                        RequestEditorTab::Headers => "headers-content",
-                    })
-                    .track_scroll(match tab {
-                        RequestEditorTab::Parameters => &self.params_scroll_handle,
-                        RequestEditorTab::Headers => &self.headers_scroll_handle,
-                    })
+                    .id("parameters")
+                    .track_scroll(&self.params_scroll_handle)
                     .size_full()
                     .min_w_0()
                     .overflow_y_scroll()
@@ -1192,14 +1233,8 @@ impl RequestEditor {
             )
             .custom_scrollbars(
                 Scrollbars::new(ScrollAxes::Vertical)
-                    .id(match tab {
-                        RequestEditorTab::Parameters => "params-scrollbar",
-                        RequestEditorTab::Headers => "headers-scrollbar",
-                    })
-                    .tracked_scroll_handle(match tab {
-                        RequestEditorTab::Parameters => &self.params_scroll_handle,
-                        RequestEditorTab::Headers => &self.headers_scroll_handle,
-                    })
+                    .id("parameters-scrollbar")
+                    .tracked_scroll_handle(&self.params_scroll_handle)
                     .with_track_along(
                         ScrollAxes::Vertical,
                         colors.scrollbar_track_background,
@@ -1208,6 +1243,185 @@ impl RequestEditor {
                 window,
                 cx,
             )
+            .into_any_element()
+    }
+
+    fn render_headers(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let mut rows = Vec::new();
+        for (index, header) in request.config.headers.iter().enumerate() {
+            let checkbox = ui::checkbox(
+                ("header-disabled", index),
+                ToggleState::from(!header.disabled),
+            )
+            .on_click(cx.listener(
+                move |request_editor, new_state: &ToggleState, window, cx| {
+                    let disabled = !new_state.selected();
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request
+                        && let Some(header) = request.config.headers.get_mut(index)
+                        && header.disabled != disabled
+                    {
+                        header.set_disabled(disabled, window, cx);
+                        edited = true;
+                    }
+
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                },
+            ));
+            let delete_button = IconButton::new(("header-delete", index), IconName::Trash)
+                .shape(IconButtonShape::Square)
+                .variant(ButtonVariant::Outline)
+                .icon_color(Color::Muted)
+                .tooltip(Tooltip::text("Delete"))
+                .on_click(cx.listener(move |request_editor, _, _, cx| {
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
+                        edited = request.delete_header(index);
+                    }
+
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                }));
+
+            rows.push(
+                ui::h_flex()
+                    .id(("header-row", index))
+                    .w_full()
+                    .child(gpui::div().pr_1p5().child(checkbox))
+                    .child(
+                        ui::h_flex()
+                            .flex_1()
+                            .gap_2p5()
+                            .child(gpui::div().flex_1().child(header.name.clone()))
+                            .child(gpui::div().flex_1().child(header.value.clone()))
+                            .child(delete_button),
+                    )
+                    .into_any_element(),
+            );
+        }
+
+        let add_button = Button::new("header-add", "Add Header")
+            .icon(IconName::Plus)
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .variant(ButtonVariant::Outline)
+            .size(ButtonSize::Medium)
+            .on_click(cx.listener(|request_editor, _, window, cx| {
+                request_editor.add_header(window, cx);
+            }));
+        let colors = cx.theme().colors();
+
+        ui::v_flex()
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                ui::v_flex()
+                    .id("headers")
+                    .track_scroll(&self.headers_scroll_handle)
+                    .size_full()
+                    .min_w_0()
+                    .overflow_y_scroll()
+                    .pl_2()
+                    .pr_6()
+                    .gap_2()
+                    .py_3()
+                    .children(rows)
+                    .child(ui::h_flex().pl_1().child(add_button)),
+            )
+            .custom_scrollbars(
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id("headers-scrollbar")
+                    .tracked_scroll_handle(&self.headers_scroll_handle)
+                    .with_track_along(
+                        ScrollAxes::Vertical,
+                        colors.scrollbar_track_background,
+                        TrackLayout::Overlay,
+                    ),
+                window,
+                cx,
+            )
+            .into_any_element()
+    }
+
+    fn render_body(request: &Request, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let selected_body_type = request.config.body.as_ref().map(|body| body.r#type);
+        let selected_body_type_label = body_type_label(selected_body_type);
+        let request_editor = cx.weak_entity();
+        let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
+            let mut menu = menu;
+            for body_type in [
+                None,
+                Some(RequestBodyType::Text),
+                Some(RequestBodyType::Json),
+                Some(RequestBodyType::Xml),
+            ] {
+                let request_editor = request_editor.clone();
+                menu = menu.toggleable_entry(
+                    body_type_label(body_type),
+                    body_type == selected_body_type,
+                    IconPosition::End,
+                    None,
+                    move |window, cx| {
+                        if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                            request_editor.set_body_type(body_type, window, cx);
+                        }) {
+                            log::debug!("Failed to update request body type: {error:?}");
+                        }
+                    },
+                );
+            }
+            menu
+        });
+        let colors = cx.theme().colors();
+
+        ui::v_flex()
+            .id("body")
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .bg(colors.panel_background)
+            .child(
+                ui::h_flex()
+                    .w_full()
+                    .h(DynamicSpacing::Base36.px(cx))
+                    .px_3()
+                    .gap_2()
+                    .border_b_1()
+                    .border_color(colors.border)
+                    .bg(colors.panel_tab_bar_background.opacity(0.5))
+                    .child(
+                        Label::new("Content Type")
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                    )
+                    .child(
+                        DropdownMenu::new("body-type", selected_body_type_label, context_menu)
+                            .variant(DropdownVariant::OutlinedGhost)
+                            .attach(Anchor::BottomLeft)
+                            .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+                            .trigger_size(ButtonSize::Default),
+                    ),
+            )
+            .when_some(request.config.body.as_ref(), |this, body| {
+                this.child(
+                    gpui::div()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .min_w_0()
+                        .child(body.editor()),
+                )
+            })
             .into_any_element()
     }
 
@@ -1302,7 +1516,7 @@ impl RequestEditor {
                             request.config.method.as_str().to_owned(),
                             request_method_menu,
                         )
-                        .style(DropdownStyle::Outlined)
+                        .variant(DropdownVariant::Outlined)
                         .attach(Anchor::BottomLeft)
                         .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
@@ -1355,10 +1569,8 @@ impl Item for RequestEditor {
     }
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
-        let method_label = match &self.request {
-            RequestEditorState::Ready(request) => {
-                Some(request_method_label(&request.config.method))
-            }
+        let selected_method_label = match &self.request {
+            RequestEditorState::Ready(request) => Some(method_label(&request.config.method)),
             RequestEditorState::Invalid { .. } => None,
         };
         let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
@@ -1390,7 +1602,7 @@ impl Item for RequestEditor {
                     )
                 },
             )
-            .when_some(method_label, |this, method| {
+            .when_some(selected_method_label, |this, method| {
                 this.child(
                     ui::h_flex().flex_none().items_center().child(
                         Label::new(method)
@@ -1623,6 +1835,18 @@ mod tests {
                 let rx = rx.lock().take().unwrap();
 
                 async move {
+                    let mut body = request.into_body();
+                    let mut data = String::new();
+                    body.read_to_string(&mut data).await?;
+                    assert_eq!(
+                        data,
+                        indoc! {r#"
+                            {
+                              "hello": "world"
+                            }
+                        "#}
+                    );
+
                     rx.await
                         .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
                 }

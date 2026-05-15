@@ -56,7 +56,7 @@ pub struct RequestFileBody {
     pub data: String,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum RequestFileBodyType {
     Text,

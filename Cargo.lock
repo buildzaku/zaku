@@ -5137,6 +5137,7 @@ dependencies = [
  "indoc",
  "input",
  "log",
+ "multi_buffer",
  "parking_lot",
  "project",
  "response_panel",
