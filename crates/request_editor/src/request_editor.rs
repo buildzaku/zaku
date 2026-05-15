@@ -206,6 +206,7 @@ struct RequestConfig {
     url: Entity<InputField>,
     params: Vec<RequestParam>,
     headers: Vec<RequestHeader>,
+    body_type: Option<RequestBodyType>,
     body: Option<RequestBody>,
 }
 
@@ -254,6 +255,7 @@ impl Request {
             }
             headers.push(request_header);
         }
+        let body_type = request_file.config.body.as_ref().map(|body| body.r#type);
         let body = request_file
             .config
             .body
@@ -267,6 +269,7 @@ impl Request {
                 url,
                 params,
                 headers,
+                body_type,
                 body,
             },
         })
@@ -321,9 +324,11 @@ impl RequestSnapshot {
                         disabled: header.disabled,
                     })
                     .collect(),
-                body: request.config.body.as_ref().map(|body| RequestFileBody {
-                    r#type: body.r#type,
-                    data: body.data(cx),
+                body: request.config.body_type.and_then(|r#type| {
+                    request.config.body.as_ref().map(|body| RequestFileBody {
+                        r#type,
+                        data: body.data(cx),
+                    })
                 }),
             },
         })
@@ -390,27 +395,17 @@ impl RequestHeader {
 }
 
 struct RequestBody {
-    r#type: RequestBodyType,
     editor: Entity<Editor>,
     payload: Entity<MultiBuffer>,
 }
 
 impl RequestBody {
-    fn new(
-        r#type: RequestBodyType,
-        data: impl Into<String>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Self {
+    fn new(data: impl Into<String>, window: &mut Window, cx: &mut App) -> Self {
         let data = data.into();
         let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer(data, cx), cx));
         let editor = cx.new(|cx| Editor::for_multibuffer(payload.clone(), window, cx));
 
-        Self {
-            r#type,
-            editor,
-            payload,
-        }
+        Self { editor, payload }
     }
 
     fn from_request_file_body(
@@ -418,12 +413,7 @@ impl RequestBody {
         window: &mut Window,
         cx: &mut App,
     ) -> Self {
-        Self::new(
-            request_file_body.r#type,
-            request_file_body.data.clone(),
-            window,
-            cx,
-        )
+        Self::new(request_file_body.data.clone(), window, cx)
     }
 
     fn data(&self, cx: &App) -> String {
@@ -735,22 +725,20 @@ impl RequestEditor {
         if let RequestEditorState::Ready(request) = &mut self.request {
             match r#type {
                 Some(r#type) => {
-                    if let Some(body) = &mut request.config.body {
-                        if body.r#type != r#type {
-                            body.r#type = r#type;
-                            edited = true;
-                        }
-                    } else {
-                        let body = RequestBody::new(r#type, "", window, cx);
+                    if request.config.body.is_none() {
+                        let body = RequestBody::new("", window, cx);
                         self.body_subscription =
                             Some(Self::subscribe_to_body(&body.editor, window, cx));
                         request.config.body = Some(body);
+                    }
+
+                    if request.config.body_type != Some(r#type) {
+                        request.config.body_type = Some(r#type);
                         edited = true;
                     }
                 }
                 None => {
-                    if request.config.body.take().is_some() {
-                        self.body_subscription = None;
+                    if request.config.body_type.take().is_some() {
                         edited = true;
                     }
                 }
@@ -807,9 +795,8 @@ impl RequestEditor {
             .collect::<Vec<_>>();
         let request_body = request
             .config
-            .body
-            .as_ref()
-            .map(|body| body.data(cx))
+            .body_type
+            .and_then(|_| request.config.body.as_ref().map(|body| body.data(cx)))
             .filter(|body| !body.is_empty());
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
@@ -1353,8 +1340,9 @@ impl RequestEditor {
     }
 
     fn render_body(request: &Request, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let selected_body_type = request.config.body.as_ref().map(|body| body.r#type);
+        let selected_body_type = request.config.body_type;
         let selected_body_type_label = body_type_label(selected_body_type);
+        let body = selected_body_type.and(request.config.body.as_ref());
         let request_editor = cx.weak_entity();
         let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
             let mut menu = menu;
@@ -1412,7 +1400,7 @@ impl RequestEditor {
                             .trigger_size(ButtonSize::Default),
                     ),
             )
-            .when_some(request.config.body.as_ref(), |this, body| {
+            .when_some(body, |this, body| {
                 this.child(
                     gpui::div()
                         .flex_1()
