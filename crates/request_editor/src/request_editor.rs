@@ -1599,6 +1599,104 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn test_send_request_respects_disabled(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        let http_client = shared_state.http_client.as_fake();
+        let (tx, rx) = oneshot::channel();
+        let rx = Arc::new(Mutex::new(Some(rx)));
+
+        http_client.replace_handler({
+            move |_, request| {
+                assert_eq!(request.uri().path(), "/search");
+                assert_eq!(request.uri().query(), Some("query=zaku&test=1"));
+                assert_eq!(
+                    request
+                        .headers()
+                        .get("Content-Type")
+                        .and_then(|value| value.to_str().ok()),
+                    Some("application/json")
+                );
+                assert!(request.headers().get("X-Debug").is_none());
+                let rx = rx.lock().take().unwrap();
+
+                async move {
+                    rx.await
+                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                }
+            }
+        });
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+                        name = "Search"
+
+                        [config]
+                        method = "POST"
+                        url = "https://api.zaku.dev/search"
+                        params = [
+                            { name = "query", value = "zaku" },
+                            { name = "debug", value = "1", disabled = true },
+                            { name = "test", value = "1", disabled = false },
+                        ]
+                        headers = [
+                            { name = "Content-Type", value = "application/json" },
+                            { name = "X-Debug", value = "1", disabled = true },
+                        ]
+
+                        [config.body]
+                        type = "json"
+                        data = '''
+                        {
+                          "hello": "world"
+                        }
+                        '''
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+        pane.update_in(cx, |pane, window, cx| {
+            pane.send_request(window, cx);
+        });
+        cx.run_until_parked();
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body(AsyncBody::empty())
+            .unwrap();
+        assert!(tx.send(Ok(response)).is_ok());
+    }
+
+    #[gpui::test]
     async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
