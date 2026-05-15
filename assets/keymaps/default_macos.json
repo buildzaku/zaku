@@ -35,6 +35,7 @@
     "bindings": {
       "cmd-b": "workspace::ToggleLeftDock",
       "cmd-j": "workspace::ToggleBottomDock",
+      "cmd-s": "workspace::Save",
       "cmd-shift-e": "project_panel::ToggleFocus",
       "cmd-shift-r": "response_panel::ToggleFocus"
     }

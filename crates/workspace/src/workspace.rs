@@ -11,6 +11,7 @@ pub use item::{
     Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
     WeakItemHandle,
 };
+pub use pane::SaveIntent;
 pub use persistence::{
     WorkspaceDb,
     model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
@@ -34,7 +35,7 @@ use std::{
 use actions::{
     menu,
     workspace::{
-        CloseProject, CloseWindow, NewWindow, Open, SuppressNotification, ToggleBottomDock,
+        CloseProject, CloseWindow, NewWindow, Open, Save, SuppressNotification, ToggleBottomDock,
         ToggleLeftDock,
     },
     zaku::{Minimize, Zoom},
@@ -59,7 +60,7 @@ use uuid::Uuid;
 
 use crate::{
     dock::{Dock, PanelButtons},
-    notifications::{NotificationId, Notifications},
+    notifications::{DetachAndPromptErr, NotificationId, Notifications},
     pane::Pane,
     status_bar::StatusBar,
 };
@@ -910,6 +911,28 @@ impl Workspace {
         self.active_item(cx)?.to_any_view().downcast::<I>().ok()
     }
 
+    pub fn save_active_item(
+        &mut self,
+        save_intent: SaveIntent,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        let project = self.project.clone();
+        let pane = self.pane.clone();
+        let item = pane.read(cx).active_item();
+        let pane = pane.downgrade();
+
+        window.spawn(cx, async move |cx| {
+            if let Some(item) = item {
+                Pane::save_item(project, &pane, item.as_ref(), save_intent, cx)
+                    .await
+                    .map(|_| ())
+            } else {
+                Ok(())
+            }
+        })
+    }
+
     pub fn left_dock(&self) -> &Entity<Dock> {
         &self.left_dock
     }
@@ -1269,6 +1292,11 @@ impl Workspace {
             }))
             .on_action(cx.listener(|workspace, _: &ToggleBottomDock, window, cx| {
                 workspace.toggle_dock(DockPosition::Bottom, window, cx);
+            }))
+            .on_action(cx.listener(|workspace, _: &Save, window, cx| {
+                workspace
+                    .save_active_item(SaveIntent::Save, window, cx)
+                    .detach_and_prompt_err("Failed to save", window, cx, |_, _, _| None);
             }))
             .on_action(cx.listener(
                 |workspace: &mut Workspace, _: &SuppressNotification, _, cx| {

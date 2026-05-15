@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Empty, Entity, EntityId, FocusHandle, FocusOutEvent,
-    Focusable, ScrollHandle, Subscription, WeakEntity, Window, prelude::*,
+    AnyElement, App, AsyncWindowContext, ClickEvent, Context, Empty, Entity, EntityId, FocusHandle,
+    FocusOutEvent, Focusable, ScrollHandle, Subscription, WeakEntity, Window, prelude::*,
 };
 use std::mem;
 
@@ -15,6 +15,11 @@ use crate::{
     ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Workspace,
     WorkspaceItemBuilder, welcome::WelcomePage,
 };
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum SaveIntent {
+    Save,
+}
 
 pub struct Pane {
     focus_handle: FocusHandle,
@@ -471,6 +476,37 @@ impl Pane {
 
     pub fn item_for_index(&self, index: usize) -> Option<&dyn ItemHandle> {
         self.items.get(index).map(|item| item.as_ref())
+    }
+
+    pub async fn save_item(
+        project: Entity<Project>,
+        pane: &WeakEntity<Pane>,
+        item: &dyn ItemHandle,
+        save_intent: SaveIntent,
+        cx: &mut AsyncWindowContext,
+    ) -> anyhow::Result<bool> {
+        match save_intent {
+            SaveIntent::Save => {
+                let Some(_item_index) = pane
+                    .read_with(cx, |pane, _| pane.index_for_item(item))
+                    .ok()
+                    .flatten()
+                else {
+                    return Ok(true);
+                };
+
+                let can_save = cx.update(|_, cx| item.can_save(cx))?;
+                if can_save {
+                    pane.update_in(cx, |pane, window, cx| {
+                        pane.unpreview_item_if_preview(item.item_id());
+                        item.save(project, window, cx)
+                    })?
+                    .await?;
+                }
+            }
+        }
+
+        Ok(true)
     }
 
     fn handle_item_event(
