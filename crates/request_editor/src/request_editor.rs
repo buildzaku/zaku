@@ -1,7 +1,8 @@
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
-    Anchor, AnyElement, App, Context, Div, Entity, EntityId, EventEmitter, FocusHandle, Focusable,
-    FontWeight, ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window, prelude::*,
+    Anchor, AnyElement, App, Context, Div, ElementId, Entity, EntityId, EventEmitter, FocusHandle,
+    Focusable, FontWeight, ScrollHandle, SharedString, Subscription, Task, WeakEntity, Window,
+    prelude::*,
 };
 use std::{
     sync::Arc,
@@ -19,9 +20,9 @@ use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownStyle, FixedWidth, Icon, IconButton, IconButtonShape, IconName, IconPosition, IconSize,
-    Label, LabelCommon, LabelSize, ScrollAxes, Scrollbars, ToggleState, Tooltip, TrackLayout,
-    WithScrollbar,
+    DropdownStyle, DynamicSpacing, FixedWidth, Icon, IconButton, IconButtonShape, IconName,
+    IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
+    ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
 use util::{path::PathStyle, truncate_and_trailoff};
 
@@ -173,6 +174,12 @@ enum RequestEditorState {
     },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RequestEditorTab {
+    Parameters,
+    Headers,
+}
+
 struct Request {
     meta: RequestMeta,
     config: RequestConfig,
@@ -254,6 +261,15 @@ impl Request {
     fn delete_param(&mut self, index: usize) -> bool {
         if index < self.config.params.len() {
             self.config.params.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn delete_header(&mut self, index: usize) -> bool {
+        if index < self.config.headers.len() {
+            self.config.headers.remove(index);
             true
         } else {
             false
@@ -380,9 +396,11 @@ pub struct RequestEditor {
     buffer: Option<Entity<RequestBuffer>>,
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
+    active_tab: RequestEditorTab,
     response: Option<Entity<Response>>,
     http_client: Arc<dyn HttpClient>,
-    scroll_handle: ScrollHandle,
+    params_scroll_handle: ScrollHandle,
+    headers_scroll_handle: ScrollHandle,
     is_dirty: bool,
     input_subscriptions: Vec<Subscription>,
 }
@@ -428,9 +446,11 @@ impl RequestEditor {
             buffer: Some(buffer),
             request,
             request_snapshot,
+            active_tab: RequestEditorTab::Parameters,
             response: None,
             http_client: SharedState::global(cx).http_client.clone(),
-            scroll_handle: ScrollHandle::new(),
+            params_scroll_handle: ScrollHandle::new(),
+            headers_scroll_handle: ScrollHandle::new(),
             is_dirty: false,
             input_subscriptions,
         }
@@ -604,11 +624,27 @@ impl RequestEditor {
             return;
         }
 
-        let request_param = RequestParam::new(window, cx);
-        let name_subscription = Self::subscribe_to_input(&request_param.name, window, cx);
-        let value_subscription = Self::subscribe_to_input(&request_param.value, window, cx);
+        let param = RequestParam::new(window, cx);
+        let name_subscription = Self::subscribe_to_input(&param.name, window, cx);
+        let value_subscription = Self::subscribe_to_input(&param.value, window, cx);
         if let RequestEditorState::Ready(request) = &mut self.request {
-            request.config.params.push(request_param);
+            request.config.params.push(param);
+        }
+        self.input_subscriptions.push(name_subscription);
+        self.input_subscriptions.push(value_subscription);
+        self.mark_edited(cx);
+    }
+
+    fn add_header(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !matches!(&self.request, RequestEditorState::Ready(_)) {
+            return;
+        }
+
+        let header = RequestHeader::new(window, cx);
+        let name_subscription = Self::subscribe_to_input(&header.name, window, cx);
+        let value_subscription = Self::subscribe_to_input(&header.value, window, cx);
+        if let RequestEditorState::Ready(request) = &mut self.request {
+            request.config.headers.push(header);
         }
         self.input_subscriptions.push(name_subscription);
         self.input_subscriptions.push(value_subscription);
@@ -901,6 +937,280 @@ impl RequestEditor {
             .child(Label::new(error.to_string()).color(Color::Muted))
     }
 
+    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
+        let active_tab = self.active_tab;
+
+        let tab =
+            |id: ElementId, active: bool, label: SharedString, set_active_tab: RequestEditorTab| {
+                let colors = cx.theme().colors();
+
+                gpui::div()
+                    .id(id)
+                    .relative()
+                    .flex_none()
+                    .h(DynamicSpacing::Base24.px(cx))
+                    .px(DynamicSpacing::Base08.px(cx))
+                    .flex()
+                    .items_center()
+                    .rounded_sm()
+                    .border_1()
+                    .when(active, |this| {
+                        this.border_color(colors.border)
+                            .bg(colors.panel_tab_active_background)
+                    })
+                    .when(!active, |this| {
+                        this.border_color(gpui::transparent_black())
+                            .bg(gpui::transparent_black())
+                    })
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |request_editor, _, _, cx| {
+                        cx.stop_propagation();
+                        if request_editor.active_tab != set_active_tab {
+                            request_editor.active_tab = set_active_tab;
+                            cx.notify();
+                        }
+                    }))
+                    .child(
+                        Label::new(label)
+                            .size(LabelSize::Small)
+                            .line_height_style(LineHeightStyle::UiLabel)
+                            .weight(FontWeight::MEDIUM)
+                            .color(if active {
+                                Color::Custom(colors.panel_tab_active_foreground)
+                            } else {
+                                Color::Custom(colors.panel_tab_inactive_foreground)
+                            })
+                            .single_line(),
+                    )
+            };
+
+        let colors = cx.theme().colors();
+
+        ui::h_flex()
+            .id("request-editor-tabs")
+            .w_full()
+            .h(DynamicSpacing::Base36.px(cx))
+            .gap_1()
+            .px_1()
+            .border_y_1()
+            .border_color(colors.border)
+            .bg(colors.panel_tab_bar_background)
+            .child(tab(
+                ElementId::Name("parameters-tab".into()),
+                active_tab == RequestEditorTab::Parameters,
+                "Parameters".into(),
+                RequestEditorTab::Parameters,
+            ))
+            .child(tab(
+                ElementId::Name("headers-tab".into()),
+                active_tab == RequestEditorTab::Headers,
+                "Headers".into(),
+                RequestEditorTab::Headers,
+            ))
+            .into_any_element()
+    }
+
+    fn render_tab_content(
+        &self,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        match self.active_tab {
+            RequestEditorTab::Parameters => {
+                self.render_key_value_section(RequestEditorTab::Parameters, request, window, cx)
+            }
+            RequestEditorTab::Headers => {
+                self.render_key_value_section(RequestEditorTab::Headers, request, window, cx)
+            }
+        }
+    }
+
+    fn render_key_value_section(
+        &self,
+        tab: RequestEditorTab,
+        request: &Request,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let colors = cx.theme().colors();
+        let rows = {
+            let render_row = |index: usize, name, value, disabled: bool| {
+                let checkbox = ui::checkbox(
+                    match tab {
+                        RequestEditorTab::Parameters => ("param-disabled", index),
+                        RequestEditorTab::Headers => ("header-disabled", index),
+                    },
+                    ToggleState::from(!disabled),
+                )
+                .on_click(cx.listener(
+                    move |request_editor, new_state: &ToggleState, window, cx| {
+                        let disabled = !new_state.selected();
+                        let mut edited = false;
+                        if let RequestEditorState::Ready(request) = &mut request_editor.request {
+                            match tab {
+                                RequestEditorTab::Parameters => {
+                                    if let Some(param) = request.config.params.get_mut(index)
+                                        && param.disabled != disabled
+                                    {
+                                        param.set_disabled(disabled, window, cx);
+                                        edited = true;
+                                    }
+                                }
+                                RequestEditorTab::Headers => {
+                                    if let Some(header) = request.config.headers.get_mut(index)
+                                        && header.disabled != disabled
+                                    {
+                                        header.set_disabled(disabled, window, cx);
+                                        edited = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if edited {
+                            request_editor.mark_edited(cx);
+                        }
+                    },
+                ));
+                let delete_button = IconButton::new(
+                    match tab {
+                        RequestEditorTab::Parameters => ("param-delete", index),
+                        RequestEditorTab::Headers => ("header-delete", index),
+                    },
+                    IconName::Trash,
+                )
+                .shape(IconButtonShape::Square)
+                .variant(ButtonVariant::Outline)
+                .icon_color(Color::Muted)
+                .tooltip(Tooltip::text("Delete"))
+                .on_click(cx.listener(move |request_editor, _, _, cx| {
+                    let mut edited = false;
+                    if let RequestEditorState::Ready(request) = &mut request_editor.request {
+                        edited = match tab {
+                            RequestEditorTab::Parameters => request.delete_param(index),
+                            RequestEditorTab::Headers => request.delete_header(index),
+                        };
+                    }
+
+                    if edited {
+                        request_editor.mark_edited(cx);
+                    }
+                }));
+
+                ui::h_flex()
+                    .id(match tab {
+                        RequestEditorTab::Parameters => ("param-row", index),
+                        RequestEditorTab::Headers => ("header-row", index),
+                    })
+                    .w_full()
+                    .child(gpui::div().pr_1p5().child(checkbox))
+                    .child(
+                        ui::h_flex()
+                            .flex_1()
+                            .gap_2p5()
+                            .child(gpui::div().flex_1().child(name))
+                            .child(gpui::div().flex_1().child(value))
+                            .child(delete_button),
+                    )
+                    .into_any_element()
+            };
+
+            let mut rows = Vec::new();
+            match tab {
+                RequestEditorTab::Parameters => {
+                    for (index, param) in request.config.params.iter().enumerate() {
+                        rows.push(render_row(
+                            index,
+                            param.name.clone(),
+                            param.value.clone(),
+                            param.disabled,
+                        ));
+                    }
+                }
+                RequestEditorTab::Headers => {
+                    for (index, header) in request.config.headers.iter().enumerate() {
+                        rows.push(render_row(
+                            index,
+                            header.name.clone(),
+                            header.value.clone(),
+                            header.disabled,
+                        ));
+                    }
+                }
+            }
+            rows
+        };
+        let add_button = match tab {
+            RequestEditorTab::Parameters => Button::new("param-add", "Add Parameter")
+                .icon(IconName::Plus)
+                .icon_size(IconSize::Small)
+                .icon_color(Color::Muted)
+                .variant(ButtonVariant::Outline)
+                .size(ButtonSize::Medium)
+                .on_click(cx.listener(|request_editor, _, window, cx| {
+                    request_editor.add_param(window, cx);
+                })),
+            RequestEditorTab::Headers => Button::new("header-add", "Add Header")
+                .icon(IconName::Plus)
+                .icon_size(IconSize::Small)
+                .icon_color(Color::Muted)
+                .variant(ButtonVariant::Outline)
+                .size(ButtonSize::Medium)
+                .on_click(cx.listener(|request_editor, _, window, cx| {
+                    request_editor.add_header(window, cx);
+                })),
+        };
+
+        ui::v_flex()
+            .id(match tab {
+                RequestEditorTab::Parameters => "params",
+                RequestEditorTab::Headers => "headers",
+            })
+            .w_full()
+            .flex_1()
+            .min_h_0()
+            .child(
+                ui::v_flex()
+                    .id(match tab {
+                        RequestEditorTab::Parameters => "params-content",
+                        RequestEditorTab::Headers => "headers-content",
+                    })
+                    .track_scroll(match tab {
+                        RequestEditorTab::Parameters => &self.params_scroll_handle,
+                        RequestEditorTab::Headers => &self.headers_scroll_handle,
+                    })
+                    .size_full()
+                    .min_w_0()
+                    .overflow_y_scroll()
+                    .pl_2()
+                    .pr_6()
+                    .gap_2()
+                    .py_3()
+                    .children(rows)
+                    .child(ui::h_flex().pl_1().child(add_button)),
+            )
+            .custom_scrollbars(
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id(match tab {
+                        RequestEditorTab::Parameters => "params-scrollbar",
+                        RequestEditorTab::Headers => "headers-scrollbar",
+                    })
+                    .tracked_scroll_handle(match tab {
+                        RequestEditorTab::Parameters => &self.params_scroll_handle,
+                        RequestEditorTab::Headers => &self.headers_scroll_handle,
+                    })
+                    .with_track_along(
+                        ScrollAxes::Vertical,
+                        colors.scrollbar_track_background,
+                        TrackLayout::Overlay,
+                    ),
+                window,
+                cx,
+            )
+            .into_any_element()
+    }
+
     fn render_request(
         &self,
         request: &Request,
@@ -910,76 +1220,7 @@ impl RequestEditor {
         let request_relative_path = self.project_path(cx).map(|project_path| {
             SharedString::from(project_path.path.display(self.path_style(cx)).into_owned())
         });
-
         let url = request.config.url.clone();
-        let request_params = request
-            .config
-            .params
-            .iter()
-            .enumerate()
-            .map(|(index, request_param)| {
-                let name = request_param.name.clone();
-                let value = request_param.value.clone();
-
-                ui::h_flex()
-                    .id(("request-param-row", index))
-                    .w_full()
-                    .child(
-                        gpui::div().pr_1p5().child(
-                            ui::checkbox(
-                                ("request-param-disabled", index),
-                                ToggleState::from(!request_param.disabled),
-                            )
-                            .on_click(cx.listener(
-                                move |request_editor, new_state: &ToggleState, window, cx| {
-                                    let mut edited = false;
-                                    if let RequestEditorState::Ready(request) =
-                                        &mut request_editor.request
-                                        && let Some(request_param) =
-                                            request.config.params.get_mut(index)
-                                    {
-                                        let disabled = !new_state.selected();
-                                        if request_param.disabled != disabled {
-                                            request_param.set_disabled(disabled, window, cx);
-                                            edited = true;
-                                        }
-                                    }
-
-                                    if edited {
-                                        request_editor.mark_edited(cx);
-                                    }
-                                },
-                            )),
-                        ),
-                    )
-                    .child(
-                        ui::h_flex()
-                            .flex_1()
-                            .gap_2p5()
-                            .child(gpui::div().flex_1().child(name))
-                            .child(gpui::div().flex_1().child(value))
-                            .child(
-                                IconButton::new(("request-param-delete", index), IconName::Trash)
-                                    .shape(IconButtonShape::Square)
-                                    .variant(ButtonVariant::Outline)
-                                    .icon_color(Color::Muted)
-                                    .tooltip(Tooltip::text("Delete"))
-                                    .on_click(cx.listener(move |request_editor, _, _, cx| {
-                                        let mut edited = false;
-                                        if let RequestEditorState::Ready(request) =
-                                            &mut request_editor.request
-                                        {
-                                            edited = request.delete_param(index);
-                                        }
-
-                                        if edited {
-                                            request_editor.mark_edited(cx);
-                                        }
-                                    })),
-                            ),
-                    )
-            })
-            .collect::<Vec<_>>();
         let request_method_menu = {
             let available_request_methods = [
                 Method::GET,
@@ -1027,13 +1268,12 @@ impl RequestEditor {
                 menu
             })
         };
-
-        let theme_colors = cx.theme().colors();
+        let colors = cx.theme().colors();
 
         ui::v_flex()
             .track_focus(&self.focus_handle)
             .size_full()
-            .bg(theme_colors.panel_background)
+            .bg(colors.panel_background)
             .when_some(request_relative_path, |this, request_relative_path| {
                 this.child(
                     ui::h_flex()
@@ -1047,7 +1287,7 @@ impl RequestEditor {
                 ui::h_flex()
                     .w_full()
                     .px_3()
-                    .py_2()
+                    .py_3()
                     .gap_2()
                     .key_context("RequestUrl")
                     .on_action(
@@ -1080,73 +1320,8 @@ impl RequestEditor {
                             })),
                     ),
             )
-            .child(
-                ui::v_flex()
-                    .id("request-params")
-                    .w_full()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        gpui::div()
-                            .id("request-params-scroll")
-                            .w_full()
-                            .flex_1()
-                            .min_h_0()
-                            .child(
-                                ui::v_flex()
-                                    .id("request-params-content")
-                                    .track_scroll(&self.scroll_handle)
-                                    .size_full()
-                                    .min_w_0()
-                                    .overflow_y_scroll()
-                                    .child(
-                                        ui::v_flex()
-                                            .w_full()
-                                            .min_w_0()
-                                            .pl_2()
-                                            .pr(gpui::px(10.0))
-                                            .gap_2()
-                                            .pb_3()
-                                            .child(
-                                                ui::h_flex()
-                                                    .w_full()
-                                                    .pl_1()
-                                                    .child(Label::new("Query Parameters")),
-                                            )
-                                            .children(request_params)
-                                            .child(
-                                                ui::h_flex().pl_1().child(
-                                                    Button::new(
-                                                        "request-param-add",
-                                                        "Add Parameter",
-                                                    )
-                                                    .icon(IconName::Plus)
-                                                    .icon_size(IconSize::Small)
-                                                    .icon_color(Color::Muted)
-                                                    .variant(ButtonVariant::Outline)
-                                                    .size(ButtonSize::Medium)
-                                                    .on_click(cx.listener(
-                                                        move |request_editor, _, window, cx| {
-                                                            request_editor.add_param(window, cx);
-                                                        },
-                                                    )),
-                                                ),
-                                            ),
-                                    ),
-                            )
-                            .custom_scrollbars(
-                                Scrollbars::new(ScrollAxes::Vertical)
-                                    .tracked_scroll_handle(&self.scroll_handle)
-                                    .with_track_along(
-                                        ScrollAxes::Vertical,
-                                        theme_colors.scrollbar_track_background,
-                                        TrackLayout::Overlay,
-                                    ),
-                                window,
-                                cx,
-                            ),
-                    ),
-            )
+            .child(self.render_tab_bar(cx))
+            .child(self.render_tab_content(request, window, cx))
     }
 }
 
