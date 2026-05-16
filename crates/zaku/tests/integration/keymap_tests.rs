@@ -286,6 +286,7 @@ fn test_action_namespaces(cx: &mut TestAppContext) {
                 "action".to_string(),
                 "editor".to_string(),
                 "menu".to_string(),
+                "pane".to_string(),
                 "project_panel".to_string(),
                 "response_panel".to_string(),
                 "welcome".to_string(),
