@@ -12,12 +12,13 @@ use std::{
 use tokio::sync::watch;
 
 use fs::Fs;
+use request_buffer::RequestBuffer;
 use util::{
     path::{PathStyle, SanitizedPath},
     rel_path::RelPath,
 };
 use worktree::{
-    Entry, LocalWorktree, ProjectEntryId, RequestFile, Snapshot, UpdatedEntriesSet, Worktree,
+    Entry, LocalWorktree, ProjectEntryId, RequestFileState, Snapshot, UpdatedEntriesSet, Worktree,
     WorktreeEvent, WorktreeId,
 };
 
@@ -202,17 +203,23 @@ impl WorktreeStore {
         Some(worktree.read(cx).absolutize(&project_path.path))
     }
 
-    pub fn save_request_file(
+    pub fn save_request_buffer(
         &self,
-        project_path: &ProjectPath,
-        request_file: &RequestFile,
+        buffer: &Entity<RequestBuffer>,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) else {
+        let (worktree_id, path, request_file) = {
+            let buffer = buffer.read(cx);
+            let RequestFileState::Parsed(request_file) = buffer.request_file().clone() else {
+                return Task::ready(Err(anyhow!("Cannot save invalid request")));
+            };
+            (buffer.worktree_id(), buffer.path(), request_file)
+        };
+        let Some(worktree) = self.worktree_for_id(worktree_id, cx) else {
             return Task::ready(Err(anyhow!("Cannot save request without worktree")));
         };
         worktree.update(cx, |worktree, cx| {
-            worktree.write_request_file(project_path.path.clone(), request_file, cx)
+            worktree.write_request_file(path, &request_file, cx)
         })
     }
 

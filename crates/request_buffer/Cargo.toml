@@ -1,0 +1,18 @@
+[package]
+name = "request_buffer"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "request_buffer"
+path = "src/request_buffer.rs"
+
+[dependencies]
+gpui = { workspace = true }
+util = { workspace = true }
+worktree = { workspace = true }

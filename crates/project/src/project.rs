@@ -1,5 +1,12 @@
 pub mod worktree_store;
 
+pub use request_buffer::RequestBuffer;
+pub use worktree::{
+    Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
+    RequestFileBodyType, RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam,
+    RequestFileState, Snapshot, Worktree, WorktreeId,
+};
+
 #[cfg(any(test, feature = "test-support"))]
 use gpui::TestAppContext;
 
@@ -13,12 +20,6 @@ use std::{
 use fs::Fs;
 use util::{path::PathStyle, rel_path::RelPath};
 use worktree::UpdatedEntriesSet;
-
-pub use worktree::{
-    Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
-    RequestFileBodyType, RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam,
-    RequestFileState, Snapshot, Worktree, WorktreeId,
-};
 
 use crate::worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent};
 
@@ -51,6 +52,42 @@ impl ProjectPath {
 
     pub fn starts_with(&self, other: &ProjectPath) -> bool {
         self.worktree_id == other.worktree_id && self.path.starts_with(&other.path)
+    }
+}
+
+impl ProjectItem for RequestBuffer {
+    fn try_open(
+        project: &Entity<Project>,
+        path: &ProjectPath,
+        cx: &mut App,
+    ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
+        let entry = project.read(cx).entry_for_path(path, cx)?.clone();
+        if !entry.is_file() {
+            return None;
+        }
+
+        let request = entry.request.clone()?;
+        let entry_id = entry.id;
+        let worktree_id = path.worktree_id;
+        let path = path.path.clone();
+        Some(Task::ready(Ok(
+            cx.new(|_| Self::new(entry_id, worktree_id, path, request))
+        )))
+    }
+
+    fn entry_id(&self, _cx: &App) -> Option<ProjectEntryId> {
+        Some(RequestBuffer::entry_id(self))
+    }
+
+    fn project_path(&self, _cx: &App) -> Option<ProjectPath> {
+        Some(ProjectPath {
+            worktree_id: self.worktree_id(),
+            path: self.path(),
+        })
+    }
+
+    fn is_dirty(&self) -> bool {
+        RequestBuffer::is_dirty(self)
     }
 }
 
@@ -226,14 +263,12 @@ impl Project {
         Some(worktree.read(cx).absolutize(path))
     }
 
-    pub fn save_request_file(
+    pub fn save_request_buffer(
         &self,
-        project_path: &ProjectPath,
-        request_file: &RequestFile,
+        buffer: &Entity<RequestBuffer>,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        self.worktree_store.update(cx, |store, cx| {
-            store.save_request_file(project_path, request_file, cx)
-        })
+        self.worktree_store
+            .update(cx, |store, cx| store.save_request_buffer(buffer, cx))
     }
 }

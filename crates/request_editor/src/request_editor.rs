@@ -15,7 +15,7 @@ use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, Redire
 use input::{ErasedEditorEvent, InputField};
 use multi_buffer::MultiBuffer;
 use project::{
-    Project, ProjectEntryId, ProjectPath, RequestFile, RequestFileBody, RequestFileBodyType,
+    Project, ProjectPath, RequestBuffer, RequestFile, RequestFileBody, RequestFileBodyType,
     RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState,
 };
 use response_panel::{Response, ResponsePanel, ResponseState};
@@ -122,58 +122,6 @@ fn body_type_label(r#type: Option<RequestBodyType>) -> &'static str {
         Some(RequestBodyType::Text) => "Text",
         Some(RequestBodyType::Json) => "JSON",
         Some(RequestBodyType::Xml) => "XML",
-    }
-}
-
-pub struct RequestBuffer {
-    entry_id: Option<ProjectEntryId>,
-    project_path: Option<ProjectPath>,
-    request: RequestFileState,
-    is_dirty: bool,
-}
-
-impl RequestBuffer {
-    fn request(&self) -> &RequestFileState {
-        &self.request
-    }
-
-    fn is_dirty(&self) -> bool {
-        self.is_dirty
-    }
-}
-
-impl project::ProjectItem for RequestBuffer {
-    fn try_open(
-        project: &Entity<Project>,
-        path: &ProjectPath,
-        cx: &mut App,
-    ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
-        let entry = project.read(cx).entry_for_path(path, cx)?.clone();
-        if !entry.is_file() {
-            return None;
-        }
-
-        let request = entry.request.clone()?;
-        let entry_id = Some(entry.id);
-        let project_path = Some(path.clone());
-        Some(Task::ready(Ok(cx.new(|_| Self {
-            entry_id,
-            project_path,
-            request,
-            is_dirty: false,
-        }))))
-    }
-
-    fn entry_id(&self, _cx: &App) -> Option<ProjectEntryId> {
-        self.entry_id
-    }
-
-    fn project_path(&self, _cx: &App) -> Option<ProjectPath> {
-        self.project_path.clone()
-    }
-
-    fn is_dirty(&self) -> bool {
-        self.is_dirty
     }
 }
 
@@ -451,7 +399,7 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> Self {
         let focus_handle = cx.focus_handle();
-        let request = match buffer.read(cx).request().clone() {
+        let request = match buffer.read(cx).request_file().clone() {
             RequestFileState::Parsed(request_file) => {
                 match Request::from_request_file(&request_file, window, cx) {
                     Ok(request) => RequestEditorState::Ready(request),
@@ -652,21 +600,26 @@ impl RequestEditor {
     }
 
     fn mark_edited(&mut self, cx: &mut Context<Self>) {
-        let is_dirty = if let (Some(request_snapshot), RequestEditorState::Ready(request)) =
-            (self.request_snapshot.as_ref(), &self.request)
+        let request_snapshot = match &self.request {
+            RequestEditorState::Ready(request) => Some(RequestSnapshot::from_request(request, cx)),
+            RequestEditorState::Invalid { .. } => None,
+        };
+        let is_dirty = if let (Some(saved_snapshot), Some(snapshot)) =
+            (self.request_snapshot.as_ref(), request_snapshot.as_ref())
         {
-            RequestSnapshot::from_request(request, cx) != *request_snapshot
+            snapshot != saved_snapshot
         } else {
             false
         };
         let dirty_changed = if let Some(buffer) = self.buffer.as_ref() {
+            let request = request_snapshot
+                .as_ref()
+                .map(|snapshot| RequestFileState::Parsed(snapshot.0.clone()));
             buffer.update(cx, |buffer, cx| {
-                let dirty_changed = buffer.is_dirty != is_dirty;
-                if dirty_changed {
-                    buffer.is_dirty = is_dirty;
-                    cx.notify();
+                if let Some(request) = request {
+                    buffer.set_request_file(request, cx);
                 }
-                dirty_changed
+                buffer.set_dirty(is_dirty, cx)
             })
         } else if self.is_dirty == is_dirty {
             false
@@ -1655,38 +1608,29 @@ impl Item for RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let Some(project_path) = self.project_path(cx) else {
-            return Task::ready(Err(anyhow::anyhow!(
-                "Cannot save request without project path"
-            )));
+        let Some(buffer) = self.buffer.clone() else {
+            return Task::ready(Err(anyhow::anyhow!("Cannot save request without buffer")));
         };
         let RequestEditorState::Ready(request) = &self.request else {
             return Task::ready(Err(anyhow::anyhow!("Cannot save invalid request")));
         };
         let request_snapshot = RequestSnapshot::from_request(request, cx);
+        buffer.update(cx, |buffer, cx| {
+            buffer.set_request_file(RequestFileState::Parsed(request_snapshot.0.clone()), cx);
+        });
 
         cx.spawn_in(window, async move |this, cx| {
             project
-                .update(cx, |project, cx| {
-                    project.save_request_file(&project_path, &request_snapshot.0, cx)
-                })
+                .update(cx, |project, cx| project.save_request_buffer(&buffer, cx))
                 .await?;
             this.update(cx, |request_editor, cx| {
                 request_editor.request_snapshot = Some(request_snapshot.clone());
                 request_editor.is_dirty = false;
-                let dirty_changed = if let Some(buffer) = request_editor.buffer.as_ref() {
-                    buffer.update(cx, |buffer, cx| {
-                        let dirty_changed = buffer.is_dirty;
-                        buffer.request = RequestFileState::Parsed(request_snapshot.0.clone());
-                        if dirty_changed {
-                            buffer.is_dirty = false;
-                            cx.notify();
-                        }
-                        dirty_changed
-                    })
-                } else {
-                    false
-                };
+                let dirty_changed = buffer.update(cx, |buffer, cx| {
+                    let dirty_changed = buffer.is_dirty();
+                    buffer.did_save(cx);
+                    dirty_changed
+                });
 
                 if dirty_changed {
                     cx.emit(ItemEvent::UpdateTab);
