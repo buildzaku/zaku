@@ -14,7 +14,7 @@ pub enum RequestFileState {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RequestFile {
     pub meta: RequestFileMeta,
-    pub config: RequestFileConfig,
+    pub http: RequestFileHttp,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -25,7 +25,7 @@ pub struct RequestFileMeta {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct RequestFileConfig {
+pub struct RequestFileHttp {
     pub method: String,
     pub url: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -71,8 +71,8 @@ pub fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<Stri
     let mut document = toml_edit::ser::to_document(request_file)?;
     promote_to_table(document.as_table_mut(), "meta")
         .context("Failed to serialize request meta")?;
-    promote_to_table(document.as_table_mut(), "config")
-        .context("Failed to serialize request config")?;
+    promote_to_table(document.as_table_mut(), "http")
+        .context("Failed to serialize request http")?;
     Ok(document.to_string())
 }
 
@@ -92,7 +92,7 @@ fn promote_to_table(parent: &mut Table, key: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn parse_request_file(contents: &str) -> RequestFileState {
+pub fn parse_request_file(contents: &str) -> RequestFileState {
     match toml::from_str::<RequestFile>(contents) {
         Ok(request_file) => RequestFileState::Parsed(request_file),
         Err(error) => RequestFileState::Invalid(error.to_string()),
@@ -113,7 +113,7 @@ mod tests {
             version = 1
             name = "Search"
 
-            [config]
+            [http]
             method = "POST"
             url = "https://api.zaku.dev/search"
             params = [
@@ -138,7 +138,7 @@ mod tests {
                     version: REQUEST_FILE_VERSION,
                     name: Some("Search".to_string()),
                 },
-                config: RequestFileConfig {
+                http: RequestFileHttp {
                     method: "POST".to_string(),
                     url: "https://api.zaku.dev/search".to_string(),
                     params: vec![
@@ -190,7 +190,7 @@ mod tests {
                 version: REQUEST_FILE_VERSION,
                 name: Some("Search".to_string()),
             },
-            config: RequestFileConfig {
+            http: RequestFileHttp {
                 method: "POST".to_string(),
                 url: "https://api.zaku.dev/search".to_string(),
                 params: vec![
@@ -239,7 +239,7 @@ mod tests {
             version = 1
             name = "Search"
 
-            [config]
+            [http]
             method = "POST"
             url = "https://api.zaku.dev/search"
             params = [{ name = "query", value = "zaku" }, { name = "debug", value = "1", disabled = true }, { name = "test", value = "1" }]

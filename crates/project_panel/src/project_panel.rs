@@ -194,7 +194,7 @@ impl ProjectPanel {
         let mut is_invalid = false;
         let prefix_label = match entry.request.as_ref() {
             Some(RequestFileState::Parsed(request)) => {
-                let method = request.config.method.trim().to_ascii_uppercase();
+                let method = request.http.method.trim().to_ascii_uppercase();
                 Some(match method.as_str() {
                     "GET" => "GET".to_string(),
                     "POST" => "POST".to_string(),
@@ -1339,7 +1339,7 @@ mod tests {
                         version = 1
                         name = "First"
 
-                        [config]
+                        [http]
                         method = "GET"
                         url = "https://api.zaku.dev/first"
                     "#},
@@ -1348,7 +1348,7 @@ mod tests {
                         version = 1
                         name = "Second"
 
-                        [config]
+                        [http]
                         method = "POST"
                         url = "https://api.zaku.dev/second"
                     "#},
@@ -1357,7 +1357,7 @@ mod tests {
                         version = 1
                         name = "Third"
 
-                        [config]
+                        [http]
                         method = "PUT"
                         url = "https://api.zaku.dev/third"
                     "#},

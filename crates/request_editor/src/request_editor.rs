@@ -16,7 +16,7 @@ use input::{ErasedEditorEvent, InputField};
 use multi_buffer::MultiBuffer;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestFile, RequestFileBody, RequestFileBodyType,
-    RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState,
+    RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
 };
 use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
@@ -142,14 +142,14 @@ enum RequestEditorTab {
 
 struct Request {
     meta: RequestMeta,
-    config: RequestConfig,
+    http: RequestHttp,
 }
 
 type RequestMeta = RequestFileMeta;
 
 type RequestBodyType = RequestFileBodyType;
 
-struct RequestConfig {
+struct RequestHttp {
     method: Method,
     url: Entity<InputField>,
     params: Vec<RequestParam>,
@@ -164,19 +164,18 @@ impl Request {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Self, String> {
-        let method =
-            Method::from_bytes(request_file.config.method.as_bytes()).map_err(|error| {
-                format!(
-                    "Invalid request method `{}`: {error}",
-                    request_file.config.method
-                )
-            })?;
+        let method = Method::from_bytes(request_file.http.method.as_bytes()).map_err(|error| {
+            format!(
+                "Invalid request method `{}`: {error}",
+                request_file.http.method
+            )
+        })?;
         let url = cx.new(|cx| InputField::new(window, cx, "https://example.com"));
         url.update(cx, |url, cx| {
-            url.set_text(&request_file.config.url, window, cx);
+            url.set_text(&request_file.http.url, window, cx);
         });
         let mut params = Vec::new();
-        for param in &request_file.config.params {
+        for param in &request_file.http.params {
             let mut request_param = RequestParam::new(window, cx);
             request_param.name.update(cx, |name, cx| {
                 name.set_text(&param.name, window, cx);
@@ -190,7 +189,7 @@ impl Request {
             params.push(request_param);
         }
         let mut headers = Vec::new();
-        for header in &request_file.config.headers {
+        for header in &request_file.http.headers {
             let mut request_header = RequestHeader::new(window, cx);
             request_header.name.update(cx, |name, cx| {
                 name.set_text(&header.name, window, cx);
@@ -203,16 +202,16 @@ impl Request {
             }
             headers.push(request_header);
         }
-        let body_type = request_file.config.body.as_ref().map(|body| body.r#type);
+        let body_type = request_file.http.body.as_ref().map(|body| body.r#type);
         let body = request_file
-            .config
+            .http
             .body
             .as_ref()
             .map(|body| RequestBody::from_request_file_body(body, window, cx));
 
         Ok(Self {
             meta: request_file.meta.clone(),
-            config: RequestConfig {
+            http: RequestHttp {
                 method,
                 url,
                 params,
@@ -224,8 +223,8 @@ impl Request {
     }
 
     fn delete_param(&mut self, index: usize) -> bool {
-        if index < self.config.params.len() {
-            self.config.params.remove(index);
+        if index < self.http.params.len() {
+            self.http.params.remove(index);
             true
         } else {
             false
@@ -233,8 +232,8 @@ impl Request {
     }
 
     fn delete_header(&mut self, index: usize) -> bool {
-        if index < self.config.headers.len() {
-            self.config.headers.remove(index);
+        if index < self.http.headers.len() {
+            self.http.headers.remove(index);
             true
         } else {
             false
@@ -249,11 +248,11 @@ impl RequestSnapshot {
     fn from_request(request: &Request, cx: &App) -> Self {
         Self(RequestFile {
             meta: request.meta.clone(),
-            config: RequestFileConfig {
-                method: request.config.method.as_str().to_owned(),
-                url: request.config.url.read(cx).text(cx),
+            http: RequestFileHttp {
+                method: request.http.method.as_str().to_owned(),
+                url: request.http.url.read(cx).text(cx),
                 params: request
-                    .config
+                    .http
                     .params
                     .iter()
                     .map(|param| RequestFileParam {
@@ -263,7 +262,7 @@ impl RequestSnapshot {
                     })
                     .collect(),
                 headers: request
-                    .config
+                    .http
                     .headers
                     .iter()
                     .map(|header| RequestFileHeader {
@@ -272,8 +271,8 @@ impl RequestSnapshot {
                         disabled: header.disabled,
                     })
                     .collect(),
-                body: request.config.body_type.and_then(|r#type| {
-                    request.config.body.as_ref().map(|body| RequestFileBody {
+                body: request.http.body_type.and_then(|r#type| {
+                    request.http.body.as_ref().map(|body| RequestFileBody {
                         r#type,
                         data: body.data(cx),
                     })
@@ -519,12 +518,12 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> Vec<Subscription> {
         let mut subscriptions = Vec::new();
-        subscriptions.push(Self::subscribe_to_input(&request.config.url, window, cx));
-        for param in &request.config.params {
+        subscriptions.push(Self::subscribe_to_input(&request.http.url, window, cx));
+        for param in &request.http.params {
             subscriptions.push(Self::subscribe_to_input(&param.name, window, cx));
             subscriptions.push(Self::subscribe_to_input(&param.value, window, cx));
         }
-        for header in &request.config.headers {
+        for header in &request.http.headers {
             subscriptions.push(Self::subscribe_to_input(&header.name, window, cx));
             subscriptions.push(Self::subscribe_to_input(&header.value, window, cx));
         }
@@ -605,7 +604,7 @@ impl RequestEditor {
         };
         let body_subscription = match &request {
             RequestEditorState::Ready(request) => request
-                .config
+                .http
                 .body
                 .as_ref()
                 .map(|body| Self::subscribe_to_body(&body.editor, window, cx)),
@@ -665,7 +664,7 @@ impl RequestEditor {
         let name_subscription = Self::subscribe_to_input(&param.name, window, cx);
         let value_subscription = Self::subscribe_to_input(&param.value, window, cx);
         if let RequestEditorState::Ready(request) = &mut self.request {
-            request.config.params.push(param);
+            request.http.params.push(param);
         }
         self.input_subscriptions.push(name_subscription);
         self.input_subscriptions.push(value_subscription);
@@ -681,7 +680,7 @@ impl RequestEditor {
         let name_subscription = Self::subscribe_to_input(&header.name, window, cx);
         let value_subscription = Self::subscribe_to_input(&header.value, window, cx);
         if let RequestEditorState::Ready(request) = &mut self.request {
-            request.config.headers.push(header);
+            request.http.headers.push(header);
         }
         self.input_subscriptions.push(name_subscription);
         self.input_subscriptions.push(value_subscription);
@@ -699,20 +698,20 @@ impl RequestEditor {
         if let RequestEditorState::Ready(request) = &mut self.request {
             match r#type {
                 Some(r#type) => {
-                    if request.config.body.is_none() {
+                    if request.http.body.is_none() {
                         let body = RequestBody::new("", window, cx);
                         self.body_subscription =
                             Some(Self::subscribe_to_body(&body.editor, window, cx));
-                        request.config.body = Some(body);
+                        request.http.body = Some(body);
                     }
 
-                    if request.config.body_type != Some(r#type) {
-                        request.config.body_type = Some(r#type);
+                    if request.http.body_type != Some(r#type) {
+                        request.http.body_type = Some(r#type);
                         edited = true;
                     }
                 }
                 None => {
-                    if request.config.body_type.take().is_some() {
+                    if request.http.body_type.take().is_some() {
                         edited = true;
                     }
                 }
@@ -729,10 +728,10 @@ impl RequestEditor {
             return;
         };
 
-        let request_method = request.config.method.clone();
-        let request_url = request.config.url.read(cx).text(cx);
+        let request_method = request.http.method.clone();
+        let request_url = request.http.url.read(cx).text(cx);
         let request_params = request
-            .config
+            .http
             .params
             .iter()
             .filter_map(|param| {
@@ -750,7 +749,7 @@ impl RequestEditor {
             })
             .collect::<Vec<_>>();
         let request_headers = request
-            .config
+            .http
             .headers
             .iter()
             .filter_map(|header| {
@@ -768,9 +767,9 @@ impl RequestEditor {
             })
             .collect::<Vec<_>>();
         let request_body = request
-            .config
+            .http
             .body_type
-            .and_then(|_| request.config.body.as_ref().map(|body| body.data(cx)))
+            .and_then(|_| request.http.body.as_ref().map(|body| body.data(cx)))
             .filter(|body| !body.is_empty());
 
         let Ok(Some(response_panel)) = self.workspace.update(cx, |workspace, cx| {
@@ -1110,7 +1109,7 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let mut rows = Vec::new();
-        for (index, param) in request.config.params.iter().enumerate() {
+        for (index, param) in request.http.params.iter().enumerate() {
             let checkbox = ui::checkbox(
                 ("param-disabled", index),
                 ToggleState::from(!param.disabled),
@@ -1120,7 +1119,7 @@ impl RequestEditor {
                     let disabled = !new_state.selected();
                     let mut edited = false;
                     if let RequestEditorState::Ready(request) = &mut request_editor.request
-                        && let Some(param) = request.config.params.get_mut(index)
+                        && let Some(param) = request.http.params.get_mut(index)
                         && param.disabled != disabled
                     {
                         param.set_disabled(disabled, window, cx);
@@ -1216,7 +1215,7 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let mut rows = Vec::new();
-        for (index, header) in request.config.headers.iter().enumerate() {
+        for (index, header) in request.http.headers.iter().enumerate() {
             let checkbox = ui::checkbox(
                 ("header-disabled", index),
                 ToggleState::from(!header.disabled),
@@ -1226,7 +1225,7 @@ impl RequestEditor {
                     let disabled = !new_state.selected();
                     let mut edited = false;
                     if let RequestEditorState::Ready(request) = &mut request_editor.request
-                        && let Some(header) = request.config.headers.get_mut(index)
+                        && let Some(header) = request.http.headers.get_mut(index)
                         && header.disabled != disabled
                     {
                         header.set_disabled(disabled, window, cx);
@@ -1316,9 +1315,9 @@ impl RequestEditor {
     }
 
     fn render_body(request: &Request, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let selected_body_type = request.config.body_type;
+        let selected_body_type = request.http.body_type;
         let selected_body_type_label = body_type_label(selected_body_type);
-        let body = selected_body_type.and(request.config.body.as_ref());
+        let body = selected_body_type.and(request.http.body.as_ref());
         let request_editor = cx.weak_entity();
         let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
             let mut menu = menu;
@@ -1398,7 +1397,7 @@ impl RequestEditor {
         let request_relative_path = self.project_path(cx).map(|project_path| {
             SharedString::from(project_path.path.display(self.path_style(cx)).into_owned())
         });
-        let url = request.config.url.clone();
+        let url = request.http.url.clone();
         let request_method_menu = {
             let available_request_methods = [
                 Method::GET,
@@ -1409,7 +1408,7 @@ impl RequestEditor {
                 Method::HEAD,
                 Method::OPTIONS,
             ];
-            let selected_request_method = request.config.method.clone();
+            let selected_request_method = request.http.method.clone();
             let request_editor = cx.weak_entity();
 
             ContextMenu::build(window, cx, move |menu, _, _| {
@@ -1428,9 +1427,9 @@ impl RequestEditor {
                                 let mut edited = false;
                                 if let RequestEditorState::Ready(request) =
                                     &mut request_editor.request
-                                    && request.config.method != request_method_for_handler
+                                    && request.http.method != request_method_for_handler
                                 {
-                                    request.config.method = request_method_for_handler.clone();
+                                    request.http.method = request_method_for_handler.clone();
                                     edited = true;
                                 }
 
@@ -1477,7 +1476,7 @@ impl RequestEditor {
                     .child(
                         DropdownMenu::new(
                             "request-method",
-                            request.config.method.as_str().to_owned(),
+                            request.http.method.as_str().to_owned(),
                             request_method_menu,
                         )
                         .variant(DropdownVariant::Outlined)
@@ -1534,7 +1533,7 @@ impl Item for RequestEditor {
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
         let selected_method_label = match &self.request {
-            RequestEditorState::Ready(request) => Some(method_label(&request.config.method)),
+            RequestEditorState::Ready(request) => Some(method_label(&request.http.method)),
             RequestEditorState::Invalid { .. } => None,
         };
         let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
@@ -1803,7 +1802,7 @@ mod tests {
                         [meta]
                         version = 1
 
-                        [config]
+                        [http]
                         method = "GET"
                         url = "https://api.zaku.dev/me"
                     "#}
@@ -1907,7 +1906,7 @@ mod tests {
                         version = 1
                         name = "Search"
 
-                        [config]
+                        [http]
                         method = "POST"
                         url = "https://api.zaku.dev/search"
                         params = [
@@ -1919,14 +1918,11 @@ mod tests {
                             { name = "Content-Type", value = "application/json" },
                             { name = "X-Debug", value = "1", disabled = true },
                         ]
-
-                        [config.body]
-                        type = "json"
-                        data = '''
+                        body = { type = "json", data = '''
                         {
                           "hello": "world"
                         }
-                        '''
+                        ''' }
                     "#}
                 }
             }),
@@ -2008,7 +2004,7 @@ mod tests {
                         version = 1
                         name = "First"
 
-                        [config]
+                        [http]
                         method = "GET"
                         url = "https://api.zaku.dev/first"
                     "#},
@@ -2017,7 +2013,7 @@ mod tests {
                         version = 1
                         name = "Second"
 
-                        [config]
+                        [http]
                         method = "GET"
                         url = "https://api.zaku.dev/second"
                     "#}
@@ -2160,7 +2156,7 @@ mod tests {
                         version = 1
                         name = "First"
 
-                        [config]
+                        [http]
                         method = "GET"
                         url = "https://api.zaku.dev/first"
                     "#},
@@ -2169,7 +2165,7 @@ mod tests {
                         version = 1
                         name = "Second"
 
-                        [config]
+                        [http]
                         method = "GET"
                         url = "https://api.zaku.dev/second"
                     "#}
@@ -2295,7 +2291,7 @@ mod tests {
                         [meta]
                         version = 1
 
-                        [config]
+                        [http]
                         method = "GET"
                         url = "https://api.zaku.dev/me"
                         params = [
@@ -2335,7 +2331,7 @@ mod tests {
             let RequestEditorState::Ready(request) = &mut request_editor.request else {
                 panic!("Expected request editor to be ready");
             };
-            request.config.url.update(cx, |url, cx| {
+            request.http.url.update(cx, |url, cx| {
                 url.set_text("https://api.zaku.dev/me/edit", window, cx);
             });
             request_editor.mark_edited(cx);
@@ -2365,7 +2361,7 @@ mod tests {
                 version: 1,
                 name: None,
             },
-            config: RequestFileConfig {
+            http: RequestFileHttp {
                 method: "GET".to_string(),
                 url: "https://api.zaku.dev/me/edit".to_string(),
                 params: vec![

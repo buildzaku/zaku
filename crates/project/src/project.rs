@@ -3,7 +3,7 @@ pub mod worktree_store;
 pub use request_buffer::RequestBuffer;
 pub use worktree::{
     Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
-    RequestFileBodyType, RequestFileConfig, RequestFileHeader, RequestFileMeta, RequestFileParam,
+    RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
     RequestFileState, Snapshot, Worktree, WorktreeId,
 };
 

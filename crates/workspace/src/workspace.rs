@@ -66,7 +66,7 @@ use crate::{
 };
 
 const KEY_CONTEXT: &str = "Workspace";
-const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
+const MIN_CENTER_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
 pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
@@ -1178,7 +1178,7 @@ impl Workspace {
 
     fn resize_bottom_dock(&mut self, size: Pixels, window: &mut Window, cx: &mut App) {
         let max_size =
-            (self.bounds.size.height - MIN_CONFIG_PANE_HEIGHT).max(dock::RESIZE_HANDLE_SIZE);
+            (self.bounds.size.height - MIN_CENTER_PANE_HEIGHT).max(dock::RESIZE_HANDLE_SIZE);
         let size = size
             .min(max_size)
             .max(MIN_RESPONSE_PANE_HEIGHT.min(max_size));
@@ -1446,7 +1446,7 @@ impl Render for Workspace {
                                         });
 
                                         let max_bottom_dock_size = (bounds.size.height
-                                            - MIN_CONFIG_PANE_HEIGHT)
+                                            - MIN_CENTER_PANE_HEIGHT)
                                             .max(dock::RESIZE_HANDLE_SIZE);
                                         this.bottom_dock.update(cx, |dock, cx| {
                                             dock.clamp_panel_size(max_bottom_dock_size, window, cx);

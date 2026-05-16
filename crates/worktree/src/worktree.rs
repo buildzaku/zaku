@@ -35,10 +35,10 @@ use std::{
 use sum_tree::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
 use tokio::sync::{oneshot, watch};
 
-use request::parse_request_file;
 pub use request::{
-    REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileConfig,
-    RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState, serialize_request_file,
+    REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileHeader,
+    RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState, parse_request_file,
+    serialize_request_file,
 };
 
 #[cfg(feature = "test-support")]
