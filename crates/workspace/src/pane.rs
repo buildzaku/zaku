@@ -1,8 +1,9 @@
 use gpui::{
     AnyElement, App, AsyncWindowContext, ClickEvent, Context, Empty, Entity, EntityId, FocusHandle,
-    FocusOutEvent, Focusable, ScrollHandle, Subscription, WeakEntity, Window, prelude::*,
+    FocusOutEvent, Focusable, PromptLevel, ScrollHandle, Subscription, Task, WeakEntity, Window,
+    prelude::*,
 };
-use std::mem;
+use std::{collections::HashSet, mem};
 
 use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
@@ -10,6 +11,7 @@ use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, IconButton, IconButtonShape, IconName, IconSize,
     Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
 };
+use util::{ResultExt, path::PathStyle};
 
 use crate::{
     ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Workspace,
@@ -19,6 +21,7 @@ use crate::{
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum SaveIntent {
     Save,
+    Close,
 }
 
 pub struct Pane {
@@ -33,6 +36,7 @@ pub struct Pane {
     preview_item_id: Option<EntityId>,
     tab_bar_scroll_handle: ScrollHandle,
     item_subscriptions: Vec<(EntityId, Subscription)>,
+    save_modals_spawned: HashSet<EntityId>,
     _focus_subscriptions: Vec<Subscription>,
 }
 
@@ -71,6 +75,7 @@ impl Pane {
             preview_item_id: None,
             tab_bar_scroll_handle: ScrollHandle::new(),
             item_subscriptions: Vec::new(),
+            save_modals_spawned: HashSet::default(),
             _focus_subscriptions: focus_subscriptions,
         }
     }
@@ -478,6 +483,60 @@ impl Pane {
         self.items.get(index).map(|item| item.as_ref())
     }
 
+    pub fn close_item_by_id(
+        &mut self,
+        item_id_to_close: EntityId,
+        save_intent: SaveIntent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(item_to_close) = self
+            .items
+            .iter()
+            .find(|item| item.item_id() == item_id_to_close)
+            .map(|item| item.boxed_clone())
+        else {
+            return Task::ready(Ok(()));
+        };
+        let Some(project) = self.project.upgrade() else {
+            return Task::ready(Ok(()));
+        };
+
+        cx.spawn_in(window, async move |pane, cx| {
+            let mut should_close = true;
+            match Self::save_item(project, &pane, item_to_close.as_ref(), save_intent, cx).await {
+                Ok(success) => {
+                    if !success {
+                        should_close = false;
+                    }
+                }
+                Err(error) => {
+                    let answer = pane.update_in(cx, |_, window, cx| {
+                        window.prompt(
+                            PromptLevel::Warning,
+                            &format!("Unable to save file: {error}"),
+                            None,
+                            &["Close Without Saving", "Cancel"],
+                            cx,
+                        )
+                    })?;
+                    match answer.await {
+                        Ok(0) => {}
+                        Ok(1..) | Err(_) => should_close = false,
+                    }
+                }
+            }
+
+            if should_close {
+                pane.update_in(cx, |pane, window, cx| {
+                    pane.remove_item(item_to_close.item_id(), true, true, window, cx);
+                })?;
+            }
+
+            Ok(())
+        })
+    }
+
     pub async fn save_item(
         project: Entity<Project>,
         pane: &WeakEntity<Pane>,
@@ -485,24 +544,71 @@ impl Pane {
         save_intent: SaveIntent,
         cx: &mut AsyncWindowContext,
     ) -> anyhow::Result<bool> {
-        match save_intent {
-            SaveIntent::Save => {
-                let item_exists = pane
-                    .read_with(cx, |pane, _| pane.index_for_item(item).is_some())
-                    .unwrap_or(false);
-                if !item_exists {
-                    return Ok(true);
-                }
+        let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
+        let Some(item_index) = pane
+            .read_with(cx, |pane, _| pane.index_for_item(item))
+            .ok()
+            .flatten()
+        else {
+            return Ok(true);
+        };
 
-                let can_save = cx.update(|_, cx| item.can_save(cx))?;
-                if can_save {
-                    pane.update_in(cx, |pane, window, cx| {
-                        pane.unpreview_item_if_preview(item.item_id());
-                        item.save(project, window, cx)
-                    })?
-                    .await?;
+        let (mut is_dirty, can_save, is_singleton) = cx.update(|_, cx| {
+            (
+                item.is_dirty(cx),
+                item.can_save(cx),
+                item.buffer_kind(cx) == ItemBufferKind::Singleton,
+            )
+        })?;
+
+        if save_intent == SaveIntent::Save {
+            is_dirty = true;
+        }
+
+        if is_dirty && can_save {
+            if save_intent == SaveIntent::Close {
+                let item_id = item.item_id();
+                let answer_task = pane.update_in(cx, |pane, window, cx| {
+                    if pane.save_modals_spawned.insert(item_id) {
+                        pane.activate_item(item_index, true, true, window, cx);
+                        let prompt = dirty_message_for(item.project_path(cx), path_style);
+                        Some(window.prompt(
+                            PromptLevel::Warning,
+                            &prompt,
+                            None,
+                            &["Save", "Don't Save", "Cancel"],
+                            cx,
+                        ))
+                    } else {
+                        None
+                    }
+                })?;
+                let Some(answer_task) = answer_task else {
+                    return Ok(false);
+                };
+                let answer = answer_task.await;
+                pane.update(cx, |pane, _| {
+                    pane.save_modals_spawned.remove(&item_id);
+                })?;
+                match answer {
+                    Ok(0) => {}
+                    Ok(1) => {
+                        if is_singleton {
+                            pane.update_in(cx, |_, window, cx| item.reload(project, window, cx))?
+                                .await
+                                .log_err();
+                        }
+                        return Ok(true);
+                    }
+                    _ => return Ok(false),
                 }
             }
+
+            pane.update_in(cx, |pane, window, cx| {
+                pane.unpreview_item_if_preview(item.item_id());
+                item.save(project, window, cx)
+            })?
+            .await?;
         }
 
         Ok(true)
@@ -517,7 +623,8 @@ impl Pane {
     ) {
         match event {
             ItemEvent::CloseItem => {
-                self.remove_item(item_id, true, true, window, cx);
+                self.close_item_by_id(item_id, SaveIntent::Close, window, cx)
+                    .detach_and_log_err(cx);
             }
             ItemEvent::UpdateTab => {
                 cx.notify();
@@ -609,7 +716,8 @@ impl Pane {
             .icon_size(IconSize::Small)
             .tooltip(Tooltip::text("Close Tab"))
             .on_click(cx.listener(move |pane, _, window, cx| {
-                pane.remove_item(item_id, true, true, window, cx);
+                pane.close_item_by_id(item_id, SaveIntent::Close, window, cx)
+                    .detach_and_log_err(cx);
             }));
         let tab_control = if is_dirty {
             ui::h_flex()
@@ -850,6 +958,21 @@ fn render_item_indicator(group_name: String, cx: &App) -> AnyElement {
         .bg(cx.theme().colors().text_accent)
         .group_hover(group_name, |style| style.invisible())
         .into_any_element()
+}
+
+fn dirty_message_for(buffer_path: Option<ProjectPath>, path_style: PathStyle) -> String {
+    let path = buffer_path
+        .and_then(|project_path| {
+            let path = project_path.path.display(path_style);
+            if path.is_empty() {
+                None
+            } else {
+                Some(path.into_owned())
+            }
+        })
+        .unwrap_or_else(|| "This buffer".to_string());
+    let path = util::truncate_and_remove_front(&path, 80);
+    format!("{path} contains unsaved edits. Do you want to save it?")
 }
 
 fn tab_details(items: &[Box<dyn ItemHandle>], _window: &Window, cx: &App) -> Vec<usize> {

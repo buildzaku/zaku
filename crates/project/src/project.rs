@@ -271,4 +271,13 @@ impl Project {
         self.worktree_store
             .update(cx, |store, cx| store.save_request_buffer(buffer, cx))
     }
+
+    pub fn reload_request_buffer(
+        &self,
+        buffer: &Entity<RequestBuffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.worktree_store
+            .update(cx, |store, cx| store.reload_request_buffer(buffer, cx))
+    }
 }

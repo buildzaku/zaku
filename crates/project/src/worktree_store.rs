@@ -223,6 +223,45 @@ impl WorktreeStore {
         })
     }
 
+    pub fn reload_request_buffer(
+        &self,
+        buffer: &Entity<RequestBuffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let (worktree_id, path) = {
+            let buffer = buffer.read(cx);
+            (buffer.worktree_id(), buffer.path())
+        };
+        let Some(worktree) = self.worktree_for_id(worktree_id, cx) else {
+            return Task::ready(Err(anyhow!("Cannot reload request without worktree")));
+        };
+        let refresh = worktree.update(cx, |worktree, _| {
+            worktree
+                .as_local()
+                .map(|worktree| worktree.refresh_entries_for_paths(vec![path.clone()]))
+                .ok_or_else(|| anyhow!("Cannot refresh worktree"))
+        });
+        let buffer = buffer.clone();
+
+        cx.spawn(async move |_, cx| {
+            refresh?
+                .await
+                .map_err(|_| anyhow!("Failed to refresh request file"))?;
+            let request_file = worktree
+                .read_with(cx, |worktree, _| {
+                    worktree
+                        .entry_for_path(&path)
+                        .and_then(|entry| entry.request.clone())
+                })
+                .ok_or_else(|| anyhow!("Cannot reload request file"))?;
+            buffer.update(cx, |buffer, cx| {
+                buffer.set_request_file(request_file, cx);
+                buffer.set_dirty(false, cx);
+            });
+            Ok(())
+        })
+    }
+
     pub fn path_style(&self) -> PathStyle {
         PathStyle::local()
     }

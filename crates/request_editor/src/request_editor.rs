@@ -399,38 +399,9 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) -> Self {
         let focus_handle = cx.focus_handle();
-        let request = match buffer.read(cx).request_file().clone() {
-            RequestFileState::Parsed(request_file) => {
-                match Request::from_request_file(&request_file, window, cx) {
-                    Ok(request) => RequestEditorState::Ready(request),
-                    Err(error) => RequestEditorState::Invalid {
-                        error,
-                        snapshot: Some(RequestSnapshot::from_request_file(&request_file)),
-                    },
-                }
-            }
-            RequestFileState::Invalid(error) => RequestEditorState::Invalid {
-                error,
-                snapshot: None,
-            },
-        };
-        let request_snapshot = match &request {
-            RequestEditorState::Ready(request) => Some(RequestSnapshot::from_request(request, cx)),
-            RequestEditorState::Invalid { snapshot, .. } => snapshot.clone(),
-        };
-
-        let input_subscriptions = match &request {
-            RequestEditorState::Ready(request) => Self::subscribe_to_request(request, window, cx),
-            RequestEditorState::Invalid { .. } => Vec::new(),
-        };
-        let body_subscription = match &request {
-            RequestEditorState::Ready(request) => request
-                .config
-                .body
-                .as_ref()
-                .map(|body| Self::subscribe_to_body(&body.editor, window, cx)),
-            RequestEditorState::Invalid { .. } => None,
-        };
+        let request_file = buffer.read(cx).request_file().clone();
+        let (request, request_snapshot, input_subscriptions, body_subscription) =
+            Self::state_from_request_file(request_file, window, cx);
 
         Self {
             focus_handle,
@@ -597,6 +568,56 @@ impl RequestEditor {
                 log::debug!("Failed to update request editor edit state: {error:?}");
             }
         })
+    }
+
+    fn state_from_request_file(
+        request_file: RequestFileState,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> (
+        RequestEditorState,
+        Option<RequestSnapshot>,
+        Vec<Subscription>,
+        Option<Subscription>,
+    ) {
+        let request = match request_file {
+            RequestFileState::Parsed(request_file) => {
+                match Request::from_request_file(&request_file, window, cx) {
+                    Ok(request) => RequestEditorState::Ready(request),
+                    Err(error) => RequestEditorState::Invalid {
+                        error,
+                        snapshot: Some(RequestSnapshot::from_request_file(&request_file)),
+                    },
+                }
+            }
+            RequestFileState::Invalid(error) => RequestEditorState::Invalid {
+                error,
+                snapshot: None,
+            },
+        };
+        let request_snapshot = match &request {
+            RequestEditorState::Ready(request) => Some(RequestSnapshot::from_request(request, cx)),
+            RequestEditorState::Invalid { snapshot, .. } => snapshot.clone(),
+        };
+        let input_subscriptions = match &request {
+            RequestEditorState::Ready(request) => Self::subscribe_to_request(request, window, cx),
+            RequestEditorState::Invalid { .. } => Vec::new(),
+        };
+        let body_subscription = match &request {
+            RequestEditorState::Ready(request) => request
+                .config
+                .body
+                .as_ref()
+                .map(|body| Self::subscribe_to_body(&body.editor, window, cx)),
+            RequestEditorState::Invalid { .. } => None,
+        };
+
+        (
+            request,
+            request_snapshot,
+            input_subscriptions,
+            body_subscription,
+        )
     }
 
     fn mark_edited(&mut self, cx: &mut Context<Self>) {
@@ -1633,6 +1654,40 @@ impl Item for RequestEditor {
                 });
 
                 if dirty_changed {
+                    cx.emit(ItemEvent::UpdateTab);
+                }
+                cx.notify();
+            })?;
+            Ok(())
+        })
+    }
+
+    fn reload(
+        &mut self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(buffer) = self.buffer.clone() else {
+            return Task::ready(Err(anyhow::anyhow!("Cannot reload request without buffer")));
+        };
+        let was_dirty = self.is_dirty(cx);
+        let reload_request_buffer =
+            project.update(cx, |project, cx| project.reload_request_buffer(&buffer, cx));
+
+        cx.spawn_in(window, async move |this, cx| {
+            reload_request_buffer.await?;
+            this.update_in(cx, |request_editor, window, cx| {
+                let request_file = buffer.read(cx).request_file().clone();
+                let (request, request_snapshot, input_subscriptions, body_subscription) =
+                    Self::state_from_request_file(request_file, window, cx);
+                request_editor.request = request;
+                request_editor.request_snapshot = request_snapshot;
+                request_editor.input_subscriptions = input_subscriptions;
+                request_editor.body_subscription = body_subscription;
+                request_editor.is_dirty = false;
+
+                if was_dirty {
                     cx.emit(ItemEvent::UpdateTab);
                 }
                 cx.notify();

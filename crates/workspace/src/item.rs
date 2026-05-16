@@ -115,6 +115,15 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         unimplemented!("save() must be implemented if can_save() returns true")
     }
 
+    fn reload(
+        &mut self,
+        _project: Entity<Project>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        unimplemented!("reload() must be implemented if can_save() returns true")
+    }
+
     fn preserve_preview(&self, _cx: &App) -> bool {
         false
     }
@@ -154,6 +163,12 @@ pub trait ItemHandle: 'static + Send {
     fn is_dirty(&self, cx: &App) -> bool;
     fn can_save(&self, cx: &App) -> bool;
     fn save(
+        &self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>>;
+    fn reload(
         &self,
         project: Entity<Project>,
         window: &mut Window,
@@ -283,6 +298,15 @@ impl<T: Item> ItemHandle for Entity<T> {
         cx: &mut App,
     ) -> Task<anyhow::Result<()>> {
         self.update(cx, |item, cx| item.save(project, window, cx))
+    }
+
+    fn reload(
+        &self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        self.update(cx, |item, cx| item.reload(project, window, cx))
     }
 
     fn preserve_preview(&self, cx: &App) -> bool {

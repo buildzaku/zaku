@@ -38,6 +38,24 @@ pub fn truncate_and_trailoff(text: &str, max_chars: usize) -> String {
     }
 }
 
+pub fn truncate_and_remove_front(text: &str, max_chars: usize) -> String {
+    debug_assert!(max_chars >= 5);
+
+    if text.len() <= max_chars {
+        return text.to_string();
+    }
+
+    let suffix_char_length = max_chars.saturating_sub(1);
+    let truncation_index = text
+        .char_indices()
+        .map(|(index, _)| index)
+        .nth_back(suffix_char_length);
+    match truncation_index {
+        Some(index) if index > 0 => "…".to_string() + &text[index..],
+        _ => text.to_string(),
+    }
+}
+
 pub trait ResultExt<E> {
     type Ok;
 
