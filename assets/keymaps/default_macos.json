@@ -35,8 +35,17 @@
     "bindings": {
       "cmd-b": "workspace::ToggleLeftDock",
       "cmd-j": "workspace::ToggleBottomDock",
+      "cmd-s": "workspace::Save",
       "cmd-shift-e": "project_panel::ToggleFocus",
       "cmd-shift-r": "response_panel::ToggleFocus"
+    }
+  },
+  {
+    "context": "Pane",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-w": "pane::CloseActiveItem",
+      "cmd-k w": "pane::CloseAllItems"
     }
   },
   {

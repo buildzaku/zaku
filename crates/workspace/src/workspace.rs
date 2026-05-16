@@ -6,6 +6,7 @@ mod persistence;
 pub mod status_bar;
 pub mod welcome;
 
+pub use actions::pane::{CloseActiveItem, CloseAllItems, SaveIntent};
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
 pub use item::{
     Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
@@ -34,7 +35,7 @@ use std::{
 use actions::{
     menu,
     workspace::{
-        CloseProject, CloseWindow, NewWindow, Open, SuppressNotification, ToggleBottomDock,
+        CloseProject, CloseWindow, NewWindow, Open, Save, SuppressNotification, ToggleBottomDock,
         ToggleLeftDock,
     },
     zaku::{Minimize, Zoom},
@@ -59,13 +60,13 @@ use uuid::Uuid;
 
 use crate::{
     dock::{Dock, PanelButtons},
-    notifications::{NotificationId, Notifications},
+    notifications::{DetachAndPromptErr, NotificationId, Notifications},
     pane::Pane,
     status_bar::StatusBar,
 };
 
 const KEY_CONTEXT: &str = "Workspace";
-const MIN_CONFIG_PANE_HEIGHT: Pixels = gpui::px(180.0);
+const MIN_CENTER_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
 pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
@@ -910,6 +911,28 @@ impl Workspace {
         self.active_item(cx)?.to_any_view().downcast::<I>().ok()
     }
 
+    pub fn save_active_item(
+        &mut self,
+        save_intent: SaveIntent,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        let project = self.project.clone();
+        let pane = self.pane.clone();
+        let item = pane.read(cx).active_item();
+        let pane = pane.downgrade();
+
+        window.spawn(cx, async move |cx| {
+            if let Some(item) = item {
+                Pane::save_item(project, &pane, item.as_ref(), save_intent, cx)
+                    .await
+                    .map(|_| ())
+            } else {
+                Ok(())
+            }
+        })
+    }
+
     pub fn left_dock(&self) -> &Entity<Dock> {
         &self.left_dock
     }
@@ -1155,7 +1178,7 @@ impl Workspace {
 
     fn resize_bottom_dock(&mut self, size: Pixels, window: &mut Window, cx: &mut App) {
         let max_size =
-            (self.bounds.size.height - MIN_CONFIG_PANE_HEIGHT).max(dock::RESIZE_HANDLE_SIZE);
+            (self.bounds.size.height - MIN_CENTER_PANE_HEIGHT).max(dock::RESIZE_HANDLE_SIZE);
         let size = size
             .min(max_size)
             .max(MIN_RESPONSE_PANE_HEIGHT.min(max_size));
@@ -1269,6 +1292,11 @@ impl Workspace {
             }))
             .on_action(cx.listener(|workspace, _: &ToggleBottomDock, window, cx| {
                 workspace.toggle_dock(DockPosition::Bottom, window, cx);
+            }))
+            .on_action(cx.listener(|workspace, _: &Save, window, cx| {
+                workspace
+                    .save_active_item(SaveIntent::Save, window, cx)
+                    .detach_and_prompt_err("Failed to save", window, cx, |_, _, _| None);
             }))
             .on_action(cx.listener(
                 |workspace: &mut Workspace, _: &SuppressNotification, _, cx| {
@@ -1418,7 +1446,7 @@ impl Render for Workspace {
                                         });
 
                                         let max_bottom_dock_size = (bounds.size.height
-                                            - MIN_CONFIG_PANE_HEIGHT)
+                                            - MIN_CENTER_PANE_HEIGHT)
                                             .max(dock::RESIZE_HANDLE_SIZE);
                                         this.bottom_dock.update(cx, |dock, cx| {
                                             dock.clamp_panel_size(max_bottom_dock_size, window, cx);
@@ -1483,7 +1511,7 @@ mod tests {
 
     use crate::{
         dock::test::TestPanel,
-        item::test::TestItem,
+        item::test::{TestItem, TestProjectItem},
         pane::{
             DraggedTab,
             test::{add_labeled_item, assert_item_labels},
@@ -1870,6 +1898,242 @@ mod tests {
             assert!(window.is_action_available(&NewWindow, cx));
             assert!(window.is_action_available(&Open::default(), cx));
             assert!(window.is_action_available(&CloseProject, cx));
+        });
+    }
+
+    #[gpui::test]
+    async fn test_close_all_items(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        add_labeled_item(&pane, "First", false, cx);
+        add_labeled_item(&pane, "Second", false, cx);
+        add_labeled_item(&pane, "Third", false, cx);
+        assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+        })
+        .await
+        .unwrap();
+        assert_item_labels(&pane, [], cx);
+
+        add_labeled_item(&pane, "First", true, cx).update(cx, |item, cx| {
+            item.project_items
+                .push(TestProjectItem::new_dirty(1, "first.toml", cx));
+        });
+        add_labeled_item(&pane, "Second", true, cx).update(cx, |item, cx| {
+            item.project_items
+                .push(TestProjectItem::new_dirty(2, "second.toml", cx));
+        });
+        add_labeled_item(&pane, "Third", true, cx).update(cx, |item, cx| {
+            item.project_items
+                .push(TestProjectItem::new_dirty(3, "third.toml", cx));
+        });
+        assert_item_labels(&pane, ["First^", "Second^", "Third*^"], cx);
+
+        let save = pane.update_in(cx, |pane, window, cx| {
+            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+        });
+
+        cx.executor().run_until_parked();
+        cx.simulate_prompt_answer("Save all");
+        save.await.unwrap();
+        assert_item_labels(&pane, [], cx);
+
+        add_labeled_item(&pane, "First", true, cx);
+        add_labeled_item(&pane, "Second", true, cx);
+        add_labeled_item(&pane, "Third", true, cx);
+        assert_item_labels(&pane, ["First^", "Second^", "Third*^"], cx);
+
+        let save = pane.update_in(cx, |pane, window, cx| {
+            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+        });
+
+        cx.executor().run_until_parked();
+        cx.simulate_prompt_answer("Discard all");
+        save.await.unwrap();
+        assert_item_labels(&pane, [], cx);
+
+        add_labeled_item(&pane, "First", false, cx);
+        add_labeled_item(&pane, "Second", true, cx).update(cx, |item, cx| {
+            item.project_items
+                .push(TestProjectItem::new_dirty(1, "second.toml", cx));
+        });
+        add_labeled_item(&pane, "Third", false, cx);
+        assert_item_labels(&pane, ["First", "Second^", "Third*"], cx);
+
+        let close_task = pane.update_in(cx, |pane, window, cx| {
+            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+        });
+
+        cx.executor().run_until_parked();
+        cx.simulate_prompt_answer("Cancel");
+        close_task.await.unwrap();
+        assert_item_labels(&pane, ["Second*^"], cx);
+    }
+
+    #[gpui::test]
+    async fn test_discard_all_reloads_from_disk(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let first_item = add_labeled_item(&pane, "First", true, cx);
+        first_item.update(cx, |item, cx| {
+            item.project_items
+                .push(TestProjectItem::new_dirty(1, "first.toml", cx));
+        });
+        let second_item = add_labeled_item(&pane, "Second", true, cx);
+        second_item.update(cx, |item, cx| {
+            item.project_items
+                .push(TestProjectItem::new_dirty(2, "second.toml", cx));
+        });
+        assert_item_labels(&pane, ["First^", "Second*^"], cx);
+
+        let close_task = pane.update_in(cx, |pane, window, cx| {
+            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+        });
+
+        cx.executor().run_until_parked();
+        cx.simulate_prompt_answer("Discard all");
+        close_task.await.unwrap();
+        assert_item_labels(&pane, [], cx);
+
+        first_item.read_with(cx, |item, _| {
+            assert_eq!(item.reload_count, 1, "first item should have been reloaded");
+            assert!(
+                !item.is_dirty,
+                "first item should no longer be dirty after reload"
+            );
+        });
+        second_item.read_with(cx, |item, _| {
+            assert_eq!(
+                item.reload_count, 1,
+                "second item should have been reloaded"
+            );
+            assert!(
+                !item.is_dirty,
+                "second item should no longer be dirty after reload"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_dont_save_single_file_reloads_from_disk(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let item = add_labeled_item(&pane, "First", true, cx);
+        item.update(cx, |item, cx| {
+            item.project_items
+                .push(TestProjectItem::new_dirty(1, "first.toml", cx));
+        });
+        assert_item_labels(&pane, ["First*^"], cx);
+
+        let close_task = pane.update_in(cx, |pane, window, cx| {
+            pane.close_item_by_id(item.item_id(), SaveIntent::Close, window, cx)
+        });
+
+        cx.executor().run_until_parked();
+        cx.simulate_prompt_answer("Don't Save");
+        close_task.await.unwrap();
+        assert_item_labels(&pane, [], cx);
+
+        item.read_with(cx, |item, _| {
+            assert_eq!(item.reload_count, 1, "item should have been reloaded");
+            assert!(
+                !item.is_dirty,
+                "item should no longer be dirty after reload"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_close_with_save_intent(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let first = cx.update(|_, cx| TestProjectItem::new_dirty(1, "first.toml", cx));
+        let second = cx.update(|_, cx| TestProjectItem::new_dirty(2, "second.toml", cx));
+        let third = cx.update(|_, cx| TestProjectItem::new_dirty(3, "third.toml", cx));
+
+        add_labeled_item(&pane, "First", true, cx).update(cx, |item, _| {
+            item.project_items.push(first.clone());
+            item.project_items.push(second.clone());
+        });
+        add_labeled_item(&pane, "Second", true, cx)
+            .update(cx, |item, _| item.project_items.push(third.clone()));
+        assert_item_labels(&pane, ["First^", "Second*^"], cx);
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.close_all_items(
+                &CloseAllItems {
+                    save_intent: Some(SaveIntent::Save),
+                },
+                window,
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+
+        assert_item_labels(&pane, [], cx);
+        cx.update(|_, cx| {
+            assert!(!first.read(cx).is_dirty);
+            assert!(!second.read(cx).is_dirty);
+            assert!(!third.read(cx).is_dirty);
         });
     }
 

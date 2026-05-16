@@ -37,6 +37,8 @@ gpui::actions!(
         CloseWindow,
         /// Open a new window.
         NewWindow,
+        /// Save the active item.
+        Save,
         /// Send the current request.
         SendRequest,
         /// Suppress the current notification.

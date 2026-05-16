@@ -33,6 +33,7 @@ futures = { workspace = true }
 gpui = { workspace = true }
 http_client = { workspace = true }
 indoc = { workspace = true }
+itertools = { workspace = true }
 log = { workspace = true }
 metadata = { workspace = true }
 project = { workspace = true }

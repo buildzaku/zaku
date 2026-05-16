@@ -1,6 +1,6 @@
 use gpui::{
     AnyElement, AnyView, App, Context, Entity, EntityId, EventEmitter, FocusHandle, Focusable,
-    Render, SharedString, Subscription, WeakEntity, Window, prelude::*,
+    Render, SharedString, Subscription, Task, WeakEntity, Window, prelude::*,
 };
 use smallvec::SmallVec;
 use std::{any::Any, sync::Arc};
@@ -102,6 +102,28 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         false
     }
 
+    fn can_save(&self, _cx: &App) -> bool {
+        false
+    }
+
+    fn save(
+        &mut self,
+        _project: Entity<Project>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        unimplemented!("save() must be implemented if can_save() returns true")
+    }
+
+    fn reload(
+        &mut self,
+        _project: Entity<Project>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        unimplemented!("reload() must be implemented if can_save() returns true")
+    }
+
     fn preserve_preview(&self, _cx: &App) -> bool {
         false
     }
@@ -139,6 +161,19 @@ pub trait ItemHandle: 'static + Send {
     fn item_id(&self) -> EntityId;
     fn to_any_view(&self) -> AnyView;
     fn is_dirty(&self, cx: &App) -> bool;
+    fn can_save(&self, cx: &App) -> bool;
+    fn save(
+        &self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>>;
+    fn reload(
+        &self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>>;
     fn preserve_preview(&self, cx: &App) -> bool;
     fn include_in_nav_history(&self) -> bool;
 }
@@ -252,6 +287,28 @@ impl<T: Item> ItemHandle for Entity<T> {
         self.read(cx).is_dirty(cx)
     }
 
+    fn can_save(&self, cx: &App) -> bool {
+        self.read(cx).can_save(cx)
+    }
+
+    fn save(
+        &self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        self.update(cx, |item, cx| item.save(project, window, cx))
+    }
+
+    fn reload(
+        &self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        self.update(cx, |item, cx| item.reload(project, window, cx))
+    }
+
     fn preserve_preview(&self, cx: &App) -> bool {
         self.read(cx).preserve_preview(cx)
     }
@@ -313,18 +370,69 @@ pub mod test {
     use super::*;
 
     use gpui::{Empty, IntoElement};
+    use project::WorktreeId;
+    use util::rel_path::rel_path;
+
+    pub struct TestProjectItem {
+        pub entry_id: Option<ProjectEntryId>,
+        pub project_path: Option<ProjectPath>,
+        pub is_dirty: bool,
+    }
 
     pub struct TestItem {
         pub label: String,
+        pub save_count: usize,
+        pub reload_count: usize,
         pub is_dirty: bool,
+        pub buffer_kind: ItemBufferKind,
+        pub project_items: Vec<Entity<TestProjectItem>>,
         focus_handle: FocusHandle,
+    }
+
+    impl project::ProjectItem for TestProjectItem {
+        fn try_open(
+            _project: &Entity<Project>,
+            _path: &ProjectPath,
+            _cx: &mut App,
+        ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
+            None
+        }
+
+        fn entry_id(&self, _cx: &App) -> Option<ProjectEntryId> {
+            self.entry_id
+        }
+
+        fn project_path(&self, _cx: &App) -> Option<ProjectPath> {
+            self.project_path.clone()
+        }
+
+        fn is_dirty(&self) -> bool {
+            self.is_dirty
+        }
+    }
+
+    impl TestProjectItem {
+        pub fn new_dirty(id: usize, path: &str, cx: &mut App) -> Entity<Self> {
+            cx.new(|_| Self {
+                entry_id: Some(ProjectEntryId::from_usize(id)),
+                project_path: Some(ProjectPath {
+                    worktree_id: WorktreeId::from_usize(0),
+                    path: Arc::from(rel_path(path)),
+                }),
+                is_dirty: true,
+            })
+        }
     }
 
     impl TestItem {
         pub fn new(cx: &mut Context<Self>) -> Self {
             Self {
                 label: String::new(),
+                save_count: 0,
+                reload_count: 0,
                 is_dirty: false,
+                buffer_kind: ItemBufferKind::Singleton,
+                project_items: Vec::new(),
                 focus_handle: cx.focus_handle(),
             }
         }
@@ -336,6 +444,11 @@ pub mod test {
 
         pub fn with_dirty(mut self, is_dirty: bool) -> Self {
             self.is_dirty = is_dirty;
+            self
+        }
+
+        pub fn with_buffer_kind(mut self, buffer_kind: ItemBufferKind) -> Self {
+            self.buffer_kind = buffer_kind;
             self
         }
     }
@@ -367,6 +480,57 @@ pub mod test {
 
         fn is_dirty(&self, _cx: &App) -> bool {
             self.is_dirty
+        }
+
+        fn for_each_project_item(
+            &self,
+            cx: &App,
+            f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        ) {
+            self.project_items
+                .iter()
+                .for_each(|item| f(item.entity_id(), item.read(cx)));
+        }
+
+        fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {
+            self.buffer_kind
+        }
+
+        fn can_save(&self, cx: &App) -> bool {
+            !self.project_items.is_empty()
+                && self
+                    .project_items
+                    .iter()
+                    .all(|item| item.read(cx).entry_id.is_some())
+        }
+
+        fn save(
+            &mut self,
+            _project: Entity<Project>,
+            _window: &mut Window,
+            cx: &mut Context<Self>,
+        ) -> Task<anyhow::Result<()>> {
+            self.save_count += 1;
+            self.is_dirty = false;
+            for item in &self.project_items {
+                item.update(cx, |item, _| {
+                    if item.is_dirty {
+                        item.is_dirty = false;
+                    }
+                });
+            }
+            Task::ready(Ok(()))
+        }
+
+        fn reload(
+            &mut self,
+            _project: Entity<Project>,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> Task<anyhow::Result<()>> {
+            self.reload_count += 1;
+            self.is_dirty = false;
+            Task::ready(Ok(()))
         }
     }
 }

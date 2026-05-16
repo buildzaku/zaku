@@ -35,10 +35,10 @@ use std::{
 use sum_tree::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
 use tokio::sync::{oneshot, watch};
 
-use request::parse_request_file;
 pub use request::{
-    REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileConfig,
-    RequestFileHeader, RequestFileMeta, RequestFileParam, RequestFileState,
+    REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileHeader,
+    RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState, parse_request_file,
+    serialize_request_file,
 };
 
 #[cfg(feature = "test-support")]
@@ -388,6 +388,39 @@ impl Worktree {
         match self {
             Self::Local(worktree) => worktree.visible,
         }
+    }
+
+    pub fn write_request_file(
+        &self,
+        path: Arc<RelPath>,
+        request_file: &RequestFile,
+        cx: &Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(worktree) = self.as_local() else {
+            return Task::ready(Err(anyhow!("Cannot write request file without worktree")));
+        };
+        let fs = worktree.fs().clone();
+        let abs_path = worktree.absolutize(&path);
+        let contents = match serialize_request_file(request_file) {
+            Ok(contents) => contents,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let write =
+            cx.background_spawn(async move { fs.write(&abs_path, contents.as_bytes()).await });
+
+        cx.spawn(async move |this, cx| {
+            write.await?;
+            let refresh = this.update(cx, |worktree, _| {
+                worktree
+                    .as_local()
+                    .map(|worktree| worktree.refresh_entries_for_paths(vec![path]))
+                    .ok_or_else(|| anyhow!("Cannot refresh worktree"))
+            })??;
+            refresh
+                .await
+                .map_err(|_| anyhow!("Failed to refresh saved request file"))?;
+            Ok(())
+        })
     }
 
     pub fn snapshot(&self) -> Snapshot {

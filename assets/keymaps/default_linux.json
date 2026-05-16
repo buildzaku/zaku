@@ -30,8 +30,17 @@
     "bindings": {
       "ctrl-b": "workspace::ToggleLeftDock",
       "ctrl-j": "workspace::ToggleBottomDock",
+      "ctrl-s": "workspace::Save",
       "ctrl-shift-e": "project_panel::ToggleFocus",
       "ctrl-shift-r": "response_panel::ToggleFocus"
+    }
+  },
+  {
+    "context": "Pane",
+    "bindings": {
+      "ctrl-f4": "pane::CloseActiveItem",
+      "ctrl-w": "pane::CloseActiveItem",
+      "ctrl-k w": "pane::CloseAllItems"
     }
   },
   {

@@ -14,6 +14,7 @@ members = [
   "crates/multi_buffer",
   "crates/project",
   "crates/project_panel",
+  "crates/request_buffer",
   "crates/request_editor",
   "crates/reqwest_client",
   "crates/response_panel",
@@ -70,8 +71,8 @@ chrono = { version = "0.4" }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "58d24a610b", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "58d24a610b", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "3bd9d13b63", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "3bd9d13b63", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 indexmap = { version = "2.14" }
@@ -106,14 +107,15 @@ serde_path_to_error = { version = "0.1" }
 smallvec = { version = "1.15" }
 smol = { version = "2.0" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "58d24a610b", package = "sum_tree" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "3bd9d13b63", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "58d24a610b", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "3bd9d13b63", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
+toml_edit = { version = "0.25", features = ["serde"] }
 unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.23", features = ["v4"] }
@@ -137,6 +139,7 @@ metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }
 project = { path = "crates/project" }
 project_panel = { path = "crates/project_panel" }
+request_buffer = { path = "crates/request_buffer" }
 request_editor = { path = "crates/request_editor" }
 reqwest_client = { path = "crates/reqwest_client" }
 response_panel = { path = "crates/response_panel" }
