@@ -3,8 +3,13 @@ use gpui::{
     FocusOutEvent, Focusable, PromptLevel, ScrollHandle, Subscription, Task, WeakEntity, Window,
     prelude::*,
 };
-use std::{collections::HashSet, mem};
+use itertools::Itertools;
+use std::{
+    collections::{BTreeSet, HashSet},
+    mem,
+};
 
+use actions::pane::{CloseActiveItem, CloseAllItems, SaveIntent};
 use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
@@ -17,12 +22,6 @@ use crate::{
     ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Workspace,
     WorkspaceItemBuilder, welcome::WelcomePage,
 };
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum SaveIntent {
-    Save,
-    Close,
-}
 
 pub struct Pane {
     focus_handle: FocusHandle,
@@ -101,6 +100,10 @@ impl Pane {
 
     pub fn active_item(&self) -> Option<Box<dyn ItemHandle>> {
         self.items.get(self.active_item_index).cloned()
+    }
+
+    fn active_item_id(&self) -> Option<EntityId> {
+        self.active_item().map(|item| item.item_id())
     }
 
     pub fn active_item_index(&self) -> usize {
@@ -490,51 +493,172 @@ impl Pane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let Some(item_to_close) = self
-            .items
-            .iter()
-            .find(|item| item.item_id() == item_id_to_close)
-            .map(|item| item.boxed_clone())
-        else {
+        self.close_items(window, cx, save_intent, &move |item_id| {
+            item_id == item_id_to_close
+        })
+    }
+
+    pub fn close_active_item(
+        &mut self,
+        action: &CloseActiveItem,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(active_item_id) = self.active_item_id() else {
             return Task::ready(Ok(()));
         };
+
+        self.close_item_by_id(
+            active_item_id,
+            action.save_intent.unwrap_or(SaveIntent::Close),
+            window,
+            cx,
+        )
+    }
+
+    pub fn close_items(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Pane>,
+        mut save_intent: SaveIntent,
+        should_close: &dyn Fn(EntityId) -> bool,
+    ) -> Task<anyhow::Result<()>> {
+        let mut items_to_close = Vec::new();
+        for item in &self.items {
+            if should_close(item.item_id()) {
+                items_to_close.push(item.boxed_clone());
+            }
+        }
+
+        let active_item_id = self.active_item_id();
+
+        items_to_close.sort_by_key(|item| {
+            let path = item.project_path(cx);
+            (active_item_id == Some(item.item_id()), path.is_none(), path)
+        });
+
         let Some(project) = self.project.upgrade() else {
             return Task::ready(Ok(()));
         };
 
         cx.spawn_in(window, async move |pane, cx| {
-            let mut should_close = true;
-            match Self::save_item(project, &pane, item_to_close.as_ref(), save_intent, cx).await {
-                Ok(success) => {
-                    if !success {
-                        should_close = false;
-                    }
-                }
-                Err(error) => {
-                    let answer = pane.update_in(cx, |_, window, cx| {
-                        window.prompt(
-                            PromptLevel::Warning,
-                            &format!("Unable to save file: {error}"),
-                            None,
-                            &["Close Without Saving", "Cancel"],
-                            cx,
-                        )
-                    })?;
-                    match answer.await {
-                        Ok(0) => {}
-                        Ok(1..) | Err(_) => should_close = false,
-                    }
-                }
-            }
+            let dirty_items = cx.update(|_, cx| {
+                items_to_close
+                    .iter()
+                    .filter(|item| item.is_dirty(cx))
+                    .map(|item| item.boxed_clone())
+                    .collect::<Vec<_>>()
+            })?;
 
-            if should_close {
-                pane.update_in(cx, |pane, window, cx| {
-                    pane.remove_item(item_to_close.item_id(), true, true, window, cx);
+            if save_intent == SaveIntent::Close && dirty_items.len() > 1 {
+                let answer = pane.update_in(cx, |_, window, cx| {
+                    let detail = Self::file_names_for_prompt(&mut dirty_items.iter(), cx);
+                    window.prompt(
+                        PromptLevel::Warning,
+                        "Do you want to save changes to the following files?",
+                        Some(&detail),
+                        &["Save all", "Discard all", "Cancel"],
+                        cx,
+                    )
                 })?;
+                match answer.await {
+                    Ok(0) => save_intent = SaveIntent::SaveAll,
+                    Ok(1) => save_intent = SaveIntent::Skip,
+                    Ok(2) => return Ok(()),
+                    _ => {}
+                }
             }
 
+            for item_to_close in items_to_close {
+                let mut should_close = true;
+                match Self::save_item(
+                    project.clone(),
+                    &pane,
+                    item_to_close.as_ref(),
+                    save_intent,
+                    cx,
+                )
+                .await
+                {
+                    Ok(success) => {
+                        if !success {
+                            should_close = false;
+                        }
+                    }
+                    Err(error) => {
+                        let answer = pane.update_in(cx, |_, window, cx| {
+                            let detail =
+                                Self::file_names_for_prompt(&mut [&item_to_close].into_iter(), cx);
+                            window.prompt(
+                                PromptLevel::Warning,
+                                &format!("Unable to save file: {error}"),
+                                Some(&detail),
+                                &["Close Without Saving", "Cancel"],
+                                cx,
+                            )
+                        })?;
+                        match answer.await {
+                            Ok(0) => {}
+                            Ok(1..) | Err(_) => should_close = false,
+                        }
+                    }
+                }
+
+                if should_close {
+                    pane.update_in(cx, |pane, window, cx| {
+                        pane.remove_item(item_to_close.item_id(), true, true, window, cx);
+                    })?;
+                }
+            }
+
+            pane.update(cx, |_, cx| cx.notify())?;
             Ok(())
         })
+    }
+
+    pub fn close_all_items(
+        &mut self,
+        action: &CloseAllItems,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        if self.items.is_empty() {
+            return Task::ready(Ok(()));
+        }
+
+        self.close_items(
+            window,
+            cx,
+            action.save_intent.unwrap_or(SaveIntent::Close),
+            &|_| true,
+        )
+    }
+
+    fn file_names_for_prompt(
+        items: &mut dyn Iterator<Item = &Box<dyn ItemHandle>>,
+        cx: &App,
+    ) -> String {
+        let mut file_names = BTreeSet::default();
+        for item in items {
+            item.for_each_project_item(cx, &mut |_, project_item| {
+                if !project_item.is_dirty() {
+                    return;
+                }
+                let filename = project_item
+                    .project_path(cx)
+                    .and_then(|path| path.path.file_name().map(ToOwned::to_owned));
+                file_names.insert(filename.unwrap_or("untitled".to_string()));
+            });
+        }
+        if file_names.len() > 6 {
+            format!(
+                "{}\n.. and {} more",
+                file_names.iter().take(5).join("\n"),
+                file_names.len() - 5
+            )
+        } else {
+            file_names.into_iter().join("\n")
+        }
     }
 
     pub async fn save_item(
@@ -544,6 +668,18 @@ impl Pane {
         save_intent: SaveIntent,
         cx: &mut AsyncWindowContext,
     ) -> anyhow::Result<bool> {
+        if save_intent == SaveIntent::Skip {
+            let is_saveable_singleton = cx.update(|_, cx| {
+                item.can_save(cx) && item.buffer_kind(cx) == ItemBufferKind::Singleton
+            })?;
+            if is_saveable_singleton {
+                pane.update_in(cx, |_, window, cx| item.reload(project, window, cx))?
+                    .await
+                    .log_err();
+            }
+            return Ok(true);
+        }
+
         let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
         let Some(item_index) = pane
             .read_with(cx, |pane, _| pane.index_for_item(item))
@@ -934,6 +1070,18 @@ impl Render for Pane {
         gpui::div()
             .track_focus(&self.focus_handle)
             .key_context("Pane")
+            .on_action(
+                cx.listener(|pane: &mut Self, action: &CloseActiveItem, window, cx| {
+                    pane.close_active_item(action, window, cx)
+                        .detach_and_log_err(cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|pane: &mut Self, action: &CloseAllItems, window, cx| {
+                    pane.close_all_items(action, window, cx)
+                        .detach_and_log_err(cx);
+                }),
+            )
             .flex()
             .flex_col()
             .size_full()

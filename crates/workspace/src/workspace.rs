@@ -6,12 +6,12 @@ mod persistence;
 pub mod status_bar;
 pub mod welcome;
 
+pub use actions::pane::{CloseActiveItem, CloseAllItems, SaveIntent};
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
 pub use item::{
     Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
     WeakItemHandle,
 };
-pub use pane::SaveIntent;
 pub use persistence::{
     WorkspaceDb,
     model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},

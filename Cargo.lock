@@ -8236,6 +8236,7 @@ dependencies = [
  "gpui",
  "http_client 0.0.0",
  "indoc",
+ "itertools 0.14.0",
  "log",
  "metadata",
  "project",

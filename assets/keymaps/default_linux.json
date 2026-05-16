@@ -36,6 +36,14 @@
     }
   },
   {
+    "context": "Pane",
+    "bindings": {
+      "ctrl-f4": "pane::CloseActiveItem",
+      "ctrl-w": "pane::CloseActiveItem",
+      "ctrl-k w": "pane::CloseAllItems"
+    }
+  },
+  {
     "context": "ProjectPanel",
     "bindings": {
       "tab": null,
