@@ -1644,6 +1644,58 @@ impl Item for RequestEditor {
             .as_ref()
             .map_or(self.is_dirty, |buffer| buffer.read(cx).is_dirty())
     }
+
+    fn can_save(&self, cx: &App) -> bool {
+        matches!(&self.request, RequestEditorState::Ready(_)) && self.project_path(cx).is_some()
+    }
+
+    fn save(
+        &mut self,
+        project: Entity<Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(project_path) = self.project_path(cx) else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "Cannot save request without project path"
+            )));
+        };
+        let RequestEditorState::Ready(request) = &self.request else {
+            return Task::ready(Err(anyhow::anyhow!("Cannot save invalid request")));
+        };
+        let request_snapshot = RequestSnapshot::from_request(request, cx);
+
+        cx.spawn_in(window, async move |this, cx| {
+            project
+                .update(cx, |project, cx| {
+                    project.save_request_file(&project_path, &request_snapshot.0, cx)
+                })
+                .await?;
+            this.update(cx, |request_editor, cx| {
+                request_editor.request_snapshot = Some(request_snapshot.clone());
+                request_editor.is_dirty = false;
+                let dirty_changed = if let Some(buffer) = request_editor.buffer.as_ref() {
+                    buffer.update(cx, |buffer, cx| {
+                        let dirty_changed = buffer.is_dirty;
+                        buffer.request = RequestFileState::Parsed(request_snapshot.0.clone());
+                        if dirty_changed {
+                            buffer.is_dirty = false;
+                            cx.notify();
+                        }
+                        dirty_changed
+                    })
+                } else {
+                    false
+                };
+
+                if dirty_changed {
+                    cx.emit(ItemEvent::UpdateTab);
+                }
+                cx.notify();
+            })?;
+            Ok(())
+        })
+    }
 }
 
 impl ProjectItem for RequestEditor {
@@ -1673,13 +1725,15 @@ mod tests {
     use indoc::indoc;
     use parking_lot::Mutex;
     use serde_json::json;
+    use std::path::Path;
 
+    use fs::Fs;
     use http_client::{Response, StatusCode};
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util::rel_path::rel_path;
     use util_macros::path;
-    use workspace::{DockPosition, Root, SharedState};
+    use workspace::{DockPosition, Root, SaveIntent, SharedState};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -2220,6 +2274,132 @@ mod tests {
         assert_eq!(
             response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
             "first response"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_save_from_request_editor(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [config]
+                        method = "GET"
+                        url = "https://api.zaku.dev/me"
+                        params = [
+                            { name = "query", value = "zaku" },
+                            { name = "debug", value = "1", disabled = true },
+                            { name = "test", value = "1", disabled = false },
+                        ]
+                        headers = [
+                            { name = "Content-Type", value = "application/json" },
+                            { name = "X-Debug", value = "1", disabled = true },
+                        ]
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_path = ProjectPath {
+            worktree_id,
+            path: Arc::from(rel_path("collection/request.toml")),
+        };
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(request_path, None, true, window, cx)
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        request_editor.update_in(cx, |request_editor, window, cx| {
+            let RequestEditorState::Ready(request) = &mut request_editor.request else {
+                panic!("Expected request editor to be ready");
+            };
+            request.config.url.update(cx, |url, cx| {
+                url.set_text("https://api.zaku.dev/me/edit", window, cx);
+            });
+            request_editor.mark_edited(cx);
+        });
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.save_active_item(SaveIntent::Save, window, cx)
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert!(
+            !request_editor.read_with(cx, |request_editor, cx| { request_editor.is_dirty(cx) })
+        );
+
+        let saved = temp_fs
+            .load(Path::new(path!("project/collection/request.toml")))
+            .await
+            .unwrap();
+        let saved_request = toml::from_str::<RequestFile>(&saved).unwrap();
+
+        assert_eq!(
+            saved_request,
+            RequestFile {
+                meta: RequestFileMeta {
+                    version: 1,
+                    name: None,
+                },
+                config: RequestFileConfig {
+                    method: "GET".to_string(),
+                    url: "https://api.zaku.dev/me/edit".to_string(),
+                    params: vec![
+                        RequestFileParam {
+                            name: "query".to_string(),
+                            value: "zaku".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileParam {
+                            name: "debug".to_string(),
+                            value: "1".to_string(),
+                            disabled: true,
+                        },
+                        RequestFileParam {
+                            name: "test".to_string(),
+                            value: "1".to_string(),
+                            disabled: false,
+                        },
+                    ],
+                    headers: vec![
+                        RequestFileHeader {
+                            name: "Content-Type".to_string(),
+                            value: "application/json".to_string(),
+                            disabled: false,
+                        },
+                        RequestFileHeader {
+                            name: "X-Debug".to_string(),
+                            value: "1".to_string(),
+                            disabled: true,
+                        },
+                    ],
+                    body: None,
+                },
+            }
         );
     }
 }

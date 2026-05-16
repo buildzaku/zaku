@@ -487,13 +487,12 @@ impl Pane {
     ) -> anyhow::Result<bool> {
         match save_intent {
             SaveIntent::Save => {
-                let Some(_item_index) = pane
-                    .read_with(cx, |pane, _| pane.index_for_item(item))
-                    .ok()
-                    .flatten()
-                else {
+                let item_exists = pane
+                    .read_with(cx, |pane, _| pane.index_for_item(item).is_some())
+                    .unwrap_or(false);
+                if !item_exists {
                     return Ok(true);
-                };
+                }
 
                 let can_save = cx.update(|_, cx| item.can_save(cx))?;
                 if can_save {

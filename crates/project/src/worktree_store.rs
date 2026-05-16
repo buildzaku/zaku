@@ -17,8 +17,8 @@ use util::{
     rel_path::RelPath,
 };
 use worktree::{
-    Entry, LocalWorktree, ProjectEntryId, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent,
-    WorktreeId,
+    Entry, LocalWorktree, ProjectEntryId, RequestFile, Snapshot, UpdatedEntriesSet, Worktree,
+    WorktreeEvent, WorktreeId, serialize_request_file,
 };
 
 use crate::ProjectPath;
@@ -200,6 +200,24 @@ impl WorktreeStore {
     pub fn absolutize(&self, project_path: &ProjectPath, cx: &App) -> Option<PathBuf> {
         let worktree = self.worktree_for_id(project_path.worktree_id, cx)?;
         Some(worktree.read(cx).absolutize(&project_path.path))
+    }
+
+    pub fn save_request_file(
+        &self,
+        project_path: &ProjectPath,
+        request_file: &RequestFile,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(abs_path) = self.absolutize(project_path, cx) else {
+            return Task::ready(Err(anyhow!("Cannot save request without absolute path")));
+        };
+        let fs = self.fs.clone();
+        let contents = match serialize_request_file(request_file) {
+            Ok(contents) => contents,
+            Err(error) => return Task::ready(Err(error)),
+        };
+
+        cx.spawn(async move |_, _| fs.write(&abs_path, contents.as_bytes()).await)
     }
 
     pub fn path_style(&self) -> PathStyle {

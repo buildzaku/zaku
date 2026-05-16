@@ -184,14 +184,14 @@ impl Project {
         visible: bool,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Entity<Worktree>>> {
-        self.worktree_store.update(cx, |worktree_store, cx| {
-            worktree_store.find_or_create_worktree(abs_path, visible, cx)
+        self.worktree_store.update(cx, |store, cx| {
+            store.find_or_create_worktree(abs_path, visible, cx)
         })
     }
 
     pub fn remove_worktree(&mut self, cx: &mut Context<Self>) {
-        self.worktree_store.update(cx, |worktree_store, cx| {
-            worktree_store.remove_worktree(cx);
+        self.worktree_store.update(cx, |store, cx| {
+            store.remove_worktree(cx);
         });
     }
 
@@ -224,5 +224,16 @@ impl Project {
     pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {
         let worktree = self.worktree_store.read(cx).worktree()?;
         Some(worktree.read(cx).absolutize(path))
+    }
+
+    pub fn save_request_file(
+        &self,
+        project_path: &ProjectPath,
+        request_file: &RequestFile,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.worktree_store.update(cx, |store, cx| {
+            store.save_request_file(project_path, request_file, cx)
+        })
     }
 }
