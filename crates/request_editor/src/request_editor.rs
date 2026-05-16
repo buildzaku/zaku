@@ -820,7 +820,7 @@ impl RequestEditor {
                         return;
                     };
 
-                    {
+                    if !request_params.is_empty() {
                         let mut query_pairs = request_url.query_pairs_mut();
                         for (name, value) in request_params {
                             query_pairs.append_pair(&name, &value);
@@ -832,8 +832,10 @@ impl RequestEditor {
                         .uri(request_url.as_str())
                         .follow_redirects(RedirectPolicy::FollowAll);
 
-                    for (name, value) in request_headers {
-                        builder = builder.header(name.as_str(), value.as_str());
+                    if !request_headers.is_empty() {
+                        for (name, value) in request_headers {
+                            builder = builder.header(name.as_str(), value.as_str());
+                        }
                     }
 
                     let request_body = request_body.map_or_else(AsyncBody::empty, AsyncBody::from);
