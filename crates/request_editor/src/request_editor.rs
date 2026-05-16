@@ -2323,7 +2323,7 @@ mod tests {
 
         let request_editor = workspace
             .update_in(cx, |workspace, window, cx| {
-                workspace.open_path(request_path, None, true, window, cx)
+                workspace.open_path(request_path.clone(), None, true, window, cx)
             })
             .await
             .unwrap()
@@ -2339,6 +2339,8 @@ mod tests {
             });
             request_editor.mark_edited(cx);
         });
+
+        assert!(request_editor.read_with(cx, |request_editor, cx| { request_editor.is_dirty(cx) }));
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -2357,49 +2359,55 @@ mod tests {
             .await
             .unwrap();
         let saved_request = toml::from_str::<RequestFile>(&saved).unwrap();
+        let expected_request = RequestFile {
+            meta: RequestFileMeta {
+                version: 1,
+                name: None,
+            },
+            config: RequestFileConfig {
+                method: "GET".to_string(),
+                url: "https://api.zaku.dev/me/edit".to_string(),
+                params: vec![
+                    RequestFileParam {
+                        name: "query".to_string(),
+                        value: "zaku".to_string(),
+                        disabled: false,
+                    },
+                    RequestFileParam {
+                        name: "debug".to_string(),
+                        value: "1".to_string(),
+                        disabled: true,
+                    },
+                    RequestFileParam {
+                        name: "test".to_string(),
+                        value: "1".to_string(),
+                        disabled: false,
+                    },
+                ],
+                headers: vec![
+                    RequestFileHeader {
+                        name: "Content-Type".to_string(),
+                        value: "application/json".to_string(),
+                        disabled: false,
+                    },
+                    RequestFileHeader {
+                        name: "X-Debug".to_string(),
+                        value: "1".to_string(),
+                        disabled: true,
+                    },
+                ],
+                body: None,
+            },
+        };
 
+        assert_eq!(saved_request, expected_request);
         assert_eq!(
-            saved_request,
-            RequestFile {
-                meta: RequestFileMeta {
-                    version: 1,
-                    name: None,
-                },
-                config: RequestFileConfig {
-                    method: "GET".to_string(),
-                    url: "https://api.zaku.dev/me/edit".to_string(),
-                    params: vec![
-                        RequestFileParam {
-                            name: "query".to_string(),
-                            value: "zaku".to_string(),
-                            disabled: false,
-                        },
-                        RequestFileParam {
-                            name: "debug".to_string(),
-                            value: "1".to_string(),
-                            disabled: true,
-                        },
-                        RequestFileParam {
-                            name: "test".to_string(),
-                            value: "1".to_string(),
-                            disabled: false,
-                        },
-                    ],
-                    headers: vec![
-                        RequestFileHeader {
-                            name: "Content-Type".to_string(),
-                            value: "application/json".to_string(),
-                            disabled: false,
-                        },
-                        RequestFileHeader {
-                            name: "X-Debug".to_string(),
-                            value: "1".to_string(),
-                            disabled: true,
-                        },
-                    ],
-                    body: None,
-                },
-            }
+            project.read_with(cx, |project, cx| {
+                project
+                    .entry_for_path(&request_path, cx)
+                    .and_then(|entry| entry.request.clone())
+            }),
+            Some(RequestFileState::Parsed(expected_request))
         );
     }
 }
