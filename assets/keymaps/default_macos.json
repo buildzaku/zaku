@@ -56,7 +56,9 @@
       "shift-tab": null,
       "left": "project_panel::CollapseSelectedEntry",
       "cmd-left": "project_panel::CollapseAllEntries",
-      "right": "project_panel::ExpandSelectedEntry"
+      "right": "project_panel::ExpandSelectedEntry",
+      "cmd-n": "project_panel::NewFile",
+      "alt-cmd-n": "project_panel::NewDirectory"
     }
   },
   {

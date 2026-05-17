@@ -62,6 +62,10 @@ pub mod project_panel {
             CollapseSelectedEntryAndChildren,
             /// Collapse all entries in the project tree.
             CollapseAllEntries,
+            /// Create a new directory.
+            NewDirectory,
+            /// Create a new file.
+            NewFile,
             /// Open the selected entry.
             Open,
             /// Toggle focus on the project panel.
