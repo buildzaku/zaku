@@ -19,7 +19,7 @@ use std::{
 
 use fs::Fs;
 use util::{path::PathStyle, rel_path::RelPath};
-use worktree::UpdatedEntriesSet;
+use worktree::{UpdatedEntriesSet, serialize_request_file};
 
 use crate::worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent};
 
@@ -52,6 +52,15 @@ impl ProjectPath {
 
     pub fn starts_with(&self, other: &ProjectPath) -> bool {
         self.worktree_id == other.worktree_id && self.path.starts_with(&other.path)
+    }
+}
+
+impl<P: Into<Arc<RelPath>>> From<(WorktreeId, P)> for ProjectPath {
+    fn from((worktree_id, path): (WorktreeId, P)) -> Self {
+        Self {
+            worktree_id,
+            path: path.into(),
+        }
     }
 }
 
@@ -256,6 +265,34 @@ impl Project {
         self.worktree_store
             .read(cx)
             .project_path_for_absolute_path(abs_path, cx)
+    }
+
+    pub fn create_entry(
+        &mut self,
+        project_path: impl Into<ProjectPath>,
+        is_directory: bool,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entry>> {
+        let project_path = project_path.into();
+        let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) else {
+            return Task::ready(Err(anyhow::anyhow!(format!(
+                "No worktree for path {project_path:?}"
+            ))));
+        };
+
+        let content = if is_directory {
+            None
+        } else {
+            let contents = match serialize_request_file(&RequestFile::default()) {
+                Ok(contents) => contents,
+                Err(error) => return Task::ready(Err(error)),
+            };
+            Some(contents.into_bytes())
+        };
+
+        worktree.update(cx, |worktree, cx| {
+            worktree.create_entry(project_path.path, is_directory, content, cx)
+        })
     }
 
     pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {

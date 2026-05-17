@@ -644,10 +644,10 @@ impl Pane {
                 if !project_item.is_dirty() {
                     return;
                 }
-                let filename = project_item
+                let file_name = project_item
                     .project_path(cx)
                     .and_then(|path| path.path.file_name().map(ToOwned::to_owned));
-                file_names.insert(filename.unwrap_or("untitled".to_string()));
+                file_names.insert(file_name.unwrap_or("untitled".to_string()));
             });
         }
         if file_names.len() > 6 {

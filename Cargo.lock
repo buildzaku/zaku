@@ -4659,6 +4659,7 @@ name = "project_panel"
 version = "0.0.0"
 dependencies = [
  "actions",
+ "anyhow",
  "editor",
  "fs",
  "gpui",

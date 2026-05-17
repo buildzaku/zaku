@@ -85,25 +85,126 @@ impl LocalWorktree {
         &self,
         relative_paths: Vec<Arc<RelPath>>,
     ) -> oneshot::Receiver<()> {
-        let (completion_sender, completion_receiver) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.scan_requests_tx
             .try_send(ScanRequest {
                 relative_paths,
-                completion_senders: smallvec![completion_sender],
+                completion_senders: smallvec![tx],
             })
             .ok();
-        completion_receiver
+        rx
     }
 
     pub fn add_path_prefix_to_scan(&self, path_prefix: Arc<RelPath>) -> oneshot::Receiver<()> {
-        let (completion_sender, completion_receiver) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.path_prefixes_to_scan_tx
             .try_send(PathPrefixScanRequest {
                 path: path_prefix,
-                completion_senders: smallvec![completion_sender],
+                completion_senders: smallvec![tx],
             })
             .ok();
-        completion_receiver
+        rx
+    }
+
+    fn lowest_ancestor(&self, path: &RelPath) -> Arc<RelPath> {
+        let mut lowest_ancestor = None;
+        for path in path.ancestors() {
+            if self.entry_for_path(path).is_some() {
+                lowest_ancestor = Some(path.into());
+                break;
+            }
+        }
+
+        lowest_ancestor.unwrap_or_else(|| RelPath::empty().into())
+    }
+
+    pub fn refresh_entry(
+        &self,
+        path: Arc<RelPath>,
+        old_path: Option<&Arc<RelPath>>,
+        cx: &Context<Worktree>,
+    ) -> Task<anyhow::Result<Entry>> {
+        let paths = if let Some(old_path) = old_path {
+            vec![old_path.clone(), path.clone()]
+        } else {
+            vec![path.clone()]
+        };
+        let refresh = self.refresh_entries_for_paths(paths);
+        cx.spawn(async move |this, cx| {
+            refresh
+                .await
+                .map_err(|_| anyhow!("Failed to refresh entry"))?;
+            let new_entry = this.read_with(cx, |this, _| {
+                this.entry_for_path(&path).cloned().ok_or_else(|| {
+                    anyhow!("Could not find entry in worktree for {path:?} after refresh")
+                })
+            })??;
+            Ok(new_entry)
+        })
+    }
+
+    pub fn create_entry(
+        &self,
+        path: Arc<RelPath>,
+        is_dir: bool,
+        content: Option<Vec<u8>>,
+        cx: &Context<Worktree>,
+    ) -> Task<anyhow::Result<Entry>> {
+        let abs_path = self.absolutize(&path);
+        let fs = self.fs.clone();
+        let task_abs_path = abs_path.clone();
+        let write = cx.background_spawn(async move {
+            if is_dir {
+                fs.create_dir(&task_abs_path)
+                    .await
+                    .with_context(|| format!("creating directory {}", task_abs_path.display()))
+            } else {
+                fs.write(&task_abs_path, content.as_deref().unwrap_or(&[]))
+                    .await
+                    .with_context(|| format!("creating file {}", task_abs_path.display()))
+            }
+        });
+
+        let lowest_ancestor = self.lowest_ancestor(&path);
+        cx.spawn(async move |this, cx| {
+            write.await?;
+            let (result, refreshes) = this.update(cx, |worktree, cx| {
+                let Some(local_worktree) = worktree.as_local_mut() else {
+                    return (
+                        Task::ready(Err(anyhow!("Cannot refresh worktree"))),
+                        Vec::new(),
+                    );
+                };
+                let mut refreshes = Vec::new();
+                let Ok(refresh_paths) = path.strip_prefix(&lowest_ancestor) else {
+                    return (
+                        Task::ready(Err(anyhow!(
+                            "Could not refresh created entry at {}",
+                            abs_path.display()
+                        ))),
+                        Vec::new(),
+                    );
+                };
+                for refresh_path in refresh_paths.ancestors() {
+                    if refresh_path == RelPath::empty() {
+                        continue;
+                    }
+                    let refresh_full_path = lowest_ancestor.join(refresh_path);
+
+                    refreshes.push(local_worktree.refresh_entry(refresh_full_path, None, cx));
+                }
+
+                (
+                    local_worktree.refresh_entry(path.clone(), None, cx),
+                    refreshes,
+                )
+            })?;
+            for refresh in refreshes {
+                refresh.await.log_err();
+            }
+
+            result.await
+        })
     }
 
     pub fn scan_complete(&self) -> impl Future<Output = ()> + use<> {
@@ -261,6 +362,8 @@ impl WorktreeId {
 pub struct ProjectEntryId(usize);
 
 impl ProjectEntryId {
+    pub const MAX: Self = Self(usize::MAX);
+
     pub fn new(counter: &AtomicUsize) -> Self {
         Self(counter.fetch_add(1, SeqCst))
     }
@@ -421,6 +524,18 @@ impl Worktree {
                 .map_err(|_| anyhow!("Failed to refresh saved request file"))?;
             Ok(())
         })
+    }
+
+    pub fn create_entry(
+        &mut self,
+        path: Arc<RelPath>,
+        is_directory: bool,
+        content: Option<Vec<u8>>,
+        cx: &Context<Self>,
+    ) -> Task<anyhow::Result<Entry>> {
+        match self {
+            Self::Local(worktree) => worktree.create_entry(path, is_directory, content, cx),
+        }
     }
 
     pub fn snapshot(&self) -> Snapshot {

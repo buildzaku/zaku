@@ -216,16 +216,16 @@ fn natural_sort_no_tiebreak(left: &str, right: &str) -> Ordering {
     }
 }
 
-fn stem_and_extension(filename: &str) -> (Option<&str>, Option<&str>) {
-    if filename.is_empty() {
+fn stem_and_extension(file_name: &str) -> (Option<&str>, Option<&str>) {
+    if file_name.is_empty() {
         return (None, None);
     }
 
-    match filename.rsplit_once('.') {
-        None => (Some(filename), None),
+    match file_name.rsplit_once('.') {
+        None => (Some(file_name), None),
         Some((before, after)) => {
             if before.is_empty() {
-                (Some(filename), None)
+                (Some(file_name), None)
             } else {
                 (Some(before), Some(after))
             }

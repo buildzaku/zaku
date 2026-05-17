@@ -11,7 +11,7 @@ pub enum RequestFileState {
     Invalid(String),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RequestFile {
     pub meta: RequestFileMeta,
     pub http: RequestFileHttp,
@@ -24,6 +24,15 @@ pub struct RequestFileMeta {
     pub name: Option<String>,
 }
 
+impl Default for RequestFileMeta {
+    fn default() -> Self {
+        Self {
+            version: REQUEST_FILE_VERSION,
+            name: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RequestFileHttp {
     pub method: String,
@@ -34,6 +43,18 @@ pub struct RequestFileHttp {
     pub headers: Vec<RequestFileHeader>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body: Option<RequestFileBody>,
+}
+
+impl Default for RequestFileHttp {
+    fn default() -> Self {
+        Self {
+            method: "GET".to_string(),
+            url: String::new(),
+            params: Vec::new(),
+            headers: Vec::new(),
+            body: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

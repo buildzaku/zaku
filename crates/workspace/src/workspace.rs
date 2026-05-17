@@ -625,7 +625,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> oneshot::Receiver<Option<PathBuf>> {
-        let (sender, receiver) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         let path_prompt = cx.prompt_for_paths(options);
 
         cx.spawn_in(window, async move |workspace, cx| {
@@ -637,7 +637,7 @@ impl Workspace {
                 Ok(selected_paths) => {
                     let selected_path = selected_paths.and_then(|paths| paths.into_iter().next());
 
-                    if sender.send(selected_path).is_err() {
+                    if tx.send(selected_path).is_err() {
                         return Ok::<(), anyhow::Error>(());
                     }
                 }
@@ -663,7 +663,7 @@ impl Workspace {
         })
         .detach();
 
-        receiver
+        rx
     }
 
     pub fn open_local(

@@ -1128,6 +1128,14 @@ impl Editor {
         cx.notify();
     }
 
+    pub fn text(&self, cx: &App) -> String {
+        self.buffer.read(cx).read(cx).text()
+    }
+
+    pub fn is_focused(&self, window: &Window) -> bool {
+        self.focus_handle.is_focused(window)
+    }
+
     pub fn last_transaction_id(&self, cx: &App) -> Option<TransactionId> {
         self.buffer.read(cx).last_transaction_id(cx)
     }
@@ -1138,7 +1146,7 @@ impl Editor {
         });
     }
 
-    fn clear(&mut self, cx: &mut Context<Self>) {
+    pub fn clear(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -2777,8 +2785,8 @@ impl ErasedEditor for ErasedEditorImpl {
         });
     }
 
-    fn clear(&self, _: &mut Window, cx: &mut App) {
-        self.0.update(cx, |editor, cx| editor.clear(cx));
+    fn clear(&self, window: &mut Window, cx: &mut App) {
+        self.0.update(cx, |editor, cx| editor.clear(window, cx));
     }
 
     fn set_placeholder_text(&self, text: &str, _: &mut Window, cx: &mut App) {

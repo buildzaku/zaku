@@ -476,7 +476,7 @@ impl RequestEditor {
     fn path_for_request(
         &self,
         height: usize,
-        include_filename: bool,
+        include_file_name: bool,
         cx: &App,
     ) -> Option<SharedString> {
         let project_path = self.project_path(cx)?;
@@ -495,7 +495,7 @@ impl RequestEditor {
         let start = components.len().saturating_sub(height);
         let mut components = components.split_off(start);
 
-        if include_filename {
+        if include_file_name {
             if let Some(file_name) = components.last_mut() {
                 *file_name = self.title(cx).to_string();
             }
@@ -1725,7 +1725,6 @@ mod tests {
     use indoc::indoc;
     use parking_lot::Mutex;
     use serde_json::json;
-    use std::path::Path;
 
     use fs::Fs;
     use http_client::{Response, StatusCode};
@@ -2352,7 +2351,7 @@ mod tests {
         );
 
         let saved = temp_fs
-            .load(Path::new(path!("project/collection/request.toml")))
+            .load("project/collection/request.toml".as_ref())
             .await
             .unwrap();
         let saved_request = toml::from_str::<RequestFile>(&saved).unwrap();
