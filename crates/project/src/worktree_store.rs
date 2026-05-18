@@ -1,8 +1,9 @@
-use anyhow::anyhow;
+use anyhow::{Context as AnyhowContext, anyhow};
 use futures::{FutureExt, future};
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Subscription, Task};
 use std::{
     collections::HashMap,
+    mem,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -344,10 +345,57 @@ impl WorktreeStore {
 
         let old_abs_path = worktree.read(cx).absolutize(&old_path);
         let new_abs_path = worktree.read(cx).absolutize(&new_project_path.path);
+        let Some(case_sensitive) = worktree
+            .read(cx)
+            .as_local()
+            .map(LocalWorktree::fs_is_case_sensitive)
+        else {
+            return Task::ready(Err(anyhow!("Cannot rename entry outside local worktree")));
+        };
         let fs = self.fs.clone();
-        let rename = cx.background_spawn(async move {
-            fs.rename(&old_abs_path, &new_abs_path, RenameOptions::default())
-                .await
+        let do_rename = async move |fs: &dyn Fs, old_path: &Path, new_path: &Path, overwrite| {
+            fs.rename(
+                old_path,
+                new_path,
+                RenameOptions {
+                    overwrite,
+                    ..RenameOptions::default()
+                },
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "renaming {} into {}",
+                    old_path.display(),
+                    new_path.display()
+                )
+            })
+        };
+        let rename = cx.background_spawn({
+            let new_abs_path = new_abs_path.clone();
+            async move {
+                let overwrite = !case_sensitive
+                    && old_abs_path != new_abs_path
+                    && old_abs_path.to_str().map(str::to_lowercase)
+                        == new_abs_path.to_str().map(str::to_lowercase);
+
+                if let Err(error) =
+                    do_rename(fs.as_ref(), &old_abs_path, &new_abs_path, overwrite).await
+                {
+                    if let Some(error) = error.downcast_ref::<std::io::Error>()
+                        && error.kind() == std::io::ErrorKind::NotFound
+                        && let Some(parent) = new_abs_path.parent()
+                    {
+                        fs.create_dir(parent).await.with_context(|| {
+                            format!("creating parent directory {}", parent.display())
+                        })?;
+                        return do_rename(fs.as_ref(), &old_abs_path, &new_abs_path, overwrite)
+                            .await;
+                    }
+                    return Err(error);
+                }
+                Ok(())
+            }
         });
 
         cx.spawn(async move |_, cx| {
@@ -356,6 +404,9 @@ impl WorktreeStore {
                 let Some(worktree) = worktree.as_local() else {
                     return Task::ready(Err(anyhow!("Cannot refresh worktree")));
                 };
+                if let Some(parent) = new_project_path.path.parent() {
+                    mem::drop(worktree.refresh_entries_for_paths(vec![parent.into()]));
+                }
                 worktree.refresh_entry(new_project_path.path, Some(&old_path), cx)
             });
 

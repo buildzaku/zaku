@@ -1016,25 +1016,18 @@ pub struct LocalSnapshot {
 
 impl LocalSnapshot {
     fn insert_entry(&mut self, entry: Entry) -> Entry {
-        let old_entry = self
+        let removed = self
             .snapshot
             .entries_by_path
-            .get(&PathKey(entry.path.clone()), ())
-            .cloned();
-        if let Some(old_entry) = old_entry
-            && old_entry.id != entry.id
+            .insert_or_replace(entry.clone(), ());
+        if let Some(removed) = removed
+            && removed.id != entry.id
         {
-            self.snapshot
-                .entries_by_id
-                .edit(vec![Edit::Remove(old_entry.id)], ());
+            self.snapshot.entries_by_id.remove(&removed.id, ());
         }
-
         self.snapshot
             .entries_by_id
-            .edit(vec![Edit::Insert(entry.to_path_entry())], ());
-        self.snapshot
-            .entries_by_path
-            .edit(vec![Edit::Insert(entry.clone())], ());
+            .insert_or_replace(entry.to_path_entry(), ());
 
         entry
     }
@@ -2112,7 +2105,6 @@ impl BackgroundScannerState {
         let mut entries_by_path_edits = vec![Edit::Insert(parent_entry)];
         let mut entries_by_id_edits = Vec::new();
         for entry in entries {
-            self.removed_entries.remove(&entry.inode);
             entries_by_id_edits.push(Edit::Insert(entry.to_path_entry()));
             entries_by_path_edits.push(Edit::Insert(entry));
         }

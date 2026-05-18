@@ -1,9 +1,11 @@
-mod display_map;
+pub mod display_map;
 mod element;
 mod movement;
 mod scroll;
 mod selections_collection;
+
 pub use element::EditorElement;
+pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
 
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
@@ -12,8 +14,7 @@ use gpui::{
     Subscription, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
 };
 use multi_buffer::{
-    Anchor, Capability, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, MultiBufferRow,
-    MultiBufferSnapshot, ToOffset, ToPoint,
+    Anchor, Capability, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint,
 };
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -39,9 +40,11 @@ use text::{
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use theme::{ActiveTheme, ThemeSettings};
 
-use crate::display_map::{DisplayPoint, HighlightKey};
 use crate::element::PositionMap;
-use crate::selections_collection::{MutableSelectionsCollection, SelectionsCollection};
+use crate::{
+    display_map::{DisplayPoint, HighlightKey},
+    selections_collection::{MutableSelectionsCollection, SelectionsCollection},
+};
 
 const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
@@ -267,7 +270,7 @@ impl SelectionHistory {
 }
 
 #[derive(Clone)]
-struct SelectionEffects {
+pub struct SelectionEffects {
     scroll: Option<scroll::Autoscroll>,
 }
 
@@ -280,7 +283,7 @@ impl Default for SelectionEffects {
 }
 
 impl SelectionEffects {
-    fn no_scroll() -> Self {
+    pub fn no_scroll() -> Self {
         Self { scroll: None }
     }
 
@@ -313,7 +316,7 @@ pub struct Editor {
     focus_handle: FocusHandle,
     buffer: Entity<MultiBuffer>,
     display_map: Entity<display_map::DisplayMap>,
-    selections: SelectionsCollection,
+    pub selections: SelectionsCollection,
     scroll_manager: scroll::ScrollManager,
     mode: EditorMode,
     placeholder: SharedString,
@@ -462,7 +465,7 @@ impl Editor {
         }
     }
 
-    fn display_snapshot(&self, cx: &mut Context<Self>) -> display_map::DisplaySnapshot {
+    pub fn display_snapshot(&self, cx: &mut Context<Self>) -> display_map::DisplaySnapshot {
         self.display_map
             .update(cx, |display_map, cx| display_map.snapshot(cx))
     }
@@ -496,7 +499,7 @@ impl Editor {
         selection.start.0..selection.end.0
     }
 
-    fn change_selections<R>(
+    pub fn change_selections<R>(
         &mut self,
         effects: SelectionEffects,
         cx: &mut Context<Self>,
