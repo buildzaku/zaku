@@ -41,11 +41,9 @@ pub use request::{
     serialize_request_file,
 };
 
-#[cfg(feature = "test-support")]
-use fs::RemoveOptions;
-
 use fs::{
-    FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, Watcher as FsWatcher,
+    FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, RemoveOptions,
+    Watcher as FsWatcher,
 };
 use util::{
     ResultExt,
@@ -220,6 +218,62 @@ impl LocalWorktree {
 
             result.await
         })
+    }
+
+    pub fn delete_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        trash: bool,
+        cx: &Context<Worktree>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let entry = self.entry_for_id(entry_id)?.clone();
+        let abs_path = self.absolutize(&entry.path);
+        let fs = self.fs.clone();
+
+        let delete = cx.background_spawn(async move {
+            match (entry.is_file(), trash) {
+                (true, true) => fs.trash(&abs_path, RemoveOptions::default()).await?,
+                (false, true) => {
+                    fs.trash(
+                        &abs_path,
+                        RemoveOptions {
+                            recursive: true,
+                            ignore_if_not_exists: false,
+                        },
+                    )
+                    .await?;
+                }
+                (true, false) => {
+                    fs.remove_file(&abs_path, RemoveOptions::default()).await?;
+                }
+                (false, false) => {
+                    fs.remove_dir(
+                        &abs_path,
+                        RemoveOptions {
+                            recursive: true,
+                            ignore_if_not_exists: false,
+                        },
+                    )
+                    .await?;
+                }
+            }
+
+            anyhow::Ok(entry.path)
+        });
+
+        Some(cx.spawn(async move |this, cx| {
+            let path = delete.await?;
+            let refresh = this.update(cx, |this, _| {
+                this.as_local()
+                    .map(|worktree| worktree.refresh_entries_for_paths(vec![path]))
+                    .ok_or_else(|| anyhow!("Cannot refresh worktree"))
+            })??;
+            refresh
+                .await
+                .map_err(|_| anyhow!("Failed to refresh deleted entry"))?;
+
+            Ok(())
+        }))
     }
 
     pub fn scan_complete(&self) -> impl Future<Output = ()> + use<> {
@@ -560,6 +614,17 @@ impl Worktree {
     ) -> Task<anyhow::Result<Entry>> {
         match self {
             Self::Local(worktree) => worktree.create_entry(path, is_directory, content, cx),
+        }
+    }
+
+    pub fn delete_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        trash: bool,
+        cx: &Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        match self {
+            Self::Local(worktree) => worktree.delete_entry(entry_id, trash, cx),
         }
     }
 

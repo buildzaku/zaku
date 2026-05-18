@@ -64,7 +64,12 @@
       "ctrl-k ctrl-shift-c": "workspace::CopyRelativePath",
       "enter": "project_panel::Rename",
       "f2": "project_panel::Rename",
-      "ctrl-alt-r": "project_panel::RevealInFileManager"
+      "ctrl-alt-r": "project_panel::RevealInFileManager",
+      "backspace": ["project_panel::Trash", { "skip_prompt": false }],
+      "delete": ["project_panel::Trash", { "skip_prompt": false }],
+      "shift-delete": ["project_panel::Delete", { "skip_prompt": false }],
+      "ctrl-backspace": ["project_panel::Delete", { "skip_prompt": false }],
+      "ctrl-delete": ["project_panel::Delete", { "skip_prompt": false }]
     }
   },
   {

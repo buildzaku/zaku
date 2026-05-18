@@ -2,7 +2,7 @@ pub mod fs_watcher;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use futures::{FutureExt, Stream, StreamExt, future::BoxFuture};
+use futures::{FutureExt, Stream, StreamExt, channel::oneshot, future::BoxFuture};
 use gpui::BackgroundExecutor;
 use is_executable::IsExecutable;
 use parking_lot::Mutex;
@@ -145,6 +145,7 @@ pub trait Fs: Send + Sync {
         target: &Path,
         options: RenameOptions,
     ) -> anyhow::Result<()>;
+    async fn trash(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
     async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
     async fn remove_file(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
     async fn watch(
@@ -622,6 +623,27 @@ impl Fs for NativeFs {
         Ok(())
     }
 
+    async fn trash(&self, path: &Path, _options: RemoveOptions) -> anyhow::Result<()> {
+        let path = self
+            .canonicalize(path)
+            .await
+            .context("Could not canonicalize the path of the file")?;
+
+        let (tx, rx) = oneshot::channel();
+        std::thread::Builder::new()
+            .name("trash file or dir".to_string())
+            .spawn(move || {
+                if tx.send(trash::delete(path)).is_err() {
+                    log::trace!("Trash receiver dropped");
+                }
+            })
+            .context("Failed to spawn trash thread")?;
+
+        rx.await
+            .context("Trash sender dropped")?
+            .context("Could not trash file or dir")
+    }
+
     async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
         let result = if options.recursive {
             smol::fs::remove_dir_all(path).await
@@ -942,6 +964,13 @@ impl Fs for TempFs {
         let absolute_target = resolve_path(self.path(), target);
         NativeFs::new(self.executor.clone())
             .rename(&absolute_source, &absolute_target, options)
+            .await
+    }
+
+    async fn trash(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .trash(&absolute_path, options)
             .await
     }
 

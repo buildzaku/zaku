@@ -1,9 +1,10 @@
+use anyhow::Context as AnyhowContext;
 use gpui::{
     Action, Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Context, DismissEvent, Div,
     Entity, EventEmitter, FocusHandle, Focusable, FontWeight, KeyContext,
     ListHorizontalSizingBehavior, ListSizingBehavior, MouseButton, MouseDownEvent, Pixels, Point,
-    Render, ScrollStrategy, Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity,
-    Window, prelude::*,
+    PromptLevel, Render, ScrollStrategy, Stateful, Subscription, Task, UniformListScrollHandle,
+    WeakEntity, Window, prelude::*,
 };
 use smallvec::SmallVec;
 use std::{
@@ -776,6 +777,14 @@ impl ProjectPanel {
                 )
                 .separator()
                 .action("Rename", Box::new(actions::project_panel::Rename))
+                .action(
+                    "Trash",
+                    Box::new(actions::project_panel::Trash { skip_prompt: false }),
+                )
+                .action(
+                    "Delete",
+                    Box::new(actions::project_panel::Delete { skip_prompt: false }),
+                )
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
@@ -1056,6 +1065,175 @@ impl ProjectPanel {
         cx: &mut Context<Self>,
     ) {
         self.rename_impl(None, window, cx);
+    }
+
+    fn remove(
+        &mut self,
+        trash: bool,
+        skip_prompt: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(task) = self.remove_impl(trash, skip_prompt, window, cx) {
+            task.detach_and_log_err(cx);
+        }
+    }
+
+    fn remove_impl(
+        &mut self,
+        trash: bool,
+        skip_prompt: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let items_to_delete = self.disjoint_effective_entries(cx);
+        if items_to_delete.is_empty() {
+            return None;
+        }
+
+        let (dirty_buffers, file_paths) = {
+            let project = self.project.read(cx);
+            let dirty_buffers = self.pane.upgrade().map_or(0, |pane| {
+                pane.read(cx)
+                    .items()
+                    .filter(|item| {
+                        item.is_dirty(cx)
+                            && item
+                                .project_entry_ids(cx)
+                                .iter()
+                                .any(|entry_id| items_to_delete.contains(&SelectedEntry(*entry_id)))
+                    })
+                    .count()
+            });
+            let file_paths = items_to_delete
+                .iter()
+                .filter_map(|selection| {
+                    let project_path = project.path_for_entry(selection.0, cx)?;
+                    Some((selection.0, project_path.path.file_name()?.to_string()))
+                })
+                .collect::<Vec<_>>();
+
+            (dirty_buffers, file_paths)
+        };
+        if file_paths.is_empty() {
+            return None;
+        }
+
+        let answer = if skip_prompt {
+            None
+        } else {
+            let operation = if trash { "Trash" } else { "Delete" };
+            let message_start = if trash {
+                "Do you want to trash"
+            } else {
+                "Are you sure you want to permanently delete"
+            };
+            let prompt = match file_paths.first() {
+                Some((_, path)) if file_paths.len() == 1 => {
+                    let unsaved_warning = if dirty_buffers > 0 {
+                        "\n\nIt has unsaved changes, which will be lost."
+                    } else {
+                        ""
+                    };
+
+                    format!("{message_start} `{path}`?{unsaved_warning}")
+                }
+                _ => {
+                    const CUTOFF_POINT: usize = 10;
+                    let names = if file_paths.len() > CUTOFF_POINT {
+                        let truncated_path_counts = file_paths.len() - CUTOFF_POINT;
+                        let mut paths = file_paths
+                            .iter()
+                            .map(|(_, path)| format!("`{path}`"))
+                            .take(CUTOFF_POINT)
+                            .collect::<Vec<_>>();
+                        paths.truncate(CUTOFF_POINT);
+                        if truncated_path_counts == 1 {
+                            paths.push(".. 1 file not shown".into());
+                        } else {
+                            paths.push(format!(".. {truncated_path_counts} files not shown"));
+                        }
+                        paths
+                    } else {
+                        file_paths
+                            .iter()
+                            .map(|(_, path)| format!("`{path}`"))
+                            .collect()
+                    };
+                    let unsaved_warning = if dirty_buffers == 0 {
+                        String::new()
+                    } else if dirty_buffers == 1 {
+                        "\n\n1 of these has unsaved changes, which will be lost.".to_string()
+                    } else {
+                        format!(
+                            "\n\n{dirty_buffers} of these have unsaved changes, which will be lost."
+                        )
+                    };
+
+                    format!(
+                        "{message_start} the following {} files?\n{}{unsaved_warning}",
+                        file_paths.len(),
+                        names.join("\n")
+                    )
+                }
+            };
+            let detail = (!trash).then_some("This cannot be undone.");
+            Some(window.prompt(
+                PromptLevel::Info,
+                &prompt,
+                detail,
+                &[operation, "Cancel"],
+                cx,
+            ))
+        };
+        let next_selection = self.find_next_selection_after_deletion(&items_to_delete, cx);
+        Some(cx.spawn_in(window, async move |panel, cx| {
+            if let Some(answer) = answer
+                && answer.await != Ok(0)
+            {
+                return anyhow::Ok(());
+            }
+
+            for (entry_id, _) in file_paths {
+                let delete = panel.update(cx, |panel, cx| {
+                    panel.project.update(cx, |project, cx| {
+                        project
+                            .delete_entry(entry_id, trash, cx)
+                            .context("no such entry")
+                    })
+                })??;
+                delete.await?;
+            }
+
+            panel.update_in(cx, |panel, window, cx| {
+                panel.marked_entries.clear();
+                if let Some(next_selection) = next_selection {
+                    panel.update_visible_entries(Some(next_selection.0), false, true, window, cx);
+                } else {
+                    panel.selection = None;
+                    panel.update_visible_entries(None, false, true, window, cx);
+                }
+            })?;
+            anyhow::Ok(())
+        }))
+    }
+
+    fn trash(
+        &mut self,
+        action: &actions::project_panel::Trash,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.remove(true, action.skip_prompt, window, cx);
+    }
+
+    fn delete(
+        &mut self,
+        action: &actions::project_panel::Delete,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.remove(false, action.skip_prompt, window, cx);
     }
 
     fn copy_path(
@@ -1736,6 +1914,65 @@ impl ProjectPanel {
         self.disjoint_entries(self.effective_entries(), cx)
     }
 
+    fn find_next_selection_after_deletion(
+        &self,
+        sanitized_entries: &BTreeSet<SelectedEntry>,
+        cx: &mut Context<Self>,
+    ) -> Option<SelectedEntry> {
+        if sanitized_entries.is_empty() {
+            return None;
+        }
+
+        let worktree = self.project.read(cx).worktree(cx)?;
+        let worktree = worktree.read(cx);
+        let latest_entry = sanitized_entries
+            .iter()
+            .filter_map(|entry| worktree.entry_for_id(entry.0))
+            .max_by(|lhs, rhs| {
+                cmp_worktree_entries(lhs, rhs, SortMode::DirectoriesFirst, SortOrder::Default)
+            })?;
+        let parent_path = latest_entry.path.parent()?;
+        let parent_entry = worktree.entry_for_path(parent_path)?;
+
+        let mut siblings = worktree
+            .child_entries(parent_path)
+            .filter(|sibling| {
+                sibling.id == latest_entry.id
+                    || !sanitized_entries.contains(&SelectedEntry(sibling.id))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        siblings.sort_by(|lhs, rhs| {
+            cmp_worktree_entries(lhs, rhs, SortMode::DirectoriesFirst, SortOrder::Default)
+        });
+
+        let sibling_entry_index = siblings
+            .iter()
+            .position(|sibling| sibling.id == latest_entry.id)?;
+
+        if let Some(next_sibling) = sibling_entry_index
+            .checked_add(1)
+            .and_then(|index| siblings.get(index))
+        {
+            return Some(SelectedEntry(next_sibling.id));
+        }
+        if let Some(previous_sibling) = sibling_entry_index
+            .checked_sub(1)
+            .and_then(|index| siblings.get(index))
+        {
+            return Some(SelectedEntry(previous_sibling.id));
+        }
+
+        if worktree
+            .root_entry()
+            .is_some_and(|root_entry| root_entry.id == parent_entry.id)
+        {
+            return None;
+        }
+
+        Some(SelectedEntry(parent_entry.id))
+    }
+
     fn toggle_expanded(
         &mut self,
         entry_id: ProjectEntryId,
@@ -2297,6 +2534,8 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::duplicate))
             .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::rename))
+            .on_action(cx.listener(Self::trash))
+            .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::copy_path))
             .on_action(cx.listener(Self::copy_relative_path))
             .on_action(cx.listener(Self::reveal_in_file_manager))
@@ -3505,6 +3744,162 @@ mod tests {
                 String::from("      third"),
             ],
             "File list should be unchanged after failed rename confirmation"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_trash(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": "",
+                    "second.toml": "",
+                    "third.toml": "",
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/collection", cx);
+        select_path_with_mark(&panel, "project/collection/first.toml", cx);
+        select_path_with_mark(&panel, "project/collection/second.toml", cx);
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v collection"),
+                String::from("      first  <== marked"),
+                String::from("      second  <== selected  <== marked"),
+                String::from("      third"),
+            ]
+        );
+
+        panel
+            .update_in(cx, |panel, window, cx| {
+                panel.remove_impl(true, true, window, cx)
+            })
+            .unwrap()
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v collection"),
+                String::from("      third  <== selected"),
+            ]
+        );
+        assert!(
+            temp_fs
+                .metadata("project/collection/first.toml".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            temp_fs
+                .metadata("project/collection/second.toml".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            temp_fs
+                .metadata("project/collection/third.toml".as_ref())
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_delete(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": "",
+                    "second.toml": "",
+                },
+                "other.toml": "",
+                "third.toml": "",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        select_path_with_mark(&panel, "project/collection", cx);
+        select_path_with_mark(&panel, "project/other.toml", cx);
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("> collection  <== marked"),
+                String::from("  other  <== selected  <== marked"),
+                String::from("  third"),
+            ]
+        );
+
+        panel
+            .update_in(cx, |panel, window, cx| {
+                panel.remove_impl(false, true, window, cx)
+            })
+            .unwrap()
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![String::from("  third  <== selected")]
+        );
+        assert!(
+            temp_fs
+                .metadata("project/collection".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            temp_fs
+                .metadata("project/other.toml".as_ref())
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            temp_fs
+                .metadata("project/third.toml".as_ref())
+                .await
+                .unwrap()
+                .is_some()
         );
     }
 }

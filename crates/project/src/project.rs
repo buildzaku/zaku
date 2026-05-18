@@ -324,6 +324,30 @@ impl Project {
     }
 
     #[inline]
+    pub fn delete_file(
+        &mut self,
+        path: &ProjectPath,
+        trash: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let entry = self.entry_for_path(path, cx)?;
+        self.delete_entry(entry.id, trash, cx)
+    }
+
+    #[inline]
+    pub fn delete_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        trash: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let worktree = self.worktree_for_entry(entry_id, cx)?;
+        worktree.update(cx, |worktree, cx| {
+            worktree.delete_entry(entry_id, trash, cx)
+        })
+    }
+
+    #[inline]
     pub fn expand_entry(
         &mut self,
         entry_id: ProjectEntryId,

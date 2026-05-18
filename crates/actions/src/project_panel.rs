@@ -1,3 +1,25 @@
+use gpui::Action;
+use schemars::JsonSchema;
+use serde::Deserialize;
+
+/// Permanently delete the selected file or directory.
+#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+#[action(namespace = project_panel)]
+#[serde(deny_unknown_fields)]
+pub struct Delete {
+    #[serde(default)]
+    pub skip_prompt: bool,
+}
+
+/// Move the selected file or directory to the system trash.
+#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+#[action(namespace = project_panel)]
+#[serde(deny_unknown_fields)]
+pub struct Trash {
+    #[serde(default)]
+    pub skip_prompt: bool,
+}
+
 gpui::actions!(
     project_panel,
     [
