@@ -899,9 +899,17 @@ impl Fs for TempFs {
         path: &Path,
     ) -> anyhow::Result<Pin<Box<dyn Send + Stream<Item = anyhow::Result<PathBuf>>>>> {
         let absolute_path = resolve_path(self.path(), path);
-        NativeFs::new(self.executor.clone())
+        let mut entries = NativeFs::new(self.executor.clone())
             .read_dir(&absolute_path)
-            .await
+            .await?;
+        let mut paths = Vec::new();
+        while let Some(entry) = entries.next().await {
+            paths.push(entry?);
+        }
+        paths.sort();
+
+        let result = futures::stream::iter(paths.into_iter().map(Ok::<_, anyhow::Error>));
+        Ok(Box::pin(result))
     }
 
     async fn read_link(&self, path: &Path) -> anyhow::Result<PathBuf> {
