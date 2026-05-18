@@ -2121,10 +2121,7 @@ fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) 
 
 fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
     match entry.kind {
-        EntryKind::File => request_name(entry).map_or_else(
-            || file_stem_for_entry(entry).to_string(),
-            ToString::to_string,
-        ),
+        EntryKind::File => file_stem_for_entry(entry).to_string(),
         EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
             entry.path.file_name().map_or_else(
                 || snapshot.root_name().as_unix_str().to_string(),
@@ -2132,17 +2129,6 @@ fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
             )
         }
     }
-}
-
-fn request_name(entry: &Entry) -> Option<&str> {
-    let Some(RequestFileState::Parsed(request)) = entry.request.as_ref() else {
-        return None;
-    };
-
-    request.meta.name.as_deref().and_then(|name| {
-        let name = name.trim();
-        if name.is_empty() { None } else { Some(name) }
-    })
 }
 
 fn file_stem_for_entry(entry: &Entry) -> &str {
@@ -2850,7 +2836,6 @@ mod tests {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "First"
 
                         [http]
                         method = "GET"
@@ -2859,7 +2844,6 @@ mod tests {
                     "second.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Second"
 
                         [http]
                         method = "POST"
@@ -2868,7 +2852,6 @@ mod tests {
                     "third.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Third"
 
                         [http]
                         method = "PUT"
@@ -2900,9 +2883,9 @@ mod tests {
             vec![
                 String::from("v project"),
                 String::from("    v collection"),
-                String::from("          First  <== selected  <== marked"),
-                String::from("          Second"),
-                String::from("          Third"),
+                String::from("          first  <== selected  <== marked"),
+                String::from("          second"),
+                String::from("          third"),
             ]
         );
 
@@ -2922,9 +2905,9 @@ mod tests {
             vec![
                 String::from("v project"),
                 String::from("    v collection"),
-                String::from("          First"),
-                String::from("          Second  <== selected  <== marked"),
-                String::from("          Third"),
+                String::from("          first"),
+                String::from("          second  <== selected  <== marked"),
+                String::from("          third"),
             ]
         );
 

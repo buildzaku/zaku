@@ -285,13 +285,6 @@ impl RequestSnapshot {
     fn from_request_file(request_file: &RequestFile) -> Self {
         Self(request_file.clone())
     }
-
-    fn name(&self) -> Option<&str> {
-        self.0.meta.name.as_deref().and_then(|name| {
-            let name = name.trim();
-            if name.is_empty() { None } else { Some(name) }
-        })
-    }
 }
 
 struct RequestParam {
@@ -450,20 +443,6 @@ impl RequestEditor {
     }
 
     fn title(&self, cx: &App) -> SharedString {
-        let display_name = match &self.request {
-            RequestEditorState::Ready(request) => request.meta.name.as_deref().and_then(|name| {
-                let name = name.trim();
-                if name.is_empty() { None } else { Some(name) }
-            }),
-            RequestEditorState::Invalid { snapshot, .. } => {
-                snapshot.as_ref().and_then(RequestSnapshot::name)
-            }
-        };
-
-        if let Some(display_name) = display_name {
-            return SharedString::from(display_name.to_owned());
-        }
-
         self.project_path(cx)
             .and_then(|project_path| {
                 project_path.path.file_name().map(|file_name| {
@@ -1904,7 +1883,6 @@ mod tests {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Search"
 
                         [http]
                         method = "POST"
@@ -2002,7 +1980,6 @@ mod tests {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "First"
 
                         [http]
                         method = "GET"
@@ -2011,7 +1988,6 @@ mod tests {
                     "second.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Second"
 
                         [http]
                         method = "GET"
@@ -2154,7 +2130,6 @@ mod tests {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "First"
 
                         [http]
                         method = "GET"
@@ -2163,7 +2138,6 @@ mod tests {
                     "second.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Second"
 
                         [http]
                         method = "GET"
@@ -2357,10 +2331,7 @@ mod tests {
             .unwrap();
         let saved_request = toml::from_str::<RequestFile>(&saved).unwrap();
         let expected_request = RequestFile {
-            meta: RequestFileMeta {
-                version: 1,
-                name: None,
-            },
+            meta: RequestFileMeta { version: 1 },
             http: RequestFileHttp {
                 method: "GET".to_string(),
                 url: "https://api.zaku.dev/me/edit".to_string(),
