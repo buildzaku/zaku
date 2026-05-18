@@ -92,12 +92,20 @@ impl EventEmitter<Event> for ProjectPanel {}
 struct SelectedEntry(ProjectEntryId);
 
 #[derive(Clone, Debug)]
+enum ValidationState {
+    None,
+    Warning(String),
+    Error(String),
+}
+
+#[derive(Clone, Debug)]
 struct EditState {
     worktree_id: WorktreeId,
     entry_id: ProjectEntryId,
     is_dir: bool,
     processing_file_name: Option<Arc<RelPath>>,
     previously_focused: Option<SelectedEntry>,
+    validation_state: ValidationState,
 }
 
 pub struct ProjectPanel {
@@ -137,6 +145,7 @@ impl ProjectPanel {
                 window,
                 |project_panel: &mut ProjectPanel, _, editor_event, window, cx| match editor_event {
                     EditorEvent::BufferEdited => {
+                        project_panel.populate_validation_error(cx);
                         project_panel.autoscroll(cx);
                     }
                     EditorEvent::Blurred => {
@@ -764,6 +773,7 @@ impl ProjectPanel {
             is_dir,
             processing_file_name: None,
             previously_focused,
+            validation_state: ValidationState::None,
         });
         self.file_name_editor.update(cx, |editor, cx| {
             editor.clear(window, cx);
@@ -783,6 +793,105 @@ impl ProjectPanel {
         cx.notify();
         self.discard_edit_state(window, cx);
         window.focus(&self.focus_handle, cx);
+    }
+
+    fn populate_validation_error(&mut self, cx: &mut Context<Self>) {
+        let Some(edit_state) = self.tree_state.edit_state.as_mut() else {
+            return;
+        };
+        let worktree_id = edit_state.worktree_id;
+        let entry_id = edit_state.entry_id;
+        let is_dir = edit_state.is_dir;
+        let mut file_name = self.file_name_editor.read(cx).text(cx);
+        let path_style = self.project.read(cx).path_style(cx);
+
+        if file_name.is_empty() {
+            edit_state.validation_state = ValidationState::None;
+            cx.notify();
+            return;
+        }
+
+        if path_style.is_windows() {
+            while let Some(trimmed) = file_name.strip_suffix('.') {
+                file_name = trimmed.to_string();
+            }
+        }
+
+        if file_name.trim().is_empty() {
+            edit_state.validation_state =
+                ValidationState::Error("File or directory name must be provided.".to_string());
+            cx.notify();
+            return;
+        }
+
+        let file_name_indicates_dir = if path_style.is_windows() {
+            file_name.ends_with('/') || file_name.ends_with('\\')
+        } else {
+            file_name.ends_with('/')
+        };
+        let is_dir = is_dir || file_name_indicates_dir;
+        let entry_kind = if is_dir { "Directory" } else { "File" };
+        let trimmed_file_name = file_name.trim();
+        let has_leading_or_trailing_whitespace = trimmed_file_name != file_name.as_str();
+        let file_name = if path_style.is_windows() {
+            file_name.trim_start_matches(['/', '\\'])
+        } else {
+            file_name.trim_start_matches('/')
+        };
+        if file_name.is_empty() {
+            edit_state.validation_state =
+                ValidationState::Error("File or directory name must be provided.".to_string());
+            cx.notify();
+            return;
+        }
+        if is_missing_entry_name(file_name, is_dir, path_style) {
+            edit_state.validation_state =
+                ValidationState::Error("File or directory name must be provided.".to_string());
+            cx.notify();
+            return;
+        }
+
+        if has_leading_or_trailing_whitespace {
+            edit_state.validation_state = ValidationState::Warning(format!(
+                "{entry_kind} name contains leading or trailing whitespace."
+            ));
+            cx.notify();
+            return;
+        }
+
+        let file_name = file_name_for_new_entry(file_name, is_dir, path_style);
+        let Ok(file_name) = RelPath::new(Path::new(file_name.as_str()), path_style) else {
+            edit_state.validation_state = ValidationState::Warning(format!(
+                "{entry_kind} name contains leading or trailing whitespace."
+            ));
+            cx.notify();
+            return;
+        };
+
+        if let Some(worktree) = self.project.read(cx).worktree_for_id(worktree_id, cx)
+            && let Some(entry_path) = worktree
+                .read(cx)
+                .entry_for_id(entry_id)
+                .map(|entry| entry.path.clone())
+        {
+            let new_path = entry_path.join(&file_name);
+            if let Some(existing_entry) = worktree.read(cx).entry_for_path(&new_path) {
+                let existing_entry_kind = if existing_entry.is_dir() {
+                    "Directory"
+                } else {
+                    "File"
+                };
+                edit_state.validation_state = ValidationState::Error(format!(
+                    "{existing_entry_kind} '{}' already exists at location. Please choose a different name.",
+                    file_name.as_unix_str()
+                ));
+                cx.notify();
+                return;
+            }
+        }
+
+        edit_state.validation_state = ValidationState::None;
+        cx.notify();
     }
 
     fn confirm_edit(
@@ -810,13 +919,20 @@ impl ProjectPanel {
             file_name.ends_with('/')
         };
         let file_name = if path_style.is_windows() {
-            file_name.trim_start_matches(['/', '\\']).to_string()
+            file_name.trim_start_matches(['/', '\\'])
         } else {
-            file_name.trim_start_matches('/').to_string()
+            file_name.trim_start_matches('/')
         };
+        if file_name.is_empty() {
+            return None;
+        }
 
-        edit_state.is_dir = edit_state.is_dir || file_name_indicates_dir;
-        let is_dir = edit_state.is_dir;
+        let is_dir = edit_state.is_dir || file_name_indicates_dir;
+        if is_missing_entry_name(file_name, is_dir, path_style) {
+            return None;
+        }
+
+        edit_state.is_dir = is_dir;
         let file_name = file_name_for_new_entry(file_name, is_dir, path_style);
         let file_name = RelPath::new(Path::new(file_name.as_str()), path_style)
             .ok()?
@@ -1267,6 +1383,22 @@ impl ProjectPanel {
         } else {
             theme_colors.element_hover
         };
+        let validation_color_and_message = if show_editor {
+            let validation_state = self
+                .tree_state
+                .edit_state
+                .as_ref()
+                .map_or(ValidationState::None, |edit_state| {
+                    edit_state.validation_state.clone()
+                });
+            match validation_state {
+                ValidationState::Error(message) => Some((Color::Error.color(cx), message)),
+                ValidationState::Warning(message) => Some((Color::Warning.color(cx), message)),
+                ValidationState::None => None,
+            }
+        } else {
+            None
+        };
 
         gpui::div()
             .id(entry_id.to_usize())
@@ -1326,7 +1458,12 @@ impl ProjectPanel {
                             .w_full()
                             .mr(Pixels::ZERO - DynamicSpacing::Base06.px(cx) - gpui::px(1.0))
                             .border_1()
-                            .border_color(theme_colors.border_focused.opacity(0.7))
+                            .border_color(
+                                validation_color_and_message.as_ref().map_or(
+                                    theme_colors.border_focused.opacity(0.7),
+                                    |(color, _)| *color,
+                                ),
+                            )
                             .child(self.file_name_editor.clone())
                     } else {
                         ui::h_flex()
@@ -1344,6 +1481,26 @@ impl ProjectPanel {
                     ))
                     .overflow_x(),
             )
+            .when_some(validation_color_and_message, |this, (color, message)| {
+                this.relative().child(gpui::deferred(
+                    gpui::div()
+                        .occlude()
+                        .absolute()
+                        .top_full()
+                        .left(gpui::px(-1.0))
+                        .right(gpui::px(-1.0))
+                        .py_1()
+                        .px_2()
+                        .border_1()
+                        .border_color(color)
+                        .bg(cx.theme().colors().background)
+                        .child(
+                            Label::new(message)
+                                .color(Color::from(color))
+                                .size(LabelSize::Small),
+                        ),
+                ))
+            })
     }
 }
 
@@ -1385,26 +1542,51 @@ fn file_stem_for_entry(entry: &Entry) -> &str {
     file_name.strip_suffix(".toml").unwrap_or(file_name)
 }
 
-fn file_name_for_new_entry(mut file_name: String, is_dir: bool, path_style: PathStyle) -> String {
+fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {
+    let Ok(file_name) = RelPath::new(Path::new(file_name), path_style) else {
+        return false;
+    };
+    let Some(last_component) = file_name.file_name() else {
+        return true;
+    };
+
     if is_dir {
-        return file_name;
+        return last_component.trim().is_empty();
+    }
+
+    let path = Path::new(last_component);
+    let file_stem = if path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+    {
+        path.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(last_component)
+    } else {
+        last_component
+    };
+
+    file_stem.trim().is_empty()
+}
+
+fn file_name_for_new_entry(file_name: &str, is_dir: bool, path_style: PathStyle) -> String {
+    if is_dir {
+        return file_name.to_string();
     }
 
     let last_component = if path_style.is_windows() {
-        file_name
-            .rsplit(['/', '\\'])
-            .next()
-            .unwrap_or(file_name.as_str())
+        file_name.rsplit(['/', '\\']).next().unwrap_or(file_name)
     } else {
-        file_name.rsplit('/').next().unwrap_or(file_name.as_str())
+        file_name.rsplit('/').next().unwrap_or(file_name)
     };
     if Path::new(last_component)
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
     {
-        return file_name;
+        return file_name.to_string();
     }
 
+    let mut file_name = file_name.to_string();
     file_name.push_str(".toml");
     file_name
 }
@@ -1795,6 +1977,32 @@ mod tests {
         });
     }
 
+    #[track_caller]
+    fn assert_validation_state(
+        panel: &Entity<ProjectPanel>,
+        expected: ValidationState,
+        cx: &mut VisualTestContext,
+    ) {
+        let actual = panel.update(cx, |panel, _| {
+            panel
+                .tree_state
+                .edit_state
+                .as_ref()
+                .unwrap()
+                .validation_state
+                .clone()
+        });
+
+        match (actual, expected) {
+            (ValidationState::None, ValidationState::None) => {}
+            (ValidationState::Warning(actual), ValidationState::Warning(expected))
+            | (ValidationState::Error(actual), ValidationState::Error(expected)) => {
+                assert_eq!(actual, expected);
+            }
+            (actual, expected) => panic!("Expected {expected:?}, got {actual:?}"),
+        }
+    }
+
     #[gpui::test]
     async fn test_sort_mode_directories_first(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
@@ -2086,5 +2294,138 @@ mod tests {
         workspace.update_in(cx, |workspace, _, cx| {
             assert!(workspace.active_item_as::<RequestEditor>(cx).is_some());
         });
+    }
+
+    #[gpui::test]
+    async fn test_new_entry_validation(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "first": {},
+                "first.toml": "",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        select_path(&panel, "project", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_file(&project_panel::NewFile, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("   ", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error("File or directory name must be provided.".to_string()),
+            cx,
+        );
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("   .toml", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error("File or directory name must be provided.".to_string()),
+            cx,
+        );
+        assert!(
+            panel
+                .update_in(cx, |panel, window, cx| panel.confirm_edit(true, window, cx))
+                .is_none()
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("     second", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Warning(
+                "File name contains leading or trailing whitespace.".to_string(),
+            ),
+            cx,
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("second", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(&panel, ValidationState::None, cx);
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("first", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error(
+                "File 'first.toml' already exists at location. Please choose a different name."
+                    .to_string(),
+            ),
+            cx,
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("first/", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error(
+                "Directory 'first' already exists at location. Please choose a different name."
+                    .to_string(),
+            ),
+            cx,
+        );
+
+        panel.update_in(cx, |panel, _, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("first.toml/", cx);
+            });
+        });
+        cx.run_until_parked();
+        assert_validation_state(
+            &panel,
+            ValidationState::Error(
+                "File 'first.toml' already exists at location. Please choose a different name."
+                    .to_string(),
+            ),
+            cx,
+        );
     }
 }
