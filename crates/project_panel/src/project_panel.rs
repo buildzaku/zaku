@@ -318,7 +318,7 @@ impl ProjectPanel {
         let expanded_dir_ids = self.tree_state.expanded_dir_ids.as_deref().unwrap_or(&[]);
         let is_expanded = entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_ok();
         let file_name = file_name_for_entry(snapshot, entry);
-        let depth = u16::try_from(entry.path.components().count()).unwrap_or(u16::MAX);
+        let depth = u16::try_from(display_depth(entry)).unwrap_or(u16::MAX);
         let mut is_invalid = false;
         let prefix_label = match entry.request.as_ref() {
             Some(RequestFileState::Parsed(request)) => {
@@ -401,7 +401,9 @@ impl ProjectPanel {
                     }
 
                     while let Some(entry) = traversal.entry() {
-                        entries.push(entry.clone());
+                        if snapshot.root_entry().map(|entry| entry.id) != Some(entry.id) {
+                            entries.push(entry.clone());
+                        }
                         if new_entry_parent_id == Some(entry.id) {
                             entries.push(Self::create_new_entry(entry, new_entry_kind));
                         }
@@ -428,7 +430,7 @@ impl ProjectPanel {
                         let entry_label = file_name_for_entry(&snapshot, entry);
                         let prefix_chars = usize::from(entry.request.is_some()) * 5;
                         let width_estimate = item_width_estimate(
-                            entry.path.components().count(),
+                            display_depth(entry),
                             entry_label.chars().count() + prefix_chars,
                             false,
                         );
@@ -651,7 +653,9 @@ impl ProjectPanel {
             let mut collapsed_entry_id = None;
 
             loop {
-                if let Ok(index) = expanded_dir_ids.binary_search(&entry.id) {
+                if snapshot.root_entry().map(|entry| entry.id) != Some(entry.id)
+                    && let Ok(index) = expanded_dir_ids.binary_search(&entry.id)
+                {
                     expanded_dir_ids.remove(index);
                     collapsed_entry_id = Some(entry.id);
                     break;
@@ -1137,8 +1141,6 @@ impl ProjectPanel {
                     .read(cx)
                     .id();
 
-                self.selection = Some(SelectedEntry(entry_id));
-
                 Some((worktree_id, entry_id))
             })
         else {
@@ -1445,7 +1447,13 @@ impl ProjectPanel {
 
     fn discard_edit_state(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(edit_state) = self.tree_state.edit_state.take() {
-            let previously_focused = edit_state.previously_focused.map(|entry| entry.0);
+            let root_entry_id = self
+                .snapshot(cx)
+                .and_then(|snapshot| snapshot.root_entry().map(|entry| entry.id));
+            let previously_focused = edit_state
+                .previously_focused
+                .map(|entry| entry.0)
+                .filter(|entry_id| Some(*entry_id) != root_entry_id);
             self.update_visible_entries(
                 previously_focused,
                 false,
@@ -1816,7 +1824,9 @@ impl ProjectPanel {
                 continue;
             };
 
-            if let Ok(index) = expanded_dir_ids.binary_search(&current_id) {
+            if snapshot.root_entry().map(|entry| entry.id) != Some(current_id)
+                && let Ok(index) = expanded_dir_ids.binary_search(&current_id)
+            {
                 expanded_dir_ids.remove(index);
             }
 
@@ -1834,7 +1844,7 @@ impl ProjectPanel {
         let selected_entry = self.tree_state.visible_entries.get(selection_row)?;
         let expanded_dir_ids = self.tree_state.expanded_dir_ids.as_deref().unwrap_or(&[]);
         let mut parent_row = selection_row;
-        let mut depth = selected_entry.path.components().count();
+        let mut depth = display_depth(selected_entry);
 
         let is_expanded_dir = selected_entry.kind.is_dir()
             && expanded_dir_ids.binary_search(&selected_entry.id).is_ok();
@@ -1844,15 +1854,13 @@ impl ProjectPanel {
                 .iter()
                 .enumerate()
                 .rev()
-                .find_map(|(row, entry)| {
-                    (entry.path.components().count() == depth).then_some(row)
-                })?;
+                .find_map(|(row, entry)| (display_depth(entry) == depth).then_some(row))?;
         }
 
         let start = parent_row.checked_add(1)?;
         let end = self.tree_state.visible_entries[start..]
             .iter()
-            .position(|entry| entry.path.components().count() <= depth)
+            .position(|entry| display_depth(entry) <= depth)
             .map_or(self.tree_state.visible_entries.len(), |offset| {
                 start + offset
             });
@@ -1868,6 +1876,24 @@ impl ProjectPanel {
                 None
             }
         })
+    }
+
+    fn render_root_header(root_name: String, cx: &mut Context<Self>) -> AnyElement {
+        let colors = cx.theme().colors();
+
+        ui::h_flex()
+            .flex_none()
+            .h(DynamicSpacing::Base36.px(cx))
+            .w_full()
+            .px(DynamicSpacing::Base12.px(cx))
+            .bg(colors.panel_background)
+            .child(
+                Label::new(root_name)
+                    .size(LabelSize::Small)
+                    .weight(FontWeight::MEDIUM)
+                    .truncate(),
+            )
+            .into_any_element()
     }
 
     fn render_entry_prefix(details: &EntryDetails) -> AnyElement {
@@ -1973,23 +1999,23 @@ impl ProjectPanel {
     ) -> Stateful<Div> {
         let is_dir = details.kind.is_dir();
         let selection = SelectedEntry(entry_id);
-        let theme_colors = cx.theme().colors();
+        let colors = cx.theme().colors();
         let show_editor = details.is_editing && !details.is_processing;
         let is_marked = details.is_marked && !show_editor;
         let is_selected = details.is_selected && !show_editor;
         let bg_color = if is_marked {
-            theme_colors.element_selected
+            colors.element_selected
         } else if is_selected {
-            theme_colors.element_selection_background
+            colors.element_selection_background
         } else {
-            theme_colors.panel_background
+            colors.panel_background
         };
         let bg_hover_color = if is_marked {
-            theme_colors.element_selected
+            colors.element_selected
         } else if is_selected {
-            theme_colors.element_selection_background
+            colors.element_selection_background
         } else {
-            theme_colors.element_hover
+            colors.element_hover
         };
         let validation_color_and_message = if show_editor {
             let validation_state = self
@@ -2067,10 +2093,11 @@ impl ProjectPanel {
                             .mr(Pixels::ZERO - DynamicSpacing::Base06.px(cx) - gpui::px(1.0))
                             .border_1()
                             .border_color(
-                                validation_color_and_message.as_ref().map_or(
-                                    theme_colors.border_focused.opacity(0.7),
-                                    |(color, _)| *color,
-                                ),
+                                validation_color_and_message
+                                    .as_ref()
+                                    .map_or(colors.border_focused.opacity(0.7), |(color, _)| {
+                                        *color
+                                    }),
                             )
                             .child(self.file_name_editor.clone())
                     } else {
@@ -2117,6 +2144,10 @@ fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) 
     let a = (a.path.as_ref(), a.is_file());
     let b = (b.path.as_ref(), b.is_file());
     util::path::compare_rel_paths_by(a, b, mode, order)
+}
+
+fn display_depth(entry: &Entry) -> usize {
+    entry.path.components().count().saturating_sub(1)
 }
 
 fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
@@ -2241,7 +2272,11 @@ impl Panel for ProjectPanel {
 
 impl Render for ProjectPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
+        let root_header = self
+            .snapshot(cx)
+            .map(|snapshot| snapshot.root_name().as_unix_str().to_string())
+            .map(|root_name| Self::render_root_header(root_name, cx));
+        let colors = cx.theme().colors();
         let entry_count = self.tree_state.visible_entries.len();
 
         gpui::div()
@@ -2268,148 +2303,167 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::open))
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(|project_panel, event: &MouseDownEvent, window, cx| {
-                    if let Some(entry_id) = project_panel
-                        .snapshot(cx)
-                        .and_then(|snapshot| snapshot.root_entry().map(|entry| entry.id))
-                    {
-                        project_panel.deploy_context_menu(event.position, entry_id, window, cx);
-                    }
-                }),
-            )
             .flex()
             .flex_col()
             .size_full()
-            .bg(theme_colors.panel_background)
+            .bg(colors.panel_background)
+            .when_some(root_header, |this, root_header| this.child(root_header))
             .child(
-                gpui::uniform_list(
-                    "project-panel-entries",
-                    entry_count,
-                    cx.processor(|this, range: Range<usize>, window, cx| {
-                        let mut items = Vec::with_capacity(range.end.saturating_sub(range.start));
-                        this.for_each_visible_entry(
-                            range,
-                            window,
-                            cx,
-                            &mut |entry_id, details, window, cx| {
-                                items.push(this.render_entry(entry_id, &details, window, cx));
-                            },
-                        );
-                        items
-                    }),
-                )
-                .with_decoration(
-                    ui::indent_guides(Self::INDENT_SIZE, IndentGuideColors::panel(cx))
-                        .with_compute_indents_fn(cx.entity(), |this, range, _window, _cx| {
-                            let mut items =
-                                SmallVec::with_capacity(range.end.saturating_sub(range.start));
-                            for index in range {
-                                if let Some(entry) = this.tree_state.visible_entries.get(index) {
-                                    items.push(entry.path.components().count());
-                                }
-                            }
-                            items
-                        })
-                        .on_click(cx.listener(
-                            |this, active_indent_guide: &IndentGuideLayout, window, cx| {
-                                if !window.modifiers().secondary() {
-                                    return;
-                                }
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(
+                        gpui::uniform_list(
+                            "project-panel-entries",
+                            entry_count,
+                            cx.processor(|this, range: Range<usize>, window, cx| {
+                                let mut items =
+                                    Vec::with_capacity(range.end.saturating_sub(range.start));
+                                this.for_each_visible_entry(
+                                    range,
+                                    window,
+                                    cx,
+                                    &mut |entry_id, details, window, cx| {
+                                        items.push(
+                                            this.render_entry(entry_id, &details, window, cx),
+                                        );
+                                    },
+                                );
+                                items
+                            }),
+                        )
+                        .with_decoration(
+                            ui::indent_guides(Self::INDENT_SIZE, IndentGuideColors::panel(cx))
+                                .with_compute_indents_fn(
+                                    cx.entity(),
+                                    |this, range, _window, _cx| {
+                                        let mut items = SmallVec::with_capacity(
+                                            range.end.saturating_sub(range.start),
+                                        );
+                                        for index in range {
+                                            if let Some(entry) =
+                                                this.tree_state.visible_entries.get(index)
+                                            {
+                                                items.push(display_depth(entry));
+                                            }
+                                        }
+                                        items
+                                    },
+                                )
+                                .on_click(cx.listener(
+                                    |this, active_indent_guide: &IndentGuideLayout, window, cx| {
+                                        if !window.modifiers().secondary() {
+                                            return;
+                                        }
 
-                                let row = active_indent_guide.offset.y;
-                                let Some(snapshot) = this.snapshot(cx) else {
-                                    return;
-                                };
-                                let Some(parent_entry_id) = this
-                                    .tree_state
-                                    .visible_entries
-                                    .get(row)
-                                    .and_then(|entry| entry.path.parent())
-                                    .and_then(|path| snapshot.entry_for_path(path))
-                                    .map(|entry| entry.id)
-                                else {
-                                    return;
-                                };
-                                let Some(expanded_dir_ids) =
-                                    this.tree_state.expanded_dir_ids.as_mut()
-                                else {
-                                    return;
-                                };
-                                let Ok(index) = expanded_dir_ids.binary_search(&parent_entry_id)
-                                else {
-                                    return;
-                                };
+                                        let row = active_indent_guide.offset.y;
+                                        let Some(snapshot) = this.snapshot(cx) else {
+                                            return;
+                                        };
+                                        let Some(parent_entry_id) = this
+                                            .tree_state
+                                            .visible_entries
+                                            .get(row)
+                                            .and_then(|entry| entry.path.parent())
+                                            .and_then(|path| snapshot.entry_for_path(path))
+                                            .map(|entry| entry.id)
+                                        else {
+                                            return;
+                                        };
+                                        if snapshot
+                                            .root_entry()
+                                            .is_some_and(|entry| entry.id == parent_entry_id)
+                                        {
+                                            return;
+                                        }
+                                        let Some(expanded_dir_ids) =
+                                            this.tree_state.expanded_dir_ids.as_mut()
+                                        else {
+                                            return;
+                                        };
+                                        let Ok(index) =
+                                            expanded_dir_ids.binary_search(&parent_entry_id)
+                                        else {
+                                            return;
+                                        };
 
-                                expanded_dir_ids.remove(index);
-                                this.update_visible_entries(None, false, false, window, cx);
-                                window.focus(&this.focus_handle, cx);
-                                cx.notify();
-                            },
-                        ))
-                        .with_render_fn(cx.entity(), |this, params, _, cx| {
-                            const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
-                            const PADDING_Y: Pixels = gpui::px(1.0);
+                                        expanded_dir_ids.remove(index);
+                                        this.update_visible_entries(None, false, false, window, cx);
+                                        window.focus(&this.focus_handle, cx);
+                                        cx.notify();
+                                    },
+                                ))
+                                .with_render_fn(cx.entity(), |this, params, _, cx| {
+                                    const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
+                                    const PADDING_Y: Pixels = gpui::px(1.0);
 
-                            let active_guide = this.find_active_indent_guide(&params.indent_guides);
-                            let indent_size = params.indent_size;
-                            let item_height = params.item_height;
-                            let left_offset = DynamicSpacing::Base06.px(cx)
-                                + Self::DISCLOSURE_SLOT_WIDTH * 0.5
-                                - gpui::px(0.5);
+                                    let active_guide =
+                                        this.find_active_indent_guide(&params.indent_guides);
+                                    let indent_size = params.indent_size;
+                                    let item_height = params.item_height;
+                                    let left_offset = DynamicSpacing::Base06.px(cx)
+                                        + Self::DISCLOSURE_SLOT_WIDTH * 0.5
+                                        - gpui::px(0.5);
 
-                            params
-                                .indent_guides
-                                .into_iter()
-                                .enumerate()
-                                .map(|(index, layout)| {
-                                    let guide_x = layout.offset.x * indent_size + left_offset;
-                                    let guide_y = layout.offset.y * item_height + PADDING_Y;
-                                    let guide_height =
-                                        layout.length * item_height - PADDING_Y * 2.0;
-                                    let bounds = Bounds::new(
-                                        gpui::point(guide_x, guide_y),
-                                        gpui::size(gpui::px(1.0), guide_height),
-                                    );
-                                    let hitbox_x = bounds.origin.x - HITBOX_OVERDRAW;
-                                    let hitbox_width = bounds.size.width + HITBOX_OVERDRAW * 2.0;
+                                    params
+                                        .indent_guides
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(index, layout)| {
+                                            let guide_x =
+                                                layout.offset.x * indent_size + left_offset;
+                                            let guide_y = layout.offset.y * item_height + PADDING_Y;
+                                            let guide_height =
+                                                layout.length * item_height - PADDING_Y * 2.0;
+                                            let bounds = Bounds::new(
+                                                gpui::point(guide_x, guide_y),
+                                                gpui::size(gpui::px(1.0), guide_height),
+                                            );
+                                            let hitbox_x = bounds.origin.x - HITBOX_OVERDRAW;
+                                            let hitbox_width =
+                                                bounds.size.width + HITBOX_OVERDRAW * 2.0;
 
-                                    RenderedIndentGuide {
-                                        bounds,
-                                        layout,
-                                        is_active: Some(index) == active_guide,
-                                        hitbox: Some(Bounds::new(
-                                            gpui::point(hitbox_x, bounds.origin.y),
-                                            gpui::size(hitbox_width, bounds.size.height),
-                                        )),
-                                    }
-                                })
-                                .collect()
-                        }),
-                )
-                .with_sizing_behavior(ListSizingBehavior::Infer)
-                .with_horizontal_sizing_behavior(ListHorizontalSizingBehavior::Unconstrained)
-                .with_width_from_item(self.tree_state.max_width_item_index)
-                .track_scroll(&self.scroll_handle)
-                .size_full(),
-            )
-            .custom_scrollbars(
-                Scrollbars::new(ScrollAxes::Both)
-                    .tracked_scroll_handle(&self.scroll_handle)
-                    .with_track_along(
-                        ScrollAxes::Vertical,
-                        theme_colors.panel_background,
-                        TrackLayout::Overlay,
+                                            RenderedIndentGuide {
+                                                bounds,
+                                                layout,
+                                                is_active: Some(index) == active_guide,
+                                                hitbox: Some(Bounds::new(
+                                                    gpui::point(hitbox_x, bounds.origin.y),
+                                                    gpui::size(hitbox_width, bounds.size.height),
+                                                )),
+                                            }
+                                        })
+                                        .collect()
+                                }),
+                        )
+                        .with_sizing_behavior(ListSizingBehavior::Infer)
+                        .with_horizontal_sizing_behavior(
+                            ListHorizontalSizingBehavior::Unconstrained,
+                        )
+                        .with_width_from_item(self.tree_state.max_width_item_index)
+                        .track_scroll(&self.scroll_handle)
+                        .size_full(),
                     )
-                    .with_track_along(
-                        ScrollAxes::Horizontal,
-                        theme_colors.panel_background,
-                        TrackLayout::Classic,
+                    .custom_scrollbars(
+                        Scrollbars::new(ScrollAxes::Both)
+                            .tracked_scroll_handle(&self.scroll_handle)
+                            .with_track_along(
+                                ScrollAxes::Vertical,
+                                colors.panel_background,
+                                TrackLayout::Overlay,
+                            )
+                            .with_track_along(
+                                ScrollAxes::Horizontal,
+                                colors.panel_background,
+                                TrackLayout::Classic,
+                            )
+                            .notify_content(),
+                        window,
+                        cx,
                     )
-                    .notify_content(),
-                window,
-                cx,
+                    .flex_1()
+                    .w_full(),
             )
             .children(self.context_menu.as_ref().map(|(menu, position, _)| {
                 gpui::deferred(
@@ -2660,12 +2714,11 @@ mod tests {
         assert_eq!(
             actual,
             vec![
-                String::from("v project"),
-                String::from("    > Apple"),
-                String::from("    > Carrot"),
-                String::from("      aardvark"),
-                String::from("      banana"),
-                String::from("      zebra"),
+                String::from("> Apple"),
+                String::from("> Carrot"),
+                String::from("  aardvark"),
+                String::from("  banana"),
+                String::from("  zebra"),
             ]
         );
     }
@@ -2695,7 +2748,6 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        select_path(&panel, "project", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.new_file(&actions::project_panel::NewFile, window, cx);
         });
@@ -2707,10 +2759,9 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    > collection"),
-                String::from("      [EDITOR: '']  <== selected"),
-                String::from("      existing"),
+                String::from("> collection"),
+                String::from("  [EDITOR: '']  <== selected"),
+                String::from("  existing"),
             ]
         );
 
@@ -2728,10 +2779,9 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    > collection"),
-                String::from("      existing"),
-                String::from("      New request  <== selected  <== marked"),
+                String::from("> collection"),
+                String::from("  existing"),
+                String::from("  New request  <== selected  <== marked"),
             ]
         );
 
@@ -2775,7 +2825,6 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        select_path(&panel, "project", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.new_directory(&actions::project_panel::NewDirectory, window, cx);
         });
@@ -2787,9 +2836,8 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    > [EDITOR: '']  <== selected"),
-                String::from("      existing"),
+                String::from("> [EDITOR: '']  <== selected"),
+                String::from("  existing"),
             ]
         );
 
@@ -2807,9 +2855,8 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v New collection  <== selected"),
-                String::from("      existing"),
+                String::from("v New collection  <== selected"),
+                String::from("  existing"),
             ]
         );
 
@@ -2881,11 +2928,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          first  <== selected  <== marked"),
-                String::from("          second"),
-                String::from("          third"),
+                String::from("v collection"),
+                String::from("      first  <== selected  <== marked"),
+                String::from("      second"),
+                String::from("      third"),
             ]
         );
 
@@ -2903,11 +2949,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          first"),
-                String::from("          second  <== selected  <== marked"),
-                String::from("          third"),
+                String::from("v collection"),
+                String::from("      first"),
+                String::from("      second  <== selected  <== marked"),
+                String::from("      third"),
             ]
         );
 
@@ -2942,7 +2987,6 @@ mod tests {
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
-        select_path(&panel, "project", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.new_file(&actions::project_panel::NewFile, window, cx);
         });
@@ -3079,9 +3123,8 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("      first  <== selected"),
-                String::from("      first.v2"),
+                String::from("  first  <== selected"),
+                String::from("  first.v2"),
             ]
         );
 
@@ -3098,10 +3141,9 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("      first"),
-                String::from("      [EDITOR: 'first copy']  <== selected  <== marked"),
-                String::from("      first.v2"),
+                String::from("  first"),
+                String::from("  [EDITOR: 'first copy']  <== selected  <== marked"),
+                String::from("  first.v2"),
             ]
         );
 
@@ -3140,11 +3182,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("      first"),
-                String::from("      first copy"),
-                String::from("      [EDITOR: 'first copy 1']  <== selected  <== marked"),
-                String::from("      first.v2"),
+                String::from("  first"),
+                String::from("  first copy"),
+                String::from("  [EDITOR: 'first copy 1']  <== selected  <== marked"),
+                String::from("  first.v2"),
             ]
         );
 
@@ -3186,11 +3227,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    > collection"),
-                String::from("    > other"),
-                String::from("      first  <== marked"),
-                String::from("      second  <== selected  <== marked"),
+                String::from("> collection"),
+                String::from("> other"),
+                String::from("  first  <== marked"),
+                String::from("  second  <== selected  <== marked"),
             ]
         );
 
@@ -3210,11 +3250,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          first  <== marked"),
-                String::from("          second  <== selected  <== marked"),
-                String::from("    > other"),
+                String::from("v collection"),
+                String::from("      first  <== marked"),
+                String::from("      second  <== selected  <== marked"),
+                String::from("> other"),
             ]
         );
 
@@ -3231,13 +3270,12 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          first"),
-                String::from("          second"),
-                String::from("    v other"),
-                String::from("          first"),
-                String::from("          second  <== selected"),
+                String::from("v collection"),
+                String::from("      first"),
+                String::from("      second"),
+                String::from("v other"),
+                String::from("      first"),
+                String::from("      second  <== selected"),
             ]
         );
     }
@@ -3282,11 +3320,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          first"),
-                String::from("          [EDITOR: 'first copy']  <== selected  <== marked"),
-                String::from("          second"),
+                String::from("v collection"),
+                String::from("      first"),
+                String::from("      [EDITOR: 'first copy']  <== selected  <== marked"),
+                String::from("      second"),
             ]
         );
     }
@@ -3331,10 +3368,9 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          [EDITOR: 'first']  <== selected"),
-                String::from("          second"),
+                String::from("v collection"),
+                String::from("      [EDITOR: 'first']  <== selected"),
+                String::from("      second"),
             ]
         );
 
@@ -3367,10 +3403,9 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          [PROCESSING: 'renamed']  <== selected"),
-                String::from("          second"),
+                String::from("v collection"),
+                String::from("      [PROCESSING: 'renamed']  <== selected"),
+                String::from("      second"),
             ]
         );
 
@@ -3379,10 +3414,9 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          renamed  <== selected"),
-                String::from("          second"),
+                String::from("v collection"),
+                String::from("      renamed  <== selected"),
+                String::from("      second"),
             ]
         );
     }
@@ -3420,11 +3454,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          first  <== selected"),
-                String::from("          second"),
-                String::from("          third"),
+                String::from("v collection"),
+                String::from("      first  <== selected"),
+                String::from("      second"),
+                String::from("      third"),
             ]
         );
 
@@ -3438,11 +3471,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          [EDITOR: 'first']  <== selected"),
-                String::from("          second"),
-                String::from("          third"),
+                String::from("v collection"),
+                String::from("      [EDITOR: 'first']  <== selected"),
+                String::from("      second"),
+                String::from("      third"),
             ]
         );
 
@@ -3467,11 +3499,10 @@ mod tests {
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
-                String::from("v project"),
-                String::from("    v collection"),
-                String::from("          first  <== selected"),
-                String::from("          second"),
-                String::from("          third"),
+                String::from("v collection"),
+                String::from("      first  <== selected"),
+                String::from("      second"),
+                String::from("      third"),
             ],
             "File list should be unchanged after failed rename confirmation"
         );
