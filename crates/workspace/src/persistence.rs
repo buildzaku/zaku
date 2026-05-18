@@ -404,7 +404,7 @@ mod tests {
     use util_macros::path;
     use worktree::WorktreeModelHandle;
 
-    use crate::{CloseWindow, OpenMode, Root, SharedState, Workspace, tests::init_test};
+    use crate::{OpenMode, Root, SharedState, Workspace, tests::init_test};
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
@@ -774,7 +774,7 @@ mod tests {
         assert!(serialized_workspace.window_id.is_some());
 
         root.update_in(cx, |root, window, cx| {
-            root.close_window(&CloseWindow, window, cx);
+            root.close_window(&actions::workspace::CloseWindow, window, cx);
         });
         cx.run_until_parked();
 

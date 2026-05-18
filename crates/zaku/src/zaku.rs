@@ -7,12 +7,6 @@ use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{App, AsyncApp, KeyBinding, Task, prelude::*};
 use std::sync::Arc;
 
-#[cfg(target_os = "macos")]
-use actions::zaku::{Hide, HideOthers, ShowAll};
-use actions::{
-    workspace::CloseWindow,
-    zaku::{About, Quit},
-};
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
@@ -47,7 +41,7 @@ pub fn init(cx: &mut App) {
         window.on_window_should_close(cx, move |window, cx| {
             root_handle
                 .update(cx, |root, cx| {
-                    root.close_window(&CloseWindow, window, cx);
+                    root.close_window(&actions::workspace::CloseWindow, window, cx);
                     false
                 })
                 .unwrap_or(true)
@@ -65,12 +59,12 @@ pub fn init(cx: &mut App) {
 fn register_actions(cx: &mut App) {
     #[cfg(target_os = "macos")]
     {
-        cx.on_action(|_: &Hide, cx| cx.hide());
-        cx.on_action(|_: &HideOthers, cx| cx.hide_other_apps());
-        cx.on_action(|_: &ShowAll, cx| cx.unhide_other_apps());
+        cx.on_action(|_: &actions::zaku::Hide, cx| cx.hide());
+        cx.on_action(|_: &actions::zaku::HideOthers, cx| cx.hide_other_apps());
+        cx.on_action(|_: &actions::zaku::ShowAll, cx| cx.unhide_other_apps());
     }
 
-    cx.on_action(|_: &Quit, cx| {
+    cx.on_action(|_: &actions::zaku::Quit, cx| {
         cx.spawn(async move |cx| {
             let workspace_windows = cx.update(|cx| {
                 cx.windows()
@@ -111,8 +105,8 @@ fn register_actions(cx: &mut App) {
         })
         .detach();
     })
-    .on_action(|_: &About, cx| about::open_window(cx))
-    .on_action(|_: &CloseWindow, cx| Workspace::close_window(cx));
+    .on_action(|_: &actions::zaku::About, cx| about::open_window(cx))
+    .on_action(|_: &actions::workspace::CloseWindow, cx| Workspace::close_window(cx));
 }
 
 pub fn handle_settings_file_changes(

@@ -2,7 +2,6 @@ use futures::FutureExt;
 use gpui::{Action, AnyWindowHandle, NoAction, TestAppContext, Unbind};
 use std::{collections::BTreeSet, path::PathBuf, sync::Arc, time::Duration};
 
-use actions::workspace::ToggleLeftDock;
 use fs::Fs;
 use settings::watch_config_file;
 use theme::LoadThemes;
@@ -155,7 +154,10 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
     assert_key_bindings_for(
         window.into(),
         cx,
-        vec![("backspace", &ActionA), ("b", &ToggleLeftDock)],
+        vec![
+            ("backspace", &ActionA),
+            ("b", &actions::workspace::ToggleLeftDock),
+        ],
         line!(),
     );
 
@@ -174,7 +176,10 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
     assert_key_bindings_for(
         window.into(),
         cx,
-        vec![("backspace", &ActionB), ("b", &ToggleLeftDock)],
+        vec![
+            ("backspace", &ActionB),
+            ("b", &actions::workspace::ToggleLeftDock),
+        ],
         line!(),
     );
 }
@@ -236,7 +241,10 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
     assert_key_bindings_for(
         window.into(),
         cx,
-        vec![("backspace", &ActionA), ("b", &ToggleLeftDock)],
+        vec![
+            ("backspace", &ActionA),
+            ("b", &actions::workspace::ToggleLeftDock),
+        ],
         line!(),
     );
 
@@ -249,7 +257,12 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
     })
     .await;
 
-    assert_key_bindings_for(window.into(), cx, vec![("b", &ToggleLeftDock)], line!());
+    assert_key_bindings_for(
+        window.into(),
+        cx,
+        vec![("b", &actions::workspace::ToggleLeftDock)],
+        line!(),
+    );
 }
 
 #[gpui::test]

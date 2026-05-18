@@ -9,7 +9,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use actions::workspace::SendRequest;
 use editor::{Editor, EditorEvent};
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
@@ -46,11 +45,13 @@ pub fn init(cx: &mut App) {
             })
             .detach();
 
-            workspace.register_action(|workspace, _: &SendRequest, window, cx| {
-                workspace.pane().update(cx, |pane, cx| {
-                    pane.send_request(window, cx);
-                });
-            });
+            workspace.register_action(
+                |workspace, _: &actions::workspace::SendRequest, window, cx| {
+                    workspace.pane().update(cx, |pane, cx| {
+                        pane.send_request(window, cx);
+                    });
+                },
+            );
         },
     )
     .detach();
@@ -284,13 +285,6 @@ impl RequestSnapshot {
     fn from_request_file(request_file: &RequestFile) -> Self {
         Self(request_file.clone())
     }
-
-    fn name(&self) -> Option<&str> {
-        self.0.meta.name.as_deref().and_then(|name| {
-            let name = name.trim();
-            if name.is_empty() { None } else { Some(name) }
-        })
-    }
 }
 
 struct RequestParam {
@@ -449,20 +443,6 @@ impl RequestEditor {
     }
 
     fn title(&self, cx: &App) -> SharedString {
-        let display_name = match &self.request {
-            RequestEditorState::Ready(request) => request.meta.name.as_deref().and_then(|name| {
-                let name = name.trim();
-                if name.is_empty() { None } else { Some(name) }
-            }),
-            RequestEditorState::Invalid { snapshot, .. } => {
-                snapshot.as_ref().and_then(RequestSnapshot::name)
-            }
-        };
-
-        if let Some(display_name) = display_name {
-            return SharedString::from(display_name.to_owned());
-        }
-
         self.project_path(cx)
             .and_then(|project_path| {
                 project_path.path.file_name().map(|file_name| {
@@ -476,7 +456,7 @@ impl RequestEditor {
     fn path_for_request(
         &self,
         height: usize,
-        include_filename: bool,
+        include_file_name: bool,
         cx: &App,
     ) -> Option<SharedString> {
         let project_path = self.project_path(cx)?;
@@ -495,7 +475,7 @@ impl RequestEditor {
         let start = components.len().saturating_sub(height);
         let mut components = components.split_off(start);
 
-        if include_filename {
+        if include_file_name {
             if let Some(file_name) = components.last_mut() {
                 *file_name = self.title(cx).to_string();
             }
@@ -1467,12 +1447,12 @@ impl RequestEditor {
                     .py_3()
                     .gap_2()
                     .key_context("RequestUrl")
-                    .on_action(
-                        cx.listener(move |request_editor, _: &SendRequest, window, cx| {
+                    .on_action(cx.listener(
+                        move |request_editor, _: &actions::workspace::SendRequest, window, cx| {
                             request_editor.unpreview_tab(cx);
                             request_editor.send_request(window, cx);
-                        }),
-                    )
+                        },
+                    ))
                     .child(
                         DropdownMenu::new(
                             "request-method",
@@ -1725,7 +1705,6 @@ mod tests {
     use indoc::indoc;
     use parking_lot::Mutex;
     use serde_json::json;
-    use std::path::Path;
 
     use fs::Fs;
     use http_client::{Response, StatusCode};
@@ -1733,7 +1712,7 @@ mod tests {
     use theme::LoadThemes;
     use util::rel_path::rel_path;
     use util_macros::path;
-    use workspace::{DockPosition, Root, SaveIntent, SharedState};
+    use workspace::{DockPosition, Root, SharedState};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -1904,7 +1883,6 @@ mod tests {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Search"
 
                         [http]
                         method = "POST"
@@ -2002,7 +1980,6 @@ mod tests {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "First"
 
                         [http]
                         method = "GET"
@@ -2011,7 +1988,6 @@ mod tests {
                     "second.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Second"
 
                         [http]
                         method = "GET"
@@ -2154,7 +2130,6 @@ mod tests {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "First"
 
                         [http]
                         method = "GET"
@@ -2163,7 +2138,6 @@ mod tests {
                     "second.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Second"
 
                         [http]
                         method = "GET"
@@ -2341,7 +2315,7 @@ mod tests {
 
         workspace
             .update_in(cx, |workspace, window, cx| {
-                workspace.save_active_item(SaveIntent::Save, window, cx)
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
             })
             .await
             .unwrap();
@@ -2352,15 +2326,12 @@ mod tests {
         );
 
         let saved = temp_fs
-            .load(Path::new(path!("project/collection/request.toml")))
+            .load("project/collection/request.toml".as_ref())
             .await
             .unwrap();
         let saved_request = toml::from_str::<RequestFile>(&saved).unwrap();
         let expected_request = RequestFile {
-            meta: RequestFileMeta {
-                version: 1,
-                name: None,
-            },
+            meta: RequestFileMeta { version: 1 },
             http: RequestFileHttp {
                 method: "GET".to_string(),
                 url: "https://api.zaku.dev/me/edit".to_string(),

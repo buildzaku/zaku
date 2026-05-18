@@ -4,10 +4,6 @@ use gpui::{
     Window, prelude::*,
 };
 
-use actions::{
-    menu::{SelectNext, SelectPrevious},
-    workspace::{Open, OpenRecentProject},
-};
 use metadata::{ZAKU_DESCRIPTION, ZAKU_NAME};
 use theme::ActiveTheme;
 use ui::{
@@ -155,7 +151,7 @@ const CONTENT: Section<1> = Section {
     entries: [SectionEntry {
         icon: IconName::FolderOpen,
         title: "Open Project",
-        action: &Open::DEFAULT,
+        action: &actions::workspace::Open::DEFAULT,
     }],
 };
 
@@ -207,14 +203,19 @@ impl WelcomePage {
         }
     }
 
-    fn select_next(_: &mut Self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_next(
+        _: &mut Self,
+        _: &actions::menu::SelectNext,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         window.focus_next(cx);
         cx.notify();
     }
 
     fn select_previous(
         _: &mut Self,
-        _: &SelectPrevious,
+        _: &actions::menu::SelectPrevious,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -224,7 +225,7 @@ impl WelcomePage {
 
     fn open_recent_project(
         &mut self,
-        action: &OpenRecentProject,
+        action: &actions::workspace::OpenRecentProject,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -272,7 +273,7 @@ impl WelcomePage {
         SectionButton::new(
             title,
             icon,
-            &OpenRecentProject {
+            &actions::workspace::OpenRecentProject {
                 index: project_index,
             },
             tab_index,

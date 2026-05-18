@@ -4,7 +4,6 @@ use gpui::{
 };
 use std::sync::Arc;
 
-use actions::menu;
 use metadata::{
     ZAKU_COMMIT_SHA, ZAKU_DESCRIPTION, ZAKU_IDENTIFIER, ZAKU_NAME, ZAKU_REPOSITORY, ZAKU_VERSION,
 };
@@ -35,7 +34,9 @@ impl Render for AboutWindow {
         v_flex()
             .id("about-window")
             .track_focus(&self.focus_handle)
-            .on_action(cx.listener(|_, _: &menu::Cancel, window, _cx| window.remove_window()))
+            .on_action(
+                cx.listener(|_, _: &actions::menu::Cancel, window, _cx| window.remove_window()),
+            )
             .size_full()
             .bg(cx.theme().colors().background)
             .text_color(cx.theme().colors().text)

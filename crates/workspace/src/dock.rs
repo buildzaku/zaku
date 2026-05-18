@@ -6,7 +6,6 @@ use gpui::{
 };
 use std::sync::Arc;
 
-use actions::workspace::{ToggleBottomDock, ToggleLeftDock};
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, Clickable, Color, Disableable, IconButton, IconButtonShape, IconSize,
@@ -339,8 +338,8 @@ impl Dock {
 
     pub fn toggle_action(&self) -> Box<dyn Action> {
         match self.position {
-            DockPosition::Left => ToggleLeftDock.boxed_clone(),
-            DockPosition::Bottom => ToggleBottomDock.boxed_clone(),
+            DockPosition::Left => actions::workspace::ToggleLeftDock.boxed_clone(),
+            DockPosition::Bottom => actions::workspace::ToggleBottomDock.boxed_clone(),
         }
     }
 

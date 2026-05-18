@@ -19,7 +19,7 @@ use std::{
 
 use fs::Fs;
 use util::{path::PathStyle, rel_path::RelPath};
-use worktree::UpdatedEntriesSet;
+use worktree::{UpdatedEntriesSet, serialize_request_file};
 
 use crate::worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent};
 
@@ -52,6 +52,15 @@ impl ProjectPath {
 
     pub fn starts_with(&self, other: &ProjectPath) -> bool {
         self.worktree_id == other.worktree_id && self.path.starts_with(&other.path)
+    }
+}
+
+impl<P: Into<Arc<RelPath>>> From<(WorktreeId, P)> for ProjectPath {
+    fn from((worktree_id, path): (WorktreeId, P)) -> Self {
+        Self {
+            worktree_id,
+            path: path.into(),
+        }
     }
 }
 
@@ -252,10 +261,112 @@ impl Project {
         )
     }
 
+    pub fn reveal_path(&self, path: &Path, cx: &mut Context<Self>) {
+        cx.reveal_path(path);
+    }
+
     pub fn project_path_for_absolute_path(&self, abs_path: &Path, cx: &App) -> Option<ProjectPath> {
         self.worktree_store
             .read(cx)
             .project_path_for_absolute_path(abs_path, cx)
+    }
+
+    pub fn create_entry(
+        &mut self,
+        project_path: impl Into<ProjectPath>,
+        is_directory: bool,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entry>> {
+        let project_path = project_path.into();
+        let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) else {
+            return Task::ready(Err(anyhow::anyhow!(format!(
+                "No worktree for path {project_path:?}"
+            ))));
+        };
+
+        let content = if is_directory {
+            None
+        } else {
+            let contents = match serialize_request_file(&RequestFile::default()) {
+                Ok(contents) => contents,
+                Err(error) => return Task::ready(Err(error)),
+            };
+            Some(contents.into_bytes())
+        };
+
+        worktree.update(cx, |worktree, cx| {
+            worktree.create_entry(project_path.path, is_directory, content, cx)
+        })
+    }
+
+    #[inline]
+    pub fn copy_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        new_project_path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Option<Entry>>> {
+        self.worktree_store.update(cx, |worktree_store, cx| {
+            worktree_store.copy_entry(entry_id, new_project_path, cx)
+        })
+    }
+
+    #[inline]
+    pub fn rename_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        new_path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entry>> {
+        self.worktree_store.update(cx, |worktree_store, cx| {
+            worktree_store.rename_entry(entry_id, new_path, cx)
+        })
+    }
+
+    #[inline]
+    pub fn delete_file(
+        &mut self,
+        path: &ProjectPath,
+        trash: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let entry = self.entry_for_path(path, cx)?;
+        self.delete_entry(entry.id, trash, cx)
+    }
+
+    #[inline]
+    pub fn delete_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        trash: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let worktree = self.worktree_for_entry(entry_id, cx)?;
+        worktree.update(cx, |worktree, cx| {
+            worktree.delete_entry(entry_id, trash, cx)
+        })
+    }
+
+    #[inline]
+    pub fn expand_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let worktree = self.worktree_for_entry(entry_id, cx)?;
+        worktree.update(cx, |worktree, cx| worktree.expand_entry(entry_id, cx))
+    }
+
+    #[inline]
+    pub fn entry_is_worktree_root(&self, entry_id: ProjectEntryId, cx: &App) -> bool {
+        self.worktree_for_entry(entry_id, cx)
+            .and_then(|worktree| {
+                worktree
+                    .read(cx)
+                    .root_entry()
+                    .map(|entry| entry.id == entry_id)
+            })
+            .unwrap_or(false)
     }
 
     pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {

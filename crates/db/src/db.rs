@@ -17,6 +17,7 @@ use std::{
     sync::{
         Arc, LazyLock,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
 };
 use thread_local::ThreadLocal;
@@ -243,25 +244,24 @@ impl ThreadSafeConnection {
         let target = self.target.clone();
 
         async move {
-            let receiver = {
+            let rx = {
                 let queues = QUEUES.read();
                 let write_channel = queues
                     .get(&target)
                     .context("write queue should exist after thread-safe connection build")?;
 
-                let (sender, receiver) = oneshot::channel();
+                let (tx, rx) = oneshot::channel();
                 write_channel(Box::new(move || {
                     let result = thread_safe_connection.with_connection(|connection| {
                         connection.with_write(|connection| write_operation(connection))
                     });
-                    sender.send(result).ok();
+                    tx.send(result).ok();
                 }))?;
 
-                receiver
+                rx
             };
 
-            receiver
-                .await
+            rx.await
                 .context("write queue unexpectedly closed before sending a result")?
         }
     }
@@ -318,20 +318,19 @@ fn init_connection(
 
 pub fn background_thread_queue() -> WriteQueueConstructor {
     Box::new(|| {
-        let (sender, receiver) = std::sync::mpsc::channel::<QueuedWrite>();
+        let (tx, rx) = mpsc::channel::<QueuedWrite>();
 
         std::thread::Builder::new()
             .name("db_worker".to_string())
             .spawn(move || {
-                while let Ok(write) = receiver.recv() {
+                while let Ok(write) = rx.recv() {
                     write();
                 }
             })
             .expect("database worker thread should spawn");
 
         Box::new(move |queued_write| {
-            sender
-                .send(queued_write)
+            tx.send(queued_write)
                 .map_err(|_| anyhow::anyhow!("could not send write action to background thread"))
         })
     })

@@ -56,7 +56,23 @@
       "shift-tab": null,
       "left": "project_panel::CollapseSelectedEntry",
       "cmd-left": "project_panel::CollapseAllEntries",
-      "right": "project_panel::ExpandSelectedEntry"
+      "right": "project_panel::ExpandSelectedEntry",
+      "cmd-n": "project_panel::NewFile",
+      "alt-cmd-n": "project_panel::NewDirectory",
+      "cmd-x": "project_panel::Cut",
+      "cmd-c": "project_panel::Copy",
+      "cmd-v": "project_panel::Paste",
+      "cmd-d": "project_panel::Duplicate",
+      "cmd-alt-c": "workspace::CopyPath",
+      "alt-cmd-shift-c": "workspace::CopyRelativePath",
+      "enter": "project_panel::Rename",
+      "f2": "project_panel::Rename",
+      "alt-cmd-r": "project_panel::RevealInFileManager",
+      "backspace": ["project_panel::Trash", { "skip_prompt": false }],
+      "delete": ["project_panel::Trash", { "skip_prompt": false }],
+      "cmd-backspace": ["project_panel::Trash", { "skip_prompt": true }],
+      "cmd-delete": ["project_panel::Delete", { "skip_prompt": false }],
+      "cmd-alt-backspace": ["project_panel::Delete", { "skip_prompt": false }]
     }
   },
   {

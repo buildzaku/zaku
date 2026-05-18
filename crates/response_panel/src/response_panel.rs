@@ -5,7 +5,6 @@ use gpui::{
 use num_traits::ToPrimitive;
 use std::time::Duration;
 
-use actions::workspace::response_panel;
 use editor::Editor;
 use http_client::StatusCode;
 use multi_buffer::MultiBuffer;
@@ -17,9 +16,11 @@ use workspace::{Panel, Workspace, pane::Pane};
 pub fn init(cx: &mut App) {
     cx.observe_new(
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
-            workspace.register_action(|workspace, _: &response_panel::ToggleFocus, window, cx| {
-                workspace.toggle_panel_focus::<ResponsePanel>(window, cx);
-            });
+            workspace.register_action(
+                |workspace, _: &actions::response_panel::ToggleFocus, window, cx| {
+                    workspace.toggle_panel_focus::<ResponsePanel>(window, cx);
+                },
+            );
         },
     )
     .detach();
@@ -309,7 +310,7 @@ impl Panel for ResponsePanel {
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {
-        response_panel::ToggleFocus.boxed_clone()
+        actions::response_panel::ToggleFocus.boxed_clone()
     }
 
     fn activation_priority(&self) -> u32 {

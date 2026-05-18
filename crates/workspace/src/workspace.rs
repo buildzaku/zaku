@@ -6,7 +6,6 @@ mod persistence;
 pub mod status_bar;
 pub mod welcome;
 
-pub use actions::pane::{CloseActiveItem, CloseAllItems, SaveIntent};
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
 pub use item::{
     Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
@@ -30,15 +29,6 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
-};
-
-use actions::{
-    menu,
-    workspace::{
-        CloseProject, CloseWindow, NewWindow, Open, Save, SuppressNotification, ToggleBottomDock,
-        ToggleLeftDock,
-    },
-    zaku::{Minimize, Zoom},
 };
 
 #[cfg(any(test, feature = "test-support"))]
@@ -295,7 +285,7 @@ fn register_actions(
     _: &mut Context<Workspace>,
 ) {
     workspace
-        .register_action(|workspace, action: &Open, window, cx| {
+        .register_action(|workspace, action: &actions::workspace::Open, window, cx| {
             prompt_and_open_workspace(
                 workspace,
                 PathPromptOptions {
@@ -310,7 +300,7 @@ fn register_actions(
             );
         })
         .register_action({
-            move |_, _: &NewWindow, _, cx| {
+            move |_, _: &actions::workspace::NewWindow, _, cx| {
                 cx.activate(true);
                 let shared_state = shared_state.clone();
                 let workspace_db = WorkspaceDb::global(cx);
@@ -340,10 +330,10 @@ fn register_actions(
                 .detach();
             }
         })
-        .register_action(|_, _: &Minimize, window, _| {
+        .register_action(|_, _: &actions::zaku::Minimize, window, _| {
             window.minimize_window();
         })
-        .register_action(|_, _: &Zoom, window, _| {
+        .register_action(|_, _: &actions::zaku::Zoom, window, _| {
             window.zoom_window();
         });
 }
@@ -465,11 +455,21 @@ impl Root {
         .detach_and_log_err(cx);
     }
 
-    fn close_project(&mut self, _: &CloseProject, window: &mut Window, cx: &mut Context<Self>) {
+    fn close_project(
+        &mut self,
+        _: &actions::workspace::CloseProject,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.replace_workspace(window, cx);
     }
 
-    pub fn close_window(&mut self, _: &CloseWindow, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn close_window(
+        &mut self,
+        _: &actions::workspace::CloseWindow,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         cx.spawn_in(window, async move |this, cx| {
             let workspace = this.update(cx, |root, _cx| root.workspace().clone())?;
             let should_close = workspace
@@ -573,7 +573,7 @@ impl Workspace {
             };
 
             root.update(cx, |root, window, cx| {
-                root.close_window(&CloseWindow, window, cx);
+                root.close_window(&actions::workspace::CloseWindow, window, cx);
             })
             .log_err();
         });
@@ -625,7 +625,7 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> oneshot::Receiver<Option<PathBuf>> {
-        let (sender, receiver) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         let path_prompt = cx.prompt_for_paths(options);
 
         cx.spawn_in(window, async move |workspace, cx| {
@@ -637,7 +637,7 @@ impl Workspace {
                 Ok(selected_paths) => {
                     let selected_path = selected_paths.and_then(|paths| paths.into_iter().next());
 
-                    if sender.send(selected_path).is_err() {
+                    if tx.send(selected_path).is_err() {
                         return Ok::<(), anyhow::Error>(());
                     }
                 }
@@ -663,7 +663,7 @@ impl Workspace {
         })
         .detach();
 
-        receiver
+        rx
     }
 
     pub fn open_local(
@@ -913,7 +913,7 @@ impl Workspace {
 
     pub fn save_active_item(
         &mut self,
-        save_intent: SaveIntent,
+        save_intent: actions::pane::SaveIntent,
         window: &mut Window,
         cx: &mut App,
     ) -> Task<anyhow::Result<()>> {
@@ -1029,12 +1029,16 @@ impl Workspace {
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
         let dock = self.dock_at_position(position).clone();
         let was_visible = dock.read(cx).is_open();
-        if was_visible && !window.bindings_for_action(&menu::Cancel).is_empty() {
+        if was_visible
+            && !window
+                .bindings_for_action(&actions::menu::Cancel)
+                .is_empty()
+        {
             // Move focus back to the center so dismissing a menu does not focus a hidden dock element.
             let focus_handle = self.pane.read(cx).focus_handle(cx);
             window.focus(&focus_handle, cx);
         }
-        window.dispatch_action(menu::Cancel.boxed_clone(), cx);
+        window.dispatch_action(actions::menu::Cancel.boxed_clone(), cx);
 
         let mut focus_center = false;
 
@@ -1287,19 +1291,25 @@ impl Workspace {
                     }
                 },
             ))
-            .on_action(cx.listener(|workspace, _: &ToggleLeftDock, window, cx| {
-                workspace.toggle_dock(DockPosition::Left, window, cx);
-            }))
-            .on_action(cx.listener(|workspace, _: &ToggleBottomDock, window, cx| {
-                workspace.toggle_dock(DockPosition::Bottom, window, cx);
-            }))
-            .on_action(cx.listener(|workspace, _: &Save, window, cx| {
-                workspace
-                    .save_active_item(SaveIntent::Save, window, cx)
-                    .detach_and_prompt_err("Failed to save", window, cx, |_, _, _| None);
-            }))
             .on_action(cx.listener(
-                |workspace: &mut Workspace, _: &SuppressNotification, _, cx| {
+                |workspace, _: &actions::workspace::ToggleLeftDock, window, cx| {
+                    workspace.toggle_dock(DockPosition::Left, window, cx);
+                },
+            ))
+            .on_action(cx.listener(
+                |workspace, _: &actions::workspace::ToggleBottomDock, window, cx| {
+                    workspace.toggle_dock(DockPosition::Bottom, window, cx);
+                },
+            ))
+            .on_action(
+                cx.listener(|workspace, _: &actions::workspace::Save, window, cx| {
+                    workspace
+                        .save_active_item(actions::pane::SaveIntent::Save, window, cx)
+                        .detach_and_prompt_err("Failed to save", window, cx, |_, _, _| None);
+                }),
+            )
+            .on_action(cx.listener(
+                |workspace: &mut Workspace, _: &actions::workspace::SuppressNotification, _, cx| {
                     if let Some((notification_id, _)) = workspace.notifications.pop() {
                         workspace.suppress_notification(&notification_id, cx);
                     }
@@ -1895,9 +1905,9 @@ mod tests {
         });
 
         root.update_in(cx, |_, window, cx| {
-            assert!(window.is_action_available(&NewWindow, cx));
-            assert!(window.is_action_available(&Open::default(), cx));
-            assert!(window.is_action_available(&CloseProject, cx));
+            assert!(window.is_action_available(&actions::workspace::NewWindow, cx));
+            assert!(window.is_action_available(&actions::workspace::Open::default(), cx));
+            assert!(window.is_action_available(&actions::workspace::CloseProject, cx));
         });
     }
 
@@ -1925,7 +1935,11 @@ mod tests {
         assert_item_labels(&pane, ["First", "Second", "Third*"], cx);
 
         pane.update_in(cx, |pane, window, cx| {
-            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+            pane.close_all_items(
+                &actions::pane::CloseAllItems { save_intent: None },
+                window,
+                cx,
+            )
         })
         .await
         .unwrap();
@@ -1946,7 +1960,11 @@ mod tests {
         assert_item_labels(&pane, ["First^", "Second^", "Third*^"], cx);
 
         let save = pane.update_in(cx, |pane, window, cx| {
-            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+            pane.close_all_items(
+                &actions::pane::CloseAllItems { save_intent: None },
+                window,
+                cx,
+            )
         });
 
         cx.executor().run_until_parked();
@@ -1960,7 +1978,11 @@ mod tests {
         assert_item_labels(&pane, ["First^", "Second^", "Third*^"], cx);
 
         let save = pane.update_in(cx, |pane, window, cx| {
-            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+            pane.close_all_items(
+                &actions::pane::CloseAllItems { save_intent: None },
+                window,
+                cx,
+            )
         });
 
         cx.executor().run_until_parked();
@@ -1977,7 +1999,11 @@ mod tests {
         assert_item_labels(&pane, ["First", "Second^", "Third*"], cx);
 
         let close_task = pane.update_in(cx, |pane, window, cx| {
-            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+            pane.close_all_items(
+                &actions::pane::CloseAllItems { save_intent: None },
+                window,
+                cx,
+            )
         });
 
         cx.executor().run_until_parked();
@@ -2017,7 +2043,11 @@ mod tests {
         assert_item_labels(&pane, ["First^", "Second*^"], cx);
 
         let close_task = pane.update_in(cx, |pane, window, cx| {
-            pane.close_all_items(&CloseAllItems { save_intent: None }, window, cx)
+            pane.close_all_items(
+                &actions::pane::CloseAllItems { save_intent: None },
+                window,
+                cx,
+            )
         });
 
         cx.executor().run_until_parked();
@@ -2070,7 +2100,7 @@ mod tests {
         assert_item_labels(&pane, ["First*^"], cx);
 
         let close_task = pane.update_in(cx, |pane, window, cx| {
-            pane.close_item_by_id(item.item_id(), SaveIntent::Close, window, cx)
+            pane.close_item_by_id(item.item_id(), actions::pane::SaveIntent::Close, window, cx)
         });
 
         cx.executor().run_until_parked();
@@ -2119,8 +2149,8 @@ mod tests {
 
         pane.update_in(cx, |pane, window, cx| {
             pane.close_all_items(
-                &CloseAllItems {
-                    save_intent: Some(SaveIntent::Save),
+                &actions::pane::CloseAllItems {
+                    save_intent: Some(actions::pane::SaveIntent::Save),
                 },
                 window,
                 cx,

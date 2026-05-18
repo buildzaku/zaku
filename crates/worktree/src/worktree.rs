@@ -41,11 +41,9 @@ pub use request::{
     serialize_request_file,
 };
 
-#[cfg(feature = "test-support")]
-use fs::RemoveOptions;
-
 use fs::{
-    FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, Watcher as FsWatcher,
+    FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, RemoveOptions,
+    Watcher as FsWatcher,
 };
 use util::{
     ResultExt,
@@ -85,25 +83,197 @@ impl LocalWorktree {
         &self,
         relative_paths: Vec<Arc<RelPath>>,
     ) -> oneshot::Receiver<()> {
-        let (completion_sender, completion_receiver) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.scan_requests_tx
             .try_send(ScanRequest {
                 relative_paths,
-                completion_senders: smallvec![completion_sender],
+                completion_senders: smallvec![tx],
             })
             .ok();
-        completion_receiver
+        rx
     }
 
     pub fn add_path_prefix_to_scan(&self, path_prefix: Arc<RelPath>) -> oneshot::Receiver<()> {
-        let (completion_sender, completion_receiver) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         self.path_prefixes_to_scan_tx
             .try_send(PathPrefixScanRequest {
                 path: path_prefix,
-                completion_senders: smallvec![completion_sender],
+                completion_senders: smallvec![tx],
             })
             .ok();
-        completion_receiver
+        rx
+    }
+
+    fn lowest_ancestor(&self, path: &RelPath) -> Arc<RelPath> {
+        let mut lowest_ancestor = None;
+        for path in path.ancestors() {
+            if self.entry_for_path(path).is_some() {
+                lowest_ancestor = Some(path.into());
+                break;
+            }
+        }
+
+        lowest_ancestor.unwrap_or_else(|| RelPath::empty().into())
+    }
+
+    pub fn refresh_entry(
+        &self,
+        path: Arc<RelPath>,
+        old_path: Option<&Arc<RelPath>>,
+        cx: &Context<Worktree>,
+    ) -> Task<anyhow::Result<Entry>> {
+        let paths = if let Some(old_path) = old_path {
+            vec![old_path.clone(), path.clone()]
+        } else {
+            vec![path.clone()]
+        };
+        let refresh = self.refresh_entries_for_paths(paths);
+        cx.spawn(async move |this, cx| {
+            refresh
+                .await
+                .map_err(|_| anyhow!("Failed to refresh entry"))?;
+            let new_entry = this.read_with(cx, |this, _| {
+                this.entry_for_path(&path).cloned().ok_or_else(|| {
+                    anyhow!("Could not find entry in worktree for {path:?} after refresh")
+                })
+            })??;
+            Ok(new_entry)
+        })
+    }
+
+    fn expand_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        cx: &Context<Worktree>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let path = self.entry_for_id(entry_id)?.path.clone();
+        let refresh = self.refresh_entries_for_paths(vec![path]);
+        Some(cx.background_spawn(async move {
+            refresh
+                .await
+                .map_err(|_| anyhow!("Failed to expand entry"))?;
+            Ok(())
+        }))
+    }
+
+    pub fn create_entry(
+        &self,
+        path: Arc<RelPath>,
+        is_dir: bool,
+        content: Option<Vec<u8>>,
+        cx: &Context<Worktree>,
+    ) -> Task<anyhow::Result<Entry>> {
+        let abs_path = self.absolutize(&path);
+        let fs = self.fs.clone();
+        let task_abs_path = abs_path.clone();
+        let write = cx.background_spawn(async move {
+            if is_dir {
+                fs.create_dir(&task_abs_path)
+                    .await
+                    .with_context(|| format!("creating directory {}", task_abs_path.display()))
+            } else {
+                fs.write(&task_abs_path, content.as_deref().unwrap_or(&[]))
+                    .await
+                    .with_context(|| format!("creating file {}", task_abs_path.display()))
+            }
+        });
+
+        let lowest_ancestor = self.lowest_ancestor(&path);
+        cx.spawn(async move |this, cx| {
+            write.await?;
+            let (result, refreshes) = this.update(cx, |worktree, cx| {
+                let Some(local_worktree) = worktree.as_local_mut() else {
+                    return (
+                        Task::ready(Err(anyhow!("Cannot refresh worktree"))),
+                        Vec::new(),
+                    );
+                };
+                let mut refreshes = Vec::new();
+                let Ok(refresh_paths) = path.strip_prefix(&lowest_ancestor) else {
+                    return (
+                        Task::ready(Err(anyhow!(
+                            "Could not refresh created entry at {}",
+                            abs_path.display()
+                        ))),
+                        Vec::new(),
+                    );
+                };
+                for refresh_path in refresh_paths.ancestors() {
+                    if refresh_path == RelPath::empty() {
+                        continue;
+                    }
+                    let refresh_full_path = lowest_ancestor.join(refresh_path);
+
+                    refreshes.push(local_worktree.refresh_entry(refresh_full_path, None, cx));
+                }
+
+                (
+                    local_worktree.refresh_entry(path.clone(), None, cx),
+                    refreshes,
+                )
+            })?;
+            for refresh in refreshes {
+                refresh.await.log_err();
+            }
+
+            result.await
+        })
+    }
+
+    pub fn delete_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        trash: bool,
+        cx: &Context<Worktree>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let entry = self.entry_for_id(entry_id)?.clone();
+        let abs_path = self.absolutize(&entry.path);
+        let fs = self.fs.clone();
+
+        let delete = cx.background_spawn(async move {
+            match (entry.is_file(), trash) {
+                (true, true) => fs.trash(&abs_path, RemoveOptions::default()).await?,
+                (false, true) => {
+                    fs.trash(
+                        &abs_path,
+                        RemoveOptions {
+                            recursive: true,
+                            ignore_if_not_exists: false,
+                        },
+                    )
+                    .await?;
+                }
+                (true, false) => {
+                    fs.remove_file(&abs_path, RemoveOptions::default()).await?;
+                }
+                (false, false) => {
+                    fs.remove_dir(
+                        &abs_path,
+                        RemoveOptions {
+                            recursive: true,
+                            ignore_if_not_exists: false,
+                        },
+                    )
+                    .await?;
+                }
+            }
+
+            anyhow::Ok(entry.path)
+        });
+
+        Some(cx.spawn(async move |this, cx| {
+            let path = delete.await?;
+            let refresh = this.update(cx, |this, _| {
+                this.as_local()
+                    .map(|worktree| worktree.refresh_entries_for_paths(vec![path]))
+                    .ok_or_else(|| anyhow!("Cannot refresh worktree"))
+            })??;
+            refresh
+                .await
+                .map_err(|_| anyhow!("Failed to refresh deleted entry"))?;
+
+            Ok(())
+        }))
     }
 
     pub fn scan_complete(&self) -> impl Future<Output = ()> + use<> {
@@ -128,7 +298,7 @@ impl LocalWorktree {
         self.start_background_scanner(scan_requests_rx, path_prefixes_to_scan_rx, cx);
     }
 
-    fn update_abs_path_and_refresh(
+    pub fn update_abs_path_and_refresh(
         &mut self,
         new_path: Arc<SanitizedPath>,
         cx: &Context<Worktree>,
@@ -261,6 +431,8 @@ impl WorktreeId {
 pub struct ProjectEntryId(usize);
 
 impl ProjectEntryId {
+    pub const MAX: Self = Self(usize::MAX);
+
     pub fn new(counter: &AtomicUsize) -> Self {
         Self(counter.fetch_add(1, SeqCst))
     }
@@ -390,6 +562,16 @@ impl Worktree {
         }
     }
 
+    pub fn expand_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        cx: &Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        match self {
+            Self::Local(worktree) => worktree.expand_entry(entry_id, cx),
+        }
+    }
+
     pub fn write_request_file(
         &self,
         path: Arc<RelPath>,
@@ -421,6 +603,29 @@ impl Worktree {
                 .map_err(|_| anyhow!("Failed to refresh saved request file"))?;
             Ok(())
         })
+    }
+
+    pub fn create_entry(
+        &mut self,
+        path: Arc<RelPath>,
+        is_directory: bool,
+        content: Option<Vec<u8>>,
+        cx: &Context<Self>,
+    ) -> Task<anyhow::Result<Entry>> {
+        match self {
+            Self::Local(worktree) => worktree.create_entry(path, is_directory, content, cx),
+        }
+    }
+
+    pub fn delete_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        trash: bool,
+        cx: &Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        match self {
+            Self::Local(worktree) => worktree.delete_entry(entry_id, trash, cx),
+        }
     }
 
     pub fn snapshot(&self) -> Snapshot {
@@ -876,25 +1081,18 @@ pub struct LocalSnapshot {
 
 impl LocalSnapshot {
     fn insert_entry(&mut self, entry: Entry) -> Entry {
-        let old_entry = self
+        let removed = self
             .snapshot
             .entries_by_path
-            .get(&PathKey(entry.path.clone()), ())
-            .cloned();
-        if let Some(old_entry) = old_entry
-            && old_entry.id != entry.id
+            .insert_or_replace(entry.clone(), ());
+        if let Some(removed) = removed
+            && removed.id != entry.id
         {
-            self.snapshot
-                .entries_by_id
-                .edit(vec![Edit::Remove(old_entry.id)], ());
+            self.snapshot.entries_by_id.remove(&removed.id, ());
         }
-
         self.snapshot
             .entries_by_id
-            .edit(vec![Edit::Insert(entry.to_path_entry())], ());
-        self.snapshot
-            .entries_by_path
-            .edit(vec![Edit::Insert(entry.clone())], ());
+            .insert_or_replace(entry.to_path_entry(), ());
 
         entry
     }
@@ -1972,7 +2170,6 @@ impl BackgroundScannerState {
         let mut entries_by_path_edits = vec![Edit::Insert(parent_entry)];
         let mut entries_by_id_edits = Vec::new();
         for entry in entries {
-            self.removed_entries.remove(&entry.inode);
             entries_by_id_edits.push(Edit::Insert(entry.to_path_entry()));
             entries_by_path_edits.push(Edit::Insert(entry));
         }

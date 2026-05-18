@@ -7,9 +7,8 @@ use db::{AppDatabase, kv::KeyValueStore};
 use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::{
-    OpenMode, OpenResult, Root, SERIALIZATION_THROTTLE_TIME, SharedState, Workspace, WorkspaceDb,
-};
+use workspace::{OpenMode, OpenResult, Root, SharedState, Workspace, WorkspaceDb};
+use worktree::WorktreeModelHandle;
 
 fn init_test(shared_state: Arc<SharedState>, app_db: AppDatabase, cx: &mut TestAppContext) {
     cx.update(|cx| {
@@ -80,16 +79,19 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
             .workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
-
-        let flush_task = result
+        let worktree = result.workspace.read_with(cx, |workspace, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
+        result
             .window
             .update(cx, |root, window, cx| {
                 root.workspace().update(cx, |workspace, cx| {
                     workspace.flush_serialization(window, cx)
                 })
             })
-            .unwrap();
-        flush_task.await;
+            .unwrap()
+            .await;
 
         open_results.push(result);
     }
@@ -130,6 +132,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
             .update(cx, |_, window, _| window.remove_window())
             .unwrap();
     }
+    cx.run_until_parked();
 
     let restored_session = Session::new(Uuid::new_v4().to_string(), kv_store).await;
     cx.update(|cx| {
@@ -159,9 +162,19 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
+        let worktree = workspace.read_with(cx, |workspace, cx| {
+            workspace.project().read(cx).worktree(cx).unwrap()
+        });
+        worktree.flush_fs_events(cx).await;
+        window
+            .update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.flush_serialization(window, cx)
+                })
+            })
+            .unwrap()
+            .await;
     }
-    cx.executor().advance_clock(SERIALIZATION_THROTTLE_TIME);
-    cx.run_until_parked();
 
     let recent_workspace_paths = workspace_db
         .recent_workspaces_on_disk(temp_fs.as_ref())
