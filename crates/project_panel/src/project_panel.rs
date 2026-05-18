@@ -5,7 +5,12 @@ use gpui::{
     Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use smallvec::SmallVec;
-use std::{cmp, ops::Range, path::Path, sync::Arc};
+use std::{
+    cmp,
+    ops::Range,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use actions::{
     menu::{Cancel, Confirm, SelectFirst, SelectLast, SelectNext, SelectPrevious},
@@ -675,6 +680,11 @@ impl ProjectPanel {
             menu.context(self.focus_handle.clone())
                 .action("New Request", Box::new(project_panel::NewFile))
                 .action("New Collection", Box::new(project_panel::NewDirectory))
+                .separator()
+                .action(
+                    ui::utils::reveal_in_file_manager_label(),
+                    Box::new(project_panel::RevealInFileManager),
+                )
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
@@ -702,6 +712,18 @@ impl ProjectPanel {
         cx: &mut Context<Self>,
     ) {
         self.add_entry(true, window, cx);
+    }
+
+    fn reveal_in_file_manager(
+        &mut self,
+        _: &project_panel::RevealInFileManager,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(path) = self.reveal_in_file_manager_path(cx) {
+            self.project
+                .update(cx, |project, cx| project.reveal_path(&path, cx));
+        }
     }
 
     fn add_entry(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -1118,6 +1140,24 @@ impl ProjectPanel {
             focus_opened_item,
             allow_preview,
         });
+    }
+
+    fn reveal_in_file_manager_path(&self, cx: &App) -> Option<PathBuf> {
+        let project = self.project.read(cx);
+        if let Some(selection) = self.selection
+            && let Some(worktree) = project.worktree_for_entry(selection.0, cx)
+        {
+            let worktree = worktree.read(cx);
+            if let Some(entry) = worktree.entry_for_id(selection.0) {
+                return Some(worktree.absolutize(&entry.path));
+            }
+        }
+
+        let root_entry_id = project.snapshot(cx)?.root_entry()?.id;
+        let worktree = project.worktree_for_entry(root_entry_id, cx)?;
+        let worktree = worktree.read(cx);
+        let root_entry = worktree.entry_for_id(root_entry_id)?;
+        Some(worktree.absolutize(&root_entry.path))
     }
 
     fn toggle_expanded(
@@ -1663,6 +1703,7 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::collapse_selected_entry_and_children))
             .on_action(cx.listener(Self::new_file))
             .on_action(cx.listener(Self::new_directory))
+            .on_action(cx.listener(Self::reveal_in_file_manager))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::open))

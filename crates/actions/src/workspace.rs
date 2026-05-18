@@ -68,6 +68,8 @@ pub mod project_panel {
             NewFile,
             /// Open the selected entry.
             Open,
+            /// Reveal the selected item in the system file manager.
+            RevealInFileManager,
             /// Toggle focus on the project panel.
             ToggleFocus
         ]

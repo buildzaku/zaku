@@ -54,7 +54,8 @@
       "new": "project_panel::NewFile",
       "ctrl-n": "project_panel::NewFile",
       "alt-new": "project_panel::NewDirectory",
-      "alt-ctrl-n": "project_panel::NewDirectory"
+      "alt-ctrl-n": "project_panel::NewDirectory",
+      "alt-ctrl-r": "project_panel::RevealInFileManager"
     }
   },
   {

@@ -54,7 +54,8 @@
       "ctrl-left": "project_panel::CollapseAllEntries",
       "right": "project_panel::ExpandSelectedEntry",
       "ctrl-n": "project_panel::NewFile",
-      "alt-n": "project_panel::NewDirectory"
+      "alt-n": "project_panel::NewDirectory",
+      "ctrl-alt-r": "project_panel::RevealInFileManager"
     }
   },
   {

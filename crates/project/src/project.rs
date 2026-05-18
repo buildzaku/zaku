@@ -261,6 +261,10 @@ impl Project {
         )
     }
 
+    pub fn reveal_path(&self, path: &Path, cx: &mut Context<Self>) {
+        cx.reveal_path(path);
+    }
+
     pub fn project_path_for_absolute_path(&self, abs_path: &Path, cx: &App) -> Option<ProjectPath> {
         self.worktree_store
             .read(cx)
