@@ -1,21 +1,19 @@
 use gpui::{
-    Action, Anchor, AnyElement, App, Bounds, ClickEvent, Context, DismissEvent, Div, Entity,
-    EventEmitter, FocusHandle, Focusable, FontWeight, KeyContext, ListHorizontalSizingBehavior,
-    ListSizingBehavior, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollStrategy,
-    Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
+    Action, Anchor, AnyElement, App, Bounds, ClickEvent, ClipboardItem, Context, DismissEvent, Div,
+    Entity, EventEmitter, FocusHandle, Focusable, FontWeight, KeyContext,
+    ListHorizontalSizingBehavior, ListSizingBehavior, MouseButton, MouseDownEvent, Pixels, Point,
+    Render, ScrollStrategy, Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity,
+    Window, prelude::*,
 };
 use smallvec::SmallVec;
 use std::{
     cmp,
+    collections::BTreeSet,
     ops::Range,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use actions::{
-    menu::{Cancel, Confirm, SelectFirst, SelectLast, SelectNext, SelectPrevious},
-    workspace::project_panel,
-};
 use editor::{Editor, EditorEvent};
 use project::{
     Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, ProjectPath, RequestFileState,
@@ -37,9 +35,11 @@ use workspace::{Panel, Workspace, pane::Pane};
 pub fn init(cx: &mut App) {
     cx.observe_new(
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
-            workspace.register_action(|workspace, _: &project_panel::ToggleFocus, window, cx| {
-                workspace.toggle_panel_focus::<ProjectPanel>(window, cx);
-            });
+            workspace.register_action(
+                |workspace, _: &actions::project_panel::ToggleFocus, window, cx| {
+                    workspace.toggle_panel_focus::<ProjectPanel>(window, cx);
+                },
+            );
         },
     )
     .detach();
@@ -449,7 +449,12 @@ impl ProjectPanel {
         }
     }
 
-    fn select_previous(&mut self, _: &SelectPrevious, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_previous(
+        &mut self,
+        _: &actions::menu::SelectPrevious,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(selection) = self.selection {
             let Some(current_index) = self.index_for_selection(selection) else {
                 return;
@@ -469,11 +474,16 @@ impl ProjectPanel {
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
         } else {
-            self.select_first(&SelectFirst, window, cx);
+            self.select_first(&actions::menu::SelectFirst, window, cx);
         }
     }
 
-    fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_next(
+        &mut self,
+        _: &actions::menu::SelectNext,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(selection) = self.selection {
             let Some(current_index) = self.index_for_selection(selection) else {
                 return;
@@ -493,11 +503,16 @@ impl ProjectPanel {
             window.focus(&self.focus_handle, cx);
             self.autoscroll(cx);
         } else {
-            self.select_first(&SelectFirst, window, cx);
+            self.select_first(&actions::menu::SelectFirst, window, cx);
         }
     }
 
-    fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_first(
+        &mut self,
+        _: &actions::menu::SelectFirst,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(entry) = self.tree_state.visible_entries.first() {
             let selection = SelectedEntry(entry.id);
             self.selection = Some(selection);
@@ -509,7 +524,12 @@ impl ProjectPanel {
         }
     }
 
-    fn select_last(&mut self, _: &SelectLast, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_last(
+        &mut self,
+        _: &actions::menu::SelectLast,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(entry) = self.tree_state.visible_entries.last() {
             let selection = SelectedEntry(entry.id);
             self.selection = Some(selection);
@@ -520,7 +540,7 @@ impl ProjectPanel {
 
     fn expand_selected_entry(
         &mut self,
-        _: &project_panel::ExpandSelectedEntry,
+        _: &actions::project_panel::ExpandSelectedEntry,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -549,7 +569,7 @@ impl ProjectPanel {
         };
 
         match search_result {
-            Ok(_) => self.select_next(&SelectNext, window, cx),
+            Ok(_) => self.select_next(&actions::menu::SelectNext, window, cx),
             Err(index) => {
                 let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() else {
                     return;
@@ -564,7 +584,7 @@ impl ProjectPanel {
 
     fn collapse_selected_entry(
         &mut self,
-        _: &project_panel::CollapseSelectedEntry,
+        _: &actions::project_panel::CollapseSelectedEntry,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -618,7 +638,7 @@ impl ProjectPanel {
 
     fn collapse_selected_entry_and_children(
         &mut self,
-        _: &project_panel::CollapseSelectedEntryAndChildren,
+        _: &actions::project_panel::CollapseSelectedEntryAndChildren,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -633,7 +653,7 @@ impl ProjectPanel {
 
     fn collapse_all_entries(
         &mut self,
-        _: &project_panel::CollapseAllEntries,
+        _: &actions::project_panel::CollapseAllEntries,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -678,12 +698,21 @@ impl ProjectPanel {
 
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
-                .action("New Request", Box::new(project_panel::NewFile))
-                .action("New Collection", Box::new(project_panel::NewDirectory))
+                .action("New Request", Box::new(actions::project_panel::NewFile))
+                .action(
+                    "New Collection",
+                    Box::new(actions::project_panel::NewDirectory),
+                )
                 .separator()
                 .action(
                     ui::utils::reveal_in_file_manager_label(),
-                    Box::new(project_panel::RevealInFileManager),
+                    Box::new(actions::project_panel::RevealInFileManager),
+                )
+                .separator()
+                .action("Copy Path", Box::new(actions::workspace::CopyPath))
+                .action(
+                    "Copy Relative Path",
+                    Box::new(actions::workspace::CopyRelativePath),
                 )
         });
 
@@ -698,7 +727,7 @@ impl ProjectPanel {
 
     fn new_file(
         &mut self,
-        _: &project_panel::NewFile,
+        _: &actions::project_panel::NewFile,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -707,16 +736,71 @@ impl ProjectPanel {
 
     fn new_directory(
         &mut self,
-        _: &project_panel::NewDirectory,
+        _: &actions::project_panel::NewDirectory,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.add_entry(true, window, cx);
     }
 
+    fn copy_path(
+        &mut self,
+        _: &actions::workspace::CopyPath,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let abs_file_paths = {
+            let project = self.project.read(cx);
+            self.effective_entries()
+                .into_iter()
+                .filter_map(|entry| {
+                    let project_path = project.path_for_entry(entry.0, cx)?;
+                    Some(
+                        project
+                            .worktree_for_id(project_path.worktree_id, cx)?
+                            .read(cx)
+                            .absolutize(&project_path.path)
+                            .to_string_lossy()
+                            .to_string(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        if !abs_file_paths.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(abs_file_paths.join("\n")));
+        }
+    }
+
+    fn copy_relative_path(
+        &mut self,
+        _: &actions::workspace::CopyRelativePath,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let path_style = self.project.read(cx).path_style(cx);
+        let file_paths = {
+            let project = self.project.read(cx);
+            self.effective_entries()
+                .into_iter()
+                .filter_map(|entry| {
+                    Some(
+                        project
+                            .path_for_entry(entry.0, cx)?
+                            .path
+                            .display(path_style)
+                            .into_owned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        if !file_paths.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(file_paths.join("\n")));
+        }
+    }
+
     fn reveal_in_file_manager(
         &mut self,
-        _: &project_panel::RevealInFileManager,
+        _: &actions::project_panel::RevealInFileManager,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -804,13 +888,13 @@ impl ProjectPanel {
         cx.notify();
     }
 
-    fn confirm(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
+    fn confirm(&mut self, _: &actions::menu::Confirm, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(task) = self.confirm_edit(true, window, cx) {
             task.detach_and_log_err(cx);
         }
     }
 
-    fn cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
+    fn cancel(&mut self, _: &actions::menu::Cancel, window: &mut Window, cx: &mut Context<Self>) {
         self.marked_entries.clear();
         cx.notify();
         self.discard_edit_state(window, cx);
@@ -1107,7 +1191,12 @@ impl ProjectPanel {
         }
     }
 
-    fn open(&mut self, _: &project_panel::Open, window: &mut Window, cx: &mut Context<Self>) {
+    fn open(
+        &mut self,
+        _: &actions::project_panel::Open,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(selection) = self.selection else {
             return;
         };
@@ -1158,6 +1247,20 @@ impl ProjectPanel {
         let worktree = worktree.read(cx);
         let root_entry = worktree.entry_for_id(root_entry_id)?;
         Some(worktree.absolutize(&root_entry.path))
+    }
+
+    fn effective_entries(&self) -> BTreeSet<SelectedEntry> {
+        if let Some(selection) = self.selection {
+            if self.marked_entries.is_empty() {
+                return BTreeSet::from([selection]);
+            }
+
+            if self.marked_entries.len() == 1 && !self.marked_entries.contains(&selection) {
+                return BTreeSet::from([selection]);
+            }
+        }
+
+        self.marked_entries.iter().copied().collect::<BTreeSet<_>>()
     }
 
     fn toggle_expanded(
@@ -1664,7 +1767,7 @@ impl Panel for ProjectPanel {
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {
-        project_panel::ToggleFocus.boxed_clone()
+        actions::project_panel::ToggleFocus.boxed_clone()
     }
 
     fn starts_open(&self, _window: &Window, cx: &App) -> bool {
@@ -1703,6 +1806,8 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::collapse_selected_entry_and_children))
             .on_action(cx.listener(Self::new_file))
             .on_action(cx.listener(Self::new_directory))
+            .on_action(cx.listener(Self::copy_path))
+            .on_action(cx.listener(Self::copy_relative_path))
             .on_action(cx.listener(Self::reveal_in_file_manager))
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
@@ -1871,7 +1976,6 @@ mod tests {
     use serde_json::json;
     use std::{collections::HashSet, ops::Range, sync::Arc};
 
-    use actions::workspace::project_panel;
     use fs::Fs;
     use project::{Project, ProjectPath, RequestFileState};
     use request_editor::RequestEditor;
@@ -2114,7 +2218,7 @@ mod tests {
 
         select_path(&panel, "project", cx);
         panel.update_in(cx, |panel, window, cx| {
-            panel.new_file(&project_panel::NewFile, window, cx);
+            panel.new_file(&actions::project_panel::NewFile, window, cx);
         });
         cx.run_until_parked();
 
@@ -2194,7 +2298,7 @@ mod tests {
 
         select_path(&panel, "project", cx);
         panel.update_in(cx, |panel, window, cx| {
-            panel.new_directory(&project_panel::NewDirectory, window, cx);
+            panel.new_directory(&actions::project_panel::NewDirectory, window, cx);
         });
         cx.run_until_parked();
 
@@ -2294,7 +2398,7 @@ mod tests {
         toggle_expand_dir(&panel, "project/collection", cx);
         select_path(&panel, "project/collection/first.toml", cx);
         panel.update_in(cx, |panel, window, cx| {
-            panel.open(&project_panel::Open, window, cx);
+            panel.open(&actions::project_panel::Open, window, cx);
         });
         cx.run_until_parked();
 
@@ -2316,7 +2420,7 @@ mod tests {
 
         select_path(&panel, "project/collection/second.toml", cx);
         panel.update_in(cx, |panel, window, cx| {
-            panel.open(&project_panel::Open, window, cx);
+            panel.open(&actions::project_panel::Open, window, cx);
         });
         cx.run_until_parked();
 
@@ -2364,7 +2468,7 @@ mod tests {
 
         select_path(&panel, "project", cx);
         panel.update_in(cx, |panel, window, cx| {
-            panel.new_file(&project_panel::NewFile, window, cx);
+            panel.new_file(&actions::project_panel::NewFile, window, cx);
         });
         cx.run_until_parked();
 

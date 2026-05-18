@@ -55,6 +55,8 @@
       "right": "project_panel::ExpandSelectedEntry",
       "ctrl-n": "project_panel::NewFile",
       "alt-n": "project_panel::NewDirectory",
+      "shift-alt-c": "workspace::CopyPath",
+      "ctrl-k ctrl-shift-c": "workspace::CopyRelativePath",
       "ctrl-alt-r": "project_panel::RevealInFileManager"
     }
   },
