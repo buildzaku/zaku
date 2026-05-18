@@ -8483,6 +8483,7 @@ dependencies = [
  "ui",
  "uuid",
  "workspace",
+ "worktree",
 ]
 
 [[package]]
