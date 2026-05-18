@@ -2544,6 +2544,7 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::open))
             .flex()
             .flex_col()
+            .relative()
             .size_full()
             .bg(colors.panel_background)
             .when_some(root_header, |this, root_header| this.child(root_header))
@@ -2704,6 +2705,17 @@ impl Render for ProjectPanel {
                     .flex_1()
                     .w_full(),
             )
+            .when(self.context_menu.is_some(), |this| {
+                this.child(
+                    gpui::div()
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .bottom_0()
+                        .left_0()
+                        .occlude(),
+                )
+            })
             .children(self.context_menu.as_ref().map(|(menu, position, _)| {
                 gpui::deferred(
                     gpui::anchored()
