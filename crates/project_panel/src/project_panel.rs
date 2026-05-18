@@ -1194,6 +1194,7 @@ impl ProjectPanel {
                 return anyhow::Ok(());
             }
 
+            let mut pending_deletes = Vec::new();
             for (entry_id, _) in file_paths {
                 let delete = panel.update(cx, |panel, cx| {
                     panel.project.update(cx, |project, cx| {
@@ -1202,6 +1203,10 @@ impl ProjectPanel {
                             .context("no such entry")
                     })
                 })??;
+                pending_deletes.push(delete);
+            }
+
+            for delete in pending_deletes {
                 delete.await?;
             }
 
