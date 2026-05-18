@@ -113,11 +113,16 @@ impl KeyBinding {
 fn render_key(
     key: &str,
     color: Option<Color>,
-    _platform_style: PlatformStyle,
+    platform_style: PlatformStyle,
     size: impl Into<Option<AbsoluteLength>>,
 ) -> AnyElement {
-    let key = &util::capitalize(key);
-    Key::new(key, color).size(size).into_any_element()
+    let key_icon = icon_for_key(key, platform_style);
+    if let Some(icon) = key_icon {
+        KeyIcon::new(icon, color).size(size).into_any_element()
+    } else {
+        let key = util::capitalize(key);
+        Key::new(&key, color).size(size).into_any_element()
+    }
 }
 
 impl RenderOnce for KeyBinding {
@@ -204,6 +209,17 @@ pub fn render_keybinding_keystroke(
         ));
         elements.push(render_key(keystroke.key(), color, platform_style, size));
         elements
+    }
+}
+
+fn icon_for_key(key: &str, platform_style: PlatformStyle) -> Option<IconName> {
+    match key {
+        "backspace" | "delete" => Some(IconName::Backspace),
+        "shift" if platform_style == PlatformStyle::Mac => Some(IconName::Shift),
+        "control" | "function" if platform_style == PlatformStyle::Mac => Some(IconName::Control),
+        "platform" if platform_style == PlatformStyle::Mac => Some(IconName::Command),
+        "alt" if platform_style == PlatformStyle::Mac => Some(IconName::Option),
+        _ => None,
     }
 }
 
