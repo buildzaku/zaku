@@ -59,6 +59,10 @@
       "right": "project_panel::ExpandSelectedEntry",
       "cmd-n": "project_panel::NewFile",
       "alt-cmd-n": "project_panel::NewDirectory",
+      "cmd-x": "project_panel::Cut",
+      "cmd-c": "project_panel::Copy",
+      "cmd-v": "project_panel::Paste",
+      "cmd-d": "project_panel::Duplicate",
       "cmd-alt-c": "workspace::CopyPath",
       "alt-cmd-shift-c": "workspace::CopyRelativePath",
       "alt-cmd-r": "project_panel::RevealInFileManager"

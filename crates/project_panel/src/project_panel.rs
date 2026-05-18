@@ -17,7 +17,7 @@ use std::{
 use editor::{Editor, EditorEvent};
 use project::{
     Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, ProjectPath, RequestFileState,
-    Snapshot, WorktreeId,
+    Snapshot, Worktree, WorktreeId,
 };
 use theme::ActiveTheme;
 use ui::{
@@ -113,6 +113,40 @@ struct EditState {
     validation_state: ValidationState,
 }
 
+#[derive(Clone, Debug)]
+enum ClipboardEntry {
+    Copied(BTreeSet<SelectedEntry>),
+    Cut(BTreeSet<SelectedEntry>),
+}
+
+enum PasteTask {
+    Rename {
+        task: Task<anyhow::Result<Entry>>,
+    },
+    Copy {
+        task: Task<anyhow::Result<Option<Entry>>>,
+    },
+}
+
+impl ClipboardEntry {
+    fn is_cut(&self) -> bool {
+        matches!(self, Self::Cut(_))
+    }
+
+    fn items(&self) -> &BTreeSet<SelectedEntry> {
+        match self {
+            Self::Copied(entries) | Self::Cut(entries) => entries,
+        }
+    }
+
+    fn into_copy_entry(self) -> Self {
+        match self {
+            Self::Copied(_) => self,
+            Self::Cut(entries) => Self::Copied(entries),
+        }
+    }
+}
+
 pub struct ProjectPanel {
     focus_handle: FocusHandle,
     project: Entity<Project>,
@@ -124,6 +158,7 @@ pub struct ProjectPanel {
     selection: Option<SelectedEntry>,
     context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     file_name_editor: Entity<Editor>,
+    clipboard: Option<ClipboardEntry>,
     mouse_down: bool,
     _project_subscription: Subscription,
 }
@@ -189,6 +224,7 @@ impl ProjectPanel {
                 selection: None,
                 context_menu: None,
                 file_name_editor,
+                clipboard: None,
                 mouse_down: false,
                 _project_subscription: project_subscription,
             };
@@ -695,6 +731,7 @@ impl ProjectPanel {
         }
 
         self.selection = Some(SelectedEntry(entry_id));
+        let has_pasteable_content = self.has_pasteable_content();
 
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
@@ -707,6 +744,15 @@ impl ProjectPanel {
                 .action(
                     ui::utils::reveal_in_file_manager_label(),
                     Box::new(actions::project_panel::RevealInFileManager),
+                )
+                .separator()
+                .action("Cut", Box::new(actions::project_panel::Cut))
+                .action("Copy", Box::new(actions::project_panel::Copy))
+                .action("Duplicate", Box::new(actions::project_panel::Duplicate))
+                .action_disabled_when(
+                    !has_pasteable_content,
+                    "Paste",
+                    Box::new(actions::project_panel::Paste),
                 )
                 .separator()
                 .action("Copy Path", Box::new(actions::workspace::CopyPath))
@@ -743,6 +789,168 @@ impl ProjectPanel {
         self.add_entry(true, window, cx);
     }
 
+    fn cut(&mut self, _: &actions::project_panel::Cut, _: &mut Window, cx: &mut Context<Self>) {
+        let entries = self.disjoint_effective_entries(cx);
+        if !entries.is_empty() {
+            self.write_entries_to_system_clipboard(&entries, cx);
+            self.clipboard = Some(ClipboardEntry::Cut(entries));
+            cx.notify();
+        }
+    }
+
+    fn copy(&mut self, _: &actions::project_panel::Copy, _: &mut Window, cx: &mut Context<Self>) {
+        let entries = self.disjoint_effective_entries(cx);
+        if !entries.is_empty() {
+            self.write_entries_to_system_clipboard(&entries, cx);
+            self.clipboard = Some(ClipboardEntry::Copied(entries));
+            cx.notify();
+        }
+    }
+
+    fn create_paste_path(
+        source: SelectedEntry,
+        (worktree, target_entry): (Entity<Worktree>, &Entry),
+        cx: &App,
+    ) -> Option<(Arc<RelPath>, Option<Range<usize>>)> {
+        let mut new_path = target_entry.path.to_rel_path_buf();
+        if target_entry.is_file() || (target_entry.is_dir() && target_entry.id == source.0) {
+            new_path.pop();
+        }
+
+        let source_entry = worktree.read(cx).entry_for_id(source.0)?.clone();
+        let clipboard_entry_file_name = source_entry.path.file_name()?.to_string();
+        new_path.push(RelPath::unix(&clipboard_entry_file_name).ok()?);
+
+        let (extension, file_name_without_extension) = if source_entry.is_file() {
+            (
+                new_path.extension().map(ToString::to_string),
+                new_path.file_stem()?.to_string(),
+            )
+        } else {
+            (None, clipboard_entry_file_name.clone())
+        };
+
+        let file_name_len = file_name_without_extension.len();
+        let mut disambiguation_range = None;
+        let mut index = 0;
+        {
+            let worktree = worktree.read(cx);
+            while worktree.entry_for_path(new_path.as_rel_path()).is_some() {
+                new_path.pop();
+
+                let mut new_file_name = file_name_without_extension.clone();
+                let disambiguation = " copy";
+                let mut disambiguation_len = disambiguation.len();
+                new_file_name.push_str(disambiguation);
+
+                if index > 0 {
+                    let extra_disambiguation = format!(" {index}");
+                    disambiguation_len += extra_disambiguation.len();
+                    new_file_name.push_str(&extra_disambiguation);
+                }
+                if let Some(extension) = extension.as_ref() {
+                    new_file_name.push('.');
+                    new_file_name.push_str(extension);
+                }
+
+                new_path.push(RelPath::unix(&new_file_name).ok()?);
+                disambiguation_range = Some(0..(file_name_len + disambiguation_len));
+                index += 1;
+            }
+        }
+
+        Some((new_path.as_rel_path().into(), disambiguation_range))
+    }
+
+    fn paste(
+        &mut self,
+        _: &actions::project_panel::Paste,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((worktree, entry)) = self.selected_entry_handle(cx) else {
+            return;
+        };
+        let entry = entry.clone();
+        let worktree_id = worktree.read(cx).id();
+        let Some(clipboard_entries) = self
+            .clipboard
+            .as_ref()
+            .filter(|clipboard| !clipboard.items().is_empty())
+        else {
+            return;
+        };
+
+        let clip_is_cut = clipboard_entries.is_cut();
+        let mut paste_tasks = Vec::new();
+        for clipboard_entry in clipboard_entries.items() {
+            let Some((new_path, _)) =
+                Self::create_paste_path(*clipboard_entry, (worktree.clone(), &entry), cx)
+            else {
+                continue;
+            };
+            let destination: ProjectPath = (worktree_id, new_path).into();
+            let task = if clip_is_cut {
+                let task = self.project.update(cx, |project, cx| {
+                    project.rename_entry(clipboard_entry.0, destination, cx)
+                });
+                PasteTask::Rename { task }
+            } else {
+                let task = self.project.update(cx, |project, cx| {
+                    project.copy_entry(clipboard_entry.0, destination, cx)
+                });
+                PasteTask::Copy { task }
+            };
+            paste_tasks.push(task);
+        }
+
+        let item_count = paste_tasks.len();
+        cx.spawn_in(window, async move |project_panel, cx| {
+            let mut last_succeeded = None;
+            for task in paste_tasks {
+                match task {
+                    PasteTask::Rename { task } => {
+                        last_succeeded = Some(task.await?);
+                    }
+                    PasteTask::Copy { task } => {
+                        if let Some(entry) = task.await? {
+                            last_succeeded = Some(entry);
+                        }
+                    }
+                }
+            }
+
+            if let Some(entry) = last_succeeded {
+                project_panel.update_in(cx, |project_panel, window, cx| {
+                    project_panel.selection = Some(SelectedEntry(entry.id));
+                    project_panel.marked_entries.clear();
+                    project_panel.expand_to_selection(cx);
+                    project_panel.update_visible_entries(None, false, item_count == 1, window, cx);
+                    cx.notify();
+                })?;
+            }
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+
+        if clip_is_cut {
+            self.clipboard = self.clipboard.take().map(ClipboardEntry::into_copy_entry);
+        }
+
+        self.expand_entry(entry.id, cx);
+    }
+
+    fn duplicate(
+        &mut self,
+        _: &actions::project_panel::Duplicate,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.copy(&actions::project_panel::Copy, window, cx);
+        self.paste(&actions::project_panel::Paste, window, cx);
+    }
+
     fn copy_path(
         &mut self,
         _: &actions::workspace::CopyPath,
@@ -757,9 +965,7 @@ impl ProjectPanel {
                     let project_path = project.path_for_entry(entry.0, cx)?;
                     Some(
                         project
-                            .worktree_for_id(project_path.worktree_id, cx)?
-                            .read(cx)
-                            .absolutize(&project_path.path)
+                            .absolute_path(&project_path, cx)?
                             .to_string_lossy()
                             .to_string(),
                     )
@@ -1136,6 +1342,37 @@ impl ProjectPanel {
         Some(())
     }
 
+    fn expand_entry(&mut self, entry_id: ProjectEntryId, cx: &mut Context<Self>) {
+        self.project.update(cx, |project, cx| {
+            if let Some(worktree) = project.worktree_for_entry(entry_id, cx)
+                && let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut()
+            {
+                project.expand_entry(entry_id, cx);
+                let worktree = worktree.read(cx);
+
+                if let Some(mut entry) = worktree.entry_for_id(entry_id) {
+                    loop {
+                        if entry.is_dir()
+                            && let Err(index) = expanded_dir_ids.binary_search(&entry.id)
+                        {
+                            expanded_dir_ids.insert(index, entry.id);
+                        }
+
+                        if let Some(parent_entry) = entry
+                            .path
+                            .parent()
+                            .and_then(|path| worktree.entry_for_path(path))
+                        {
+                            entry = parent_entry;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     fn create_new_entry(parent_entry: &Entry, new_entry_kind: EntryKind) -> Entry {
         Entry {
             id: Self::NEW_ENTRY_ID,
@@ -1249,6 +1486,81 @@ impl ProjectPanel {
         Some(worktree.absolutize(&root_entry.path))
     }
 
+    fn selected_entry_handle<'a>(&self, cx: &'a App) -> Option<(Entity<Worktree>, &'a Entry)> {
+        let selection = self.selection?;
+        let project = self.project.read(cx);
+        let worktree = project.worktree_for_entry(selection.0, cx)?;
+        let entry = worktree.read(cx).entry_for_id(selection.0)?;
+        Some((worktree, entry))
+    }
+
+    fn write_entries_to_system_clipboard(&self, entries: &BTreeSet<SelectedEntry>, cx: &mut App) {
+        let project = self.project.read(cx);
+        let paths = entries
+            .iter()
+            .filter_map(|entry| {
+                let project_path = project.path_for_entry(entry.0, cx)?;
+                Some(
+                    project
+                        .absolute_path(&project_path, cx)?
+                        .to_string_lossy()
+                        .to_string(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        if !paths.is_empty() {
+            cx.write_to_clipboard(ClipboardItem::new_string(paths.join("\n")));
+        }
+    }
+
+    fn has_pasteable_content(&self) -> bool {
+        self.clipboard
+            .as_ref()
+            .is_some_and(|clipboard| !clipboard.items().is_empty())
+    }
+
+    fn disjoint_entries(
+        &self,
+        entries: BTreeSet<SelectedEntry>,
+        cx: &App,
+    ) -> BTreeSet<SelectedEntry> {
+        let mut sanitized_entries = BTreeSet::new();
+        if entries.is_empty() {
+            return sanitized_entries;
+        }
+
+        let project = self.project.read(cx);
+        let entries = entries
+            .into_iter()
+            .filter(|entry| !project.entry_is_worktree_root(entry.0, cx))
+            .collect::<Vec<_>>();
+        let dir_paths = entries
+            .iter()
+            .filter_map(|entry| {
+                let worktree = project.worktree_for_entry(entry.0, cx)?;
+                let entry = worktree.read(cx).entry_for_id(entry.0)?.clone();
+                entry.is_dir().then_some(entry.path)
+            })
+            .collect::<BTreeSet<_>>();
+
+        sanitized_entries.extend(entries.into_iter().filter(|entry| {
+            let Some(worktree) = project.worktree_for_entry(entry.0, cx) else {
+                return false;
+            };
+            let Some(entry_info) = worktree.read(cx).entry_for_id(entry.0).cloned() else {
+                return false;
+            };
+            let entry_path = entry_info.path.as_ref();
+            let inside_selected_dir = dir_paths.iter().any(|dir_path| {
+                entry_path != dir_path.as_ref() && entry_path.starts_with(dir_path.as_ref())
+            });
+            !inside_selected_dir
+        }));
+
+        sanitized_entries
+    }
+
     fn effective_entries(&self) -> BTreeSet<SelectedEntry> {
         if let Some(selection) = self.selection {
             if self.marked_entries.is_empty() {
@@ -1261,6 +1573,10 @@ impl ProjectPanel {
         }
 
         self.marked_entries.iter().copied().collect::<BTreeSet<_>>()
+    }
+
+    fn disjoint_effective_entries(&self, cx: &App) -> BTreeSet<SelectedEntry> {
+        self.disjoint_entries(self.effective_entries(), cx)
     }
 
     fn toggle_expanded(
@@ -1806,6 +2122,10 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::collapse_selected_entry_and_children))
             .on_action(cx.listener(Self::new_file))
             .on_action(cx.listener(Self::new_directory))
+            .on_action(cx.listener(Self::cut))
+            .on_action(cx.listener(Self::copy))
+            .on_action(cx.listener(Self::duplicate))
+            .on_action(cx.listener(Self::paste))
             .on_action(cx.listener(Self::copy_path))
             .on_action(cx.listener(Self::copy_relative_path))
             .on_action(cx.listener(Self::reveal_in_file_manager))

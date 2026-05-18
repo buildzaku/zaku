@@ -143,6 +143,21 @@ impl LocalWorktree {
         })
     }
 
+    fn expand_entry(
+        &self,
+        entry_id: ProjectEntryId,
+        cx: &Context<Worktree>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let path = self.entry_for_id(entry_id)?.path.clone();
+        let refresh = self.refresh_entries_for_paths(vec![path]);
+        Some(cx.background_spawn(async move {
+            refresh
+                .await
+                .map_err(|_| anyhow!("Failed to expand entry"))?;
+            Ok(())
+        }))
+    }
+
     pub fn create_entry(
         &self,
         path: Arc<RelPath>,
@@ -490,6 +505,16 @@ impl Worktree {
     pub fn is_visible(&self) -> bool {
         match self {
             Self::Local(worktree) => worktree.visible,
+        }
+    }
+
+    pub fn expand_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        cx: &Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        match self {
+            Self::Local(worktree) => worktree.expand_entry(entry_id, cx),
         }
     }
 

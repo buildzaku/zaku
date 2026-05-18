@@ -2,7 +2,7 @@ pub mod fs_watcher;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, future::BoxFuture};
 use gpui::BackgroundExecutor;
 use is_executable::IsExecutable;
 use parking_lot::Mutex;
@@ -114,6 +114,12 @@ pub struct RemoveOptions {
     pub ignore_if_not_exists: bool,
 }
 
+#[derive(Copy, Clone, Default)]
+pub struct CopyOptions {
+    pub overwrite: bool,
+    pub ignore_if_exists: bool,
+}
+
 #[async_trait]
 pub trait Fs: Send + Sync {
     async fn create_dir(&self, path: &Path) -> anyhow::Result<()>;
@@ -127,6 +133,12 @@ pub trait Fs: Send + Sync {
         &self,
         path: &Path,
     ) -> anyhow::Result<Pin<Box<dyn Send + Stream<Item = anyhow::Result<PathBuf>>>>>;
+    async fn copy_file(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: CopyOptions,
+    ) -> anyhow::Result<()>;
     async fn rename(
         &self,
         source: &Path,
@@ -533,6 +545,23 @@ impl Fs for NativeFs {
         Ok(path)
     }
 
+    async fn copy_file(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: CopyOptions,
+    ) -> anyhow::Result<()> {
+        if !options.overwrite && smol::fs::metadata(target).await.is_ok() {
+            if options.ignore_if_exists {
+                return Ok(());
+            }
+            anyhow::bail!("{} already exists", target.display());
+        }
+
+        smol::fs::copy(source, target).await?;
+        Ok(())
+    }
+
     async fn rename(
         &self,
         source: &Path,
@@ -882,6 +911,19 @@ impl Fs for TempFs {
             .await
     }
 
+    async fn copy_file(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: CopyOptions,
+    ) -> anyhow::Result<()> {
+        let absolute_source = resolve_path(self.path(), source);
+        let absolute_target = resolve_path(self.path(), target);
+        NativeFs::new(self.executor.clone())
+            .copy_file(&absolute_source, &absolute_target, options)
+            .await
+    }
+
     async fn rename(
         &self,
         source: &Path,
@@ -981,6 +1023,93 @@ fn metadata_for_path(path: &Path) -> anyhow::Result<Option<(std::fs::Metadata, b
     };
 
     Ok(Some((metadata, is_symlink)))
+}
+
+pub async fn copy_recursive(
+    fs: &dyn Fs,
+    source: &Path,
+    target: &Path,
+    options: CopyOptions,
+) -> anyhow::Result<()> {
+    for (item, is_dir) in read_dir_items(fs, source).await? {
+        let Ok(item_relative_path) = item.strip_prefix(source) else {
+            continue;
+        };
+        let target_item = if item_relative_path == Path::new("") {
+            target.to_path_buf()
+        } else {
+            target.join(item_relative_path)
+        };
+
+        if is_dir {
+            if let Some(metadata) = fs.metadata(&target_item).await? {
+                if !options.overwrite {
+                    if options.ignore_if_exists {
+                        continue;
+                    }
+                    anyhow::bail!("{} already exists", target_item.display());
+                }
+
+                if metadata.is_dir {
+                    fs.remove_dir(
+                        &target_item,
+                        RemoveOptions {
+                            recursive: true,
+                            ignore_if_not_exists: true,
+                        },
+                    )
+                    .await?;
+                } else {
+                    fs.remove_file(
+                        &target_item,
+                        RemoveOptions {
+                            recursive: false,
+                            ignore_if_not_exists: true,
+                        },
+                    )
+                    .await?;
+                }
+            }
+            fs.create_dir(&target_item).await?;
+        } else {
+            fs.copy_file(&item, &target_item, options).await?;
+        }
+    }
+
+    Ok(())
+}
+
+fn read_recursive<'a>(
+    fs: &'a dyn Fs,
+    source: &'a Path,
+    output: &'a mut Vec<(PathBuf, bool)>,
+) -> BoxFuture<'a, anyhow::Result<()>> {
+    async move {
+        let metadata = fs
+            .metadata(source)
+            .await?
+            .with_context(|| format!("path does not exist: {}", source.display()))?;
+
+        if metadata.is_dir {
+            output.push((source.to_path_buf(), true));
+            let mut children = fs.read_dir(source).await?;
+            while let Some(child_path) = children.next().await {
+                let child_path = child_path?;
+                read_recursive(fs, &child_path, output).await?;
+            }
+        } else {
+            output.push((source.to_path_buf(), false));
+        }
+
+        Ok(())
+    }
+    .boxed()
+}
+
+pub async fn read_dir_items(fs: &dyn Fs, source: &Path) -> anyhow::Result<Vec<(PathBuf, bool)>> {
+    let mut items = Vec::new();
+    read_recursive(fs, source, &mut items).await?;
+    Ok(items)
 }
 
 fn is_filesystem_case_sensitive() -> anyhow::Result<bool> {

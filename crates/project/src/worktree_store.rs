@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use futures::{FutureExt, future};
-use gpui::{App, Context, Entity, EventEmitter, Global, Subscription, Task};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Subscription, Task};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-use fs::Fs;
+use fs::{CopyOptions, Fs, RenameOptions};
 use request_buffer::RequestBuffer;
 use util::{
     path::{PathStyle, SanitizedPath},
@@ -270,6 +270,97 @@ impl WorktreeStore {
         self.worktree_for_id(path.worktree_id, cx)?
             .read(cx)
             .entry_for_path(&path.path)
+    }
+
+    pub fn copy_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        new_project_path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Option<Entry>>> {
+        let Some(worktree) = self.worktree_for_entry(entry_id, cx) else {
+            return Task::ready(Err(anyhow!("No such worktree")));
+        };
+        if worktree.read(cx).id() != new_project_path.worktree_id {
+            return Task::ready(Err(anyhow!(
+                "Cannot copy entry outside the current worktree"
+            )));
+        }
+        let Some(old_path) = worktree
+            .read(cx)
+            .entry_for_id(entry_id)
+            .map(|entry| entry.path.clone())
+        else {
+            return Task::ready(Err(anyhow!("No such entry")));
+        };
+
+        let old_abs_path = worktree.read(cx).absolutize(&old_path);
+        let new_abs_path = worktree.read(cx).absolutize(&new_project_path.path);
+        let fs = self.fs.clone();
+        let copy = cx.background_spawn(async move {
+            fs::copy_recursive(
+                fs.as_ref(),
+                &old_abs_path,
+                &new_abs_path,
+                CopyOptions::default(),
+            )
+            .await
+        });
+
+        cx.spawn(async move |_, cx| {
+            copy.await?;
+            let refresh = worktree.update(cx, |worktree, cx| {
+                let Some(worktree) = worktree.as_local() else {
+                    return Task::ready(Err(anyhow!("Cannot refresh worktree")));
+                };
+                worktree.refresh_entry(new_project_path.path, None, cx)
+            });
+
+            Ok(Some(refresh.await?))
+        })
+    }
+
+    pub fn rename_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        new_project_path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entry>> {
+        let Some(worktree) = self.worktree_for_entry(entry_id, cx) else {
+            return Task::ready(Err(anyhow!("No such worktree")));
+        };
+        if worktree.read(cx).id() != new_project_path.worktree_id {
+            return Task::ready(Err(anyhow!(
+                "Cannot move entry outside the current worktree"
+            )));
+        }
+        let Some(old_path) = worktree
+            .read(cx)
+            .entry_for_id(entry_id)
+            .map(|entry| entry.path.clone())
+        else {
+            return Task::ready(Err(anyhow!("No such entry")));
+        };
+
+        let old_abs_path = worktree.read(cx).absolutize(&old_path);
+        let new_abs_path = worktree.read(cx).absolutize(&new_project_path.path);
+        let fs = self.fs.clone();
+        let rename = cx.background_spawn(async move {
+            fs.rename(&old_abs_path, &new_abs_path, RenameOptions::default())
+                .await
+        });
+
+        cx.spawn(async move |_, cx| {
+            rename.await?;
+            let refresh = worktree.update(cx, |worktree, cx| {
+                let Some(worktree) = worktree.as_local() else {
+                    return Task::ready(Err(anyhow!("Cannot refresh worktree")));
+                };
+                worktree.refresh_entry(new_project_path.path, Some(&old_path), cx)
+            });
+
+            refresh.await
+        })
     }
 
     pub fn find_or_create_worktree(

@@ -299,6 +299,52 @@ impl Project {
         })
     }
 
+    #[inline]
+    pub fn copy_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        new_project_path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Option<Entry>>> {
+        self.worktree_store.update(cx, |worktree_store, cx| {
+            worktree_store.copy_entry(entry_id, new_project_path, cx)
+        })
+    }
+
+    #[inline]
+    pub fn rename_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        new_path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entry>> {
+        self.worktree_store.update(cx, |worktree_store, cx| {
+            worktree_store.rename_entry(entry_id, new_path, cx)
+        })
+    }
+
+    #[inline]
+    pub fn expand_entry(
+        &mut self,
+        entry_id: ProjectEntryId,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let worktree = self.worktree_for_entry(entry_id, cx)?;
+        worktree.update(cx, |worktree, cx| worktree.expand_entry(entry_id, cx))
+    }
+
+    #[inline]
+    pub fn entry_is_worktree_root(&self, entry_id: ProjectEntryId, cx: &App) -> bool {
+        self.worktree_for_entry(entry_id, cx)
+            .and_then(|worktree| {
+                worktree
+                    .read(cx)
+                    .root_entry()
+                    .map(|entry| entry.id == entry_id)
+            })
+            .unwrap_or(false)
+    }
+
     pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {
         let worktree = self.worktree_store.read(cx).worktree()?;
         Some(worktree.read(cx).absolutize(path))
