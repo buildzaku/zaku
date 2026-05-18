@@ -65,6 +65,8 @@
       "cmd-d": "project_panel::Duplicate",
       "cmd-alt-c": "workspace::CopyPath",
       "alt-cmd-shift-c": "workspace::CopyRelativePath",
+      "enter": "project_panel::Rename",
+      "f2": "project_panel::Rename",
       "alt-cmd-r": "project_panel::RevealInFileManager"
     }
   },

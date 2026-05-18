@@ -62,6 +62,8 @@
       "ctrl-v": "project_panel::Paste",
       "shift-alt-c": "workspace::CopyPath",
       "ctrl-k ctrl-shift-c": "workspace::CopyRelativePath",
+      "enter": "project_panel::Rename",
+      "f2": "project_panel::Rename",
       "ctrl-alt-r": "project_panel::RevealInFileManager"
     }
   },

@@ -770,6 +770,8 @@ impl ProjectPanel {
                     "Copy Relative Path",
                     Box::new(actions::workspace::CopyRelativePath),
                 )
+                .separator()
+                .action("Rename", Box::new(actions::project_panel::Rename))
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
@@ -998,6 +1000,15 @@ impl ProjectPanel {
             && let Some(worktree) = self.project.read(cx).worktree(cx)
             && let Some(entry) = worktree.read(cx).entry_for_id(selection_entry.0).cloned()
         {
+            #[cfg(target_os = "windows")]
+            if worktree
+                .read(cx)
+                .root_entry()
+                .is_some_and(|root_entry| root_entry.id == entry.id)
+            {
+                return;
+            }
+
             let worktree_id = worktree.read(cx).id();
             self.tree_state.edit_state = Some(EditState {
                 worktree_id,
@@ -1032,6 +1043,15 @@ impl ProjectPanel {
             self.update_visible_entries(None, true, true, window, cx);
             cx.notify();
         }
+    }
+
+    fn rename(
+        &mut self,
+        _: &actions::project_panel::Rename,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.rename_impl(None, window, cx);
     }
 
     fn copy_path(
@@ -2255,6 +2275,7 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::copy))
             .on_action(cx.listener(Self::duplicate))
             .on_action(cx.listener(Self::paste))
+            .on_action(cx.listener(Self::rename))
             .on_action(cx.listener(Self::copy_path))
             .on_action(cx.listener(Self::copy_relative_path))
             .on_action(cx.listener(Self::reveal_in_file_manager))
@@ -3284,6 +3305,192 @@ mod tests {
                 String::from("          [EDITOR: 'first copy']  <== selected  <== marked"),
                 String::from("          second"),
             ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_rename(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": "",
+                    "second.toml": "",
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/collection", cx);
+        select_path(&panel, "project/collection/first.toml", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.rename(&actions::project_panel::Rename, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          [EDITOR: 'first']  <== selected"),
+                String::from("          second"),
+            ]
+        );
+
+        let confirm = panel.update_in(cx, |panel, window, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                let file_name_selections = editor
+                    .selections
+                    .all::<MultiBufferOffset>(&editor.display_snapshot(cx));
+                assert_eq!(
+                    file_name_selections.len(),
+                    1,
+                    "File editing should have a single selection, but got: {file_name_selections:?}"
+                );
+                let file_name_selection = &file_name_selections[0];
+                assert_eq!(
+                    file_name_selection.start,
+                    MultiBufferOffset(0),
+                    "Should select the file name from the start"
+                );
+                assert_eq!(
+                    file_name_selection.end,
+                    MultiBufferOffset("first".len()),
+                    "Should not select file extension"
+                );
+
+                editor.set_text("renamed", cx);
+            });
+            panel.confirm_edit(true, window, cx).unwrap()
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          [PROCESSING: 'renamed']  <== selected"),
+                String::from("          second"),
+            ]
+        );
+
+        confirm.await.unwrap();
+        cx.run_until_parked();
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          renamed  <== selected"),
+                String::from("          second"),
+            ]
+        );
+    }
+
+    #[gpui::test]
+    async fn test_rename_conflict(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "first.toml": "",
+                    "second.toml": "",
+                    "third.toml": "",
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/collection", cx);
+        select_path(&panel, "project/collection/first.toml", cx);
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          first  <== selected"),
+                String::from("          second"),
+                String::from("          third"),
+            ]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.rename(&actions::project_panel::Rename, window, cx);
+        });
+        cx.run_until_parked();
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          [EDITOR: 'first']  <== selected"),
+                String::from("          second"),
+                String::from("          third"),
+            ]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.file_name_editor.update(cx, |editor, cx| {
+                editor.set_text("second", cx);
+            });
+            assert!(
+                panel.confirm_edit(true, window, cx).is_none(),
+                "Should not allow to confirm on conflicting file rename"
+            );
+        });
+        cx.run_until_parked();
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(
+                panel.tree_state.edit_state.is_some(),
+                "Edit state should not be None after conflicting file rename"
+            );
+            panel.cancel(&actions::menu::Cancel, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v project"),
+                String::from("    v collection"),
+                String::from("          first  <== selected"),
+                String::from("          second"),
+                String::from("          third"),
+            ],
+            "File list should be unchanged after failed rename confirmation"
         );
     }
 }

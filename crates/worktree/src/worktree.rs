@@ -244,7 +244,7 @@ impl LocalWorktree {
         self.start_background_scanner(scan_requests_rx, path_prefixes_to_scan_rx, cx);
     }
 
-    fn update_abs_path_and_refresh(
+    pub fn update_abs_path_and_refresh(
         &mut self,
         new_path: Arc<SanitizedPath>,
         cx: &Context<Worktree>,

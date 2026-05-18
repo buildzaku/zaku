@@ -23,6 +23,8 @@ gpui::actions!(
         Cut,
         /// Paste the previously cut or copied item.
         Paste,
+        /// Rename the selected file or directory.
+        Rename,
         /// Open the selected entry.
         Open,
         /// Toggle focus on the project panel.

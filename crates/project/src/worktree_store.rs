@@ -343,8 +343,25 @@ impl WorktreeStore {
             return Task::ready(Err(anyhow!("No such entry")));
         };
 
-        let old_abs_path = worktree.read(cx).absolutize(&old_path);
-        let new_abs_path = worktree.read(cx).absolutize(&new_project_path.path);
+        let (old_abs_path, new_abs_path, is_root_entry) = {
+            let worktree = worktree.read(cx);
+            let old_abs_path = worktree.absolutize(&old_path);
+            let is_root_entry = worktree
+                .root_entry()
+                .is_some_and(|entry| entry.id == entry_id);
+            let new_abs_path = if is_root_entry {
+                let Some(root_parent_path) = worktree.abs_path().parent() else {
+                    return Task::ready(Err(anyhow!(
+                        "No parent for path {}",
+                        worktree.abs_path().display()
+                    )));
+                };
+                root_parent_path.join(new_project_path.path.as_std_path())
+            } else {
+                worktree.absolutize(&new_project_path.path)
+            };
+            (old_abs_path, new_abs_path, is_root_entry)
+        };
         let Some(case_sensitive) = worktree
             .read(cx)
             .as_local()
@@ -401,9 +418,18 @@ impl WorktreeStore {
         cx.spawn(async move |_, cx| {
             rename.await?;
             let refresh = worktree.update(cx, |worktree, cx| {
-                let Some(worktree) = worktree.as_local() else {
+                let Some(worktree) = worktree.as_local_mut() else {
                     return Task::ready(Err(anyhow!("Cannot refresh worktree")));
                 };
+                if is_root_entry {
+                    worktree.update_abs_path_and_refresh(SanitizedPath::new_arc(&new_abs_path), cx);
+                    return Task::ready(
+                        worktree
+                            .root_entry()
+                            .cloned()
+                            .ok_or_else(|| anyhow!("Cannot refresh worktree")),
+                    );
+                }
                 if let Some(parent) = new_project_path.path.parent() {
                     mem::drop(worktree.refresh_entries_for_paths(vec![parent.into()]));
                 }
