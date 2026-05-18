@@ -1,8 +1,8 @@
 use gpui::{
-    Action, AnyElement, App, Bounds, ClickEvent, Context, Div, Entity, EventEmitter, FocusHandle,
-    Focusable, FontWeight, KeyContext, ListHorizontalSizingBehavior, ListSizingBehavior,
-    MouseButton, Pixels, Render, ScrollStrategy, Stateful, Subscription, Task,
-    UniformListScrollHandle, WeakEntity, Window, prelude::*,
+    Action, Anchor, AnyElement, App, Bounds, ClickEvent, Context, DismissEvent, Div, Entity,
+    EventEmitter, FocusHandle, Focusable, FontWeight, KeyContext, ListHorizontalSizingBehavior,
+    ListSizingBehavior, MouseButton, MouseDownEvent, Pixels, Point, Render, ScrollStrategy,
+    Stateful, Subscription, Task, UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use smallvec::SmallVec;
 use std::{cmp, ops::Range, path::Path, sync::Arc};
@@ -18,9 +18,9 @@ use project::{
 };
 use theme::ActiveTheme;
 use ui::{
-    Color, DynamicSpacing, Icon, IconName, IconSize, IndentGuideColors, IndentGuideLayout, Label,
-    LabelCommon, LabelSize, ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars,
-    TrackLayout, WithScrollbar,
+    Color, ContextMenu, DynamicSpacing, Icon, IconName, IconSize, IndentGuideColors,
+    IndentGuideLayout, Label, LabelCommon, LabelSize, ListItem, ListItemSpacing,
+    RenderedIndentGuide, ScrollAxes, Scrollbars, TrackLayout, WithScrollbar,
 };
 use util::{
     path::{PathStyle, SortMode, SortOrder},
@@ -109,6 +109,7 @@ pub struct ProjectPanel {
     tree_state: TreeState,
     marked_entries: Vec<SelectedEntry>,
     selection: Option<SelectedEntry>,
+    context_menu: Option<(Entity<ContextMenu>, Point<Pixels>, Subscription)>,
     file_name_editor: Entity<Editor>,
     mouse_down: bool,
     _project_subscription: Subscription,
@@ -172,6 +173,7 @@ impl ProjectPanel {
                 tree_state: TreeState::default(),
                 marked_entries: Vec::new(),
                 selection: None,
+                context_menu: None,
                 file_name_editor,
                 mouse_down: false,
                 _project_subscription: project_subscription,
@@ -239,11 +241,18 @@ impl ProjectPanel {
         self.project.read(cx).snapshot(cx)
     }
 
-    fn dispatch_context() -> KeyContext {
+    fn dispatch_context(&self, window: &Window, cx: &Context<Self>) -> KeyContext {
         let mut dispatch_context = KeyContext::new_with_defaults();
         dispatch_context.add(Self::PANEL_KEY);
         dispatch_context.add("menu");
-        dispatch_context.add("not_editing");
+
+        let identifier = if self.file_name_editor.focus_handle(cx).is_focused(window) {
+            "editing"
+        } else {
+            "not_editing"
+        };
+
+        dispatch_context.add(identifier);
         dispatch_context
     }
 
@@ -632,6 +641,39 @@ impl ProjectPanel {
         }
 
         self.update_visible_entries(None, false, false, window, cx);
+        cx.notify();
+    }
+
+    fn deploy_context_menu(
+        &mut self,
+        position: Point<Pixels>,
+        entry_id: ProjectEntryId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .project
+            .read(cx)
+            .worktree_id_for_entry(entry_id, cx)
+            .is_none()
+        {
+            return;
+        }
+
+        self.selection = Some(SelectedEntry(entry_id));
+
+        let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
+            menu.context(self.focus_handle.clone())
+                .action("New Request", Box::new(project_panel::NewFile))
+                .action("New Collection", Box::new(project_panel::NewDirectory))
+        });
+
+        window.focus(&context_menu.focus_handle(cx), cx);
+        let subscription = cx.subscribe(&context_menu, |this, _, _: &DismissEvent, cx| {
+            this.context_menu.take();
+            cx.notify();
+        });
+        self.context_menu = Some((context_menu, position, subscription));
         cx.notify();
     }
 
@@ -1183,9 +1225,16 @@ impl ProjectPanel {
                 .gap_0p5()
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
-                    Icon::new(IconName::File)
-                        .size(IconSize::Medium)
-                        .color(Color::Muted),
+                    ui::h_flex()
+                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .flex_none()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            Icon::new(IconName::FileGeneric)
+                                .size(IconSize::Medium)
+                                .color(Color::Muted),
+                        ),
                 )
                 .into_any_element()
         }
@@ -1195,28 +1244,29 @@ impl ProjectPanel {
         &self,
         entry_id: ProjectEntryId,
         details: &EntryDetails,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let is_dir = details.kind.is_dir();
         let selection = SelectedEntry(entry_id);
         let theme_colors = cx.theme().colors();
-        let is_active = details.is_selected && self.focus_handle.contains_focused(window, cx);
-        let bg_color = if details.is_marked {
+        let show_editor = details.is_editing && !details.is_processing;
+        let is_marked = details.is_marked && !show_editor;
+        let is_selected = details.is_selected && !show_editor;
+        let bg_color = if is_marked {
             theme_colors.element_selected
-        } else if is_active {
+        } else if is_selected {
             theme_colors.element_selection_background
         } else {
             theme_colors.panel_background
         };
-        let bg_hover_color = if details.is_marked {
+        let bg_hover_color = if is_marked {
             theme_colors.element_selected
-        } else if is_active {
+        } else if is_selected {
             theme_colors.element_selection_background
         } else {
             theme_colors.element_hover
         };
-        let show_editor = details.is_editing && !details.is_processing;
 
         gpui::div()
             .id(entry_id.to_usize())
@@ -1274,12 +1324,24 @@ impl ProjectPanel {
                         ui::h_flex()
                             .h_6()
                             .w_full()
+                            .mr(Pixels::ZERO - DynamicSpacing::Base06.px(cx) - gpui::px(1.0))
+                            .border_1()
+                            .border_color(theme_colors.border_focused.opacity(0.7))
                             .child(self.file_name_editor.clone())
                     } else {
                         ui::h_flex()
                             .h_6()
                             .child(Label::new(details.file_name.clone()).single_line())
                     })
+                    .on_secondary_mouse_down(cx.listener(
+                        move |project_panel, event: &MouseDownEvent, window, cx| {
+                            cx.stop_propagation();
+                            if !project_panel.marked_entries.contains(&selection) {
+                                project_panel.marked_entries.clear();
+                            }
+                            project_panel.deploy_context_menu(event.position, entry_id, window, cx);
+                        },
+                    ))
                     .overflow_x(),
             )
     }
@@ -1408,7 +1470,7 @@ impl Render for ProjectPanel {
 
         gpui::div()
             .track_focus(&self.focus_handle)
-            .key_context(Self::dispatch_context())
+            .key_context(self.dispatch_context(window, cx))
             .on_action(cx.listener(Self::select_next))
             .on_action(cx.listener(Self::select_previous))
             .on_action(cx.listener(Self::select_first))
@@ -1422,6 +1484,17 @@ impl Render for ProjectPanel {
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::cancel))
             .on_action(cx.listener(Self::open))
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|project_panel, event: &MouseDownEvent, window, cx| {
+                    if let Some(entry_id) = project_panel
+                        .snapshot(cx)
+                        .and_then(|snapshot| snapshot.root_entry().map(|entry| entry.id))
+                    {
+                        project_panel.deploy_context_menu(event.position, entry_id, window, cx);
+                    }
+                }),
+            )
             .flex()
             .flex_col()
             .size_full()
@@ -1554,6 +1627,15 @@ impl Render for ProjectPanel {
                 window,
                 cx,
             )
+            .children(self.context_menu.as_ref().map(|(menu, position, _)| {
+                gpui::deferred(
+                    gpui::anchored()
+                        .position(*position)
+                        .anchor(Anchor::TopLeft)
+                        .child(menu.clone()),
+                )
+                .with_priority(3)
+            }))
     }
 }
 

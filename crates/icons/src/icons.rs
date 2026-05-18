@@ -19,6 +19,7 @@ pub enum IconName {
     Control,
     Dash,
     File,
+    FileGeneric,
     Folder,
     FolderClose,
     FolderOpen,
