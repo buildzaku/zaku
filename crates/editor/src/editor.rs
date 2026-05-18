@@ -36,17 +36,6 @@ use text::{
     TransactionId,
 };
 
-use actions::editor::{
-    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
-    DeleteToNextSubwordEnd, DeleteToNextWordEnd, DeleteToPreviousSubwordStart,
-    DeleteToPreviousWordStart, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
-    MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextSubwordEnd, MoveToNextWordEnd,
-    MoveToPreviousSubwordStart, MoveToPreviousWordStart, MoveUp, Newline, Paste, Redo,
-    RedoSelection, SelectAll, SelectDown, SelectLeft, SelectRight, SelectToBeginning,
-    SelectToBeginningOfLine, SelectToEnd, SelectToEndOfLine, SelectToNextSubwordEnd,
-    SelectToNextWordEnd, SelectToPreviousSubwordStart, SelectToPreviousWordStart, SelectUp, Undo,
-    UndoSelection,
-};
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use theme::{ActiveTheme, ThemeSettings};
 
@@ -1229,7 +1218,7 @@ impl Editor {
         );
     }
 
-    fn move_left(&mut self, _: &MoveLeft, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_left(&mut self, _: &actions::editor::MoveLeft, _: &mut Window, cx: &mut Context<Self>) {
         let selected_range = self.selected_range(cx);
         if selected_range.is_empty() {
             let offset = self.offset_for_horizontal_move(-1, cx);
@@ -1239,7 +1228,12 @@ impl Editor {
         }
     }
 
-    fn move_right(&mut self, _: &MoveRight, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_right(
+        &mut self,
+        _: &actions::editor::MoveRight,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let selected_range = self.selected_range(cx);
         if selected_range.is_empty() {
             let offset = self.offset_for_horizontal_move(1, cx);
@@ -1249,7 +1243,12 @@ impl Editor {
         }
     }
 
-    fn move_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
+    fn move_up(
+        &mut self,
+        _: &actions::editor::MoveUp,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let selected_range = self.selected_range(cx);
         if !selected_range.is_empty() {
             self.move_to(selected_range.start, cx);
@@ -1260,7 +1259,12 @@ impl Editor {
         self.move_to_vertical(offset, cx);
     }
 
-    fn move_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
+    fn move_down(
+        &mut self,
+        _: &actions::editor::MoveDown,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let selected_range = self.selected_range(cx);
         if !selected_range.is_empty() {
             self.move_to(selected_range.end, cx);
@@ -1271,27 +1275,52 @@ impl Editor {
         self.move_to_vertical(offset, cx);
     }
 
-    fn select_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
+    fn select_left(
+        &mut self,
+        _: &actions::editor::SelectLeft,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.offset_for_horizontal_move(-1, cx);
         self.select_to(offset, cx);
     }
 
-    fn select_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
+    fn select_right(
+        &mut self,
+        _: &actions::editor::SelectRight,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.offset_for_horizontal_move(1, cx);
         self.select_to(offset, cx);
     }
 
-    fn select_up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_up(
+        &mut self,
+        _: &actions::editor::SelectUp,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.offset_for_vertical_move(-1, window, cx);
         self.select_to_vertical(offset, cx);
     }
 
-    fn select_down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
+    fn select_down(
+        &mut self,
+        _: &actions::editor::SelectDown,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.offset_for_vertical_move(1, window, cx);
         self.select_to_vertical(offset, cx);
     }
 
-    fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
+    fn select_all(
+        &mut self,
+        _: &actions::editor::SelectAll,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let end = self.buffer_snapshot(cx).len();
         self.selection_goal = SelectionGoal::None;
         self.change_selections(SelectionEffects::no_scroll(), cx, |s| {
@@ -1301,7 +1330,7 @@ impl Editor {
 
     fn move_to_beginning_of_line(
         &mut self,
-        action: &MoveToBeginningOfLine,
+        action: &actions::editor::MoveToBeginningOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1311,7 +1340,7 @@ impl Editor {
 
     fn select_to_beginning_of_line(
         &mut self,
-        action: &SelectToBeginningOfLine,
+        action: &actions::editor::SelectToBeginningOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1321,7 +1350,7 @@ impl Editor {
 
     fn delete_to_beginning_of_line(
         &mut self,
-        action: &DeleteToBeginningOfLine,
+        action: &actions::editor::DeleteToBeginningOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1343,14 +1372,19 @@ impl Editor {
         self.replace_selection("", cx);
     }
 
-    fn move_to_end_of_line(&mut self, _: &MoveToEndOfLine, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_to_end_of_line(
+        &mut self,
+        _: &actions::editor::MoveToEndOfLine,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.line_end_offset(cx);
         self.move_to(offset, cx);
     }
 
     fn select_to_end_of_line(
         &mut self,
-        _: &SelectToEndOfLine,
+        _: &actions::editor::SelectToEndOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1360,7 +1394,7 @@ impl Editor {
 
     fn delete_to_end_of_line(
         &mut self,
-        _: &DeleteToEndOfLine,
+        _: &actions::editor::DeleteToEndOfLine,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1382,32 +1416,47 @@ impl Editor {
         self.replace_selection("", cx);
     }
 
-    fn move_to_beginning(&mut self, _: &MoveToBeginning, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_to_beginning(
+        &mut self,
+        _: &actions::editor::MoveToBeginning,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.move_to(0, cx);
     }
 
-    fn move_to_end(&mut self, _: &MoveToEnd, _: &mut Window, cx: &mut Context<Self>) {
+    fn move_to_end(
+        &mut self,
+        _: &actions::editor::MoveToEnd,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.buffer_snapshot(cx).len().0;
         self.move_to(offset, cx);
     }
 
     fn select_to_beginning(
         &mut self,
-        _: &SelectToBeginning,
+        _: &actions::editor::SelectToBeginning,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.select_to(0, cx);
     }
 
-    fn select_to_end(&mut self, _: &SelectToEnd, _: &mut Window, cx: &mut Context<Self>) {
+    fn select_to_end(
+        &mut self,
+        _: &actions::editor::SelectToEnd,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let offset = self.buffer_snapshot(cx).len().0;
         self.select_to(offset, cx);
     }
 
     fn move_to_previous_word_start(
         &mut self,
-        _: &MoveToPreviousWordStart,
+        _: &actions::editor::MoveToPreviousWordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1417,7 +1466,7 @@ impl Editor {
 
     fn move_to_previous_subword_start(
         &mut self,
-        _: &MoveToPreviousSubwordStart,
+        _: &actions::editor::MoveToPreviousSubwordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1427,7 +1476,7 @@ impl Editor {
 
     fn move_to_next_word_end(
         &mut self,
-        _: &MoveToNextWordEnd,
+        _: &actions::editor::MoveToNextWordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1437,7 +1486,7 @@ impl Editor {
 
     fn move_to_next_subword_end(
         &mut self,
-        _: &MoveToNextSubwordEnd,
+        _: &actions::editor::MoveToNextSubwordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1447,7 +1496,7 @@ impl Editor {
 
     fn select_to_previous_word_start(
         &mut self,
-        _: &SelectToPreviousWordStart,
+        _: &actions::editor::SelectToPreviousWordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1457,7 +1506,7 @@ impl Editor {
 
     fn select_to_next_word_end(
         &mut self,
-        _: &SelectToNextWordEnd,
+        _: &actions::editor::SelectToNextWordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1467,7 +1516,7 @@ impl Editor {
 
     fn select_to_previous_subword_start(
         &mut self,
-        _: &SelectToPreviousSubwordStart,
+        _: &actions::editor::SelectToPreviousSubwordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1477,7 +1526,7 @@ impl Editor {
 
     fn select_to_next_subword_end(
         &mut self,
-        _: &SelectToNextSubwordEnd,
+        _: &actions::editor::SelectToNextSubwordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1485,7 +1534,12 @@ impl Editor {
         self.select_to(offset, cx);
     }
 
-    fn backspace(&mut self, _: &Backspace, _: &mut Window, cx: &mut Context<Self>) {
+    fn backspace(
+        &mut self,
+        _: &actions::editor::Backspace,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.read_only(cx) {
             return;
         }
@@ -1500,7 +1554,7 @@ impl Editor {
         self.replace_selection("", cx);
     }
 
-    fn delete(&mut self, _: &Delete, _: &mut Window, cx: &mut Context<Self>) {
+    fn delete(&mut self, _: &actions::editor::Delete, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -1517,7 +1571,7 @@ impl Editor {
 
     fn delete_to_previous_word_start(
         &mut self,
-        action: &DeleteToPreviousWordStart,
+        action: &actions::editor::DeleteToPreviousWordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1565,7 +1619,7 @@ impl Editor {
 
     fn delete_to_previous_subword_start(
         &mut self,
-        action: &DeleteToPreviousSubwordStart,
+        action: &actions::editor::DeleteToPreviousSubwordStart,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1613,7 +1667,7 @@ impl Editor {
 
     fn delete_to_next_word_end(
         &mut self,
-        action: &DeleteToNextWordEnd,
+        action: &actions::editor::DeleteToNextWordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1661,7 +1715,7 @@ impl Editor {
 
     fn delete_to_next_subword_end(
         &mut self,
-        action: &DeleteToNextSubwordEnd,
+        action: &actions::editor::DeleteToNextSubwordEnd,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1707,7 +1761,7 @@ impl Editor {
         self.replace_selection("", cx);
     }
 
-    fn copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
+    fn copy(&mut self, _: &actions::editor::Copy, _: &mut Window, cx: &mut Context<Self>) {
         let selected_range = self.selected_range(cx);
         if selected_range.is_empty() {
             return;
@@ -1746,7 +1800,7 @@ impl Editor {
         ));
     }
 
-    fn cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
+    fn cut(&mut self, _: &actions::editor::Cut, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -1844,7 +1898,12 @@ impl Editor {
         )
     }
 
-    pub fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn paste(
+        &mut self,
+        _: &actions::editor::Paste,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.read_only(cx) {
             return;
         }
@@ -1871,7 +1930,12 @@ impl Editor {
         }
     }
 
-    fn newline(&mut self, _: &Newline, window: &mut Window, cx: &mut Context<Self>) {
+    fn newline(
+        &mut self,
+        _: &actions::editor::Newline,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.handle_input("\n", window, cx);
     }
 
@@ -1884,7 +1948,7 @@ impl Editor {
         self.replace_selection(sanitized_text.as_ref(), cx);
     }
 
-    fn undo(&mut self, _: &Undo, _: &mut Window, cx: &mut Context<Self>) {
+    fn undo(&mut self, _: &actions::editor::Undo, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -1912,7 +1976,7 @@ impl Editor {
         cx.notify();
     }
 
-    fn redo(&mut self, _: &Redo, _: &mut Window, cx: &mut Context<Self>) {
+    fn redo(&mut self, _: &actions::editor::Redo, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -1940,7 +2004,12 @@ impl Editor {
         cx.notify();
     }
 
-    fn undo_selection(&mut self, _: &UndoSelection, _: &mut Window, cx: &mut Context<Self>) {
+    fn undo_selection(
+        &mut self,
+        _: &actions::editor::UndoSelection,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(entry) = self.selection_history.undo_stack.pop_back() {
             self.selection_history.mode = SelectionHistoryMode::Undoing;
             self.with_selection_effects_deferred(cx, |this, cx| {
@@ -1958,7 +2027,12 @@ impl Editor {
         }
     }
 
-    fn redo_selection(&mut self, _: &RedoSelection, _: &mut Window, cx: &mut Context<Self>) {
+    fn redo_selection(
+        &mut self,
+        _: &actions::editor::RedoSelection,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(entry) = self.selection_history.redo_stack.pop_back() {
             self.selection_history.mode = SelectionHistoryMode::Redoing;
             self.with_selection_effects_deferred(cx, |this, cx| {
@@ -2515,7 +2589,7 @@ impl EntityInputHandler for Editor {
                     selections.select_ranges(new_selected_ranges);
                 });
                 if should_backspace {
-                    this.backspace(&Backspace, window, cx);
+                    this.backspace(&actions::editor::Backspace, window, cx);
                 }
             }
 

@@ -9,7 +9,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use actions::workspace::SendRequest;
 use editor::{Editor, EditorEvent};
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
@@ -46,11 +45,13 @@ pub fn init(cx: &mut App) {
             })
             .detach();
 
-            workspace.register_action(|workspace, _: &SendRequest, window, cx| {
-                workspace.pane().update(cx, |pane, cx| {
-                    pane.send_request(window, cx);
-                });
-            });
+            workspace.register_action(
+                |workspace, _: &actions::workspace::SendRequest, window, cx| {
+                    workspace.pane().update(cx, |pane, cx| {
+                        pane.send_request(window, cx);
+                    });
+                },
+            );
         },
     )
     .detach();
@@ -1467,12 +1468,12 @@ impl RequestEditor {
                     .py_3()
                     .gap_2()
                     .key_context("RequestUrl")
-                    .on_action(
-                        cx.listener(move |request_editor, _: &SendRequest, window, cx| {
+                    .on_action(cx.listener(
+                        move |request_editor, _: &actions::workspace::SendRequest, window, cx| {
                             request_editor.unpreview_tab(cx);
                             request_editor.send_request(window, cx);
-                        }),
-                    )
+                        },
+                    ))
                     .child(
                         DropdownMenu::new(
                             "request-method",
@@ -1732,7 +1733,7 @@ mod tests {
     use theme::LoadThemes;
     use util::rel_path::rel_path;
     use util_macros::path;
-    use workspace::{DockPosition, Root, SaveIntent, SharedState};
+    use workspace::{DockPosition, Root, SharedState};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -2340,7 +2341,7 @@ mod tests {
 
         workspace
             .update_in(cx, |workspace, window, cx| {
-                workspace.save_active_item(SaveIntent::Save, window, cx)
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
             })
             .await
             .unwrap();

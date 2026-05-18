@@ -9,7 +9,6 @@ use std::{
     mem,
 };
 
-use actions::pane::{CloseActiveItem, CloseAllItems, SaveIntent};
 use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
@@ -489,7 +488,7 @@ impl Pane {
     pub fn close_item_by_id(
         &mut self,
         item_id_to_close: EntityId,
-        save_intent: SaveIntent,
+        save_intent: actions::pane::SaveIntent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
@@ -500,7 +499,7 @@ impl Pane {
 
     pub fn close_active_item(
         &mut self,
-        action: &CloseActiveItem,
+        action: &actions::pane::CloseActiveItem,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
@@ -510,7 +509,9 @@ impl Pane {
 
         self.close_item_by_id(
             active_item_id,
-            action.save_intent.unwrap_or(SaveIntent::Close),
+            action
+                .save_intent
+                .unwrap_or(actions::pane::SaveIntent::Close),
             window,
             cx,
         )
@@ -520,7 +521,7 @@ impl Pane {
         &self,
         window: &mut Window,
         cx: &mut Context<Pane>,
-        mut save_intent: SaveIntent,
+        mut save_intent: actions::pane::SaveIntent,
         should_close: &dyn Fn(EntityId) -> bool,
     ) -> Task<anyhow::Result<()>> {
         let mut items_to_close = Vec::new();
@@ -550,7 +551,7 @@ impl Pane {
                     .collect::<Vec<_>>()
             })?;
 
-            if save_intent == SaveIntent::Close && dirty_items.len() > 1 {
+            if save_intent == actions::pane::SaveIntent::Close && dirty_items.len() > 1 {
                 let answer = pane.update_in(cx, |_, window, cx| {
                     let detail = Self::file_names_for_prompt(&mut dirty_items.iter(), cx);
                     window.prompt(
@@ -562,8 +563,8 @@ impl Pane {
                     )
                 })?;
                 match answer.await {
-                    Ok(0) => save_intent = SaveIntent::SaveAll,
-                    Ok(1) => save_intent = SaveIntent::Skip,
+                    Ok(0) => save_intent = actions::pane::SaveIntent::SaveAll,
+                    Ok(1) => save_intent = actions::pane::SaveIntent::Skip,
                     Ok(2) => return Ok(()),
                     _ => {}
                 }
@@ -618,7 +619,7 @@ impl Pane {
 
     pub fn close_all_items(
         &mut self,
-        action: &CloseAllItems,
+        action: &actions::pane::CloseAllItems,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
@@ -629,7 +630,9 @@ impl Pane {
         self.close_items(
             window,
             cx,
-            action.save_intent.unwrap_or(SaveIntent::Close),
+            action
+                .save_intent
+                .unwrap_or(actions::pane::SaveIntent::Close),
             &|_| true,
         )
     }
@@ -665,10 +668,10 @@ impl Pane {
         project: Entity<Project>,
         pane: &WeakEntity<Pane>,
         item: &dyn ItemHandle,
-        save_intent: SaveIntent,
+        save_intent: actions::pane::SaveIntent,
         cx: &mut AsyncWindowContext,
     ) -> anyhow::Result<bool> {
-        if save_intent == SaveIntent::Skip {
+        if save_intent == actions::pane::SaveIntent::Skip {
             let is_saveable_singleton = cx.update(|_, cx| {
                 item.can_save(cx) && item.buffer_kind(cx) == ItemBufferKind::Singleton
             })?;
@@ -697,12 +700,12 @@ impl Pane {
             )
         })?;
 
-        if save_intent == SaveIntent::Save {
+        if save_intent == actions::pane::SaveIntent::Save {
             is_dirty = true;
         }
 
         if is_dirty && can_save {
-            if save_intent == SaveIntent::Close {
+            if save_intent == actions::pane::SaveIntent::Close {
                 let item_id = item.item_id();
                 let answer_task = pane.update_in(cx, |pane, window, cx| {
                     if pane.save_modals_spawned.insert(item_id) {
@@ -759,7 +762,7 @@ impl Pane {
     ) {
         match event {
             ItemEvent::CloseItem => {
-                self.close_item_by_id(item_id, SaveIntent::Close, window, cx)
+                self.close_item_by_id(item_id, actions::pane::SaveIntent::Close, window, cx)
                     .detach_and_log_err(cx);
             }
             ItemEvent::UpdateTab => {
@@ -852,7 +855,7 @@ impl Pane {
             .icon_size(IconSize::Small)
             .tooltip(Tooltip::text("Close Tab"))
             .on_click(cx.listener(move |pane, _, window, cx| {
-                pane.close_item_by_id(item_id, SaveIntent::Close, window, cx)
+                pane.close_item_by_id(item_id, actions::pane::SaveIntent::Close, window, cx)
                     .detach_and_log_err(cx);
             }));
         let tab_control = if is_dirty {
@@ -1070,18 +1073,18 @@ impl Render for Pane {
         gpui::div()
             .track_focus(&self.focus_handle)
             .key_context("Pane")
-            .on_action(
-                cx.listener(|pane: &mut Self, action: &CloseActiveItem, window, cx| {
+            .on_action(cx.listener(
+                |pane: &mut Self, action: &actions::pane::CloseActiveItem, window, cx| {
                     pane.close_active_item(action, window, cx)
                         .detach_and_log_err(cx);
-                }),
-            )
-            .on_action(
-                cx.listener(|pane: &mut Self, action: &CloseAllItems, window, cx| {
+                },
+            ))
+            .on_action(cx.listener(
+                |pane: &mut Self, action: &actions::pane::CloseAllItems, window, cx| {
                     pane.close_all_items(action, window, cx)
                         .detach_and_log_err(cx);
-                }),
-            )
+                },
+            ))
             .flex()
             .flex_col()
             .size_full()
