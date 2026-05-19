@@ -2052,14 +2052,14 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(
-            first_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            first_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "first response"
         );
         assert_eq!(
-            second_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            second_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "second response"
         );
@@ -2206,14 +2206,14 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(
-            first_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            first_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "first response"
         );
         assert_eq!(
-            second_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            second_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "second response"
         );
@@ -2292,17 +2292,17 @@ mod tests {
             .downcast::<RequestEditor>()
             .unwrap();
 
-        request_editor.update_in(cx, |request_editor, window, cx| {
-            let RequestEditorState::Ready(request) = &mut request_editor.request else {
+        request_editor.update_in(cx, |editor, window, cx| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
                 panic!("Expected request editor to be ready");
             };
             request.http.url.update(cx, |url, cx| {
                 url.set_text("https://api.zaku.dev/me/edit", window, cx);
             });
-            request_editor.mark_edited(cx);
+            editor.mark_edited(cx);
         });
 
-        assert!(request_editor.read_with(cx, |request_editor, cx| { request_editor.is_dirty(cx) }));
+        assert!(request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
 
         workspace
             .update_in(cx, |workspace, window, cx| {
@@ -2312,9 +2312,7 @@ mod tests {
             .unwrap();
         cx.run_until_parked();
 
-        assert!(
-            !request_editor.read_with(cx, |request_editor, cx| { request_editor.is_dirty(cx) })
-        );
+        assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
 
         let saved = temp_fs
             .load("project/collection/request.toml".as_ref())
@@ -2364,9 +2362,109 @@ mod tests {
             project.read_with(cx, |project, cx| {
                 project
                     .entry_for_path(&request_path, cx)
-                    .and_then(|entry| entry.request.clone())
+                    .map(|entry| entry.is_request)
             }),
-            Some(RequestFileState::Parsed(expected_request))
+            Some(true)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_file_handle_changed_on_rename(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("collection/request.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        let buffer = request_editor.read_with(cx, |editor, _| editor.buffer.clone());
+        let received_file_handle_changed = Rc::new(RefCell::new(false));
+        buffer.update(cx, |_, cx| {
+            let received_file_handle_changed = received_file_handle_changed.clone();
+            cx.subscribe(&buffer, move |_, _, event, _| {
+                if matches!(event, RequestBufferEvent::FileHandleChanged) {
+                    *received_file_handle_changed.borrow_mut() = true;
+                }
+            })
+            .detach();
+        });
+        cx.run_until_parked();
+
+        let entry_id = project
+            .read_with(cx, |project, cx| {
+                project
+                    .entry_for_path(
+                        &(worktree_id, rel_path("collection/request.toml")).into(),
+                        cx,
+                    )
+                    .map(|entry| entry.id)
+            })
+            .unwrap();
+        project
+            .update(cx, |project, cx| {
+                project.rename_entry(
+                    entry_id,
+                    (worktree_id, rel_path("collection/renamed.toml")).into(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert!(
+            *received_file_handle_changed.borrow(),
+            "RequestBufferEvent::FileHandleChanged must be emitted when the open request is renamed"
+        );
+        assert_eq!(
+            request_editor.read_with(cx, |editor, cx| editor.project_path(cx)),
+            Some((worktree_id, rel_path("collection/renamed.toml")).into())
+        );
+        buffer.read_with(cx, |buffer, _| {
+            assert_eq!(
+                buffer.file().path().as_ref(),
+                rel_path("collection/renamed.toml")
+            );
+        });
+        assert_eq!(
+            request_editor.read_with(cx, |editor, cx| editor.title(cx).to_string()),
+            "renamed"
         );
     }
 }

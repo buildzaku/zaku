@@ -1,13 +1,12 @@
 use gpui::TestAppContext;
 use indoc::indoc;
 use serde_json::{Value, json};
-use std::{cell::RefCell, rc::Rc};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use fs::Fs;
 
 use fs::TempFs;
-use project::{Project, ProjectItem, ProjectPath, RequestBuffer, RequestBufferEvent};
+use project::Project;
 use util::rel_path::{RelPath, rel_path};
 use util_macros::path;
 
