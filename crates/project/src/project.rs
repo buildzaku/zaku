@@ -1,6 +1,7 @@
+pub mod buffer_store;
 pub mod worktree_store;
 
-pub use request_buffer::RequestBuffer;
+pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
     Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
@@ -10,7 +11,7 @@ pub use worktree::{
 #[cfg(any(test, feature = "test-support"))]
 use gpui::TestAppContext;
 
-use gpui::{App, AppContext, Context, Entity, EventEmitter, Task};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
 use std::{
     future::Future,
     path::{Path, PathBuf},
@@ -19,9 +20,12 @@ use std::{
 
 use fs::Fs;
 use util::{path::PathStyle, rel_path::RelPath};
-use worktree::{UpdatedEntriesSet, serialize_request_file};
+use worktree::UpdatedEntriesSet;
 
-use crate::worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent};
+use crate::{
+    buffer_store::{BufferStore, BufferStoreEvent},
+    worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
+};
 
 pub trait ProjectItem: 'static {
     fn try_open(
@@ -70,28 +74,25 @@ impl ProjectItem for RequestBuffer {
         path: &ProjectPath,
         cx: &mut App,
     ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
-        let entry = project.read(cx).entry_for_path(path, cx)?.clone();
-        if !entry.is_file() {
+        if !project.read(cx).entry_for_path(path, cx)?.is_request {
             return None;
         }
 
-        let request = entry.request.clone()?;
-        let entry_id = entry.id;
-        let worktree_id = path.worktree_id;
-        let path = path.path.clone();
-        Some(Task::ready(Ok(
-            cx.new(|_| Self::new(entry_id, worktree_id, path, request))
-        )))
+        Some(project.update(cx, |project, cx| {
+            project.open_request_buffer(path.clone(), cx)
+        }))
     }
 
     fn entry_id(&self, _cx: &App) -> Option<ProjectEntryId> {
-        Some(RequestBuffer::entry_id(self))
+        self.file().project_entry_id()
     }
 
-    fn project_path(&self, _cx: &App) -> Option<ProjectPath> {
+    fn project_path(&self, cx: &App) -> Option<ProjectPath> {
+        let file = self.file();
+
         Some(ProjectPath {
-            worktree_id: self.worktree_id(),
-            path: self.path(),
+            worktree_id: file.worktree_id(cx),
+            path: file.path().clone(),
         })
     }
 
@@ -102,12 +103,14 @@ impl ProjectItem for RequestBuffer {
 
 pub struct Project {
     worktree_store: Entity<WorktreeStore>,
+    buffer_store: Entity<BufferStore>,
 }
 
 pub enum ProjectEvent {
     WorktreeAdded,
     WorktreeRemoved,
     WorktreeUpdatedEntries(UpdatedEntriesSet),
+    DeletedEntry(ProjectEntryId),
 }
 
 impl EventEmitter<ProjectEvent> for Project {}
@@ -116,12 +119,23 @@ impl Project {
     pub fn new(fs: Arc<dyn Fs>, cx: &mut Context<Self>) -> Self {
         let worktree_store =
             cx.new(move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx)));
+        let buffer_store = cx.new({
+            let worktree_store = worktree_store.clone();
+            move |cx| BufferStore::new(worktree_store.clone(), cx)
+        });
         cx.subscribe(&worktree_store, |_, _, event, cx| {
             Self::on_worktree_store_event(event, cx);
         })
         .detach();
+        cx.subscribe(&buffer_store, |_, _, event, cx| {
+            Self::on_buffer_store_event(event, cx);
+        })
+        .detach();
 
-        Self { worktree_store }
+        Self {
+            worktree_store,
+            buffer_store,
+        }
     }
 
     pub fn open_local(
@@ -131,7 +145,7 @@ impl Project {
     ) -> Task<anyhow::Result<Entity<Self>>> {
         let project = cx.new(move |cx| Self::new(fs.clone(), cx));
         let open_task = project.update(cx, |project, cx| {
-            project.find_or_create_worktree(abs_path, true, cx)
+            project.find_or_create_worktree(abs_path, cx)
         });
 
         cx.spawn(async move |_| {
@@ -155,7 +169,7 @@ impl Project {
 
         let worktree = project
             .update(cx, |project, cx| {
-                project.find_or_create_worktree(root_path, true, cx)
+                project.find_or_create_worktree(root_path, cx)
             })
             .await
             .unwrap();
@@ -171,11 +185,43 @@ impl Project {
 
     fn on_worktree_store_event(event: &WorktreeStoreEvent, cx: &mut Context<Self>) {
         match event {
-            WorktreeStoreEvent::WorktreeAdded => cx.emit(ProjectEvent::WorktreeAdded),
+            WorktreeStoreEvent::WorktreeAdded(_) => cx.emit(ProjectEvent::WorktreeAdded),
             WorktreeStoreEvent::WorktreeRemoved => cx.emit(ProjectEvent::WorktreeRemoved),
             WorktreeStoreEvent::WorktreeUpdatedEntries(changes) => {
                 cx.emit(ProjectEvent::WorktreeUpdatedEntries(changes.clone()));
             }
+            WorktreeStoreEvent::WorktreeDeletedEntry(entry_id) => {
+                cx.emit(ProjectEvent::DeletedEntry(*entry_id));
+            }
+        }
+    }
+
+    fn on_buffer_store_event(event: &BufferStoreEvent, cx: &mut Context<Self>) {
+        match event {
+            BufferStoreEvent::BufferAdded(buffer) => {
+                Self::register_request_buffer(buffer, cx);
+            }
+            BufferStoreEvent::BufferDropped(_) | BufferStoreEvent::BufferChangedFilePath { .. } => {
+            }
+        }
+    }
+
+    fn register_request_buffer(buffer: &Entity<RequestBuffer>, cx: &mut Context<Self>) {
+        cx.subscribe(buffer, |this, buffer, event, cx| {
+            this.on_request_buffer_event(&buffer, *event, cx);
+        })
+        .detach();
+    }
+
+    fn on_request_buffer_event(
+        &mut self,
+        buffer: &Entity<RequestBuffer>,
+        event: RequestBufferEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if event == RequestBufferEvent::ReloadNeeded {
+            self.reload_request_buffer(buffer, cx)
+                .detach_and_log_err(cx);
         }
     }
 
@@ -227,12 +273,10 @@ impl Project {
     pub fn find_or_create_worktree(
         &mut self,
         abs_path: impl AsRef<Path>,
-        visible: bool,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Entity<Worktree>>> {
-        self.worktree_store.update(cx, |store, cx| {
-            store.find_or_create_worktree(abs_path, visible, cx)
-        })
+        self.worktree_store
+            .update(cx, |store, cx| store.find_or_create_worktree(abs_path, cx))
     }
 
     pub fn remove_worktree(&mut self, cx: &mut Context<Self>) {
@@ -287,7 +331,7 @@ impl Project {
         let content = if is_directory {
             None
         } else {
-            let contents = match serialize_request_file(&RequestFile::default()) {
+            let contents = match worktree::serialize_request_file(&RequestFile::default()) {
                 Ok(contents) => contents,
                 Err(error) => return Task::ready(Err(error)),
             };
@@ -374,12 +418,21 @@ impl Project {
         Some(worktree.read(cx).absolutize(path))
     }
 
+    fn open_request_buffer(
+        &mut self,
+        path: ProjectPath,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entity<RequestBuffer>>> {
+        self.buffer_store
+            .update(cx, |store, cx| store.open_request_buffer(path, cx))
+    }
+
     pub fn save_request_buffer(
         &self,
         buffer: &Entity<RequestBuffer>,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        self.worktree_store
+        self.buffer_store
             .update(cx, |store, cx| store.save_request_buffer(buffer, cx))
     }
 
@@ -388,7 +441,7 @@ impl Project {
         buffer: &Entity<RequestBuffer>,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        self.worktree_store
+        self.buffer_store
             .update(cx, |store, cx| store.reload_request_buffer(buffer, cx))
     }
 }

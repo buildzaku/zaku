@@ -13,14 +13,13 @@ use std::{
 use tokio::sync::watch;
 
 use fs::{CopyOptions, Fs, RenameOptions};
-use request_buffer::RequestBuffer;
 use util::{
     path::{PathStyle, SanitizedPath},
     rel_path::RelPath,
 };
 use worktree::{
-    Entry, LocalWorktree, ProjectEntryId, RequestFileState, Snapshot, UpdatedEntriesSet, Worktree,
-    WorktreeEvent, WorktreeId,
+    Entry, LocalWorktree, ProjectEntryId, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent,
+    WorktreeId,
 };
 
 use crate::ProjectPath;
@@ -64,9 +63,10 @@ pub struct WorktreeStore {
 
 #[derive(Debug)]
 pub enum WorktreeStoreEvent {
-    WorktreeAdded,
+    WorktreeAdded(Entity<Worktree>),
     WorktreeRemoved,
     WorktreeUpdatedEntries(UpdatedEntriesSet),
+    WorktreeDeletedEntry(ProjectEntryId),
 }
 
 impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
@@ -202,65 +202,6 @@ impl WorktreeStore {
     pub fn absolutize(&self, project_path: &ProjectPath, cx: &App) -> Option<PathBuf> {
         let worktree = self.worktree_for_id(project_path.worktree_id, cx)?;
         Some(worktree.read(cx).absolutize(&project_path.path))
-    }
-
-    pub fn save_request_buffer(
-        &self,
-        buffer: &Entity<RequestBuffer>,
-        cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<()>> {
-        let (worktree_id, path, request_file) = {
-            let buffer = buffer.read(cx);
-            let RequestFileState::Parsed(request_file) = buffer.request_file().clone() else {
-                return Task::ready(Err(anyhow!("Cannot save invalid request")));
-            };
-            (buffer.worktree_id(), buffer.path(), request_file)
-        };
-        let Some(worktree) = self.worktree_for_id(worktree_id, cx) else {
-            return Task::ready(Err(anyhow!("Cannot save request without worktree")));
-        };
-        worktree.update(cx, |worktree, cx| {
-            worktree.write_request_file(path, &request_file, cx)
-        })
-    }
-
-    pub fn reload_request_buffer(
-        &self,
-        buffer: &Entity<RequestBuffer>,
-        cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<()>> {
-        let (worktree_id, path) = {
-            let buffer = buffer.read(cx);
-            (buffer.worktree_id(), buffer.path())
-        };
-        let Some(worktree) = self.worktree_for_id(worktree_id, cx) else {
-            return Task::ready(Err(anyhow!("Cannot reload request without worktree")));
-        };
-        let refresh = worktree.update(cx, |worktree, _| {
-            worktree
-                .as_local()
-                .map(|worktree| worktree.refresh_entries_for_paths(vec![path.clone()]))
-                .ok_or_else(|| anyhow!("Cannot refresh worktree"))
-        });
-        let buffer = buffer.clone();
-
-        cx.spawn(async move |_, cx| {
-            refresh?
-                .await
-                .map_err(|_| anyhow!("Failed to refresh request file"))?;
-            let request_file = worktree
-                .read_with(cx, |worktree, _| {
-                    worktree
-                        .entry_for_path(&path)
-                        .and_then(|entry| entry.request.clone())
-                })
-                .ok_or_else(|| anyhow!("Cannot reload request file"))?;
-            buffer.update(cx, |buffer, cx| {
-                buffer.set_request_file(request_file, cx);
-                buffer.set_dirty(false, cx);
-            });
-            Ok(())
-        })
     }
 
     pub fn path_style(&self) -> PathStyle {
@@ -443,7 +384,6 @@ impl WorktreeStore {
     pub fn find_or_create_worktree(
         &mut self,
         abs_path: impl AsRef<Path>,
-        visible: bool,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Entity<Worktree>>> {
         let requested_abs_path = SanitizedPath::new_arc(abs_path.as_ref());
@@ -455,14 +395,13 @@ impl WorktreeStore {
         {
             Task::ready(Ok(worktree))
         } else {
-            self.create_worktree(requested_abs_path.as_path(), visible, cx)
+            self.create_worktree(requested_abs_path.as_path(), cx)
         }
     }
 
     pub fn create_worktree(
         &mut self,
         abs_path: impl AsRef<Path>,
-        visible: bool,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Entity<Worktree>>> {
         let requested_abs_path = SanitizedPath::new_arc(abs_path.as_ref());
@@ -492,8 +431,7 @@ impl WorktreeStore {
                     .contains_key(&canonical_abs_path)
                 {
                     let fs = this.fs.clone();
-                    let task =
-                        this.create_local_worktree(fs, canonical_abs_path.clone(), visible, cx);
+                    let task = this.create_local_worktree(fs, canonical_abs_path.clone(), cx);
                     this.pending_worktree_tasks
                         .insert(canonical_abs_path.clone(), task.shared());
                     this.update_initial_scan_state(cx);
@@ -555,7 +493,6 @@ impl WorktreeStore {
         &mut self,
         fs: Arc<dyn Fs>,
         abs_path: Arc<SanitizedPath>,
-        visible: bool,
         cx: &mut Context<Self>,
     ) -> Task<Result<Entity<Worktree>, Arc<anyhow::Error>>> {
         let next_entry_id = self.next_entry_id.clone();
@@ -565,7 +502,6 @@ impl WorktreeStore {
         cx.spawn(async move |_, cx| {
             Worktree::local(
                 SanitizedPath::cast_arc(abs_path),
-                visible,
                 fs,
                 next_entry_id,
                 scanning_enabled,
@@ -594,12 +530,15 @@ impl WorktreeStore {
                 WorktreeEvent::UpdatedEntries(changes) => {
                     cx.emit(WorktreeStoreEvent::WorktreeUpdatedEntries(changes.clone()));
                 }
+                WorktreeEvent::DeletedEntry(entry_id) => {
+                    cx.emit(WorktreeStoreEvent::WorktreeDeletedEntry(*entry_id));
+                }
             },
         ));
 
         self.update_initial_scan_state(cx);
         Self::observe_worktree_scan_completion(worktree, cx);
-        cx.emit(WorktreeStoreEvent::WorktreeAdded);
+        cx.emit(WorktreeStoreEvent::WorktreeAdded(worktree.clone()));
     }
 
     pub fn remove_worktree(&mut self, cx: &mut Context<Self>) {

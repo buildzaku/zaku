@@ -17,8 +17,8 @@ use std::{
 
 use editor::{Editor, EditorEvent, MultiBufferOffset, SelectionEffects};
 use project::{
-    Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, ProjectPath, RequestFileState,
-    Snapshot, Worktree, WorktreeId,
+    Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, ProjectPath, Snapshot, Worktree,
+    WorktreeId,
 };
 use theme::ActiveTheme;
 use ui::{
@@ -73,11 +73,9 @@ struct TreeState {
 
 struct EntryDetails {
     file_name: String,
-    prefix_label: Option<String>,
     depth: u16,
     kind: EntryKind,
     is_expanded: bool,
-    is_invalid: bool,
     is_selected: bool,
     is_marked: bool,
     is_editing: bool,
@@ -85,7 +83,7 @@ struct EntryDetails {
 }
 
 #[derive(Debug)]
-pub enum Event {
+pub enum ProjectPanelEvent {
     OpenedEntry {
         entry_id: ProjectEntryId,
         focus_opened_item: bool,
@@ -93,7 +91,7 @@ pub enum Event {
     },
 }
 
-impl EventEmitter<Event> for ProjectPanel {}
+impl EventEmitter<ProjectPanelEvent> for ProjectPanel {}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SelectedEntry(ProjectEntryId);
@@ -217,8 +215,13 @@ impl ProjectPanel {
             let project_subscription = cx.subscribe_in(
                 &project,
                 window,
-                |this: &mut ProjectPanel, _, _: &ProjectEvent, window, cx| {
-                    this.update_visible_entries(None, false, false, window, cx);
+                |this: &mut ProjectPanel, _, event: &ProjectEvent, window, cx| match event {
+                    ProjectEvent::WorktreeAdded
+                    | ProjectEvent::WorktreeRemoved
+                    | ProjectEvent::WorktreeUpdatedEntries(_) => {
+                        this.update_visible_entries(None, false, false, window, cx);
+                    }
+                    ProjectEvent::DeletedEntry(_) => {}
                 },
             );
 
@@ -244,7 +247,7 @@ impl ProjectPanel {
         cx.subscribe_in(&project_panel, window, {
             let project_panel = project_panel.downgrade();
             move |workspace, _, event, window, cx| match event {
-                &Event::OpenedEntry {
+                &ProjectPanelEvent::OpenedEntry {
                     entry_id,
                     focus_opened_item,
                     allow_preview,
@@ -320,36 +323,13 @@ impl ProjectPanel {
         let is_expanded = entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_ok();
         let file_name = file_name_for_entry(snapshot, entry);
         let depth = u16::try_from(display_depth(entry)).unwrap_or(u16::MAX);
-        let mut is_invalid = false;
-        let prefix_label = match entry.request.as_ref() {
-            Some(RequestFileState::Parsed(request)) => {
-                let method = request.http.method.trim().to_ascii_uppercase();
-                Some(match method.as_str() {
-                    "GET" => "GET".to_string(),
-                    "POST" => "POST".to_string(),
-                    "PUT" => "PUT".to_string(),
-                    "PATCH" => "PATCH".to_string(),
-                    "DELETE" => "DEL".to_string(),
-                    "HEAD" => "HEAD".to_string(),
-                    "OPTIONS" => "OPT".to_string(),
-                    _ => method.chars().take(5).collect(),
-                })
-            }
-            Some(RequestFileState::Invalid(_)) => {
-                is_invalid = true;
-                None
-            }
-            None => None,
-        };
         let selection = SelectedEntry(entry.id);
 
         EntryDetails {
             file_name,
-            prefix_label,
             depth,
             kind: entry.kind,
             is_expanded,
-            is_invalid,
             is_selected: self.selection == Some(selection),
             is_marked: self.marked_entries.contains(&selection),
             is_editing: false,
@@ -429,7 +409,7 @@ impl ProjectPanel {
                     let mut max_width_item = None;
                     for (index, entry) in entries.iter().enumerate() {
                         let entry_label = file_name_for_entry(&snapshot, entry);
-                        let prefix_chars = usize::from(entry.request.is_some()) * 5;
+                        let prefix_chars = usize::from(entry.is_request) * 5;
                         let width_estimate = item_width_estimate(
                             display_depth(entry),
                             entry_label.chars().count() + prefix_chars,
@@ -1194,20 +1174,16 @@ impl ProjectPanel {
                 return anyhow::Ok(());
             }
 
-            let mut pending_deletes = Vec::new();
             for (entry_id, _) in file_paths {
-                let delete = panel.update(cx, |panel, cx| {
-                    panel.project.update(cx, |project, cx| {
-                        project
-                            .delete_entry(entry_id, trash, cx)
-                            .context("no such entry")
-                    })
-                })??;
-                pending_deletes.push(delete);
-            }
-
-            for delete in pending_deletes {
-                delete.await?;
+                panel
+                    .update(cx, |panel, cx| {
+                        panel.project.update(cx, |project, cx| {
+                            project
+                                .delete_entry(entry_id, trash, cx)
+                                .context("no such entry")
+                        })
+                    })??
+                    .await?;
             }
 
             panel.update_in(cx, |panel, window, cx| {
@@ -1707,7 +1683,7 @@ impl ProjectPanel {
             is_external: false,
             is_fifo: parent_entry.is_fifo,
             size: parent_entry.size,
-            request: None,
+            is_request: false,
         }
     }
 
@@ -1801,7 +1777,7 @@ impl ProjectPanel {
         allow_preview: bool,
         cx: &mut Context<Self>,
     ) {
-        cx.emit(Event::OpenedEntry {
+        cx.emit(ProjectPanelEvent::OpenedEntry {
             entry_id,
             focus_opened_item,
             allow_preview,
@@ -2168,47 +2144,6 @@ impl ProjectPanel {
                         ),
                 )
                 .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
-                .into_any_element()
-        } else if details.is_invalid {
-            ui::h_flex()
-                .flex_none()
-                .items_center()
-                .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
-                .child(
-                    ui::h_flex()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
-                        .flex_none()
-                        .items_center()
-                        .justify_end()
-                        .child(
-                            Icon::new(IconName::WarningCircle)
-                                .size(IconSize::Small)
-                                .color(Color::Error),
-                        ),
-                )
-                .into_any_element()
-        } else if let Some(prefix_label) = details.prefix_label.as_ref() {
-            ui::h_flex()
-                .flex_none()
-                .items_center()
-                .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
-                .child(
-                    ui::h_flex()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
-                        .flex_none()
-                        .items_center()
-                        .justify_end()
-                        .child(
-                            Label::new(prefix_label.clone())
-                                .size(LabelSize::Small)
-                                .weight(FontWeight::MEDIUM)
-                                .color(Color::Muted)
-                                .alpha(0.7)
-                                .single_line(),
-                        ),
-                )
                 .into_any_element()
         } else {
             ui::h_flex()
@@ -2743,7 +2678,7 @@ mod tests {
     use std::{collections::HashSet, ops::Range, sync::Arc};
 
     use fs::Fs;
-    use project::{Project, ProjectPath, RequestFileState};
+    use project::{Project, ProjectPath};
     use request_editor::RequestEditor;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -3041,7 +2976,7 @@ mod tests {
             ]
         );
 
-        let request_state = panel.update(cx, |panel, cx| {
+        let is_request = panel.update(cx, |panel, cx| {
             let worktree = panel
                 .project
                 .read(cx)
@@ -3051,10 +2986,9 @@ mod tests {
                 .read(cx)
                 .entry_for_path(rel_path("New request.toml"))
                 .expect("new request should exist")
-                .request
-                .clone()
+                .is_request
         });
-        assert!(matches!(request_state, Some(RequestFileState::Parsed(_))));
+        assert!(is_request);
     }
 
     #[gpui::test]
@@ -3871,7 +3805,15 @@ mod tests {
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let panel = workspace.update_in(cx, ProjectPanel::new);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         cx.run_until_parked();
+
+        select_path_with_mark(&panel, "project/other.toml", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open(&actions::project_panel::Open, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
 
         select_path_with_mark(&panel, "project/collection", cx);
         select_path_with_mark(&panel, "project/other.toml", cx);
@@ -3897,6 +3839,7 @@ mod tests {
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![String::from("  third  <== selected")]
         );
+        assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 0);
         assert!(
             temp_fs
                 .metadata("project/collection".as_ref())

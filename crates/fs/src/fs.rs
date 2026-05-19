@@ -127,6 +127,7 @@ pub trait Fs: Send + Sync {
     async fn canonicalize(&self, path: &Path) -> anyhow::Result<PathBuf>;
     async fn metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>>;
     async fn load(&self, path: &Path) -> anyhow::Result<String>;
+    async fn load_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>>;
     async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>>;
     async fn read_link(&self, path: &Path) -> anyhow::Result<PathBuf>;
     async fn read_dir(
@@ -499,6 +500,16 @@ impl Fs for NativeFs {
         self.executor
             .spawn(async move {
                 std::fs::read_to_string(&path)
+                    .with_context(|| format!("failed to read file {}", path.display()))
+            })
+            .await
+    }
+
+    async fn load_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+        let path = path.to_path_buf();
+        self.executor
+            .spawn(async move {
+                std::fs::read(&path)
                     .with_context(|| format!("failed to read file {}", path.display()))
             })
             .await
@@ -909,6 +920,13 @@ impl Fs for TempFs {
             .await
     }
 
+    async fn load_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .load_bytes(&absolute_path)
+            .await
+    }
+
     async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>> {
         let absolute_path = resolve_path(self.path(), path);
         NativeFs::new(self.executor.clone())
@@ -969,9 +987,20 @@ impl Fs for TempFs {
 
     async fn trash(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
         let absolute_path = resolve_path(self.path(), path);
-        NativeFs::new(self.executor.clone())
-            .trash(&absolute_path, options)
-            .await
+        let fs = NativeFs::new(self.executor.clone());
+        let Some(metadata) = fs.metadata(&absolute_path).await? else {
+            if options.ignore_if_not_exists {
+                return Ok(());
+            }
+
+            anyhow::bail!("{} does not exist", absolute_path.display());
+        };
+
+        if metadata.is_dir && !metadata.is_symlink {
+            fs.remove_dir(&absolute_path, options).await
+        } else {
+            fs.remove_file(&absolute_path, options).await
+        }
     }
 
     async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {

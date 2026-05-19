@@ -4647,6 +4647,7 @@ dependencies = [
  "futures",
  "gpui",
  "indoc",
+ "log",
  "request_buffer",
  "serde_json",
  "tokio",
@@ -5131,6 +5132,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 name = "request_buffer"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "gpui",
  "util 0.0.0",
  "worktree",

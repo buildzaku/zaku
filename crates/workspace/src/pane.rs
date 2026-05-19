@@ -664,6 +664,27 @@ impl Pane {
         }
     }
 
+    pub fn handle_deleted_project_item(
+        &mut self,
+        entry_id: ProjectEntryId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<()> {
+        let item_id = self.items().find_map(|item| {
+            if item.buffer_kind(cx) == ItemBufferKind::Singleton
+                && item.project_entry_ids(cx).as_slice() == [entry_id]
+            {
+                Some(item.item_id())
+            } else {
+                None
+            }
+        })?;
+
+        self.remove_item(item_id, false, true, window, cx);
+
+        Some(())
+    }
+
     pub async fn save_item(
         project: Entity<Project>,
         pane: &WeakEntity<Pane>,

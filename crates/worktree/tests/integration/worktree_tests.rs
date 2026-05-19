@@ -40,7 +40,6 @@ async fn test_traversal(cx: &mut TestAppContext) {
 
     let worktree = Worktree::local(
         temp_fs.path().join("project"),
-        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -112,7 +111,6 @@ async fn test_circular_symlinks(cx: &mut TestAppContext) {
 
     let worktree = Worktree::local(
         temp_fs.path().join("project"),
-        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -236,7 +234,6 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
 
     let worktree = Worktree::local(
         temp_fs.path().join(path!("project/dir1")),
-        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -253,12 +250,13 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
     worktree.update(cx, |_, cx| {
         let worktree_updates = worktree_updates.clone();
         cx.subscribe(&worktree, move |_, _, event, _| {
-            let WorktreeEvent::UpdatedEntries(update) = event;
-            worktree_updates.lock().extend(
-                update
-                    .iter()
-                    .map(|(path, _, change)| (path.clone(), *change)),
-            );
+            if let WorktreeEvent::UpdatedEntries(update) = event {
+                worktree_updates.lock().extend(
+                    update
+                        .iter()
+                        .map(|(path, _, change)| (path.clone(), *change)),
+                );
+            }
         })
         .detach();
     });
@@ -463,7 +461,6 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
 
     let worktree = Worktree::local(
         temp_fs.path().join("project"),
-        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -548,7 +545,6 @@ async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContex
 
     let worktree = Worktree::local(
         temp_fs.path().join("project"),
-        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         false,

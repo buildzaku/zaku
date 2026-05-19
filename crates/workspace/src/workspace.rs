@@ -36,7 +36,7 @@ use fs::TempFs;
 
 use http_client::HttpClient;
 use metadata::ZAKU_IDENTIFIER;
-use project::{Project, ProjectEntryId, ProjectPath};
+use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
 use ui::{StyledTypography, h_flex};
@@ -532,6 +532,7 @@ pub struct Workspace {
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
     scheduled_serialization_task: Option<Task<()>>,
     serialization_task: Option<Task<()>>,
+    _project_subscription: Subscription,
     _window_activation_subscription: Subscription,
     _window_appearance_subscription: Subscription,
 }
@@ -1110,6 +1111,22 @@ impl Workspace {
 
         let workspace = cx.entity();
         let pane = cx.new(|cx| Pane::new(workspace.downgrade(), &project, window, cx));
+        let project_subscription = cx.subscribe_in(
+            &project,
+            window,
+            |workspace: &mut Workspace, _, event, window, cx| match event {
+                ProjectEvent::WorktreeAdded
+                | ProjectEvent::WorktreeRemoved
+                | ProjectEvent::WorktreeUpdatedEntries(_) => {
+                    workspace.serialize_workspace(window, cx);
+                }
+                ProjectEvent::DeletedEntry(entry_id) => {
+                    workspace.pane.update(cx, |pane, cx| {
+                        pane.handle_deleted_project_item(*entry_id, window, cx);
+                    });
+                }
+            },
+        );
 
         let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, window, cx));
         let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, window, cx));
@@ -1143,6 +1160,7 @@ impl Workspace {
             previous_dock_drag_coordinates: None,
             scheduled_serialization_task: None,
             serialization_task: None,
+            _project_subscription: project_subscription,
             _window_activation_subscription: window_activation_subscription,
             _window_appearance_subscription: window_appearance_subscription,
         };
@@ -1686,7 +1704,7 @@ mod tests {
 
         let second_open = workspace.update_in(cx, |workspace, _, cx| {
             workspace.project().update(cx, |project, cx| {
-                project.find_or_create_worktree(&second_path, true, cx)
+                project.find_or_create_worktree(&second_path, cx)
             })
         });
 

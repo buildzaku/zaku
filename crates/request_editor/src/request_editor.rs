@@ -14,8 +14,9 @@ use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, Redire
 use input::{ErasedEditorEvent, InputField};
 use multi_buffer::MultiBuffer;
 use project::{
-    Project, ProjectPath, RequestBuffer, RequestFile, RequestFileBody, RequestFileBodyType,
-    RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
+    Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
+    RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
+    RequestFileState,
 };
 use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
@@ -369,8 +370,8 @@ impl RequestBody {
 pub struct RequestEditor {
     focus_handle: FocusHandle,
     workspace: WeakEntity<Workspace>,
-    project: Option<Entity<Project>>,
-    buffer: Option<Entity<RequestBuffer>>,
+    project: Entity<Project>,
+    buffer: Entity<RequestBuffer>,
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
     active_tab: RequestEditorTab,
@@ -378,9 +379,9 @@ pub struct RequestEditor {
     http_client: Arc<dyn HttpClient>,
     params_scroll_handle: ScrollHandle,
     headers_scroll_handle: ScrollHandle,
-    is_dirty: bool,
     input_subscriptions: Vec<Subscription>,
     body_subscription: Option<Subscription>,
+    _buffer_subscription: Subscription,
 }
 
 impl RequestEditor {
@@ -395,12 +396,45 @@ impl RequestEditor {
         let request_file = buffer.read(cx).request_file().clone();
         let (request, request_snapshot, input_subscriptions, body_subscription) =
             Self::state_from_request_file(request_file, window, cx);
+        let request_editor = cx.weak_entity();
+        let buffer_subscription = window.subscribe(
+            &buffer,
+            cx,
+            move |buffer, event: &RequestBufferEvent, window, cx| match event {
+                RequestBufferEvent::DirtyChanged
+                | RequestBufferEvent::FileHandleChanged
+                | RequestBufferEvent::Saved => {
+                    if let Err(error) = request_editor.update(cx, |_, cx| {
+                        cx.emit(ItemEvent::UpdateTab);
+                        cx.notify();
+                    }) {
+                        log::debug!("Failed to update request editor tab: {error:?}");
+                    }
+                }
+                RequestBufferEvent::Reloaded => {
+                    let request_file = buffer.read(cx).request_file().clone();
+                    if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                        let (request, request_snapshot, input_subscriptions, body_subscription) =
+                            Self::state_from_request_file(request_file, window, cx);
+                        request_editor.request = request;
+                        request_editor.request_snapshot = request_snapshot;
+                        request_editor.input_subscriptions = input_subscriptions;
+                        request_editor.body_subscription = body_subscription;
+                        cx.emit(ItemEvent::UpdateTab);
+                        cx.notify();
+                    }) {
+                        log::debug!("Failed to reload request editor: {error:?}");
+                    }
+                }
+                RequestBufferEvent::ReloadNeeded => {}
+            },
+        );
 
         Self {
             focus_handle,
             workspace,
-            project: Some(project),
-            buffer: Some(buffer),
+            project,
+            buffer,
             request,
             request_snapshot,
             active_tab: RequestEditorTab::Parameters,
@@ -408,22 +442,18 @@ impl RequestEditor {
             http_client: SharedState::global(cx).http_client.clone(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
-            is_dirty: false,
             input_subscriptions,
             body_subscription,
+            _buffer_subscription: buffer_subscription,
         }
     }
 
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {
-        self.buffer
-            .as_ref()
-            .and_then(|buffer| project::ProjectItem::project_path(buffer.read(cx), cx))
+        project::ProjectItem::project_path(self.buffer.read(cx), cx)
     }
 
     fn path_style(&self, cx: &App) -> PathStyle {
-        self.project
-            .as_ref()
-            .map_or_else(PathStyle::local, |project| project.read(cx).path_style(cx))
+        self.project.read(cx).path_style(cx)
     }
 
     fn response(&self) -> Option<Entity<Response>> {
@@ -611,22 +641,15 @@ impl RequestEditor {
         } else {
             false
         };
-        let dirty_changed = if let Some(buffer) = self.buffer.as_ref() {
-            let request = request_snapshot
-                .as_ref()
-                .map(|snapshot| RequestFileState::Parsed(snapshot.0.clone()));
-            buffer.update(cx, |buffer, cx| {
-                if let Some(request) = request {
-                    buffer.set_request_file(request, cx);
-                }
-                buffer.set_dirty(is_dirty, cx)
-            })
-        } else if self.is_dirty == is_dirty {
-            false
-        } else {
-            self.is_dirty = is_dirty;
-            true
-        };
+        let request = request_snapshot
+            .as_ref()
+            .map(|snapshot| RequestFileState::Parsed(snapshot.0.clone()));
+        let dirty_changed = self.buffer.update(cx, |buffer, cx| {
+            if let Some(request) = request {
+                buffer.set_request_file(request, cx);
+            }
+            buffer.set_dirty(is_dirty, cx)
+        });
 
         cx.emit(ItemEvent::Edit);
         if dirty_changed {
@@ -1569,12 +1592,8 @@ impl Item for RequestEditor {
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
-        let project = self.project.as_ref()?;
-        let project_path = self
-            .buffer
-            .as_ref()
-            .and_then(|buffer| project::ProjectItem::project_path(buffer.read(cx), cx))?;
-        project
+        let project_path = project::ProjectItem::project_path(self.buffer.read(cx), cx)?;
+        self.project
             .read(cx)
             .absolute_path(&project_path, cx)
             .map(|path| path.to_string_lossy().into_owned().into())
@@ -1585,9 +1604,7 @@ impl Item for RequestEditor {
         cx: &App,
         f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
-        if let Some(buffer) = self.buffer.as_ref() {
-            f(Entity::entity_id(buffer), buffer.read(cx));
-        }
+        f(Entity::entity_id(&self.buffer), self.buffer.read(cx));
     }
 
     fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {
@@ -1595,9 +1612,7 @@ impl Item for RequestEditor {
     }
 
     fn is_dirty(&self, cx: &App) -> bool {
-        self.buffer
-            .as_ref()
-            .map_or(self.is_dirty, |buffer| buffer.read(cx).is_dirty())
+        self.buffer.read(cx).is_dirty()
     }
 
     fn can_save(&self, cx: &App) -> bool {
@@ -1610,9 +1625,7 @@ impl Item for RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let Some(buffer) = self.buffer.clone() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot save request without buffer")));
-        };
+        let buffer = self.buffer.clone();
         let RequestEditorState::Ready(request) = &self.request else {
             return Task::ready(Err(anyhow::anyhow!("Cannot save invalid request")));
         };
@@ -1620,6 +1633,7 @@ impl Item for RequestEditor {
         buffer.update(cx, |buffer, cx| {
             buffer.set_request_file(RequestFileState::Parsed(request_snapshot.0.clone()), cx);
         });
+        let was_dirty = buffer.read(cx).is_dirty();
 
         cx.spawn_in(window, async move |this, cx| {
             project
@@ -1627,14 +1641,8 @@ impl Item for RequestEditor {
                 .await?;
             this.update(cx, |request_editor, cx| {
                 request_editor.request_snapshot = Some(request_snapshot.clone());
-                request_editor.is_dirty = false;
-                let dirty_changed = buffer.update(cx, |buffer, cx| {
-                    let dirty_changed = buffer.is_dirty();
-                    buffer.did_save(cx);
-                    dirty_changed
-                });
 
-                if dirty_changed {
+                if was_dirty {
                     cx.emit(ItemEvent::UpdateTab);
                 }
                 cx.notify();
@@ -1649,31 +1657,13 @@ impl Item for RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let Some(buffer) = self.buffer.clone() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot reload request without buffer")));
-        };
-        let was_dirty = self.is_dirty(cx);
-        let reload_request_buffer =
+        let buffer = self.buffer.clone();
+        let reload_task =
             project.update(cx, |project, cx| project.reload_request_buffer(&buffer, cx));
 
-        cx.spawn_in(window, async move |this, cx| {
-            reload_request_buffer.await?;
-            this.update_in(cx, |request_editor, window, cx| {
-                let request_file = buffer.read(cx).request_file().clone();
-                let (request, request_snapshot, input_subscriptions, body_subscription) =
-                    Self::state_from_request_file(request_file, window, cx);
-                request_editor.request = request;
-                request_editor.request_snapshot = request_snapshot;
-                request_editor.input_subscriptions = input_subscriptions;
-                request_editor.body_subscription = body_subscription;
-                request_editor.is_dirty = false;
-
-                if was_dirty {
-                    cx.emit(ItemEvent::UpdateTab);
-                }
-                cx.notify();
-            })?;
-            Ok(())
+        cx.spawn_in(window, async move |_, _| {
+            reload_task.await?;
+            anyhow::Ok(())
         })
     }
 }
@@ -1705,6 +1695,7 @@ mod tests {
     use indoc::indoc;
     use parking_lot::Mutex;
     use serde_json::json;
+    use std::{cell::RefCell, rc::Rc};
 
     use fs::Fs;
     use http_client::{Response, StatusCode};
