@@ -104,20 +104,6 @@ fn normalize_url(url: &str) -> Option<Url> {
     Url::parse(&url).ok()
 }
 
-fn method_label(method: &Method) -> String {
-    let method = method.as_str().trim().to_ascii_uppercase();
-    match method.as_str() {
-        "GET" => "GET".to_string(),
-        "POST" => "POST".to_string(),
-        "PUT" => "PUT".to_string(),
-        "PATCH" => "PATCH".to_string(),
-        "DELETE" => "DEL".to_string(),
-        "HEAD" => "HEAD".to_string(),
-        "OPTIONS" => "OPT".to_string(),
-        _ => method.chars().take(5).collect(),
-    }
-}
-
 fn body_type_label(r#type: Option<RequestBodyType>) -> &'static str {
     match r#type {
         None => "None",
@@ -1536,7 +1522,9 @@ impl Item for RequestEditor {
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
         let selected_method_label = match &self.request {
-            RequestEditorState::Ready(request) => Some(method_label(&request.http.method)),
+            RequestEditorState::Ready(request) => {
+                Some(project::request_method_label(request.http.method.as_str()))
+            }
             RequestEditorState::Invalid { .. } => None,
         };
         let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))

@@ -1,14 +1,16 @@
 use gpui::TestAppContext;
 use indoc::indoc;
 use serde_json::{Value, json};
+use std::{cell::RefCell, rc::Rc};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use fs::Fs;
 
 use fs::TempFs;
-use project::Project;
+use project::{Project, ProjectItem, RequestBuffer, RequestBufferEvent};
 use util::rel_path::{RelPath, rel_path};
 use util_macros::path;
+use worktree::WorktreeModelHandle;
 
 #[gpui::test]
 async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
@@ -306,6 +308,96 @@ async fn test_initial_scan_complete(cx: &mut TestAppContext) {
         assert!(
             project.worktree_store().read(cx).initial_scan_completed(),
             "expected initial scan to be completed after awaiting wait_for_initial_scan"
+        );
+    });
+}
+
+#[gpui::test(iterations = 10)]
+async fn test_buffer_identity_across_renames(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        path!("project"),
+        json!({
+            "collection": {
+                "request.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/me"
+                "#}
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join(path!("project"));
+    let project = Project::test_new(temp_fs, &project_path, cx).await;
+    let worktree = project.update(cx, |project, cx| project.worktree(cx).unwrap());
+    let worktree_id = worktree.update(cx, |worktree, _| worktree.id());
+
+    let entry_id_for_path = |path: &'static str, cx: &mut TestAppContext| {
+        project.update(cx, |project, cx| {
+            let worktree = project.worktree(cx).unwrap();
+            worktree
+                .read(cx)
+                .entry_for_path(rel_path(path))
+                .unwrap_or_else(|| panic!("No entry for path {path}"))
+                .id
+        })
+    };
+
+    let collection_id = entry_id_for_path("collection", cx);
+    let request_entry_id = entry_id_for_path("collection/request.toml", cx);
+    let buffer = cx
+        .update(|cx| {
+            <RequestBuffer as ProjectItem>::try_open(
+                &project,
+                &(worktree_id, rel_path("collection/request.toml")).into(),
+                cx,
+            )
+            .unwrap()
+        })
+        .await
+        .unwrap();
+    buffer.update(cx, |buffer, _| assert!(!buffer.is_dirty()));
+
+    let received_file_handle_changed = Rc::new(RefCell::new(false));
+    buffer.update(cx, |_, cx| {
+        let received_file_handle_changed = received_file_handle_changed.clone();
+        cx.subscribe(&buffer, move |_, _, event, _| {
+            if matches!(event, RequestBufferEvent::FileHandleChanged) {
+                *received_file_handle_changed.borrow_mut() = true;
+            }
+        })
+        .detach();
+    });
+
+    project
+        .update(cx, |project, cx| {
+            project.rename_entry(collection_id, (worktree_id, rel_path("renamed")).into(), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    worktree.flush_fs_events(cx).await;
+
+    assert_eq!(entry_id_for_path("renamed", cx), collection_id);
+    assert_eq!(
+        entry_id_for_path("renamed/request.toml", cx),
+        request_entry_id
+    );
+    assert!(
+        *received_file_handle_changed.borrow(),
+        "RequestBufferEvent::FileHandleChanged must be emitted when the open request is moved by a parent rename"
+    );
+    buffer.update(cx, |buffer, _| {
+        assert!(!buffer.is_dirty());
+        assert_eq!(
+            buffer.file().path().as_ref(),
+            rel_path("renamed/request.toml")
         );
     });
 }

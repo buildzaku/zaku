@@ -1123,6 +1123,7 @@ impl Workspace {
                         pane.handle_deleted_project_item(*entry_id, window, cx);
                     });
                 }
+                ProjectEvent::EntryMetadataUpdated(_) => {}
             },
         );
 

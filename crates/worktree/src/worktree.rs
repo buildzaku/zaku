@@ -3,7 +3,7 @@ mod request;
 pub use request::{
     REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileHeader,
     RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState, parse_request_file,
-    serialize_request_file,
+    request_method_label, serialize_request_file,
 };
 
 use anyhow::{Context as AnyhowContext, anyhow};

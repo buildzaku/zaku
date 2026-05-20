@@ -5,7 +5,7 @@ pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
     Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
-    RequestFileState, Snapshot, Worktree, WorktreeId,
+    RequestFileState, Snapshot, UpdatedEntriesSet, Worktree, WorktreeId, request_method_label,
 };
 
 #[cfg(any(test, feature = "test-support"))]
@@ -13,14 +13,14 @@ use gpui::TestAppContext;
 
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
 use std::{
+    collections::HashMap,
     future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
-use fs::Fs;
-use util::{path::PathStyle, rel_path::RelPath};
-use worktree::UpdatedEntriesSet;
+use fs::{Fs, MTime};
+use util::{ResultExt, path::PathStyle, rel_path::RelPath};
 
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent},
@@ -68,6 +68,61 @@ impl<P: Into<Arc<RelPath>>> From<(WorktreeId, P)> for ProjectPath {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EntryMetadata {
+    pub prefix_label: Option<String>,
+    pub is_invalid: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EntryMetadataVersion {
+    path: Arc<RelPath>,
+    inode: u64,
+    mtime: Option<MTime>,
+    size: u64,
+}
+
+impl EntryMetadataVersion {
+    fn for_entry(entry: &Entry) -> Self {
+        Self {
+            path: entry.path.clone(),
+            inode: entry.inode,
+            mtime: entry.mtime,
+            size: entry.size,
+        }
+    }
+}
+
+enum EntryMetadataState {
+    Pending {
+        version: EntryMetadataVersion,
+        _task: Task<()>,
+    },
+    Loaded {
+        version: EntryMetadataVersion,
+        metadata: EntryMetadata,
+    },
+}
+
+impl EntryMetadataState {
+    fn version(&self) -> &EntryMetadataVersion {
+        match self {
+            Self::Pending { version, .. } | Self::Loaded { version, .. } => version,
+        }
+    }
+
+    fn metadata(&self) -> Option<&EntryMetadata> {
+        match self {
+            Self::Loaded { metadata, .. } => Some(metadata),
+            Self::Pending { .. } => None,
+        }
+    }
+
+    fn is_current(&self, entry: &Entry) -> bool {
+        self.version() == &EntryMetadataVersion::for_entry(entry)
+    }
+}
+
 impl ProjectItem for RequestBuffer {
     fn try_open(
         project: &Entity<Project>,
@@ -104,6 +159,7 @@ impl ProjectItem for RequestBuffer {
 pub struct Project {
     worktree_store: Entity<WorktreeStore>,
     buffer_store: Entity<BufferStore>,
+    metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
 }
 
 pub enum ProjectEvent {
@@ -111,6 +167,7 @@ pub enum ProjectEvent {
     WorktreeRemoved,
     WorktreeUpdatedEntries(UpdatedEntriesSet),
     DeletedEntry(ProjectEntryId),
+    EntryMetadataUpdated(ProjectEntryId),
 }
 
 impl EventEmitter<ProjectEvent> for Project {}
@@ -123,8 +180,8 @@ impl Project {
             let worktree_store = worktree_store.clone();
             move |cx| BufferStore::new(worktree_store.clone(), cx)
         });
-        cx.subscribe(&worktree_store, |_, _, event, cx| {
-            Self::on_worktree_store_event(event, cx);
+        cx.subscribe(&worktree_store, |this, _, event, cx| {
+            this.on_worktree_store_event(event, cx);
         })
         .detach();
         cx.subscribe(&buffer_store, |_, _, event, cx| {
@@ -135,6 +192,7 @@ impl Project {
         Self {
             worktree_store,
             buffer_store,
+            metadata_by_entry_id: HashMap::new(),
         }
     }
 
@@ -183,16 +241,30 @@ impl Project {
         project
     }
 
-    fn on_worktree_store_event(event: &WorktreeStoreEvent, cx: &mut Context<Self>) {
+    fn on_worktree_store_event(&mut self, event: &WorktreeStoreEvent, cx: &mut Context<Self>) {
         match event {
-            WorktreeStoreEvent::WorktreeAdded(_) => cx.emit(ProjectEvent::WorktreeAdded),
-            WorktreeStoreEvent::WorktreeRemoved => cx.emit(ProjectEvent::WorktreeRemoved),
+            WorktreeStoreEvent::WorktreeAdded(_) => {
+                self.metadata_by_entry_id.clear();
+                cx.emit(ProjectEvent::WorktreeAdded);
+            }
+            WorktreeStoreEvent::WorktreeRemoved => {
+                self.metadata_by_entry_id.clear();
+                cx.emit(ProjectEvent::WorktreeRemoved);
+            }
             WorktreeStoreEvent::WorktreeUpdatedEntries(changes) => {
+                self.invalidate_entry_metadata(changes);
                 cx.emit(ProjectEvent::WorktreeUpdatedEntries(changes.clone()));
             }
             WorktreeStoreEvent::WorktreeDeletedEntry(entry_id) => {
+                self.metadata_by_entry_id.remove(entry_id);
                 cx.emit(ProjectEvent::DeletedEntry(*entry_id));
             }
+        }
+    }
+
+    fn invalidate_entry_metadata(&mut self, changes: &UpdatedEntriesSet) {
+        for (_, entry_id, _) in changes.iter() {
+            self.metadata_by_entry_id.remove(entry_id);
         }
     }
 
@@ -287,6 +359,107 @@ impl Project {
 
     pub fn entry_for_path<'a>(&'a self, path: &ProjectPath, cx: &'a App) -> Option<&'a Entry> {
         self.worktree_store.read(cx).entry_for_path(path, cx)
+    }
+
+    pub fn entry_metadata(&self, entry: &Entry) -> Option<&EntryMetadata> {
+        self.metadata_by_entry_id
+            .get(&entry.id)
+            .filter(|metadata| metadata.is_current(entry))
+            .and_then(EntryMetadataState::metadata)
+    }
+
+    pub fn load_entry_metadata(&mut self, entry: &Entry, cx: &mut Context<Self>) {
+        if !entry.kind.is_file() || !entry.is_request {
+            return;
+        }
+
+        let version = EntryMetadataVersion::for_entry(entry);
+        if self
+            .metadata_by_entry_id
+            .get(&entry.id)
+            .is_some_and(|metadata| metadata.version() == &version)
+        {
+            return;
+        }
+
+        let Some(project_path) = self.path_for_entry(entry.id, cx) else {
+            return;
+        };
+        let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) else {
+            return;
+        };
+
+        let path = project_path.path.clone();
+        let load_file_task =
+            worktree.update(cx, |worktree, cx| worktree.load_file(path.as_ref(), cx));
+        let entry_id = entry.id;
+        let version_for_task = version.clone();
+        let metadata_task = cx.spawn(async move |this, cx| {
+            let request_file = match load_file_task.await.log_err() {
+                Some(loaded) => {
+                    let parse_task =
+                        cx.background_spawn(
+                            async move { worktree::parse_request_file(&loaded.text) },
+                        );
+                    Some(parse_task.await)
+                }
+                None => None,
+            };
+
+            this.update(cx, |this, cx| {
+                let is_current = matches!(
+                    this.metadata_by_entry_id.get(&entry_id),
+                    Some(EntryMetadataState::Pending { version, .. })
+                        if version == &version_for_task
+                );
+                if !is_current {
+                    return;
+                }
+
+                match request_file {
+                    Some(RequestFileState::Parsed(request_file)) => {
+                        this.metadata_by_entry_id.insert(
+                            entry_id,
+                            EntryMetadataState::Loaded {
+                                version: version_for_task.clone(),
+                                metadata: EntryMetadata {
+                                    prefix_label: Some(worktree::request_method_label(
+                                        &request_file.http.method,
+                                    )),
+                                    is_invalid: false,
+                                },
+                            },
+                        );
+                    }
+                    Some(RequestFileState::Invalid(_)) => {
+                        this.metadata_by_entry_id.insert(
+                            entry_id,
+                            EntryMetadataState::Loaded {
+                                version: version_for_task.clone(),
+                                metadata: EntryMetadata {
+                                    prefix_label: None,
+                                    is_invalid: true,
+                                },
+                            },
+                        );
+                    }
+                    None => {
+                        this.metadata_by_entry_id.remove(&entry_id);
+                    }
+                }
+                cx.emit(ProjectEvent::EntryMetadataUpdated(entry_id));
+                cx.notify();
+            })
+            .log_err();
+        });
+
+        self.metadata_by_entry_id.insert(
+            entry.id,
+            EntryMetadataState::Pending {
+                version,
+                _task: metadata_task,
+            },
+        );
     }
 
     pub fn path_for_entry(&self, entry_id: ProjectEntryId, cx: &App) -> Option<ProjectPath> {

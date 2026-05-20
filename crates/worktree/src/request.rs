@@ -117,6 +117,20 @@ pub fn parse_request_file(contents: &str) -> RequestFileState {
     }
 }
 
+pub fn request_method_label(method: &str) -> String {
+    let method = method.trim().to_ascii_uppercase();
+    match method.as_str() {
+        "GET" => "GET".to_string(),
+        "POST" => "POST".to_string(),
+        "PUT" => "PUT".to_string(),
+        "PATCH" => "PATCH".to_string(),
+        "DELETE" => "DEL".to_string(),
+        "HEAD" => "HEAD".to_string(),
+        "OPTIONS" => "OPT".to_string(),
+        _ => method.chars().take(5).collect(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

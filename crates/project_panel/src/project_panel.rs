@@ -73,9 +73,11 @@ struct TreeState {
 
 struct EntryDetails {
     file_name: String,
+    prefix_label: Option<String>,
     depth: u16,
     kind: EntryKind,
     is_expanded: bool,
+    is_invalid: bool,
     is_selected: bool,
     is_marked: bool,
     is_editing: bool,
@@ -222,6 +224,9 @@ impl ProjectPanel {
                         this.update_visible_entries(None, false, false, window, cx);
                     }
                     ProjectEvent::DeletedEntry(_) => {}
+                    ProjectEvent::EntryMetadataUpdated(_) => {
+                        cx.notify();
+                    }
                 },
             );
 
@@ -318,22 +323,41 @@ impl ProjectPanel {
         dispatch_context
     }
 
-    fn details_for_entry(&self, snapshot: &Snapshot, entry: &Entry) -> EntryDetails {
+    fn details_for_entry(&self, snapshot: &Snapshot, entry: &Entry, cx: &App) -> EntryDetails {
         let expanded_dir_ids = self.tree_state.expanded_dir_ids.as_deref().unwrap_or(&[]);
         let is_expanded = entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_ok();
         let file_name = file_name_for_entry(snapshot, entry);
         let depth = u16::try_from(display_depth(entry)).unwrap_or(u16::MAX);
+        let mut prefix_label = None;
+        let mut is_invalid = false;
+        if let Some(metadata) = self.project.read(cx).entry_metadata(entry) {
+            prefix_label.clone_from(&metadata.prefix_label);
+            is_invalid = metadata.is_invalid;
+        }
         let selection = SelectedEntry(entry.id);
 
         EntryDetails {
             file_name,
+            prefix_label,
             depth,
             kind: entry.kind,
             is_expanded,
+            is_invalid,
             is_selected: self.selection == Some(selection),
             is_marked: self.marked_entries.contains(&selection),
             is_editing: false,
             is_processing: false,
+        }
+    }
+
+    fn load_entry_metadata_for_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
+        let end_index = range.end.min(self.tree_state.visible_entries.len());
+        let entry_range = range.start.min(end_index)..end_index;
+        let entries = self.tree_state.visible_entries[entry_range].to_vec();
+
+        for entry in entries {
+            self.project
+                .update(cx, |project, cx| project.load_entry_metadata(&entry, cx));
         }
     }
 
@@ -1706,7 +1730,7 @@ impl ProjectPanel {
         let end_index = range.end.min(self.tree_state.visible_entries.len());
         let entry_range = range.start.min(end_index)..end_index;
         for entry in &self.tree_state.visible_entries[entry_range] {
-            let mut details = self.details_for_entry(&snapshot, entry);
+            let mut details = self.details_for_entry(&snapshot, entry, cx);
 
             if let Some(edit_state) = &self.tree_state.edit_state {
                 let is_edited_entry = if edit_state.is_new_entry() {
@@ -2169,6 +2193,47 @@ impl ProjectPanel {
                 )
                 .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
                 .into_any_element()
+        } else if details.is_invalid {
+            ui::h_flex()
+                .flex_none()
+                .items_center()
+                .gap_0p5()
+                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(
+                    ui::h_flex()
+                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .flex_none()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            Icon::new(IconName::WarningCircle)
+                                .size(IconSize::Small)
+                                .color(Color::Error),
+                        ),
+                )
+                .into_any_element()
+        } else if let Some(prefix_label) = details.prefix_label.as_ref() {
+            ui::h_flex()
+                .flex_none()
+                .items_center()
+                .gap_0p5()
+                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(
+                    ui::h_flex()
+                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .flex_none()
+                        .items_center()
+                        .justify_end()
+                        .child(
+                            Label::new(prefix_label.clone())
+                                .size(LabelSize::Small)
+                                .weight(FontWeight::MEDIUM)
+                                .color(Color::Muted)
+                                .alpha(0.7)
+                                .single_line(),
+                        ),
+                )
+                .into_any_element()
         } else {
             ui::h_flex()
                 .flex_none()
@@ -2522,6 +2587,7 @@ impl Render for ProjectPanel {
                             "project-panel-entries",
                             entry_count,
                             cx.processor(|this, range: Range<usize>, window, cx| {
+                                this.load_entry_metadata_for_range(range.clone(), cx);
                                 let mut items =
                                     Vec::with_capacity(range.end.saturating_sub(range.start));
                                 this.for_each_visible_entry(
@@ -2791,6 +2857,7 @@ mod tests {
             let mut project_entries = HashSet::new();
             let mut has_editor = false;
 
+            panel.load_entry_metadata_for_range(range.clone(), cx);
             panel.for_each_visible_entry(range, window, cx, &mut |entry_id, details, _, _| {
                 if details.is_editing {
                     assert!(!has_editor, "duplicate editor entry");
@@ -2852,7 +2919,7 @@ mod tests {
                 .expect("workspace should have a worktree");
             let worktree_id = worktree.read(cx).id();
 
-            let open_project_paths = workspace
+            let opened_project_paths = workspace
                 .pane()
                 .read(cx)
                 .active_item()
@@ -2860,7 +2927,7 @@ mod tests {
                 .into_iter()
                 .collect::<Vec<_>>();
             assert_eq!(
-                open_project_paths,
+                opened_project_paths,
                 vec![ProjectPath {
                     worktree_id,
                     path: Arc::from(rel_path(expected_path)),
