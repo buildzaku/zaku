@@ -1771,7 +1771,7 @@ mod tests {
         let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
-            .expect("recent workspace query should succeed");
+            .unwrap();
 
         assert_eq!(current_root, Some(canonical_project_path.clone()));
         assert!(
@@ -1828,9 +1828,7 @@ mod tests {
         let first_open = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(first_path.clone(), OpenMode::Activate, window, cx)
         });
-        let workspace = first_open
-            .await
-            .expect("first workspace open should succeed");
+        let workspace = first_open.await.unwrap();
 
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
@@ -1947,7 +1945,7 @@ mod tests {
         let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
-            .expect("recent workspace query should succeed");
+            .unwrap();
         assert!(
             recent_workspaces
                 .iter()
@@ -2422,12 +2420,8 @@ mod tests {
         assert_item_labels(&pane, ["First", "Second", "Third", "Fourth*"], cx);
         cx.run_until_parked();
 
-        let first_tab_bounds = cx
-            .debug_bounds("TAB-0")
-            .expect("First tab should have debug bounds");
-        let third_tab_bounds = cx
-            .debug_bounds("TAB-2")
-            .expect("Third tab should have debug bounds");
+        let first_tab_bounds = cx.debug_bounds("TAB-0").unwrap();
+        let third_tab_bounds = cx.debug_bounds("TAB-2").unwrap();
 
         cx.simulate_event(MouseDownEvent {
             position: first_tab_bounds.center(),
@@ -2489,7 +2483,7 @@ mod tests {
                     .worktree(cx)
                     .map(|worktree| worktree.read(cx).id())
             })
-            .expect("first open should create a worktree");
+            .unwrap();
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(project_path.clone(), OpenMode::Activate, window, cx)
@@ -2701,7 +2695,7 @@ mod tests {
                     .worktree(cx)
                     .map(|worktree| worktree.read(cx).id())
             })
-            .expect("first open should create a worktree");
+            .unwrap();
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(
@@ -2832,7 +2826,7 @@ mod tests {
         let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
-            .expect("recent workspace query should succeed");
+            .unwrap();
 
         assert_eq!(first_worktree_id, second_worktree_id);
         assert_eq!(current_root, Some(canonical_project_path.clone()));
@@ -2895,7 +2889,7 @@ mod tests {
                     .worktree(cx)
                     .map(|worktree| worktree.read(cx).id())
             })
-            .expect("first open should create a worktree");
+            .unwrap();
 
         let second_open = workspace.update_in(cx, |workspace, window, cx| {
             workspace.open_workspace_for_path(second_path.clone(), OpenMode::Activate, window, cx)

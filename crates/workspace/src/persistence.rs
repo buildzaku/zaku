@@ -415,10 +415,7 @@ mod tests {
 
         let workspace_db =
             WorkspaceDb::open_test_db("test_save_workspace_deduplicates_paths").await;
-        workspace_db
-            .clear_recent_workspaces()
-            .await
-            .expect("workspace recent list should clear");
+        workspace_db.clear_recent_workspaces().await.unwrap();
 
         let project_path = temp_fs.path().join("project");
         workspace_db
@@ -441,19 +438,14 @@ mod tests {
         let recent_workspaces = workspace_db
             .recent_workspaces_on_disk(temp_fs.as_ref())
             .await
-            .expect("recent workspace query should succeed");
+            .unwrap();
 
         let Some((workspace_id, location, _timestamp)) = recent_workspaces.first() else {
             panic!("expected a recent workspace");
         };
         assert_eq!(*workspace_id, WorkspaceId::from(1));
         assert_eq!(location.path(), project_path);
-        assert_eq!(
-            workspace_db
-                .recent_workspace_count()
-                .expect("workspace count query should succeed"),
-            1
-        );
+        assert_eq!(workspace_db.recent_workspace_count().unwrap(), 1);
     }
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -582,7 +574,7 @@ mod tests {
                 temp_fs.as_ref(),
             )
             .await
-            .expect("last session workspace query should succeed");
+            .unwrap();
 
         assert_eq!(
             locations,
@@ -644,7 +636,7 @@ mod tests {
         let locations = workspace_db
             .last_session_workspace_locations("session-uuid", None, temp_fs.as_ref())
             .await
-            .expect("last session workspace query should succeed");
+            .unwrap();
 
         assert_eq!(
             locations,
@@ -686,7 +678,7 @@ mod tests {
                 )
             })
             .await
-            .expect("workspace open should succeed");
+            .unwrap();
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
@@ -702,10 +694,8 @@ mod tests {
 
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
-            .expect("workspace should have a database_id after opening");
-        let serialized_workspace = workspace_db
-            .workspace_for_id(workspace_id)
-            .expect("workspace should be serialized before replacement");
+            .unwrap();
+        let serialized_workspace = workspace_db.workspace_for_id(workspace_id).unwrap();
 
         assert!(serialized_workspace.session_id.is_some());
         assert!(serialized_workspace.window_id.is_some());
@@ -749,7 +739,7 @@ mod tests {
                 )
             })
             .await
-            .expect("workspace open should succeed");
+            .unwrap();
         workspace
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
@@ -765,10 +755,8 @@ mod tests {
 
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
-            .expect("workspace should have a database_id after opening");
-        let serialized_workspace = workspace_db
-            .workspace_for_id(workspace_id)
-            .expect("workspace should be serialized before close");
+            .unwrap();
+        let serialized_workspace = workspace_db.workspace_for_id(workspace_id).unwrap();
 
         assert!(serialized_workspace.session_id.is_some());
         assert!(serialized_workspace.window_id.is_some());

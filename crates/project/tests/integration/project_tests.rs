@@ -141,9 +141,7 @@ async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAp
         .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
         .await;
 
-    let first_worktree = cx
-        .update(|cx| project.read(cx).worktree(cx))
-        .expect("first project open should install a worktree");
+    let first_worktree = cx.update(|cx| project.read(cx).worktree(cx)).unwrap();
     let first_worktree_id = first_worktree.read_with(cx, |worktree, _| worktree.id());
 
     let second_worktree = project
@@ -190,9 +188,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
         .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
         .await;
 
-    let first_worktree = cx
-        .update(|cx| project.read(cx).worktree(cx))
-        .expect("first project open should create a worktree");
+    let first_worktree = cx.update(|cx| project.read(cx).worktree(cx)).unwrap();
     let second_worktree = project
         .update(cx, |project, cx| {
             project.find_or_create_worktree(&alternate_project_path, cx)
@@ -234,9 +230,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
         .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
         .await;
 
-    let first_worktree = cx
-        .update(|cx| project.read(cx).worktree(cx))
-        .expect("first project open should create a worktree");
+    let first_worktree = cx.update(|cx| project.read(cx).worktree(cx)).unwrap();
 
     assert_eq!(
         cx.update(|cx| project.read(cx).root(cx)),

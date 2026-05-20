@@ -574,9 +574,7 @@ async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContex
             .unwrap()
             .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("a/b/c/deep.toml").unwrap())])
     });
-    refresh
-        .await
-        .expect("refresh entries for paths should complete");
+    refresh.await.unwrap();
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
