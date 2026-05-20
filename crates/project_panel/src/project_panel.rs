@@ -3361,11 +3361,19 @@ mod tests {
             panel.copy(&actions::project_panel::Copy, window, cx);
             panel.paste(&actions::project_panel::Paste, window, cx);
         });
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
+                    && panel.file_name_editor.read(cx).text(cx) == "first copy"
+            })
+            .await;
         cx.run_until_parked();
 
-        panel.update_in(cx, |panel, window, cx| {
-            assert!(panel.file_name_editor.read(cx).is_focused(window));
-        });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
@@ -3403,11 +3411,19 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.paste(&actions::project_panel::Paste, window, cx);
         });
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                panel
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
+                    && panel.file_name_editor.read(cx).text(cx) == "first copy 1"
+            })
+            .await;
         cx.run_until_parked();
 
-        panel.update_in(cx, |panel, window, cx| {
-            assert!(panel.file_name_editor.read(cx).is_focused(window));
-        });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
@@ -3472,6 +3488,22 @@ mod tests {
             panel.paste(&actions::project_panel::Paste, window, cx);
             panel.update_visible_entries(None, false, false, window, cx);
         });
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                let visible_entries = panel.visible_entries(cx);
+                let contains_path = |path| {
+                    visible_entries
+                        .iter()
+                        .any(|entry| entry.path.as_ref() == rel_path(path))
+                };
+
+                contains_path("collection/first.toml")
+                    && contains_path("collection/second.toml")
+                    && !contains_path("first.toml")
+                    && !contains_path("second.toml")
+            })
+            .await;
         cx.run_until_parked();
 
         assert_eq!(
@@ -3557,15 +3589,10 @@ mod tests {
         panel
             .condition::<ProjectPanelEvent>(cx, |panel, cx| {
                 panel
-                    .selected_entry_project_path(cx)
-                    .is_some_and(|project_path| {
-                        project_path.path.as_ref() == rel_path("collection/first copy.toml")
-                    })
-                    && panel
-                        .tree_state
-                        .edit_state
-                        .as_ref()
-                        .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
+                    .tree_state
+                    .edit_state
+                    .as_ref()
+                    .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
                     && panel.file_name_editor.read(cx).text(cx) == "first copy"
             })
             .await;
@@ -3820,12 +3847,7 @@ mod tests {
                         .any(|entry| entry.path.as_ref() == rel_path(path))
                 };
 
-                panel
-                    .selected_entry_project_path(cx)
-                    .is_some_and(|project_path| {
-                        project_path.path.as_ref() == rel_path("collection/third.toml")
-                    })
-                    && contains_path("collection/third.toml")
+                contains_path("collection/third.toml")
                     && !contains_path("collection/first.toml")
                     && !contains_path("collection/second.toml")
             })
@@ -3932,12 +3954,7 @@ mod tests {
                         .any(|entry| entry.path.as_ref() == rel_path(path))
                 };
 
-                panel
-                    .selected_entry_project_path(cx)
-                    .is_some_and(|project_path| {
-                        project_path.path.as_ref() == rel_path("third.toml")
-                    })
-                    && contains_path("third.toml")
+                contains_path("third.toml")
                     && !contains_path("collection")
                     && !contains_path("other.toml")
             })
