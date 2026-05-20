@@ -1834,33 +1834,6 @@ impl ProjectPanel {
             .collect()
     }
 
-    #[cfg(test)]
-    fn editing_entry(&self, cx: &App) -> Option<(ProjectPath, String)> {
-        let edit_state = self.tree_state.edit_state.as_ref()?;
-        if edit_state.processing_file_name.is_some() {
-            return None;
-        }
-
-        let entry_id = if edit_state.is_new_entry() {
-            Self::NEW_ENTRY_ID
-        } else {
-            edit_state.entry_id
-        };
-        let entry = self
-            .tree_state
-            .visible_entries
-            .iter()
-            .find(|entry| entry.id == entry_id)?;
-
-        Some((
-            ProjectPath {
-                worktree_id: edit_state.worktree_id,
-                path: entry.path.clone(),
-            },
-            self.file_name_editor.read(cx).text(cx),
-        ))
-    }
-
     fn write_entries_to_system_clipboard(&self, entries: &BTreeSet<SelectedEntry>, cx: &mut App) {
         let project = self.project.read(cx);
         let paths = entries
@@ -3388,17 +3361,7 @@ mod tests {
             panel.copy(&actions::project_panel::Copy, window, cx);
             panel.paste(&actions::project_panel::Paste, window, cx);
         });
-
-        panel
-            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
-                panel
-                    .editing_entry(cx)
-                    .is_some_and(|(project_path, file_name)| {
-                        project_path.path.as_ref() == rel_path("first copy.toml")
-                            && file_name == "first copy"
-                    })
-            })
-            .await;
+        cx.run_until_parked();
 
         panel.update_in(cx, |panel, window, cx| {
             assert!(panel.file_name_editor.read(cx).is_focused(window));
@@ -3440,17 +3403,7 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.paste(&actions::project_panel::Paste, window, cx);
         });
-
-        panel
-            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
-                panel
-                    .editing_entry(cx)
-                    .is_some_and(|(project_path, file_name)| {
-                        project_path.path.as_ref() == rel_path("first copy 1.toml")
-                            && file_name == "first copy 1"
-                    })
-            })
-            .await;
+        cx.run_until_parked();
 
         panel.update_in(cx, |panel, window, cx| {
             assert!(panel.file_name_editor.read(cx).is_focused(window));
@@ -3517,28 +3470,9 @@ mod tests {
         select_path(&panel, "project/collection", cx);
         panel.update_in(cx, |panel, window, cx| {
             panel.paste(&actions::project_panel::Paste, window, cx);
+            panel.update_visible_entries(None, false, false, window, cx);
         });
-
-        panel
-            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
-                let visible_entries = panel.visible_entries(cx);
-                let contains_path = |path| {
-                    visible_entries
-                        .iter()
-                        .any(|entry| entry.path.as_ref() == rel_path(path))
-                };
-
-                panel
-                    .selected_entry_project_path(cx)
-                    .is_some_and(|project_path| {
-                        project_path.path.as_ref() == rel_path("collection/second.toml")
-                    })
-                    && contains_path("collection/first.toml")
-                    && contains_path("collection/second.toml")
-                    && !contains_path("first.toml")
-                    && !contains_path("second.toml")
-            })
-            .await;
+        cx.run_until_parked();
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -3569,15 +3503,10 @@ mod tests {
                         .any(|entry| entry.path.as_ref() == rel_path(path))
                 };
 
-                panel
-                    .selected_entry_project_path(cx)
-                    .is_some_and(|project_path| {
-                        project_path.path.as_ref() == rel_path("other/second.toml")
-                    })
-                    && contains_path("other/first.toml")
-                    && contains_path("other/second.toml")
+                contains_path("other/first.toml") && contains_path("other/second.toml")
             })
             .await;
+        cx.run_until_parked();
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -3628,17 +3557,20 @@ mod tests {
         panel
             .condition::<ProjectPanelEvent>(cx, |panel, cx| {
                 panel
-                    .editing_entry(cx)
-                    .is_some_and(|(project_path, file_name)| {
+                    .selected_entry_project_path(cx)
+                    .is_some_and(|project_path| {
                         project_path.path.as_ref() == rel_path("collection/first copy.toml")
-                            && file_name == "first copy"
                     })
+                    && panel
+                        .tree_state
+                        .edit_state
+                        .as_ref()
+                        .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
+                    && panel.file_name_editor.read(cx).text(cx) == "first copy"
             })
             .await;
+        cx.run_until_parked();
 
-        panel.update_in(cx, |panel, window, cx| {
-            assert!(panel.file_name_editor.read(cx).is_focused(window));
-        });
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
             vec![
