@@ -198,16 +198,27 @@ impl ProjectPanel {
                         project_panel.autoscroll(cx);
                     }
                     EditorEvent::Blurred => {
-                        if project_panel
+                        let Some(is_new_entry) = project_panel
                             .tree_state
                             .edit_state
                             .as_ref()
-                            .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
-                        {
+                            .and_then(|edit_state| {
+                                edit_state
+                                    .processing_file_name
+                                    .is_none()
+                                    .then_some(edit_state.is_new_entry())
+                            })
+                        else {
+                            return;
+                        };
+
+                        if is_new_entry {
                             match project_panel.confirm_edit(false, window, cx) {
                                 Some(task) => task.detach_and_log_err(cx),
                                 None => project_panel.discard_edit_state(window, cx),
                             }
+                        } else {
+                            project_panel.discard_edit_state(window, cx);
                         }
                     }
                 },
