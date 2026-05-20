@@ -159,10 +159,12 @@ impl ProjectItem for RequestBuffer {
 pub struct Project {
     worktree_store: Entity<WorktreeStore>,
     buffer_store: Entity<BufferStore>,
+    active_entry: Option<ProjectEntryId>,
     metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
 }
 
 pub enum ProjectEvent {
+    ActiveEntryChanged(Option<ProjectEntryId>),
     WorktreeAdded,
     WorktreeRemoved,
     WorktreeUpdatedEntries(UpdatedEntriesSet),
@@ -192,6 +194,7 @@ impl Project {
         Self {
             worktree_store,
             buffer_store,
+            active_entry: None,
             metadata_by_entry_id: HashMap::new(),
         }
     }
@@ -359,6 +362,23 @@ impl Project {
 
     pub fn entry_for_path<'a>(&'a self, path: &ProjectPath, cx: &'a App) -> Option<&'a Entry> {
         self.worktree_store.read(cx).entry_for_path(path, cx)
+    }
+
+    pub fn set_active_path(&mut self, entry: Option<ProjectPath>, cx: &mut Context<Self>) {
+        let new_active_entry = entry.and_then(|project_path| {
+            let worktree = self.worktree_for_id(project_path.worktree_id, cx)?;
+            let entry = worktree.read(cx).entry_for_path(&project_path.path)?;
+            Some(entry.id)
+        });
+
+        if new_active_entry != self.active_entry {
+            self.active_entry = new_active_entry;
+            cx.emit(ProjectEvent::ActiveEntryChanged(new_active_entry));
+        }
+    }
+
+    pub fn active_entry(&self) -> Option<ProjectEntryId> {
+        self.active_entry
     }
 
     pub fn entry_metadata(&self, entry: &Entry) -> Option<&EntryMetadata> {

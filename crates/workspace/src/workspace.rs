@@ -51,7 +51,7 @@ use uuid::Uuid;
 use crate::{
     dock::{Dock, PanelButtons},
     notifications::{DetachAndPromptErr, NotificationId, Notifications},
-    pane::Pane,
+    pane::{Pane, PaneEvent},
     status_bar::StatusBar,
 };
 
@@ -883,6 +883,19 @@ impl Workspace {
         })
     }
 
+    pub fn add_item_to_active_pane(
+        &mut self,
+        item: Box<dyn ItemHandle>,
+        destination_index: Option<usize>,
+        focus_item: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.pane.update(cx, |pane, cx| {
+            pane.add_item(item, false, focus_item, true, destination_index, window, cx);
+        });
+    }
+
     fn load_path(
         &self,
         path: &ProjectPath,
@@ -908,6 +921,26 @@ impl Workspace {
 
     pub fn active_item_as<I: 'static>(&self, cx: &App) -> Option<Entity<I>> {
         self.active_item(cx)?.to_any_view().downcast::<I>().ok()
+    }
+
+    fn active_project_path(&self, cx: &App) -> Option<ProjectPath> {
+        self.active_item(cx).and_then(|item| item.project_path(cx))
+    }
+
+    fn active_item_path_changed(&mut self, cx: &mut Context<Self>) {
+        let active_entry = self.active_project_path(cx);
+        self.project.update(cx, |project, cx| {
+            project.set_active_path(active_entry, cx);
+        });
+    }
+
+    fn handle_pane_event(&mut self, event: &PaneEvent, cx: &mut Context<Self>) {
+        if matches!(
+            event,
+            PaneEvent::ActivateItem { .. } | PaneEvent::ChangeItemTitle
+        ) {
+            self.active_item_path_changed(cx);
+        }
     }
 
     pub fn save_active_item(
@@ -1109,6 +1142,11 @@ impl Workspace {
 
         let workspace = cx.entity();
         let pane = cx.new(|cx| Pane::new(workspace.downgrade(), &project, window, cx));
+        cx.subscribe_in(&pane, window, |workspace, _, event, _, cx| {
+            workspace.handle_pane_event(event, cx);
+        })
+        .detach();
+
         let project_subscription = cx.subscribe_in(
             &project,
             window,
@@ -1123,7 +1161,7 @@ impl Workspace {
                         pane.handle_deleted_project_item(*entry_id, window, cx);
                     });
                 }
-                ProjectEvent::EntryMetadataUpdated(_) => {}
+                ProjectEvent::ActiveEntryChanged(_) | ProjectEvent::EntryMetadataUpdated(_) => {}
             },
         );
 
@@ -1533,6 +1571,7 @@ mod tests {
 
     use settings::SettingsStore;
     use theme::LoadThemes;
+    use util::rel_path::rel_path;
     use util_macros::path;
     use worktree::WorktreeModelHandle;
 
@@ -1552,6 +1591,106 @@ mod tests {
             theme::init(LoadThemes::JustBase, cx);
             crate::init(shared_state, cx);
             editor::init(cx);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_tracking_active_path(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "first.toml": "",
+                "second.toml": "",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, cx) = cx.add_window_view({
+            let project = project.clone();
+            move |window, cx| Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+
+        let (worktree_id, first_entry_id, first_path, second_entry_id, second_path) = project
+            .update(cx, |project, cx| {
+                let worktree = project.worktree(cx).unwrap();
+                let worktree = worktree.read(cx);
+                let first_entry = worktree.entry_for_path(rel_path("first.toml")).unwrap();
+                let second_entry = worktree.entry_for_path(rel_path("second.toml")).unwrap();
+
+                (
+                    worktree.id(),
+                    first_entry.id,
+                    first_entry.path.clone(),
+                    second_entry.id,
+                    second_entry.path.clone(),
+                )
+            });
+
+        let first_project_item = cx.new(move |_| TestProjectItem {
+            entry_id: Some(first_entry_id),
+            project_path: Some(ProjectPath {
+                worktree_id,
+                path: first_path,
+            }),
+            is_dirty: false,
+        });
+        let first_item = cx.new(|cx| {
+            let mut item = TestItem::new(cx).with_label("First");
+            item.project_items.push(first_project_item);
+            item
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item_to_active_pane(Box::new(first_item), None, true, window, cx);
+        });
+        project.update(cx, |project, _| {
+            assert_eq!(project.active_entry(), Some(first_entry_id));
+        });
+
+        let second_project_item = cx.new(move |_| TestProjectItem {
+            entry_id: Some(second_entry_id),
+            project_path: Some(ProjectPath {
+                worktree_id,
+                path: second_path,
+            }),
+            is_dirty: false,
+        });
+        let second_item = cx.new(|cx| {
+            let mut item = TestItem::new(cx).with_label("Second");
+            item.project_items.push(second_project_item);
+            item
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item_to_active_pane(Box::new(second_item), None, true, window, cx);
+        });
+        project.update(cx, |project, _| {
+            assert_eq!(project.active_entry(), Some(second_entry_id));
+        });
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.activate_item(0, true, true, window, cx);
+        });
+        project.update(cx, |project, _| {
+            assert_eq!(project.active_entry(), Some(first_entry_id));
+        });
+
+        pane.update_in(cx, |pane, window, cx| {
+            pane.close_active_item(&actions::pane::CloseActiveItem::default(), window, cx)
+        })
+        .await
+        .unwrap();
+        project.update(cx, |project, _| {
+            assert_eq!(project.active_entry(), Some(second_entry_id));
         });
     }
 
@@ -1911,8 +2050,8 @@ mod tests {
         let item = cx.new(TestItem::new);
         let item_id = Entity::entity_id(&item);
 
-        pane.update_in(cx, |pane, window, cx| {
-            pane.add_item(Box::new(item), true, true, true, None, window, cx);
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_item_to_active_pane(Box::new(item), None, true, window, cx);
         });
 
         pane.update_in(cx, |pane, window, cx| {

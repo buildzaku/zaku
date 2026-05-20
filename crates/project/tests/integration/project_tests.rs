@@ -341,11 +341,7 @@ async fn test_buffer_identity_across_renames(cx: &mut TestAppContext) {
     let entry_id_for_path = |path: &'static str, cx: &mut TestAppContext| {
         project.update(cx, |project, cx| {
             let worktree = project.worktree(cx).unwrap();
-            worktree
-                .read(cx)
-                .entry_for_path(rel_path(path))
-                .unwrap_or_else(|| panic!("No entry for path {path}"))
-                .id
+            worktree.read(cx).entry_for_path(rel_path(path)).unwrap().id
         })
     };
 

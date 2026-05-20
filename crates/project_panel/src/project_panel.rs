@@ -228,7 +228,13 @@ impl ProjectPanel {
             let project_subscription = cx.subscribe_in(
                 &project,
                 window,
-                |this: &mut ProjectPanel, _, event: &ProjectEvent, window, cx| match event {
+                |this: &mut ProjectPanel, project, event: &ProjectEvent, window, cx| match event {
+                    ProjectEvent::ActiveEntryChanged(Some(entry_id)) => {
+                        this.reveal_entry(project, *entry_id, window, cx).log_err();
+                    }
+                    ProjectEvent::ActiveEntryChanged(None) => {
+                        this.marked_entries.clear();
+                    }
                     ProjectEvent::WorktreeAdded
                     | ProjectEvent::WorktreeRemoved
                     | ProjectEvent::WorktreeUpdatedEntries(_) => {
@@ -332,6 +338,26 @@ impl ProjectPanel {
 
         dispatch_context.add(identifier);
         dispatch_context
+    }
+
+    fn reveal_entry(
+        &mut self,
+        project: &Entity<Project>,
+        entry_id: ProjectEntryId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<()> {
+        project
+            .read(cx)
+            .worktree_for_entry(entry_id, cx)
+            .context("can't reveal a non-existent entry in the project panel")?;
+
+        self.expand_entry(entry_id, cx);
+        self.update_visible_entries(Some(entry_id), false, true, window, cx);
+        self.marked_entries.clear();
+        self.marked_entries.push(SelectedEntry(entry_id));
+        cx.notify();
+        Ok(())
     }
 
     fn details_for_entry(&self, snapshot: &Snapshot, entry: &Entry, cx: &App) -> EntryDetails {
@@ -2779,7 +2805,7 @@ mod tests {
     use std::{collections::HashSet, ops::Range, sync::Arc};
 
     use fs::Fs;
-    use project::{Project, ProjectPath};
+    use project::{Project, ProjectEvent, ProjectPath};
     use request_editor::RequestEditor;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -2923,11 +2949,7 @@ mod tests {
         cx: &mut VisualTestContext,
     ) {
         workspace.update_in(cx, |workspace, _, cx| {
-            let worktree = workspace
-                .project()
-                .read(cx)
-                .worktree(cx)
-                .expect("workspace should have a worktree");
+            let worktree = workspace.project().read(cx).worktree(cx).unwrap();
             let worktree_id = worktree.read(cx).id();
 
             let opened_project_paths = workspace
@@ -3079,15 +3101,11 @@ mod tests {
         );
 
         let is_request = panel.update(cx, |panel, cx| {
-            let worktree = panel
-                .project
-                .read(cx)
-                .worktree(cx)
-                .expect("project should have a worktree");
+            let worktree = panel.project.read(cx).worktree(cx).unwrap();
             worktree
                 .read(cx)
                 .entry_for_path(rel_path("New request.toml"))
-                .expect("new request should exist")
+                .unwrap()
                 .is_request
         });
         assert!(is_request);
@@ -3156,7 +3174,7 @@ mod tests {
             .metadata("project/New collection".as_ref())
             .await
             .unwrap()
-            .expect("new collection should exist");
+            .unwrap();
         assert!(metadata.is_dir);
     }
 
@@ -3267,6 +3285,101 @@ mod tests {
         workspace.update_in(cx, |workspace, _, cx| {
             assert!(workspace.active_item_as::<RequestEditor>(cx).is_some());
         });
+    }
+
+    #[gpui::test]
+    async fn test_autoreveal_active_entry(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "nested": {
+                        "first.toml": "",
+                    },
+                    "second.toml": "",
+                    "third.toml": "",
+                },
+                "other": {
+                    "fourth.toml": "",
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &["> collection", "> other"]
+        );
+
+        let first_entry = panel.update(cx, |panel, cx| {
+            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            worktree
+                .read(cx)
+                .entry_for_path(rel_path("collection/nested/first.toml"))
+                .unwrap()
+                .id
+        });
+        let fourth_entry = panel.update(cx, |panel, cx| {
+            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            worktree
+                .read(cx)
+                .entry_for_path(rel_path("other/fourth.toml"))
+                .unwrap()
+                .id
+        });
+
+        panel.update(cx, |panel, cx| {
+            panel.project.update(cx, |_, cx| {
+                cx.emit(ProjectEvent::ActiveEntryChanged(Some(first_entry)));
+            });
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &[
+                "v collection",
+                "    v nested",
+                "          first  <== selected  <== marked",
+                "      second",
+                "      third",
+                "> other",
+            ]
+        );
+
+        panel.update(cx, |panel, cx| {
+            panel.project.update(cx, |_, cx| {
+                cx.emit(ProjectEvent::ActiveEntryChanged(Some(fourth_entry)));
+            });
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            &[
+                "v collection",
+                "    v nested",
+                "          first",
+                "      second",
+                "      third",
+                "v other",
+                "      fourth  <== selected  <== marked",
+            ]
+        );
     }
 
     #[gpui::test]
