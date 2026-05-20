@@ -1615,7 +1615,7 @@ impl ProjectPanel {
                             project_panel.marked_entries.clear();
                             project_panel.expand_to_selection(cx);
                         }
-                        project_panel.update_visible_entries(None, false, false, window, cx);
+                        project_panel.update_visible_entries(None, false, is_new_entry, window, cx);
                         if is_new_entry && !is_dir {
                             Self::open_entry(new_entry.id, true, false, cx);
                         }
