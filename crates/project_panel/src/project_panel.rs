@@ -2894,7 +2894,6 @@ mod tests {
             let mut project_entries = HashSet::new();
             let mut has_editor = false;
 
-            panel.load_entry_metadata_for_range(range.clone(), cx);
             panel.for_each_visible_entry(range, window, cx, &mut |entry_id, details, _, _| {
                 if details.is_editing {
                     assert!(!has_editor, "duplicate editor entry");
