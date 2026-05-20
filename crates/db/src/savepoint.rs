@@ -125,7 +125,7 @@ mod tests {
         connection
             .exec("CREATE TABLE text (text TEXT, idx INTEGER) STRICT")
             .and_then(|mut f| f())
-            .expect("text table should initialize");
+            .unwrap();
 
         let first_savepoint_text = "test save1";
         let second_savepoint_text = "test save2";
@@ -135,7 +135,7 @@ mod tests {
                 connection
                     .exec_bound("INSERT INTO text(text, idx) VALUES (?1, ?2)")
                     .and_then(|mut f| f((first_savepoint_text, 1)))
-                    .expect("first savepoint should insert its row");
+                    .unwrap();
 
                 assert!(
                     connection
@@ -148,7 +148,7 @@ mod tests {
                                 connection
                                     .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
                                     .and_then(|mut f| f())
-                                    .expect("nested savepoint rows should be readable"),
+                                    .unwrap(),
                                 vec![first_savepoint_text, second_savepoint_text],
                             );
 
@@ -162,7 +162,7 @@ mod tests {
                     connection
                         .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
                         .and_then(|mut f| f())
-                        .expect("rows after failed nested savepoint should be readable"),
+                        .unwrap(),
                     vec![first_savepoint_text],
                 );
 
@@ -171,25 +171,25 @@ mod tests {
                         connection
                             .exec_bound("INSERT INTO text(text, idx) VALUES (?1, ?2)")
                             .and_then(|mut f| f((second_savepoint_text, 2)))
-                            .expect("rollback savepoint should insert its row");
+                            .unwrap();
 
                         assert_eq!(
                             connection
                                 .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
                                 .and_then(|mut f| f())
-                                .expect("rows during rollback savepoint should be readable"),
+                                .unwrap(),
                             vec![first_savepoint_text, second_savepoint_text],
                         );
 
                         Ok(None)
                     })
-                    .expect("rollback savepoint should succeed");
+                    .unwrap();
 
                 assert_eq!(
                     connection
                         .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
                         .and_then(|mut f| f())
-                        .expect("rows after rollback savepoint should be readable"),
+                        .unwrap(),
                     vec![first_savepoint_text],
                 );
 
@@ -198,37 +198,37 @@ mod tests {
                         connection
                             .exec_bound("INSERT INTO text(text, idx) VALUES (?1, ?2)")
                             .and_then(|mut f| f((second_savepoint_text, 2)))
-                            .expect("commit savepoint should insert its row");
+                            .unwrap();
 
                         assert_eq!(
                             connection
                                 .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
                                 .and_then(|mut f| f())
-                                .expect("rows during commit savepoint should be readable"),
+                                .unwrap(),
                             vec![first_savepoint_text, second_savepoint_text],
                         );
 
                         Ok(Some(()))
                     })
-                    .expect("commit savepoint should succeed");
+                    .unwrap();
 
                 assert_eq!(
                     connection
                         .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
                         .and_then(|mut f| f())
-                        .expect("rows after commit savepoint should be readable"),
+                        .unwrap(),
                     vec![first_savepoint_text, second_savepoint_text],
                 );
 
                 Ok(())
             })
-            .expect("outer savepoint should succeed");
+            .unwrap();
 
         assert_eq!(
             connection
                 .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
                 .and_then(|mut f| f())
-                .expect("final rows should be readable"),
+                .unwrap(),
             vec![first_savepoint_text, second_savepoint_text],
         );
     }
@@ -240,7 +240,7 @@ mod tests {
         connection
             .exec("CREATE TABLE test(value INTEGER) STRICT")
             .and_then(|mut f| f())
-            .expect("test table should initialize");
+            .unwrap();
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let _ = connection.with_savepoint("panic_savepoint", || -> anyhow::Result<()> {
@@ -256,7 +256,7 @@ mod tests {
             connection
                 .select::<i32>("SELECT value FROM test")
                 .and_then(|mut f| f())
-                .expect("rows after panic should be readable"),
+                .unwrap(),
             Vec::<i32>::new(),
         );
     }

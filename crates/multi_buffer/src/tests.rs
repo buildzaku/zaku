@@ -248,14 +248,10 @@ fn test_history(cx: &mut App) {
     let mut now = Instant::now();
 
     let first_transaction_id = multibuffer.update(cx, |multi_buffer, cx| {
-        let transaction_id = multi_buffer
-            .start_transaction_at(now, cx)
-            .expect("first transaction should start");
+        let transaction_id = multi_buffer.start_transaction_at(now, cx).unwrap();
         multi_buffer.edit([(MultiBufferOffset(0)..MultiBufferOffset(0), "quick ")], cx);
         multi_buffer.edit([(MultiBufferOffset(6)..MultiBufferOffset(6), "brown ")], cx);
-        let ended_transaction_id = multi_buffer
-            .end_transaction_at(now, cx)
-            .expect("first transaction should end");
+        let ended_transaction_id = multi_buffer.end_transaction_at(now, cx).unwrap();
         assert_eq!(ended_transaction_id, transaction_id);
         transaction_id
     });
@@ -264,16 +260,12 @@ fn test_history(cx: &mut App) {
 
     now += Duration::from_secs(1);
     let second_transaction_id = multibuffer.update(cx, |multi_buffer, cx| {
-        let transaction_id = multi_buffer
-            .start_transaction_at(now, cx)
-            .expect("second transaction should start");
+        let transaction_id = multi_buffer.start_transaction_at(now, cx).unwrap();
         multi_buffer.edit(
             [(MultiBufferOffset(15)..MultiBufferOffset(15), " jumps")],
             cx,
         );
-        let ended_transaction_id = multi_buffer
-            .end_transaction_at(now, cx)
-            .expect("second transaction should end");
+        let ended_transaction_id = multi_buffer.end_transaction_at(now, cx).unwrap();
         assert_eq!(ended_transaction_id, transaction_id);
         transaction_id
     });
@@ -302,13 +294,9 @@ fn test_history(cx: &mut App) {
         assert_eq!(multi_buffer.undo(cx), Some(second_transaction_id));
         assert_eq!(multi_buffer.read(cx).text(), "quick brown fox");
 
-        let third_transaction_id = multi_buffer
-            .start_transaction_at(now, cx)
-            .expect("third transaction should start");
+        let third_transaction_id = multi_buffer.start_transaction_at(now, cx).unwrap();
         multi_buffer.edit([(MultiBufferOffset(0)..MultiBufferOffset(0), "The ")], cx);
-        let ended_transaction_id = multi_buffer
-            .end_transaction_at(now, cx)
-            .expect("third transaction should end");
+        let ended_transaction_id = multi_buffer.end_transaction_at(now, cx).unwrap();
         assert_eq!(ended_transaction_id, third_transaction_id);
         assert_eq!(multi_buffer.read(cx).text(), "The quick brown fox");
 

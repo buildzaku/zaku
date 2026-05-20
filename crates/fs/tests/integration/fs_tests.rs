@@ -141,11 +141,7 @@ async fn test_native_fs_broken_symlink_metadata(executor: BackgroundExecutor) {
 
     smol::block_on(fs.create_symlink(&symlink_path, PathBuf::from("file_a.txt"))).unwrap();
 
-    let metadata = fs
-        .metadata(&symlink_path)
-        .await
-        .expect("metadata call succeeds")
-        .expect("metadata returned");
+    let metadata = fs.metadata(&symlink_path).await.unwrap().unwrap();
 
     assert!(metadata.is_symlink);
     assert!(!metadata.is_dir);
@@ -163,11 +159,7 @@ async fn test_native_fs_self_referential_symlink_metadata(executor: BackgroundEx
 
     smol::block_on(fs.create_symlink(&symlink_path, PathBuf::from("symlink"))).unwrap();
 
-    let metadata = fs
-        .metadata(&symlink_path)
-        .await
-        .expect("metadata call succeeds")
-        .expect("metadata returned");
+    let metadata = fs.metadata(&symlink_path).await.unwrap().unwrap();
 
     assert!(metadata.is_symlink);
     assert!(!metadata.is_dir);
@@ -184,7 +176,7 @@ async fn test_native_fs_watch_stress_reports_rescan_when_paths_are_missed(
     cx.executor().allow_parking();
 
     let fs = NativeFs::new(executor.clone());
-    let temp_dir = TempDir::new().expect("create temp dir");
+    let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
 
     let mut file_paths = Vec::with_capacity(FILE_COUNT);
@@ -193,10 +185,8 @@ async fn test_native_fs_watch_stress_reports_rescan_when_paths_are_missed(
     for index in 0..FILE_COUNT {
         let dir_path = root.join(format!("dir-{index:04}"));
         let file_path = dir_path.join("file.txt");
-        fs.create_dir(&dir_path).await.expect("create watched dir");
-        fs.write(&file_path, b"before")
-            .await
-            .expect("create initial file");
+        fs.create_dir(&dir_path).await.unwrap();
+        fs.write(&file_path, b"before").await.unwrap();
         expected_paths.insert(file_path.clone());
         file_paths.push(file_path);
     }
@@ -205,16 +195,12 @@ async fn test_native_fs_watch_stress_reports_rescan_when_paths_are_missed(
     let watcher = watcher;
 
     for file_path in &expected_paths {
-        watcher
-            .add(file_path.parent().expect("file has parent"))
-            .expect("add explicit directory watch");
+        watcher.add(file_path.parent().unwrap()).unwrap();
     }
 
     for (index, file_path) in file_paths.iter().enumerate() {
         let content = format!("after-{index}");
-        fs.write(file_path, content.as_bytes())
-            .await
-            .expect("modify watched file");
+        fs.write(file_path, content.as_bytes()).await.unwrap();
     }
 
     let mut changed_paths = BTreeSet::new();

@@ -1,7 +1,7 @@
 use gpui::{
-    AnyElement, App, AsyncWindowContext, ClickEvent, Context, Empty, Entity, EntityId, FocusHandle,
-    FocusOutEvent, Focusable, PromptLevel, ScrollHandle, Subscription, Task, WeakEntity, Window,
-    prelude::*,
+    AnyElement, App, AsyncWindowContext, ClickEvent, Context, Empty, Entity, EntityId,
+    EventEmitter, FocusHandle, FocusOutEvent, Focusable, PromptLevel, ScrollHandle, Subscription,
+    Task, WeakEntity, Window, prelude::*,
 };
 use itertools::Itertools;
 use std::{
@@ -9,7 +9,6 @@ use std::{
     mem,
 };
 
-use actions::pane::{CloseActiveItem, CloseAllItems, SaveIntent};
 use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
@@ -19,9 +18,37 @@ use ui::{
 use util::{ResultExt, path::PathStyle};
 
 use crate::{
-    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Workspace,
-    WorkspaceItemBuilder, welcome::WelcomePage,
+    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,
+    Workspace, WorkspaceItemBuilder, welcome::WelcomePage,
 };
+
+pub enum PaneEvent {
+    AddItem {
+        item: Box<dyn ItemHandle>,
+    },
+    ActivateItem {
+        focus_changed: bool,
+    },
+    RemovedItem {
+        item: Box<dyn ItemHandle>,
+    },
+    ChangeItemTitle,
+    UserSavedItem {
+        item: Box<dyn WeakItemHandle>,
+        save_intent: actions::pane::SaveIntent,
+    },
+}
+
+impl EventEmitter<PaneEvent> for Pane {}
+
+#[derive(Clone)]
+pub struct DraggedTab {
+    pub pane: Entity<Pane>,
+    pub item: Box<dyn ItemHandle>,
+    pub index: usize,
+    pub detail: usize,
+    pub is_active: bool,
+}
 
 pub struct Pane {
     focus_handle: FocusHandle,
@@ -37,15 +64,6 @@ pub struct Pane {
     item_subscriptions: Vec<(EntityId, Subscription)>,
     save_modals_spawned: HashSet<EntityId>,
     _focus_subscriptions: Vec<Subscription>,
-}
-
-#[derive(Clone)]
-pub struct DraggedTab {
-    pub pane: Entity<Pane>,
-    pub item: Box<dyn ItemHandle>,
-    pub index: usize,
-    pub detail: usize,
-    pub is_active: bool,
 }
 
 impl Pane {
@@ -246,40 +264,40 @@ impl Pane {
             if activate {
                 self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
             }
+        } else {
+            let item_id = item.item_id();
+            let pane = cx.weak_entity();
+            let subscription = item.subscribe_to_item_events(
+                window,
+                cx,
+                Box::new(move |event, window, cx| {
+                    if let Err(error) = pane.update(cx, |pane, cx| {
+                        pane.handle_item_event(item_id, event, window, cx);
+                    }) {
+                        log::debug!("Failed to handle pane item event: {error:?}");
+                    }
+                }),
+            );
 
-            return;
-        }
-
-        let item_id = item.item_id();
-        let pane = cx.weak_entity();
-        let subscription = item.subscribe_to_item_events(
-            window,
-            cx,
-            Box::new(move |event, window, cx| {
-                if let Err(error) = pane.update(cx, |pane, cx| {
-                    pane.handle_item_event(item_id, event, window, cx);
-                }) {
-                    log::debug!("Failed to handle pane item event: {error:?}");
-                }
-            }),
-        );
-
-        self.items.insert(insertion_index, item);
-        self.item_subscriptions.push((item_id, subscription));
-        cx.notify();
-
-        if activate {
-            if insertion_index <= self.active_item_index
-                && self.preview_item_idx() != Some(self.active_item_index)
-            {
-                self.active_item_index += 1;
-            }
-
-            self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
-        } else if insertion_index <= self.active_item_index && self.items.len() > 1 {
-            self.active_item_index += 1;
+            self.items.insert(insertion_index, item.clone());
+            self.item_subscriptions.push((item_id, subscription));
             cx.notify();
+
+            if activate {
+                if insertion_index <= self.active_item_index
+                    && self.preview_item_idx() != Some(self.active_item_index)
+                {
+                    self.active_item_index += 1;
+                }
+
+                self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
+            } else if insertion_index <= self.active_item_index && self.items.len() > 1 {
+                self.active_item_index += 1;
+                cx.notify();
+            }
         }
+
+        cx.emit(PaneEvent::AddItem { item });
     }
 
     pub(crate) fn open_item(
@@ -381,6 +399,7 @@ impl Pane {
         let should_focus_pane =
             was_active && self.items.len() == 1 && (focus_item || self.has_focus(window, cx));
         let item = self.items.remove(item_index);
+        cx.emit(PaneEvent::RemovedItem { item: item.clone() });
 
         if should_focus_pane {
             self.focus_handle.focus(window, cx);
@@ -460,6 +479,9 @@ impl Pane {
             self.focus_active_item(window, cx);
         }
 
+        cx.emit(PaneEvent::ActivateItem {
+            focus_changed: focus_item,
+        });
         self.update_active_tab(item_index);
         cx.notify();
     }
@@ -489,7 +511,7 @@ impl Pane {
     pub fn close_item_by_id(
         &mut self,
         item_id_to_close: EntityId,
-        save_intent: SaveIntent,
+        save_intent: actions::pane::SaveIntent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
@@ -500,7 +522,7 @@ impl Pane {
 
     pub fn close_active_item(
         &mut self,
-        action: &CloseActiveItem,
+        action: &actions::pane::CloseActiveItem,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
@@ -510,7 +532,9 @@ impl Pane {
 
         self.close_item_by_id(
             active_item_id,
-            action.save_intent.unwrap_or(SaveIntent::Close),
+            action
+                .save_intent
+                .unwrap_or(actions::pane::SaveIntent::Close),
             window,
             cx,
         )
@@ -520,7 +544,7 @@ impl Pane {
         &self,
         window: &mut Window,
         cx: &mut Context<Pane>,
-        mut save_intent: SaveIntent,
+        mut save_intent: actions::pane::SaveIntent,
         should_close: &dyn Fn(EntityId) -> bool,
     ) -> Task<anyhow::Result<()>> {
         let mut items_to_close = Vec::new();
@@ -550,7 +574,7 @@ impl Pane {
                     .collect::<Vec<_>>()
             })?;
 
-            if save_intent == SaveIntent::Close && dirty_items.len() > 1 {
+            if save_intent == actions::pane::SaveIntent::Close && dirty_items.len() > 1 {
                 let answer = pane.update_in(cx, |_, window, cx| {
                     let detail = Self::file_names_for_prompt(&mut dirty_items.iter(), cx);
                     window.prompt(
@@ -562,8 +586,8 @@ impl Pane {
                     )
                 })?;
                 match answer.await {
-                    Ok(0) => save_intent = SaveIntent::SaveAll,
-                    Ok(1) => save_intent = SaveIntent::Skip,
+                    Ok(0) => save_intent = actions::pane::SaveIntent::SaveAll,
+                    Ok(1) => save_intent = actions::pane::SaveIntent::Skip,
                     Ok(2) => return Ok(()),
                     _ => {}
                 }
@@ -618,7 +642,7 @@ impl Pane {
 
     pub fn close_all_items(
         &mut self,
-        action: &CloseAllItems,
+        action: &actions::pane::CloseAllItems,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
@@ -629,7 +653,9 @@ impl Pane {
         self.close_items(
             window,
             cx,
-            action.save_intent.unwrap_or(SaveIntent::Close),
+            action
+                .save_intent
+                .unwrap_or(actions::pane::SaveIntent::Close),
             &|_| true,
         )
     }
@@ -644,10 +670,10 @@ impl Pane {
                 if !project_item.is_dirty() {
                     return;
                 }
-                let filename = project_item
+                let file_name = project_item
                     .project_path(cx)
                     .and_then(|path| path.path.file_name().map(ToOwned::to_owned));
-                file_names.insert(filename.unwrap_or("untitled".to_string()));
+                file_names.insert(file_name.unwrap_or("untitled".to_string()));
             });
         }
         if file_names.len() > 6 {
@@ -661,14 +687,35 @@ impl Pane {
         }
     }
 
+    pub fn handle_deleted_project_item(
+        &mut self,
+        entry_id: ProjectEntryId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<()> {
+        let item_id = self.items().find_map(|item| {
+            if item.buffer_kind(cx) == ItemBufferKind::Singleton
+                && item.project_entry_ids(cx).as_slice() == [entry_id]
+            {
+                Some(item.item_id())
+            } else {
+                None
+            }
+        })?;
+
+        self.remove_item(item_id, false, true, window, cx);
+
+        Some(())
+    }
+
     pub async fn save_item(
         project: Entity<Project>,
         pane: &WeakEntity<Pane>,
         item: &dyn ItemHandle,
-        save_intent: SaveIntent,
+        save_intent: actions::pane::SaveIntent,
         cx: &mut AsyncWindowContext,
     ) -> anyhow::Result<bool> {
-        if save_intent == SaveIntent::Skip {
+        if save_intent == actions::pane::SaveIntent::Skip {
             let is_saveable_singleton = cx.update(|_, cx| {
                 item.can_save(cx) && item.buffer_kind(cx) == ItemBufferKind::Singleton
             })?;
@@ -697,12 +744,12 @@ impl Pane {
             )
         })?;
 
-        if save_intent == SaveIntent::Save {
+        if save_intent == actions::pane::SaveIntent::Save {
             is_dirty = true;
         }
 
         if is_dirty && can_save {
-            if save_intent == SaveIntent::Close {
+            if save_intent == actions::pane::SaveIntent::Close {
                 let item_id = item.item_id();
                 let answer_task = pane.update_in(cx, |pane, window, cx| {
                     if pane.save_modals_spawned.insert(item_id) {
@@ -747,6 +794,13 @@ impl Pane {
             .await?;
         }
 
+        pane.update(cx, |_, cx| {
+            cx.emit(PaneEvent::UserSavedItem {
+                item: item.downgrade_item(),
+                save_intent,
+            });
+        })?;
+
         Ok(true)
     }
 
@@ -759,10 +813,11 @@ impl Pane {
     ) {
         match event {
             ItemEvent::CloseItem => {
-                self.close_item_by_id(item_id, SaveIntent::Close, window, cx)
+                self.close_item_by_id(item_id, actions::pane::SaveIntent::Close, window, cx)
                     .detach_and_log_err(cx);
             }
             ItemEvent::UpdateTab => {
+                cx.emit(PaneEvent::ChangeItemTitle);
                 cx.notify();
             }
             ItemEvent::Edit => {
@@ -852,7 +907,7 @@ impl Pane {
             .icon_size(IconSize::Small)
             .tooltip(Tooltip::text("Close Tab"))
             .on_click(cx.listener(move |pane, _, window, cx| {
-                pane.close_item_by_id(item_id, SaveIntent::Close, window, cx)
+                pane.close_item_by_id(item_id, actions::pane::SaveIntent::Close, window, cx)
                     .detach_and_log_err(cx);
             }));
         let tab_control = if is_dirty {
@@ -1070,18 +1125,18 @@ impl Render for Pane {
         gpui::div()
             .track_focus(&self.focus_handle)
             .key_context("Pane")
-            .on_action(
-                cx.listener(|pane: &mut Self, action: &CloseActiveItem, window, cx| {
+            .on_action(cx.listener(
+                |pane: &mut Self, action: &actions::pane::CloseActiveItem, window, cx| {
                     pane.close_active_item(action, window, cx)
                         .detach_and_log_err(cx);
-                }),
-            )
-            .on_action(
-                cx.listener(|pane: &mut Self, action: &CloseAllItems, window, cx| {
+                },
+            ))
+            .on_action(cx.listener(
+                |pane: &mut Self, action: &actions::pane::CloseAllItems, window, cx| {
                     pane.close_all_items(action, window, cx)
                         .detach_and_log_err(cx);
-                }),
-            )
+                },
+            ))
             .flex()
             .flex_col()
             .size_full()

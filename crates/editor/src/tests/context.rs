@@ -42,9 +42,9 @@ impl EditorTestContext {
             Editor::new(mode, Editor::local_multibuffer(cx), window, cx)
         });
         let window: AnyWindowHandle = window_handle.into();
-        let editor_handle = window.downcast::<Editor>().expect("window to host editor");
+        let editor_handle = window.downcast::<Editor>().unwrap();
         let mut visual_cx = VisualTestContext::from_window(window, cx);
-        let editor = editor_handle.root(&mut visual_cx).expect("editor root");
+        let editor = editor_handle.root(&mut visual_cx).unwrap();
         let window = visual_cx.windows()[0];
 
         let focus_handle = editor.read_with(&visual_cx, |editor, _| editor.focus_handle.clone());
@@ -164,10 +164,7 @@ impl AssertionContextManager {
 
     pub fn add_context(&self, context: String) -> ContextHandle {
         let id = self.id.fetch_add(1, Ordering::Relaxed);
-        let mut contexts = self
-            .contexts
-            .write()
-            .expect("assertion context lock poisoned");
+        let mut contexts = self.contexts.write().unwrap();
         contexts.insert(id, context);
         ContextHandle {
             id,
@@ -176,10 +173,7 @@ impl AssertionContextManager {
     }
 
     pub fn context(&self) -> String {
-        let contexts = self
-            .contexts
-            .read()
-            .expect("assertion context lock poisoned");
+        let contexts = self.contexts.read().unwrap();
         let joined = contexts.values().cloned().collect::<Vec<_>>().join("\n");
         format!("\n{joined}\n")
     }
@@ -192,11 +186,7 @@ pub struct ContextHandle {
 
 impl Drop for ContextHandle {
     fn drop(&mut self) {
-        let mut contexts = self
-            .manager
-            .contexts
-            .write()
-            .expect("assertion context lock poisoned");
+        let mut contexts = self.manager.contexts.write().unwrap();
         contexts.remove(&self.id);
     }
 }

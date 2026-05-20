@@ -9,14 +9,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use actions::workspace::SendRequest;
 use editor::{Editor, EditorEvent};
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
 use multi_buffer::MultiBuffer;
 use project::{
-    Project, ProjectPath, RequestBuffer, RequestFile, RequestFileBody, RequestFileBodyType,
-    RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState,
+    Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
+    RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
+    RequestFileState,
 };
 use response_panel::{Response, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
@@ -46,11 +46,13 @@ pub fn init(cx: &mut App) {
             })
             .detach();
 
-            workspace.register_action(|workspace, _: &SendRequest, window, cx| {
-                workspace.pane().update(cx, |pane, cx| {
-                    pane.send_request(window, cx);
-                });
-            });
+            workspace.register_action(
+                |workspace, _: &actions::workspace::SendRequest, window, cx| {
+                    workspace.pane().update(cx, |pane, cx| {
+                        pane.send_request(window, cx);
+                    });
+                },
+            );
         },
     )
     .detach();
@@ -100,20 +102,6 @@ fn normalize_url(url: &str) -> Option<Url> {
     };
 
     Url::parse(&url).ok()
-}
-
-fn method_label(method: &Method) -> String {
-    let method = method.as_str().trim().to_ascii_uppercase();
-    match method.as_str() {
-        "GET" => "GET".to_string(),
-        "POST" => "POST".to_string(),
-        "PUT" => "PUT".to_string(),
-        "PATCH" => "PATCH".to_string(),
-        "DELETE" => "DEL".to_string(),
-        "HEAD" => "HEAD".to_string(),
-        "OPTIONS" => "OPT".to_string(),
-        _ => method.chars().take(5).collect(),
-    }
 }
 
 fn body_type_label(r#type: Option<RequestBodyType>) -> &'static str {
@@ -284,13 +272,6 @@ impl RequestSnapshot {
     fn from_request_file(request_file: &RequestFile) -> Self {
         Self(request_file.clone())
     }
-
-    fn name(&self) -> Option<&str> {
-        self.0.meta.name.as_deref().and_then(|name| {
-            let name = name.trim();
-            if name.is_empty() { None } else { Some(name) }
-        })
-    }
 }
 
 struct RequestParam {
@@ -375,8 +356,8 @@ impl RequestBody {
 pub struct RequestEditor {
     focus_handle: FocusHandle,
     workspace: WeakEntity<Workspace>,
-    project: Option<Entity<Project>>,
-    buffer: Option<Entity<RequestBuffer>>,
+    project: Entity<Project>,
+    buffer: Entity<RequestBuffer>,
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
     active_tab: RequestEditorTab,
@@ -384,9 +365,9 @@ pub struct RequestEditor {
     http_client: Arc<dyn HttpClient>,
     params_scroll_handle: ScrollHandle,
     headers_scroll_handle: ScrollHandle,
-    is_dirty: bool,
     input_subscriptions: Vec<Subscription>,
     body_subscription: Option<Subscription>,
+    _buffer_subscription: Subscription,
 }
 
 impl RequestEditor {
@@ -401,12 +382,45 @@ impl RequestEditor {
         let request_file = buffer.read(cx).request_file().clone();
         let (request, request_snapshot, input_subscriptions, body_subscription) =
             Self::state_from_request_file(request_file, window, cx);
+        let request_editor = cx.weak_entity();
+        let buffer_subscription = window.subscribe(
+            &buffer,
+            cx,
+            move |buffer, event: &RequestBufferEvent, window, cx| match event {
+                RequestBufferEvent::DirtyChanged
+                | RequestBufferEvent::FileHandleChanged
+                | RequestBufferEvent::Saved => {
+                    if let Err(error) = request_editor.update(cx, |_, cx| {
+                        cx.emit(ItemEvent::UpdateTab);
+                        cx.notify();
+                    }) {
+                        log::debug!("Failed to update request editor tab: {error:?}");
+                    }
+                }
+                RequestBufferEvent::Reloaded => {
+                    let request_file = buffer.read(cx).request_file().clone();
+                    if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+                        let (request, request_snapshot, input_subscriptions, body_subscription) =
+                            Self::state_from_request_file(request_file, window, cx);
+                        request_editor.request = request;
+                        request_editor.request_snapshot = request_snapshot;
+                        request_editor.input_subscriptions = input_subscriptions;
+                        request_editor.body_subscription = body_subscription;
+                        cx.emit(ItemEvent::UpdateTab);
+                        cx.notify();
+                    }) {
+                        log::debug!("Failed to reload request editor: {error:?}");
+                    }
+                }
+                RequestBufferEvent::ReloadNeeded => {}
+            },
+        );
 
         Self {
             focus_handle,
             workspace,
-            project: Some(project),
-            buffer: Some(buffer),
+            project,
+            buffer,
             request,
             request_snapshot,
             active_tab: RequestEditorTab::Parameters,
@@ -414,22 +428,18 @@ impl RequestEditor {
             http_client: SharedState::global(cx).http_client.clone(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
-            is_dirty: false,
             input_subscriptions,
             body_subscription,
+            _buffer_subscription: buffer_subscription,
         }
     }
 
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {
-        self.buffer
-            .as_ref()
-            .and_then(|buffer| project::ProjectItem::project_path(buffer.read(cx), cx))
+        project::ProjectItem::project_path(self.buffer.read(cx), cx)
     }
 
     fn path_style(&self, cx: &App) -> PathStyle {
-        self.project
-            .as_ref()
-            .map_or_else(PathStyle::local, |project| project.read(cx).path_style(cx))
+        self.project.read(cx).path_style(cx)
     }
 
     fn response(&self) -> Option<Entity<Response>> {
@@ -449,20 +459,6 @@ impl RequestEditor {
     }
 
     fn title(&self, cx: &App) -> SharedString {
-        let display_name = match &self.request {
-            RequestEditorState::Ready(request) => request.meta.name.as_deref().and_then(|name| {
-                let name = name.trim();
-                if name.is_empty() { None } else { Some(name) }
-            }),
-            RequestEditorState::Invalid { snapshot, .. } => {
-                snapshot.as_ref().and_then(RequestSnapshot::name)
-            }
-        };
-
-        if let Some(display_name) = display_name {
-            return SharedString::from(display_name.to_owned());
-        }
-
         self.project_path(cx)
             .and_then(|project_path| {
                 project_path.path.file_name().map(|file_name| {
@@ -476,7 +472,7 @@ impl RequestEditor {
     fn path_for_request(
         &self,
         height: usize,
-        include_filename: bool,
+        include_file_name: bool,
         cx: &App,
     ) -> Option<SharedString> {
         let project_path = self.project_path(cx)?;
@@ -495,7 +491,7 @@ impl RequestEditor {
         let start = components.len().saturating_sub(height);
         let mut components = components.split_off(start);
 
-        if include_filename {
+        if include_file_name {
             if let Some(file_name) = components.last_mut() {
                 *file_name = self.title(cx).to_string();
             }
@@ -631,22 +627,15 @@ impl RequestEditor {
         } else {
             false
         };
-        let dirty_changed = if let Some(buffer) = self.buffer.as_ref() {
-            let request = request_snapshot
-                .as_ref()
-                .map(|snapshot| RequestFileState::Parsed(snapshot.0.clone()));
-            buffer.update(cx, |buffer, cx| {
-                if let Some(request) = request {
-                    buffer.set_request_file(request, cx);
-                }
-                buffer.set_dirty(is_dirty, cx)
-            })
-        } else if self.is_dirty == is_dirty {
-            false
-        } else {
-            self.is_dirty = is_dirty;
-            true
-        };
+        let request = request_snapshot
+            .as_ref()
+            .map(|snapshot| RequestFileState::Parsed(snapshot.0.clone()));
+        let dirty_changed = self.buffer.update(cx, |buffer, cx| {
+            if let Some(request) = request {
+                buffer.set_request_file(request, cx);
+            }
+            buffer.set_dirty(is_dirty, cx)
+        });
 
         cx.emit(ItemEvent::Edit);
         if dirty_changed {
@@ -1467,12 +1456,12 @@ impl RequestEditor {
                     .py_3()
                     .gap_2()
                     .key_context("RequestUrl")
-                    .on_action(
-                        cx.listener(move |request_editor, _: &SendRequest, window, cx| {
+                    .on_action(cx.listener(
+                        move |request_editor, _: &actions::workspace::SendRequest, window, cx| {
                             request_editor.unpreview_tab(cx);
                             request_editor.send_request(window, cx);
-                        }),
-                    )
+                        },
+                    ))
                     .child(
                         DropdownMenu::new(
                             "request-method",
@@ -1533,7 +1522,9 @@ impl Item for RequestEditor {
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
         let selected_method_label = match &self.request {
-            RequestEditorState::Ready(request) => Some(method_label(&request.http.method)),
+            RequestEditorState::Ready(request) => {
+                Some(project::request_method_label(request.http.method.as_str()))
+            }
             RequestEditorState::Invalid { .. } => None,
         };
         let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
@@ -1589,12 +1580,8 @@ impl Item for RequestEditor {
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
-        let project = self.project.as_ref()?;
-        let project_path = self
-            .buffer
-            .as_ref()
-            .and_then(|buffer| project::ProjectItem::project_path(buffer.read(cx), cx))?;
-        project
+        let project_path = project::ProjectItem::project_path(self.buffer.read(cx), cx)?;
+        self.project
             .read(cx)
             .absolute_path(&project_path, cx)
             .map(|path| path.to_string_lossy().into_owned().into())
@@ -1605,9 +1592,7 @@ impl Item for RequestEditor {
         cx: &App,
         f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
-        if let Some(buffer) = self.buffer.as_ref() {
-            f(Entity::entity_id(buffer), buffer.read(cx));
-        }
+        f(Entity::entity_id(&self.buffer), self.buffer.read(cx));
     }
 
     fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {
@@ -1615,9 +1600,7 @@ impl Item for RequestEditor {
     }
 
     fn is_dirty(&self, cx: &App) -> bool {
-        self.buffer
-            .as_ref()
-            .map_or(self.is_dirty, |buffer| buffer.read(cx).is_dirty())
+        self.buffer.read(cx).is_dirty()
     }
 
     fn can_save(&self, cx: &App) -> bool {
@@ -1630,9 +1613,7 @@ impl Item for RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let Some(buffer) = self.buffer.clone() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot save request without buffer")));
-        };
+        let buffer = self.buffer.clone();
         let RequestEditorState::Ready(request) = &self.request else {
             return Task::ready(Err(anyhow::anyhow!("Cannot save invalid request")));
         };
@@ -1640,6 +1621,7 @@ impl Item for RequestEditor {
         buffer.update(cx, |buffer, cx| {
             buffer.set_request_file(RequestFileState::Parsed(request_snapshot.0.clone()), cx);
         });
+        let was_dirty = buffer.read(cx).is_dirty();
 
         cx.spawn_in(window, async move |this, cx| {
             project
@@ -1647,14 +1629,8 @@ impl Item for RequestEditor {
                 .await?;
             this.update(cx, |request_editor, cx| {
                 request_editor.request_snapshot = Some(request_snapshot.clone());
-                request_editor.is_dirty = false;
-                let dirty_changed = buffer.update(cx, |buffer, cx| {
-                    let dirty_changed = buffer.is_dirty();
-                    buffer.did_save(cx);
-                    dirty_changed
-                });
 
-                if dirty_changed {
+                if was_dirty {
                     cx.emit(ItemEvent::UpdateTab);
                 }
                 cx.notify();
@@ -1669,31 +1645,13 @@ impl Item for RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        let Some(buffer) = self.buffer.clone() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot reload request without buffer")));
-        };
-        let was_dirty = self.is_dirty(cx);
-        let reload_request_buffer =
+        let buffer = self.buffer.clone();
+        let reload_task =
             project.update(cx, |project, cx| project.reload_request_buffer(&buffer, cx));
 
-        cx.spawn_in(window, async move |this, cx| {
-            reload_request_buffer.await?;
-            this.update_in(cx, |request_editor, window, cx| {
-                let request_file = buffer.read(cx).request_file().clone();
-                let (request, request_snapshot, input_subscriptions, body_subscription) =
-                    Self::state_from_request_file(request_file, window, cx);
-                request_editor.request = request;
-                request_editor.request_snapshot = request_snapshot;
-                request_editor.input_subscriptions = input_subscriptions;
-                request_editor.body_subscription = body_subscription;
-                request_editor.is_dirty = false;
-
-                if was_dirty {
-                    cx.emit(ItemEvent::UpdateTab);
-                }
-                cx.notify();
-            })?;
-            Ok(())
+        cx.spawn_in(window, async move |_, _| {
+            reload_task.await?;
+            anyhow::Ok(())
         })
     }
 }
@@ -1725,7 +1683,7 @@ mod tests {
     use indoc::indoc;
     use parking_lot::Mutex;
     use serde_json::json;
-    use std::path::Path;
+    use std::{cell::RefCell, rc::Rc};
 
     use fs::Fs;
     use http_client::{Response, StatusCode};
@@ -1733,7 +1691,7 @@ mod tests {
     use theme::LoadThemes;
     use util::rel_path::rel_path;
     use util_macros::path;
-    use workspace::{DockPosition, Root, SaveIntent, SharedState};
+    use workspace::{DockPosition, Root, SharedState};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -1904,7 +1862,6 @@ mod tests {
                     "request.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Search"
 
                         [http]
                         method = "POST"
@@ -2002,7 +1959,6 @@ mod tests {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "First"
 
                         [http]
                         method = "GET"
@@ -2011,7 +1967,6 @@ mod tests {
                     "second.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Second"
 
                         [http]
                         method = "GET"
@@ -2085,14 +2040,14 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(
-            first_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            first_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "first response"
         );
         assert_eq!(
-            second_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            second_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "second response"
         );
@@ -2154,7 +2109,6 @@ mod tests {
                     "first.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "First"
 
                         [http]
                         method = "GET"
@@ -2163,7 +2117,6 @@ mod tests {
                     "second.toml": indoc! {r#"
                         [meta]
                         version = 1
-                        name = "Second"
 
                         [http]
                         method = "GET"
@@ -2241,14 +2194,14 @@ mod tests {
         cx.run_until_parked();
 
         assert_eq!(
-            first_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            first_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "first response"
         );
         assert_eq!(
-            second_editor.read_with(cx, |request_editor, cx| {
-                request_editor.response.as_ref().unwrap().read(cx).text(cx)
+            second_editor.read_with(cx, |editor, cx| {
+                editor.response.as_ref().unwrap().read(cx).text(cx)
             }),
             "second response"
         );
@@ -2327,40 +2280,35 @@ mod tests {
             .downcast::<RequestEditor>()
             .unwrap();
 
-        request_editor.update_in(cx, |request_editor, window, cx| {
-            let RequestEditorState::Ready(request) = &mut request_editor.request else {
+        request_editor.update_in(cx, |editor, window, cx| {
+            let RequestEditorState::Ready(request) = &mut editor.request else {
                 panic!("Expected request editor to be ready");
             };
             request.http.url.update(cx, |url, cx| {
                 url.set_text("https://api.zaku.dev/me/edit", window, cx);
             });
-            request_editor.mark_edited(cx);
+            editor.mark_edited(cx);
         });
 
-        assert!(request_editor.read_with(cx, |request_editor, cx| { request_editor.is_dirty(cx) }));
+        assert!(request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
 
         workspace
             .update_in(cx, |workspace, window, cx| {
-                workspace.save_active_item(SaveIntent::Save, window, cx)
+                workspace.save_active_item(actions::pane::SaveIntent::Save, window, cx)
             })
             .await
             .unwrap();
         cx.run_until_parked();
 
-        assert!(
-            !request_editor.read_with(cx, |request_editor, cx| { request_editor.is_dirty(cx) })
-        );
+        assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
 
         let saved = temp_fs
-            .load(Path::new(path!("project/collection/request.toml")))
+            .load("project/collection/request.toml".as_ref())
             .await
             .unwrap();
         let saved_request = toml::from_str::<RequestFile>(&saved).unwrap();
         let expected_request = RequestFile {
-            meta: RequestFileMeta {
-                version: 1,
-                name: None,
-            },
+            meta: RequestFileMeta { version: 1 },
             http: RequestFileHttp {
                 method: "GET".to_string(),
                 url: "https://api.zaku.dev/me/edit".to_string(),
@@ -2402,9 +2350,109 @@ mod tests {
             project.read_with(cx, |project, cx| {
                 project
                     .entry_for_path(&request_path, cx)
-                    .and_then(|entry| entry.request.clone())
+                    .map(|entry| entry.is_request)
             }),
-            Some(RequestFileState::Parsed(expected_request))
+            Some(true)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_file_handle_changed_on_rename(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev/me"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let (workspace, _, cx) = build_workspace(&project, cx);
+
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("collection/request.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        let buffer = request_editor.read_with(cx, |editor, _| editor.buffer.clone());
+        let received_file_handle_changed = Rc::new(RefCell::new(false));
+        buffer.update(cx, |_, cx| {
+            let received_file_handle_changed = received_file_handle_changed.clone();
+            cx.subscribe(&buffer, move |_, _, event, _| {
+                if matches!(event, RequestBufferEvent::FileHandleChanged) {
+                    *received_file_handle_changed.borrow_mut() = true;
+                }
+            })
+            .detach();
+        });
+        cx.run_until_parked();
+
+        let entry_id = project
+            .read_with(cx, |project, cx| {
+                project
+                    .entry_for_path(
+                        &(worktree_id, rel_path("collection/request.toml")).into(),
+                        cx,
+                    )
+                    .map(|entry| entry.id)
+            })
+            .unwrap();
+        project
+            .update(cx, |project, cx| {
+                project.rename_entry(
+                    entry_id,
+                    (worktree_id, rel_path("collection/renamed.toml")).into(),
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert!(
+            *received_file_handle_changed.borrow(),
+            "RequestBufferEvent::FileHandleChanged must be emitted when the open request is renamed"
+        );
+        assert_eq!(
+            request_editor.read_with(cx, |editor, cx| editor.project_path(cx)),
+            Some((worktree_id, rel_path("collection/renamed.toml")).into())
+        );
+        buffer.read_with(cx, |buffer, _| {
+            assert_eq!(
+                buffer.file().path().as_ref(),
+                rel_path("collection/renamed.toml")
+            );
+        });
+        assert_eq!(
+            request_editor.read_with(cx, |editor, cx| editor.title(cx).to_string()),
+            "renamed"
         );
     }
 }

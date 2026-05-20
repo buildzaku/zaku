@@ -1,43 +1,60 @@
-use gpui::Context;
+use gpui::{AppContext, Context, EventEmitter, Task};
 use std::sync::Arc;
 
-use util::rel_path::RelPath;
-use worktree::{ProjectEntryId, RequestFileState, WorktreeId};
+use worktree::{DiskState, File, RequestFileState};
 
 pub struct RequestBuffer {
-    entry_id: ProjectEntryId,
-    worktree_id: WorktreeId,
-    path: Arc<RelPath>,
+    file: Arc<File>,
     request_file: RequestFileState,
     is_dirty: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequestBufferEvent {
+    DirtyChanged,
+    Saved,
+    FileHandleChanged,
+    Reloaded,
+    ReloadNeeded,
+}
+
+impl EventEmitter<RequestBufferEvent> for RequestBuffer {}
+
 impl RequestBuffer {
-    pub fn new(
-        entry_id: ProjectEntryId,
-        worktree_id: WorktreeId,
-        path: Arc<RelPath>,
-        request_file: RequestFileState,
-    ) -> Self {
+    pub fn new(file: Arc<File>, request_file: RequestFileState) -> Self {
         Self {
-            entry_id,
-            worktree_id,
-            path,
+            file,
             request_file,
             is_dirty: false,
         }
     }
 
-    pub fn entry_id(&self) -> ProjectEntryId {
-        self.entry_id
+    pub fn file(&self) -> &Arc<File> {
+        &self.file
     }
 
-    pub fn worktree_id(&self) -> WorktreeId {
-        self.worktree_id
-    }
+    pub fn file_updated(&mut self, new_file: Arc<File>, cx: &mut Context<Self>) {
+        let was_dirty = self.is_dirty();
+        let mut file_changed = false;
 
-    pub fn path(&self) -> Arc<RelPath> {
-        self.path.clone()
+        if new_file.path() != self.file.path() {
+            file_changed = true;
+        }
+
+        let old_state = self.file.disk_state();
+        let new_state = new_file.disk_state();
+        if new_state != old_state {
+            file_changed = true;
+            if !was_dirty && matches!(new_state, DiskState::Present { .. }) {
+                cx.emit(RequestBufferEvent::ReloadNeeded);
+            }
+        }
+
+        self.file = new_file;
+        if file_changed {
+            cx.emit(RequestBufferEvent::FileHandleChanged);
+            cx.notify();
+        }
     }
 
     pub fn request_file(&self) -> &RequestFileState {
@@ -45,8 +62,27 @@ impl RequestBuffer {
     }
 
     pub fn set_request_file(&mut self, request_file: RequestFileState, cx: &mut Context<Self>) {
+        if self.request_file == request_file {
+            return;
+        }
+
         self.request_file = request_file;
         cx.notify();
+    }
+
+    pub fn reload(&mut self, cx: &Context<Self>) -> Task<anyhow::Result<()>> {
+        let load_task = self.file.load(cx);
+
+        cx.spawn(async move |this, cx| {
+            let contents = load_task.await?;
+            let parse_task =
+                cx.background_spawn(async move { worktree::parse_request_file(&contents) });
+            let request_file = parse_task.await;
+            this.update(cx, |this, cx| {
+                this.did_reload(request_file, cx);
+            })?;
+            anyhow::Ok(())
+        })
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -57,13 +93,30 @@ impl RequestBuffer {
         let dirty_changed = self.is_dirty != is_dirty;
         if dirty_changed {
             self.is_dirty = is_dirty;
+            cx.emit(RequestBufferEvent::DirtyChanged);
             cx.notify();
         }
         dirty_changed
     }
 
     pub fn did_save(&mut self, cx: &mut Context<Self>) {
+        let dirty_changed = self.is_dirty;
         self.is_dirty = false;
+        if dirty_changed {
+            cx.emit(RequestBufferEvent::DirtyChanged);
+        }
+        cx.emit(RequestBufferEvent::Saved);
+        cx.notify();
+    }
+
+    pub fn did_reload(&mut self, request_file: RequestFileState, cx: &mut Context<Self>) {
+        self.request_file = request_file;
+        let dirty_changed = self.is_dirty;
+        self.is_dirty = false;
+        if dirty_changed {
+            cx.emit(RequestBufferEvent::DirtyChanged);
+        }
+        cx.emit(RequestBufferEvent::Reloaded);
         cx.notify();
     }
 }

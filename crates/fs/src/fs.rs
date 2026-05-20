@@ -2,7 +2,7 @@ pub mod fs_watcher;
 
 use anyhow::Context;
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, channel::oneshot, future::BoxFuture};
 use gpui::BackgroundExecutor;
 use is_executable::IsExecutable;
 use parking_lot::Mutex;
@@ -114,6 +114,12 @@ pub struct RemoveOptions {
     pub ignore_if_not_exists: bool,
 }
 
+#[derive(Copy, Clone, Default)]
+pub struct CopyOptions {
+    pub overwrite: bool,
+    pub ignore_if_exists: bool,
+}
+
 #[async_trait]
 pub trait Fs: Send + Sync {
     async fn create_dir(&self, path: &Path) -> anyhow::Result<()>;
@@ -121,18 +127,26 @@ pub trait Fs: Send + Sync {
     async fn canonicalize(&self, path: &Path) -> anyhow::Result<PathBuf>;
     async fn metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>>;
     async fn load(&self, path: &Path) -> anyhow::Result<String>;
+    async fn load_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>>;
     async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>>;
     async fn read_link(&self, path: &Path) -> anyhow::Result<PathBuf>;
     async fn read_dir(
         &self,
         path: &Path,
     ) -> anyhow::Result<Pin<Box<dyn Send + Stream<Item = anyhow::Result<PathBuf>>>>>;
+    async fn copy_file(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: CopyOptions,
+    ) -> anyhow::Result<()>;
     async fn rename(
         &self,
         source: &Path,
         target: &Path,
         options: RenameOptions,
     ) -> anyhow::Result<()>;
+    async fn trash(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
     async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
     async fn remove_file(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()>;
     async fn watch(
@@ -491,6 +505,16 @@ impl Fs for NativeFs {
             .await
     }
 
+    async fn load_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+        let path = path.to_path_buf();
+        self.executor
+            .spawn(async move {
+                std::fs::read(&path)
+                    .with_context(|| format!("failed to read file {}", path.display()))
+            })
+            .await
+    }
+
     async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>> {
         let mut options = std::fs::OpenOptions::new();
         options.read(true);
@@ -531,6 +555,23 @@ impl Fs for NativeFs {
             })
             .await?;
         Ok(path)
+    }
+
+    async fn copy_file(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: CopyOptions,
+    ) -> anyhow::Result<()> {
+        if !options.overwrite && smol::fs::metadata(target).await.is_ok() {
+            if options.ignore_if_exists {
+                return Ok(());
+            }
+            anyhow::bail!("{} already exists", target.display());
+        }
+
+        smol::fs::copy(source, target).await?;
+        Ok(())
     }
 
     async fn rename(
@@ -591,6 +632,27 @@ impl Fs for NativeFs {
 
         smol::fs::rename(source, target).await?;
         Ok(())
+    }
+
+    async fn trash(&self, path: &Path, _options: RemoveOptions) -> anyhow::Result<()> {
+        let path = self
+            .canonicalize(path)
+            .await
+            .context("Could not canonicalize the path of the file")?;
+
+        let (tx, rx) = oneshot::channel();
+        std::thread::Builder::new()
+            .name("trash file or dir".to_string())
+            .spawn(move || {
+                if tx.send(trash::delete(path)).is_err() {
+                    log::trace!("Trash receiver dropped");
+                }
+            })
+            .context("Failed to spawn trash thread")?;
+
+        rx.await
+            .context("Trash sender dropped")?
+            .context("Could not trash file or dir")
     }
 
     async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
@@ -858,6 +920,13 @@ impl Fs for TempFs {
             .await
     }
 
+    async fn load_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+        let absolute_path = resolve_path(self.path(), path);
+        NativeFs::new(self.executor.clone())
+            .load_bytes(&absolute_path)
+            .await
+    }
+
     async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>> {
         let absolute_path = resolve_path(self.path(), path);
         NativeFs::new(self.executor.clone())
@@ -870,15 +939,36 @@ impl Fs for TempFs {
         path: &Path,
     ) -> anyhow::Result<Pin<Box<dyn Send + Stream<Item = anyhow::Result<PathBuf>>>>> {
         let absolute_path = resolve_path(self.path(), path);
-        NativeFs::new(self.executor.clone())
+        let mut entries = NativeFs::new(self.executor.clone())
             .read_dir(&absolute_path)
-            .await
+            .await?;
+        let mut paths = Vec::new();
+        while let Some(entry) = entries.next().await {
+            paths.push(entry?);
+        }
+        paths.sort();
+
+        let result = futures::stream::iter(paths.into_iter().map(Ok::<_, anyhow::Error>));
+        Ok(Box::pin(result))
     }
 
     async fn read_link(&self, path: &Path) -> anyhow::Result<PathBuf> {
         let absolute_path = resolve_path(self.path(), path);
         NativeFs::new(self.executor.clone())
             .read_link(&absolute_path)
+            .await
+    }
+
+    async fn copy_file(
+        &self,
+        source: &Path,
+        target: &Path,
+        options: CopyOptions,
+    ) -> anyhow::Result<()> {
+        let absolute_source = resolve_path(self.path(), source);
+        let absolute_target = resolve_path(self.path(), target);
+        NativeFs::new(self.executor.clone())
+            .copy_file(&absolute_source, &absolute_target, options)
             .await
     }
 
@@ -893,6 +983,24 @@ impl Fs for TempFs {
         NativeFs::new(self.executor.clone())
             .rename(&absolute_source, &absolute_target, options)
             .await
+    }
+
+    async fn trash(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), path);
+        let fs = NativeFs::new(self.executor.clone());
+        let Some(metadata) = fs.metadata(&absolute_path).await? else {
+            if options.ignore_if_not_exists {
+                return Ok(());
+            }
+
+            anyhow::bail!("{} does not exist", absolute_path.display());
+        };
+
+        if metadata.is_dir && !metadata.is_symlink {
+            fs.remove_dir(&absolute_path, options).await
+        } else {
+            fs.remove_file(&absolute_path, options).await
+        }
     }
 
     async fn remove_dir(&self, path: &Path, options: RemoveOptions) -> anyhow::Result<()> {
@@ -981,6 +1089,93 @@ fn metadata_for_path(path: &Path) -> anyhow::Result<Option<(std::fs::Metadata, b
     };
 
     Ok(Some((metadata, is_symlink)))
+}
+
+pub async fn copy_recursive(
+    fs: &dyn Fs,
+    source: &Path,
+    target: &Path,
+    options: CopyOptions,
+) -> anyhow::Result<()> {
+    for (item, is_dir) in read_dir_items(fs, source).await? {
+        let Ok(item_relative_path) = item.strip_prefix(source) else {
+            continue;
+        };
+        let target_item = if item_relative_path == Path::new("") {
+            target.to_path_buf()
+        } else {
+            target.join(item_relative_path)
+        };
+
+        if is_dir {
+            if let Some(metadata) = fs.metadata(&target_item).await? {
+                if !options.overwrite {
+                    if options.ignore_if_exists {
+                        continue;
+                    }
+                    anyhow::bail!("{} already exists", target_item.display());
+                }
+
+                if metadata.is_dir {
+                    fs.remove_dir(
+                        &target_item,
+                        RemoveOptions {
+                            recursive: true,
+                            ignore_if_not_exists: true,
+                        },
+                    )
+                    .await?;
+                } else {
+                    fs.remove_file(
+                        &target_item,
+                        RemoveOptions {
+                            recursive: false,
+                            ignore_if_not_exists: true,
+                        },
+                    )
+                    .await?;
+                }
+            }
+            fs.create_dir(&target_item).await?;
+        } else {
+            fs.copy_file(&item, &target_item, options).await?;
+        }
+    }
+
+    Ok(())
+}
+
+fn read_recursive<'a>(
+    fs: &'a dyn Fs,
+    source: &'a Path,
+    output: &'a mut Vec<(PathBuf, bool)>,
+) -> BoxFuture<'a, anyhow::Result<()>> {
+    async move {
+        let metadata = fs
+            .metadata(source)
+            .await?
+            .with_context(|| format!("path does not exist: {}", source.display()))?;
+
+        if metadata.is_dir {
+            output.push((source.to_path_buf(), true));
+            let mut children = fs.read_dir(source).await?;
+            while let Some(child_path) = children.next().await {
+                let child_path = child_path?;
+                read_recursive(fs, &child_path, output).await?;
+            }
+        } else {
+            output.push((source.to_path_buf(), false));
+        }
+
+        Ok(())
+    }
+    .boxed()
+}
+
+pub async fn read_dir_items(fs: &dyn Fs, source: &Path) -> anyhow::Result<Vec<(PathBuf, bool)>> {
+    let mut items = Vec::new();
+    read_recursive(fs, source, &mut items).await?;
+    Ok(items)
 }
 
 fn is_filesystem_case_sensitive() -> anyhow::Result<bool> {

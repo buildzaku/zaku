@@ -8,7 +8,18 @@ pub mod test;
 use log::{Level, Record};
 use std::{borrow::Cow, cmp::Ordering, fmt::Debug, panic};
 
-/// Get an embedded file as a string.
+#[macro_export]
+macro_rules! debug_panic {
+    ( $($fmt_arg:tt)* ) => {
+        if cfg!(debug_assertions) {
+            panic!( $($fmt_arg)* );
+        } else {
+            let backtrace = std::backtrace::Backtrace::capture();
+            log::error!("{}\n{:?}", format_args!($($fmt_arg)*), backtrace);
+        }
+    };
+}
+
 pub fn asset_str<A: rust_embed::RustEmbed>(path: &str) -> Cow<'static, str> {
     match A::get(path).expect(path).data {
         Cow::Borrowed(bytes) => Cow::Borrowed(std::str::from_utf8(bytes).unwrap()),

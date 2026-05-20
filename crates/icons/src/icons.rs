@@ -10,6 +10,7 @@ use strum::{EnumIter, EnumString, IntoStaticStr};
 #[serde(rename_all = "snake_case")]
 pub enum IconName {
     ArrowUpRight,
+    Backspace,
     CaretDown,
     CaretRight,
     CaretUpDown,
@@ -19,6 +20,7 @@ pub enum IconName {
     Control,
     Dash,
     File,
+    FileGeneric,
     Folder,
     FolderClose,
     FolderOpen,

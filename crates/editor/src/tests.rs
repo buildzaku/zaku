@@ -7,15 +7,6 @@ use multi_buffer::{Capability, MultiBufferOffset};
 use pretty_assertions::assert_eq;
 use std::ops::Range;
 
-use actions::editor::{
-    Backspace, Copy, Cut, Delete, DeleteToBeginningOfLine, DeleteToEndOfLine,
-    DeleteToNextSubwordEnd, DeleteToNextWordEnd, DeleteToPreviousSubwordStart,
-    DeleteToPreviousWordStart, HandleInput, MoveDown, MoveLeft, MoveRight, MoveToBeginning,
-    MoveToBeginningOfLine, MoveToEnd, MoveToEndOfLine, MoveToNextWordEnd, MoveToPreviousWordStart,
-    MoveUp, Newline, Paste, Redo, RedoSelection, SelectAll, SelectToBeginning,
-    SelectToBeginningOfLine, SelectToEnd, SelectToEndOfLine, SelectToNextWordEnd,
-    SelectToPreviousWordStart, Undo, UndoSelection,
-};
 use settings::SettingsStore;
 
 use crate::display_map::{DisplayPoint, DisplayRow};
@@ -59,7 +50,7 @@ fn test_handle_input(cx: &mut TestAppContext) {
         five
     "});
 
-    cx.dispatch_action(HandleInput(String::new()));
+    cx.dispatch_action(actions::editor::HandleInput(String::new()));
     cx.assert_state(indoc! {"
         one
         twoˇ
@@ -68,7 +59,7 @@ fn test_handle_input(cx: &mut TestAppContext) {
         five
     "});
 
-    cx.dispatch_action(HandleInput("X".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("X".to_string()));
     cx.assert_state(indoc! {"
         one
         twoXˇ
@@ -97,19 +88,19 @@ fn test_read_only_capability(cx: &mut TestAppContext) {
         assert!(editor.read_only(cx));
     });
 
-    cx.dispatch_action(HandleInput(" fox".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput(" fox".to_string()));
     cx.assert_state("The quick brownˇ");
 
-    cx.dispatch_action(Backspace);
+    cx.dispatch_action(actions::editor::Backspace);
     cx.assert_state("The quick brownˇ");
 
-    cx.dispatch_action(Delete);
+    cx.dispatch_action(actions::editor::Delete);
     cx.assert_state("The quick brownˇ");
 
-    cx.dispatch_action(MoveLeft);
+    cx.dispatch_action(actions::editor::MoveLeft);
     cx.assert_state("The quick browˇn");
 
-    cx.dispatch_action(MoveRight);
+    cx.dispatch_action(actions::editor::MoveRight);
     cx.assert_state("The quick brownˇ");
 
     cx.update_editor(|editor, _, _| editor.set_read_only(false));
@@ -118,7 +109,7 @@ fn test_read_only_capability(cx: &mut TestAppContext) {
         assert!(!editor.read_only(cx));
     });
 
-    cx.dispatch_action(HandleInput(" fox".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput(" fox".to_string()));
     cx.assert_state("The quick brown foxˇ");
 }
 
@@ -128,13 +119,13 @@ fn test_handle_input_replaces_selection(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("Hello, «worldˇ»!");
-    cx.dispatch_action(HandleInput("from Zaku".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("from Zaku".to_string()));
     cx.assert_state("Hello, from Zakuˇ!");
 
     cx.set_state(indoc! {"
         Lorem «ipsumˇ» dolor sit amet
     "});
-    cx.dispatch_action(HandleInput("ips\num".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("ips\num".to_string()));
     cx.assert_state(indoc! {"
         Lorem ips
         umˇ dolor sit amet
@@ -150,13 +141,13 @@ fn test_backspace(cx: &mut TestAppContext) {
         The quick brown fˇox
         jumps over the lazy dog\
     "});
-    cx.dispatch_action(Backspace);
+    cx.dispatch_action(actions::editor::Backspace);
     cx.assert_state(indoc! {"
         The quick brown ˇox
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveToBeginningOfLine {
+    cx.dispatch_action(actions::editor::MoveToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     });
@@ -165,31 +156,31 @@ fn test_backspace(cx: &mut TestAppContext) {
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(Backspace);
+    cx.dispatch_action(actions::editor::Backspace);
     cx.assert_state(indoc! {"
         ˇThe quick brown ox
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         The quick brown ox
         ˇjumps over the lazy dog\
     "});
 
-    cx.dispatch_action(Backspace);
+    cx.dispatch_action(actions::editor::Backspace);
     cx.assert_state(indoc! {"
         The quick brown oxˇjumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveToEndOfLine {
+    cx.dispatch_action(actions::editor::MoveToEndOfLine {
         stop_at_soft_wraps: true,
     });
     cx.assert_state(indoc! {"
         The quick brown oxjumps over the lazy dogˇ\
     "});
 
-    cx.dispatch_action(Backspace);
+    cx.dispatch_action(actions::editor::Backspace);
     cx.assert_state(indoc! {"
         The quick brown oxjumps over the lazy doˇ\
     "});
@@ -204,13 +195,13 @@ fn test_delete(cx: &mut TestAppContext) {
         The quick brown fˇox
         jumps over the lazy dog\
     "});
-    cx.dispatch_action(Delete);
+    cx.dispatch_action(actions::editor::Delete);
     cx.assert_state(indoc! {"
         The quick brown fˇx
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveToBeginningOfLine {
+    cx.dispatch_action(actions::editor::MoveToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     });
@@ -219,13 +210,13 @@ fn test_delete(cx: &mut TestAppContext) {
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(Delete);
+    cx.dispatch_action(actions::editor::Delete);
     cx.assert_state(indoc! {"
         ˇhe quick brown fx
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveToEndOfLine {
+    cx.dispatch_action(actions::editor::MoveToEndOfLine {
         stop_at_soft_wraps: true,
     });
     cx.assert_state(indoc! {"
@@ -233,29 +224,29 @@ fn test_delete(cx: &mut TestAppContext) {
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(Delete);
+    cx.dispatch_action(actions::editor::Delete);
     cx.assert_state(indoc! {"
         he quick brown fxˇjumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveToEndOfLine {
+    cx.dispatch_action(actions::editor::MoveToEndOfLine {
         stop_at_soft_wraps: true,
     });
     cx.assert_state(indoc! {"
         he quick brown fxjumps over the lazy dogˇ\
     "});
 
-    cx.dispatch_action(Delete);
+    cx.dispatch_action(actions::editor::Delete);
     cx.assert_state(indoc! {"
         he quick brown fxjumps over the lazy dogˇ\
     "});
 
-    cx.dispatch_action(MoveLeft);
+    cx.dispatch_action(actions::editor::MoveLeft);
     cx.assert_state(indoc! {"
         he quick brown fxjumps over the lazy doˇg\
     "});
 
-    cx.dispatch_action(Delete);
+    cx.dispatch_action(actions::editor::Delete);
     cx.assert_state(indoc! {"
         he quick brown fxjumps over the lazy doˇ\
     "});
@@ -269,33 +260,33 @@ fn test_newline(cx: &mut TestAppContext) {
     cx.set_state(indoc! {"
         The quick brown foxˇjumps over the lazy dog\
     "});
-    cx.dispatch_action(Newline);
+    cx.dispatch_action(actions::editor::Newline);
     cx.assert_state(indoc! {"
         The quick brown fox
         ˇjumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveUp);
+    cx.dispatch_action(actions::editor::MoveUp);
     cx.assert_state(indoc! {"
         ˇThe quick brown fox
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(Newline);
+    cx.dispatch_action(actions::editor::Newline);
     cx.assert_state(indoc! {"
 
         ˇThe quick brown fox
         jumps over the lazy dog\
     "});
 
-    cx.dispatch_action(MoveToEnd);
+    cx.dispatch_action(actions::editor::MoveToEnd);
     cx.assert_state(indoc! {"
 
         The quick brown fox
         jumps over the lazy dogˇ\
     "});
 
-    cx.dispatch_action(Newline);
+    cx.dispatch_action(actions::editor::Newline);
     cx.assert_state(indoc! {"
 
         The quick brown fox
@@ -307,7 +298,7 @@ fn test_newline(cx: &mut TestAppContext) {
         The« quick ˇ»brown fox
         jumps over the lazy dog\
     "});
-    cx.dispatch_action(Newline);
+    cx.dispatch_action(actions::editor::Newline);
     cx.assert_state(indoc! {"
         The
         ˇbrown fox
@@ -325,7 +316,7 @@ fn test_select_all(cx: &mut TestAppContext) {
         deˇ
         fgh\
     "});
-    cx.dispatch_action(SelectAll);
+    cx.dispatch_action(actions::editor::SelectAll);
     cx.assert_state(indoc! {"
         «abc
         de
@@ -362,7 +353,7 @@ fn test_select_all_does_not_autoscroll(cx: &mut TestAppContext) {
     "});
 
     for _ in 0..6 {
-        cx.dispatch_action(MoveDown);
+        cx.dispatch_action(actions::editor::MoveDown);
     }
     cx.run_until_parked();
 
@@ -386,7 +377,7 @@ fn test_select_all_does_not_autoscroll(cx: &mut TestAppContext) {
         scroll_position
     });
 
-    cx.dispatch_action(SelectAll);
+    cx.dispatch_action(actions::editor::SelectAll);
 
     let scroll_position_after_select_all =
         cx.update_editor(|editor, window, cx| editor.snapshot(window, cx).scroll_position());
@@ -402,7 +393,7 @@ fn test_move_beginning_of_line_stops_at_indent(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("•••The quick brown fox jumps over the lazy dogˇ");
-    let move_to_beginning = MoveToBeginningOfLine {
+    let move_to_beginning = actions::editor::MoveToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     };
@@ -420,7 +411,7 @@ fn test_delete_beginning_of_line_stops_at_indent(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("•••The quick brown fox jumps over the lazy dogˇ");
-    cx.dispatch_action(DeleteToBeginningOfLine {
+    cx.dispatch_action(actions::editor::DeleteToBeginningOfLine {
         stop_at_indent: true,
     });
     cx.assert_state("•••ˇ");
@@ -431,7 +422,7 @@ fn test_beginning_of_line(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    let move_to_beginning_of_line = MoveToBeginningOfLine {
+    let move_to_beginning_of_line = actions::editor::MoveToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     };
@@ -463,7 +454,7 @@ fn test_beginning_of_line(cx: &mut TestAppContext) {
         The quick brown fox
         ••jumps over the lazy dˇog
     "});
-    cx.dispatch_action(SelectToBeginningOfLine {
+    cx.dispatch_action(actions::editor::SelectToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     });
@@ -472,7 +463,7 @@ fn test_beginning_of_line(cx: &mut TestAppContext) {
         ••«ˇjumps over the lazy d»og
     "});
 
-    cx.dispatch_action(SelectToBeginningOfLine {
+    cx.dispatch_action(actions::editor::SelectToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     });
@@ -485,7 +476,7 @@ fn test_beginning_of_line(cx: &mut TestAppContext) {
         The quick brown fox
         ••jumps over the lazy dˇog
     "});
-    cx.dispatch_action(DeleteToBeginningOfLine {
+    cx.dispatch_action(actions::editor::DeleteToBeginningOfLine {
         stop_at_indent: false,
     });
     cx.assert_state(indoc! {"
@@ -504,7 +495,7 @@ fn test_end_of_line(cx: &mut TestAppContext) {
         ••jumps over the lazy dˇog
     "});
 
-    cx.dispatch_action(MoveToEndOfLine {
+    cx.dispatch_action(actions::editor::MoveToEndOfLine {
         stop_at_soft_wraps: true,
     });
     cx.assert_state(indoc! {"
@@ -512,7 +503,7 @@ fn test_end_of_line(cx: &mut TestAppContext) {
         ••jumps over the lazy dogˇ
     "});
 
-    cx.dispatch_action(MoveToEndOfLine {
+    cx.dispatch_action(actions::editor::MoveToEndOfLine {
         stop_at_soft_wraps: true,
     });
     cx.assert_state(indoc! {"
@@ -524,7 +515,7 @@ fn test_end_of_line(cx: &mut TestAppContext) {
         The quick brown fox
         ••jumps over the lazy dˇog
     "});
-    cx.dispatch_action(SelectToEndOfLine {
+    cx.dispatch_action(actions::editor::SelectToEndOfLine {
         stop_at_soft_wraps: true,
     });
     cx.assert_state(indoc! {"
@@ -536,7 +527,7 @@ fn test_end_of_line(cx: &mut TestAppContext) {
         The quick brown fox
         ••jumps over the lazy dˇog
     "});
-    cx.dispatch_action(DeleteToEndOfLine);
+    cx.dispatch_action(actions::editor::DeleteToEndOfLine);
     cx.assert_state(indoc! {"
         The quick brown fox
         ••jumps over the lazy dˇ
@@ -548,7 +539,7 @@ fn test_beginning_of_line_with_cursor_between_line_start_and_indent(cx: &mut Tes
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    let move_to_beginning_of_line = MoveToBeginningOfLine {
+    let move_to_beginning_of_line = actions::editor::MoveToBeginningOfLine {
         stop_at_soft_wraps: true,
         stop_at_indent: true,
     };
@@ -584,37 +575,37 @@ fn test_prev_next_word_boundary(cx: &mut TestAppContext) {
 
     cx.set_state("one two.thˇree");
 
-    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.dispatch_action(actions::editor::MoveToPreviousWordStart);
     cx.assert_state("one two.ˇthree");
 
-    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.dispatch_action(actions::editor::MoveToPreviousWordStart);
     cx.assert_state("one ˇtwo.three");
 
-    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.dispatch_action(actions::editor::MoveToPreviousWordStart);
     cx.assert_state("ˇone two.three");
 
-    cx.dispatch_action(MoveToPreviousWordStart);
+    cx.dispatch_action(actions::editor::MoveToPreviousWordStart);
     cx.assert_state("ˇone two.three");
 
-    cx.dispatch_action(MoveToNextWordEnd);
+    cx.dispatch_action(actions::editor::MoveToNextWordEnd);
     cx.assert_state("oneˇ two.three");
 
-    cx.dispatch_action(MoveToNextWordEnd);
+    cx.dispatch_action(actions::editor::MoveToNextWordEnd);
     cx.assert_state("one twoˇ.three");
 
-    cx.dispatch_action(MoveToNextWordEnd);
+    cx.dispatch_action(actions::editor::MoveToNextWordEnd);
     cx.assert_state("one two.threeˇ");
 
-    cx.dispatch_action(MoveToNextWordEnd);
+    cx.dispatch_action(actions::editor::MoveToNextWordEnd);
     cx.assert_state("one two.threeˇ");
 
-    cx.dispatch_action(SelectToPreviousWordStart);
+    cx.dispatch_action(actions::editor::SelectToPreviousWordStart);
     cx.assert_state("one two.«ˇthree»");
 
-    cx.dispatch_action(MoveLeft);
+    cx.dispatch_action(actions::editor::MoveLeft);
     cx.set_state("one two.ˇthree");
 
-    cx.dispatch_action(SelectToNextWordEnd);
+    cx.dispatch_action(actions::editor::SelectToNextWordEnd);
     cx.assert_state("one two.«threeˇ»");
 }
 
@@ -624,14 +615,14 @@ fn test_delete_to_word_boundary(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("one two t«hreˇ»e four");
-    cx.dispatch_action(DeleteToPreviousWordStart {
+    cx.dispatch_action(actions::editor::DeleteToPreviousWordStart {
         ignore_newlines: false,
         ignore_brackets: false,
     });
     cx.assert_state("one two tˇe four");
 
     cx.set_state("one two te «fˇ»our");
-    cx.dispatch_action(DeleteToNextWordEnd {
+    cx.dispatch_action(actions::editor::DeleteToNextWordEnd {
         ignore_newlines: false,
         ignore_brackets: false,
     });
@@ -643,14 +634,15 @@ fn test_delete_to_previous_word_start_or_newline(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    let delete_to_previous_word_start = DeleteToPreviousWordStart {
+    let delete_to_previous_word_start = actions::editor::DeleteToPreviousWordStart {
         ignore_newlines: false,
         ignore_brackets: false,
     };
-    let delete_to_previous_word_start_ignore_newlines = DeleteToPreviousWordStart {
-        ignore_newlines: true,
-        ignore_brackets: false,
-    };
+    let delete_to_previous_word_start_ignore_newlines =
+        actions::editor::DeleteToPreviousWordStart {
+            ignore_newlines: true,
+            ignore_brackets: false,
+        };
 
     cx.set_state(indoc! {"
         snake_case
@@ -722,14 +714,15 @@ fn test_delete_to_previous_subword_start_or_newline(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    let delete_to_previous_subword_start = DeleteToPreviousSubwordStart {
+    let delete_to_previous_subword_start = actions::editor::DeleteToPreviousSubwordStart {
         ignore_newlines: false,
         ignore_brackets: false,
     };
-    let delete_to_previous_subword_start_ignore_newlines = DeleteToPreviousSubwordStart {
-        ignore_newlines: true,
-        ignore_brackets: false,
-    };
+    let delete_to_previous_subword_start_ignore_newlines =
+        actions::editor::DeleteToPreviousSubwordStart {
+            ignore_newlines: true,
+            ignore_brackets: false,
+        };
 
     cx.set_state(indoc! {"
         snake_case
@@ -815,11 +808,11 @@ fn test_delete_to_next_word_end_or_newline(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    let delete_to_next_word_end = DeleteToNextWordEnd {
+    let delete_to_next_word_end = actions::editor::DeleteToNextWordEnd {
         ignore_newlines: false,
         ignore_brackets: false,
     };
-    let delete_to_next_word_end_ignore_newlines = DeleteToNextWordEnd {
+    let delete_to_next_word_end_ignore_newlines = actions::editor::DeleteToNextWordEnd {
         ignore_newlines: true,
         ignore_brackets: false,
     };
@@ -894,11 +887,11 @@ fn test_delete_to_next_subword_end_or_newline(cx: &mut TestAppContext) {
     init_test(cx);
     let mut cx = EditorTestContext::new(cx);
 
-    let delete_to_next_subword_end = DeleteToNextSubwordEnd {
+    let delete_to_next_subword_end = actions::editor::DeleteToNextSubwordEnd {
         ignore_newlines: false,
         ignore_brackets: false,
     };
-    let delete_to_next_subword_end_ignore_newlines = DeleteToNextSubwordEnd {
+    let delete_to_next_subword_end_ignore_newlines = actions::editor::DeleteToNextSubwordEnd {
         ignore_newlines: true,
         ignore_brackets: false,
     };
@@ -988,13 +981,13 @@ fn test_undo_redo_restores_cursor(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("Hello, woˇrld!");
-    cx.dispatch_action(HandleInput("d".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("d".to_string()));
     cx.assert_state("Hello, wodˇrld!");
 
-    cx.dispatch_action(Undo);
+    cx.dispatch_action(actions::editor::Undo);
     cx.assert_state("Hello, woˇrld!");
 
-    cx.dispatch_action(Redo);
+    cx.dispatch_action(actions::editor::Redo);
     cx.assert_state("Hello, wodˇrld!");
 }
 
@@ -1004,26 +997,26 @@ fn test_undo_redo_restores_selection(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("Hello, «worldˇ»!");
-    cx.dispatch_action(HandleInput("from Zaku".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("from Zaku".to_string()));
     cx.assert_state("Hello, from Zakuˇ!");
 
-    cx.dispatch_action(MoveToPreviousWordStart);
-    cx.dispatch_action(SelectToNextWordEnd);
+    cx.dispatch_action(actions::editor::MoveToPreviousWordStart);
+    cx.dispatch_action(actions::editor::SelectToNextWordEnd);
     cx.assert_state("Hello, from «Zakuˇ»!");
 
-    cx.dispatch_action(HandleInput("another planet".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("another planet".to_string()));
     cx.assert_state("Hello, from another planetˇ!");
 
-    cx.dispatch_action(Undo);
+    cx.dispatch_action(actions::editor::Undo);
     cx.assert_state("Hello, from «Zakuˇ»!");
 
-    cx.dispatch_action(Undo);
+    cx.dispatch_action(actions::editor::Undo);
     cx.assert_state("Hello, «worldˇ»!");
 
-    cx.dispatch_action(Redo);
+    cx.dispatch_action(actions::editor::Redo);
     cx.assert_state("Hello, from Zakuˇ!");
 
-    cx.dispatch_action(Redo);
+    cx.dispatch_action(actions::editor::Redo);
     cx.assert_state("Hello, from another planetˇ!");
 }
 
@@ -1033,16 +1026,16 @@ fn test_undo_redo_selection(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("Hello, woˇrld!");
-    cx.dispatch_action(MoveRight);
+    cx.dispatch_action(actions::editor::MoveRight);
     cx.assert_state("Hello, worˇld!");
 
-    cx.dispatch_action(MoveLeft);
+    cx.dispatch_action(actions::editor::MoveLeft);
     cx.assert_state("Hello, woˇrld!");
 
-    cx.dispatch_action(UndoSelection);
+    cx.dispatch_action(actions::editor::UndoSelection);
     cx.assert_state("Hello, worˇld!");
 
-    cx.dispatch_action(RedoSelection);
+    cx.dispatch_action(actions::editor::RedoSelection);
     cx.assert_state("Hello, woˇrld!");
 }
 
@@ -1138,11 +1131,11 @@ fn test_ime_composition(cx: &mut TestAppContext) {
         assert_eq!(editor.buffer_snapshot(cx).text(), "ābcde");
         assert_eq!(editor.marked_text_range(window, cx), None);
 
-        editor.undo(&Undo, window, cx);
+        editor.undo(&actions::editor::Undo, window, cx);
         assert_eq!(editor.buffer_snapshot(cx).text(), "abcde");
         assert_eq!(editor.marked_text_range(window, cx), None);
 
-        editor.redo(&Redo, window, cx);
+        editor.redo(&actions::editor::Redo, window, cx);
         assert_eq!(editor.buffer_snapshot(cx).text(), "ābcde");
         assert_eq!(editor.marked_text_range(window, cx), None);
 
@@ -1150,7 +1143,7 @@ fn test_ime_composition(cx: &mut TestAppContext) {
         assert_eq!(editor.buffer_snapshot(cx).text(), "àbcde");
         assert_eq!(editor.marked_text_range(window, cx), Some(0..1));
 
-        editor.undo(&Undo, window, cx);
+        editor.undo(&actions::editor::Undo, window, cx);
         assert_eq!(editor.buffer_snapshot(cx).text(), "ābcde");
         assert_eq!(editor.marked_text_range(window, cx), None);
 
@@ -1198,7 +1191,7 @@ fn test_insert_with_old_selections(cx: &mut TestAppContext) {
     });
 
     cx.assert_state("a(ˇ), b(), c()");
-    cx.dispatch_action(HandleInput("Z".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("Z".to_string()));
     cx.assert_state("a(Zˇ), b(), c()");
 }
 
@@ -1238,7 +1231,7 @@ fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     });
 
     for _ in 0..6 {
-        cx.dispatch_action(MoveDown);
+        cx.dispatch_action(actions::editor::MoveDown);
     }
     cx.run_until_parked();
 
@@ -1262,7 +1255,7 @@ fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     });
 
     for _ in 0..3 {
-        cx.dispatch_action(MoveDown);
+        cx.dispatch_action(actions::editor::MoveDown);
     }
     cx.run_until_parked();
 
@@ -1286,7 +1279,7 @@ fn test_vertical_autoscroll(cx: &mut TestAppContext) {
     });
 
     for _ in 0..6 {
-        cx.dispatch_action(MoveUp);
+        cx.dispatch_action(actions::editor::MoveUp);
     }
     cx.run_until_parked();
 
@@ -1338,7 +1331,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
         ten
     "});
 
-    cx.dispatch_action(HandleInput("5".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput("5".to_string()));
     cx.assert_state(indoc! {"
         one
         two
@@ -1353,7 +1346,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
     "});
 
     for _ in 0..6 {
-        cx.dispatch_action(MoveDown);
+        cx.dispatch_action(actions::editor::MoveDown);
     }
     cx.run_until_parked();
     cx.assert_state(indoc! {"
@@ -1375,7 +1368,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
         );
     });
 
-    cx.dispatch_action(Undo);
+    cx.dispatch_action(actions::editor::Undo);
     cx.run_until_parked();
     cx.assert_state(indoc! {"
         one
@@ -1397,7 +1390,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
     });
 
     for _ in 0..4 {
-        cx.dispatch_action(MoveDown);
+        cx.dispatch_action(actions::editor::MoveDown);
     }
     cx.run_until_parked();
     cx.assert_state(indoc! {"
@@ -1419,7 +1412,7 @@ fn test_vertical_autoscroll_on_undo_redo(cx: &mut TestAppContext) {
         );
     });
 
-    cx.dispatch_action(Redo);
+    cx.dispatch_action(actions::editor::Redo);
     cx.run_until_parked();
     cx.assert_state(indoc! {"
         one
@@ -1447,14 +1440,14 @@ fn test_copy_cut_paste_actions(cx: &mut TestAppContext) {
     let mut cx = EditorTestContext::new(cx);
 
     cx.set_state("Hello, «worldˇ»!");
-    cx.dispatch_action(Copy);
+    cx.dispatch_action(actions::editor::Copy);
     let clipboard_text = cx
         .cx
         .read_from_clipboard()
         .and_then(|item: ClipboardItem| item.text());
     assert_eq!(clipboard_text.as_deref(), Some("world"));
 
-    cx.dispatch_action(Cut);
+    cx.dispatch_action(actions::editor::Cut);
     cx.assert_state("Hello, ˇ!");
     let clipboard_text = cx
         .cx
@@ -1464,7 +1457,7 @@ fn test_copy_cut_paste_actions(cx: &mut TestAppContext) {
 
     cx.cx
         .write_to_clipboard(ClipboardItem::new_string("hello world".to_string()));
-    cx.dispatch_action(Paste);
+    cx.dispatch_action(actions::editor::Paste);
     cx.assert_state("Hello, hello worldˇ!");
 }
 
@@ -1477,7 +1470,7 @@ fn test_single_line_editor_paste_strips_newlines(cx: &mut TestAppContext) {
     cx.cx.write_to_clipboard(ClipboardItem::new_string(
         "The quick\r\nbrown fox jumps over\nthe lazy dog\r".to_string(),
     ));
-    cx.dispatch_action(Paste);
+    cx.dispatch_action(actions::editor::Paste);
     cx.assert_state("The quickbrown fox jumps overthe lazy dogˇ");
 }
 
@@ -1487,7 +1480,9 @@ fn test_single_line_editor_replace_text_in_range_strips_newlines(cx: &mut TestAp
     let mut cx = EditorTestContext::new_single_line(cx);
 
     cx.set_state("Lorem «ipsumˇ»");
-    cx.dispatch_action(HandleInput("ipsum\r\ndolor sit\namet".to_string()));
+    cx.dispatch_action(actions::editor::HandleInput(
+        "ipsum\r\ndolor sit\namet".to_string(),
+    ));
     cx.assert_state("Lorem ipsumdolor sitametˇ");
 }
 
@@ -1502,42 +1497,42 @@ fn test_move_cursor(cx: &mut TestAppContext) {
         aaaaaa\
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         aaaaaa
         ˇ\t\taaaaaa
         aaaaaa\
     "});
 
-    cx.dispatch_action(MoveRight);
+    cx.dispatch_action(actions::editor::MoveRight);
     cx.assert_state(indoc! {"
         aaaaaa
         \tˇ\taaaaaa
         aaaaaa\
     "});
 
-    cx.dispatch_action(MoveLeft);
+    cx.dispatch_action(actions::editor::MoveLeft);
     cx.assert_state(indoc! {"
         aaaaaa
         ˇ\t\taaaaaa
         aaaaaa\
     "});
 
-    cx.dispatch_action(MoveUp);
+    cx.dispatch_action(actions::editor::MoveUp);
     cx.assert_state(indoc! {"
         ˇaaaaaa
         \t\taaaaaa
         aaaaaa\
     "});
 
-    cx.dispatch_action(MoveToEnd);
+    cx.dispatch_action(actions::editor::MoveToEnd);
     cx.assert_state(indoc! {"
         aaaaaa
         \t\taaaaaa
         aaaaaaˇ\
     "});
 
-    cx.dispatch_action(MoveToBeginning);
+    cx.dispatch_action(actions::editor::MoveToBeginning);
     cx.assert_state(indoc! {"
         ˇaaaaaa
         \t\taaaaaa
@@ -1545,10 +1540,10 @@ fn test_move_cursor(cx: &mut TestAppContext) {
     "});
 
     cx.set_state("a«bˇ»cd");
-    cx.dispatch_action(SelectToBeginning);
+    cx.dispatch_action(actions::editor::SelectToBeginning);
     cx.assert_state("«ˇa»bcd");
 
-    cx.dispatch_action(SelectToEnd);
+    cx.dispatch_action(actions::editor::SelectToEnd);
     cx.assert_state("a«bcdˇ»");
 }
 
@@ -1563,57 +1558,57 @@ fn test_move_cursor_multibyte(cx: &mut TestAppContext) {
         абвгд
     "});
 
-    cx.dispatch_action(MoveRight);
+    cx.dispatch_action(actions::editor::MoveRight);
     cx.assert_state(indoc! {"
         🌑ˇ🌒🌓🌔🌕🌖
         abcde
         абвгд
     "});
 
-    cx.dispatch_action(MoveRight);
+    cx.dispatch_action(actions::editor::MoveRight);
     cx.assert_state(indoc! {"
         🌑🌒ˇ🌓🌔🌕🌖
         abcde
         абвгд
     "});
 
-    cx.dispatch_action(MoveRight);
+    cx.dispatch_action(actions::editor::MoveRight);
     cx.assert_state(indoc! {"
         🌑🌒🌓ˇ🌔🌕🌖
         abcde
         абвгд
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         🌑🌒🌓🌔🌕🌖
         abcdeˇ
         абвгд
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         🌑🌒🌓🌔🌕🌖
         abcde
         абвгдˇ
     "});
 
-    cx.dispatch_action(MoveLeft);
-    cx.dispatch_action(MoveLeft);
+    cx.dispatch_action(actions::editor::MoveLeft);
+    cx.dispatch_action(actions::editor::MoveLeft);
     cx.assert_state(indoc! {"
         🌑🌒🌓🌔🌕🌖
         abcde
         абвˇгд
     "});
 
-    cx.dispatch_action(MoveUp);
+    cx.dispatch_action(actions::editor::MoveUp);
     cx.assert_state(indoc! {"
         🌑🌒🌓🌔🌕🌖
         abcˇde
         абвгд
     "});
 
-    cx.dispatch_action(MoveUp);
+    cx.dispatch_action(actions::editor::MoveUp);
     cx.assert_state(indoc! {"
         🌑ˇ🌒🌓🌔🌕🌖
         abcde
@@ -1634,7 +1629,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         ⓐⓑⓒⓓⓔ\
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         ⓐⓑⓒⓓⓔ
         abcdˇ
@@ -1643,7 +1638,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         ⓐⓑⓒⓓⓔ\
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         ⓐⓑⓒⓓⓔ
         abcd
@@ -1652,7 +1647,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         ⓐⓑⓒⓓⓔ\
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         ⓐⓑⓒⓓⓔ
         abcd
@@ -1661,7 +1656,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         ⓐⓑⓒⓓⓔ\
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         ⓐⓑⓒⓓⓔ
         abcd
@@ -1670,7 +1665,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         ⓐⓑⓒⓓⓔˇ\
     "});
 
-    cx.dispatch_action(MoveDown);
+    cx.dispatch_action(actions::editor::MoveDown);
     cx.assert_state(indoc! {"
         ⓐⓑⓒⓓⓔ
         abcd
@@ -1679,7 +1674,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         ⓐⓑⓒⓓⓔˇ\
     "});
 
-    cx.dispatch_action(MoveUp);
+    cx.dispatch_action(actions::editor::MoveUp);
     cx.assert_state(indoc! {"
         ⓐⓑⓒⓓⓔ
         abcd
@@ -1688,7 +1683,7 @@ fn test_move_cursor_different_line_lengths(cx: &mut TestAppContext) {
         ⓐⓑⓒⓓⓔ\
     "});
 
-    cx.dispatch_action(MoveUp);
+    cx.dispatch_action(actions::editor::MoveUp);
     cx.assert_state(indoc! {"
         ⓐⓑⓒⓓⓔ
         abcd

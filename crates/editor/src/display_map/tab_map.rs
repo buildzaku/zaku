@@ -804,10 +804,10 @@ mod tests {
     }
 
     fn tab_snapshot_for_text(text: &str, cx: &mut App) -> TabSnapshot {
-        let buffer_id = BufferId::new(1).expect("buffer id must be valid");
+        let buffer_id = BufferId::new(1).unwrap();
         let text_buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, text));
         let multibuffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
-        let tab_size = NonZeroU32::new(4).expect("tab size must be non-zero");
+        let tab_size = NonZeroU32::new(4).unwrap();
         let (_, tab_snapshot) = TabMap::new(multibuffer.read(cx).snapshot(cx), tab_size);
         tab_snapshot
     }
@@ -842,12 +842,7 @@ mod tests {
 
             if character != '\t' {
                 let input_point = Point::new(0, input_column);
-                let output_column = u32::try_from(
-                    output
-                        .find(character)
-                        .expect("character from input must exist in output"),
-                )
-                .unwrap();
+                let output_column = u32::try_from(output.find(character).unwrap()).unwrap();
                 let output_point = TabPoint::new(0, output_column);
 
                 assert_eq!(

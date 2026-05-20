@@ -155,6 +155,7 @@ pub trait ItemHandle: 'static + Send {
     );
     fn buffer_kind(&self, cx: &App) -> ItemBufferKind;
     fn boxed_clone(&self) -> Box<dyn ItemHandle>;
+    fn downgrade_item(&self) -> Box<dyn WeakItemHandle>;
     fn deactivated(&self, window: &mut Window, cx: &mut App);
     fn on_removed(&self, cx: &mut App);
     fn navigate(&self, data: Arc<dyn Any + Send>, window: &mut Window, cx: &mut App) -> bool;
@@ -261,6 +262,10 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn boxed_clone(&self) -> Box<dyn ItemHandle> {
         Box::new(self.clone())
+    }
+
+    fn downgrade_item(&self) -> Box<dyn WeakItemHandle> {
+        Box::new(self.downgrade())
     }
 
     fn deactivated(&self, window: &mut Window, cx: &mut App) {

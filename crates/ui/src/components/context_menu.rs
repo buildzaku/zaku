@@ -4,7 +4,6 @@ use gpui::{
 };
 use std::{rc::Rc, time::Duration};
 
-use actions::menu::{self, SelectFirst, SelectLast, SelectNext, SelectPrevious};
 use theme::ThemeSettings;
 
 use crate::{
@@ -152,7 +151,7 @@ impl ContextMenu {
             &focus_handle,
             window,
             |this: &mut ContextMenu, window, cx| {
-                this.cancel(&menu::Cancel, window, cx);
+                this.cancel(&actions::menu::Cancel, window, cx);
             },
         );
 
@@ -200,7 +199,7 @@ impl ContextMenu {
                 &focus_handle,
                 window,
                 |this: &mut ContextMenu, window, cx| {
-                    this.cancel(&menu::Cancel, window, cx);
+                    this.cancel(&actions::menu::Cancel, window, cx);
                 },
             );
 
@@ -240,7 +239,7 @@ impl ContextMenu {
             &focus_handle,
             window,
             |this: &mut ContextMenu, window, cx| {
-                this.cancel(&menu::Cancel, window, cx);
+                this.cancel(&actions::menu::Cancel, window, cx);
             },
         );
         let menu = Self {
@@ -556,7 +555,12 @@ impl ContextMenu {
         self.selected_index
     }
 
-    pub fn confirm(&mut self, _: &menu::Confirm, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn confirm(
+        &mut self,
+        _: &actions::menu::Confirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(idx) = self.selected_index else {
             return;
         };
@@ -581,7 +585,7 @@ impl ContextMenu {
 
     pub fn secondary_confirm(
         &mut self,
-        _: &menu::SecondaryConfirm,
+        _: &actions::menu::SecondaryConfirm,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -612,7 +616,12 @@ impl ContextMenu {
         }
     }
 
-    pub fn cancel(&mut self, _: &menu::Cancel, _window: &mut Window, cx: &mut Context<Self>) {
+    pub fn cancel(
+        &mut self,
+        _: &actions::menu::Cancel,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         cx.emit(DismissEvent);
     }
 
@@ -635,7 +644,12 @@ impl ContextMenu {
         self.selected_index = None;
     }
 
-    pub fn select_first(&mut self, _: &SelectFirst, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn select_first(
+        &mut self,
+        _: &actions::menu::SelectFirst,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(idx) = self.items.iter().position(|item| item.is_selectable()) {
             self.select_index(idx, window, cx);
         }
@@ -651,17 +665,27 @@ impl ContextMenu {
         None
     }
 
-    fn handle_select_last(&mut self, _: &SelectLast, window: &mut Window, cx: &mut Context<Self>) {
+    fn handle_select_last(
+        &mut self,
+        _: &actions::menu::SelectLast,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.select_last(window, cx).is_some() {
             cx.notify();
         }
     }
 
-    pub fn select_next(&mut self, _: &SelectNext, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn select_next(
+        &mut self,
+        _: &actions::menu::SelectNext,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if let Some(idx) = self.selected_index {
             let next_index = idx + 1;
             if self.items.len() <= next_index {
-                self.select_first(&SelectFirst, window, cx);
+                self.select_first(&actions::menu::SelectFirst, window, cx);
                 return;
             }
 
@@ -673,12 +697,12 @@ impl ContextMenu {
                 }
             }
         }
-        self.select_first(&SelectFirst, window, cx);
+        self.select_first(&actions::menu::SelectFirst, window, cx);
     }
 
     pub fn select_previous(
         &mut self,
-        _: &SelectPrevious,
+        _: &actions::menu::SelectPrevious,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -691,7 +715,7 @@ impl ContextMenu {
                 }
             }
         }
-        self.handle_select_last(&SelectLast, window, cx);
+        self.handle_select_last(&actions::menu::SelectLast, window, cx);
     }
 
     fn select_index(
@@ -740,7 +764,7 @@ impl ContextMenu {
                     .await;
                 cx.update(|window, cx| {
                     this.update(cx, |this, cx| {
-                        this.cancel(&menu::Cancel, window, cx);
+                        this.cancel(&actions::menu::Cancel, window, cx);
                         window.dispatch_action(action, cx);
                     })
                 })
@@ -1018,7 +1042,7 @@ impl Render for ContextMenu {
                     .on_action(cx.listener(ContextMenu::secondary_confirm))
                     .on_action(cx.listener(ContextMenu::cancel))
                     .on_mouse_down_out(cx.listener(|this, _event: &MouseDownEvent, window, cx| {
-                        this.cancel(&menu::Cancel, window, cx);
+                        this.cancel(&actions::menu::Cancel, window, cx);
                     }))
                     .when_some(self.end_slot_action.as_ref(), |el, action| {
                         el.on_boxed_action(action.as_ref(), cx.listener(ContextMenu::end_slot))

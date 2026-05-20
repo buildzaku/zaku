@@ -15,7 +15,6 @@ use std::{
     panic,
 };
 
-use actions::editor::HandleInput;
 use theme::ActiveTheme;
 
 use crate::{
@@ -230,7 +229,7 @@ impl EditorElement {
         register_action(
             editor,
             window,
-            |editor, action: &HandleInput, window, cx| {
+            |editor, action: &actions::editor::HandleInput, window, cx| {
                 editor.handle_input(&action.0, window, cx);
             },
         );
