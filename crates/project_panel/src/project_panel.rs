@@ -1810,6 +1810,57 @@ impl ProjectPanel {
         Some((worktree, entry))
     }
 
+    pub fn selected_entry_project_path(&self, cx: &App) -> Option<ProjectPath> {
+        let (worktree, entry) = self.selected_entry_handle(cx)?;
+        Some(ProjectPath {
+            worktree_id: worktree.read(cx).id(),
+            path: entry.path.clone(),
+        })
+    }
+
+    #[cfg(test)]
+    fn visible_entries(&self, cx: &App) -> Vec<ProjectPath> {
+        let project = self.project.read(cx);
+        self.tree_state
+            .visible_entries
+            .iter()
+            .filter_map(|entry| {
+                let worktree = project.worktree_for_entry(entry.id, cx)?;
+                Some(ProjectPath {
+                    worktree_id: worktree.read(cx).id(),
+                    path: entry.path.clone(),
+                })
+            })
+            .collect()
+    }
+
+    #[cfg(test)]
+    fn editing_entry(&self, cx: &App) -> Option<(ProjectPath, String)> {
+        let edit_state = self.tree_state.edit_state.as_ref()?;
+        if edit_state.processing_file_name.is_some() {
+            return None;
+        }
+
+        let entry_id = if edit_state.is_new_entry() {
+            Self::NEW_ENTRY_ID
+        } else {
+            edit_state.entry_id
+        };
+        let entry = self
+            .tree_state
+            .visible_entries
+            .iter()
+            .find(|entry| entry.id == entry_id)?;
+
+        Some((
+            ProjectPath {
+                worktree_id: edit_state.worktree_id,
+                path: entry.path.clone(),
+            },
+            self.file_name_editor.read(cx).text(cx),
+        ))
+    }
+
     fn write_entries_to_system_clipboard(&self, entries: &BTreeSet<SelectedEntry>, cx: &mut App) {
         let project = self.project.read(cx);
         let paths = entries
@@ -3333,12 +3384,21 @@ mod tests {
             ]
         );
 
-        let paste_task = panel.update_in(cx, |panel, window, cx| {
+        panel.update_in(cx, |panel, window, cx| {
             panel.copy(&actions::project_panel::Copy, window, cx);
-            panel.paste_impl(window, cx)
+            panel.paste(&actions::project_panel::Paste, window, cx);
         });
-        paste_task.unwrap().await.unwrap();
-        cx.run_until_parked();
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                panel
+                    .editing_entry(cx)
+                    .is_some_and(|(project_path, file_name)| {
+                        project_path.path.as_ref() == rel_path("first copy.toml")
+                            && file_name == "first copy"
+                    })
+            })
+            .await;
 
         panel.update_in(cx, |panel, window, cx| {
             assert!(panel.file_name_editor.read(cx).is_focused(window));
@@ -3377,9 +3437,20 @@ mod tests {
             assert!(panel.confirm_edit(true, window, cx).is_none());
         });
 
-        let paste_task = panel.update_in(cx, |panel, window, cx| panel.paste_impl(window, cx));
-        paste_task.unwrap().await.unwrap();
-        cx.run_until_parked();
+        panel.update_in(cx, |panel, window, cx| {
+            panel.paste(&actions::project_panel::Paste, window, cx);
+        });
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                panel
+                    .editing_entry(cx)
+                    .is_some_and(|(project_path, file_name)| {
+                        project_path.path.as_ref() == rel_path("first copy 1.toml")
+                            && file_name == "first copy 1"
+                    })
+            })
+            .await;
 
         panel.update_in(cx, |panel, window, cx| {
             assert!(panel.file_name_editor.read(cx).is_focused(window));
@@ -3444,13 +3515,30 @@ mod tests {
         });
 
         select_path(&panel, "project/collection", cx);
-        let paste_task = panel.update_in(cx, |panel, window, cx| {
-            let task = panel.paste_impl(window, cx);
-            panel.update_visible_entries(None, false, false, window, cx);
-            task
+        panel.update_in(cx, |panel, window, cx| {
+            panel.paste(&actions::project_panel::Paste, window, cx);
         });
-        paste_task.unwrap().await.unwrap();
-        cx.run_until_parked();
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                let visible_entries = panel.visible_entries(cx);
+                let contains_path = |path| {
+                    visible_entries
+                        .iter()
+                        .any(|entry| entry.path.as_ref() == rel_path(path))
+                };
+
+                panel
+                    .selected_entry_project_path(cx)
+                    .is_some_and(|project_path| {
+                        project_path.path.as_ref() == rel_path("collection/second.toml")
+                    })
+                    && contains_path("collection/first.toml")
+                    && contains_path("collection/second.toml")
+                    && !contains_path("first.toml")
+                    && !contains_path("second.toml")
+            })
+            .await;
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -3468,9 +3556,28 @@ mod tests {
         cx.run_until_parked();
 
         select_path(&panel, "project/other", cx);
-        let paste_task = panel.update_in(cx, |panel, window, cx| panel.paste_impl(window, cx));
-        paste_task.unwrap().await.unwrap();
-        cx.run_until_parked();
+        panel.update_in(cx, |panel, window, cx| {
+            panel.paste(&actions::project_panel::Paste, window, cx);
+        });
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                let visible_entries = panel.visible_entries(cx);
+                let contains_path = |path| {
+                    visible_entries
+                        .iter()
+                        .any(|entry| entry.path.as_ref() == rel_path(path))
+                };
+
+                panel
+                    .selected_entry_project_path(cx)
+                    .is_some_and(|project_path| {
+                        project_path.path.as_ref() == rel_path("other/second.toml")
+                    })
+                    && contains_path("other/first.toml")
+                    && contains_path("other/second.toml")
+            })
+            .await;
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -3514,10 +3621,20 @@ mod tests {
 
         toggle_expand_dir(&panel, "project/collection", cx);
         select_path(&panel, "project/collection/first.toml", cx);
-        let duplicate_task =
-            panel.update_in(cx, |panel, window, cx| panel.duplicate_impl(window, cx));
-        duplicate_task.unwrap().await.unwrap();
-        cx.run_until_parked();
+        panel.update_in(cx, |panel, window, cx| {
+            panel.duplicate(&actions::project_panel::Duplicate, window, cx);
+        });
+
+        panel
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                panel
+                    .editing_entry(cx)
+                    .is_some_and(|(project_path, file_name)| {
+                        project_path.path.as_ref() == rel_path("collection/first copy.toml")
+                            && file_name == "first copy"
+                    })
+            })
+            .await;
 
         panel.update_in(cx, |panel, window, cx| {
             assert!(panel.file_name_editor.read(cx).is_focused(window));
@@ -3754,14 +3871,33 @@ mod tests {
             ]
         );
 
+        panel.update_in(cx, |panel, window, cx| {
+            panel.trash(
+                &actions::project_panel::Trash { skip_prompt: true },
+                window,
+                cx,
+            );
+        });
+
         panel
-            .update_in(cx, |panel, window, cx| {
-                panel.remove_impl(true, true, window, cx)
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                let visible_entries = panel.visible_entries(cx);
+                let contains_path = |path| {
+                    visible_entries
+                        .iter()
+                        .any(|entry| entry.path.as_ref() == rel_path(path))
+                };
+
+                panel
+                    .selected_entry_project_path(cx)
+                    .is_some_and(|project_path| {
+                        project_path.path.as_ref() == rel_path("collection/third.toml")
+                    })
+                    && contains_path("collection/third.toml")
+                    && !contains_path("collection/first.toml")
+                    && !contains_path("collection/second.toml")
             })
-            .unwrap()
-            .await
-            .unwrap();
-        cx.run_until_parked();
+            .await;
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -3827,6 +3963,7 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.open(&actions::project_panel::Open, window, cx);
         });
+
         pane.condition::<PaneEvent>(cx, |pane, cx| {
             pane.active_item()
                 .and_then(|item| item.project_path(cx))
@@ -3846,14 +3983,36 @@ mod tests {
             ]
         );
 
+        panel.update_in(cx, |panel, window, cx| {
+            panel.delete(
+                &actions::project_panel::Delete { skip_prompt: true },
+                window,
+                cx,
+            );
+        });
+
         panel
-            .update_in(cx, |panel, window, cx| {
-                panel.remove_impl(false, true, window, cx)
+            .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                let visible_entries = panel.visible_entries(cx);
+                let contains_path = |path| {
+                    visible_entries
+                        .iter()
+                        .any(|entry| entry.path.as_ref() == rel_path(path))
+                };
+
+                panel
+                    .selected_entry_project_path(cx)
+                    .is_some_and(|project_path| {
+                        project_path.path.as_ref() == rel_path("third.toml")
+                    })
+                    && contains_path("third.toml")
+                    && !contains_path("collection")
+                    && !contains_path("other.toml")
             })
-            .unwrap()
-            .await
-            .unwrap();
-        cx.run_until_parked();
+            .await;
+
+        pane.condition::<PaneEvent>(cx, |pane, _| pane.items_len() == 0)
+            .await;
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
