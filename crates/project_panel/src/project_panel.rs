@@ -2684,7 +2684,7 @@ mod tests {
     use theme::LoadThemes;
     use util::rel_path::rel_path;
     use util_macros::path;
-    use workspace::{Root, SharedState, Workspace};
+    use workspace::{Root, SharedState, Workspace, pane::PaneEvent};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -3105,6 +3105,7 @@ mod tests {
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let panel = workspace.update_in(cx, ProjectPanel::new);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         cx.run_until_parked();
 
@@ -3113,7 +3114,14 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.open(&actions::project_panel::Open, window, cx);
         });
-        cx.run_until_parked();
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path("collection/first.toml")
+                })
+        })
+        .await;
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -3134,7 +3142,14 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.open(&actions::project_panel::Open, window, cx);
         });
-        cx.run_until_parked();
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| {
+                    project_path.path.as_ref() == rel_path("collection/second.toml")
+                })
+        })
+        .await;
 
         assert_eq!(
             visible_entries_as_strings(&panel, 0..10, cx),
@@ -3812,7 +3827,12 @@ mod tests {
         panel.update_in(cx, |panel, window, cx| {
             panel.open(&actions::project_panel::Open, window, cx);
         });
-        cx.run_until_parked();
+        pane.condition::<PaneEvent>(cx, |pane, cx| {
+            pane.active_item()
+                .and_then(|item| item.project_path(cx))
+                .is_some_and(|project_path| project_path.path.as_ref() == rel_path("other.toml"))
+        })
+        .await;
         assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 1);
 
         select_path_with_mark(&panel, "project/collection", cx);

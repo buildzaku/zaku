@@ -1,7 +1,7 @@
 use gpui::{
-    AnyElement, App, AsyncWindowContext, ClickEvent, Context, Empty, Entity, EntityId, FocusHandle,
-    FocusOutEvent, Focusable, PromptLevel, ScrollHandle, Subscription, Task, WeakEntity, Window,
-    prelude::*,
+    AnyElement, App, AsyncWindowContext, ClickEvent, Context, Empty, Entity, EntityId,
+    EventEmitter, FocusHandle, FocusOutEvent, Focusable, PromptLevel, ScrollHandle, Subscription,
+    Task, WeakEntity, Window, prelude::*,
 };
 use itertools::Itertools;
 use std::{
@@ -18,9 +18,37 @@ use ui::{
 use util::{ResultExt, path::PathStyle};
 
 use crate::{
-    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Workspace,
-    WorkspaceItemBuilder, welcome::WelcomePage,
+    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,
+    Workspace, WorkspaceItemBuilder, welcome::WelcomePage,
 };
+
+pub enum PaneEvent {
+    AddItem {
+        item: Box<dyn ItemHandle>,
+    },
+    ActivateItem {
+        focus_changed: bool,
+    },
+    RemovedItem {
+        item: Box<dyn ItemHandle>,
+    },
+    ChangeItemTitle,
+    UserSavedItem {
+        item: Box<dyn WeakItemHandle>,
+        save_intent: actions::pane::SaveIntent,
+    },
+}
+
+impl EventEmitter<PaneEvent> for Pane {}
+
+#[derive(Clone)]
+pub struct DraggedTab {
+    pub pane: Entity<Pane>,
+    pub item: Box<dyn ItemHandle>,
+    pub index: usize,
+    pub detail: usize,
+    pub is_active: bool,
+}
 
 pub struct Pane {
     focus_handle: FocusHandle,
@@ -36,15 +64,6 @@ pub struct Pane {
     item_subscriptions: Vec<(EntityId, Subscription)>,
     save_modals_spawned: HashSet<EntityId>,
     _focus_subscriptions: Vec<Subscription>,
-}
-
-#[derive(Clone)]
-pub struct DraggedTab {
-    pub pane: Entity<Pane>,
-    pub item: Box<dyn ItemHandle>,
-    pub index: usize,
-    pub detail: usize,
-    pub is_active: bool,
 }
 
 impl Pane {
@@ -245,40 +264,40 @@ impl Pane {
             if activate {
                 self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
             }
+        } else {
+            let item_id = item.item_id();
+            let pane = cx.weak_entity();
+            let subscription = item.subscribe_to_item_events(
+                window,
+                cx,
+                Box::new(move |event, window, cx| {
+                    if let Err(error) = pane.update(cx, |pane, cx| {
+                        pane.handle_item_event(item_id, event, window, cx);
+                    }) {
+                        log::debug!("Failed to handle pane item event: {error:?}");
+                    }
+                }),
+            );
 
-            return;
-        }
-
-        let item_id = item.item_id();
-        let pane = cx.weak_entity();
-        let subscription = item.subscribe_to_item_events(
-            window,
-            cx,
-            Box::new(move |event, window, cx| {
-                if let Err(error) = pane.update(cx, |pane, cx| {
-                    pane.handle_item_event(item_id, event, window, cx);
-                }) {
-                    log::debug!("Failed to handle pane item event: {error:?}");
-                }
-            }),
-        );
-
-        self.items.insert(insertion_index, item);
-        self.item_subscriptions.push((item_id, subscription));
-        cx.notify();
-
-        if activate {
-            if insertion_index <= self.active_item_index
-                && self.preview_item_idx() != Some(self.active_item_index)
-            {
-                self.active_item_index += 1;
-            }
-
-            self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
-        } else if insertion_index <= self.active_item_index && self.items.len() > 1 {
-            self.active_item_index += 1;
+            self.items.insert(insertion_index, item.clone());
+            self.item_subscriptions.push((item_id, subscription));
             cx.notify();
+
+            if activate {
+                if insertion_index <= self.active_item_index
+                    && self.preview_item_idx() != Some(self.active_item_index)
+                {
+                    self.active_item_index += 1;
+                }
+
+                self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
+            } else if insertion_index <= self.active_item_index && self.items.len() > 1 {
+                self.active_item_index += 1;
+                cx.notify();
+            }
         }
+
+        cx.emit(PaneEvent::AddItem { item });
     }
 
     pub(crate) fn open_item(
@@ -380,6 +399,7 @@ impl Pane {
         let should_focus_pane =
             was_active && self.items.len() == 1 && (focus_item || self.has_focus(window, cx));
         let item = self.items.remove(item_index);
+        cx.emit(PaneEvent::RemovedItem { item: item.clone() });
 
         if should_focus_pane {
             self.focus_handle.focus(window, cx);
@@ -459,6 +479,9 @@ impl Pane {
             self.focus_active_item(window, cx);
         }
 
+        cx.emit(PaneEvent::ActivateItem {
+            focus_changed: focus_item,
+        });
         self.update_active_tab(item_index);
         cx.notify();
     }
@@ -771,6 +794,13 @@ impl Pane {
             .await?;
         }
 
+        pane.update(cx, |_, cx| {
+            cx.emit(PaneEvent::UserSavedItem {
+                item: item.downgrade_item(),
+                save_intent,
+            });
+        })?;
+
         Ok(true)
     }
 
@@ -787,6 +817,7 @@ impl Pane {
                     .detach_and_log_err(cx);
             }
             ItemEvent::UpdateTab => {
+                cx.emit(PaneEvent::ChangeItemTitle);
                 cx.notify();
             }
             ItemEvent::Edit => {
