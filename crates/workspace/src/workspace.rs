@@ -865,22 +865,20 @@ impl Workspace {
         let pane = pane.unwrap_or_else(|| self.pane.clone());
         let load_path = self.load_path(&project_path, window, cx);
 
-        cx.spawn_in(window, async move |workspace, cx| {
+        window.spawn(cx, async move |cx| {
             let (project_entry_id, build_item) = load_path.await?;
-            workspace.update_in(cx, |_, window, cx| {
-                pane.update(cx, |pane, cx| {
-                    pane.open_item(
-                        project_entry_id,
-                        &project_path,
-                        focus_item,
-                        allow_preview,
-                        activate,
-                        None,
-                        window,
-                        cx,
-                        build_item,
-                    )
-                })
+            pane.update_in(cx, |pane, window, cx| {
+                pane.open_item(
+                    project_entry_id,
+                    &project_path,
+                    focus_item,
+                    allow_preview,
+                    activate,
+                    None,
+                    window,
+                    cx,
+                    build_item,
+                )
             })
         })
     }
