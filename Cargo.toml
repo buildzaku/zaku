@@ -21,6 +21,7 @@ members = [
   "crates/session",
   "crates/settings",
   "crates/settings_macros",
+  "crates/sql",
   "crates/theme",
   "crates/ui",
   "crates/ui_macros",
@@ -147,6 +148,7 @@ response_panel = { path = "crates/response_panel" }
 session = { path = "crates/session" }
 settings = { path = "crates/settings" }
 settings_macros = { path = "crates/settings_macros" }
+sql = { path = "crates/sql" }
 theme = { path = "crates/theme" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }

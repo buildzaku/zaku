@@ -1360,17 +1360,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "fs",
- "futures",
  "gpui",
  "indoc",
- "libsqlite3-sys",
  "log",
- "num-traits",
- "parking_lot",
  "settings",
  "smol",
- "thread_local",
- "util 0.0.0",
+ "sql",
  "uuid",
 ]
 
@@ -6000,6 +5995,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.11.1",
+]
+
+[[package]]
+name = "sql"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "indoc",
+ "libsqlite3-sys",
+ "num-traits",
+ "parking_lot",
+ "smol",
+ "tempfile",
+ "thread_local",
+ "util 0.0.0",
+ "uuid",
 ]
 
 [[package]]
