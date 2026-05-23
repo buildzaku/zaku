@@ -34,6 +34,7 @@ use std::{
 #[cfg(any(test, feature = "test-support"))]
 use fs::TempFs;
 
+use db::{Bind, Column, Row, Statement, StaticColumnCount};
 use http_client::HttpClient;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
@@ -73,6 +74,24 @@ impl From<i64> for WorkspaceId {
 impl From<WorkspaceId> for i64 {
     fn from(value: WorkspaceId) -> Self {
         value.0
+    }
+}
+
+impl StaticColumnCount for WorkspaceId {}
+
+impl Bind for WorkspaceId {
+    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
+        i64::from(*self).bind(statement, start_index)
+    }
+}
+
+impl Column for WorkspaceId {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
+        anyhow::Context::with_context(
+            i64::column(row, start_index)
+                .map(|(workspace_id, next_index)| (Self(workspace_id), next_index)),
+            || format!("Failed to read WorkspaceId at index {start_index}"),
+        )
     }
 }
 

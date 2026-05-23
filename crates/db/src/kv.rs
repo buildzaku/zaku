@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 use sql_macros::sql;
 
-use crate::{AppDatabase, ThreadSafeConnection};
+use crate::{AppDatabase, ThreadSafeConnection, query};
 
 #[derive(Clone)]
 pub struct KeyValueStore(ThreadSafeConnection);
@@ -28,40 +28,22 @@ impl KeyValueStore {
         Self(AppDatabase::global(cx).clone())
     }
 
-    pub fn read_kv(&self, key: &str) -> anyhow::Result<Option<String>> {
-        self.read(|connection| {
-            connection
-                .select_row_bound::<[&str; 1], String>(
-                    sql!(SELECT value FROM kv_store WHERE key = ?1),
-                )
-                .context("failed to prepare key-value lookup query")
-                .and_then(|mut statement| statement([key]))
-                .context("failed to read key-value pair")
-        })
+    query! {
+        pub fn read_kv(key: &str) -> anyhow::Result<Option<String>> {
+            SELECT value FROM kv_store WHERE key = (?)
+        }
     }
 
-    pub async fn write_kv(&self, key: String, value: String) -> anyhow::Result<()> {
-        log::debug!("Writing key-value pair for key {key}");
-
-        self.write(move |connection| {
-            connection
-                .exec_bound(sql!(
-                    INSERT OR REPLACE INTO kv_store(key, value) VALUES (?1, ?2)
-                ))
-                .context("Failed to write to kv_store")
-                .and_then(|mut statement| statement((key, value)))
-        })
-        .await
+    query! {
+        pub async fn write_kv(key: String, value: String) -> anyhow::Result<()> {
+            INSERT OR REPLACE INTO kv_store(key, value) VALUES ((?), (?))
+        }
     }
 
-    pub async fn delete_kv(&self, key: String) -> anyhow::Result<()> {
-        self.write(move |connection| {
-            connection
-                .exec_bound(sql!(DELETE FROM kv_store WHERE key = ?1))
-                .context("Failed to delete from kv_store")
-                .and_then(|mut statement| statement([key]))
-        })
-        .await
+    query! {
+        pub async fn delete_kv(key: String) -> anyhow::Result<()> {
+            DELETE FROM kv_store WHERE key = (?)
+        }
     }
 
     pub fn scoped<'a>(&'a self, namespace: &'a str) -> ScopedKeyValueStore<'a> {

@@ -1,5 +1,7 @@
 pub mod kv;
+pub mod query;
 
+pub use anyhow;
 pub use sql::{
     self,
     bindable::{Bind, Column, StaticColumnCount},
