@@ -1,7 +1,8 @@
 use anyhow::Context;
 use gpui::App;
-use indoc::indoc;
 use std::ops::Deref;
+
+use sql_macros::sql;
 
 use crate::{AppDatabase, ThreadSafeConnection};
 
@@ -31,7 +32,7 @@ impl KeyValueStore {
         self.read(|connection| {
             connection
                 .select_row_bound::<[&str; 1], String>(
-                    indoc! {"SELECT value FROM kv_store WHERE key = ?1"},
+                    sql!(SELECT value FROM kv_store WHERE key = ?1),
                 )
                 .context("failed to prepare key-value lookup query")
                 .and_then(|mut statement| statement([key]))
@@ -44,7 +45,9 @@ impl KeyValueStore {
 
         self.write(move |connection| {
             connection
-                .exec_bound(indoc! {"INSERT OR REPLACE INTO kv_store(key, value) VALUES (?1, ?2)"})
+                .exec_bound(sql!(
+                    INSERT OR REPLACE INTO kv_store(key, value) VALUES (?1, ?2)
+                ))
                 .context("Failed to write to kv_store")
                 .and_then(|mut statement| statement((key, value)))
         })
@@ -54,7 +57,7 @@ impl KeyValueStore {
     pub async fn delete_kv(&self, key: String) -> anyhow::Result<()> {
         self.write(move |connection| {
             connection
-                .exec_bound("DELETE FROM kv_store WHERE key = ?1")
+                .exec_bound(sql!(DELETE FROM kv_store WHERE key = ?1))
                 .context("Failed to delete from kv_store")
                 .and_then(|mut statement| statement([key]))
         })
@@ -72,25 +75,25 @@ impl KeyValueStore {
         self.write(|connection| {
             connection.with_savepoint("initialize_key_value_store_schema", || {
                 connection
-                    .exec(indoc! {"
+                    .exec(sql!(
                         CREATE TABLE IF NOT EXISTS kv_store(
                             key TEXT PRIMARY KEY,
                             value TEXT NOT NULL
                         ) STRICT
-                    "})
+                    ))
                     .context("failed to prepare key-value store table initialization")
                     .and_then(|mut statement| statement())
                     .context("failed to initialize key-value store table")?;
 
                 connection
-                    .exec(indoc! {"
+                    .exec(sql!(
                         CREATE TABLE IF NOT EXISTS scoped_kv_store(
                             namespace TEXT NOT NULL,
                             key TEXT NOT NULL,
                             value TEXT NOT NULL,
                             PRIMARY KEY(namespace, key)
                         ) STRICT
-                    "})
+                    ))
                     .context("failed to prepare scoped key-value store table initialization")
                     .and_then(|mut statement| statement())
                     .context("failed to initialize scoped key-value store table")?;
@@ -120,7 +123,7 @@ impl ScopedKeyValueStore<'_> {
         self.store.read(|connection| {
             connection
                 .select_row_bound::<(&str, &str), String>(
-                    "SELECT value FROM scoped_kv_store WHERE namespace = (?) AND key = (?)",
+                    sql!(SELECT value FROM scoped_kv_store WHERE namespace = (?) AND key = (?)),
                 )
                 .context("Failed to read from scoped_kv_store")
                 .and_then(|mut statement| statement((self.namespace, key)))
@@ -132,11 +135,11 @@ impl ScopedKeyValueStore<'_> {
         let namespace = self.namespace.to_owned();
         self.store
             .write(move |connection| {
-                connection
-                    .exec_bound::<(&str, &str, &str)>(
-                        "INSERT OR REPLACE INTO scoped_kv_store(namespace, key, value) VALUES ((?), (?), (?))",
-                    )?((&namespace, &key, &value))
-                    .context("Failed to write to scoped_kv_store")
+                connection.exec_bound::<(&str, &str, &str)>(sql!(
+                    INSERT OR REPLACE INTO scoped_kv_store(namespace, key, value)
+                    VALUES ((?), (?), (?))
+                ))?((&namespace, &key, &value))
+                .context("Failed to write to scoped_kv_store")
             })
             .await
     }
@@ -146,7 +149,7 @@ impl ScopedKeyValueStore<'_> {
         self.store
             .write(move |connection| {
                 connection.exec_bound::<(&str, &str)>(
-                    "DELETE FROM scoped_kv_store WHERE namespace = (?) AND key = (?)",
+                    sql!(DELETE FROM scoped_kv_store WHERE namespace = (?) AND key = (?)),
                 )?((&namespace, &key))
                 .context("Failed to delete from scoped_kv_store")
             })
@@ -157,10 +160,9 @@ impl ScopedKeyValueStore<'_> {
         let namespace = self.namespace.to_owned();
         self.store
             .write(move |connection| {
-                connection
-                    .exec_bound::<&str>("DELETE FROM scoped_kv_store WHERE namespace = (?)")?(
-                    &namespace,
-                )
+                connection.exec_bound::<&str>(sql!(
+                    DELETE FROM scoped_kv_store WHERE namespace = (?)
+                ))?(&namespace)
                 .context("Failed to delete_all from scoped_kv_store")
             })
             .await

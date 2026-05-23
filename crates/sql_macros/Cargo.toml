@@ -1,0 +1,19 @@
+[package]
+name = "sql_macros"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/sql_macros.rs"
+proc-macro = true
+doctest = false
+
+[dependencies]
+sql = { workspace = true }
+sqlformat = { workspace = true }
+syn = { workspace = true }

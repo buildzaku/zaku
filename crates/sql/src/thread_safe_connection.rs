@@ -42,6 +42,21 @@ pub struct ThreadSafeConnection {
 }
 
 impl ThreadSafeConnection {
+    pub fn new(
+        target: ConnectionTarget,
+        connection_init_query: Option<&'static str>,
+        write_queue_constructor: Option<WriteQueueConstructor>,
+    ) -> Self {
+        let connection = Self {
+            target,
+            connection_init_query,
+            connections: Arc::default(),
+        };
+
+        connection.initialize_queues(write_queue_constructor);
+        connection
+    }
+
     pub fn builder(target: ConnectionTarget) -> ThreadSafeConnectionBuilder {
         ThreadSafeConnectionBuilder {
             db_init_query: None,

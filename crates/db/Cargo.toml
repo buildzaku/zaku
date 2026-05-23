@@ -18,11 +18,11 @@ path = "src/db.rs"
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
-indoc = { workspace = true }
 log = { workspace = true }
 settings = { workspace = true }
 smol = { workspace = true }
 sql = { workspace = true }
+sql_macros = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

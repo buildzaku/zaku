@@ -7,10 +7,10 @@ pub use sql::{
     statement::{Row, SqlType, Statement},
     thread_safe_connection::{ThreadSafeConnection, background_thread_queue, locking_queue},
 };
+pub use sql_macros;
 
 use anyhow::Context;
 use gpui::{App, Global};
-use indoc::indoc;
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -19,18 +19,21 @@ use std::{
     },
 };
 
-use sql::thread_safe_connection::{self, ConnectionTarget};
+#[cfg(any(test, feature = "test-support"))]
+use sql::thread_safe_connection;
+use sql::thread_safe_connection::ConnectionTarget;
+use sql_macros::sql;
 
-const CONNECTION_INIT_QUERY: &str = indoc! {"
+const CONNECTION_INIT_QUERY: &str = sql!(
     PRAGMA foreign_keys = ON;
-"};
+);
 
-const DB_INIT_QUERY: &str = indoc! {"
+const DB_INIT_QUERY: &str = sql!(
     PRAGMA journal_mode = WAL;
     PRAGMA busy_timeout = 500;
     PRAGMA case_sensitive_like = TRUE;
     PRAGMA synchronous = NORMAL;
-"};
+);
 
 const FALLBACK_MEMORY_DB_NAME: &str = "FALLBACK_MEMORY_DB";
 const DB_NAME: &str = "db.sqlite";
@@ -206,11 +209,11 @@ mod tests {
         recreated_connection
             .write(|connection| {
                 connection
-                    .exec("CREATE TABLE test(value TEXT) STRICT")
+                    .exec(sql!(CREATE TABLE test(value TEXT) STRICT))
                     .and_then(|mut f| f())?;
                 connection
-                    .exec("INSERT INTO test(value) VALUES ('ok')")
-                    .and_then(|mut f| f())?;
+                    .exec_bound::<&str>(sql!(INSERT INTO test(value) VALUES (?1)))
+                    .and_then(|mut f| f("ok"))?;
                 Ok(())
             })
             .await
@@ -219,7 +222,7 @@ mod tests {
         let value = recreated_connection
             .read(|connection| {
                 connection
-                    .select_row::<String>("SELECT value FROM test")
+                    .select_row::<String>(sql!(SELECT value FROM test))
                     .and_then(|mut f| f())
                     .context("test value query returned no row")
             })
@@ -248,11 +251,11 @@ mod tests {
         recovered_connection
             .write(|connection| {
                 connection
-                    .exec("CREATE TABLE test(value TEXT) STRICT")
+                    .exec(sql!(CREATE TABLE test(value TEXT) STRICT))
                     .and_then(|mut f| f())?;
                 connection
-                    .exec("INSERT INTO test(value) VALUES ('ok')")
-                    .and_then(|mut f| f())?;
+                    .exec_bound::<&str>(sql!(INSERT INTO test(value) VALUES (?1)))
+                    .and_then(|mut f| f("ok"))?;
                 Ok(())
             })
             .await
@@ -261,7 +264,7 @@ mod tests {
         let value = recovered_connection
             .read(|connection| {
                 connection
-                    .select_row::<String>("SELECT value FROM test")
+                    .select_row::<String>(sql!(SELECT value FROM test))
                     .and_then(|mut f| f())
                     .context("test value query returned no row")
             })

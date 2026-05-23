@@ -574,8 +574,8 @@ impl Row<'_, '_> {
 
 impl Drop for Statement<'_> {
     fn drop(&mut self) {
-        // Safety: Each raw_statement_ptr comes from a successful prepare call and
-        // this is the only place that finalizes any statements still owned by Statement.
+        // Safety: Each raw_statement_ptr came from a successful sqlite3_prepare_v2 call
+        // and this is the only place that finalizes statements still owned by Statement.
         unsafe {
             for raw_statement_ptr in &self.raw_statement_ptrs {
                 sqlite3::sqlite3_finalize(*raw_statement_ptr);

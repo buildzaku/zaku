@@ -3,10 +3,9 @@ pub mod model;
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use gpui::{App, WindowId};
-use indoc::indoc;
 use std::path::PathBuf;
 
-use db::{AppDatabase, ThreadSafeConnection};
+use db::{AppDatabase, ThreadSafeConnection, sql_macros::sql};
 use fs::Fs;
 
 use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
@@ -38,7 +37,9 @@ impl WorkspaceDb {
         self.0
             .write(|connection| {
                 let next_id = connection
-                    .select_row::<i64>("INSERT INTO workspace DEFAULT VALUES RETURNING id")
+                    .select_row::<i64>(sql!(
+                        INSERT INTO workspace DEFAULT VALUES RETURNING id
+                    ))
                     .context("failed to prepare next workspace id query")
                     .and_then(|mut f| f().context("failed to allocate next workspace id"))?
                     .context("next workspace id query returned no row")?;
@@ -56,16 +57,16 @@ impl WorkspaceDb {
                 let window_id = serialize_window_id(workspace.window_id)?;
                 connection.with_savepoint("save_workspace", || {
                     connection
-                        .exec_bound(indoc! {"
+                        .exec_bound(sql!(
                             DELETE FROM workspace
                             WHERE id != ?1 AND location = ?2
-                        "})
+                        ))
                         .context("failed to prepare old workspace location cleanup query")
                         .and_then(|mut f| f((i64::from(workspace.id), workspace_location)))
                         .context("failed to clear old workspace locations")?;
 
                     connection
-                        .exec_bound(indoc! {"
+                        .exec_bound(sql!(
                             INSERT INTO workspace(id, location, session_id, window_id, activation_order, timestamp)
                             VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace), CURRENT_TIMESTAMP)
                             ON CONFLICT(id)
@@ -74,7 +75,7 @@ impl WorkspaceDb {
                                 session_id = excluded.session_id,
                                 window_id = excluded.window_id,
                                 timestamp = CURRENT_TIMESTAMP
-                        "})
+                        ))
                         .context("failed to prepare workspace upsert query")
                         .and_then(|mut f| {
                             f((
@@ -133,11 +134,11 @@ impl WorkspaceDb {
         self.0
             .write(move |connection| {
                 connection
-                    .exec_bound(indoc! {"
+                    .exec_bound(sql!(
                         UPDATE workspace
                         SET activation_order = (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace)
                         WHERE id = ?1
-                    "})
+                    ))
                     .context("failed to prepare workspace activation order update query")
                     .and_then(|mut f| f([i64::from(workspace_id)]))
                     .context("failed to update workspace activation order")?;
@@ -190,7 +191,7 @@ impl WorkspaceDb {
         self.0
             .write(|connection| {
                 connection
-                    .exec("DELETE FROM workspace")
+                    .exec(sql!(DELETE FROM workspace))
                     .context("failed to set up recent workspace clear query")
                     .and_then(|mut f| f())
                     .context("failed to clear recent workspaces")?;
@@ -203,7 +204,7 @@ impl WorkspaceDb {
     pub(crate) fn recent_workspace_count(&self) -> anyhow::Result<usize> {
         self.0.read(|connection| {
             let count = connection
-                .select_row::<i64>("SELECT COUNT(*) FROM workspace")
+                .select_row::<i64>(sql!(SELECT COUNT(*) FROM workspace))
                 .context("failed to prepare recent workspace count query")
                 .and_then(|mut f| f().context("failed to count recent workspaces"))?
                 .context("recent workspace count query returned no row")?;
@@ -217,11 +218,11 @@ impl WorkspaceDb {
         self.0
             .read(|connection| {
                 connection
-                    .select_row_bound::<[i64; 1], (PathBuf, Option<String>, Option<i64>)>(indoc! {"
+                    .select_row_bound::<[i64; 1], (PathBuf, Option<String>, Option<i64>)>(sql!(
                         SELECT location, session_id, window_id
                         FROM workspace
                         WHERE id = ?1 AND location IS NOT NULL
-                    "})
+                    ))
                     .context("failed to prepare workspace by id query")
                     .and_then(|mut f| f([i64::from(workspace_id)]))
                     .context("failed to query workspace by id")
@@ -244,7 +245,7 @@ impl WorkspaceDb {
             .write(|connection| {
                 connection.with_savepoint("initialize_workspace_schema", || {
                     connection
-                        .exec(indoc! {"
+                        .exec(sql!(
                             CREATE TABLE IF NOT EXISTS workspace(
                                 id INTEGER PRIMARY KEY,
                                 location BLOB UNIQUE,
@@ -253,25 +254,25 @@ impl WorkspaceDb {
                                 activation_order INTEGER NOT NULL DEFAULT 0,
                                 timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                             ) STRICT
-                        "})
+                        ))
                         .context("failed to set up workspace table initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace persistence table")?;
 
                     connection
-                        .exec(indoc! {"
+                        .exec(sql!(
                             CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
                             ON workspace(activation_order DESC)
-                        "})
+                        ))
                         .context("failed to set up workspace activation order index initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace activation order index")?;
 
                     connection
-                        .exec(indoc! {"
+                        .exec(sql!(
                             CREATE INDEX IF NOT EXISTS workspace_timestamp_idx
                             ON workspace(timestamp DESC)
-                        "})
+                        ))
                         .context("failed to set up workspace timestamp index initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace persistence index")?;
@@ -287,12 +288,12 @@ impl WorkspaceDb {
     ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>> {
         self.0.read(|connection| {
             let rows = connection
-                .select::<(i64, PathBuf, String)>(indoc! {"
+                .select::<(i64, PathBuf, String)>(sql!(
                     SELECT id, location, timestamp
                     FROM workspace
                     WHERE location IS NOT NULL
                     ORDER BY activation_order DESC
-                "})
+                ))
                 .context("failed to prepare recent workspace query")
                 .and_then(|mut f| f())
                 .context("failed to execute recent workspace query")?;
@@ -316,12 +317,12 @@ impl WorkspaceDb {
     ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, Option<u64>)>> {
         self.0.read(|connection| {
             let rows = connection
-                .select_bound::<String, (i64, PathBuf, Option<i64>)>(indoc! {"
-                        SELECT id, location, window_id
-                        FROM workspace
-                        WHERE session_id = ?1 AND location IS NOT NULL
-                        ORDER BY activation_order DESC
-                    "})
+                .select_bound::<String, (i64, PathBuf, Option<i64>)>(sql!(
+                    SELECT id, location, window_id
+                    FROM workspace
+                    WHERE session_id = ?1 AND location IS NOT NULL
+                    ORDER BY activation_order DESC
+                ))
                 .context("failed to prepare session workspaces query")
                 .and_then(|mut f| f(session_id))
                 .context("failed to execute session workspaces query")?;
@@ -343,7 +344,7 @@ impl WorkspaceDb {
         self.0
             .write(move |connection| {
                 connection
-                    .exec_bound("DELETE FROM workspace WHERE id = ?1")
+                    .exec_bound(sql!(DELETE FROM workspace WHERE id = ?1))
                     .context("failed to prepare workspace deletion query")
                     .and_then(|mut f| f([i64::from(workspace_id)]))
                     .context("failed to delete workspace by id")?;
@@ -395,6 +396,7 @@ mod tests {
     use super::*;
 
     use gpui::{TestAppContext, WindowId};
+    use indoc::indoc;
     use serde_json::json;
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]

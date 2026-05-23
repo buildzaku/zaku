@@ -2,8 +2,8 @@
 use anyhow::Context;
 
 use libsqlite3_sys::{
-    self as sqlite3, SQLITE_OK, SQLITE_OPEN_CREATE, SQLITE_OPEN_EXRESCODE, SQLITE_OPEN_NOMUTEX,
-    SQLITE_OPEN_READWRITE, SQLITE_OPEN_URI, SQLITE_ROW,
+    self as sqlite3, SQLITE_ERROR, SQLITE_OK, SQLITE_OPEN_CREATE, SQLITE_OPEN_EXRESCODE,
+    SQLITE_OPEN_NOMUTEX, SQLITE_OPEN_READWRITE, SQLITE_OPEN_URI, SQLITE_ROW,
 };
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -78,34 +78,14 @@ impl Connection {
             return Ok(());
         }
 
-        let message = if self.sqlite3.is_null() {
-            None
-        } else {
-            // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
-            // and Drop is the only place that closes this handle.
-            let message_ptr = unsafe { sqlite3::sqlite3_errmsg(self.sqlite3) };
-            if message_ptr.is_null() {
-                None
-            } else {
-                Some(
-                    String::from_utf8_lossy(
-                        // Safety: The null check above guarantees message_ptr is non-null and SQLite
-                        // returns a NUL-terminated error message string for CStr::from_ptr to consume.
-                        unsafe { CStr::from_ptr(message_ptr.cast::<std::ffi::c_char>()) }
-                            .to_bytes(),
-                    )
-                    .into_owned(),
-                )
-            }
-        };
-
-        anyhow::bail!("sqlite call failed with code {result_code} and message: {message:?}")
+        anyhow::bail!(
+            "sqlite call failed with code {result_code} and message: {:?}",
+            self.error_message()
+        )
     }
 
     pub(crate) fn ensure_last_result_ok(&self) -> anyhow::Result<()> {
-        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
-        // and Drop is the only place that closes this handle.
-        let result_code = unsafe { sqlite3::sqlite3_errcode(self.sqlite3) };
+        let result_code = self.error_code();
         if result_code == SQLITE_ROW {
             return Ok(());
         }
@@ -132,6 +112,138 @@ impl Connection {
         };
 
         f(self)
+    }
+
+    pub fn sql_has_syntax_error(&self, sql: &str) -> Option<(String, usize)> {
+        let sql = match CString::new(sql) {
+            Ok(sql) => sql,
+            Err(error) => {
+                return Some((
+                    "Sql contains an interior NUL byte".to_string(),
+                    error.nul_position(),
+                ));
+            }
+        };
+        let mut remaining_sql = sql.as_c_str();
+        let sql_start = remaining_sql.as_ptr();
+
+        let mut alter_table = None;
+        while {
+            let remaining_sql_str = match remaining_sql.to_str() {
+                Ok(remaining_sql_str) => remaining_sql_str.trim(),
+                Err(error) => return Some((format!("Sql is not valid UTF-8: {error}"), 0)),
+            };
+            let any_remaining_sql = remaining_sql_str != ";" && !remaining_sql_str.is_empty();
+            if any_remaining_sql {
+                alter_table = parse_alter_table(remaining_sql_str);
+            }
+            any_remaining_sql
+        } {
+            let mut raw_statement_ptr = std::ptr::null_mut::<sqlite3::sqlite3_stmt>();
+            let mut remaining_sql_ptr = std::ptr::null();
+
+            let (result_code, error_offset, error_message) =
+                if let Some((table_to_alter, column)) = alter_table {
+                    let temp_connection = Self::open_memory(None);
+                    let create_table = format!("CREATE TABLE {table_to_alter}({column})");
+                    if let Err(error) = temp_connection
+                        .exec(&create_table)
+                        .and_then(|mut statement| statement())
+                    {
+                        return Some((format!("{error:#}"), 0));
+                    }
+
+                    // Safety: temp_connection.sqlite3 is a valid SQLite handle, remaining_sql is a
+                    // NUL-terminated string, raw_statement_ptr and remaining_sql_ptr are
+                    // valid out-pointers for SQLite to write.
+                    unsafe {
+                        sqlite3::sqlite3_prepare_v2(
+                            temp_connection.sqlite3,
+                            remaining_sql.as_ptr(),
+                            -1,
+                            &raw mut raw_statement_ptr,
+                            &raw mut remaining_sql_ptr,
+                        )
+                    };
+
+                    (
+                        temp_connection.error_code(),
+                        temp_connection.error_offset(),
+                        temp_connection.error_message(),
+                    )
+                } else {
+                    // Safety: self.sqlite3 is a valid SQLite handle, remaining_sql is a
+                    // NUL-terminated string, raw_statement_ptr and remaining_sql_ptr are
+                    // valid out-pointers for SQLite to write.
+                    unsafe {
+                        sqlite3::sqlite3_prepare_v2(
+                            self.sqlite3,
+                            remaining_sql.as_ptr(),
+                            -1,
+                            &raw mut raw_statement_ptr,
+                            &raw mut remaining_sql_ptr,
+                        )
+                    };
+
+                    (self.error_code(), self.error_offset(), self.error_message())
+                };
+
+            // Safety: raw_statement_ptr came from sqlite3_prepare_v2 above and
+            // sqlite3_finalize accepts null if prepare did not allocate a statement.
+            unsafe {
+                sqlite3::sqlite3_finalize(raw_statement_ptr);
+            }
+
+            if result_code == SQLITE_ERROR
+                && error_offset >= 0
+                && let Ok(error_offset) = usize::try_from(error_offset)
+            {
+                let sub_statement_correction = remaining_sql.as_ptr() as usize - sql_start as usize;
+                let error_message = error_message
+                    .unwrap_or_else(|| "Unable to read sqlite syntax error message".to_string());
+                return Some((error_message, error_offset + sub_statement_correction));
+            }
+
+            // Safety: sqlite3_prepare_v2 writes remaining_sql_ptr to point at the unused
+            // tail of sql, which stays NUL-terminated and alive for this borrow.
+            remaining_sql = unsafe { CStr::from_ptr(remaining_sql_ptr) };
+            alter_table = None;
+        }
+        None
+    }
+
+    fn error_code(&self) -> std::ffi::c_int {
+        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
+        // and Drop is the only place that closes this handle.
+        unsafe { sqlite3::sqlite3_errcode(self.sqlite3) }
+    }
+
+    fn error_offset(&self) -> std::ffi::c_int {
+        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
+        // and Drop is the only place that closes this handle.
+        unsafe { sqlite3::sqlite3_error_offset(self.sqlite3) }
+    }
+
+    fn error_message(&self) -> Option<String> {
+        if self.sqlite3.is_null() {
+            return None;
+        }
+
+        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
+        // and Drop is the only place that closes this handle.
+        let message_ptr = unsafe { sqlite3::sqlite3_errmsg(self.sqlite3) };
+        if message_ptr.is_null() {
+            None
+        } else {
+            Some(
+                String::from_utf8_lossy(
+                    // Safety: The null check above guarantees message_ptr is non-null and SQLite
+                    // returns a NUL-terminated error message string for CStr::from_ptr to consume.
+                    unsafe { CStr::from_ptr(message_ptr) }.to_bytes(),
+                )
+                .into_owned(),
+            )
+        }
     }
 }
 
@@ -161,6 +273,44 @@ fn path_to_cstring(path: &Path) -> anyhow::Result<CString> {
         )
     })?;
     Ok(CString::new(path)?)
+}
+
+fn parse_alter_table(remaining_sql_str: &str) -> Option<(String, String)> {
+    let remaining_sql_str = remaining_sql_str.to_lowercase();
+    if remaining_sql_str.starts_with("alter")
+        && let Some(table_offset) = remaining_sql_str.find("table")
+    {
+        let after_table_offset = table_offset + "table".len();
+        let table_to_alter = remaining_sql_str
+            .chars()
+            .skip(after_table_offset)
+            .skip_while(|character| character.is_whitespace())
+            .take_while(|character| !character.is_whitespace())
+            .collect::<String>();
+        if !table_to_alter.is_empty() {
+            let column_name = if let Some(rename_offset) = remaining_sql_str.find("rename column") {
+                let after_rename_offset = rename_offset + "rename column".len();
+                remaining_sql_str
+                    .chars()
+                    .skip(after_rename_offset)
+                    .skip_while(|character| character.is_whitespace())
+                    .take_while(|character| !character.is_whitespace())
+                    .collect::<String>()
+            } else if let Some(drop_offset) = remaining_sql_str.find("drop column") {
+                let after_drop_offset = drop_offset + "drop column".len();
+                remaining_sql_str
+                    .chars()
+                    .skip(after_drop_offset)
+                    .skip_while(|character| character.is_whitespace())
+                    .take_while(|character| !character.is_whitespace())
+                    .collect::<String>()
+            } else {
+                "__place_holder_column_for_syntax_checking".to_string()
+            };
+            return Some((table_to_alter, column_name));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
