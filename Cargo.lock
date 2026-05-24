@@ -1360,17 +1360,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "fs",
- "futures",
  "gpui",
- "indoc",
- "libsqlite3-sys",
  "log",
- "num-traits",
- "parking_lot",
  "settings",
  "smol",
- "thread_local",
- "util 0.0.0",
+ "sql",
+ "sql_macros",
  "uuid",
 ]
 
@@ -6003,6 +5998,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "sql"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "indoc",
+ "libsqlite3-sys",
+ "num-traits",
+ "parking_lot",
+ "smol",
+ "tempfile",
+ "thread_local",
+ "util 0.0.0",
+ "uuid",
+]
+
+[[package]]
+name = "sql_macros"
+version = "0.0.0"
+dependencies = [
+ "sql",
+ "sqlformat",
+ "syn",
+]
+
+[[package]]
+name = "sqlformat"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0705994df478b895f05b8e290e0d46e53187b26f8d889d37b2a0881234922d94"
+dependencies = [
+ "unicode_categories",
+ "winnow 0.7.15",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6919,6 +6950,12 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "unicode_categories"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
 
 [[package]]
 name = "untrusted"

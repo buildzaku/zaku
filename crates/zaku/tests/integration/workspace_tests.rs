@@ -30,7 +30,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     cx.executor().allow_parking();
 
     let app_db = AppDatabase::test_new();
-    let kv_store = KeyValueStore::from_app_db(&app_db);
+    let kv_store = KeyValueStore::open(&app_db);
     let session = Session::new(Uuid::new_v4().to_string(), kv_store.clone()).await;
 
     let shared_state = cx.update(SharedState::test);

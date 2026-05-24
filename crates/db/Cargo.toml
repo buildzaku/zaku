@@ -17,17 +17,12 @@ path = "src/db.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-futures = { workspace = true }
 gpui = { workspace = true }
-indoc = { workspace = true }
-libsqlite3-sys = { workspace = true }
 log = { workspace = true }
-num-traits = { workspace = true }
-parking_lot = { workspace = true }
 settings = { workspace = true }
 smol = { workspace = true }
-thread_local = { workspace = true }
-util = { workspace = true }
+sql = { workspace = true }
+sql_macros = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]

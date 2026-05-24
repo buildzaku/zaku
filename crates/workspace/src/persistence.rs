@@ -2,50 +2,24 @@ pub mod model;
 
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use gpui::{App, WindowId};
-use indoc::indoc;
+use gpui::WindowId;
 use std::path::PathBuf;
 
-use db::{AppDatabase, ThreadSafeConnection};
+use db::{ThreadSafeConnection, query, sql_macros::sql};
 use fs::Fs;
 
 use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
 use crate::WorkspaceId;
 
-#[derive(Clone)]
 pub struct WorkspaceDb(ThreadSafeConnection);
 
+db::static_connection!(WorkspaceDb, []);
+
 impl WorkspaceDb {
-    pub fn from_app_db(db: &AppDatabase) -> Self {
-        Self(db.0.clone())
-    }
-
-    pub fn global(cx: &App) -> Self {
-        Self(AppDatabase::global(cx).clone())
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub async fn open_test_db(name: &'static str) -> Self {
-        let workspace_db = Self(db::open_test_db(name).await);
-        workspace_db
-            .initialize_schema()
-            .await
-            .expect("workspace persistence schema should initialize");
-        workspace_db
-    }
-
-    pub async fn next_id(&self) -> anyhow::Result<WorkspaceId> {
-        self.0
-            .write(|connection| {
-                let next_id = connection
-                    .select_row::<i64>("INSERT INTO workspace DEFAULT VALUES RETURNING id")
-                    .context("failed to prepare next workspace id query")
-                    .and_then(|mut f| f().context("failed to allocate next workspace id"))?
-                    .context("next workspace id query returned no row")?;
-
-                Ok(WorkspaceId::from(next_id))
-            })
-            .await
+    query! {
+        pub async fn next_id() -> anyhow::Result<WorkspaceId> {
+            INSERT INTO workspace DEFAULT VALUES RETURNING id
+        }
     }
 
     pub async fn save_workspace(&self, workspace: SerializedWorkspace) {
@@ -56,16 +30,16 @@ impl WorkspaceDb {
                 let window_id = serialize_window_id(workspace.window_id)?;
                 connection.with_savepoint("save_workspace", || {
                     connection
-                        .exec_bound(indoc! {"
+                        .exec_bound(sql!(
                             DELETE FROM workspace
                             WHERE id != ?1 AND location = ?2
-                        "})
+                        ))
                         .context("failed to prepare old workspace location cleanup query")
                         .and_then(|mut f| f((i64::from(workspace.id), workspace_location)))
                         .context("failed to clear old workspace locations")?;
 
                     connection
-                        .exec_bound(indoc! {"
+                        .exec_bound(sql!(
                             INSERT INTO workspace(id, location, session_id, window_id, activation_order, timestamp)
                             VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace), CURRENT_TIMESTAMP)
                             ON CONFLICT(id)
@@ -74,7 +48,7 @@ impl WorkspaceDb {
                                 session_id = excluded.session_id,
                                 window_id = excluded.window_id,
                                 timestamp = CURRENT_TIMESTAMP
-                        "})
+                        ))
                         .context("failed to prepare workspace upsert query")
                         .and_then(|mut f| {
                             f((
@@ -129,22 +103,12 @@ impl WorkspaceDb {
         Ok(self.recent_workspaces_on_disk(fs).await?.into_iter().next())
     }
 
-    pub async fn update_activation_order(&self, workspace_id: WorkspaceId) -> anyhow::Result<()> {
-        self.0
-            .write(move |connection| {
-                connection
-                    .exec_bound(indoc! {"
-                        UPDATE workspace
-                        SET activation_order = (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace)
-                        WHERE id = ?1
-                    "})
-                    .context("failed to prepare workspace activation order update query")
-                    .and_then(|mut f| f([i64::from(workspace_id)]))
-                    .context("failed to update workspace activation order")?;
-
-                Ok(())
-            })
-            .await
+    query! {
+        pub async fn update_activation_order(workspace_id: WorkspaceId) -> anyhow::Result<()> {
+            UPDATE workspace
+            SET activation_order = (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace)
+            WHERE id = ?
+        }
     }
 
     pub async fn last_session_workspace_locations(
@@ -185,66 +149,12 @@ impl WorkspaceDb {
         Ok(workspaces)
     }
 
-    #[cfg(test)]
-    pub(crate) async fn clear_recent_workspaces(&self) -> anyhow::Result<()> {
-        self.0
-            .write(|connection| {
-                connection
-                    .exec("DELETE FROM workspace")
-                    .context("failed to set up recent workspace clear query")
-                    .and_then(|mut f| f())
-                    .context("failed to clear recent workspaces")?;
-                Ok(())
-            })
-            .await
-    }
-
-    #[cfg(test)]
-    pub(crate) fn recent_workspace_count(&self) -> anyhow::Result<usize> {
-        self.0.read(|connection| {
-            let count = connection
-                .select_row::<i64>("SELECT COUNT(*) FROM workspace")
-                .context("failed to prepare recent workspace count query")
-                .and_then(|mut f| f().context("failed to count recent workspaces"))?
-                .context("recent workspace count query returned no row")?;
-
-            usize::try_from(count).context("recent workspace count should fit in usize")
-        })
-    }
-
-    #[cfg(test)]
-    fn workspace_for_id(&self, workspace_id: WorkspaceId) -> Option<SerializedWorkspace> {
-        self.0
-            .read(|connection| {
-                connection
-                    .select_row_bound::<[i64; 1], (PathBuf, Option<String>, Option<i64>)>(indoc! {"
-                        SELECT location, session_id, window_id
-                        FROM workspace
-                        WHERE id = ?1 AND location IS NOT NULL
-                    "})
-                    .context("failed to prepare workspace by id query")
-                    .and_then(|mut f| f([i64::from(workspace_id)]))
-                    .context("failed to query workspace by id")
-                    .map(|workspace| {
-                        workspace.map(|(location, session_id, window_id)| SerializedWorkspace {
-                            id: workspace_id,
-                            location: SerializedWorkspaceLocation::Local(location),
-                            session_id,
-                            window_id: window_id
-                                .and_then(|window_id| u64::try_from(window_id).ok()),
-                        })
-                    })
-            })
-            .ok()
-            .flatten()
-    }
-
     pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
         self.0
             .write(|connection| {
                 connection.with_savepoint("initialize_workspace_schema", || {
                     connection
-                        .exec(indoc! {"
+                        .exec(sql!(
                             CREATE TABLE IF NOT EXISTS workspace(
                                 id INTEGER PRIMARY KEY,
                                 location BLOB UNIQUE,
@@ -253,25 +163,25 @@ impl WorkspaceDb {
                                 activation_order INTEGER NOT NULL DEFAULT 0,
                                 timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                             ) STRICT
-                        "})
+                        ))
                         .context("failed to set up workspace table initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace persistence table")?;
 
                     connection
-                        .exec(indoc! {"
+                        .exec(sql!(
                             CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
                             ON workspace(activation_order DESC)
-                        "})
+                        ))
                         .context("failed to set up workspace activation order index initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace activation order index")?;
 
                     connection
-                        .exec(indoc! {"
+                        .exec(sql!(
                             CREATE INDEX IF NOT EXISTS workspace_timestamp_idx
                             ON workspace(timestamp DESC)
-                        "})
+                        ))
                         .context("failed to set up workspace timestamp index initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace persistence index")?;
@@ -285,72 +195,60 @@ impl WorkspaceDb {
     fn recent_workspaces(
         &self,
     ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>> {
-        self.0.read(|connection| {
-            let rows = connection
-                .select::<(i64, PathBuf, String)>(indoc! {"
-                    SELECT id, location, timestamp
-                    FROM workspace
-                    WHERE location IS NOT NULL
-                    ORDER BY activation_order DESC
-                "})
-                .context("failed to prepare recent workspace query")
-                .and_then(|mut f| f())
-                .context("failed to execute recent workspace query")?;
+        Ok(self
+            .recent_workspaces_query()?
+            .into_iter()
+            .map(|(workspace_id, location, timestamp)| {
+                (
+                    workspace_id,
+                    SerializedWorkspaceLocation::Local(location),
+                    parse_timestamp(&timestamp),
+                )
+            })
+            .collect())
+    }
 
-            Ok(rows
-                .into_iter()
-                .map(|(id, location, timestamp)| {
-                    (
-                        WorkspaceId::from(id),
-                        SerializedWorkspaceLocation::Local(location),
-                        parse_timestamp(&timestamp),
-                    )
-                })
-                .collect())
-        })
+    query! {
+        fn recent_workspaces_query() -> anyhow::Result<Vec<(WorkspaceId, PathBuf, String)>> {
+            SELECT id, location, timestamp
+            FROM workspace
+            WHERE location IS NOT NULL
+            ORDER BY activation_order DESC
+        }
     }
 
     fn session_workspaces(
         &self,
         session_id: String,
     ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, Option<u64>)>> {
-        self.0.read(|connection| {
-            let rows = connection
-                .select_bound::<String, (i64, PathBuf, Option<i64>)>(indoc! {"
-                        SELECT id, location, window_id
-                        FROM workspace
-                        WHERE session_id = ?1 AND location IS NOT NULL
-                        ORDER BY activation_order DESC
-                    "})
-                .context("failed to prepare session workspaces query")
-                .and_then(|mut f| f(session_id))
-                .context("failed to execute session workspaces query")?;
-
-            Ok(rows
-                .into_iter()
-                .map(|(workspace_id, location, window_id)| {
-                    (
-                        WorkspaceId::from(workspace_id),
-                        SerializedWorkspaceLocation::Local(location),
-                        window_id.and_then(|window_id| u64::try_from(window_id).ok()),
-                    )
-                })
-                .collect())
-        })
+        Ok(self
+            .session_workspaces_query(session_id)?
+            .into_iter()
+            .map(|(workspace_id, location, window_id)| {
+                (
+                    workspace_id,
+                    SerializedWorkspaceLocation::Local(location),
+                    window_id.and_then(|window_id| u64::try_from(window_id).ok()),
+                )
+            })
+            .collect())
     }
 
-    pub async fn delete_workspace_by_id(&self, workspace_id: WorkspaceId) -> anyhow::Result<()> {
-        self.0
-            .write(move |connection| {
-                connection
-                    .exec_bound("DELETE FROM workspace WHERE id = ?1")
-                    .context("failed to prepare workspace deletion query")
-                    .and_then(|mut f| f([i64::from(workspace_id)]))
-                    .context("failed to delete workspace by id")?;
+    query! {
+        fn session_workspaces_query(
+            session_id: String,
+        ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Option<i64>)>> {
+            SELECT id, location, window_id
+            FROM workspace
+            WHERE session_id = ? AND location IS NOT NULL
+            ORDER BY activation_order DESC
+        }
+    }
 
-                Ok(())
-            })
-            .await
+    query! {
+        pub async fn delete_workspace_by_id(workspace_id: WorkspaceId) -> anyhow::Result<()> {
+            DELETE FROM workspace WHERE id = ?
+        }
     }
 
     async fn all_paths_exist_with_a_directory(
@@ -377,6 +275,46 @@ impl WorkspaceDb {
 
         any_directory
     }
+
+    #[cfg(test)]
+    pub(crate) fn workspace_for_id(
+        &self,
+        workspace_id: WorkspaceId,
+    ) -> anyhow::Result<Option<SerializedWorkspace>> {
+        self.read(|connection| {
+            connection
+                .select_row_bound::<WorkspaceId, (PathBuf, Option<String>, Option<u64>)>(sql!(
+                    SELECT location, session_id, window_id
+                    FROM workspace
+                    WHERE id = ? AND location IS NOT NULL
+                ))
+                .context("failed to prepare workspace by id query")
+                .and_then(|mut f| f(workspace_id))
+                .context("failed to query workspace by id")
+                .map(|workspace| {
+                    workspace.map(|(location, session_id, window_id)| SerializedWorkspace {
+                        id: workspace_id,
+                        location: SerializedWorkspaceLocation::Local(location),
+                        session_id,
+                        window_id,
+                    })
+                })
+        })
+    }
+
+    #[cfg(test)]
+    query! {
+        pub(crate) async fn clear_recent_workspaces() -> anyhow::Result<()> {
+            DELETE FROM workspace
+        }
+    }
+
+    #[cfg(test)]
+    query! {
+        pub(crate) fn recent_workspace_count() -> anyhow::Result<usize> {
+            SELECT COUNT(*) FROM workspace
+        }
+    }
 }
 
 fn parse_timestamp(text: &str) -> DateTime<Utc> {
@@ -395,6 +333,7 @@ mod tests {
     use super::*;
 
     use gpui::{TestAppContext, WindowId};
+    use indoc::indoc;
     use serde_json::json;
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -413,8 +352,7 @@ mod tests {
         let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree("project", json!(null));
 
-        let workspace_db =
-            WorkspaceDb::open_test_db("test_save_workspace_deduplicates_paths").await;
+        let workspace_db = WorkspaceDb::test_open("test_save_workspace_deduplicates_paths").await;
         workspace_db.clear_recent_workspaces().await.unwrap();
 
         let project_path = temp_fs.path().join("project");
@@ -452,7 +390,7 @@ mod tests {
     #[gpui::test]
     async fn test_save_workspace_preserves_non_utf8_paths(_cx: &mut TestAppContext) {
         let workspace_db =
-            WorkspaceDb::open_test_db("test_save_workspace_preserves_non_utf8_paths").await;
+            WorkspaceDb::test_open("test_save_workspace_preserves_non_utf8_paths").await;
         let path = PathBuf::from(OsString::from_vec(vec![0x2f, 0x74, 0x6d, 0x70, 0x2f, 0x80]));
 
         workspace_db
@@ -522,10 +460,10 @@ mod tests {
             })
             .await;
 
-        let serialized = workspace_db.workspace_for_id(workspace_id);
+        let serialized = workspace_db.workspace_for_id(workspace_id).unwrap();
         assert!(
             serialized.is_some(),
-            "Workspace should be fully serialized in the DB after database_id assignment"
+            "workspace should be fully serialized in the DB after database_id assignment"
         );
     }
 
@@ -539,7 +477,7 @@ mod tests {
         temp_fs.insert_tree(path!("third"), json!(null));
         temp_fs.insert_tree(path!("fourth"), json!(null));
 
-        let workspace_db = WorkspaceDb::open_test_db("test_last_session_workspace_locations").await;
+        let workspace_db = WorkspaceDb::test_open("test_last_session_workspace_locations").await;
 
         let first_path = temp_fs.path().join(path!("first"));
         let second_path = temp_fs.path().join(path!("second"));
@@ -611,7 +549,7 @@ mod tests {
         temp_fs.insert_tree(path!("project"), json!(null));
 
         let workspace_db =
-            WorkspaceDb::open_test_db("test_last_session_workspace_locations_skips_missing_paths")
+            WorkspaceDb::test_open("test_last_session_workspace_locations_skips_missing_paths")
                 .await;
 
         workspace_db
@@ -695,7 +633,10 @@ mod tests {
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
             .unwrap();
-        let serialized_workspace = workspace_db.workspace_for_id(workspace_id).unwrap();
+        let serialized_workspace = workspace_db
+            .workspace_for_id(workspace_id)
+            .unwrap()
+            .expect("workspace row should exist after serialization");
 
         assert!(serialized_workspace.session_id.is_some());
         assert!(serialized_workspace.window_id.is_some());
@@ -705,6 +646,7 @@ mod tests {
 
         let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
+            .unwrap()
             .expect("workspace row should remain after replacement");
 
         assert_eq!(serialized_workspace.session_id, None);
@@ -756,7 +698,10 @@ mod tests {
         let workspace_id = workspace
             .read_with(cx, |workspace, _| workspace.database_id())
             .unwrap();
-        let serialized_workspace = workspace_db.workspace_for_id(workspace_id).unwrap();
+        let serialized_workspace = workspace_db
+            .workspace_for_id(workspace_id)
+            .unwrap()
+            .expect("workspace row should exist after serialization");
 
         assert!(serialized_workspace.session_id.is_some());
         assert!(serialized_workspace.window_id.is_some());
@@ -768,6 +713,7 @@ mod tests {
 
         let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
+            .unwrap()
             .expect("workspace row should remain after close");
 
         assert_eq!(serialized_workspace.session_id, None);

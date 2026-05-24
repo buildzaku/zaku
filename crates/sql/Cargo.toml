@@ -1,0 +1,27 @@
+[package]
+name = "sql"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/sql.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+futures = { workspace = true }
+indoc = { workspace = true }
+libsqlite3-sys = { workspace = true }
+num-traits = { workspace = true }
+parking_lot = { workspace = true }
+thread_local = { workspace = true }
+util = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+smol = { workspace = true }
+tempfile = { workspace = true }

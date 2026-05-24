@@ -50,7 +50,7 @@ fn main() {
     let app_db = AppDatabase::new();
     let session = app.background_executor().spawn(Session::new(
         Uuid::new_v4().to_string(),
-        KeyValueStore::from_app_db(&app_db),
+        KeyValueStore::open(&app_db),
     ));
 
     app.run(move |cx: &mut App| {
