@@ -360,6 +360,43 @@ mod tests {
     }
 
     #[test]
+    fn test_sql_has_syntax_error_offsets_multi_statement_query() {
+        let connection = Connection::open_memory(Some(
+            "test_sql_has_syntax_error_offsets_multi_statement_query",
+        ));
+        let first_statement =
+            "CREATE TABLE kv_store(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;";
+        let second_statement = "SELECT FROM";
+
+        let second_offset = connection.sql_has_syntax_error(second_statement).unwrap().1;
+        let error_offset = connection
+            .sql_has_syntax_error(&format!("{first_statement}\n{second_statement}"))
+            .map(|(_, offset)| offset);
+
+        assert_eq!(
+            error_offset,
+            Some(first_statement.len() + second_offset + 1)
+        );
+    }
+
+    #[test]
+    fn test_alter_table_syntax_check_uses_temporary_table() {
+        let connection =
+            Connection::open_memory(Some("test_alter_table_syntax_check_uses_temporary_table"));
+
+        assert!(
+            connection
+                .sql_has_syntax_error("ALTER TABLE test ADD x TEXT")
+                .is_none()
+        );
+        assert!(
+            connection
+                .sql_has_syntax_error("ALTER TABLE test AAD x TEXT")
+                .is_some()
+        );
+    }
+
+    #[test]
     fn test_bound_values_round_trip() {
         let connection = Connection::open_memory(Some("test_bound_values_round_trip"));
         let project_path = PathBuf::from("project");
