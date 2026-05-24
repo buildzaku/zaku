@@ -6,10 +6,14 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, mpsc},
+    time::Duration,
 };
 use thread_local::ThreadLocal;
 
 use crate::Connection;
+
+const CONNECTION_INITIALIZE_RETRIES: usize = 50;
+const CONNECTION_INITIALIZE_RETRY_DELAY: Duration = Duration::from_millis(1);
 
 static QUEUES: LazyLock<RwLock<HashMap<ConnectionTarget, WriteQueue>>> =
     LazyLock::new(Default::default);
@@ -130,7 +134,7 @@ impl ThreadSafeConnection {
         let connection_slot = self.connections.get_or(|| RefCell::new(None));
 
         if connection_slot.borrow().is_none() {
-            let connection = self.create_connection()?;
+            let connection = Self::create_connection(&self.target, self.connection_init_query)?;
             *connection_slot.borrow_mut() = Some(connection);
         }
 
@@ -141,8 +145,11 @@ impl ThreadSafeConnection {
         connection_operation(connection)
     }
 
-    fn create_connection(&self) -> anyhow::Result<Connection> {
-        let mut connection = match &self.target {
+    fn create_connection(
+        target: &ConnectionTarget,
+        connection_init_query: Option<&'static str>,
+    ) -> anyhow::Result<Connection> {
+        let mut connection = match target {
             ConnectionTarget::File(path) => {
                 Connection::open_file(path.as_ref()).with_context(|| {
                     format!("failed to reopen sqlite database at {}", path.display())
@@ -151,8 +158,39 @@ impl ThreadSafeConnection {
             ConnectionTarget::Memory(name) => Connection::open_memory(Some(name.as_ref())),
         };
 
+        if let Some(init_query) = connection_init_query {
+            let mut schema_lock_error = None;
+
+            for attempt in 0..CONNECTION_INITIALIZE_RETRIES {
+                match connection
+                    .exec(init_query)
+                    .with_context(|| {
+                        format!("connection initialize query failed to execute: {init_query}")
+                    })
+                    .and_then(|mut f| f())
+                {
+                    Ok(()) => {
+                        schema_lock_error = None;
+                        break;
+                    }
+                    Err(error) if is_schema_lock_error(&error) => {
+                        schema_lock_error = Some(error);
+                        if attempt + 1 < CONNECTION_INITIALIZE_RETRIES {
+                            std::thread::sleep(CONNECTION_INITIALIZE_RETRY_DELAY);
+                        }
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+
+            if let Some(error) = schema_lock_error {
+                return Err(error).with_context(|| {
+                    format!("connection initialize query failed after retries: {init_query}")
+                });
+            }
+        }
+
         *connection.write.get_mut() = false;
-        init_connection(&connection, self.connection_init_query)?;
         Ok(connection)
     }
 }
@@ -206,20 +244,9 @@ impl ThreadSafeConnectionBuilder {
     }
 }
 
-fn init_connection(
-    connection: &Connection,
-    connection_init_query: Option<&'static str>,
-) -> anyhow::Result<()> {
-    if let Some(connection_init_query) = connection_init_query {
-        connection
-            .exec(connection_init_query)
-            .with_context(|| {
-                format!("connection initialize query failed to execute: {connection_init_query}")
-            })
-            .and_then(|mut f| f())?;
-    }
-
-    Ok(())
+fn is_schema_lock_error(error: &anyhow::Error) -> bool {
+    let message = format!("{error:#}");
+    message.contains("database schema is locked") || message.contains("database is locked")
 }
 
 pub fn background_thread_queue() -> WriteQueueConstructor {
@@ -306,6 +333,35 @@ mod tests {
         for handle in handles {
             handle.join().unwrap();
         }
+    }
+
+    #[test]
+    fn test_connection_init_query_retries_transient_schema_lock() {
+        let name = "test_connection_init_query_retries_transient_schema_lock";
+        let locking_connection = Connection::open_memory(Some(name));
+        locking_connection
+            .exec("BEGIN IMMEDIATE")
+            .and_then(|mut f| f())
+            .unwrap();
+        locking_connection
+            .exec("CREATE TABLE test(value TEXT)")
+            .and_then(|mut f| f())
+            .unwrap();
+
+        let releaser = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(10));
+            locking_connection
+                .exec("ROLLBACK")
+                .and_then(|mut f| f())
+                .unwrap();
+        });
+
+        ThreadSafeConnection::create_connection(
+            &ConnectionTarget::memory(name),
+            Some("PRAGMA foreign_keys = ON"),
+        )
+        .unwrap();
+        releaser.join().unwrap();
     }
 
     #[test]
