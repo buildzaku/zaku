@@ -146,10 +146,7 @@ impl Connection {
                 if let Some((table_to_alter, column)) = alter_table {
                     let temp_connection = Self::open_memory(None);
                     let create_table = format!("CREATE TABLE {table_to_alter}({column})");
-                    if let Err(error) = temp_connection
-                        .exec(&create_table)
-                        .and_then(|mut statement| statement())
-                    {
+                    if let Err(error) = temp_connection.exec(&create_table).and_then(|mut f| f()) {
                         return Some((format!("{error:#}"), 0));
                     }
 

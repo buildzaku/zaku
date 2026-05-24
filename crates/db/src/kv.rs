@@ -45,7 +45,7 @@ impl KeyValueStore {
                         ) STRICT
                     ))
                     .context("failed to prepare key-value store table initialization")
-                    .and_then(|mut statement| statement())
+                    .and_then(|mut f| f())
                     .context("failed to initialize key-value store table")?;
 
                 connection
@@ -58,7 +58,7 @@ impl KeyValueStore {
                         ) STRICT
                     ))
                     .context("failed to prepare scoped key-value store table initialization")
-                    .and_then(|mut statement| statement())
+                    .and_then(|mut f| f())
                     .context("failed to initialize scoped key-value store table")?;
 
                 Ok(())
@@ -81,7 +81,7 @@ impl ScopedKeyValueStore<'_> {
                     sql!(SELECT value FROM scoped_kv_store WHERE namespace = (?) AND key = (?)),
                 )
                 .context("Failed to read from scoped_kv_store")
-                .and_then(|mut statement| statement((self.namespace, key)))
+                .and_then(|mut f| f((self.namespace, key)))
                 .context("Failed to read from scoped_kv_store")
         })
     }

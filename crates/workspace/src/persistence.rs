@@ -289,7 +289,7 @@ impl WorkspaceDb {
                     WHERE id = ? AND location IS NOT NULL
                 ))
                 .context("failed to prepare workspace by id query")
-                .and_then(|mut statement| statement(workspace_id))
+                .and_then(|mut f| f(workspace_id))
                 .context("failed to query workspace by id")
                 .map(|workspace| {
                     workspace.map(|(location, session_id, window_id)| SerializedWorkspace {
