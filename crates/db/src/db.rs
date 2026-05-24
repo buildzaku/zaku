@@ -2,6 +2,7 @@ pub mod kv;
 pub mod query;
 
 pub use anyhow;
+pub use gpui::{self, App};
 pub use sql::{
     self,
     bindable::{Bind, Column, StaticColumnCount},
@@ -12,7 +13,7 @@ pub use sql::{
 pub use sql_macros;
 
 use anyhow::Context;
-use gpui::{App, Global};
+use gpui::Global;
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -145,7 +146,7 @@ impl AppDatabase {
         let db_dir = database_dir();
         let connection = smol::block_on(open_db(&db_dir));
         let app_db = Self(connection);
-        smol::block_on(kv::KeyValueStore::from_app_db(&app_db).initialize_schema())
+        smol::block_on(kv::KeyValueStore::open(&app_db).initialize_schema())
             .expect("key-value store schema should initialize");
         app_db
     }
@@ -155,7 +156,7 @@ impl AppDatabase {
         let name = format!("test-db-{}", uuid::Uuid::new_v4());
         let connection = smol::block_on(open_test_db(&name));
         let app_db = Self(connection);
-        smol::block_on(kv::KeyValueStore::from_app_db(&app_db).initialize_schema())
+        smol::block_on(kv::KeyValueStore::open(&app_db).initialize_schema())
             .expect("key-value store schema should initialize");
         app_db
     }
@@ -175,6 +176,45 @@ impl AppDatabase {
             }
         }
     }
+}
+
+#[macro_export]
+macro_rules! static_connection {
+    ($t:ident, [ $($d:ty),* ]) => {
+        impl ::std::ops::Deref for $t {
+            type Target = $crate::sql::thread_safe_connection::ThreadSafeConnection;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+
+        impl ::std::clone::Clone for $t {
+            fn clone(&self) -> Self {
+                $t(self.0.clone())
+            }
+        }
+
+        impl $t {
+            pub fn open(db: &$crate::AppDatabase) -> Self {
+                $t(db.0.clone())
+            }
+
+            pub fn global(cx: &$crate::App) -> Self {
+                $t($crate::AppDatabase::global(cx).clone())
+            }
+
+            #[cfg(any(test, feature = "test-support"))]
+            pub async fn test_open(name: &'static str) -> Self {
+                let connection = $t($crate::open_test_db(name).await);
+                connection
+                    .initialize_schema()
+                    .await
+                    .expect("database schema should initialize");
+                connection
+            }
+        }
+    };
 }
 
 #[cfg(test)]

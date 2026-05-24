@@ -1,33 +1,14 @@
 use anyhow::Context;
-use gpui::App;
-use std::ops::Deref;
 
 use sql_macros::sql;
 
-use crate::{AppDatabase, ThreadSafeConnection, query};
+use crate::{ThreadSafeConnection, query};
 
-#[derive(Clone)]
 pub struct KeyValueStore(ThreadSafeConnection);
 
+crate::static_connection!(KeyValueStore, []);
+
 impl KeyValueStore {
-    pub fn from_app_db(db: &AppDatabase) -> Self {
-        Self(db.0.clone())
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub async fn from_test_db(name: &'static str) -> Self {
-        let kv_store = Self(crate::open_test_db(name).await);
-        kv_store
-            .initialize_schema()
-            .await
-            .expect("key-value store schema should initialize");
-        kv_store
-    }
-
-    pub fn global(cx: &App) -> Self {
-        Self(AppDatabase::global(cx).clone())
-    }
-
     query! {
         pub fn read_kv(key: &str) -> anyhow::Result<Option<String>> {
             SELECT value FROM kv_store WHERE key = (?)
@@ -84,14 +65,6 @@ impl KeyValueStore {
             })
         })
         .await
-    }
-}
-
-impl Deref for KeyValueStore {
-    type Target = ThreadSafeConnection;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
     }
 }
 
@@ -157,7 +130,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_kv() {
-        let kv_store = KeyValueStore::from_test_db("test_kv").await;
+        let kv_store = KeyValueStore::test_open("test_kv").await;
 
         assert_eq!(kv_store.read_kv("key-1").unwrap(), None);
 
@@ -188,7 +161,7 @@ mod tests {
 
     #[gpui::test]
     async fn test_scoped_kv() {
-        let kv_store = KeyValueStore::from_test_db("test_scoped_kv").await;
+        let kv_store = KeyValueStore::test_open("test_scoped_kv").await;
 
         let scope_a = kv_store.scoped("namespace-a");
         let scope_b = kv_store.scoped("namespace-b");

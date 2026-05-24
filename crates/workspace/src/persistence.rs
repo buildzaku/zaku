@@ -2,27 +2,20 @@ pub mod model;
 
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use gpui::{App, WindowId};
-use std::{ops::Deref, path::PathBuf};
+use gpui::WindowId;
+use std::path::PathBuf;
 
-use db::{AppDatabase, ThreadSafeConnection, query, sql_macros::sql};
+use db::{ThreadSafeConnection, query, sql_macros::sql};
 use fs::Fs;
 
 use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
 use crate::WorkspaceId;
 
-#[derive(Clone)]
 pub struct WorkspaceDb(ThreadSafeConnection);
 
+db::static_connection!(WorkspaceDb, []);
+
 impl WorkspaceDb {
-    pub fn from_app_db(db: &AppDatabase) -> Self {
-        Self(db.0.clone())
-    }
-
-    pub fn global(cx: &App) -> Self {
-        Self(AppDatabase::global(cx).clone())
-    }
-
     query! {
         pub async fn next_id() -> anyhow::Result<WorkspaceId> {
             INSERT INTO workspace DEFAULT VALUES RETURNING id
@@ -283,16 +276,6 @@ impl WorkspaceDb {
         any_directory
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub async fn open_test_db(name: &'static str) -> Self {
-        let workspace_db = Self(db::open_test_db(name).await);
-        workspace_db
-            .initialize_schema()
-            .await
-            .expect("workspace persistence schema should initialize");
-        workspace_db
-    }
-
     #[cfg(test)]
     pub(crate) fn workspace_for_id(
         &self,
@@ -334,14 +317,6 @@ impl WorkspaceDb {
     }
 }
 
-impl Deref for WorkspaceDb {
-    type Target = ThreadSafeConnection;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 fn parse_timestamp(text: &str) -> DateTime<Utc> {
     NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
         .map_or_else(|_| Utc::now(), |naive| naive.and_utc())
@@ -377,8 +352,7 @@ mod tests {
         let temp_fs = TempFs::new(cx.executor());
         temp_fs.insert_tree("project", json!(null));
 
-        let workspace_db =
-            WorkspaceDb::open_test_db("test_save_workspace_deduplicates_paths").await;
+        let workspace_db = WorkspaceDb::test_open("test_save_workspace_deduplicates_paths").await;
         workspace_db.clear_recent_workspaces().await.unwrap();
 
         let project_path = temp_fs.path().join("project");
@@ -416,7 +390,7 @@ mod tests {
     #[gpui::test]
     async fn test_save_workspace_preserves_non_utf8_paths(_cx: &mut TestAppContext) {
         let workspace_db =
-            WorkspaceDb::open_test_db("test_save_workspace_preserves_non_utf8_paths").await;
+            WorkspaceDb::test_open("test_save_workspace_preserves_non_utf8_paths").await;
         let path = PathBuf::from(OsString::from_vec(vec![0x2f, 0x74, 0x6d, 0x70, 0x2f, 0x80]));
 
         workspace_db
@@ -503,7 +477,7 @@ mod tests {
         temp_fs.insert_tree(path!("third"), json!(null));
         temp_fs.insert_tree(path!("fourth"), json!(null));
 
-        let workspace_db = WorkspaceDb::open_test_db("test_last_session_workspace_locations").await;
+        let workspace_db = WorkspaceDb::test_open("test_last_session_workspace_locations").await;
 
         let first_path = temp_fs.path().join(path!("first"));
         let second_path = temp_fs.path().join(path!("second"));
@@ -575,7 +549,7 @@ mod tests {
         temp_fs.insert_tree(path!("project"), json!(null));
 
         let workspace_db =
-            WorkspaceDb::open_test_db("test_last_session_workspace_locations_skips_missing_paths")
+            WorkspaceDb::test_open("test_last_session_workspace_locations_skips_missing_paths")
                 .await;
 
         workspace_db
