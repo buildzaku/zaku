@@ -1,4 +1,5 @@
 pub mod buffer_store;
+pub mod request_buffer_store;
 pub mod worktree_store;
 
 pub use request_buffer::{RequestBuffer, RequestBufferEvent};
@@ -23,7 +24,7 @@ use fs::{Fs, MTime};
 use util::{ResultExt, path::PathStyle, rel_path::RelPath};
 
 use crate::{
-    buffer_store::{BufferStore, BufferStoreEvent},
+    request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
 };
 
@@ -158,7 +159,7 @@ impl ProjectItem for RequestBuffer {
 
 pub struct Project {
     worktree_store: Entity<WorktreeStore>,
-    buffer_store: Entity<BufferStore>,
+    request_buffer_store: Entity<RequestBufferStore>,
     active_entry: Option<ProjectEntryId>,
     metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
 }
@@ -178,22 +179,22 @@ impl Project {
     pub fn new(fs: Arc<dyn Fs>, cx: &mut Context<Self>) -> Self {
         let worktree_store =
             cx.new(move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx)));
-        let buffer_store = cx.new({
+        let request_buffer_store = cx.new({
             let worktree_store = worktree_store.clone();
-            move |cx| BufferStore::new(worktree_store.clone(), cx)
+            move |cx| RequestBufferStore::new(worktree_store.clone(), cx)
         });
         cx.subscribe(&worktree_store, |this, _, event, cx| {
             this.on_worktree_store_event(event, cx);
         })
         .detach();
-        cx.subscribe(&buffer_store, |_, _, event, cx| {
-            Self::on_buffer_store_event(event, cx);
+        cx.subscribe(&request_buffer_store, |_, _, event, cx| {
+            Self::on_request_buffer_store_event(event, cx);
         })
         .detach();
 
         Self {
             worktree_store,
-            buffer_store,
+            request_buffer_store,
             active_entry: None,
             metadata_by_entry_id: HashMap::new(),
         }
@@ -271,13 +272,13 @@ impl Project {
         }
     }
 
-    fn on_buffer_store_event(event: &BufferStoreEvent, cx: &mut Context<Self>) {
+    fn on_request_buffer_store_event(event: &RequestBufferStoreEvent, cx: &mut Context<Self>) {
         match event {
-            BufferStoreEvent::BufferAdded(buffer) => {
+            RequestBufferStoreEvent::BufferAdded(buffer) => {
                 Self::register_request_buffer(buffer, cx);
             }
-            BufferStoreEvent::BufferDropped(_) | BufferStoreEvent::BufferChangedFilePath { .. } => {
-            }
+            RequestBufferStoreEvent::BufferDropped(_)
+            | RequestBufferStoreEvent::BufferChangedFilePath { .. } => {}
         }
     }
 
@@ -616,7 +617,7 @@ impl Project {
         path: ProjectPath,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Entity<RequestBuffer>>> {
-        self.buffer_store
+        self.request_buffer_store
             .update(cx, |store, cx| store.open_request_buffer(path, cx))
     }
 
@@ -625,7 +626,7 @@ impl Project {
         buffer: &Entity<RequestBuffer>,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        self.buffer_store
+        self.request_buffer_store
             .update(cx, |store, cx| store.save_request_buffer(buffer, cx))
     }
 
@@ -634,7 +635,7 @@ impl Project {
         buffer: &Entity<RequestBuffer>,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
-        self.buffer_store
+        self.request_buffer_store
             .update(cx, |store, cx| store.reload_request_buffer(buffer, cx))
     }
 }
