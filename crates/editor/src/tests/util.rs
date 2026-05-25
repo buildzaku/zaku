@@ -1,6 +1,6 @@
 use gpui::{App, AppContext};
-use text::{Buffer as TextBuffer, ReplicaId};
 
+use language::Buffer;
 use multi_buffer::{MultiBuffer, MultiBufferOffset};
 use util::test::marked_text_offsets;
 
@@ -14,9 +14,8 @@ pub fn marked_display_snapshot(
     cx: &mut App,
 ) -> (DisplaySnapshot, Vec<DisplayPoint>) {
     let (text, marker_offsets) = marked_text_offsets(marked_text);
-    let text_buffer =
-        cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text.as_str()));
-    let multibuffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
+    let buffer = cx.new(|cx| Buffer::local(text.as_str(), cx));
+    let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
     let display_map = cx.new(|cx| DisplayMap::new(multibuffer, DEFAULT_TAB_SIZE, cx));
     let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
     let display_points = marker_offsets

@@ -1,7 +1,8 @@
-use fs::Fs;
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{BackgroundExecutor, Task};
 use std::{path::PathBuf, sync::Arc, time::Duration};
+
+use fs::Fs;
 
 const FILE_WATCH_LATENCY: Duration = Duration::from_millis(100);
 

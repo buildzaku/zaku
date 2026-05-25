@@ -9,6 +9,7 @@ members = [
   "crates/http_client",
   "crates/icons",
   "crates/input",
+  "crates/language",
   "crates/logger",
   "crates/metadata",
   "crates/multi_buffer",
@@ -70,6 +71,7 @@ async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 chrono = { version = "0.4" }
+clock = { git = "https://github.com/zed-industries/zed", rev = "3a81f8e9ab", package = "clock" }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 futures = { version = "0.3" }
@@ -138,6 +140,7 @@ fs = { path = "crates/fs" }
 http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
+language = { path = "crates/language" }
 logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }

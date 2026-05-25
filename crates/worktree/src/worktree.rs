@@ -1,22 +1,20 @@
 mod request;
 
+pub use language::DiskState;
 pub use request::{
     REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileHeader,
     RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState, parse_request_file,
     request_method_label, serialize_request_file,
 };
+pub use settings::WorktreeId;
 
 use anyhow::{Context as AnyhowContext, anyhow};
 use async_lock::Mutex;
-
 #[cfg(feature = "test-support")]
 use futures::future::LocalBoxFuture;
-
 use futures::{FutureExt, Stream, StreamExt};
-
 #[cfg(feature = "test-support")]
 use gpui::TestAppContext;
-
 use gpui::{
     App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Priority, Task,
 };
@@ -429,19 +427,6 @@ impl LocalWorktree {
         if !changes.is_empty() {
             cx.emit(WorktreeEvent::UpdatedEntries(changes));
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct WorktreeId(usize);
-
-impl WorktreeId {
-    pub fn from_usize(id: usize) -> Self {
-        Self(id)
-    }
-
-    pub fn to_usize(self) -> usize {
-        self.0
     }
 }
 
@@ -945,37 +930,6 @@ pub struct Entry {
     pub is_request: bool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DiskState {
-    New,
-    Present { mtime: MTime, size: u64 },
-    Deleted,
-}
-
-impl DiskState {
-    pub fn mtime(self) -> Option<MTime> {
-        match self {
-            Self::Present { mtime, .. } => Some(mtime),
-            Self::New | Self::Deleted => None,
-        }
-    }
-
-    pub fn size(self) -> Option<u64> {
-        match self {
-            Self::Present { size, .. } => Some(size),
-            Self::New | Self::Deleted => None,
-        }
-    }
-
-    pub fn exists(&self) -> bool {
-        matches!(self, Self::Present { .. })
-    }
-
-    pub fn is_deleted(&self) -> bool {
-        matches!(self, Self::Deleted)
-    }
-}
-
 pub struct LoadedFile {
     pub file: Arc<File>,
     pub text: String,
@@ -1006,24 +960,6 @@ impl File {
         })
     }
 
-    pub fn disk_state(&self) -> DiskState {
-        self.disk_state
-    }
-
-    pub fn path(&self) -> &Arc<RelPath> {
-        &self.path
-    }
-
-    pub fn full_path(&self, cx: &App) -> PathBuf {
-        self.worktree.read(cx).full_path(self.path.as_ref())
-    }
-
-    pub fn file_name<'a>(&'a self, cx: &'a App) -> &'a str {
-        self.path
-            .file_name()
-            .unwrap_or_else(|| self.worktree.read(cx).root_name_str())
-    }
-
     pub fn worktree_id(&self, cx: &App) -> WorktreeId {
         self.worktree.read(cx).id()
     }
@@ -1034,28 +970,54 @@ impl File {
             _ => self.entry_id,
         }
     }
+}
 
-    pub fn path_style(&self, cx: &App) -> PathStyle {
+impl language::File for File {
+    fn as_local(&self) -> Option<&dyn language::LocalFile> {
+        Some(self)
+    }
+
+    fn disk_state(&self) -> DiskState {
+        self.disk_state
+    }
+
+    fn path(&self) -> &Arc<RelPath> {
+        &self.path
+    }
+
+    fn full_path(&self, cx: &App) -> PathBuf {
+        self.worktree.read(cx).full_path(self.path.as_ref())
+    }
+
+    fn path_style(&self, cx: &App) -> PathStyle {
         self.worktree.read(cx).path_style()
     }
 
-    pub fn abs_path(&self, cx: &App) -> PathBuf {
+    fn file_name<'a>(&'a self, cx: &'a App) -> &'a str {
+        self.path
+            .file_name()
+            .unwrap_or_else(|| self.worktree.read(cx).root_name_str())
+    }
+
+    fn worktree_id(&self, cx: &App) -> WorktreeId {
+        self.worktree.read(cx).id()
+    }
+}
+
+impl language::LocalFile for File {
+    fn abs_path(&self, cx: &App) -> PathBuf {
         self.worktree.read(cx).absolutize(self.path.as_ref())
     }
 
-    pub fn load(&self, cx: &App) -> Task<anyhow::Result<String>> {
-        let Some(worktree) = self.worktree.read(cx).as_local() else {
-            return Task::ready(Err(anyhow!("Cannot load file without worktree")));
-        };
+    fn load(&self, cx: &App) -> Task<anyhow::Result<String>> {
+        let worktree = self.worktree.read(cx).as_local().unwrap();
         let abs_path = worktree.absolutize(self.path.as_ref());
         let fs = worktree.fs.clone();
         cx.background_spawn(async move { fs.load(abs_path.as_path()).await })
     }
 
-    pub fn load_bytes(&self, cx: &App) -> Task<anyhow::Result<Vec<u8>>> {
-        let Some(worktree) = self.worktree.read(cx).as_local() else {
-            return Task::ready(Err(anyhow!("Cannot load file without worktree")));
-        };
+    fn load_bytes(&self, cx: &App) -> Task<anyhow::Result<Vec<u8>>> {
+        let worktree = self.worktree.read(cx).as_local().unwrap();
         let abs_path = worktree.absolutize(self.path.as_ref());
         let fs = worktree.fs.clone();
         cx.background_spawn(async move { fs.load_bytes(abs_path.as_path()).await })

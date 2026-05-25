@@ -27,6 +27,7 @@ futures = { workspace = true }
 gpui = { workspace = true }
 log = { workspace = true }
 request_buffer = { workspace = true }
+text = { workspace = true }
 tokio = { workspace = true }
 util = { workspace = true }
 worktree = { workspace = true }

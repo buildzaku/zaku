@@ -386,7 +386,7 @@ async fn test_buffer_identity_across_renames(cx: &mut TestAppContext) {
     buffer.update(cx, |buffer, _| {
         assert!(!buffer.is_dirty());
         assert_eq!(
-            buffer.file().path().as_ref(),
+            buffer.file().path.as_ref(),
             rel_path("renamed/request.toml")
         );
     });

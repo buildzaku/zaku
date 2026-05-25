@@ -1,16 +1,17 @@
 pub(crate) mod autoscroll;
 
+pub use autoscroll::Autoscroll;
+
 use gpui::{Axis, Context, Pixels, Point};
-use multi_buffer::Anchor;
 use num_traits::ToPrimitive;
 use std::time::{Duration, Instant};
+
+use multi_buffer::Anchor;
 
 use crate::{
     Editor,
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
 };
-
-pub use autoscroll::Autoscroll;
 
 pub type ScrollOffset = f64;
 

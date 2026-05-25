@@ -12,6 +12,7 @@ use std::{
 use editor::{Editor, EditorEvent};
 use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
 use input::{ErasedEditorEvent, InputField};
+use language::Buffer;
 use multi_buffer::MultiBuffer;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
@@ -27,7 +28,6 @@ use ui::{
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
 use util::{path::PathStyle, truncate_and_trailoff};
-
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ProjectItem, SharedState, TabContentParams, Workspace,
     pane::Pane,
@@ -330,7 +330,10 @@ struct RequestBody {
 impl RequestBody {
     fn new(data: impl Into<String>, window: &mut Window, cx: &mut App) -> Self {
         let data = data.into();
-        let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer(data, cx), cx));
+        let payload = cx.new(move |cx| {
+            let buffer = cx.new(|cx| Buffer::local(data, cx));
+            MultiBuffer::singleton(buffer, cx)
+        });
         let editor = cx.new(|cx| Editor::for_multibuffer(payload.clone(), window, cx));
 
         Self { editor, payload }
@@ -2446,7 +2449,7 @@ mod tests {
         );
         buffer.read_with(cx, |buffer, _| {
             assert_eq!(
-                buffer.file().path().as_ref(),
+                buffer.file().path.as_ref(),
                 rel_path("collection/renamed.toml")
             );
         });

@@ -25,8 +25,10 @@ async-lock = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
+language = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
+settings = { workspace = true }
 smallvec = { workspace = true }
 smol = { workspace = true }
 sum_tree = { workspace = true }

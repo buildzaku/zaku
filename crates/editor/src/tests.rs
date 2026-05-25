@@ -3,14 +3,18 @@ pub(crate) mod util;
 
 use gpui::{ClipboardItem, Context, EntityInputHandler, Point, TestAppContext};
 use indoc::indoc;
-use multi_buffer::{Capability, MultiBufferOffset};
 use pretty_assertions::assert_eq;
 use std::ops::Range;
 
+use language::Capability;
+use multi_buffer::MultiBufferOffset;
 use settings::SettingsStore;
 
-use crate::display_map::{DisplayPoint, DisplayRow};
-use crate::{Editor, tests::context::EditorTestContext};
+use crate::{
+    Editor,
+    display_map::{DisplayPoint, DisplayRow},
+    tests::context::EditorTestContext,
+};
 
 fn init_test(cx: &mut TestAppContext) {
     cx.update(|cx| {

@@ -1,6 +1,7 @@
 use gpui::{AppContext, Context, EventEmitter, Task};
 use std::sync::Arc;
 
+use language::LocalFile;
 use worktree::{DiskState, File, RequestFileState};
 
 pub struct RequestBuffer {
@@ -37,12 +38,12 @@ impl RequestBuffer {
         let was_dirty = self.is_dirty();
         let mut file_changed = false;
 
-        if new_file.path() != self.file.path() {
+        if new_file.path.as_ref() != self.file.path.as_ref() {
             file_changed = true;
         }
 
-        let old_state = self.file.disk_state();
-        let new_state = new_file.disk_state();
+        let old_state = self.file.disk_state;
+        let new_state = new_file.disk_state;
         if new_state != old_state {
             file_changed = true;
             if !was_dirty && matches!(new_state, DiskState::Present { .. }) {

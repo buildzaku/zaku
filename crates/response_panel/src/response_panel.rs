@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use editor::Editor;
 use http_client::StatusCode;
+use language::Buffer;
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{Color, DynamicSpacing, IconName, Label, LabelCommon, LabelSize};
-
 use workspace::{Panel, Workspace, pane::Pane};
 
 pub fn init(cx: &mut App) {
@@ -150,7 +150,10 @@ impl Response {
     }
 
     fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<MultiBuffer>, Entity<Editor>) {
-        let payload = cx.new(move |cx| MultiBuffer::singleton(editor::local_buffer("", cx), cx));
+        let payload = cx.new(move |cx| {
+            let buffer = cx.new(|cx| Buffer::local("", cx));
+            MultiBuffer::singleton(buffer, cx)
+        });
         let editor = cx.new(|cx| {
             let mut editor = Editor::for_multibuffer(payload.clone(), window, cx);
             editor.set_read_only(true);

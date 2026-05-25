@@ -1,4 +1,3 @@
-pub mod buffer_store;
 pub mod request_buffer_store;
 pub mod worktree_store;
 
@@ -11,7 +10,6 @@ pub use worktree::{
 
 #[cfg(any(test, feature = "test-support"))]
 use gpui::TestAppContext;
-
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
 use std::{
     collections::HashMap,
@@ -148,7 +146,7 @@ impl ProjectItem for RequestBuffer {
 
         Some(ProjectPath {
             worktree_id: file.worktree_id(cx),
-            path: file.path().clone(),
+            path: file.path.clone(),
         })
     }
 

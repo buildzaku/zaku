@@ -6,7 +6,6 @@ use gpui::{
     ScrollDelta, ScrollWheelEvent, ShapedLine, SharedString, Size, Style, TextAlign, TextRun,
     TextStyle, UnderlineStyle, Window, prelude::*,
 };
-use multi_buffer::{MultiBufferOffset, MultiBufferRow};
 use num_traits::ToPrimitive;
 use std::{
     any::TypeId,
@@ -15,6 +14,7 @@ use std::{
     panic,
 };
 
+use multi_buffer::{MultiBufferOffset, MultiBufferRow};
 use theme::ActiveTheme;
 
 use crate::{

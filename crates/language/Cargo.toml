@@ -1,5 +1,5 @@
 [package]
-name = "request_buffer"
+name = "language"
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,12 +9,17 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "request_buffer"
-path = "src/request_buffer.rs"
+name = "language"
+path = "src/language.rs"
+
+[features]
+test-support = ["gpui/test-support"]
 
 [dependencies]
 anyhow = { workspace = true }
+clock = { workspace = true }
+fs = { workspace = true }
 gpui = { workspace = true }
-language = { workspace = true }
+settings = { workspace = true }
+text = { workspace = true }
 util = { workspace = true }
-worktree = { workspace = true }

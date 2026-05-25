@@ -13,62 +13,32 @@ use gpui::{
     KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
     Subscription, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
 };
-use multi_buffer::{
-    Anchor, Capability, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint,
-};
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use std::{
-    any::TypeId,
     borrow::Cow,
     collections::{HashMap, VecDeque},
     num::NonZeroU32,
     ops::{Range, RangeInclusive},
     path::PathBuf,
     rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::Arc,
     time::Instant,
 };
-use text::{
-    Bias, Buffer as TextBuffer, BufferId, OffsetUtf16, ReplicaId, Selection, SelectionGoal,
-    TransactionId,
-};
+use text::{Bias, OffsetUtf16, Selection, SelectionGoal, TransactionId};
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
+use language::{Buffer, Capability};
+use multi_buffer::{Anchor, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint};
 use theme::{ActiveTheme, ThemeSettings};
 
-use crate::element::PositionMap;
 use crate::{
     display_map::{DisplayPoint, HighlightKey},
+    element::PositionMap,
     selections_collection::{MutableSelectionsCollection, SelectionsCollection},
 };
 
 const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
-
-static NEXT_BUFFER_ID: AtomicU64 = AtomicU64::new(1);
-
-/// Addons allow storing per-editor state in other crates
-pub trait Addon: 'static {
-    fn extend_key_context(&self, _: &mut KeyContext, _: &App) {}
-
-    fn to_any(&self) -> &dyn std::any::Any;
-
-    fn to_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
-        None
-    }
-}
-
-fn next_buffer_id() -> BufferId {
-    let id = NEXT_BUFFER_ID.fetch_add(1, Ordering::Relaxed);
-    BufferId::new(id).expect("BufferId to be non-zero")
-}
-
-pub fn local_buffer<T: Into<String>>(text: T, cx: &mut App) -> Entity<TextBuffer> {
-    cx.new(move |_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text))
-}
 
 pub fn init(_cx: &mut App) {
     _ = ERASED_EDITOR_FACTORY.set(|window, cx| {
@@ -324,7 +294,6 @@ pub struct Editor {
     selection_history: SelectionHistory,
     defer_selection_effects: bool,
     deferred_selection_effects_state: Option<DeferredSelectionEffectsState>,
-    addons: HashMap<TypeId, Box<dyn Addon>>,
     last_position_map: Option<Rc<PositionMap>>,
     show_scrollbars: ScrollbarAxes,
     scrollbar_drag: Option<ScrollbarDrag>,
@@ -343,7 +312,7 @@ impl EventEmitter<EditorEvent> for Editor {}
 
 impl Editor {
     fn local_multibuffer(cx: &mut Context<Self>) -> Entity<MultiBuffer> {
-        let buffer = local_buffer("", cx);
+        let buffer = cx.new(|cx| Buffer::local("", cx));
         cx.new(|cx| MultiBuffer::singleton(buffer, cx))
     }
 
@@ -414,7 +383,6 @@ impl Editor {
             selection_history,
             defer_selection_effects: false,
             deferred_selection_effects_state: None,
-            addons: HashMap::new(),
             last_position_map: None,
             show_scrollbars: ScrollbarAxes {
                 horizontal: show_scrollbars,
@@ -2388,10 +2356,6 @@ impl Editor {
             key_context.add("end_of_input");
         }
 
-        for addon in self.addons.values() {
-            addon.extend_key_context(&mut key_context, cx);
-        }
-
         key_context
     }
 
@@ -2436,27 +2400,6 @@ impl Editor {
             background: theme_colors.editor_background,
             text: text_style,
         }
-    }
-
-    pub fn register_addon<T: Addon>(&mut self, instance: T) {
-        self.addons.insert(TypeId::of::<T>(), Box::new(instance));
-    }
-
-    pub fn unregister_addon<T: Addon>(&mut self) {
-        self.addons.remove(&TypeId::of::<T>());
-    }
-
-    pub fn addon<T: Addon>(&self) -> Option<&T> {
-        self.addons
-            .get(&TypeId::of::<T>())
-            .and_then(|addon| addon.to_any().downcast_ref())
-    }
-
-    pub fn addon_mut<T: Addon>(&mut self) -> Option<&mut T> {
-        self.addons
-            .get_mut(&TypeId::of::<T>())
-            .and_then(|addon| addon.to_any_mut())
-            .and_then(|addon| addon.downcast_mut())
     }
 
     fn highlight_text(

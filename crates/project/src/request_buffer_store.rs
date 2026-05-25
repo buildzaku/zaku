@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, hash_map},
     sync::Arc,
 };
+use text::BufferId;
 
 use request_buffer::RequestBuffer;
 use util::{debug_panic, rel_path::RelPath};
@@ -15,7 +16,6 @@ use worktree::{
 
 use crate::{
     ProjectPath,
-    buffer_store::BufferId,
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
 
@@ -153,7 +153,7 @@ impl RequestBufferStore {
             let file = buffer.file();
             ProjectPath {
                 worktree_id: file.worktree_id(cx),
-                path: file.path().clone(),
+                path: file.path.clone(),
             }
         };
         let open_buffer = buffer_entity.downgrade();
@@ -202,7 +202,7 @@ impl RequestBufferStore {
             };
             (
                 buffer.file().worktree.clone(),
-                buffer.file().path().clone(),
+                buffer.file().path.clone(),
                 request_file,
                 buffer.is_dirty(),
             )
