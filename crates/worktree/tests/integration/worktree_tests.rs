@@ -38,8 +38,9 @@ async fn test_traversal(cx: &mut TestAppContext) {
         }),
     );
 
-    let worktree = Worktree::local(
+    let worktree = Worktree::new(
         temp_fs.path().join("project"),
+        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -49,8 +50,7 @@ async fn test_traversal(cx: &mut TestAppContext) {
     .await
     .unwrap();
 
-    cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
-        .await;
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
@@ -109,8 +109,9 @@ async fn test_circular_symlinks(cx: &mut TestAppContext) {
         .await
         .unwrap();
 
-    let worktree = Worktree::local(
+    let worktree = Worktree::new(
         temp_fs.path().join("project"),
+        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -120,8 +121,7 @@ async fn test_circular_symlinks(cx: &mut TestAppContext) {
     .await
     .unwrap();
 
-    cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
-        .await;
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
@@ -232,8 +232,9 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
         .await
         .unwrap();
 
-    let worktree = Worktree::local(
+    let worktree = Worktree::new(
         temp_fs.path().join(path!("project/dir1")),
+        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -243,8 +244,7 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
     .await
     .unwrap();
 
-    cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
-        .await;
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
 
     let worktree_updates = Arc::new(Mutex::new(Vec::new()));
     worktree.update(cx, |_, cx| {
@@ -307,15 +307,12 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
     cx.update(|cx| {
         worktree
             .read(cx)
-            .as_local()
-            .unwrap()
             .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("deps/dep-dir3").unwrap())])
     })
     .await
     .unwrap();
 
-    cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
-        .await;
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
@@ -369,15 +366,12 @@ async fn test_symlinks_pointing_outside(cx: &mut TestAppContext) {
     cx.update(|cx| {
         worktree
             .read(cx)
-            .as_local()
-            .unwrap()
             .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("deps/dep-dir3/src").unwrap())])
     })
     .await
     .unwrap();
 
-    cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
-        .await;
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
@@ -459,8 +453,9 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
         }),
     );
 
-    let worktree = Worktree::local(
+    let worktree = Worktree::new(
         temp_fs.path().join("project"),
+        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         true,
@@ -470,8 +465,7 @@ async fn test_renaming_case_only(cx: &mut TestAppContext) {
     .await
     .unwrap();
 
-    cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
-        .await;
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
@@ -543,8 +537,9 @@ async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContex
         }),
     );
 
-    let worktree = Worktree::local(
+    let worktree = Worktree::new(
         temp_fs.path().join("project"),
+        true,
         temp_fs.clone(),
         Arc::new(AtomicUsize::new(1)),
         false,
@@ -554,8 +549,7 @@ async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContex
     .await
     .unwrap();
 
-    cx.update(|cx| worktree.read(cx).as_local().unwrap().scan_complete())
-        .await;
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
 
     worktree.read_with(cx, |worktree, _| {
         assert_eq!(
@@ -570,8 +564,6 @@ async fn test_refresh_entries_for_paths_creates_ancestors(cx: &mut TestAppContex
     let refresh = cx.update(|cx| {
         worktree
             .read(cx)
-            .as_local()
-            .unwrap()
             .refresh_entries_for_paths(vec![Arc::from(RelPath::unix("a/b/c/deep.toml").unwrap())])
     });
     refresh.await.unwrap();

@@ -1,7 +1,6 @@
 use gpui::{AppContext, Context, EventEmitter, Task};
 use std::sync::Arc;
 
-use language::LocalFile;
 use worktree::{DiskState, File, RequestFileState};
 
 pub struct RequestBuffer {
@@ -72,7 +71,7 @@ impl RequestBuffer {
     }
 
     pub fn reload(&mut self, cx: &Context<Self>) -> Task<anyhow::Result<()>> {
-        let load_task = self.file.load(cx);
+        let load_task = language::File::load(self.file.as_ref(), cx);
 
         cx.spawn(async move |this, cx| {
             let contents = load_task.await?;

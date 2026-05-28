@@ -249,7 +249,7 @@ pub async fn restore_or_create_workspace(
             let SerializedWorkspaceLocation::Local(path) = session_workspace.location;
             let result = cx
                 .update(|cx| {
-                    Workspace::open_local(path, shared_state.clone(), None, OpenMode::NewWindow, cx)
+                    Workspace::open(path, shared_state.clone(), None, OpenMode::NewWindow, cx)
                 })
                 .await;
 

@@ -311,13 +311,13 @@ pub struct Editor {
 impl EventEmitter<EditorEvent> for Editor {}
 
 impl Editor {
-    fn local_multibuffer(cx: &mut Context<Self>) -> Entity<MultiBuffer> {
+    fn empty_buffer(cx: &mut Context<Self>) -> Entity<MultiBuffer> {
         let buffer = cx.new(|cx| Buffer::local("", cx));
         cx.new(|cx| MultiBuffer::singleton(buffer, cx))
     }
 
     pub fn single_line(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let buffer = Self::local_multibuffer(cx);
+        let buffer = Self::empty_buffer(cx);
         Self::new(EditorMode::SingleLine, buffer, window, cx)
     }
 
@@ -327,7 +327,7 @@ impl Editor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let buffer = Self::local_multibuffer(cx);
+        let buffer = Self::empty_buffer(cx);
         Self::new(
             EditorMode::AutoHeight {
                 min_lines,
@@ -340,7 +340,7 @@ impl Editor {
     }
 
     pub fn full(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let buffer = Self::local_multibuffer(cx);
+        let buffer = Self::empty_buffer(cx);
         Self::new(EditorMode::full(), buffer, window, cx)
     }
 

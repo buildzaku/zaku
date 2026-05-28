@@ -1773,7 +1773,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, response_panel, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
@@ -1890,7 +1890,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, _, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
@@ -1981,7 +1981,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, response_panel, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
@@ -2131,7 +2131,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, response_panel, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
@@ -2266,7 +2266,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, _, cx) = build_workspace(&project, cx);
 
         let request_path = ProjectPath {
@@ -2386,7 +2386,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let worktree_id = cx.update(|cx| project.read(cx).worktree(cx).unwrap().read(cx).id());
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, _, cx) = build_workspace(&project, cx);
 
         let request_editor = workspace

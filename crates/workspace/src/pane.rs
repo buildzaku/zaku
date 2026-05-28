@@ -1096,7 +1096,7 @@ impl Render for Pane {
         let has_worktree = self
             .project
             .upgrade()
-            .is_some_and(|project| project.read(cx).worktree(cx).is_some());
+            .is_some_and(|project| project.read(cx).root_worktree(cx).is_some());
 
         if !has_worktree && self.should_display_welcome_page() {
             if self.welcome_page.is_none() {

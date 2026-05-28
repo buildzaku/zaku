@@ -26,7 +26,7 @@ async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
     let second_path = temp_fs.path().join("second");
 
     let project = cx
-        .update(|cx| Project::open_local(temp_fs.clone(), temp_fs.path().join("project"), cx))
+        .update(|cx| Project::open(temp_fs.clone(), temp_fs.path().join("project"), cx))
         .await
         .expect("project open should succeed");
 
@@ -35,10 +35,10 @@ async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
         .await;
 
     let first_open = project.update(cx, |project, cx| {
-        project.find_or_create_worktree(&first_path, cx)
+        project.find_or_create_worktree(&first_path, true, cx)
     });
     let second_open = project.update(cx, |project, cx| {
-        project.find_or_create_worktree(&second_path, cx)
+        project.find_or_create_worktree(&second_path, true, cx)
     });
 
     second_open
@@ -70,7 +70,7 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
     let second_path = temp_fs.path().join("second");
 
     let project = cx
-        .update(|cx| Project::open_local(temp_fs.clone(), first_path, cx))
+        .update(|cx| Project::open(temp_fs.clone(), first_path, cx))
         .await
         .expect("project open should succeed");
 
@@ -79,7 +79,7 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
         .await;
 
     let second_open = project.update(cx, |project, cx| {
-        project.find_or_create_worktree(&second_path, cx)
+        project.find_or_create_worktree(&second_path, true, cx)
     });
 
     project.update(cx, |project, cx| {
@@ -91,12 +91,12 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
         second_open.await.is_err(),
         "pending project open should be invalidated once the current worktree is removed"
     );
-    assert!(cx.update(|cx| project.read(cx).worktree(cx)).is_none());
+    assert!(cx.update(|cx| project.read(cx).root_worktree(cx)).is_none());
     assert!(cx.update(|cx| project.read(cx).root(cx)).is_none());
 }
 
 #[gpui::test]
-async fn test_open_local_project_creates_worktree(cx: &mut TestAppContext) {
+async fn test_open_project_creates_worktree(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
@@ -104,7 +104,7 @@ async fn test_open_local_project_creates_worktree(cx: &mut TestAppContext) {
     let project_path = temp_fs.path().join("project");
 
     let project = cx
-        .update(|cx| Project::open_local(temp_fs.clone(), project_path.clone(), cx))
+        .update(|cx| Project::open(temp_fs.clone(), project_path.clone(), cx))
         .await
         .expect("project open should succeed");
 
@@ -114,11 +114,64 @@ async fn test_open_local_project_creates_worktree(cx: &mut TestAppContext) {
 
     let (current_worktree, current_root) = cx.update(|cx| {
         let project = project.read(cx);
-        (project.worktree(cx), project.root(cx))
+        (project.root_worktree(cx), project.root(cx))
     });
 
     assert!(current_worktree.is_some());
     assert_eq!(current_root, Some(project_path));
+}
+
+#[gpui::test]
+async fn test_open_buffer_at_uses_hidden_worktree_for_external_file(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(path!("project"), Value::default());
+    let settings_content = indoc! {r#"
+        {
+          "ui_font_size": 13,
+          "buffer_font_size": 13
+        }
+    "#};
+    temp_fs.insert_tree(path!("settings.json"), json!(settings_content));
+
+    let project_path = temp_fs.path().join("project");
+    let settings_path = temp_fs.path().join("settings.json");
+
+    let project = cx
+        .update(|cx| Project::open(temp_fs.clone(), project_path.clone(), cx))
+        .await
+        .expect("project open should succeed");
+
+    project
+        .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
+        .await;
+
+    let buffer = project
+        .update(cx, |project, cx| project.open_buffer_at(&settings_path, cx))
+        .await
+        .expect("external file should open");
+
+    let (buffer_text, opened_path) = buffer.read_with(cx, |buffer, cx| {
+        (
+            buffer.as_rope().to_string(),
+            buffer.project_path(cx).expect("buffer should have a path"),
+        )
+    });
+    let hidden_worktree = cx.update(|cx| {
+        project
+            .read(cx)
+            .worktree_for_id(opened_path.worktree_id, cx)
+            .expect("hidden worktree should exist")
+    });
+
+    assert_eq!(buffer_text, settings_content);
+    assert_eq!(
+        cx.update(|cx| project.read(cx).root(cx)),
+        Some(project_path)
+    );
+    assert!(opened_path.path.is_empty());
+    assert!(!hidden_worktree.read_with(cx, |worktree, _| worktree.is_visible()));
 }
 
 #[gpui::test]
@@ -133,7 +186,7 @@ async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAp
     let second_path = temp_fs.path().join("second");
 
     let project = cx
-        .update(|cx| Project::open_local(temp_fs.clone(), first_path.clone(), cx))
+        .update(|cx| Project::open(temp_fs.clone(), first_path.clone(), cx))
         .await
         .expect("project open should succeed");
 
@@ -141,12 +194,12 @@ async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAp
         .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
         .await;
 
-    let first_worktree = cx.update(|cx| project.read(cx).worktree(cx)).unwrap();
+    let first_worktree = cx.update(|cx| project.read(cx).root_worktree(cx)).unwrap();
     let first_worktree_id = first_worktree.read_with(cx, |worktree, _| worktree.id());
 
-    let second_worktree = project
+    let (second_worktree, _) = project
         .update(cx, |project, cx| {
-            project.find_or_create_worktree(&second_path, cx)
+            project.find_or_create_worktree(&second_path, true, cx)
         })
         .await
         .expect("second project open should succeed");
@@ -161,7 +214,7 @@ async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAp
     let current_worktree_id = cx.update(|cx| {
         project
             .read(cx)
-            .worktree(cx)
+            .root_worktree(cx)
             .map(|worktree| worktree.read(cx).id())
     });
     assert_ne!(current_worktree_id, Some(first_worktree_id));
@@ -180,7 +233,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
     let alternate_project_path = canonical_project_path.join("..").join("project");
 
     let project = cx
-        .update(|cx| Project::open_local(temp_fs.clone(), canonical_project_path.clone(), cx))
+        .update(|cx| Project::open(temp_fs.clone(), canonical_project_path.clone(), cx))
         .await
         .expect("project open should succeed");
 
@@ -188,10 +241,10 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
         .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
         .await;
 
-    let first_worktree = cx.update(|cx| project.read(cx).worktree(cx)).unwrap();
-    let second_worktree = project
+    let first_worktree = cx.update(|cx| project.read(cx).root_worktree(cx)).unwrap();
+    let (second_worktree, _) = project
         .update(cx, |project, cx| {
-            project.find_or_create_worktree(&alternate_project_path, cx)
+            project.find_or_create_worktree(&alternate_project_path, true, cx)
         })
         .await
         .expect("canonicalized project open should reuse the current worktree");
@@ -222,7 +275,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
         .unwrap();
 
     let project = cx
-        .update(|cx| Project::open_local(temp_fs.clone(), alias_project_path.clone(), cx))
+        .update(|cx| Project::open(temp_fs.clone(), alias_project_path.clone(), cx))
         .await
         .expect("project open should succeed");
 
@@ -230,16 +283,16 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
         .read_with(cx, |project, cx| project.wait_for_initial_scan(cx))
         .await;
 
-    let first_worktree = cx.update(|cx| project.read(cx).worktree(cx)).unwrap();
+    let first_worktree = cx.update(|cx| project.read(cx).root_worktree(cx)).unwrap();
 
     assert_eq!(
         cx.update(|cx| project.read(cx).root(cx)),
         Some(project_path.clone())
     );
 
-    let second_worktree = project
+    let (second_worktree, _) = project
         .update(cx, |project, cx| {
-            project.find_or_create_worktree(&project_path, cx)
+            project.find_or_create_worktree(&project_path, true, cx)
         })
         .await
         .expect("second project open should succeed");
@@ -329,12 +382,12 @@ async fn test_buffer_identity_across_renames(cx: &mut TestAppContext) {
 
     let project_path = temp_fs.path().join(path!("project"));
     let project = Project::test_new(temp_fs, &project_path, cx).await;
-    let worktree = project.update(cx, |project, cx| project.worktree(cx).unwrap());
+    let worktree = project.update(cx, |project, cx| project.root_worktree(cx).unwrap());
     let worktree_id = worktree.update(cx, |worktree, _| worktree.id());
 
     let entry_id_for_path = |path: &'static str, cx: &mut TestAppContext| {
         project.update(cx, |project, cx| {
-            let worktree = project.worktree(cx).unwrap();
+            let worktree = project.root_worktree(cx).unwrap();
             worktree.read(cx).entry_for_path(rel_path(path)).unwrap().id
         })
     };

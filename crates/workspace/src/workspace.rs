@@ -686,7 +686,7 @@ impl Workspace {
         rx
     }
 
-    pub fn open_local(
+    pub fn open(
         path: PathBuf,
         shared_state: Arc<SharedState>,
         requesting_window: Option<WindowHandle<Root>>,
@@ -701,7 +701,7 @@ impl Workspace {
 
         cx.spawn(async move |cx| {
             let project = cx
-                .update(|cx| Project::open_local(shared_state.fs.clone(), path.clone(), cx))
+                .update(|cx| Project::open(shared_state.fs.clone(), path.clone(), cx))
                 .await?;
             let workspace_id = workspace_db.next_id().await?;
 
@@ -804,7 +804,7 @@ impl Workspace {
         let requesting_window = window.window_handle().downcast::<Root>();
         let current_workspace = cx.entity();
 
-        let has_worktree = self.project.read(cx).worktree(cx).is_some();
+        let has_worktree = self.project.read(cx).root_worktree(cx).is_some();
         let has_dirty_items = self.pane.read(cx).items().any(|item| item.is_dirty(cx));
         let is_empty_workspace = !has_worktree && !has_dirty_items;
         if is_empty_workspace {
@@ -846,7 +846,7 @@ impl Workspace {
 
             let OpenResult { window, workspace } = cx
                 .update(|_, cx| {
-                    Workspace::open_local(path, shared_state, requesting_window, open_mode, cx)
+                    Workspace::open(path, shared_state, requesting_window, open_mode, cx)
                 })?
                 .await?;
 
@@ -1008,12 +1008,11 @@ impl Workspace {
     }
 
     pub fn worktree_scan_complete(&self, cx: &App) -> impl Future<Output = ()> + 'static + use<> {
-        let scan_complete = self.project().read(cx).worktree(cx).and_then(|worktree| {
-            worktree
-                .read(cx)
-                .as_local()
-                .map(|worktree| worktree.scan_complete())
-        });
+        let scan_complete = self
+            .project()
+            .read(cx)
+            .root_worktree(cx)
+            .map(|worktree| worktree.read(cx).scan_complete());
 
         async move {
             if let Some(scan_complete) = scan_complete {
@@ -1640,7 +1639,7 @@ mod tests {
 
         let (worktree_id, first_entry_id, first_path, second_entry_id, second_path) = project
             .update(cx, |project, cx| {
-                let worktree = project.worktree(cx).unwrap();
+                let worktree = project.root_worktree(cx).unwrap();
                 let worktree = worktree.read(cx);
                 let first_entry = worktree.entry_for_path(rel_path("first.toml")).unwrap();
                 let second_entry = worktree.entry_for_path(rel_path("second.toml")).unwrap();
@@ -1775,7 +1774,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
@@ -1853,13 +1852,13 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
         let second_open = workspace.update_in(cx, |workspace, _, cx| {
             workspace.project().update(cx, |project, cx| {
-                project.find_or_create_worktree(&second_path, cx)
+                project.find_or_create_worktree(&second_path, true, cx)
             })
         });
 
@@ -1877,7 +1876,7 @@ mod tests {
         );
 
         let current_worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx)
+            workspace.project().read(cx).root_worktree(cx)
         });
         assert!(current_worktree.is_none());
     }
@@ -1949,7 +1948,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
@@ -2499,7 +2498,7 @@ mod tests {
                 workspace
                     .project()
                     .read(cx)
-                    .worktree(cx)
+                    .root_worktree(cx)
                     .map(|worktree| worktree.read(cx).id())
             })
             .unwrap();
@@ -2515,14 +2514,16 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
             (
-                project.worktree(cx).map(|worktree| worktree.read(cx).id()),
+                project
+                    .root_worktree(cx)
+                    .map(|worktree| worktree.read(cx).id()),
                 project.root(cx),
             )
         });
@@ -2568,7 +2569,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = first_workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
@@ -2641,7 +2642,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = first_workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
@@ -2656,7 +2657,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let second_worktree = second_workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         second_worktree.flush_fs_events(cx).await;
 
@@ -2711,7 +2712,7 @@ mod tests {
                 workspace
                     .project()
                     .read(cx)
-                    .worktree(cx)
+                    .root_worktree(cx)
                     .map(|worktree| worktree.read(cx).id())
             })
             .unwrap();
@@ -2732,14 +2733,16 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
             (
-                project.worktree(cx).map(|worktree| worktree.read(cx).id()),
+                project
+                    .root_worktree(cx)
+                    .map(|worktree| worktree.read(cx).id()),
                 project.root(cx),
             )
         });
@@ -2800,7 +2803,9 @@ mod tests {
         let (first_worktree_id, first_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
             (
-                project.worktree(cx).map(|worktree| worktree.read(cx).id()),
+                project
+                    .root_worktree(cx)
+                    .map(|worktree| worktree.read(cx).id()),
                 project.root(cx),
             )
         });
@@ -2823,7 +2828,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
@@ -2836,7 +2841,9 @@ mod tests {
         let (second_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
             (
-                project.worktree(cx).map(|worktree| worktree.read(cx).id()),
+                project
+                    .root_worktree(cx)
+                    .map(|worktree| worktree.read(cx).id()),
                 project.root(cx),
             )
         });
@@ -2905,7 +2912,7 @@ mod tests {
                 workspace
                     .project()
                     .read(cx)
-                    .worktree(cx)
+                    .root_worktree(cx)
                     .map(|worktree| worktree.read(cx).id())
             })
             .unwrap();
@@ -2921,14 +2928,16 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
         let (current_worktree_id, current_root) = workspace.update_in(cx, |workspace, _, cx| {
             let project = workspace.project().read(cx);
             (
-                project.worktree(cx).map(|worktree| worktree.read(cx).id()),
+                project
+                    .root_worktree(cx)
+                    .map(|worktree| worktree.read(cx).id()),
                 project.root(cx),
             )
         });

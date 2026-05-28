@@ -38,9 +38,8 @@ impl EditorTestContext {
     }
 
     fn new_with_mode(cx: &mut TestAppContext, mode: EditorMode) -> Self {
-        let window_handle = cx.add_window(move |window, cx| {
-            Editor::new(mode, Editor::local_multibuffer(cx), window, cx)
-        });
+        let window_handle = cx
+            .add_window(move |window, cx| Editor::new(mode, Editor::empty_buffer(cx), window, cx));
         let window: AnyWindowHandle = window_handle.into();
         let editor_handle = window.downcast::<Editor>().unwrap();
         let mut visual_cx = VisualTestContext::from_window(window, cx);

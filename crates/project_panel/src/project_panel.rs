@@ -1051,7 +1051,7 @@ impl ProjectPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(selection_entry) = self.selection
-            && let Some(worktree) = self.project.read(cx).worktree(cx)
+            && let Some(worktree) = self.project.read(cx).root_worktree(cx)
             && let Some(entry) = worktree.read(cx).entry_for_id(selection_entry.0).cloned()
         {
             #[cfg(target_os = "windows")]
@@ -1989,7 +1989,7 @@ impl ProjectPanel {
             return None;
         }
 
-        let worktree = self.project.read(cx).worktree(cx)?;
+        let worktree = self.project.read(cx).root_worktree(cx)?;
         let worktree = worktree.read(cx);
         let latest_entry = sanitized_entries
             .iter()
@@ -2569,7 +2569,7 @@ impl Panel for ProjectPanel {
         self.pane
             .upgrade()
             .is_some_and(|pane| !pane.read(cx).should_display_welcome_page())
-            && self.project.read(cx).worktree(cx).is_some()
+            && self.project.read(cx).root_worktree(cx).is_some()
     }
 }
 
@@ -2828,7 +2828,7 @@ mod tests {
     fn toggle_expand_dir(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
         let path = rel_path(path);
         panel.update_in(cx, |panel, window, cx| {
-            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+            if let Some(worktree) = panel.project.read(cx).root_worktree(cx) {
                 let worktree = worktree.read(cx);
                 if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
                     && let Some(entry) = worktree.entry_for_path(relative_path)
@@ -2846,7 +2846,7 @@ mod tests {
     fn select_path(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
         let path = rel_path(path);
         panel.update_in(cx, |panel, window, cx| {
-            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+            if let Some(worktree) = panel.project.read(cx).root_worktree(cx) {
                 let worktree = worktree.read(cx);
                 if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
                     && let Some(entry) = worktree.entry_for_path(relative_path)
@@ -2864,7 +2864,7 @@ mod tests {
     fn select_path_with_mark(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
         let path = rel_path(path);
         panel.update_in(cx, |panel, window, cx| {
-            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+            if let Some(worktree) = panel.project.read(cx).root_worktree(cx) {
                 let worktree = worktree.read(cx);
                 if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
                     && let Some(entry) = worktree.entry_for_path(relative_path)
@@ -2948,7 +2948,7 @@ mod tests {
         cx: &mut VisualTestContext,
     ) {
         workspace.update_in(cx, |workspace, _, cx| {
-            let worktree = workspace.project().read(cx).worktree(cx).unwrap();
+            let worktree = workspace.project().read(cx).root_worktree(cx).unwrap();
             let worktree_id = worktree.read(cx).id();
 
             let opened_project_paths = workspace
@@ -3100,7 +3100,7 @@ mod tests {
         );
 
         let is_request = panel.update(cx, |panel, cx| {
-            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             worktree
                 .read(cx)
                 .entry_for_path(rel_path("New request.toml"))
@@ -3325,7 +3325,7 @@ mod tests {
         );
 
         let first_entry = panel.update(cx, |panel, cx| {
-            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             worktree
                 .read(cx)
                 .entry_for_path(rel_path("collection/nested/first.toml"))
@@ -3333,7 +3333,7 @@ mod tests {
                 .id
         });
         let fourth_entry = panel.update(cx, |panel, cx| {
-            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             worktree
                 .read(cx)
                 .entry_for_path(rel_path("other/fourth.toml"))

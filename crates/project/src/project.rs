@@ -1,9 +1,10 @@
+pub mod buffer_store;
 pub mod request_buffer_store;
 pub mod worktree_store;
 
 pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
-    Entry, EntryKind, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
+    Entry, EntryKind, File, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
     RequestFileState, Snapshot, UpdatedEntriesSet, Worktree, WorktreeId, request_method_label,
 };
@@ -19,9 +20,11 @@ use std::{
 };
 
 use fs::{Fs, MTime};
+use language::{Buffer, BufferEvent};
 use util::{ResultExt, path::PathStyle, rel_path::RelPath};
 
 use crate::{
+    buffer_store::{BufferStore, BufferStoreEvent},
     request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
 };
@@ -155,8 +158,44 @@ impl ProjectItem for RequestBuffer {
     }
 }
 
+impl ProjectItem for Buffer {
+    fn try_open(
+        project: &Entity<Project>,
+        path: &ProjectPath,
+        cx: &mut App,
+    ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
+        if project
+            .read(cx)
+            .entry_for_path(path, cx)
+            .is_some_and(|entry| entry.is_request)
+        {
+            return None;
+        }
+
+        Some(project.update(cx, |project, cx| project.open_buffer(path.clone(), cx)))
+    }
+
+    fn entry_id(&self, _: &App) -> Option<ProjectEntryId> {
+        File::from_dyn(self.file()).and_then(File::project_entry_id)
+    }
+
+    fn project_path(&self, cx: &App) -> Option<ProjectPath> {
+        let file = self.file()?;
+
+        Some(ProjectPath {
+            worktree_id: file.worktree_id(cx),
+            path: file.path().clone(),
+        })
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.is_dirty()
+    }
+}
+
 pub struct Project {
     worktree_store: Entity<WorktreeStore>,
+    buffer_store: Entity<BufferStore>,
     request_buffer_store: Entity<RequestBufferStore>,
     active_entry: Option<ProjectEntryId>,
     metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
@@ -177,12 +216,20 @@ impl Project {
     pub fn new(fs: Arc<dyn Fs>, cx: &mut Context<Self>) -> Self {
         let worktree_store =
             cx.new(move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx)));
+        let buffer_store = cx.new({
+            let worktree_store = worktree_store.clone();
+            move |cx| BufferStore::new(&worktree_store, cx)
+        });
         let request_buffer_store = cx.new({
             let worktree_store = worktree_store.clone();
             move |cx| RequestBufferStore::new(worktree_store.clone(), cx)
         });
         cx.subscribe(&worktree_store, |this, _, event, cx| {
             this.on_worktree_store_event(event, cx);
+        })
+        .detach();
+        cx.subscribe(&buffer_store, |_, _, event, cx| {
+            Self::on_buffer_store_event(event, cx);
         })
         .detach();
         cx.subscribe(&request_buffer_store, |_, _, event, cx| {
@@ -192,20 +239,21 @@ impl Project {
 
         Self {
             worktree_store,
+            buffer_store,
             request_buffer_store,
             active_entry: None,
             metadata_by_entry_id: HashMap::new(),
         }
     }
 
-    pub fn open_local(
+    pub fn open(
         fs: Arc<dyn Fs>,
         abs_path: PathBuf,
         cx: &mut App,
     ) -> Task<anyhow::Result<Entity<Self>>> {
         let project = cx.new(move |cx| Self::new(fs.clone(), cx));
         let open_task = project.update(cx, |project, cx| {
-            project.find_or_create_worktree(abs_path, cx)
+            project.find_or_create_worktree(abs_path, true, cx)
         });
 
         cx.spawn(async move |_| {
@@ -227,17 +275,15 @@ impl Project {
             })
         });
 
-        let worktree = project
+        let (worktree, _) = project
             .update(cx, |project, cx| {
-                project.find_or_create_worktree(root_path, cx)
+                project.find_or_create_worktree(root_path, true, cx)
             })
             .await
             .unwrap();
 
         worktree
-            .read_with(cx, |worktree, _| {
-                worktree.as_local().unwrap().scan_complete()
-            })
+            .read_with(cx, |worktree, _| worktree.scan_complete())
             .await;
 
         project
@@ -270,6 +316,34 @@ impl Project {
         }
     }
 
+    fn on_buffer_store_event(event: &BufferStoreEvent, cx: &mut Context<Self>) {
+        match event {
+            BufferStoreEvent::BufferAdded(buffer) => {
+                Self::register_buffer(buffer, cx);
+            }
+            BufferStoreEvent::BufferDropped(_) | BufferStoreEvent::BufferChangedFilePath { .. } => {
+            }
+        }
+    }
+
+    fn register_buffer(buffer: &Entity<Buffer>, cx: &mut Context<Self>) {
+        cx.subscribe(buffer, |this, buffer, event, cx| {
+            this.on_buffer_event(&buffer, event, cx);
+        })
+        .detach();
+    }
+
+    fn on_buffer_event(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        event: &BufferEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if event == &BufferEvent::ReloadNeeded {
+            self.reload_buffer(buffer, cx).detach_and_log_err(cx);
+        }
+    }
+
     fn on_request_buffer_store_event(event: &RequestBufferStoreEvent, cx: &mut Context<Self>) {
         match event {
             RequestBufferStoreEvent::BufferAdded(buffer) => {
@@ -299,8 +373,25 @@ impl Project {
         }
     }
 
-    pub fn worktree(&self, cx: &App) -> Option<Entity<Worktree>> {
-        self.worktree_store.read(cx).worktree()
+    #[inline]
+    pub fn worktrees<'a>(
+        &self,
+        cx: &'a App,
+    ) -> impl 'a + DoubleEndedIterator<Item = Entity<Worktree>> {
+        self.worktree_store.read(cx).worktrees()
+    }
+
+    #[inline]
+    pub fn visible_worktrees<'a>(
+        &'a self,
+        cx: &'a App,
+    ) -> impl 'a + DoubleEndedIterator<Item = Entity<Worktree>> {
+        self.worktree_store.read(cx).visible_worktrees(cx)
+    }
+
+    #[inline]
+    pub fn root_worktree(&self, cx: &App) -> Option<Entity<Worktree>> {
+        self.worktree_store.read(cx).root_worktree(cx)
     }
 
     #[inline]
@@ -347,10 +438,12 @@ impl Project {
     pub fn find_or_create_worktree(
         &mut self,
         abs_path: impl AsRef<Path>,
+        visible: bool,
         cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<Entity<Worktree>>> {
-        self.worktree_store
-            .update(cx, |store, cx| store.find_or_create_worktree(abs_path, cx))
+    ) -> Task<anyhow::Result<(Entity<Worktree>, Arc<RelPath>)>> {
+        self.worktree_store.update(cx, |store, cx| {
+            store.find_or_create_worktree(abs_path, visible, cx)
+        })
     }
 
     pub fn remove_worktree(&mut self, cx: &mut Context<Self>) {
@@ -606,8 +699,54 @@ impl Project {
     }
 
     pub fn absolutize(&self, path: &RelPath, cx: &App) -> Option<PathBuf> {
-        let worktree = self.worktree_store.read(cx).worktree()?;
-        Some(worktree.read(cx).absolutize(path))
+        let root_worktree = self.root_worktree(cx)?;
+        Some(root_worktree.read(cx).absolutize(path))
+    }
+
+    pub fn open_buffer_at(
+        &mut self,
+        abs_path: impl AsRef<Path>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<Entity<Buffer>>> {
+        let worktree_task = self.find_or_create_worktree(abs_path.as_ref(), false, cx);
+        cx.spawn(async move |this, cx| {
+            let (worktree, relative_path) = worktree_task.await?;
+            this.update(cx, |this, cx| {
+                this.open_buffer((worktree.read(cx).id(), relative_path), cx)
+            })?
+            .await
+        })
+    }
+
+    pub fn open_buffer(
+        &mut self,
+        path: impl Into<ProjectPath>,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Buffer>>> {
+        self.buffer_store
+            .update(cx, |store, cx| store.open_buffer(path.into(), cx))
+    }
+
+    pub fn save_buffer(
+        &self,
+        buffer: Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.buffer_store
+            .update(cx, |store, cx| store.save_buffer(buffer, cx))
+    }
+
+    pub fn reload_buffer(
+        &self,
+        buffer: &Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.buffer_store
+            .update(cx, |store, cx| store.reload_buffer(buffer, cx))
+    }
+
+    pub fn get_open_buffer(&self, path: &ProjectPath, cx: &App) -> Option<Entity<Buffer>> {
+        self.buffer_store.read(cx).get_by_path(path)
     }
 
     fn open_request_buffer(
