@@ -74,6 +74,15 @@ impl Icon {
         }
     }
 
+    pub fn from_path(path: impl Into<SharedString>) -> Self {
+        Self {
+            path: path.into(),
+            color: Color::default(),
+            size: IconSize::default().rems(),
+            transformation: Transformation::default(),
+        }
+    }
+
     pub fn color(mut self, color: Color) -> Self {
         self.color = color;
         self

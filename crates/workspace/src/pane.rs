@@ -985,7 +985,7 @@ impl Pane {
             .child(
                 ui::h_flex()
                     .id(("pane-tab-content", item_index))
-                    .gap_1()
+                    .gap_2()
                     .when_some(icon, |this, icon| this.child(icon))
                     .child(label)
                     .map(|this| match tab_tooltip_content {

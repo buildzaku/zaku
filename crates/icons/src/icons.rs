@@ -1,3 +1,7 @@
+mod file_icons;
+
+pub use file_icons::FileIcons;
+
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};

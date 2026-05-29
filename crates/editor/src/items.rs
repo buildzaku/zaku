@@ -1,9 +1,11 @@
 use gpui::{App, Context, Entity, EntityId, SharedString, Task, Window};
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, path::Path, sync::Arc};
 
+use icons::FileIcons;
 use language::Buffer;
 use multi_buffer::MultiBuffer;
 use project::Project;
+use ui::Icon;
 use workspace::{Item, ItemBufferKind, ItemEvent, ProjectItem, pane::Pane};
 
 use crate::{Editor, EditorEvent, scroll::Autoscroll};
@@ -41,6 +43,12 @@ impl Item for Editor {
                     .into_owned()
                     .into()
             })
+    }
+
+    fn tab_icon(&self, _: &Window, cx: &App) -> Option<Icon> {
+        path_for_buffer(&self.buffer, 0, true, cx)
+            .and_then(|path| FileIcons::get_icon(Path::new(path.as_ref()), cx))
+            .map(Icon::from_path)
     }
 
     fn for_each_project_item(

@@ -1545,6 +1545,7 @@ dependencies = [
  "actions",
  "anyhow",
  "gpui",
+ "icons",
  "indoc",
  "input",
  "itertools 0.14.0",
