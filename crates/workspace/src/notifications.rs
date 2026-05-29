@@ -5,12 +5,20 @@ use gpui::{
 use std::{
     any::TypeId,
     ops::{Deref, DerefMut},
+    sync::{Arc, LazyLock},
     time::Duration,
 };
 
+use parking_lot::Mutex;
 use ui::{ButtonCommon, Clickable, IconButton, IconName, Label, StyledExt, Tooltip};
 
-use crate::{Toast, Workspace};
+use crate::{Root, Toast, Workspace};
+
+static APP_NOTIFICATIONS: LazyLock<Mutex<AppNotifications>> = LazyLock::new(|| {
+    Mutex::new(AppNotifications {
+        app_notifications: Vec::new(),
+    })
+});
 
 #[derive(Default)]
 pub struct Notifications {
@@ -170,6 +178,110 @@ impl Workspace {
     pub fn unsuppress(&mut self, notification_id: &NotificationId) {
         self.suppressed_notifications.remove(notification_id);
     }
+
+    pub fn show_initial_notifications(&mut self, cx: &mut Context<Self>) {
+        let app_notifications = APP_NOTIFICATIONS
+            .lock()
+            .app_notifications
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        for (id, build_notification) in app_notifications {
+            self.show_notification_without_handling_dismiss_events(&id, cx, |cx| {
+                build_notification(cx)
+            });
+        }
+    }
+}
+
+struct AppNotifications {
+    app_notifications: Vec<(
+        NotificationId,
+        Arc<dyn Fn(&mut Context<Workspace>) -> AnyView + Send + Sync>,
+    )>,
+}
+
+impl AppNotifications {
+    pub fn insert(
+        &mut self,
+        id: NotificationId,
+        build_notification: Arc<dyn Fn(&mut Context<Workspace>) -> AnyView + Send + Sync>,
+    ) {
+        self.remove(&id);
+        self.app_notifications.push((id, build_notification));
+    }
+
+    pub fn remove(&mut self, id: &NotificationId) {
+        self.app_notifications
+            .retain(|(existing_id, _)| existing_id != id);
+    }
+}
+
+pub fn show_app_notification<V: Notification + 'static>(
+    id: NotificationId,
+    cx: &mut App,
+    build_notification: impl Fn(&mut Context<Workspace>) -> Entity<V> + 'static + Send + Sync,
+) {
+    cx.defer(move |cx| {
+        let build_notification: Arc<dyn Fn(&mut Context<Workspace>) -> AnyView + Send + Sync> =
+            Arc::new({
+                let id = id.clone();
+                move |cx| {
+                    let notification = build_notification(cx);
+                    cx.subscribe(&notification, {
+                        let id = id.clone();
+                        move |_, _, _: &DismissEvent, cx| {
+                            dismiss_app_notification(&id, cx);
+                        }
+                    })
+                    .detach();
+                    cx.subscribe(&notification, {
+                        let id = id.clone();
+                        move |workspace: &mut Workspace, _, _: &SuppressEvent, cx| {
+                            workspace.suppress_notification(&id, cx);
+                        }
+                    })
+                    .detach();
+                    notification.into()
+                }
+            });
+
+        APP_NOTIFICATIONS
+            .lock()
+            .insert(id.clone(), build_notification.clone());
+
+        for window in cx.windows() {
+            if let Some(root) = window.downcast::<Root>() {
+                root.update(cx, |root, _, cx| {
+                    root.workspace().update(cx, |workspace, cx| {
+                        workspace.show_notification_without_handling_dismiss_events(
+                            &id,
+                            cx,
+                            |cx| build_notification(cx),
+                        );
+                    });
+                })
+                .ok();
+            }
+        }
+    });
+}
+
+pub fn dismiss_app_notification(id: &NotificationId, cx: &mut App) {
+    let id = id.clone();
+    cx.defer(move |cx| {
+        APP_NOTIFICATIONS.lock().remove(&id);
+        for window in cx.windows() {
+            if let Some(root) = window.downcast::<Root>() {
+                root.update(cx, |root, _, cx| {
+                    root.workspace().update(cx, |workspace, cx| {
+                        workspace.dismiss_notification(&id, cx);
+                    });
+                })
+                .ok();
+            }
+        }
+    });
 }
 
 pub trait DetachAndPromptErr<R> {

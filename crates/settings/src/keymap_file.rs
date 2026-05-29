@@ -133,7 +133,9 @@ impl KeymapFile {
         }
 
         let mut deserializer = Deserializer::from_str(content);
-        Ok(serde_path_to_error::deserialize(&mut deserializer)?)
+        let keymap_file = serde_path_to_error::deserialize(&mut deserializer)?;
+        deserializer.end()?;
+        Ok(keymap_file)
     }
 
     pub fn load_asset(asset_path: &str, cx: &App) -> anyhow::Result<Vec<KeyBinding>> {

@@ -37,6 +37,7 @@ indoc = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 metadata = { workspace = true }
+parking_lot = { workspace = true }
 project = { workspace = true }
 session = { workspace = true }
 serde = { workspace = true }

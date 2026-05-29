@@ -4,7 +4,7 @@ mod app_menu;
 pub use app_menu::app_menu;
 
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{App, AsyncApp, KeyBinding, Task, prelude::*};
+use gpui::{Action, App, AsyncApp, DismissEvent, KeyBinding, Task, prelude::*};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use project_panel::ProjectPanel;
@@ -13,7 +13,10 @@ use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use workspace::{
     CloseIntent, DockPosition, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace,
     SharedState, Toast, Workspace, WorkspaceDb, create_and_open_file,
-    notifications::NotificationId,
+    notifications::{
+        NotificationId, dismiss_app_notification, show_app_notification,
+        simple_message_notification::MessageNotification,
+    },
 };
 
 pub fn init(cx: &mut App) {
@@ -173,9 +176,7 @@ pub fn handle_settings_file_changes(
 
     cx.update_global::<SettingsStore, _>(|store, cx| {
         let result = store.set_user_settings(&user_content, cx);
-        if let settings::ParseStatus::Failed { error } = &result {
-            log::error!("Failed to load user settings: {error}");
-        }
+        notify_settings_file_errors(&result, cx);
     });
 
     cx.spawn(async move |cx| {
@@ -183,9 +184,7 @@ pub fn handle_settings_file_changes(
         while let Some(content) = user_settings_file_rx.next().await {
             cx.update_global(|store: &mut SettingsStore, cx| {
                 let result = store.set_user_settings(&content, cx);
-                if let settings::ParseStatus::Failed { error } = &result {
-                    log::error!("Failed to load user settings: {error}");
-                }
+                notify_settings_file_errors(&result, cx);
                 cx.refresh_windows();
             });
         }
@@ -198,6 +197,8 @@ pub fn handle_keymap_file_changes(
     user_keymap_watcher: Task<()>,
     cx: &mut App,
 ) {
+    struct KeymapParseErrorNotification;
+
     let (keyboard_layout_tx, mut keyboard_layout_rx) = futures::channel::mpsc::unbounded();
 
     #[cfg(target_os = "windows")]
@@ -228,6 +229,8 @@ pub fn handle_keymap_file_changes(
 
     load_default_keymap(cx);
 
+    let notification_id = NotificationId::unique::<KeymapParseErrorNotification>();
+
     cx.spawn(async move |cx| {
         let _user_keymap_watcher = user_keymap_watcher;
         let mut user_keymap_content = String::new();
@@ -245,6 +248,7 @@ pub fn handle_keymap_file_changes(
             cx.update(|cx| match KeymapFile::load(&user_keymap_content, cx) {
                 KeymapFileLoadResult::Success { key_bindings } => {
                     reload_keymaps(cx, key_bindings);
+                    dismiss_app_notification(&notification_id.clone(), cx);
                 }
                 KeymapFileLoadResult::SomeFailedToLoad {
                     key_bindings,
@@ -254,9 +258,11 @@ pub fn handle_keymap_file_changes(
                         reload_keymaps(cx, key_bindings);
                     }
                     log::error!("Failed to load user keymap: {error_message}");
+                    show_keymap_file_load_error(notification_id.clone(), &error_message, cx);
                 }
                 KeymapFileLoadResult::JsonParseFailure { error } => {
                     log::error!("Failed to parse user keymap: {error}");
+                    show_keymap_file_json_error(notification_id.clone(), &error, cx);
                 }
             });
         }
@@ -288,6 +294,66 @@ fn load_default_keymap(cx: &mut App) {
         Err(error) => panic!("Failed to load default keymap: {error}"),
     };
     cx.bind_keys(key_bindings);
+}
+
+fn notify_settings_file_errors(result: &settings::ParseStatus, cx: &mut App) {
+    let id = NotificationId::named("failed-to-parse-settings".into());
+    match result {
+        settings::ParseStatus::Success => {
+            dismiss_app_notification(&id, cx);
+        }
+        settings::ParseStatus::Failed { error } => {
+            log::error!("Failed to load user settings: {error}");
+            let message = format!("Invalid user settings file\n{error}");
+            show_app_notification(id, cx, move |cx| {
+                cx.new(|cx| {
+                    MessageNotification::new(message.clone(), cx)
+                        .primary_message("Open Settings File")
+                        .primary_on_click(|window, cx| {
+                            window
+                                .dispatch_action(actions::zaku::OpenSettingsFile.boxed_clone(), cx);
+                            cx.emit(DismissEvent);
+                        })
+                })
+            });
+        }
+    }
+}
+
+fn show_keymap_file_json_error(
+    notification_id: NotificationId,
+    error: &anyhow::Error,
+    cx: &mut App,
+) {
+    let message = format!("Invalid user keymap file\n{error}");
+    show_app_notification(notification_id, cx, move |cx| {
+        cx.new(|cx| {
+            MessageNotification::new(message.clone(), cx)
+                .primary_message("Open Keymap File")
+                .primary_on_click(|window, cx| {
+                    window.dispatch_action(actions::zaku::OpenKeymapFile.boxed_clone(), cx);
+                    cx.emit(DismissEvent);
+                })
+        })
+    });
+}
+
+fn show_keymap_file_load_error(notification_id: NotificationId, error_message: &str, cx: &mut App) {
+    let error_message = error_message
+        .strip_prefix("Errors in user keymap file.")
+        .unwrap_or(error_message)
+        .trim_start();
+    let message = format!("Invalid user keymap file\n{error_message}");
+    show_app_notification(notification_id, cx, move |cx| {
+        cx.new(|cx| {
+            MessageNotification::new(message.clone(), cx)
+                .primary_message("Open Keymap File")
+                .primary_on_click(|window, cx| {
+                    window.dispatch_action(actions::zaku::OpenKeymapFile.boxed_clone(), cx);
+                    cx.emit(DismissEvent);
+                })
+        })
+    });
 }
 
 pub async fn restore_or_create_workspace(

@@ -1269,6 +1269,10 @@ impl Workspace {
             _window_appearance_subscription: window_appearance_subscription,
         };
 
+        cx.defer_in(window, move |this, _, cx| {
+            this.show_initial_notifications(cx);
+        });
+
         let pane_focus_handle = this.pane.read(cx).focus_handle(cx);
         window.focus(&pane_focus_handle, cx);
 

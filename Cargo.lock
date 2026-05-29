@@ -8385,6 +8385,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "metadata",
+ "parking_lot",
  "project",
  "serde",
  "serde_json",

@@ -33,6 +33,15 @@ where
         }
     };
 
+    if let Err(error) = deserializer.end() {
+        return (
+            None,
+            ParseStatus::Failed {
+                error: error.to_string(),
+            },
+        );
+    }
+
     if let Some(errors) = ERRORS.with_borrow_mut(|errors| errors.take().filter(|e| !e.is_empty())) {
         let error = errors
             .into_iter()
