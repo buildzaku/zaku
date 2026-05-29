@@ -221,6 +221,7 @@ impl ProjectPanel {
                             project_panel.discard_edit_state(window, cx);
                         }
                     }
+                    EditorEvent::DirtyChanged => {}
                 },
             )
             .detach();
@@ -235,12 +236,20 @@ impl ProjectPanel {
                     ProjectEvent::ActiveEntryChanged(None) => {
                         this.marked_entries.clear();
                     }
-                    ProjectEvent::WorktreeAdded
-                    | ProjectEvent::WorktreeRemoved
-                    | ProjectEvent::WorktreeUpdatedEntries(_) => {
+                    ProjectEvent::WorktreeAdded(worktree_id)
+                    | ProjectEvent::WorktreeUpdatedEntries(worktree_id, _) => {
+                        if project
+                            .read(cx)
+                            .worktree_for_id(*worktree_id, cx)
+                            .is_some_and(|worktree| worktree.read(cx).is_visible())
+                        {
+                            this.update_visible_entries(None, false, false, window, cx);
+                        }
+                    }
+                    ProjectEvent::WorktreeRemoved(_) => {
                         this.update_visible_entries(None, false, false, window, cx);
                     }
-                    ProjectEvent::DeletedEntry(_) => {}
+                    ProjectEvent::DeletedEntry(_, _) => {}
                     ProjectEvent::EntryMetadataUpdated(_) => {
                         cx.notify();
                     }

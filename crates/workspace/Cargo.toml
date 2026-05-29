@@ -49,7 +49,6 @@ util = { workspace = true }
 
 [dev-dependencies]
 db = { workspace = true, features = ["test-support"] }
-editor = { workspace = true }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 http_client = { workspace = true, features = ["test-support"] }

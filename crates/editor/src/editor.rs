@@ -1,5 +1,6 @@
 pub mod display_map;
 mod element;
+mod items;
 mod movement;
 mod scroll;
 mod selections_collection;
@@ -40,7 +41,9 @@ use crate::{
 
 const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
-pub fn init(_cx: &mut App) {
+pub fn init(cx: &mut App) {
+    workspace::register_project_item::<Editor>(cx);
+
     _ = ERASED_EDITOR_FACTORY.set(|window, cx| {
         Arc::new(ErasedEditorImpl(
             cx.new(|cx| Editor::single_line(window, cx)),
@@ -52,6 +55,7 @@ pub fn init(_cx: &mut App) {
 pub enum EditorEvent {
     BufferEdited,
     Blurred,
+    DirtyChanged,
 }
 
 const MAX_SELECTION_HISTORY_LEN: usize = 1024;
@@ -341,6 +345,11 @@ impl Editor {
 
     pub fn full(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let buffer = Self::empty_buffer(cx);
+        Self::new(EditorMode::full(), buffer, window, cx)
+    }
+
+    pub fn for_buffer(buffer: Entity<Buffer>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
         Self::new(EditorMode::full(), buffer, window, cx)
     }
 
@@ -2847,6 +2856,7 @@ impl ErasedEditor for ErasedEditorImpl {
             let event = match event {
                 EditorEvent::BufferEdited => ErasedEditorEvent::BufferEdited,
                 EditorEvent::Blurred => ErasedEditorEvent::Blurred,
+                EditorEvent::DirtyChanged => return,
             };
             (callback)(event, window, cx);
         })

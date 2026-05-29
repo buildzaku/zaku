@@ -1543,6 +1543,7 @@ name = "editor"
 version = "0.0.0"
 dependencies = [
  "actions",
+ "anyhow",
  "gpui",
  "indoc",
  "input",
@@ -1551,12 +1552,14 @@ dependencies = [
  "multi_buffer",
  "num-traits",
  "pretty_assertions",
+ "project",
  "serde",
  "settings",
  "text",
  "theme",
  "ui",
  "util 0.0.0",
+ "workspace",
 ]
 
 [[package]]
@@ -8373,7 +8376,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "db",
- "editor",
  "fs",
  "futures",
  "gpui",

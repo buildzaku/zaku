@@ -297,6 +297,47 @@ pub fn register_project_item<I: ProjectItem>(cx: &mut App) {
     cx.default_global::<ProjectItemRegistry>().register::<I>();
 }
 
+pub fn create_and_open_file(
+    path: &'static Path,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+    default_content: impl FnOnce() -> Cow<'static, str> + Send + 'static,
+) -> Task<anyhow::Result<Box<dyn ItemHandle>>> {
+    cx.spawn_in(window, async move |workspace, cx| {
+        let fs = workspace.read_with(cx, |workspace, _| workspace.shared_state.fs.clone())?;
+
+        match fs.metadata(path).await? {
+            Some(metadata) if metadata.is_dir => {
+                anyhow::bail!("{} is a directory", path.display());
+            }
+            Some(_) => {}
+            None => {
+                let default_content = default_content();
+                fs.write(path, default_content.as_bytes()).await?;
+            }
+        }
+
+        let path = fs
+            .canonicalize(path)
+            .await
+            .unwrap_or_else(|_| path.to_path_buf());
+        let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
+        let (worktree, path) = project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(&path, false, cx)
+            })
+            .await?;
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+        let project_path = ProjectPath { worktree_id, path };
+
+        workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(project_path, None, true, window, cx)
+            })?
+            .await
+    })
+}
+
 fn register_actions(
     shared_state: Arc<SharedState>,
     workspace: &mut Workspace,
@@ -1168,13 +1209,21 @@ impl Workspace {
         let project_subscription = cx.subscribe_in(
             &project,
             window,
-            |workspace: &mut Workspace, _, event, window, cx| match event {
-                ProjectEvent::WorktreeAdded
-                | ProjectEvent::WorktreeRemoved
-                | ProjectEvent::WorktreeUpdatedEntries(_) => {
+            |workspace: &mut Workspace, project, event, window, cx| match event {
+                ProjectEvent::WorktreeAdded(worktree_id)
+                | ProjectEvent::WorktreeUpdatedEntries(worktree_id, _) => {
+                    if project
+                        .read(cx)
+                        .worktree_for_id(*worktree_id, cx)
+                        .is_some_and(|worktree| worktree.read(cx).is_visible())
+                    {
+                        workspace.serialize_workspace(window, cx);
+                    }
+                }
+                ProjectEvent::WorktreeRemoved(_) => {
                     workspace.serialize_workspace(window, cx);
                 }
-                ProjectEvent::DeletedEntry(entry_id) => {
+                ProjectEvent::DeletedEntry(_, entry_id) => {
                     workspace.pane.update(cx, |pane, cx| {
                         pane.handle_deleted_project_item(*entry_id, window, cx);
                     });
@@ -1608,7 +1657,6 @@ mod tests {
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
             crate::init(shared_state, cx);
-            editor::init(cx);
         });
     }
 

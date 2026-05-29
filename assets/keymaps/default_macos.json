@@ -26,6 +26,7 @@
       "alt-shift-enter": "menu::Restart",
       "cmd-shift-n": "workspace::NewWindow",
       "cmd-o": "workspace::Open",
+      "cmd-alt-,": "zaku::OpenSettingsFile",
       "cmd-q": "zaku::Quit"
     }
   },

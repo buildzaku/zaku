@@ -98,6 +98,7 @@ impl EntryMetadataVersion {
 enum EntryMetadataState {
     Pending {
         version: EntryMetadataVersion,
+        metadata: Option<EntryMetadata>,
         _task: Task<()>,
     },
     Loaded {
@@ -116,7 +117,7 @@ impl EntryMetadataState {
     fn metadata(&self) -> Option<&EntryMetadata> {
         match self {
             Self::Loaded { metadata, .. } => Some(metadata),
-            Self::Pending { .. } => None,
+            Self::Pending { metadata, .. } => metadata.as_ref(),
         }
     }
 
@@ -203,10 +204,10 @@ pub struct Project {
 
 pub enum ProjectEvent {
     ActiveEntryChanged(Option<ProjectEntryId>),
-    WorktreeAdded,
-    WorktreeRemoved,
-    WorktreeUpdatedEntries(UpdatedEntriesSet),
-    DeletedEntry(ProjectEntryId),
+    WorktreeAdded(WorktreeId),
+    WorktreeRemoved(WorktreeId),
+    WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
+    DeletedEntry(WorktreeId, ProjectEntryId),
     EntryMetadataUpdated(ProjectEntryId),
 }
 
@@ -291,28 +292,22 @@ impl Project {
 
     fn on_worktree_store_event(&mut self, event: &WorktreeStoreEvent, cx: &mut Context<Self>) {
         match event {
-            WorktreeStoreEvent::WorktreeAdded(_) => {
-                self.metadata_by_entry_id.clear();
-                cx.emit(ProjectEvent::WorktreeAdded);
+            WorktreeStoreEvent::WorktreeAdded(worktree) => {
+                cx.emit(ProjectEvent::WorktreeAdded(worktree.read(cx).id()));
             }
-            WorktreeStoreEvent::WorktreeRemoved => {
-                self.metadata_by_entry_id.clear();
-                cx.emit(ProjectEvent::WorktreeRemoved);
+            WorktreeStoreEvent::WorktreeRemoved(worktree_id) => {
+                cx.emit(ProjectEvent::WorktreeRemoved(*worktree_id));
             }
-            WorktreeStoreEvent::WorktreeUpdatedEntries(changes) => {
-                self.invalidate_entry_metadata(changes);
-                cx.emit(ProjectEvent::WorktreeUpdatedEntries(changes.clone()));
+            WorktreeStoreEvent::WorktreeUpdatedEntries(worktree_id, changes) => {
+                cx.emit(ProjectEvent::WorktreeUpdatedEntries(
+                    *worktree_id,
+                    changes.clone(),
+                ));
             }
-            WorktreeStoreEvent::WorktreeDeletedEntry(entry_id) => {
+            WorktreeStoreEvent::WorktreeDeletedEntry(worktree_id, entry_id) => {
                 self.metadata_by_entry_id.remove(entry_id);
-                cx.emit(ProjectEvent::DeletedEntry(*entry_id));
+                cx.emit(ProjectEvent::DeletedEntry(*worktree_id, *entry_id));
             }
-        }
-    }
-
-    fn invalidate_entry_metadata(&mut self, changes: &UpdatedEntriesSet) {
-        for (_, entry_id, _) in changes.iter() {
-            self.metadata_by_entry_id.remove(entry_id);
         }
     }
 
@@ -565,10 +560,17 @@ impl Project {
             .log_err();
         });
 
+        let metadata = self
+            .metadata_by_entry_id
+            .get(&entry.id)
+            .and_then(EntryMetadataState::metadata)
+            .cloned();
+
         self.metadata_by_entry_id.insert(
             entry.id,
             EntryMetadataState::Pending {
                 version,
+                metadata,
                 _task: metadata_task,
             },
         );

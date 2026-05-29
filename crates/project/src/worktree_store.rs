@@ -77,9 +77,9 @@ impl WorktreeHandle {
 #[derive(Debug)]
 pub enum WorktreeStoreEvent {
     WorktreeAdded(Entity<Worktree>),
-    WorktreeRemoved,
-    WorktreeUpdatedEntries(UpdatedEntriesSet),
-    WorktreeDeletedEntry(ProjectEntryId),
+    WorktreeRemoved(WorktreeId),
+    WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
+    WorktreeDeletedEntry(WorktreeId, ProjectEntryId),
 }
 
 impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
@@ -549,7 +549,8 @@ impl WorktreeStore {
                 if existing_worktree.entity_id() != worktree.entity_id()
                     && existing_worktree.read(cx).is_visible()
                 {
-                    cx.emit(WorktreeStoreEvent::WorktreeRemoved);
+                    let existing_worktree_id = existing_worktree.read(cx).id();
+                    cx.emit(WorktreeStoreEvent::WorktreeRemoved(existing_worktree_id));
                     false
                 } else {
                     true
@@ -565,14 +566,23 @@ impl WorktreeStore {
         debug_assert!(self.worktrees().all(|w| w.read(cx).id() != worktree_id));
         self.worktrees.push(handle);
 
-        cx.subscribe(worktree, |_, _, event: &WorktreeEvent, cx| match event {
-            WorktreeEvent::UpdatedEntries(changes) => {
-                cx.emit(WorktreeStoreEvent::WorktreeUpdatedEntries(changes.clone()));
+        cx.subscribe(worktree, |_, worktree, event: &WorktreeEvent, cx| {
+            let worktree_id = worktree.read(cx).id();
+            match event {
+                WorktreeEvent::UpdatedEntries(changes) => {
+                    cx.emit(WorktreeStoreEvent::WorktreeUpdatedEntries(
+                        worktree_id,
+                        changes.clone(),
+                    ));
+                }
+                WorktreeEvent::DeletedEntry(entry_id) => {
+                    cx.emit(WorktreeStoreEvent::WorktreeDeletedEntry(
+                        worktree_id,
+                        *entry_id,
+                    ));
+                }
+                WorktreeEvent::Deleted => {}
             }
-            WorktreeEvent::DeletedEntry(entry_id) => {
-                cx.emit(WorktreeStoreEvent::WorktreeDeletedEntry(*entry_id));
-            }
-            WorktreeEvent::Deleted => {}
         })
         .detach();
 
@@ -589,7 +599,8 @@ impl WorktreeStore {
                 return false;
             };
             if worktree.read(cx).is_visible() {
-                cx.emit(WorktreeStoreEvent::WorktreeRemoved);
+                let worktree_id = worktree.read(cx).id();
+                cx.emit(WorktreeStoreEvent::WorktreeRemoved(worktree_id));
                 false
             } else {
                 true
