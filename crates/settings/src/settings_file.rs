@@ -132,7 +132,7 @@ mod tests {
         );
 
         temp_fs
-            .create_symlink(&config_dir_path, target_dir_path)
+            .create_symlink(&config_dir_path, target_dir_path.clone())
             .await
             .unwrap();
 
