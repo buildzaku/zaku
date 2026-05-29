@@ -41,9 +41,12 @@ pub fn watch_config_file(
 mod tests {
     use super::*;
 
-    use fs::TempFs;
     use gpui::TestAppContext;
     use indoc::indoc;
+    use serde_json::json;
+    use std::path::Path;
+
+    use fs::{Fs, TempFs};
 
     #[gpui::test]
     async fn test_watch_config_file_uses_empty_string_when_file_is_missing(
@@ -106,5 +109,44 @@ mod tests {
                 { "ui_font_size": 14 }
             "#})
         );
+    }
+
+    #[gpui::test]
+    async fn test_watch_config_file_reloads_when_parent_dir_is_symlink(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let config_dir_path = temp_fs.path().join(".config/zaku");
+        let target_dir_path = temp_fs.path().join("dotfiles/zaku");
+
+        temp_fs.insert_tree(
+            Path::new(""),
+            json!({
+                ".config": {},
+                "dotfiles": {
+                    "zaku": {
+                        "settings.json": "A",
+                    },
+                },
+            }),
+        );
+
+        temp_fs
+            .create_symlink(&config_dir_path, target_dir_path)
+            .await
+            .unwrap();
+
+        let (mut receiver, _watcher) = watch_config_file(
+            &cx.background_executor,
+            temp_fs.clone(),
+            config_dir_path.join("settings.json"),
+        );
+
+        assert_eq!(receiver.next().await.as_deref(), Some("A"));
+        temp_fs
+            .write(&target_dir_path.join("settings.json"), b"B")
+            .await
+            .unwrap();
+        assert_eq!(receiver.next().await.as_deref(), Some("B"));
     }
 }
