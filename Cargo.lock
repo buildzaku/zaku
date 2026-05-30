@@ -5840,6 +5840,7 @@ dependencies = [
  "serde_path_to_error",
  "settings_macros",
  "util 0.0.0",
+ "util_macros 0.0.0",
 ]
 
 [[package]]

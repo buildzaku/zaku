@@ -47,6 +47,7 @@ mod tests {
     use std::path::Path;
 
     use fs::{Fs, TempFs};
+    use util_macros::path;
 
     #[gpui::test]
     async fn test_watch_config_file_uses_empty_string_when_file_is_missing(
@@ -116,8 +117,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let config_dir_path = temp_fs.path().join(".config/zaku");
-        let target_dir_path = temp_fs.path().join("dotfiles/zaku");
+        let config_dir_path = temp_fs.path().join(path!(".config/zaku"));
+        let target_dir_path = temp_fs.path().join(path!("dotfiles/zaku"));
 
         temp_fs.insert_tree(
             Path::new(""),
