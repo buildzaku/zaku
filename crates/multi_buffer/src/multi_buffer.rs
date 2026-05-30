@@ -4,20 +4,23 @@ mod transaction;
 #[cfg(test)]
 mod tests;
 
+pub use anchor::Anchor;
+
 use gpui::{App, Context, Entity};
 use std::{
+    borrow::Cow,
     cell::{Ref, RefCell},
     cmp, fmt, iter, mem,
     ops::{self, Add, AddAssign, Range, Sub},
     sync::Arc,
 };
 use text::{
-    Bias, Buffer as TextBuffer, BufferSnapshot as TextBufferSnapshot, Edit as TextEdit,
-    OffsetUtf16, Point, PointUtf16, TextDimension, TextSummary,
+    Bias, BufferSnapshot as TextBufferSnapshot, Edit as TextEdit, OffsetUtf16, Point, PointUtf16,
+    TextDimension, TextSummary,
     subscription::{Subscription, Topic},
 };
 
-pub use anchor::Anchor;
+use language::{Buffer, Capability};
 
 pub type MultiBufferPoint = Point;
 
@@ -43,19 +46,6 @@ pub enum CharKind {
     Whitespace,
     Punctuation,
     Word,
-}
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum Capability {
-    ReadWrite,
-    Read,
-    ReadOnly,
-}
-
-impl Capability {
-    pub fn editable(self) -> bool {
-        matches!(self, Capability::ReadWrite)
-    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -352,13 +342,17 @@ pub trait ToPoint: 'static + fmt::Debug {
 pub struct MultiBufferSnapshot {
     buffer: TextBufferSnapshot,
     edit_count: usize,
+    is_dirty: bool,
+    has_deleted_file: bool,
+    has_conflict: bool,
 }
 
 pub struct MultiBuffer {
     snapshot: RefCell<MultiBufferSnapshot>,
-    buffer: Entity<TextBuffer>,
+    buffer: Entity<Buffer>,
     subscriptions: Topic<MultiBufferOffset>,
     singleton: bool,
+    title: Option<String>,
     capability: Capability,
 }
 
@@ -381,18 +375,53 @@ impl<'a> Iterator for MultiBufferChunks<'a> {
 }
 
 impl MultiBuffer {
-    pub fn singleton(buffer: Entity<TextBuffer>, cx: &mut Context<Self>) -> Self {
-        let buffer_snapshot = buffer.read(cx).snapshot().clone();
+    pub fn singleton(buffer: Entity<Buffer>, cx: &mut Context<Self>) -> Self {
+        let (buffer_snapshot, capability, is_dirty, has_deleted_file, has_conflict) = {
+            let buffer = buffer.read(cx);
+            (
+                buffer.snapshot().clone(),
+                buffer.capability(),
+                buffer.is_dirty(),
+                buffer
+                    .file()
+                    .is_some_and(|file| file.disk_state().is_deleted()),
+                buffer.has_conflict(),
+            )
+        };
         Self {
             snapshot: RefCell::new(MultiBufferSnapshot {
                 buffer: buffer_snapshot,
                 edit_count: 0,
+                is_dirty,
+                has_deleted_file,
+                has_conflict,
             }),
             buffer,
             subscriptions: Topic::default(),
             singleton: true,
-            capability: Capability::ReadWrite,
+            title: None,
+            capability,
         }
+    }
+
+    pub fn with_title(mut self, title: String) -> Self {
+        self.title = Some(title);
+        self
+    }
+
+    pub fn title<'a>(&'a self, cx: &'a App) -> Cow<'a, str> {
+        if let Some(title) = self.title.as_ref() {
+            return title.into();
+        }
+
+        if let Some(buffer) = self.as_singleton() {
+            let buffer = buffer.read(cx);
+            if let Some(file) = buffer.file() {
+                return file.file_name(cx).into();
+            }
+        }
+
+        "Untitled".into()
     }
 
     pub fn snapshot(&self, cx: &App) -> MultiBufferSnapshot {
@@ -405,7 +434,7 @@ impl MultiBuffer {
         self.snapshot.borrow()
     }
 
-    pub fn as_singleton(&self) -> Option<Entity<TextBuffer>> {
+    pub fn as_singleton(&self) -> Option<Entity<Buffer>> {
         if self.singleton {
             Some(self.buffer.clone())
         } else {
@@ -419,6 +448,18 @@ impl MultiBuffer {
 
     pub fn capability(&self) -> Capability {
         self.capability
+    }
+
+    pub fn is_dirty(&self, cx: &App) -> bool {
+        self.read(cx).is_dirty()
+    }
+
+    pub fn has_deleted_file(&self, cx: &App) -> bool {
+        self.read(cx).has_deleted_file()
+    }
+
+    pub fn has_conflict(&self, cx: &App) -> bool {
+        self.read(cx).has_conflict()
     }
 
     pub fn subscribe(&mut self) -> Subscription<MultiBufferOffset> {
@@ -501,11 +542,12 @@ impl MultiBuffer {
             .collect::<Vec<_>>();
         buffer_edits.sort_by_key(|(range, _)| range.start);
 
-        self.buffer.update(cx, |buffer, _| {
+        self.buffer.update(cx, |buffer, cx| {
             buffer.edit(
                 buffer_edits
                     .iter()
                     .map(|(range, new_text)| (range.clone(), new_text.clone())),
+                cx,
             );
         });
 
@@ -513,10 +555,24 @@ impl MultiBuffer {
     }
 
     fn sync(&self, cx: &App) {
-        let buffer_snapshot = self.buffer.read(cx).snapshot().clone();
+        let (buffer_snapshot, is_dirty, has_deleted_file, has_conflict) = {
+            let buffer = self.buffer.read(cx);
+            (
+                buffer.snapshot().clone(),
+                buffer.is_dirty(),
+                buffer
+                    .file()
+                    .is_some_and(|file| file.disk_state().is_deleted()),
+                buffer.has_conflict(),
+            )
+        };
         let previous_version = {
             let snapshot = self.snapshot.borrow();
-            if snapshot.buffer.version() == buffer_snapshot.version() {
+            if snapshot.buffer.version() == buffer_snapshot.version()
+                && snapshot.is_dirty == is_dirty
+                && snapshot.has_deleted_file == has_deleted_file
+                && snapshot.has_conflict == has_conflict
+            {
                 return;
             }
             snapshot.buffer.version().clone()
@@ -536,6 +592,9 @@ impl MultiBuffer {
             if !edits.is_empty() {
                 snapshot.edit_count = snapshot.edit_count.saturating_add(1);
             }
+            snapshot.is_dirty = is_dirty;
+            snapshot.has_deleted_file = has_deleted_file;
+            snapshot.has_conflict = has_conflict;
         }
 
         if !edits.is_empty() {
@@ -543,15 +602,27 @@ impl MultiBuffer {
         }
     }
 
-    fn sync_mut(&mut self, cx: &App) {
-        let buffer_snapshot = self.buffer.read(cx).snapshot().clone();
-        let previous_version = {
-            let snapshot = self.snapshot.get_mut();
-            if snapshot.buffer.version() == buffer_snapshot.version() {
-                return;
-            }
-            snapshot.buffer.version().clone()
+    fn sync_mut(&mut self, cx: &App) -> &mut MultiBufferSnapshot {
+        let (buffer_snapshot, is_dirty, has_deleted_file, has_conflict) = {
+            let buffer = self.buffer.read(cx);
+            (
+                buffer.snapshot().clone(),
+                buffer.is_dirty(),
+                buffer
+                    .file()
+                    .is_some_and(|file| file.disk_state().is_deleted()),
+                buffer.has_conflict(),
+            )
         };
+        let snapshot = self.snapshot.get_mut();
+        if snapshot.buffer.version() == buffer_snapshot.version()
+            && snapshot.is_dirty == is_dirty
+            && snapshot.has_deleted_file == has_deleted_file
+            && snapshot.has_conflict == has_conflict
+        {
+            return snapshot;
+        }
+        let previous_version = snapshot.buffer.version().clone();
 
         let edits = buffer_snapshot
             .edits_since::<usize>(&previous_version)
@@ -561,17 +632,19 @@ impl MultiBuffer {
             })
             .collect::<Vec<_>>();
 
-        {
-            let snapshot = self.snapshot.get_mut();
-            snapshot.buffer = buffer_snapshot;
-            if !edits.is_empty() {
-                snapshot.edit_count = snapshot.edit_count.saturating_add(1);
-            }
+        snapshot.buffer = buffer_snapshot;
+        if !edits.is_empty() {
+            snapshot.edit_count = snapshot.edit_count.saturating_add(1);
         }
+        snapshot.is_dirty = is_dirty;
+        snapshot.has_deleted_file = has_deleted_file;
+        snapshot.has_conflict = has_conflict;
 
         if !edits.is_empty() {
             self.subscriptions.publish(edits);
         }
+
+        snapshot
     }
 }
 
@@ -889,6 +962,18 @@ impl MultiBufferSnapshot {
 
     pub fn edit_count(&self) -> usize {
         self.edit_count
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.is_dirty
+    }
+
+    pub fn has_deleted_file(&self) -> bool {
+        self.has_deleted_file
+    }
+
+    pub fn has_conflict(&self) -> bool {
+        self.has_conflict
     }
 }
 

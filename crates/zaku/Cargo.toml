@@ -42,11 +42,14 @@ fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
 gpui_platform = { workspace = true, features = ["font-kit"] }
+icons = { workspace = true }
 indoc = { workspace = true }
+language = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
 metadata = { workspace = true }
 mimalloc = { workspace = true, optional = true }
+multi_buffer = { workspace = true }
 project_panel = { workspace = true }
 request_editor = { workspace = true }
 reqwest_client = { workspace = true }

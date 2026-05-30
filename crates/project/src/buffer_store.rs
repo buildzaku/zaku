@@ -3,97 +3,68 @@ use futures::{FutureExt, future::Shared};
 use gpui::{AppContext, Context, Entity, EventEmitter, Subscription, Task, WeakEntity};
 use std::{
     collections::{HashMap, hash_map},
-    fmt,
-    num::NonZeroU64,
+    io,
     sync::Arc,
 };
+use text::{Buffer as TextBuffer, BufferId, ReplicaId};
 
-use request_buffer::RequestBuffer;
+use language::{Buffer, BufferEvent, Capability};
 use util::{debug_panic, rel_path::RelPath};
-use worktree::{
-    DiskState, File, PathChange, ProjectEntryId, RequestFileState, Snapshot, Worktree,
-    WorktreeEvent,
-};
+use worktree::{DiskState, File, PathChange, ProjectEntryId, Snapshot, Worktree, WorktreeEvent};
 
 use crate::{
     ProjectPath,
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
 
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Ord, Eq)]
-pub struct BufferId(NonZeroU64);
-
-impl fmt::Display for BufferId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<NonZeroU64> for BufferId {
-    fn from(id: NonZeroU64) -> Self {
-        Self(id)
-    }
-}
-
-impl BufferId {
-    pub fn new(id: u64) -> anyhow::Result<Self> {
-        let id = NonZeroU64::new(id).ok_or_else(|| anyhow!("Buffer id cannot be 0."))?;
-        Ok(Self(id))
-    }
-}
-
 pub struct BufferStore {
     buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
-    pending_buffer_opens:
-        HashMap<ProjectPath, Shared<Task<Result<Entity<RequestBuffer>, Arc<anyhow::Error>>>>>,
+    loading_buffers: HashMap<ProjectPath, Shared<Task<Result<Entity<Buffer>, Arc<anyhow::Error>>>>>,
     worktree_store: Entity<WorktreeStore>,
-    opened_buffers: HashMap<BufferId, WeakEntity<RequestBuffer>>,
+    opened_buffers: HashMap<BufferId, WeakEntity<Buffer>>,
     path_to_buffer_id: HashMap<ProjectPath, BufferId>,
     _worktree_store_subscription: Subscription,
 }
 
 pub enum BufferStoreEvent {
-    BufferAdded(Entity<RequestBuffer>),
+    BufferAdded(Entity<Buffer>),
     BufferDropped(BufferId),
     BufferChangedFilePath {
-        buffer: Entity<RequestBuffer>,
-        old_file: Option<Arc<File>>,
+        buffer: Entity<Buffer>,
+        old_file: Option<Arc<dyn language::File>>,
     },
 }
 
 impl EventEmitter<BufferStoreEvent> for BufferStore {}
 
 impl BufferStore {
-    pub fn new(worktree_store: Entity<WorktreeStore>, cx: &mut Context<Self>) -> Self {
-        let worktree_store_subscription = cx.subscribe(&worktree_store, |_, _, event, cx| {
-            if let WorktreeStoreEvent::WorktreeAdded(worktree) = event {
-                Self::subscribe_to_worktree(worktree, cx);
-            }
-        });
-
+    pub fn new(worktree_store: &Entity<WorktreeStore>, cx: &mut Context<Self>) -> Self {
         Self {
             buffer_ids_by_entry_id: HashMap::default(),
-            pending_buffer_opens: HashMap::default(),
-            worktree_store,
+            loading_buffers: HashMap::default(),
+            worktree_store: worktree_store.clone(),
             opened_buffers: HashMap::default(),
             path_to_buffer_id: HashMap::default(),
-            _worktree_store_subscription: worktree_store_subscription,
+            _worktree_store_subscription: cx.subscribe(worktree_store, |_, _, event, cx| {
+                if let WorktreeStoreEvent::WorktreeAdded(worktree) = event {
+                    Self::subscribe_to_worktree(worktree, cx);
+                }
+            }),
         }
     }
 
-    pub fn open_request_buffer(
+    pub fn open_buffer(
         &mut self,
         project_path: ProjectPath,
         cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<Entity<RequestBuffer>>> {
+    ) -> Task<anyhow::Result<Entity<Buffer>>> {
         if let Some(buffer) = self.get_by_path(&project_path) {
             return Task::ready(Ok(buffer));
         }
 
-        let open_buffer_task = match self.pending_buffer_opens.entry(project_path.clone()) {
+        let task = match self.loading_buffers.entry(project_path.clone()) {
             hash_map::Entry::Occupied(entry) => entry.get().clone(),
-            hash_map::Entry::Vacant(pending_entry) => {
+            hash_map::Entry::Vacant(entry) => {
                 let path = project_path.path.clone();
                 let Some(worktree) = self
                     .worktree_store
@@ -103,55 +74,24 @@ impl BufferStore {
                     return Task::ready(Err(anyhow!("no such worktree")));
                 };
 
-                let worktree_entry = self
+                if self
                     .worktree_store
                     .read(cx)
                     .entry_for_path(&project_path, cx)
-                    .cloned()
-                    .ok_or_else(|| anyhow!("no such entry"));
-                let worktree_entry = match worktree_entry {
-                    Ok(entry) => entry,
-                    Err(error) => return Task::ready(Err(error)),
-                };
-                if !worktree_entry.is_request {
-                    return Task::ready(Err(anyhow!("Cannot open non-request file")));
+                    .is_some_and(|entry| entry.is_request)
+                {
+                    return Task::ready(Err(anyhow!("Cannot open request file")));
                 }
 
-                let load_file_task =
-                    worktree.update(cx, |worktree, cx| worktree.load_file(path.as_ref(), cx));
-                let open_task = cx.spawn(async move |this, cx| {
-                    let loaded = load_file_task.await?;
-                    let file = loaded.file;
-                    let parse_task =
-                        cx.background_spawn(
-                            async move { worktree::parse_request_file(&loaded.text) },
-                        );
-                    let request_file = parse_task.await;
-                    let reservation = cx.reserve_entity::<RequestBuffer>();
-                    let buffer_id = BufferId::from(reservation.entity_id().as_non_zero_u64());
-                    let buffer =
-                        cx.insert_entity(reservation, |_| RequestBuffer::new(file, request_file));
-
-                    this.update(cx, |this, cx| {
-                        this.add_buffer(buffer_id, buffer.clone(), cx)?;
-                        if let Some(entry_id) = buffer.read(cx).file().entry_id {
-                            this.buffer_ids_by_entry_id.insert(entry_id, buffer_id);
-                        }
-
-                        anyhow::Ok(())
-                    })??;
-
-                    Ok(buffer)
-                });
-
-                pending_entry
+                let load_buffer = Self::load_buffer(path, worktree, cx);
+                entry
                     .insert(
                         cx.spawn(async move |this, cx| {
-                            let open_result = open_task.await;
+                            let load_result = load_buffer.await;
                             this.update(cx, |this, _cx| {
-                                this.pending_buffer_opens.remove(&project_path);
+                                this.loading_buffers.remove(&project_path);
 
-                                let buffer = open_result.map_err(Arc::new)?;
+                                let buffer = load_result.map_err(Arc::new)?;
                                 Ok(buffer)
                             })?
                         })
@@ -161,33 +101,69 @@ impl BufferStore {
             }
         };
 
-        cx.background_spawn(
-            async move { open_buffer_task.await.map_err(|error| anyhow!("{error}")) },
-        )
+        cx.background_spawn(async move { task.await.map_err(|error| anyhow!("{error}")) })
+    }
+
+    pub fn save_buffer(
+        &self,
+        buffer: Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let (worktree, path) = {
+            let buffer = buffer.read(cx);
+            let Some(file) = File::from_dyn(buffer.file()) else {
+                return Task::ready(Err(anyhow!("buffer doesn't have a file")));
+            };
+            (file.worktree.clone(), file.path.clone())
+        };
+        Self::save_buffer_at(buffer, &worktree, path, false, cx)
+    }
+
+    pub fn reload_buffer(
+        &self,
+        buffer: &Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let reload = buffer.update(cx, |buffer, cx| buffer.reload(cx));
+        cx.spawn(async move |_, _| {
+            reload.await.map_err(|_| anyhow!("reload canceled"))?;
+            Ok(())
+        })
+    }
+
+    pub fn get_by_path(&self, path: &ProjectPath) -> Option<Entity<Buffer>> {
+        self.path_to_buffer_id
+            .get(path)
+            .and_then(|buffer_id| self.get(*buffer_id))
+    }
+
+    pub fn get(&self, buffer_id: BufferId) -> Option<Entity<Buffer>> {
+        self.opened_buffers.get(&buffer_id)?.upgrade()
     }
 
     fn add_buffer(
         &mut self,
-        buffer_id: BufferId,
-        buffer_entity: Entity<RequestBuffer>,
+        buffer_entity: Entity<Buffer>,
         cx: &mut Context<Self>,
     ) -> anyhow::Result<()> {
-        let path = {
+        let (buffer_id, path) = {
             let buffer = buffer_entity.read(cx);
-            let file = buffer.file();
-            ProjectPath {
-                worktree_id: file.worktree_id(cx),
-                path: file.path().clone(),
-            }
+            (
+                buffer.remote_id(),
+                File::from_dyn(buffer.file()).map(|file| ProjectPath {
+                    worktree_id: file.worktree_id(cx),
+                    path: file.path.clone(),
+                }),
+            )
         };
         let open_buffer = buffer_entity.downgrade();
 
         let handle = cx.entity().downgrade();
         buffer_entity.update(cx, move |_, cx| {
-            cx.on_release(move |_, cx| {
+            cx.on_release(move |buffer, cx| {
                 handle
                     .update(cx, |_, cx| {
-                        cx.emit(BufferStoreEvent::BufferDropped(buffer_id));
+                        cx.emit(BufferStoreEvent::BufferDropped(buffer.remote_id()));
                     })
                     .ok();
             })
@@ -207,71 +183,16 @@ impl BufferStore {
             }
         }
 
-        self.path_to_buffer_id.insert(path, buffer_id);
-        cx.emit(BufferStoreEvent::BufferAdded(buffer_entity));
+        if let Some(path) = path {
+            self.path_to_buffer_id.insert(path, buffer_id);
+        }
 
-        Ok(())
-    }
-
-    pub fn save_request_buffer(
-        &self,
-        buffer: &Entity<RequestBuffer>,
-        cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<()>> {
-        let buffer = buffer.clone();
-        let (worktree, path, request_file, was_dirty) = {
-            let buffer = buffer.read(cx);
-            let RequestFileState::Parsed(request_file) = buffer.request_file().clone() else {
-                return Task::ready(Err(anyhow!("Cannot save invalid request")));
-            };
-            (
-                buffer.file().worktree.clone(),
-                buffer.file().path().clone(),
-                request_file,
-                buffer.is_dirty(),
-            )
-        };
-        let save_task = worktree.update(cx, |worktree, cx| {
-            worktree.write_request_file(path, request_file, cx)
-        });
-
-        cx.spawn(async move |_, cx| {
-            let new_file = save_task.await?;
-            buffer.update(cx, |buffer, cx| {
-                if was_dirty {
-                    buffer.file_updated(new_file, cx);
-                }
-                buffer.did_save(cx);
-            });
-            anyhow::Ok(())
-        })
-    }
-
-    pub fn reload_request_buffer(
-        &self,
-        buffer: &Entity<RequestBuffer>,
-        cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<()>> {
-        buffer.update(cx, |buffer, cx| buffer.reload(cx))
-    }
-
-    pub fn get_by_path(&self, path: &ProjectPath) -> Option<Entity<RequestBuffer>> {
-        self.path_to_buffer_id
-            .get(path)
-            .and_then(|buffer_id| self.get(*buffer_id))
-    }
-
-    pub fn get(&self, buffer_id: BufferId) -> Option<Entity<RequestBuffer>> {
-        self.opened_buffers.get(&buffer_id)?.upgrade()
-    }
-
-    fn subscribe_to_worktree(worktree: &Entity<Worktree>, cx: &mut Context<BufferStore>) {
-        cx.subscribe(worktree, |this, worktree, event: &WorktreeEvent, cx| {
-            if let WorktreeEvent::UpdatedEntries(changes) = event {
-                Self::worktree_entries_changed(this, &worktree, changes, cx);
-            }
+        cx.subscribe(&buffer_entity, |this, buffer, event, cx| {
+            this.on_buffer_event(&buffer, event, cx);
         })
         .detach();
+        cx.emit(BufferStoreEvent::BufferAdded(buffer_entity));
+        Ok(())
     }
 
     fn worktree_entries_changed(
@@ -294,33 +215,30 @@ impl BufferStore {
         worktree: &Entity<Worktree>,
         snapshot: &Snapshot,
         cx: &mut Context<BufferStore>,
-    ) {
+    ) -> Option<()> {
         let project_path = ProjectPath {
             worktree_id: snapshot.id(),
             path: path.clone(),
         };
 
-        let Some(buffer_id) = self
+        let buffer_id = self
             .buffer_ids_by_entry_id
             .get(&entry_id)
             .copied()
-            .or_else(|| self.path_to_buffer_id.get(&project_path).copied())
-        else {
-            return;
-        };
+            .or_else(|| self.path_to_buffer_id.get(&project_path).copied())?;
 
         let Some(buffer) = self.get(buffer_id) else {
             self.opened_buffers.remove(&buffer_id);
             self.path_to_buffer_id.remove(&project_path);
             self.buffer_ids_by_entry_id.remove(&entry_id);
-
-            return;
+            return None;
         };
 
         let events = buffer.update(cx, |buffer, cx| {
-            let old_file = buffer.file().clone();
+            let old_file = buffer.file().cloned();
+            let old_file = File::from_dyn(old_file.as_ref())?;
             if old_file.worktree != *worktree {
-                return Vec::new();
+                return None;
             }
 
             let snapshot_entry = old_file
@@ -342,15 +260,15 @@ impl BufferStore {
                     worktree: worktree.clone(),
                 },
                 None => File {
-                    worktree: worktree.clone(),
-                    path: old_file.path.clone(),
                     disk_state: DiskState::Deleted,
                     entry_id: old_file.entry_id,
+                    path: old_file.path.clone(),
+                    worktree: worktree.clone(),
                 },
             });
 
-            if new_file == old_file {
-                return Vec::new();
+            if new_file.as_ref() == old_file {
+                return None;
             }
 
             let mut events = Vec::new();
@@ -368,7 +286,7 @@ impl BufferStore {
                 );
                 events.push(BufferStoreEvent::BufferChangedFilePath {
                     buffer: cx.entity(),
-                    old_file: Some(old_file.clone()),
+                    old_file: buffer.file().cloned(),
                 });
             }
 
@@ -382,11 +300,159 @@ impl BufferStore {
             }
 
             buffer.file_updated(new_file, cx);
-            events
-        });
+            Some(events)
+        })?;
 
         for event in events {
             cx.emit(event);
         }
+
+        None
     }
+
+    fn on_buffer_event(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        event: &BufferEvent,
+        cx: &mut Context<Self>,
+    ) {
+        if event == &BufferEvent::FileHandleChanged {
+            self.buffer_changed_file(buffer, cx);
+        }
+    }
+
+    fn buffer_changed_file(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Option<()> {
+        let (buffer_id, worktree_id, path, entry_id) = {
+            let buffer = buffer.read(cx);
+            let file = File::from_dyn(buffer.file())?;
+            (
+                buffer.remote_id(),
+                file.worktree_id(cx),
+                file.path.clone(),
+                file.entry_id,
+            )
+        };
+
+        if let Some(entry_id) = entry_id {
+            if self.buffer_ids_by_entry_id.contains_key(&entry_id) {
+                return None;
+            }
+            self.buffer_ids_by_entry_id.insert(entry_id, buffer_id);
+
+            self.path_to_buffer_id
+                .insert(ProjectPath { worktree_id, path }, buffer_id);
+        }
+
+        Some(())
+    }
+
+    fn subscribe_to_worktree(worktree: &Entity<Worktree>, cx: &mut Context<BufferStore>) {
+        cx.subscribe(worktree, |this, worktree, event: &WorktreeEvent, cx| {
+            if let WorktreeEvent::UpdatedEntries(changes) = event {
+                Self::worktree_entries_changed(this, &worktree, changes, cx);
+            }
+        })
+        .detach();
+    }
+
+    fn load_buffer(
+        path: Arc<RelPath>,
+        worktree: Entity<Worktree>,
+        cx: &mut Context<BufferStore>,
+    ) -> Task<anyhow::Result<Entity<Buffer>>> {
+        let load_file = worktree.update(cx, |worktree, cx| worktree.load_file(path.as_ref(), cx));
+        cx.spawn(async move |this, cx| {
+            let path = path.clone();
+            let buffer = match load_file.await {
+                Ok(loaded) => {
+                    let reservation = cx.reserve_entity::<Buffer>();
+                    let buffer_id = BufferId::from(reservation.entity_id().as_non_zero_u64());
+                    let text_buffer = cx
+                        .background_spawn(async move {
+                            TextBuffer::new(ReplicaId::LOCAL, buffer_id, loaded.text)
+                        })
+                        .await;
+                    let file: Arc<dyn language::File> = loaded.file;
+                    cx.insert_entity(reservation, |_| {
+                        Buffer::build(text_buffer, Some(file), Capability::ReadWrite)
+                    })
+                }
+                Err(error) if is_not_found_error(&error) => cx.new(|cx| {
+                    let buffer_id = BufferId::from(cx.entity_id().as_non_zero_u64());
+                    let text_buffer = TextBuffer::new(ReplicaId::LOCAL, buffer_id, "");
+                    let file: Arc<dyn language::File> = Arc::new(File {
+                        worktree,
+                        path,
+                        disk_state: DiskState::New,
+                        entry_id: None,
+                    });
+                    Buffer::build(text_buffer, Some(file), Capability::ReadWrite)
+                }),
+                Err(error) => return Err(error),
+            };
+
+            this.update(cx, |this, cx| {
+                this.add_buffer(buffer.clone(), cx)?;
+                let buffer_id = buffer.read(cx).remote_id();
+                let entry_id = {
+                    let buffer = buffer.read(cx);
+                    File::from_dyn(buffer.file()).and_then(|file| file.entry_id)
+                };
+                if let Some(entry_id) = entry_id {
+                    this.buffer_ids_by_entry_id.insert(entry_id, buffer_id);
+                }
+
+                anyhow::Ok(())
+            })??;
+
+            Ok(buffer)
+        })
+    }
+
+    fn save_buffer_at(
+        buffer_handle: Entity<Buffer>,
+        worktree: &Entity<Worktree>,
+        path: Arc<RelPath>,
+        mut has_changed_file: bool,
+        cx: &mut Context<BufferStore>,
+    ) -> Task<anyhow::Result<()>> {
+        let buffer = buffer_handle.read(cx);
+        let text = buffer.as_rope().clone();
+        let line_ending = buffer.line_ending();
+        let version = buffer.version();
+        let file = buffer.file().cloned();
+        if file
+            .as_ref()
+            .is_some_and(|file| file.disk_state() == DiskState::New)
+        {
+            has_changed_file = true;
+        }
+
+        let save = worktree.update(cx, |worktree, cx| {
+            worktree.write_file(path, text, line_ending, cx)
+        });
+
+        cx.spawn(async move |_, cx| {
+            let new_file = save.await?;
+            let mtime = new_file.disk_state.mtime();
+            buffer_handle.update(cx, |buffer, cx| {
+                if has_changed_file {
+                    buffer.file_updated(new_file, cx);
+                }
+                buffer.did_save(version.clone(), mtime, cx);
+            });
+            Ok(())
+        })
+    }
+}
+
+fn is_not_found_error(error: &anyhow::Error) -> bool {
+    error
+        .root_cause()
+        .downcast_ref::<io::Error>()
+        .is_some_and(|error| error.kind() == io::ErrorKind::NotFound)
 }

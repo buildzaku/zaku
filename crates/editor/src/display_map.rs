@@ -357,8 +357,9 @@ mod tests {
     use super::*;
 
     use gpui::{App, AppContext};
+
+    use language::Buffer;
     use settings::SettingsStore;
-    use text::{Buffer as TextBuffer, ReplicaId};
 
     use crate::{DEFAULT_TAB_SIZE, tests::util::marked_display_snapshot};
 
@@ -370,9 +371,8 @@ mod tests {
     }
 
     fn display_snapshot_for_text(text: &str, cx: &mut App) -> DisplaySnapshot {
-        let text_buffer =
-            cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text));
-        let multi_buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
+        let buffer = cx.new(|cx| Buffer::local(text, cx));
+        let multi_buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
         let display_map = cx.new(|cx| DisplayMap::new(multi_buffer, DEFAULT_TAB_SIZE, cx));
         display_map.update(cx, |display_map, cx| display_map.snapshot(cx))
     }
@@ -382,9 +382,8 @@ mod tests {
         init_test(cx);
 
         let text = "aaaaaa\nbbbbbb\ncccccc\ndddddd\neeeeee\nffffff";
-        let text_buffer =
-            cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, crate::next_buffer_id(), text));
-        let multi_buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
+        let buffer = cx.new(|cx| Buffer::local(text, cx));
+        let multi_buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
         let display_map = cx.new(|cx| DisplayMap::new(multi_buffer.clone(), DEFAULT_TAB_SIZE, cx));
 
         multi_buffer.update(cx, |multi_buffer, cx| {

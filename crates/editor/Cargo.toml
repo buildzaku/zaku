@@ -14,15 +14,20 @@ path = "src/editor.rs"
 
 [dependencies]
 actions = { workspace = true }
+anyhow = { workspace = true }
 gpui = { workspace = true }
+icons = { workspace = true }
 input = { workspace = true }
 itertools = { workspace = true }
+language = { workspace = true }
 multi_buffer = { workspace = true }
 num-traits = { workspace = true }
+project = { workspace = true }
 serde = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
+workspace = { workspace = true }
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }

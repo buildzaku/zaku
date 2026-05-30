@@ -702,8 +702,8 @@ mod tests {
     use super::*;
 
     use gpui::{App, AppContext};
-    use text::{Buffer as TextBuffer, BufferId, ReplicaId};
 
+    use language::Buffer;
     use multi_buffer::{MultiBuffer, MultiBufferOffset};
 
     fn expected_collapse_tabs(
@@ -804,9 +804,8 @@ mod tests {
     }
 
     fn tab_snapshot_for_text(text: &str, cx: &mut App) -> TabSnapshot {
-        let buffer_id = BufferId::new(1).unwrap();
-        let text_buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, text));
-        let multibuffer = cx.new(|cx| MultiBuffer::singleton(text_buffer, cx));
+        let buffer = cx.new(|cx| Buffer::local(text, cx));
+        let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
         let tab_size = NonZeroU32::new(4).unwrap();
         let (_, tab_snapshot) = TabMap::new(multibuffer.read(cx).snapshot(cx), tab_size);
         tab_snapshot

@@ -1,7 +1,6 @@
 use gpui::{
     Action, AnyWindowHandle, AppContext, Context, Entity, TestAppContext, VisualTestContext, Window,
 };
-use multi_buffer::{MultiBuffer, MultiBufferOffset};
 use pretty_assertions::assert_eq;
 use std::{
     collections::BTreeMap,
@@ -11,14 +10,15 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
 };
-use text::{Buffer as TextBuffer, ReplicaId, SelectionGoal};
+use text::SelectionGoal;
 
+use language::Buffer;
+use multi_buffer::{MultiBuffer, MultiBufferOffset};
 use util::test::{generate_marked_text, marked_text_ranges};
 
 use crate::{
     DEFAULT_TAB_SIZE, Editor, EditorMode, SelectionEffects, SelectionHistory,
     display_map::{DisplayMap, HighlightKey},
-    next_buffer_id,
 };
 
 pub struct EditorTestContext {
@@ -38,9 +38,8 @@ impl EditorTestContext {
     }
 
     fn new_with_mode(cx: &mut TestAppContext, mode: EditorMode) -> Self {
-        let window_handle = cx.add_window(move |window, cx| {
-            Editor::new(mode, Editor::local_multibuffer(cx), window, cx)
-        });
+        let window_handle = cx
+            .add_window(move |window, cx| Editor::new(mode, Editor::empty_buffer(cx), window, cx));
         let window: AnyWindowHandle = window_handle.into();
         let editor_handle = window.downcast::<Editor>().unwrap();
         let mut visual_cx = VisualTestContext::from_window(window, cx);
@@ -87,8 +86,7 @@ impl EditorTestContext {
         assert!(ranges.is_empty(), "expected a single selection range");
 
         self.update_editor(|editor, _, cx| {
-            let text_buffer =
-                cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, next_buffer_id(), text.as_str()));
+            let text_buffer = cx.new(|cx| Buffer::local(text.as_str(), cx));
             let buffer = cx.new(|cx| MultiBuffer::singleton(text_buffer.clone(), cx));
             editor.buffer = buffer.clone();
             editor.display_map = cx.new(|cx| DisplayMap::new(buffer, DEFAULT_TAB_SIZE, cx));

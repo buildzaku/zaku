@@ -5,6 +5,7 @@ use gpui::{
 use smallvec::SmallVec;
 use std::{any::Any, sync::Arc};
 
+use language::Capability;
 use project::{Project, ProjectEntryId, ProjectPath};
 use ui::{Color, Icon, Label, LabelCommon};
 
@@ -102,6 +103,10 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         false
     }
 
+    fn capability(&self, _cx: &App) -> Capability {
+        Capability::ReadWrite
+    }
+
     fn can_save(&self, _cx: &App) -> bool {
         false
     }
@@ -162,6 +167,7 @@ pub trait ItemHandle: 'static + Send {
     fn item_id(&self) -> EntityId;
     fn to_any_view(&self) -> AnyView;
     fn is_dirty(&self, cx: &App) -> bool;
+    fn capability(&self, cx: &App) -> Capability;
     fn can_save(&self, cx: &App) -> bool;
     fn save(
         &self,
@@ -290,6 +296,10 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn is_dirty(&self, cx: &App) -> bool {
         self.read(cx).is_dirty(cx)
+    }
+
+    fn capability(&self, cx: &App) -> Capability {
+        self.read(cx).capability(cx)
     }
 
     fn can_save(&self, cx: &App) -> bool {

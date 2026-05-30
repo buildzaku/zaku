@@ -260,6 +260,10 @@ impl MTime {
     pub fn timestamp_for_user(self) -> SystemTime {
         self.0
     }
+
+    pub fn bad_is_greater_than(self, other: MTime) -> bool {
+        self.0 > other.0
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

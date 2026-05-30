@@ -17,6 +17,7 @@ actions = { workspace = true }
 editor = { workspace = true }
 gpui = { workspace = true }
 http_client = { workspace = true }
+language = { workspace = true }
 multi_buffer = { workspace = true }
 num-traits = { workspace = true }
 theme = { workspace = true }

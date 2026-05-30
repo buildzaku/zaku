@@ -23,11 +23,7 @@ impl MultiBuffer {
         cx: &mut Context<Self>,
     ) -> Option<TransactionId> {
         if let Some(buffer) = self.as_singleton() {
-            return buffer.update(cx, |buffer, _| {
-                buffer
-                    .end_transaction_at(now)
-                    .map(|(transaction_id, _)| transaction_id)
-            });
+            return buffer.update(cx, |buffer, cx| buffer.end_transaction_at(now, cx));
         }
 
         None
@@ -55,9 +51,7 @@ impl MultiBuffer {
     pub fn undo(&mut self, cx: &mut Context<Self>) -> Option<TransactionId> {
         let mut transaction_id = None;
         if let Some(buffer) = self.as_singleton() {
-            transaction_id = buffer.update(cx, |buffer, _| {
-                buffer.undo().map(|(transaction_id, _)| transaction_id)
-            });
+            transaction_id = buffer.update(cx, |buffer, cx| buffer.undo(cx));
         }
 
         transaction_id
@@ -65,9 +59,7 @@ impl MultiBuffer {
 
     pub fn redo(&mut self, cx: &mut Context<Self>) -> Option<TransactionId> {
         if let Some(buffer) = self.as_singleton() {
-            return buffer.update(cx, |buffer, _| {
-                buffer.redo().map(|(transaction_id, _)| transaction_id)
-            });
+            return buffer.update(cx, |buffer, cx| buffer.redo(cx));
         }
 
         None

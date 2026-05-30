@@ -1,7 +1,8 @@
 use gpui::{Bounds, Context, Pixels, Point, Window};
-use multi_buffer::{Anchor, MultiBufferOffset};
 use num_traits::ToPrimitive;
 use std::cmp;
+
+use multi_buffer::{Anchor, MultiBufferOffset};
 
 use crate::{
     Editor, EditorMode,

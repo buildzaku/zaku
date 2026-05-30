@@ -1,6 +1,6 @@
 use anyhow::{Context as AnyhowContext, anyhow};
 use futures::{FutureExt, future};
-use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Subscription, Task};
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Task, WeakEntity};
 use std::{
     collections::HashMap,
     mem,
@@ -18,8 +18,7 @@ use util::{
     rel_path::RelPath,
 };
 use worktree::{
-    Entry, LocalWorktree, ProjectEntryId, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent,
-    WorktreeId,
+    Entry, ProjectEntryId, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent, WorktreeId,
 };
 
 use crate::ProjectPath;
@@ -48,9 +47,8 @@ impl Global for WorktreeIdCounter {}
 pub struct WorktreeStore {
     next_entry_id: Arc<AtomicUsize>,
     next_worktree_id: WorktreeIdCounter,
-    worktree: Option<Entity<Worktree>>,
+    worktrees: Vec<WorktreeHandle>,
     initial_scan_complete: (watch::Sender<bool>, watch::Receiver<bool>),
-    worktree_subscription: Option<Subscription>,
     worktree_path_to_open: Option<Arc<SanitizedPath>>,
     worktree_open_epoch: usize,
     scanning_enabled: bool,
@@ -61,12 +59,27 @@ pub struct WorktreeStore {
     fs: Arc<dyn Fs>,
 }
 
+#[derive(Clone, Debug)]
+enum WorktreeHandle {
+    Strong(Entity<Worktree>),
+    Weak(WeakEntity<Worktree>),
+}
+
+impl WorktreeHandle {
+    fn upgrade(&self) -> Option<Entity<Worktree>> {
+        match self {
+            Self::Strong(worktree) => Some(worktree.clone()),
+            Self::Weak(worktree) => worktree.upgrade(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum WorktreeStoreEvent {
     WorktreeAdded(Entity<Worktree>),
-    WorktreeRemoved,
-    WorktreeUpdatedEntries(UpdatedEntriesSet),
-    WorktreeDeletedEntry(ProjectEntryId),
+    WorktreeRemoved(WorktreeId),
+    WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
+    WorktreeDeletedEntry(WorktreeId, ProjectEntryId),
 }
 
 impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
@@ -76,9 +89,8 @@ impl WorktreeStore {
         Self {
             next_entry_id: Arc::default(),
             next_worktree_id,
-            worktree: None,
+            worktrees: Vec::new(),
             initial_scan_complete: watch::channel(true),
-            worktree_subscription: None,
             worktree_path_to_open: None,
             worktree_open_epoch: 0,
             scanning_enabled: true,
@@ -96,15 +108,28 @@ impl WorktreeStore {
         self.initial_scan_complete.0.send_replace(true);
     }
 
-    pub fn worktree(&self) -> Option<Entity<Worktree>> {
-        self.worktree.clone()
+    pub fn worktrees(&self) -> impl '_ + DoubleEndedIterator<Item = Entity<Worktree>> {
+        self.worktrees.iter().filter_map(WorktreeHandle::upgrade)
+    }
+
+    pub fn visible_worktrees<'a>(
+        &'a self,
+        cx: &'a App,
+    ) -> impl 'a + DoubleEndedIterator<Item = Entity<Worktree>> {
+        self.worktrees()
+            .filter(|worktree| worktree.read(cx).is_visible())
+    }
+
+    pub fn root_worktree(&self, cx: &App) -> Option<Entity<Worktree>> {
+        let mut visible_worktrees = self.visible_worktrees(cx);
+        let root_worktree = visible_worktrees.next();
+        debug_assert!(visible_worktrees.next().is_none());
+        root_worktree
     }
 
     pub fn worktree_for_id(&self, id: WorktreeId, cx: &App) -> Option<Entity<Worktree>> {
-        self.worktree
-            .as_ref()
-            .filter(|worktree| worktree.read(cx).id() == id)
-            .cloned()
+        self.worktrees()
+            .find(|worktree| worktree.read(cx).id() == id)
     }
 
     pub fn worktree_for_entry(
@@ -112,10 +137,8 @@ impl WorktreeStore {
         entry_id: ProjectEntryId,
         cx: &App,
     ) -> Option<Entity<Worktree>> {
-        self.worktree
-            .as_ref()
-            .filter(|worktree| worktree.read(cx).contains_entry(entry_id))
-            .cloned()
+        self.worktrees()
+            .find(|worktree| worktree.read(cx).contains_entry(entry_id))
     }
 
     pub fn wait_for_initial_scan(&self) -> impl std::future::Future<Output = ()> + use<> {
@@ -139,21 +162,15 @@ impl WorktreeStore {
     fn update_initial_scan_state(&mut self, cx: &App) {
         let complete = self.pending_worktree_tasks.is_empty()
             && self
-                .worktree
-                .as_ref()
-                .is_none_or(|worktree| worktree.read(cx).completed_scan_id() >= 1);
+                .visible_worktrees(cx)
+                .all(|worktree| worktree.read(cx).completed_scan_id() >= 1);
         self.initial_scan_complete.0.send_replace(complete);
     }
 
     fn observe_worktree_scan_completion(worktree: &Entity<Worktree>, cx: &mut Context<Self>) {
-        let scan_complete = worktree
-            .read(cx)
-            .as_local()
-            .map(LocalWorktree::scan_complete);
+        let scan_complete = worktree.read(cx).scan_complete();
         cx.spawn(async move |this, cx| {
-            if let Some(scan_complete) = scan_complete {
-                scan_complete.await;
-            }
+            scan_complete.await;
             this.update(cx, |this, cx| {
                 this.update_initial_scan_state(cx);
             })
@@ -164,14 +181,12 @@ impl WorktreeStore {
     }
 
     pub fn snapshot(&self, cx: &App) -> Option<Snapshot> {
-        self.worktree
-            .as_ref()
+        self.root_worktree(cx)
             .map(|worktree| worktree.read(cx).snapshot())
     }
 
     pub fn root(&self, cx: &App) -> Option<PathBuf> {
-        self.worktree
-            .as_ref()
+        self.root_worktree(cx)
             .map(|worktree| worktree.read(cx).abs_path().as_ref().to_path_buf())
     }
 
@@ -181,13 +196,19 @@ impl WorktreeStore {
         cx: &App,
     ) -> Option<(Entity<Worktree>, Arc<RelPath>)> {
         let abs_path = SanitizedPath::new(abs_path.as_ref());
-        let worktree = self.worktree.as_ref()?;
-        let path_style = worktree.read(cx).path_style();
-        if let Some(relative_path) =
-            path_style.strip_prefix(abs_path.as_path(), worktree.read(cx).abs_path().as_ref())
-        {
-            return Some((worktree.clone(), relative_path.into_arc()));
+        for worktree in self.worktrees() {
+            let relative_path = {
+                let worktree = worktree.read(cx);
+                worktree
+                    .path_style()
+                    .strip_prefix(abs_path.as_path(), worktree.abs_path().as_ref())
+                    .map(|path| path.into_arc())
+            };
+            if let Some(relative_path) = relative_path {
+                return Some((worktree, relative_path));
+            }
         }
+
         None
     }
 
@@ -252,9 +273,6 @@ impl WorktreeStore {
         cx.spawn(async move |_, cx| {
             copy.await?;
             let refresh = worktree.update(cx, |worktree, cx| {
-                let Some(worktree) = worktree.as_local() else {
-                    return Task::ready(Err(anyhow!("Cannot refresh worktree")));
-                };
                 worktree.refresh_entry(new_project_path.path, None, cx)
             });
 
@@ -303,13 +321,7 @@ impl WorktreeStore {
             };
             (old_abs_path, new_abs_path, is_root_entry)
         };
-        let Some(case_sensitive) = worktree
-            .read(cx)
-            .as_local()
-            .map(LocalWorktree::fs_is_case_sensitive)
-        else {
-            return Task::ready(Err(anyhow!("Cannot rename entry outside local worktree")));
-        };
+        let case_sensitive = worktree.read(cx).fs_is_case_sensitive();
         let fs = self.fs.clone();
         let do_rename = async move |fs: &dyn Fs, old_path: &Path, new_path: &Path, overwrite| {
             fs.rename(
@@ -359,9 +371,6 @@ impl WorktreeStore {
         cx.spawn(async move |_, cx| {
             rename.await?;
             let refresh = worktree.update(cx, |worktree, cx| {
-                let Some(worktree) = worktree.as_local_mut() else {
-                    return Task::ready(Err(anyhow!("Cannot refresh worktree")));
-                };
                 if is_root_entry {
                     worktree.update_abs_path_and_refresh(SanitizedPath::new_arc(&new_abs_path), cx);
                     return Task::ready(
@@ -384,29 +393,35 @@ impl WorktreeStore {
     pub fn find_or_create_worktree(
         &mut self,
         abs_path: impl AsRef<Path>,
+        visible: bool,
         cx: &mut Context<Self>,
-    ) -> Task<anyhow::Result<Entity<Worktree>>> {
-        let requested_abs_path = SanitizedPath::new_arc(abs_path.as_ref());
-        self.worktree_path_to_open = Some(requested_abs_path.clone());
+    ) -> Task<anyhow::Result<(Entity<Worktree>, Arc<RelPath>)>> {
+        let abs_path = abs_path.as_ref();
+        if visible {
+            self.worktree_path_to_open = Some(SanitizedPath::new_arc(abs_path));
+        }
 
-        if let Some((worktree, relative_path)) =
-            self.find_worktree(requested_abs_path.as_path(), cx)
-            && relative_path.is_empty()
-        {
-            Task::ready(Ok(worktree))
+        if let Some((worktree, relative_path)) = self.find_worktree(abs_path, cx) {
+            Task::ready(Ok((worktree, relative_path)))
         } else {
-            self.create_worktree(requested_abs_path.as_path(), cx)
+            let create_worktree = self.create_worktree(abs_path, visible, cx);
+            cx.background_spawn(
+                async move { Ok((create_worktree.await?, RelPath::empty().into())) },
+            )
         }
     }
 
     pub fn create_worktree(
         &mut self,
         abs_path: impl AsRef<Path>,
+        visible: bool,
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<Entity<Worktree>>> {
         let requested_abs_path = SanitizedPath::new_arc(abs_path.as_ref());
         let worktree_open_epoch = self.worktree_open_epoch;
-        self.worktree_path_to_open = Some(requested_abs_path.clone());
+        if visible {
+            self.worktree_path_to_open = Some(requested_abs_path.clone());
+        }
         let fs = self.fs.clone();
 
         cx.spawn(async move |worktree_store, cx| {
@@ -416,14 +431,15 @@ impl WorktreeStore {
             };
 
             let task = worktree_store.update(cx, |this, cx| {
-                if this.worktree_open_epoch != worktree_open_epoch {
+                if visible && this.worktree_open_epoch != worktree_open_epoch {
                     return Err(anyhow!("Worktree open was superseded by a newer request"));
                 }
 
-                if let Some(worktree) = this.worktree.as_ref()
-                    && worktree.read(cx).abs_path().as_ref() == canonical_abs_path.as_path()
+                if let Some((worktree, relative_path)) =
+                    this.find_worktree(canonical_abs_path.as_path(), cx)
+                    && relative_path.is_empty()
                 {
-                    return Ok(Task::ready(Ok(worktree.clone())).shared());
+                    return Ok(Task::ready(Ok(worktree)).shared());
                 }
 
                 if !this
@@ -431,7 +447,23 @@ impl WorktreeStore {
                     .contains_key(&canonical_abs_path)
                 {
                     let fs = this.fs.clone();
-                    let task = this.create_local_worktree(fs, canonical_abs_path.clone(), cx);
+                    let next_entry_id = this.next_entry_id.clone();
+                    let scanning_enabled = this.scanning_enabled;
+                    let worktree_id = this.next_worktree_id();
+                    let abs_path = canonical_abs_path.clone();
+                    let task = cx.spawn(async move |_, cx| {
+                        Worktree::new(
+                            SanitizedPath::cast_arc(abs_path),
+                            visible,
+                            fs,
+                            next_entry_id,
+                            scanning_enabled,
+                            worktree_id,
+                            cx,
+                        )
+                        .await
+                        .map_err(Arc::new)
+                    });
                     this.pending_worktree_tasks
                         .insert(canonical_abs_path.clone(), task.shared());
                     this.update_initial_scan_state(cx);
@@ -463,21 +495,38 @@ impl WorktreeStore {
             let worktree_opened = worktree_store.update(cx, |this, cx| {
                 this.pending_worktree_tasks.remove(&canonical_abs_path);
 
-                let is_current_open_epoch = this.worktree_open_epoch == worktree_open_epoch;
-                let is_latest_request = this.worktree_path_to_open.as_deref()
-                    == Some(requested_abs_path.as_ref())
-                    || this.worktree_path_to_open.as_deref() == Some(canonical_abs_path.as_ref());
-                let is_current_worktree = this.worktree.as_ref().is_some_and(|current_worktree| {
-                    current_worktree.entity_id() == worktree.entity_id()
-                });
+                if visible {
+                    let is_current_open_epoch = this.worktree_open_epoch == worktree_open_epoch;
+                    let is_latest_request = this.worktree_path_to_open.as_deref()
+                        == Some(requested_abs_path.as_ref())
+                        || this.worktree_path_to_open.as_deref()
+                            == Some(canonical_abs_path.as_ref());
+                    let is_current_worktree =
+                        this.root_worktree(cx).is_some_and(|current_worktree| {
+                            current_worktree.entity_id() == worktree.entity_id()
+                        });
+                    let is_existing_worktree = this
+                        .worktrees()
+                        .any(|existing| existing.entity_id() == worktree.entity_id());
 
-                if is_current_open_epoch && is_latest_request && !is_current_worktree {
-                    this.add(&worktree, cx);
-                    true
-                } else if is_current_open_epoch && is_latest_request {
-                    is_current_worktree
+                    if is_current_open_epoch && is_latest_request && !is_current_worktree {
+                        if !is_existing_worktree {
+                            this.add(&worktree, cx);
+                        }
+                        true
+                    } else if is_current_open_epoch && is_latest_request {
+                        is_current_worktree
+                    } else {
+                        false
+                    }
                 } else {
-                    false
+                    if !this
+                        .worktrees()
+                        .any(|existing| existing.entity_id() == worktree.entity_id())
+                    {
+                        this.add(&worktree, cx);
+                    }
+                    true
                 }
             })?;
 
@@ -489,67 +538,76 @@ impl WorktreeStore {
         })
     }
 
-    fn create_local_worktree(
-        &mut self,
-        fs: Arc<dyn Fs>,
-        abs_path: Arc<SanitizedPath>,
-        cx: &mut Context<Self>,
-    ) -> Task<Result<Entity<Worktree>, Arc<anyhow::Error>>> {
-        let next_entry_id = self.next_entry_id.clone();
-        let scanning_enabled = self.scanning_enabled;
-        let worktree_id = self.next_worktree_id();
-
-        cx.spawn(async move |_, cx| {
-            Worktree::local(
-                SanitizedPath::cast_arc(abs_path),
-                fs,
-                next_entry_id,
-                scanning_enabled,
-                worktree_id,
-                cx,
-            )
-            .await
-            .map_err(Arc::new)
-        })
-    }
-
     fn add(&mut self, worktree: &Entity<Worktree>, cx: &mut Context<Self>) {
         let worktree_id = worktree.read(cx).id();
-        if let Some(current_worktree) = self.worktree.as_ref() {
-            debug_assert_ne!(current_worktree.read(cx).id(), worktree_id);
+
+        if worktree.read(cx).is_visible() {
+            self.worktrees.retain(|handle| {
+                let Some(existing_worktree) = handle.upgrade() else {
+                    return false;
+                };
+                if existing_worktree.entity_id() != worktree.entity_id()
+                    && existing_worktree.read(cx).is_visible()
+                {
+                    let existing_worktree_id = existing_worktree.read(cx).id();
+                    cx.emit(WorktreeStoreEvent::WorktreeRemoved(existing_worktree_id));
+                    false
+                } else {
+                    true
+                }
+            });
         }
 
-        if self.worktree.replace(worktree.clone()).is_some() {
-            self.worktree_subscription.take();
-            cx.emit(WorktreeStoreEvent::WorktreeRemoved);
-        }
+        let handle = if worktree.read(cx).is_visible() {
+            WorktreeHandle::Strong(worktree.clone())
+        } else {
+            WorktreeHandle::Weak(worktree.downgrade())
+        };
+        debug_assert!(self.worktrees().all(|w| w.read(cx).id() != worktree_id));
+        self.worktrees.push(handle);
 
-        self.worktree_subscription = Some(cx.subscribe(
-            worktree,
-            |_, _, event: &WorktreeEvent, cx| match event {
+        cx.subscribe(worktree, |_, worktree, event: &WorktreeEvent, cx| {
+            let worktree_id = worktree.read(cx).id();
+            match event {
                 WorktreeEvent::UpdatedEntries(changes) => {
-                    cx.emit(WorktreeStoreEvent::WorktreeUpdatedEntries(changes.clone()));
+                    cx.emit(WorktreeStoreEvent::WorktreeUpdatedEntries(
+                        worktree_id,
+                        changes.clone(),
+                    ));
                 }
                 WorktreeEvent::DeletedEntry(entry_id) => {
-                    cx.emit(WorktreeStoreEvent::WorktreeDeletedEntry(*entry_id));
+                    cx.emit(WorktreeStoreEvent::WorktreeDeletedEntry(
+                        worktree_id,
+                        *entry_id,
+                    ));
                 }
-            },
-        ));
+                WorktreeEvent::Deleted => {}
+            }
+        })
+        .detach();
 
         self.update_initial_scan_state(cx);
-        Self::observe_worktree_scan_completion(worktree, cx);
+        if worktree.read(cx).is_visible() {
+            Self::observe_worktree_scan_completion(worktree, cx);
+        }
         cx.emit(WorktreeStoreEvent::WorktreeAdded(worktree.clone()));
     }
 
     pub fn remove_worktree(&mut self, cx: &mut Context<Self>) {
-        self.worktree_subscription.take();
-        let removed_worktree = self.worktree.take();
+        self.worktrees.retain(|handle| {
+            let Some(worktree) = handle.upgrade() else {
+                return false;
+            };
+            if worktree.read(cx).is_visible() {
+                let worktree_id = worktree.read(cx).id();
+                cx.emit(WorktreeStoreEvent::WorktreeRemoved(worktree_id));
+                false
+            } else {
+                true
+            }
+        });
         self.worktree_path_to_open = None;
         self.worktree_open_epoch = self.worktree_open_epoch.wrapping_add(1);
         self.update_initial_scan_state(cx);
-
-        if removed_worktree.is_some() {
-            cx.emit(WorktreeStoreEvent::WorktreeRemoved);
-        }
     }
 }

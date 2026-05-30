@@ -221,6 +221,7 @@ impl ProjectPanel {
                             project_panel.discard_edit_state(window, cx);
                         }
                     }
+                    EditorEvent::DirtyChanged => {}
                 },
             )
             .detach();
@@ -235,12 +236,20 @@ impl ProjectPanel {
                     ProjectEvent::ActiveEntryChanged(None) => {
                         this.marked_entries.clear();
                     }
-                    ProjectEvent::WorktreeAdded
-                    | ProjectEvent::WorktreeRemoved
-                    | ProjectEvent::WorktreeUpdatedEntries(_) => {
+                    ProjectEvent::WorktreeAdded(worktree_id)
+                    | ProjectEvent::WorktreeUpdatedEntries(worktree_id, _) => {
+                        if project
+                            .read(cx)
+                            .worktree_for_id(*worktree_id, cx)
+                            .is_some_and(|worktree| worktree.read(cx).is_visible())
+                        {
+                            this.update_visible_entries(None, false, false, window, cx);
+                        }
+                    }
+                    ProjectEvent::WorktreeRemoved(_) => {
                         this.update_visible_entries(None, false, false, window, cx);
                     }
-                    ProjectEvent::DeletedEntry(_) => {}
+                    ProjectEvent::DeletedEntry(_, _) => {}
                     ProjectEvent::EntryMetadataUpdated(_) => {
                         cx.notify();
                     }
@@ -442,8 +451,11 @@ impl ProjectPanel {
                         };
                     }
 
+                    let root_entry_id = snapshot.root_entry().map(|entry| entry.id);
                     while let Some(entry) = traversal.entry() {
-                        if snapshot.root_entry().map(|entry| entry.id) != Some(entry.id) {
+                        if root_entry_id != Some(entry.id)
+                            && (entry.kind.is_dir() || entry.is_request)
+                        {
                             entries.push(entry.clone());
                         }
                         if new_entry_parent_id == Some(entry.id) {
@@ -1051,7 +1063,7 @@ impl ProjectPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(selection_entry) = self.selection
-            && let Some(worktree) = self.project.read(cx).worktree(cx)
+            && let Some(worktree) = self.project.read(cx).root_worktree(cx)
             && let Some(entry) = worktree.read(cx).entry_for_id(selection_entry.0).cloned()
         {
             #[cfg(target_os = "windows")]
@@ -1989,7 +2001,7 @@ impl ProjectPanel {
             return None;
         }
 
-        let worktree = self.project.read(cx).worktree(cx)?;
+        let worktree = self.project.read(cx).root_worktree(cx)?;
         let worktree = worktree.read(cx);
         let latest_entry = sanitized_entries
             .iter()
@@ -2569,7 +2581,7 @@ impl Panel for ProjectPanel {
         self.pane
             .upgrade()
             .is_some_and(|pane| !pane.read(cx).should_display_welcome_page())
-            && self.project.read(cx).worktree(cx).is_some()
+            && self.project.read(cx).root_worktree(cx).is_some()
     }
 }
 
@@ -2828,7 +2840,7 @@ mod tests {
     fn toggle_expand_dir(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
         let path = rel_path(path);
         panel.update_in(cx, |panel, window, cx| {
-            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+            if let Some(worktree) = panel.project.read(cx).root_worktree(cx) {
                 let worktree = worktree.read(cx);
                 if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
                     && let Some(entry) = worktree.entry_for_path(relative_path)
@@ -2846,7 +2858,7 @@ mod tests {
     fn select_path(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
         let path = rel_path(path);
         panel.update_in(cx, |panel, window, cx| {
-            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+            if let Some(worktree) = panel.project.read(cx).root_worktree(cx) {
                 let worktree = worktree.read(cx);
                 if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
                     && let Some(entry) = worktree.entry_for_path(relative_path)
@@ -2864,7 +2876,7 @@ mod tests {
     fn select_path_with_mark(panel: &Entity<ProjectPanel>, path: &str, cx: &mut VisualTestContext) {
         let path = rel_path(path);
         panel.update_in(cx, |panel, window, cx| {
-            if let Some(worktree) = panel.project.read(cx).worktree(cx) {
+            if let Some(worktree) = panel.project.read(cx).root_worktree(cx) {
                 let worktree = worktree.read(cx);
                 if let Ok(relative_path) = path.strip_prefix(worktree.root_name())
                     && let Some(entry) = worktree.entry_for_path(relative_path)
@@ -2948,7 +2960,7 @@ mod tests {
         cx: &mut VisualTestContext,
     ) {
         workspace.update_in(cx, |workspace, _, cx| {
-            let worktree = workspace.project().read(cx).worktree(cx).unwrap();
+            let worktree = workspace.project().read(cx).root_worktree(cx).unwrap();
             let worktree_id = worktree.read(cx).id();
 
             let opened_project_paths = workspace
@@ -3100,7 +3112,7 @@ mod tests {
         );
 
         let is_request = panel.update(cx, |panel, cx| {
-            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             worktree
                 .read(cx)
                 .entry_for_path(rel_path("New request.toml"))
@@ -3325,7 +3337,7 @@ mod tests {
         );
 
         let first_entry = panel.update(cx, |panel, cx| {
-            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             worktree
                 .read(cx)
                 .entry_for_path(rel_path("collection/nested/first.toml"))
@@ -3333,7 +3345,7 @@ mod tests {
                 .id
         });
         let fourth_entry = panel.update(cx, |panel, cx| {
-            let worktree = panel.project.read(cx).worktree(cx).unwrap();
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             worktree
                 .read(cx)
                 .entry_for_path(rel_path("other/fourth.toml"))
@@ -4178,6 +4190,72 @@ mod tests {
                 .await
                 .unwrap()
                 .is_some()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_non_request_files_are_hidden(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": "",
+                "README.md": "",
+                "collection": {
+                    "first.toml": "",
+                    "nested": {
+                        "config.json": "{}",
+                    },
+                    "scripts": {
+                        "index.js": "",
+                        "second.toml": "",
+                    },
+                },
+                "request.toml": "",
+                "settings.json": "{}",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        let non_request_files_are_indexed = panel.update(cx, |panel, cx| {
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
+            let worktree = worktree.read(cx);
+            let settings = worktree.entry_for_path(rel_path("settings.json")).unwrap();
+            let script = worktree
+                .entry_for_path(rel_path("collection/scripts/index.js"))
+                .unwrap();
+
+            !settings.is_request && !script.is_request
+        });
+        assert!(non_request_files_are_indexed);
+
+        toggle_expand_dir(&panel, "project/collection", cx);
+        toggle_expand_dir(&panel, "project/collection/nested", cx);
+        toggle_expand_dir(&panel, "project/collection/scripts", cx);
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v collection"),
+                String::from("    v nested"),
+                String::from("    v scripts"),
+                String::from("          second"),
+                String::from("      first"),
+                String::from("  request"),
+            ]
         );
     }
 }

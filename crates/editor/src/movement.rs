@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use gpui::{Pixels, WindowTextSystem};
+use std::sync::Arc;
 use text::{Bias, Point, SelectionGoal};
 
 use multi_buffer::{CharClassifier, MultiBufferOffset, MultiBufferSnapshot};

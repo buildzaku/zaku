@@ -12,8 +12,8 @@ use std::{
 use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
-    ButtonCommon, ButtonSize, Clickable, Color, IconButton, IconButtonShape, IconName, IconSize,
-    Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
+    ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
+    IconSize, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
 };
 use util::{ResultExt, path::PathStyle};
 
@@ -897,6 +897,7 @@ impl Pane {
             .tab_icon(window, cx)
             .map(|icon| icon.size(IconSize::Small).color(Color::Muted));
         let is_dirty = item.is_dirty(cx);
+        let capability = item.capability(cx);
         let tab_tooltip_content = item.tab_tooltip_content(cx);
         let tab_control_group_name = format!("tab-control-{item_index}");
 
@@ -914,7 +915,6 @@ impl Pane {
             ui::h_flex()
                 .group(tab_control_group_name.clone())
                 .relative()
-                .size(gpui::px(14.0))
                 .justify_center()
                 .child(render_item_indicator(tab_control_group_name.clone(), cx))
                 .child(
@@ -943,6 +943,22 @@ impl Pane {
                 TabPosition::Middle(position_relative_to_active_item)
             })
             .toggle_state(is_active)
+            .map(|this| match tab_tooltip_content {
+                Some(TabTooltipContent::Text(text)) => {
+                    if capability.editable() {
+                        this.tooltip(Tooltip::text(text))
+                    } else {
+                        this.tooltip(move |_, cx| {
+                            let text = text.clone();
+                            Tooltip::with_meta(text, None, "Read-Only", cx)
+                        })
+                    }
+                }
+                Some(TabTooltipContent::Custom(element_fn)) => {
+                    this.tooltip(move |window, cx| element_fn(window, cx))
+                }
+                None => this,
+            })
             .on_click(
                 cx.listener(move |pane: &mut Self, event: &ClickEvent, window, cx| {
                     if event.click_count() > 1 {
@@ -985,17 +1001,17 @@ impl Pane {
             .child(
                 ui::h_flex()
                     .id(("pane-tab-content", item_index))
-                    .gap_1()
+                    .gap_2()
                     .when_some(icon, |this, icon| this.child(icon))
-                    .child(label)
-                    .map(|this| match tab_tooltip_content {
-                        Some(TabTooltipContent::Text(text)) => this.tooltip(Tooltip::text(text)),
-                        Some(TabTooltipContent::Custom(element_fn)) => {
-                            this.tooltip(move |window, cx| element_fn(window, cx))
-                        }
-                        None => this,
-                    }),
+                    .child(label),
             )
+            .when(!capability.editable(), |this| {
+                this.child(
+                    Icon::new(IconName::FileLock)
+                        .size(IconSize::Small)
+                        .color(Color::Disabled),
+                )
+            })
             .into_any_element()
     }
 
@@ -1096,7 +1112,7 @@ impl Render for Pane {
         let has_worktree = self
             .project
             .upgrade()
-            .is_some_and(|project| project.read(cx).worktree(cx).is_some());
+            .is_some_and(|project| project.read(cx).root_worktree(cx).is_some());
 
         if !has_worktree && self.should_display_welcome_page() {
             if self.welcome_page.is_none() {

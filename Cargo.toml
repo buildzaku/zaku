@@ -9,6 +9,7 @@ members = [
   "crates/http_client",
   "crates/icons",
   "crates/input",
+  "crates/language",
   "crates/logger",
   "crates/metadata",
   "crates/multi_buffer",
@@ -70,13 +71,15 @@ async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 chrono = { version = "0.4" }
+clock = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "clock" }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "3a81f8e9ab", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "3a81f8e9ab", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
+imara-diff = { version = "0.2" }
 indexmap = { version = "2.14" }
 indoc = { version = "2.0" }
 itertools = { version = "0.14" }
@@ -110,11 +113,11 @@ smallvec = { version = "1.15" }
 smol = { version = "2.0" }
 sqlformat = { version = "0.5" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "3a81f8e9ab", package = "sum_tree" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "3a81f8e9ab", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
@@ -138,6 +141,7 @@ fs = { path = "crates/fs" }
 http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
+language = { path = "crates/language" }
 logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }

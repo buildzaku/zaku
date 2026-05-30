@@ -15,5 +15,6 @@ path = "src/request_buffer.rs"
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
+language = { workspace = true }
 util = { workspace = true }
 worktree = { workspace = true }

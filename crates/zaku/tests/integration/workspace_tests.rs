@@ -69,9 +69,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         fourth_path.clone(),
     ] {
         let result = cx
-            .update(|cx| {
-                Workspace::open_local(path, shared_state.clone(), None, OpenMode::NewWindow, cx)
-            })
+            .update(|cx| Workspace::open(path, shared_state.clone(), None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -80,7 +78,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = result.workspace.read_with(cx, |workspace, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
         result
@@ -163,7 +161,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.read_with(cx, |workspace, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
         window

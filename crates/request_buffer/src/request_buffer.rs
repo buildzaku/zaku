@@ -37,12 +37,12 @@ impl RequestBuffer {
         let was_dirty = self.is_dirty();
         let mut file_changed = false;
 
-        if new_file.path() != self.file.path() {
+        if new_file.path.as_ref() != self.file.path.as_ref() {
             file_changed = true;
         }
 
-        let old_state = self.file.disk_state();
-        let new_state = new_file.disk_state();
+        let old_state = self.file.disk_state;
+        let new_state = new_file.disk_state;
         if new_state != old_state {
             file_changed = true;
             if !was_dirty && matches!(new_state, DiskState::Present { .. }) {
@@ -71,7 +71,7 @@ impl RequestBuffer {
     }
 
     pub fn reload(&mut self, cx: &Context<Self>) -> Task<anyhow::Result<()>> {
-        let load_task = self.file.load(cx);
+        let load_task = language::File::load(self.file.as_ref(), cx);
 
         cx.spawn(async move |this, cx| {
             let contents = load_task.await?;

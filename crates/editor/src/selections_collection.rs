@@ -1,10 +1,9 @@
+use itertools::Itertools;
 use std::{
     cmp, fmt, iter,
     ops::{AddAssign, Deref, DerefMut, Range, Sub},
     sync::Arc,
 };
-
-use itertools::Itertools;
 use text::{Bias, Point, Selection, SelectionGoal};
 
 use multi_buffer::{

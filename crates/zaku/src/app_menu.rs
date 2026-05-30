@@ -12,6 +12,15 @@ pub fn app_menu(_cx: &mut App) -> Vec<Menu> {
             items: vec![
                 MenuItem::action(format!("About {ZAKU_NAME}"), actions::zaku::About),
                 MenuItem::separator(),
+                MenuItem::submenu(Menu {
+                    name: "Settings".into(),
+                    disabled: false,
+                    items: vec![
+                        MenuItem::action("Open Settings File", actions::zaku::OpenSettingsFile),
+                        MenuItem::action("Open Keymap File", actions::zaku::OpenKeymapFile),
+                    ],
+                }),
+                MenuItem::separator(),
                 #[cfg(target_os = "macos")]
                 MenuItem::os_submenu("Services", SystemMenuType::Services),
                 #[cfg(target_os = "macos")]

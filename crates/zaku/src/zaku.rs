@@ -1,19 +1,26 @@
 mod about;
 mod app_menu;
+mod logs;
 
 pub use app_menu::app_menu;
 
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{App, AsyncApp, KeyBinding, Task, prelude::*};
-use std::sync::Arc;
+use gpui::{Action, App, AsyncApp, DismissEvent, KeyBinding, Task, prelude::*};
+use std::{borrow::Cow, path::Path, sync::Arc};
 
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use workspace::{
     CloseIntent, DockPosition, OpenMode, Root, SerializedWorkspaceLocation, SessionWorkspace,
-    SharedState, Toast, Workspace, WorkspaceDb, notifications::NotificationId,
+    SharedState, Toast, Workspace, WorkspaceDb, create_and_open_file,
+    notifications::{
+        NotificationId, dismiss_app_notification, show_app_notification,
+        simple_message_notification::MessageNotification,
+    },
 };
+
+use crate::logs::open_log_file;
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
@@ -106,7 +113,61 @@ fn register_actions(cx: &mut App) {
         .detach();
     })
     .on_action(|_: &actions::zaku::About, cx| about::open_window(cx))
+    .on_action(|_: &actions::zaku::OpenSettingsFile, cx| {
+        open_settings_file(
+            settings::settings_file(),
+            settings::initial_user_settings,
+            cx,
+        );
+    })
+    .on_action(|_: &actions::zaku::OpenKeymapFile, cx| {
+        open_settings_file(settings::keymap_file(), settings::initial_user_keymap, cx);
+    })
+    .on_action(|_: &actions::zaku::OpenLogFile, cx| {
+        open_log_file(cx);
+    })
     .on_action(|_: &actions::workspace::CloseWindow, cx| Workspace::close_window(cx));
+}
+
+fn open_settings_file(
+    abs_path: &'static Path,
+    default_content: impl FnOnce() -> Cow<'static, str> + Send + 'static,
+    cx: &mut App,
+) {
+    cx.defer(move |cx| {
+        let Some(window) = cx
+            .active_window()
+            .and_then(|window| window.downcast::<Root>())
+        else {
+            log::error!("Cannot open configuration file without an active workspace");
+            return;
+        };
+
+        if let Err(error) = window.update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                let project = workspace.project().clone();
+                let config_dir = settings::config_dir().clone();
+                cx.spawn_in(window, async move |workspace, cx| {
+                    let (_worktree, _) = project
+                        .update(cx, |project, cx| {
+                            project.find_or_create_worktree(&config_dir, false, cx)
+                        })
+                        .await?;
+
+                    workspace
+                        .update_in(cx, |_, window, cx| {
+                            create_and_open_file(abs_path, window, cx, default_content)
+                        })?
+                        .await?;
+
+                    anyhow::Ok(())
+                })
+                .detach_and_log_err(cx);
+            });
+        }) {
+            log::error!("Failed to open configuration file: {error}");
+        }
+    });
 }
 
 pub fn handle_settings_file_changes(
@@ -121,9 +182,7 @@ pub fn handle_settings_file_changes(
 
     cx.update_global::<SettingsStore, _>(|store, cx| {
         let result = store.set_user_settings(&user_content, cx);
-        if let settings::ParseStatus::Failed { error } = &result {
-            log::error!("Failed to load user settings: {error}");
-        }
+        notify_settings_file_errors(&result, cx);
     });
 
     cx.spawn(async move |cx| {
@@ -131,9 +190,7 @@ pub fn handle_settings_file_changes(
         while let Some(content) = user_settings_file_rx.next().await {
             cx.update_global(|store: &mut SettingsStore, cx| {
                 let result = store.set_user_settings(&content, cx);
-                if let settings::ParseStatus::Failed { error } = &result {
-                    log::error!("Failed to load user settings: {error}");
-                }
+                notify_settings_file_errors(&result, cx);
                 cx.refresh_windows();
             });
         }
@@ -146,6 +203,8 @@ pub fn handle_keymap_file_changes(
     user_keymap_watcher: Task<()>,
     cx: &mut App,
 ) {
+    struct KeymapParseErrorNotification;
+
     let (keyboard_layout_tx, mut keyboard_layout_rx) = futures::channel::mpsc::unbounded();
 
     #[cfg(target_os = "windows")]
@@ -176,6 +235,8 @@ pub fn handle_keymap_file_changes(
 
     load_default_keymap(cx);
 
+    let notification_id = NotificationId::unique::<KeymapParseErrorNotification>();
+
     cx.spawn(async move |cx| {
         let _user_keymap_watcher = user_keymap_watcher;
         let mut user_keymap_content = String::new();
@@ -193,6 +254,7 @@ pub fn handle_keymap_file_changes(
             cx.update(|cx| match KeymapFile::load(&user_keymap_content, cx) {
                 KeymapFileLoadResult::Success { key_bindings } => {
                     reload_keymaps(cx, key_bindings);
+                    dismiss_app_notification(&notification_id.clone(), cx);
                 }
                 KeymapFileLoadResult::SomeFailedToLoad {
                     key_bindings,
@@ -202,9 +264,11 @@ pub fn handle_keymap_file_changes(
                         reload_keymaps(cx, key_bindings);
                     }
                     log::error!("Failed to load user keymap: {error_message}");
+                    show_keymap_file_load_error(notification_id.clone(), &error_message, cx);
                 }
                 KeymapFileLoadResult::JsonParseFailure { error } => {
                     log::error!("Failed to parse user keymap: {error}");
+                    show_keymap_file_json_error(notification_id.clone(), &error, cx);
                 }
             });
         }
@@ -238,6 +302,66 @@ fn load_default_keymap(cx: &mut App) {
     cx.bind_keys(key_bindings);
 }
 
+fn notify_settings_file_errors(result: &settings::ParseStatus, cx: &mut App) {
+    let id = NotificationId::named("failed-to-parse-settings".into());
+    match result {
+        settings::ParseStatus::Success => {
+            dismiss_app_notification(&id, cx);
+        }
+        settings::ParseStatus::Failed { error } => {
+            log::error!("Failed to load user settings: {error}");
+            let message = format!("Invalid user settings file\n{error}");
+            show_app_notification(id, cx, move |cx| {
+                cx.new(|cx| {
+                    MessageNotification::new(message.clone(), cx)
+                        .primary_message("Open Settings File")
+                        .primary_on_click(|window, cx| {
+                            window
+                                .dispatch_action(actions::zaku::OpenSettingsFile.boxed_clone(), cx);
+                            cx.emit(DismissEvent);
+                        })
+                })
+            });
+        }
+    }
+}
+
+fn show_keymap_file_json_error(
+    notification_id: NotificationId,
+    error: &anyhow::Error,
+    cx: &mut App,
+) {
+    let message = format!("Invalid user keymap file\n{error}");
+    show_app_notification(notification_id, cx, move |cx| {
+        cx.new(|cx| {
+            MessageNotification::new(message.clone(), cx)
+                .primary_message("Open Keymap File")
+                .primary_on_click(|window, cx| {
+                    window.dispatch_action(actions::zaku::OpenKeymapFile.boxed_clone(), cx);
+                    cx.emit(DismissEvent);
+                })
+        })
+    });
+}
+
+fn show_keymap_file_load_error(notification_id: NotificationId, error_message: &str, cx: &mut App) {
+    let error_message = error_message
+        .strip_prefix("Errors in user keymap file.")
+        .unwrap_or(error_message)
+        .trim_start();
+    let message = format!("Invalid user keymap file\n{error_message}");
+    show_app_notification(notification_id, cx, move |cx| {
+        cx.new(|cx| {
+            MessageNotification::new(message.clone(), cx)
+                .primary_message("Open Keymap File")
+                .primary_on_click(|window, cx| {
+                    window.dispatch_action(actions::zaku::OpenKeymapFile.boxed_clone(), cx);
+                    cx.emit(DismissEvent);
+                })
+        })
+    });
+}
+
 pub async fn restore_or_create_workspace(
     shared_state: Arc<SharedState>,
     cx: &mut AsyncApp,
@@ -249,7 +373,7 @@ pub async fn restore_or_create_workspace(
             let SerializedWorkspaceLocation::Local(path) = session_workspace.location;
             let result = cx
                 .update(|cx| {
-                    Workspace::open_local(path, shared_state.clone(), None, OpenMode::NewWindow, cx)
+                    Workspace::open(path, shared_state.clone(), None, OpenMode::NewWindow, cx)
                 })
                 .await;
 

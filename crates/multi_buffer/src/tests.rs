@@ -6,10 +6,18 @@ use rand::{RngExt, rngs::StdRng};
 use std::time::{Duration, Instant};
 use text::{Buffer as TextBuffer, BufferId, Point, ReplicaId};
 
+use language::{Buffer, Capability};
+
 #[gpui::test]
 fn test_empty_singleton(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
-    let buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, ""));
+    let buffer = cx.new(|_| {
+        Buffer::build(
+            TextBuffer::new(ReplicaId::LOCAL, buffer_id, ""),
+            None,
+            Capability::ReadWrite,
+        )
+    });
     assert_eq!(buffer.read(cx).remote_id(), buffer_id);
 
     let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
@@ -24,13 +32,17 @@ fn test_empty_singleton(cx: &mut App) {
 fn test_singleton(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
     let buffer = cx.new(|_| {
-        TextBuffer::new(
-            ReplicaId::LOCAL,
-            buffer_id,
-            indoc! {"
-                The quick brown fox
-                jumps over the lazy dog
-            "},
+        Buffer::build(
+            TextBuffer::new(
+                ReplicaId::LOCAL,
+                buffer_id,
+                indoc! {"
+                    The quick brown fox
+                    jumps over the lazy dog
+                "},
+            ),
+            None,
+            Capability::ReadWrite,
         )
     });
     assert_eq!(buffer.read(cx).remote_id(), buffer_id);
@@ -39,8 +51,8 @@ fn test_singleton(cx: &mut App) {
     let snapshot = multibuffer.read(cx).snapshot(cx);
     assert_eq!(snapshot.text(), buffer.read(cx).text());
 
-    buffer.update(cx, |buffer, _| {
-        buffer.edit([(Point::new(1, 0)..Point::new(1, 5), "leaps")]);
+    buffer.update(cx, |buffer, cx| {
+        buffer.edit([(Point::new(1, 0)..Point::new(1, 5), "leaps")], cx);
     });
 
     let snapshot = multibuffer.read(cx).snapshot(cx);
@@ -57,15 +69,21 @@ fn test_singleton(cx: &mut App) {
 #[gpui::test]
 fn test_singleton_multibuffer_anchors(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
-    let buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, "abcd"));
+    let buffer = cx.new(|_| {
+        Buffer::build(
+            TextBuffer::new(ReplicaId::LOCAL, buffer_id, "abcd"),
+            None,
+            Capability::ReadWrite,
+        )
+    });
     assert_eq!(buffer.read(cx).remote_id(), buffer_id);
 
     let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer.clone(), cx));
     let old_snapshot = multibuffer.read(cx).snapshot(cx);
 
-    buffer.update(cx, |buffer, _| {
-        buffer.edit([(0..0, "X")]);
-        buffer.edit([(5..5, "Y")]);
+    buffer.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "X")], cx);
+        buffer.edit([(5..5, "Y")], cx);
     });
 
     let new_snapshot = multibuffer.read(cx).snapshot(cx);
@@ -103,10 +121,14 @@ fn test_singleton_multibuffer_anchors(cx: &mut App) {
 fn test_trailing_deletion_without_newline(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
     let buffer = cx.new(|_| {
-        TextBuffer::new(
-            ReplicaId::LOCAL,
-            buffer_id,
-            "The quick brown fox\njumps over the lazy dog",
+        Buffer::build(
+            TextBuffer::new(
+                ReplicaId::LOCAL,
+                buffer_id,
+                "The quick brown fox\njumps over the lazy dog",
+            ),
+            None,
+            Capability::ReadWrite,
         )
     });
     assert_eq!(buffer.read(cx).remote_id(), buffer_id);
@@ -140,7 +162,16 @@ fn test_random_multibuffer(cx: &mut App, mut rng: StdRng) {
         .collect::<String>();
 
     let buffer_id = BufferId::new(1).unwrap();
-    let buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, &expected));
+    let buffer = cx.new({
+        let expected = expected.clone();
+        move |_| {
+            Buffer::build(
+                TextBuffer::new(ReplicaId::LOCAL, buffer_id, expected),
+                None,
+                Capability::ReadWrite,
+            )
+        }
+    });
     assert_eq!(buffer.read(cx).remote_id(), buffer_id);
 
     let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer.clone(), cx));
@@ -199,8 +230,8 @@ fn test_random_multibuffer(cx: &mut App, mut rng: StdRng) {
                     .map(|_| CHARSET[rng.random_range(0..CHARSET.len())] as char)
                     .collect::<String>();
 
-                buffer.update(cx, |buffer, _| {
-                    buffer.edit([(normalized_start..normalized_end, new_text.clone())]);
+                buffer.update(cx, |buffer, cx| {
+                    buffer.edit([(normalized_start..normalized_end, new_text.clone())], cx);
                 });
 
                 expected.replace_range(normalized_start..normalized_end, &new_text);
@@ -241,7 +272,13 @@ fn test_random_multibuffer(cx: &mut App, mut rng: StdRng) {
 #[gpui::test]
 fn test_history(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
-    let buffer = cx.new(|_| TextBuffer::new(ReplicaId::LOCAL, buffer_id, "fox"));
+    let buffer = cx.new(|_| {
+        Buffer::build(
+            TextBuffer::new(ReplicaId::LOCAL, buffer_id, "fox"),
+            None,
+            Capability::ReadWrite,
+        )
+    });
     assert_eq!(buffer.read(cx).remote_id(), buffer_id);
 
     let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer.clone(), cx));

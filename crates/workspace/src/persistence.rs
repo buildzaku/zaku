@@ -450,7 +450,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
 
@@ -621,7 +621,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
         workspace
@@ -686,7 +686,7 @@ mod tests {
             .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
             .await;
         let worktree = workspace.update_in(cx, |workspace, _, cx| {
-            workspace.project().read(cx).worktree(cx).unwrap()
+            workspace.project().read(cx).root_worktree(cx).unwrap()
         });
         worktree.flush_fs_events(cx).await;
         workspace
