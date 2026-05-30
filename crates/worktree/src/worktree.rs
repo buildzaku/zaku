@@ -1097,7 +1097,7 @@ pub trait WorktreeModelHandle {
 impl WorktreeModelHandle for Entity<Worktree> {
     #[cfg(feature = "test-support")]
     fn flush_fs_events<'a>(&self, cx: &'a mut TestAppContext) -> LocalBoxFuture<'a, ()> {
-        let file_name = "marker.toml";
+        let file_name = "fs-event-sentinel";
         let worktree = self.clone();
         let (fs, root_path) = self.read_with(cx, |worktree, _| {
             (worktree.fs().clone(), worktree.abs_path().to_path_buf())

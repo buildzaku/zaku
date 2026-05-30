@@ -451,8 +451,11 @@ impl ProjectPanel {
                         };
                     }
 
+                    let root_entry_id = snapshot.root_entry().map(|entry| entry.id);
                     while let Some(entry) = traversal.entry() {
-                        if snapshot.root_entry().map(|entry| entry.id) != Some(entry.id) {
+                        if root_entry_id != Some(entry.id)
+                            && (entry.kind.is_dir() || entry.is_request)
+                        {
                             entries.push(entry.clone());
                         }
                         if new_entry_parent_id == Some(entry.id) {
@@ -4187,6 +4190,72 @@ mod tests {
                 .await
                 .unwrap()
                 .is_some()
+        );
+    }
+
+    #[gpui::test]
+    async fn test_non_request_files_are_hidden(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".gitignore": "",
+                "README.md": "",
+                "collection": {
+                    "first.toml": "",
+                    "nested": {
+                        "config.json": "{}",
+                    },
+                    "scripts": {
+                        "index.js": "",
+                        "second.toml": "",
+                    },
+                },
+                "request.toml": "",
+                "settings.json": "{}",
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        let non_request_files_are_indexed = panel.update(cx, |panel, cx| {
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
+            let worktree = worktree.read(cx);
+            let settings = worktree.entry_for_path(rel_path("settings.json")).unwrap();
+            let script = worktree
+                .entry_for_path(rel_path("collection/scripts/index.js"))
+                .unwrap();
+
+            !settings.is_request && !script.is_request
+        });
+        assert!(non_request_files_are_indexed);
+
+        toggle_expand_dir(&panel, "project/collection", cx);
+        toggle_expand_dir(&panel, "project/collection/nested", cx);
+        toggle_expand_dir(&panel, "project/collection/scripts", cx);
+
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v collection"),
+                String::from("    v nested"),
+                String::from("    v scripts"),
+                String::from("          second"),
+                String::from("      first"),
+                String::from("  request"),
+            ]
         );
     }
 }
