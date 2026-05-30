@@ -36,6 +36,7 @@ pub enum BufferEvent {
     DirtyChanged,
     Saved,
     FileHandleChanged,
+    CapabilityChanged,
     Reloaded,
     ReloadNeeded,
 }
@@ -138,6 +139,13 @@ impl Buffer {
 
     pub fn read_only(&self) -> bool {
         !self.capability.editable()
+    }
+
+    pub fn set_capability(&mut self, capability: Capability, cx: &mut Context<Self>) {
+        if self.capability != capability {
+            self.capability = capability;
+            cx.emit(BufferEvent::CapabilityChanged);
+        }
     }
 
     pub fn file(&self) -> Option<&Arc<dyn File>> {

@@ -1,5 +1,6 @@
 mod about;
 mod app_menu;
+mod logs;
 
 pub use app_menu::app_menu;
 
@@ -18,6 +19,8 @@ use workspace::{
         simple_message_notification::MessageNotification,
     },
 };
+
+use crate::logs::open_log_file;
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
@@ -119,6 +122,9 @@ fn register_actions(cx: &mut App) {
     })
     .on_action(|_: &actions::zaku::OpenKeymapFile, cx| {
         open_settings_file(settings::keymap_file(), settings::initial_user_keymap, cx);
+    })
+    .on_action(|_: &actions::zaku::OpenLogFile, cx| {
+        open_log_file(cx);
     })
     .on_action(|_: &actions::workspace::CloseWindow, cx| Workspace::close_window(cx));
 }

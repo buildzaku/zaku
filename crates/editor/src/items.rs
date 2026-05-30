@@ -2,7 +2,7 @@ use gpui::{App, Context, Entity, EntityId, SharedString, Task, Window};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use icons::FileIcons;
-use language::Buffer;
+use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
 use project::Project;
 use ui::Icon;
@@ -25,24 +25,29 @@ impl Item for Editor {
         if let Some(path) = path_for_buffer(&self.buffer, detail, true, cx) {
             path.to_string().into()
         } else {
-            "".into()
+            self.buffer.read(cx).title(cx).to_string().into()
         }
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
         let multi_buffer = self.buffer.read(cx);
-        multi_buffer
+        if let Some(file) = multi_buffer
             .as_singleton()
             .and_then(|buffer| buffer.read(cx).file())
             .and_then(|file| project::File::from_dyn(Some(file)))
-            .map(|file| {
+        {
+            Some(
                 file.worktree
                     .read(cx)
                     .absolutize(&file.path)
                     .to_string_lossy()
                     .into_owned()
-                    .into()
-            })
+                    .into(),
+            )
+        } else {
+            let title = multi_buffer.title(cx);
+            (!title.is_empty()).then(|| title.to_string().into())
+        }
     }
 
     fn tab_icon(&self, _: &Window, cx: &App) -> Option<Icon> {
@@ -71,6 +76,10 @@ impl Item for Editor {
 
     fn is_dirty(&self, cx: &App) -> bool {
         self.buffer.read(cx).is_dirty(cx)
+    }
+
+    fn capability(&self, cx: &App) -> Capability {
+        self.capability(cx)
     }
 
     fn can_save(&self, cx: &App) -> bool {

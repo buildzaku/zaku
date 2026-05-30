@@ -8,6 +8,7 @@ pub use anchor::Anchor;
 
 use gpui::{App, Context, Entity};
 use std::{
+    borrow::Cow,
     cell::{Ref, RefCell},
     cmp, fmt, iter, mem,
     ops::{self, Add, AddAssign, Range, Sub},
@@ -351,6 +352,7 @@ pub struct MultiBuffer {
     buffer: Entity<Buffer>,
     subscriptions: Topic<MultiBufferOffset>,
     singleton: bool,
+    title: Option<String>,
     capability: Capability,
 }
 
@@ -397,8 +399,29 @@ impl MultiBuffer {
             buffer,
             subscriptions: Topic::default(),
             singleton: true,
+            title: None,
             capability,
         }
+    }
+
+    pub fn with_title(mut self, title: String) -> Self {
+        self.title = Some(title);
+        self
+    }
+
+    pub fn title<'a>(&'a self, cx: &'a App) -> Cow<'a, str> {
+        if let Some(title) = self.title.as_ref() {
+            return title.into();
+        }
+
+        if let Some(buffer) = self.as_singleton() {
+            let buffer = buffer.read(cx);
+            if let Some(file) = buffer.file() {
+                return file.file_name(cx).into();
+            }
+        }
+
+        "Untitled".into()
     }
 
     pub fn snapshot(&self, cx: &App) -> MultiBufferSnapshot {
