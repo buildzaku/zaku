@@ -171,6 +171,7 @@ pub fn open_log_file(cx: &mut App) {
                         let editor = cx.new(|cx| {
                             let mut editor = Editor::for_multibuffer(buffer, window, cx);
                             editor.set_read_only(true);
+                            editor.move_selection_to_end(cx);
                             editor
                         });
                         workspace.add_item_to_active_pane(
