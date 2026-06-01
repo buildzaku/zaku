@@ -1,8 +1,8 @@
 use gpui::{Action, Anchor, App, Context, Entity, Window, prelude::*};
 
 use ui::{
-    ButtonSize, ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize,
-    PopoverMenu, PopoverMenuHandle, prelude::*,
+    ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu,
+    PopoverMenuHandle, prelude::*,
 };
 
 pub struct ApplicationMenu {
@@ -42,7 +42,6 @@ impl Render for ApplicationMenu {
                 .trigger(
                     IconButton::new("application-menu-trigger", IconName::Menu)
                         .variant(ButtonVariant::Subtle)
-                        .size(ButtonSize::Compact)
                         .shape(IconButtonShape::Square)
                         .icon_size(IconSize::Small),
                 )
