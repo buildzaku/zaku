@@ -408,7 +408,7 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
     let traffic_light_position = {
         #[cfg(target_os = "macos")]
         {
-            let (x_inset, y_inset) = utils::MACOS_TRAFFIC_LIGHT_INSET;
+            let (x_inset, y_inset) = utils::traffic_light_inset(gpui::px(32.0), cx);
             Some(gpui::point(x_inset, y_inset))
         }
         #[cfg(any(target_os = "linux", target_os = "windows"))]

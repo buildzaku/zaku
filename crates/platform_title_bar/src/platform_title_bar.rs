@@ -7,8 +7,6 @@ use smallvec::SmallVec;
 use std::mem;
 
 use ui::prelude::*;
-#[cfg(target_os = "macos")]
-use ui::utils::MACOS_TRAFFIC_LIGHT_PADDING;
 
 pub struct PlatformTitleBar {
     id: ElementId,
@@ -54,6 +52,12 @@ impl Render for PlatformTitleBar {
         let height = ui::utils::title_bar_height(window.rem_size());
         let titlebar_color = self.title_bar_color(window, cx);
         let children = mem::take(&mut self.children);
+
+        #[cfg(target_os = "macos")]
+        {
+            let (x_inset, y_inset) = ui::utils::traffic_light_inset(height, cx);
+            window.set_traffic_light_position(gpui::point(x_inset, y_inset));
+        }
 
         h_flex()
             .window_control_area(WindowControlArea::Drag)
@@ -105,7 +109,7 @@ impl Render for PlatformTitleBar {
                 } else if self.platform_style == PlatformStyle::Mac {
                     #[cfg(target_os = "macos")]
                     {
-                        this.pl(gpui::px(MACOS_TRAFFIC_LIGHT_PADDING))
+                        this.pl(ui::utils::traffic_light_padding(height, cx))
                     }
                     #[cfg(any(target_os = "linux", target_os = "windows"))]
                     {
