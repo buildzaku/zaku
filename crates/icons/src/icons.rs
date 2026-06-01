@@ -40,6 +40,10 @@ pub enum IconName {
     Tree,
     Warning,
     WarningCircle,
+    WindowClose,
+    WindowMaximize,
+    WindowMinimize,
+    WindowRestore,
 }
 
 impl IconName {
