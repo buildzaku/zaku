@@ -76,7 +76,7 @@ impl Render for AboutWindow {
                                     .child(Label::new("Commit").size(LabelSize::Small)),
                             )
                             .child(
-                                gpui::div().flex().flex_shrink().child(
+                                gpui::div().flex().flex_shrink_1().child(
                                     Link::new(
                                         ZAKU_COMMIT_SHA,
                                         format!("{ZAKU_REPOSITORY}/commits/{ZAKU_COMMIT_SHA}"),
