@@ -1,4 +1,4 @@
-use gpui::Hsla;
+use gpui::{Hsla, WindowBackgroundAppearance};
 use uuid::Uuid;
 
 use crate::{
@@ -69,6 +69,8 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 ghost_element_active: gpui::rgb(0x3a3a40).into(),
                 ghost_element_selected: gpui::rgb(0x3a3a40).into(),
                 ghost_element_disabled: Hsla::transparent_black(),
+                title_bar_background: gpui::rgb(0x121212).into(),
+                title_bar_inactive_background: gpui::rgb(0x121212).into(),
                 status_bar_background: gpui::rgb(0x121212).into(),
                 panel_tab_bar_background: gpui::rgb(0x1a1a1a).into(),
                 panel_tab_inactive_background: gpui::rgb(0x121212).into(),
@@ -168,6 +170,8 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 ghost_element_active: gpui::rgb(0xdcdfe0).into(),
                 ghost_element_selected: gpui::rgb(0xdcdfe0).into(),
                 ghost_element_disabled: Hsla::transparent_black(),
+                title_bar_background: gpui::rgb(0xf8f8f8).into(),
+                title_bar_inactive_background: gpui::rgb(0xf8f8f8).into(),
                 status_bar_background: gpui::rgb(0xf8f8f8).into(),
                 panel_tab_bar_background: gpui::rgb(0xf5f5f5).into(),
                 panel_tab_inactive_background: gpui::rgb(0xf8f8f8).into(),
@@ -234,5 +238,9 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
         }
     };
 
-    ThemeStyles { colors, status }
+    ThemeStyles {
+        window_background_appearance: WindowBackgroundAppearance::Opaque,
+        colors,
+        status,
+    }
 }
