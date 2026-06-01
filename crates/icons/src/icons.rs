@@ -30,6 +30,7 @@ pub enum IconName {
     FolderClose,
     FolderOpen,
     Info,
+    Menu,
     Minimize,
     Network,
     Option,
