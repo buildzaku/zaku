@@ -7188,6 +7188,7 @@ dependencies = [
  "serde",
  "settings",
  "smallvec",
+ "strum 0.28.0",
  "theme",
  "ui_macros",
  "util 0.0.0",
