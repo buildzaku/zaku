@@ -1,0 +1,21 @@
+[package]
+name = "title_bar"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "title_bar"
+path = "src/title_bar.rs"
+
+[dependencies]
+actions = { workspace = true }
+gpui = { workspace = true }
+platform_title_bar = { workspace = true }
+smallvec = { workspace = true }
+ui = { workspace = true }
+workspace = { workspace = true }

@@ -18,9 +18,10 @@ pub use persistence::{
 
 use futures::channel::oneshot;
 use gpui::{
-    Action, App, Bounds, Context, Div, DragMoveEvent, Entity, FocusHandle, Focusable, Global,
-    KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, Size,
-    Subscription, Task, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
+    Action, AnyView, App, Bounds, Context, Div, DragMoveEvent, Entity, FocusHandle, Focusable,
+    Global, KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel,
+    Size, Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
+    WindowId, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -40,6 +41,8 @@ use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
+#[cfg(target_os = "macos")]
+use ui::utils;
 use ui::{StyledTypography, h_flex};
 use util::ResultExt;
 
@@ -401,9 +404,27 @@ fn register_actions(
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
     let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
     bounds.origin.y -= gpui::px(36.0);
+    let window_background = cx.theme().window_background_appearance();
+    let traffic_light_position = {
+        #[cfg(target_os = "macos")]
+        {
+            let (x_inset, y_inset) = utils::MACOS_TRAFFIC_LIGHT_INSET;
+            Some(gpui::point(x_inset, y_inset))
+        }
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            None
+        }
+    };
 
     WindowOptions {
+        titlebar: Some(TitlebarOptions {
+            title: None,
+            appears_transparent: true,
+            traffic_light_position,
+        }),
         window_bounds: Some(WindowBounds::Windowed(bounds)),
+        window_background,
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
         ..WindowOptions::default()
     }
@@ -578,6 +599,7 @@ impl Render for Root {
 
 pub struct Workspace {
     shared_state: Arc<SharedState>,
+    weak_self: WeakEntity<Self>,
     registered_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
     session_id: Option<String>,
@@ -586,6 +608,7 @@ pub struct Workspace {
     bottom_dock: Entity<Dock>,
     pane: Entity<Pane>,
     status_bar: Entity<StatusBar>,
+    titlebar_item: Option<AnyView>,
     notifications: Notifications,
     suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
@@ -971,6 +994,19 @@ impl Workspace {
         &self.project
     }
 
+    pub fn weak_handle(&self) -> WeakEntity<Self> {
+        self.weak_self.clone()
+    }
+
+    pub fn set_titlebar_item(&mut self, item: AnyView, _: &mut Window, cx: &mut Context<Self>) {
+        self.titlebar_item = Some(item);
+        cx.notify();
+    }
+
+    pub fn titlebar_item(&self) -> Option<AnyView> {
+        self.titlebar_item.clone()
+    }
+
     pub fn pane(&self) -> &Entity<Pane> {
         &self.pane
     }
@@ -1200,7 +1236,8 @@ impl Workspace {
             });
 
         let workspace = cx.entity();
-        let pane = cx.new(|cx| Pane::new(workspace.downgrade(), &project, window, cx));
+        let weak_handle = workspace.downgrade();
+        let pane = cx.new(|cx| Pane::new(weak_handle.clone(), &project, window, cx));
         cx.subscribe_in(&pane, window, |workspace, _, event, _, cx| {
             workspace.handle_pane_event(event, cx);
         })
@@ -1250,6 +1287,7 @@ impl Workspace {
 
         let this = Self {
             shared_state,
+            weak_self: weak_handle,
             registered_actions: Vec::default(),
             database_id,
             session_id,
@@ -1258,6 +1296,7 @@ impl Workspace {
             bottom_dock,
             pane,
             status_bar,
+            titlebar_item: None,
             notifications: Notifications::default(),
             suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
@@ -1558,13 +1597,18 @@ impl Render for Workspace {
                     }
                 }),
             )
+            .children(self.titlebar_item.clone())
             .child(
                 gpui::div()
+                    .id("workspace")
+                    .bg(theme_colors.background)
                     .relative()
                     .flex()
                     .flex_row()
                     .flex_1()
                     .overflow_hidden()
+                    .border_y_1()
+                    .border_color(theme_colors.border)
                     .child({
                         let this = cx.entity();
                         gpui::canvas(

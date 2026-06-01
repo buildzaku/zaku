@@ -1,7 +1,7 @@
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
-use gpui::{App, Application, Empty, PromptLevel, QuitMode, prelude::*};
+use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
 use indoc::formatdoc;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -81,6 +81,7 @@ fn main() {
         editor::init(cx);
         request_editor::init(cx);
         response_panel::init(cx);
+        title_bar::init(cx);
         zaku::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);
@@ -181,8 +182,8 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     Application::with_platform(gpui_platform::current_platform(false))
         .with_quit_mode(QuitMode::Explicit)
         .run(move |cx| {
-            let window_options = workspace::default_window_options(cx);
-            if let Ok(window) = cx.open_window(window_options, |_, cx| cx.new(|_| Empty)) {
+            if let Ok(window) = cx.open_window(WindowOptions::default(), |_, cx| cx.new(|_| Empty))
+            {
                 if let Err(error) = window.update(cx, |_, window, cx| {
                     let response = window.prompt(
                         PromptLevel::Critical,
