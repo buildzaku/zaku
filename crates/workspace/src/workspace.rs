@@ -17,6 +17,8 @@ pub use persistence::{
 };
 
 use futures::channel::oneshot;
+#[cfg(target_os = "linux")]
+use gpui::WindowDecorations;
 use gpui::{
     Action, AnyView, App, Bounds, Context, Div, DragMoveEvent, Entity, FocusHandle, Focusable,
     Global, KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel,
@@ -405,6 +407,16 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
     let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
     bounds.origin.y -= gpui::px(36.0);
     let window_background = cx.theme().window_background_appearance();
+    let window_decorations = {
+        #[cfg(target_os = "linux")]
+        {
+            Some(WindowDecorations::Client)
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            None
+        }
+    };
     let traffic_light_position = {
         #[cfg(target_os = "macos")]
         {
@@ -425,6 +437,7 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
         }),
         window_bounds: Some(WindowBounds::Windowed(bounds)),
         window_background,
+        window_decorations,
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
         ..WindowOptions::default()
     }

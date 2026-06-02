@@ -1,18 +1,24 @@
+pub mod platform;
+
 use gpui::{
-    AnyElement, Context, ElementId, Hsla, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Render, StatefulInteractiveElement, Styled, Window, WindowControlArea,
-    prelude::*,
+    Action, AnyElement, App, Context, Decorations, ElementId, Hsla, InteractiveElement,
+    IntoElement, MouseButton, ParentElement, Render, StatefulInteractiveElement, Styled, Window,
+    WindowButtonLayout, WindowControlArea, prelude::*,
 };
 use smallvec::SmallVec;
 use std::mem;
 
+use actions::workspace::CloseWindow;
 use ui::prelude::*;
+
+use crate::platform::linux;
 
 pub struct PlatformTitleBar {
     id: ElementId,
     platform_style: PlatformStyle,
     children: SmallVec<[AnyElement; 2]>,
     should_move: bool,
+    button_layout: Option<WindowButtonLayout>,
 }
 
 impl PlatformTitleBar {
@@ -24,6 +30,7 @@ impl PlatformTitleBar {
             platform_style,
             children: SmallVec::new(),
             should_move: false,
+            button_layout: None,
         }
     }
 
@@ -45,6 +52,78 @@ impl PlatformTitleBar {
     {
         self.children = children.into_iter().collect();
     }
+
+    pub fn set_button_layout(&mut self, button_layout: Option<WindowButtonLayout>) {
+        self.button_layout = button_layout;
+    }
+
+    fn effective_button_layout(
+        &self,
+        decorations: Decorations,
+        cx: &App,
+    ) -> Option<WindowButtonLayout> {
+        if self.platform_style == PlatformStyle::Linux
+            && matches!(decorations, Decorations::Client { .. })
+        {
+            self.button_layout.or_else(|| cx.button_layout())
+        } else {
+            None
+        }
+    }
+}
+
+pub fn render_left_window_controls(
+    button_layout: Option<WindowButtonLayout>,
+    close_action: Box<dyn Action>,
+    window: &Window,
+) -> Option<AnyElement> {
+    match PlatformStyle::platform() {
+        PlatformStyle::Linux => {
+            if !matches!(window.window_decorations(), Decorations::Client { .. }) {
+                return None;
+            }
+
+            let button_layout = button_layout?;
+            button_layout.left[0]?;
+
+            Some(
+                linux::LinuxWindowControls::new(
+                    "left-window-controls",
+                    button_layout.left,
+                    close_action,
+                )
+                .into_any_element(),
+            )
+        }
+        PlatformStyle::Mac | PlatformStyle::Windows => None,
+    }
+}
+
+pub fn render_right_window_controls(
+    button_layout: Option<WindowButtonLayout>,
+    close_action: Box<dyn Action>,
+    window: &Window,
+) -> Option<AnyElement> {
+    match PlatformStyle::platform() {
+        PlatformStyle::Linux => {
+            if !matches!(window.window_decorations(), Decorations::Client { .. }) {
+                return None;
+            }
+
+            let button_layout = button_layout?;
+            button_layout.right[0]?;
+
+            Some(
+                linux::LinuxWindowControls::new(
+                    "right-window-controls",
+                    button_layout.right,
+                    close_action,
+                )
+                .into_any_element(),
+            )
+        }
+        PlatformStyle::Windows | PlatformStyle::Mac => None,
+    }
 }
 
 impl Render for PlatformTitleBar {
@@ -52,6 +131,19 @@ impl Render for PlatformTitleBar {
         let height = ui::utils::title_bar_height(window.rem_size());
         let titlebar_color = self.title_bar_color(window, cx);
         let children = mem::take(&mut self.children);
+        let decorations = window.window_decorations();
+        let button_layout = self.effective_button_layout(decorations, cx);
+        let close_action = Box::new(CloseWindow);
+        let traffic_light_padding = {
+            #[cfg(target_os = "macos")]
+            {
+                Some(ui::utils::traffic_light_padding(height, cx))
+            }
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            {
+                None
+            }
+        };
 
         #[cfg(target_os = "macos")]
         {
@@ -106,15 +198,14 @@ impl Render for PlatformTitleBar {
             .map(|this| {
                 if window.is_fullscreen() {
                     this.pl_2()
-                } else if self.platform_style == PlatformStyle::Mac {
-                    #[cfg(target_os = "macos")]
-                    {
-                        this.pl(ui::utils::traffic_light_padding(height, cx))
-                    }
-                    #[cfg(any(target_os = "linux", target_os = "windows"))]
-                    {
-                        this
-                    }
+                } else if let Some(traffic_light_padding) = traffic_light_padding {
+                    this.pl(traffic_light_padding)
+                } else if let Some(controls) = render_left_window_controls(
+                    button_layout,
+                    close_action.as_ref().boxed_clone(),
+                    window,
+                ) {
+                    this.child(controls)
                 } else {
                     this.pl_2()
                 }
@@ -132,6 +223,25 @@ impl Render for PlatformTitleBar {
                     .w_full()
                     .children(children),
             )
+            .when(!window.is_fullscreen(), |this| {
+                let title_bar = this.children(render_right_window_controls(
+                    button_layout,
+                    close_action.as_ref().boxed_clone(),
+                    window,
+                ));
+
+                if self.platform_style == PlatformStyle::Linux
+                    && matches!(decorations, Decorations::Client { .. })
+                {
+                    title_bar.when(window.window_controls().window_menu, |titlebar| {
+                        titlebar.on_mouse_down(MouseButton::Right, move |event, window, _cx| {
+                            window.show_window_menu(event.position);
+                        })
+                    })
+                } else {
+                    title_bar
+                }
+            })
     }
 }
 

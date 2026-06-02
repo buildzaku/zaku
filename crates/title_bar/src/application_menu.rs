@@ -1,4 +1,4 @@
-use gpui::{Action, Anchor, App, Context, Entity, Window, prelude::*};
+use gpui::{Action, App, Context, Entity, Window, prelude::*};
 
 use ui::{
     ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu,
@@ -34,18 +34,21 @@ impl Render for ApplicationMenu {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let handle = self.handle.clone();
 
-        gpui::div().id("application-menu-item").occlude().child(
-            PopoverMenu::new("application-menu-popover")
-                .menu(move |window, cx| Some(Self::build_menu(window, cx)))
-                .anchor(Anchor::TopRight)
-                .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
-                .trigger(
-                    IconButton::new("application-menu-trigger", IconName::Menu)
-                        .variant(ButtonVariant::Subtle)
-                        .shape(IconButtonShape::Square)
-                        .icon_size(IconSize::Small),
-                )
-                .with_handle(handle),
-        )
+        gpui::div()
+            .key_context("ApplicationMenu")
+            .id("application-menu-item")
+            .occlude()
+            .child(
+                PopoverMenu::new("application-menu-popover")
+                    .menu(move |window, cx| Some(Self::build_menu(window, cx)))
+                    .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
+                    .trigger(
+                        IconButton::new("application-menu-trigger", IconName::Menu)
+                            .variant(ButtonVariant::Subtle)
+                            .shape(IconButtonShape::Square)
+                            .icon_size(IconSize::Small),
+                    )
+                    .with_handle(handle),
+            )
     }
 }

@@ -13,6 +13,7 @@ name = "platform_title_bar"
 path = "src/platform_title_bar.rs"
 
 [dependencies]
+actions = { workspace = true }
 gpui = { workspace = true }
 smallvec = { workspace = true }
 theme = { workspace = true }
