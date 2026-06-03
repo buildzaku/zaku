@@ -11,7 +11,7 @@ use std::mem;
 use actions::workspace::CloseWindow;
 use ui::prelude::*;
 
-use crate::platform::linux;
+use crate::platform::{linux, windows};
 
 pub struct PlatformTitleBar {
     id: ElementId,
@@ -104,9 +104,12 @@ pub fn render_right_window_controls(
     close_action: Box<dyn Action>,
     window: &Window,
 ) -> Option<AnyElement> {
+    let decorations = window.window_decorations();
+    let height = ui::utils::title_bar_height(window.rem_size());
+
     match PlatformStyle::platform() {
         PlatformStyle::Linux => {
-            if !matches!(window.window_decorations(), Decorations::Client { .. }) {
+            if !matches!(decorations, Decorations::Client { .. }) {
                 return None;
             }
 
@@ -122,7 +125,10 @@ pub fn render_right_window_controls(
                 .into_any_element(),
             )
         }
-        PlatformStyle::Windows | PlatformStyle::Mac => None,
+        PlatformStyle::Windows => {
+            Some(windows::WindowsWindowControls::new(height).into_any_element())
+        }
+        PlatformStyle::Mac => None,
     }
 }
 

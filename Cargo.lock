@@ -4754,6 +4754,7 @@ dependencies = [
  "smallvec",
  "theme",
  "ui",
+ "windows 0.62.2",
 ]
 
 [[package]]
