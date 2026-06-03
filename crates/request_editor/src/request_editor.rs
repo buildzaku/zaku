@@ -1020,7 +1020,7 @@ impl RequestEditor {
                     .rounded_sm()
                     .border_1()
                     .when(active, |this| {
-                        this.border_color(colors.border)
+                        this.border_color(colors.border.opacity(0.25))
                             .bg(colors.panel_tab_active_background)
                     })
                     .when(!active, |this| {
