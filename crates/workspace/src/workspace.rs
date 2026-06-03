@@ -1838,13 +1838,14 @@ impl Render for Workspace {
             .collect::<Vec<_>>();
 
         gpui::div()
+            .relative()
             .flex()
             .flex_col()
-            .bg(theme_colors.background)
             .text_color(theme_colors.text)
             .font(ui_font)
             .text_ui(cx)
             .size_full()
+            .overflow_hidden()
             .on_modifiers_changed(move |_, _, cx| {
                 for &id in &notification_entities {
                     cx.notify(id);
