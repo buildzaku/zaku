@@ -30,6 +30,10 @@ pub enum IconName {
     FolderClose,
     FolderOpen,
     Info,
+    LinuxClose,
+    LinuxMaximize,
+    LinuxMinimize,
+    LinuxRestore,
     Menu,
     Minimize,
     Network,
@@ -40,10 +44,6 @@ pub enum IconName {
     Tree,
     Warning,
     WarningCircle,
-    WindowClose,
-    WindowMaximize,
-    WindowMinimize,
-    WindowRestore,
 }
 
 impl IconName {

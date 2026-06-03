@@ -93,10 +93,10 @@ pub enum WindowControlType {
 impl WindowControlType {
     pub fn icon(self) -> IconName {
         match self {
-            WindowControlType::Minimize => IconName::WindowMinimize,
-            WindowControlType::Restore => IconName::WindowRestore,
-            WindowControlType::Maximize => IconName::WindowMaximize,
-            WindowControlType::Close => IconName::WindowClose,
+            WindowControlType::Minimize => IconName::LinuxMinimize,
+            WindowControlType::Restore => IconName::LinuxRestore,
+            WindowControlType::Maximize => IconName::LinuxMaximize,
+            WindowControlType::Close => IconName::LinuxClose,
         }
     }
 }
