@@ -3,7 +3,8 @@ use gpui::{
     RenderOnce, Window, WindowButton, prelude::*,
 };
 
-use ui::prelude::*;
+use theme::{ActiveTheme, Appearance};
+use ui::IconName;
 
 #[derive(IntoElement)]
 pub struct LinuxWindowControls {
@@ -44,11 +45,14 @@ impl RenderOnce for LinuxWindowControls {
             })
             .collect();
 
-        h_flex()
+        gpui::div()
             .id(self.id)
+            .flex()
+            .flex_row()
+            .items_center()
             .when(!button_elements.is_empty(), |this| {
-                this.gap_3()
-                    .px_3()
+                this.gap_1p5()
+                    .px(gpui::rems(0.4375))
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .children(button_elements)
             })
@@ -104,40 +108,26 @@ impl WindowControlType {
 pub struct WindowControlStyle {
     background: Hsla,
     background_hover: Hsla,
+    background_active: Hsla,
     icon: Hsla,
-    icon_hover: Hsla,
 }
 
 impl WindowControlStyle {
     pub fn default(cx: &mut App) -> Self {
-        let colors = cx.theme().colors();
-
-        Self {
-            background: colors.ghost_element_background,
-            background_hover: colors.ghost_element_hover,
-            icon: colors.icon,
-            icon_hover: colors.icon_muted,
+        match cx.theme().appearance() {
+            Appearance::Light => Self {
+                background: gpui::rgba(0x3d3d3d1a).into(),
+                background_hover: gpui::rgba(0x1a1a1a26).into(),
+                background_active: gpui::rgba(0x0a0a0a40).into(),
+                icon: gpui::rgb(0x3d3d3d).into(),
+            },
+            Appearance::Dark => Self {
+                background: gpui::rgba(0xf7f7f71a).into(),
+                background_hover: gpui::rgba(0xf4f4f426).into(),
+                background_active: gpui::rgba(0xeaeaea40).into(),
+                icon: gpui::rgb(0xf7f7f7).into(),
+            },
         }
-    }
-
-    pub fn background(mut self, color: impl Into<Hsla>) -> Self {
-        self.background = color.into();
-        self
-    }
-
-    pub fn background_hover(mut self, color: impl Into<Hsla>) -> Self {
-        self.background_hover = color.into();
-        self
-    }
-
-    pub fn icon(mut self, color: impl Into<Hsla>) -> Self {
-        self.icon = color.into();
-        self
-    }
-
-    pub fn icon_hover(mut self, color: impl Into<Hsla>) -> Self {
-        self.icon_hover = color.into();
-        self
     }
 }
 
@@ -171,19 +161,6 @@ impl WindowControl {
             close_action: Some(close_action),
         }
     }
-
-    pub fn custom_style(
-        id: impl Into<ElementId>,
-        icon: WindowControlType,
-        style: WindowControlStyle,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            icon,
-            style,
-            close_action: None,
-        }
-    }
 }
 
 impl RenderOnce for WindowControl {
@@ -192,22 +169,40 @@ impl RenderOnce for WindowControl {
             .size_4()
             .flex_none()
             .path(self.icon.icon().path())
-            .text_color(self.style.icon)
-            .group_hover("", |this| this.text_color(self.style.icon_hover));
+            .text_color(self.style.icon);
+        let button_id = self.id;
+        let group_name = button_id.to_string();
 
-        h_flex()
-            .id(self.id)
-            .group("window-control")
-            .cursor_pointer()
+        let control_surface = gpui::div()
+            .id((button_id.clone(), "surface"))
+            .mx(gpui::rems(0.1875))
+            .flex()
+            .items_center()
             .justify_center()
             .content_center()
+            .size_6()
             .rounded_2xl()
-            .w_5()
-            .h_5()
             .bg(self.style.background)
-            .hover(|this| this.bg(self.style.background_hover))
-            .active(|this| this.bg(self.style.background_hover))
-            .child(icon)
+            .group_hover(group_name.clone(), |this| {
+                this.bg(self.style.background_hover)
+            })
+            .group_active(group_name.clone(), |this| {
+                this.bg(self.style.background_active)
+            })
+            .child(icon);
+
+        gpui::div()
+            .id(button_id)
+            .group(group_name)
+            .flex()
+            .items_center()
+            .justify_center()
+            .content_center()
+            .flex_none()
+            .min_w_6()
+            .p_0()
+            .cursor_pointer()
+            .child(control_surface)
             .on_mouse_move(|_, _, cx| cx.stop_propagation())
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
