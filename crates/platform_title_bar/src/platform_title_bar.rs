@@ -216,6 +216,20 @@ impl Render for PlatformTitleBar {
                     this.pl_2()
                 }
             })
+            .map(|this| match decorations {
+                Decorations::Server => this,
+                Decorations::Client { tiling, .. } => this
+                    .when(!(tiling.top || tiling.right), |this| {
+                        this.rounded_tr(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                    })
+                    .when(!(tiling.top || tiling.left), |this| {
+                        this.rounded_tl(theme::CLIENT_SIDE_DECORATION_ROUNDING)
+                    })
+                    .mt(gpui::px(-1.0))
+                    .mb(gpui::px(-1.0))
+                    .border(gpui::px(1.0))
+                    .border_color(titlebar_color),
+            })
             .bg(titlebar_color)
             .content_stretch()
             .child(

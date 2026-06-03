@@ -1,8 +1,9 @@
 use gpui::{
-    AnyView, App, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription, Window,
+    AnyView, App, Context, Decorations, Entity, IntoElement, ParentElement, Render, Styled,
+    Subscription, Window, prelude::*,
 };
 
-use theme::ActiveTheme;
+use theme::{ActiveTheme, CLIENT_SIDE_DECORATION_ROUNDING};
 use ui::{DynamicSpacing, StyledTypography};
 
 use crate::pane::Pane;
@@ -114,7 +115,7 @@ impl StatusBar {
 }
 
 impl Render for StatusBar {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let colors = cx.theme().colors();
 
         gpui::div()
@@ -128,6 +129,33 @@ impl Render for StatusBar {
             .font_ui(cx)
             .text_ui_sm(cx)
             .bg(colors.status_bar_background)
+            .map(|this| match window.window_decorations() {
+                Decorations::Server => this,
+                Decorations::Client { tiling, .. } => this
+                    .when(!(tiling.bottom || tiling.right), |this| {
+                        this.rounded_br(CLIENT_SIDE_DECORATION_ROUNDING)
+                    })
+                    .when(!(tiling.bottom || tiling.left), |this| {
+                        this.rounded_bl(CLIENT_SIDE_DECORATION_ROUNDING)
+                    })
+                    .mb(gpui::px(-1.0))
+                    .mt({
+                        #[cfg(target_os = "linux")]
+                        let needs_wayland_scale_gap_fix = {
+                            gpui::guess_compositor() == "Wayland" && window.scale_factor() != 1.0
+                        };
+                        #[cfg(any(target_os = "macos", target_os = "windows"))]
+                        let needs_wayland_scale_gap_fix = false;
+
+                        if needs_wayland_scale_gap_fix {
+                            gpui::px(-1.0)
+                        } else {
+                            gpui::px(0.0)
+                        }
+                    })
+                    .border_b(gpui::px(1.0))
+                    .border_color(colors.status_bar_background),
+            })
             .child(self.render_left_tools())
             .child(gpui::div().flex_1())
             .child(self.render_right_tools())

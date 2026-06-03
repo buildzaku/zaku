@@ -3,7 +3,7 @@ mod settings;
 
 use anyhow::{Context, anyhow};
 use gpui::{
-    App, AssetSource, BorrowAppContext, Global, Hsla, Rgba, SharedString, WindowAppearance,
+    App, AssetSource, BorrowAppContext, Global, Hsla, Pixels, Rgba, SharedString, WindowAppearance,
     WindowBackgroundAppearance,
 };
 use palette::{FromColor, Hsl, Okhsl};
@@ -16,6 +16,8 @@ pub use settings::*;
 
 pub(crate) const DEFAULT_LIGHT_THEME: &str = "Zaku Light";
 pub(crate) const DEFAULT_DARK_THEME: &str = "Zaku Dark";
+pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = gpui::px(10.0);
+pub const CLIENT_SIDE_DECORATION_SHADOW: Pixels = gpui::px(10.0);
 
 #[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
 pub enum Appearance {
