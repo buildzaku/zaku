@@ -132,6 +132,7 @@ windows = { version = "0.62", features = [
   "Wdk_System_SystemServices",
   "Win32_Foundation",
   "Win32_Storage_FileSystem",
+  "Win32_System_SystemInformation",
 ] }
 ##################################################
 # Workspace member crates
