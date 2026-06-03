@@ -142,7 +142,8 @@ impl Render for StatusBar {
                     .mt({
                         #[cfg(target_os = "linux")]
                         let needs_wayland_scale_gap_fix = {
-                            gpui::guess_compositor() == "Wayland" && window.scale_factor() != 1.0
+                            gpui::guess_compositor() == "Wayland"
+                                && (window.scale_factor() - 1.0).abs() > f32::EPSILON
                         };
                         #[cfg(any(target_os = "macos", target_os = "windows"))]
                         let needs_wayland_scale_gap_fix = false;
