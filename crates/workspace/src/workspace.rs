@@ -20,11 +20,11 @@ use futures::channel::oneshot;
 #[cfg(target_os = "linux")]
 use gpui::WindowDecorations;
 use gpui::{
-    Action, AnyView, App, Bounds, Context, CursorStyle, Decorations, Div, DragMoveEvent, Entity,
-    FocusHandle, Focusable, Global, HitboxBehavior, Hsla, KeyContext, MouseButton, MouseDownEvent,
-    PathPromptOptions, Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task,
-    Tiling, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle, WindowId,
-    WindowOptions, prelude::*,
+    Action, AnyView, App, Bounds, BoxShadow, Context, CursorStyle, Decorations, Div, DragMoveEvent,
+    Entity, FocusHandle, Focusable, Global, HitboxBehavior, Hsla, KeyContext, MouseButton,
+    MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful,
+    Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
+    WindowId, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -732,7 +732,7 @@ pub fn client_side_decorations(
                         .when(!tiling.left, |this| this.border_l(BORDER_SIZE))
                         .when(!tiling.right, |this| this.border_r(BORDER_SIZE))
                         .when(!tiling.is_tiled(), |this| {
-                            this.shadow(vec![gpui::BoxShadow {
+                            this.shadow(vec![BoxShadow {
                                 color: Hsla {
                                     h: 0.0,
                                     s: 0.0,
