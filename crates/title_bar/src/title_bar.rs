@@ -69,7 +69,8 @@ impl Render for TitleBar {
         let colors = cx.theme().colors();
         let mut children = SmallVec::<[AnyElement; 2]>::new();
         let button_layout = cx.button_layout();
-        let title_bar_controls_on_left = match PlatformStyle::platform() {
+        let platform_style = PlatformStyle::platform();
+        let title_bar_controls_on_left = match platform_style {
             PlatformStyle::Linux => {
                 let supported_controls = window.window_controls();
 
@@ -92,7 +93,10 @@ impl Render for TitleBar {
         let zaku = gpui::div()
             .flex()
             .items_center()
-            .px(DynamicSpacing::Base12.rems(cx))
+            .map(|this| match platform_style {
+                PlatformStyle::Mac => this.pl(gpui::rems(0.5)).pr(gpui::rems(0.875)),
+                PlatformStyle::Linux | PlatformStyle::Windows => this.px(gpui::rems(0.5)),
+            })
             .child(
                 Graphic::with_height(GraphicName::Zaku, IconSize::Small.rems())
                     .color(Color::Custom(colors.text)),

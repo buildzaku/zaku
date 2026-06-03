@@ -44,7 +44,7 @@ impl Render for ApplicationMenu {
                     .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                     .trigger(
                         IconButton::new("application-menu-trigger", IconName::Menu)
-                            .variant(ButtonVariant::Subtle)
+                            .variant(ButtonVariant::Ghost)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::Small),
                     )

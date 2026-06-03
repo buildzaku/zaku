@@ -1160,7 +1160,7 @@ impl RequestEditor {
             .icon(IconName::Plus)
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
-            .variant(ButtonVariant::Outline)
+            .variant(ButtonVariant::OutlinedGhost)
             .size(ButtonSize::Medium)
             .on_click(cx.listener(|request_editor, _, window, cx| {
                 request_editor.add_param(window, cx);
@@ -1266,7 +1266,7 @@ impl RequestEditor {
             .icon(IconName::Plus)
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
-            .variant(ButtonVariant::Outline)
+            .variant(ButtonVariant::OutlinedGhost)
             .size(ButtonSize::Medium)
             .on_click(cx.listener(|request_editor, _, window, cx| {
                 request_editor.add_header(window, cx);
@@ -1471,7 +1471,7 @@ impl RequestEditor {
                             request.http.method.as_str().to_owned(),
                             request_method_menu,
                         )
-                        .variant(DropdownVariant::Outlined)
+                        .variant(DropdownVariant::OutlinedGhost)
                         .attach(Anchor::BottomLeft)
                         .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                         .trigger_size(ButtonSize::Large),
