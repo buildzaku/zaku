@@ -2,8 +2,8 @@ pub mod platform;
 
 use gpui::{
     Action, AnyElement, App, Context, Decorations, ElementId, Hsla, InteractiveElement,
-    IntoElement, MouseButton, ParentElement, Render, StatefulInteractiveElement, Styled, Window,
-    WindowButtonLayout, WindowControlArea, prelude::*,
+    IntoElement, MouseButton, ParentElement, Pixels, Render, StatefulInteractiveElement, Styled,
+    Window, WindowButtonLayout, WindowControlArea, prelude::*,
 };
 use smallvec::SmallVec;
 use std::mem;
@@ -134,7 +134,7 @@ impl Render for PlatformTitleBar {
         let decorations = window.window_decorations();
         let button_layout = self.effective_button_layout(decorations, cx);
         let close_action = Box::new(CloseWindow);
-        let traffic_light_padding = {
+        let traffic_light_padding: Option<Pixels> = {
             #[cfg(target_os = "macos")]
             {
                 Some(ui::utils::traffic_light_padding(height, cx))
