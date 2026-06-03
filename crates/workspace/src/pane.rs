@@ -915,6 +915,7 @@ impl Pane {
             ui::h_flex()
                 .group(tab_control_group_name.clone())
                 .relative()
+                .size(IconSize::Small.square(window, cx))
                 .justify_center()
                 .child(render_item_indicator(tab_control_group_name.clone(), cx))
                 .child(
