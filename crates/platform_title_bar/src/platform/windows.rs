@@ -29,7 +29,7 @@ impl WindowsWindowControls {
 
         // Safety: RtlGetVersion writes to the provided output buffer, and `version`
         // remains valid for the duration of the call.
-        let status = unsafe { SystemServices::RtlGetVersion(&mut version) };
+        let status = unsafe { SystemServices::RtlGetVersion(&raw mut version) };
 
         if status.is_ok() && version.dwBuildNumber >= 22000 {
             "Segoe Fluent Icons"
