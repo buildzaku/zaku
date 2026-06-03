@@ -1,6 +1,4 @@
-use gpui::{
-    App, Hsla, IntoElement, Pixels, RenderOnce, Rgba, Window, WindowControlArea, prelude::*,
-};
+use gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, Window, WindowControlArea, prelude::*};
 #[cfg(target_os = "windows")]
 use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSVERSIONINFOW};
 
@@ -106,27 +104,25 @@ impl RenderOnce for WindowsCaptionButton {
         let (hover_background, hover_foreground, active_background, active_foreground) = match &self
         {
             Self::Close => {
-                let color: Hsla = Rgba {
-                    r: 232.0 / 255.0,
-                    g: 17.0 / 255.0,
-                    b: 32.0 / 255.0,
-                    a: 1.0,
-                }
-                .into();
+                let color: Hsla = gpui::rgb(0xe81123).into();
 
                 (
                     color,
                     gpui::white(),
-                    color.opacity(0.8),
-                    gpui::white().opacity(0.8),
+                    color.opacity(f32::from(0x98_u8) / 255.0),
+                    gpui::white(),
                 )
             }
-            _ => (
-                cx.theme().colors().ghost_element_hover,
-                cx.theme().colors().text,
-                cx.theme().colors().ghost_element_active,
-                cx.theme().colors().text,
-            ),
+            Self::Minimize | Self::Restore | Self::Maximize => {
+                let foreground = cx.theme().colors().text;
+
+                (
+                    foreground.opacity(f32::from(0x1a_u8) / 255.0),
+                    foreground,
+                    foreground.opacity(f32::from(0x33_u8) / 255.0),
+                    foreground,
+                )
+            }
         };
 
         gpui::div()
@@ -135,9 +131,9 @@ impl RenderOnce for WindowsCaptionButton {
             .justify_center()
             .content_center()
             .occlude()
-            .w(gpui::px(36.0))
+            .w_9()
             .h_full()
-            .text_size(gpui::px(10.0))
+            .text_size(gpui::rems(0.625))
             .hover(|style| style.bg(hover_background).text_color(hover_foreground))
             .active(|style| style.bg(active_background).text_color(active_foreground))
             .window_control_area(self.control_area())
