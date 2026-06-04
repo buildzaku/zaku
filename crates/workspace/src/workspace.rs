@@ -17,10 +17,14 @@ pub use persistence::{
 };
 
 use futures::channel::oneshot;
+#[cfg(target_os = "linux")]
+use gpui::WindowDecorations;
 use gpui::{
-    Action, App, Bounds, Context, Div, DragMoveEvent, Entity, FocusHandle, Focusable, Global,
-    KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, Size,
-    Subscription, Task, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
+    Action, AnyView, App, Bounds, BoxShadow, Context, CursorStyle, Decorations, Div, DragMoveEvent,
+    Entity, FocusHandle, Focusable, Global, HitboxBehavior, Hsla, KeyContext, MouseButton,
+    MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful,
+    Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
+    WindowId, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -40,6 +44,8 @@ use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
 use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
+#[cfg(target_os = "macos")]
+use ui::utils;
 use ui::{StyledTypography, h_flex};
 use util::ResultExt;
 
@@ -401,9 +407,38 @@ fn register_actions(
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
     let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
     bounds.origin.y -= gpui::px(36.0);
+    let window_background = cx.theme().window_background_appearance();
+    let window_decorations = {
+        #[cfg(target_os = "linux")]
+        {
+            Some(WindowDecorations::Client)
+        }
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            None
+        }
+    };
+    let traffic_light_position = {
+        #[cfg(target_os = "macos")]
+        {
+            let (x_inset, y_inset) = utils::traffic_light_inset(gpui::px(32.0), cx);
+            Some(gpui::point(x_inset, y_inset))
+        }
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            None
+        }
+    };
 
     WindowOptions {
+        titlebar: Some(TitlebarOptions {
+            title: None,
+            appears_transparent: true,
+            traffic_light_position,
+        }),
         window_bounds: Some(WindowBounds::Windowed(bounds)),
+        window_background,
+        window_decorations,
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
         ..WindowOptions::default()
     }
@@ -556,28 +591,300 @@ impl Focusable for Root {
     }
 }
 
+struct GlobalResizeEdge(ResizeEdge);
+
+impl Global for GlobalResizeEdge {}
+
+pub fn client_side_decorations(
+    element: impl IntoElement,
+    window: &mut Window,
+    cx: &mut App,
+    border_radius_tiling: Tiling,
+) -> Stateful<Div> {
+    const BORDER_SIZE: Pixels = gpui::px(1.0);
+    let decorations = window.window_decorations();
+    let tiling = match decorations {
+        Decorations::Server => Tiling::default(),
+        Decorations::Client { tiling } => tiling,
+    };
+
+    match decorations {
+        Decorations::Client { .. } => window.set_client_inset(theme::CLIENT_SIDE_DECORATION_SHADOW),
+        Decorations::Server => window.set_client_inset(gpui::px(0.0)),
+    }
+
+    gpui::div()
+        .id("window-backdrop")
+        .bg(gpui::transparent_black())
+        .map(|this| match decorations {
+            Decorations::Server => this,
+            Decorations::Client { .. } => this
+                .when(
+                    !(tiling.top
+                        || tiling.right
+                        || border_radius_tiling.top
+                        || border_radius_tiling.right),
+                    |this| this.rounded_tr(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                )
+                .when(
+                    !(tiling.top
+                        || tiling.left
+                        || border_radius_tiling.top
+                        || border_radius_tiling.left),
+                    |this| this.rounded_tl(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                )
+                .when(
+                    !(tiling.bottom
+                        || tiling.right
+                        || border_radius_tiling.bottom
+                        || border_radius_tiling.right),
+                    |this| this.rounded_br(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                )
+                .when(
+                    !(tiling.bottom
+                        || tiling.left
+                        || border_radius_tiling.bottom
+                        || border_radius_tiling.left),
+                    |this| this.rounded_bl(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                )
+                .when(!tiling.top, |this| {
+                    this.pt(theme::CLIENT_SIDE_DECORATION_SHADOW)
+                })
+                .when(!tiling.bottom, |this| {
+                    this.pb(theme::CLIENT_SIDE_DECORATION_SHADOW)
+                })
+                .when(!tiling.left, |this| {
+                    this.pl(theme::CLIENT_SIDE_DECORATION_SHADOW)
+                })
+                .when(!tiling.right, |this| {
+                    this.pr(theme::CLIENT_SIDE_DECORATION_SHADOW)
+                })
+                .on_mouse_move(move |event, window, cx| {
+                    let size = window.window_bounds().get_bounds().size;
+                    let new_edge = resize_edge(
+                        event.position,
+                        theme::CLIENT_SIDE_DECORATION_SHADOW,
+                        size,
+                        tiling,
+                    );
+
+                    let edge = cx.try_global::<GlobalResizeEdge>();
+                    if new_edge != edge.map(|edge| edge.0)
+                        && let Err(error) = window.window_handle().update(cx, |root, _, cx| {
+                            cx.notify(root.entity_id());
+                        })
+                    {
+                        log::error!("Failed to notify resize edge change: {error:?}");
+                    }
+                })
+                .on_mouse_down(MouseButton::Left, move |event, window, _cx| {
+                    let size = window.window_bounds().get_bounds().size;
+                    let Some(edge) = resize_edge(
+                        event.position,
+                        theme::CLIENT_SIDE_DECORATION_SHADOW,
+                        size,
+                        tiling,
+                    ) else {
+                        return;
+                    };
+
+                    window.start_window_resize(edge);
+                }),
+        })
+        .size_full()
+        .child(
+            gpui::div()
+                .cursor(CursorStyle::Arrow)
+                .map(|this| match decorations {
+                    Decorations::Server => this,
+                    Decorations::Client { .. } => this
+                        .border_color(cx.theme().colors().border)
+                        .when(
+                            !(tiling.top
+                                || tiling.right
+                                || border_radius_tiling.top
+                                || border_radius_tiling.right),
+                            |this| this.rounded_tr(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                        )
+                        .when(
+                            !(tiling.top
+                                || tiling.left
+                                || border_radius_tiling.top
+                                || border_radius_tiling.left),
+                            |this| this.rounded_tl(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                        )
+                        .when(
+                            !(tiling.bottom
+                                || tiling.right
+                                || border_radius_tiling.bottom
+                                || border_radius_tiling.right),
+                            |this| this.rounded_br(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                        )
+                        .when(
+                            !(tiling.bottom
+                                || tiling.left
+                                || border_radius_tiling.bottom
+                                || border_radius_tiling.left),
+                            |this| this.rounded_bl(theme::CLIENT_SIDE_DECORATION_ROUNDING),
+                        )
+                        .when(!tiling.top, |this| this.border_t(BORDER_SIZE))
+                        .when(!tiling.bottom, |this| this.border_b(BORDER_SIZE))
+                        .when(!tiling.left, |this| this.border_l(BORDER_SIZE))
+                        .when(!tiling.right, |this| this.border_r(BORDER_SIZE))
+                        .when(!tiling.is_tiled(), |this| {
+                            this.shadow(vec![BoxShadow {
+                                color: Hsla {
+                                    h: 0.0,
+                                    s: 0.0,
+                                    l: 0.0,
+                                    a: 0.4,
+                                },
+                                blur_radius: theme::CLIENT_SIDE_DECORATION_SHADOW / 2.0,
+                                spread_radius: gpui::px(0.0),
+                                inset: false,
+                                offset: gpui::point(gpui::px(0.0), gpui::px(0.0)),
+                            }])
+                        }),
+                })
+                .on_mouse_move(|_event, _window, cx| {
+                    cx.stop_propagation();
+                })
+                .size_full()
+                .child(element),
+        )
+        .map(|this| match decorations {
+            Decorations::Server => this,
+            Decorations::Client { tiling, .. } => this.child(
+                gpui::canvas(
+                    |_bounds, window, _cx| {
+                        window.insert_hitbox(
+                            Bounds::new(
+                                gpui::point(gpui::px(0.0), gpui::px(0.0)),
+                                window.window_bounds().get_bounds().size,
+                            ),
+                            HitboxBehavior::Normal,
+                        )
+                    },
+                    move |_bounds, hitbox, window, cx| {
+                        let Some(edge) = resize_edge(
+                            window.mouse_position(),
+                            theme::CLIENT_SIDE_DECORATION_SHADOW,
+                            window.window_bounds().get_bounds().size,
+                            tiling,
+                        ) else {
+                            return;
+                        };
+                        cx.set_global(GlobalResizeEdge(edge));
+                        window.set_cursor_style(
+                            match edge {
+                                ResizeEdge::Top | ResizeEdge::Bottom => CursorStyle::ResizeUpDown,
+                                ResizeEdge::Left | ResizeEdge::Right => {
+                                    CursorStyle::ResizeLeftRight
+                                }
+                                ResizeEdge::TopLeft | ResizeEdge::BottomRight => {
+                                    CursorStyle::ResizeUpLeftDownRight
+                                }
+                                ResizeEdge::TopRight | ResizeEdge::BottomLeft => {
+                                    CursorStyle::ResizeUpRightDownLeft
+                                }
+                            },
+                            &hitbox,
+                        );
+                    },
+                )
+                .size_full()
+                .absolute(),
+            ),
+        })
+}
+
+fn resize_edge(
+    position: Point<Pixels>,
+    shadow_size: Pixels,
+    window_size: Size<Pixels>,
+    tiling: Tiling,
+) -> Option<ResizeEdge> {
+    let bounds = Bounds::new(Point::default(), window_size).inset(shadow_size * 1.5);
+    if bounds.contains(&position) {
+        return None;
+    }
+
+    let corner_size = gpui::size(shadow_size * 1.5, shadow_size * 1.5);
+    let top_left_bounds = Bounds::new(Point::new(gpui::px(0.0), gpui::px(0.0)), corner_size);
+    if !tiling.top && top_left_bounds.contains(&position) {
+        return Some(ResizeEdge::TopLeft);
+    }
+
+    let top_right_bounds = Bounds::new(
+        Point::new(window_size.width - corner_size.width, gpui::px(0.0)),
+        corner_size,
+    );
+    if !tiling.top && top_right_bounds.contains(&position) {
+        return Some(ResizeEdge::TopRight);
+    }
+
+    let bottom_left_bounds = Bounds::new(
+        Point::new(gpui::px(0.0), window_size.height - corner_size.height),
+        corner_size,
+    );
+    if !tiling.bottom && bottom_left_bounds.contains(&position) {
+        return Some(ResizeEdge::BottomLeft);
+    }
+
+    let bottom_right_bounds = Bounds::new(
+        Point::new(
+            window_size.width - corner_size.width,
+            window_size.height - corner_size.height,
+        ),
+        corner_size,
+    );
+    if !tiling.bottom && bottom_right_bounds.contains(&position) {
+        return Some(ResizeEdge::BottomRight);
+    }
+
+    if !tiling.top && position.y < shadow_size {
+        Some(ResizeEdge::Top)
+    } else if !tiling.bottom && position.y > window_size.height - shadow_size {
+        Some(ResizeEdge::Bottom)
+    } else if !tiling.left && position.x < shadow_size {
+        Some(ResizeEdge::Left)
+    } else if !tiling.right && position.x > window_size.width - shadow_size {
+        Some(ResizeEdge::Right)
+    } else {
+        None
+    }
+}
+
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = self.workspace().clone();
         let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
         let root = workspace.update(cx, |workspace, cx| workspace.actions(h_flex(), window, cx));
 
-        root.key_context(workspace_key_context)
-            .size_full()
-            .on_action(cx.listener(Self::close_project))
-            .on_action(cx.listener(Self::close_window))
-            .child(
-                gpui::div()
-                    .flex()
-                    .flex_1()
-                    .size_full()
-                    .child(self.workspace().clone()),
-            )
+        client_side_decorations(
+            root.key_context(workspace_key_context)
+                .relative()
+                .size_full()
+                .on_action(cx.listener(Self::close_project))
+                .on_action(cx.listener(Self::close_window))
+                .child(
+                    gpui::div()
+                        .flex()
+                        .flex_1()
+                        .size_full()
+                        .overflow_hidden()
+                        .child(self.workspace().clone()),
+                ),
+            window,
+            cx,
+            Tiling::default(),
+        )
     }
 }
 
 pub struct Workspace {
     shared_state: Arc<SharedState>,
+    weak_self: WeakEntity<Self>,
     registered_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
     session_id: Option<String>,
@@ -586,6 +893,7 @@ pub struct Workspace {
     bottom_dock: Entity<Dock>,
     pane: Entity<Pane>,
     status_bar: Entity<StatusBar>,
+    titlebar_item: Option<AnyView>,
     notifications: Notifications,
     suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
@@ -971,6 +1279,19 @@ impl Workspace {
         &self.project
     }
 
+    pub fn weak_handle(&self) -> WeakEntity<Self> {
+        self.weak_self.clone()
+    }
+
+    pub fn set_titlebar_item(&mut self, item: AnyView, _: &mut Window, cx: &mut Context<Self>) {
+        self.titlebar_item = Some(item);
+        cx.notify();
+    }
+
+    pub fn titlebar_item(&self) -> Option<AnyView> {
+        self.titlebar_item.clone()
+    }
+
     pub fn pane(&self) -> &Entity<Pane> {
         &self.pane
     }
@@ -1200,7 +1521,8 @@ impl Workspace {
             });
 
         let workspace = cx.entity();
-        let pane = cx.new(|cx| Pane::new(workspace.downgrade(), &project, window, cx));
+        let weak_handle = workspace.downgrade();
+        let pane = cx.new(|cx| Pane::new(weak_handle.clone(), &project, window, cx));
         cx.subscribe_in(&pane, window, |workspace, _, event, _, cx| {
             workspace.handle_pane_event(event, cx);
         })
@@ -1250,6 +1572,7 @@ impl Workspace {
 
         let this = Self {
             shared_state,
+            weak_self: weak_handle,
             registered_actions: Vec::default(),
             database_id,
             session_id,
@@ -1258,6 +1581,7 @@ impl Workspace {
             bottom_dock,
             pane,
             status_bar,
+            titlebar_item: None,
             notifications: Notifications::default(),
             suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
@@ -1514,13 +1838,14 @@ impl Render for Workspace {
             .collect::<Vec<_>>();
 
         gpui::div()
+            .relative()
             .flex()
             .flex_col()
-            .bg(theme_colors.background)
             .text_color(theme_colors.text)
             .font(ui_font)
             .text_ui(cx)
             .size_full()
+            .overflow_hidden()
             .on_modifiers_changed(move |_, _, cx| {
                 for &id in &notification_entities {
                     cx.notify(id);
@@ -1558,13 +1883,18 @@ impl Render for Workspace {
                     }
                 }),
             )
+            .children(self.titlebar_item.clone())
             .child(
                 gpui::div()
+                    .id("workspace")
+                    .bg(theme_colors.background)
                     .relative()
                     .flex()
                     .flex_row()
                     .flex_1()
                     .overflow_hidden()
+                    .border_y_1()
+                    .border_color(theme_colors.border)
                     .child({
                         let this = cx.entity();
                         gpui::canvas(

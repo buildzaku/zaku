@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use theme::ActiveTheme;
 use ui::{
-    ButtonCommon, Clickable, Color, Disableable, IconButton, IconButtonShape, IconSize,
-    StyledTypography, Toggleable, Tooltip,
+    ButtonCommon, ButtonVariant, Clickable, Color, Disableable, IconButton, IconButtonShape,
+    IconSize, StyledTypography, Toggleable, Tooltip,
 };
 
 use crate::{pane::Pane, status_bar::StatusItemView};
@@ -531,7 +531,7 @@ impl Render for PanelButtons {
 
                 Some(
                     IconButton::new(format!("{panel_key}-button-{is_active_button}"), icon)
-                        .variant(ui::ButtonVariant::Subtle)
+                        .variant(ButtonVariant::Ghost)
                         .icon_size(IconSize::Small)
                         .shape(IconButtonShape::Square)
                         .icon_color(Color::Muted)

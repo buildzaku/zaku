@@ -3,7 +3,8 @@ mod settings;
 
 use anyhow::{Context, anyhow};
 use gpui::{
-    App, AssetSource, BorrowAppContext, Global, Hsla, Rgba, SharedString, WindowAppearance,
+    App, AssetSource, BorrowAppContext, Global, Hsla, Pixels, Rgba, SharedString, WindowAppearance,
+    WindowBackgroundAppearance,
 };
 use palette::{FromColor, Hsl, Okhsl};
 use parking_lot::RwLock;
@@ -15,6 +16,8 @@ pub use settings::*;
 
 pub(crate) const DEFAULT_LIGHT_THEME: &str = "Zaku Light";
 pub(crate) const DEFAULT_DARK_THEME: &str = "Zaku Dark";
+pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = gpui::px(10.0);
+pub const CLIENT_SIDE_DECORATION_SHADOW: Pixels = gpui::px(10.0);
 
 #[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
 pub enum Appearance {
@@ -111,6 +114,10 @@ impl Theme {
         self.appearance
     }
 
+    pub fn window_background_appearance(&self) -> WindowBackgroundAppearance {
+        self.styles.window_background_appearance
+    }
+
     pub fn status(&self) -> &StatusColors {
         &self.styles.status
     }
@@ -135,6 +142,7 @@ impl Theme {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThemeStyles {
+    pub window_background_appearance: WindowBackgroundAppearance,
     pub colors: ThemeColors,
     pub status: StatusColors,
 }
@@ -180,6 +188,8 @@ pub struct ThemeColors {
     pub ghost_element_selected: Hsla,
     pub ghost_element_disabled: Hsla,
 
+    pub title_bar_background: Hsla,
+    pub title_bar_inactive_background: Hsla,
     pub status_bar_background: Hsla,
     pub panel_tab_bar_background: Hsla,
     pub panel_tab_inactive_background: Hsla,
@@ -352,6 +362,10 @@ pub struct ThemeStyleContent {
     #[serde(rename = "ghost_element.disabled")]
     pub ghost_element_disabled: Option<String>,
 
+    #[serde(rename = "title_bar.background")]
+    pub title_bar_background: Option<String>,
+    #[serde(rename = "title_bar.inactive_background")]
+    pub title_bar_inactive_background: Option<String>,
     #[serde(rename = "status_bar.background")]
     pub status_bar_background: Option<String>,
     #[serde(rename = "panel.tab_bar.background")]
@@ -561,6 +575,14 @@ impl ThemeStyleContent {
                 "ghost_element.disabled",
                 self.ghost_element_disabled.as_deref(),
             )?,
+            title_bar_background: parse_color(
+                "title_bar.background",
+                self.title_bar_background.as_deref(),
+            )?,
+            title_bar_inactive_background: parse_color(
+                "title_bar.inactive_background",
+                self.title_bar_inactive_background.as_deref(),
+            )?,
             status_bar_background: parse_color(
                 "status_bar.background",
                 self.status_bar_background.as_deref(),
@@ -713,7 +735,11 @@ impl ThemeStyleContent {
             warning_border: parse_color("warning.border", self.warning_border.as_deref())?,
         };
 
-        Ok(ThemeStyles { colors, status })
+        Ok(ThemeStyles {
+            window_background_appearance: WindowBackgroundAppearance::Opaque,
+            colors,
+            status,
+        })
     }
 }
 

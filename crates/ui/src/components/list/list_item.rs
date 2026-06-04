@@ -304,7 +304,7 @@ impl RenderOnce for ListItem {
                     }))
                     .child(
                         h_flex()
-                            .flex_grow()
+                            .flex_grow_1()
                             .flex_shrink_0()
                             .flex_basis(gpui::relative(0.25))
                             .gap(DynamicSpacing::Base06.rems(cx))
@@ -321,7 +321,7 @@ impl RenderOnce for ListItem {
                     .when_some(self.end_slot, |this, end_slot| {
                         this.justify_between().child(
                             h_flex()
-                                .flex_shrink()
+                                .flex_shrink_1()
                                 .overflow_hidden()
                                 .when(self.end_hover_slot.is_some(), |this| {
                                     this.visible()

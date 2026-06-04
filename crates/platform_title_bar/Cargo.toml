@@ -1,5 +1,5 @@
 [package]
-name = "ui"
+name = "platform_title_bar"
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,18 +9,15 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "ui"
-path = "src/ui.rs"
+name = "platform_title_bar"
+path = "src/platform_title_bar.rs"
 
 [dependencies]
 actions = { workspace = true }
 gpui = { workspace = true }
-icons = { workspace = true }
-schemars = { workspace = true }
-serde = { workspace = true }
-settings = { workspace = true }
 smallvec = { workspace = true }
-strum = { workspace = true }
 theme = { workspace = true }
-ui_macros = { workspace = true }
-util = { workspace = true }
+ui = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true }

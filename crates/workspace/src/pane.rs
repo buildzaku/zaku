@@ -915,6 +915,7 @@ impl Pane {
             ui::h_flex()
                 .group(tab_control_group_name.clone())
                 .relative()
+                .size(IconSize::Small.square(window, cx))
                 .justify_center()
                 .child(render_item_indicator(tab_control_group_name.clone(), cx))
                 .child(
@@ -1172,7 +1173,7 @@ impl Render for Pane {
 
 fn render_item_indicator(group_name: String, cx: &App) -> AnyElement {
     gpui::div()
-        .size(gpui::px(6.0))
+        .size_1p5()
         .rounded_sm()
         .bg(cx.theme().colors().text_accent)
         .group_hover(group_name, |style| style.invisible())

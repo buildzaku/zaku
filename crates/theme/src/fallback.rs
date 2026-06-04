@@ -1,4 +1,4 @@
-use gpui::Hsla;
+use gpui::{Hsla, WindowBackgroundAppearance};
 use uuid::Uuid;
 
 use crate::{
@@ -69,6 +69,8 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 ghost_element_active: gpui::rgb(0x3a3a40).into(),
                 ghost_element_selected: gpui::rgb(0x3a3a40).into(),
                 ghost_element_disabled: Hsla::transparent_black(),
+                title_bar_background: gpui::rgb(0x121212).into(),
+                title_bar_inactive_background: gpui::rgb(0x121212).into(),
                 status_bar_background: gpui::rgb(0x121212).into(),
                 panel_tab_bar_background: gpui::rgb(0x1a1a1a).into(),
                 panel_tab_inactive_background: gpui::rgb(0x121212).into(),
@@ -142,10 +144,10 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 panel_indent_guide: gpui::rgba(0x8383832e).into(),
                 panel_indent_guide_hover: gpui::rgba(0x0303032e).into(),
                 panel_indent_guide_active: gpui::rgba(0x0303032e).into(),
-                border: gpui::rgb(0xd7d7dd).into(),
-                border_variant: gpui::rgb(0xd7d7dd).into(),
+                border: gpui::rgb(0xd0d0d0).into(),
+                border_variant: gpui::rgb(0xd0d0d0).into(),
                 border_focused: gpui::rgb(0x2f2f2f).into(),
-                border_disabled: gpui::rgba(0xd7d7dd80).into(),
+                border_disabled: gpui::rgba(0xd0d0d080).into(),
                 text: gpui::rgb(0x5f5f5f).into(),
                 text_muted: gpui::rgb(0x474750).into(),
                 text_placeholder: gpui::rgb(0xcacaca).into(),
@@ -168,10 +170,12 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 ghost_element_active: gpui::rgb(0xdcdfe0).into(),
                 ghost_element_selected: gpui::rgb(0xdcdfe0).into(),
                 ghost_element_disabled: Hsla::transparent_black(),
+                title_bar_background: gpui::rgb(0xf8f8f8).into(),
+                title_bar_inactive_background: gpui::rgb(0xf8f8f8).into(),
                 status_bar_background: gpui::rgb(0xf8f8f8).into(),
                 panel_tab_bar_background: gpui::rgb(0xf5f5f5).into(),
                 panel_tab_inactive_background: gpui::rgb(0xf8f8f8).into(),
-                panel_tab_active_background: gpui::rgb(0xfefefe).into(),
+                panel_tab_active_background: gpui::rgb(0xdfdfdf).into(),
                 panel_tab_inactive_foreground: gpui::rgb(0x5f5f5f).into(),
                 panel_tab_active_foreground: gpui::rgb(0x474750).into(),
                 tab_bar_background: gpui::rgb(0xf8f8f8).into(),
@@ -185,7 +189,7 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 scrollbar_thumb_background: gpui::rgb(0xe4e4e4).into(),
                 scrollbar_thumb_hover_background: gpui::rgb(0xe4e4e4).into(),
                 scrollbar_thumb_active_background: gpui::rgb(0xe4e4e4).into(),
-                scrollbar_thumb_border: gpui::rgb(0xd7d7dd).into(),
+                scrollbar_thumb_border: gpui::rgb(0xd0d0d0).into(),
             };
 
             let status = StatusColors {
@@ -203,13 +207,13 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 error_border: gpui::rgb(0x4c2b2c).into(),
                 hidden: gpui::rgb(0x474750).into(),
                 hidden_background: gpui::rgba(0x4747501a).into(),
-                hidden_border: gpui::rgb(0xd7d7dd).into(),
+                hidden_border: gpui::rgb(0xd0d0d0).into(),
                 hint: gpui::rgb(0x2b7bbb).into(),
                 hint_background: gpui::rgba(0x2b7bbb1a).into(),
                 hint_border: gpui::rgba(0x2b7bbb60).into(),
                 ignored: gpui::rgb(0x474750).into(),
                 ignored_background: gpui::rgba(0x4747501a).into(),
-                ignored_border: gpui::rgb(0xd7d7dd).into(),
+                ignored_border: gpui::rgb(0xd0d0d0).into(),
                 info: gpui::rgb(0x000000).into(),
                 info_background: gpui::rgb(0xffffff).into(),
                 info_border: gpui::rgba(0x00000060).into(),
@@ -224,7 +228,7 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 success_border: gpui::rgb(0x38482f).into(),
                 unreachable: gpui::rgb(0x474750).into(),
                 unreachable_background: gpui::rgba(0x4747501a).into(),
-                unreachable_border: gpui::rgb(0xd7d7dd).into(),
+                unreachable_border: gpui::rgb(0xd0d0d0).into(),
                 warning: gpui::rgb(0xdec184).into(),
                 warning_background: gpui::rgba(0xdec1841a).into(),
                 warning_border: gpui::rgb(0x5d4c2f).into(),
@@ -234,5 +238,9 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
         }
     };
 
-    ThemeStyles { colors, status }
+    ThemeStyles {
+        window_background_appearance: WindowBackgroundAppearance::Opaque,
+        colors,
+        status,
+    }
 }

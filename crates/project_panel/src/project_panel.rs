@@ -3790,12 +3790,22 @@ mod tests {
 
         panel
             .condition::<ProjectPanelEvent>(cx, |panel, cx| {
+                let visible_entries = panel.visible_entries(cx);
+                let contains_path = |path| {
+                    visible_entries
+                        .iter()
+                        .any(|entry| entry.path.as_ref() == rel_path(path))
+                };
+
                 panel
                     .tree_state
                     .edit_state
                     .as_ref()
                     .is_some_and(|edit_state| edit_state.processing_file_name.is_none())
                     && panel.file_name_editor.read(cx).text(cx) == "first copy"
+                    && contains_path("collection/first.toml")
+                    && contains_path("collection/first copy.toml")
+                    && contains_path("collection/second.toml")
             })
             .await;
         cx.run_until_parked();

@@ -207,8 +207,8 @@ impl SettingsContent {
 }
 
 fn clamp_font_size(value: Pixels) -> Pixels {
-    const MIN_FONT_SIZE: Pixels = gpui::px(6.0);
-    const MAX_FONT_SIZE: Pixels = gpui::px(100.0);
+    const MIN_FONT_SIZE: Pixels = gpui::px(10.0);
+    const MAX_FONT_SIZE: Pixels = gpui::px(64.0);
 
     if value < MIN_FONT_SIZE {
         MIN_FONT_SIZE

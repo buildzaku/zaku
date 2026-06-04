@@ -5,6 +5,7 @@ use rust_embed::RustEmbed;
 #[derive(RustEmbed)]
 #[folder = "../../assets"]
 #[include = "fonts/**/*"]
+#[include = "graphics/**/*"]
 #[include = "icons/**/*"]
 #[include = "themes/**/*"]
 #[exclude = "*.DS_Store"]

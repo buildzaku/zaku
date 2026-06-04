@@ -13,6 +13,7 @@ members = [
   "crates/logger",
   "crates/metadata",
   "crates/multi_buffer",
+  "crates/platform_title_bar",
   "crates/project",
   "crates/project_panel",
   "crates/request_buffer",
@@ -25,6 +26,7 @@ members = [
   "crates/sql",
   "crates/sql_macros",
   "crates/theme",
+  "crates/title_bar",
   "crates/ui",
   "crates/ui_macros",
   "crates/util",
@@ -71,12 +73,12 @@ async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 chrono = { version = "0.4" }
-clock = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "clock" }
+clock = { git = "https://github.com/zed-industries/zed", rev = "96165ec626", package = "clock" }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 futures = { version = "0.3" }
-gpui = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "gpui" }
-gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "gpui_platform" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "96165ec626", package = "gpui" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "96165ec626", package = "gpui_platform" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 imara-diff = { version = "0.2" }
@@ -85,7 +87,7 @@ indoc = { version = "2.0" }
 itertools = { version = "0.14" }
 is_executable = { version = "1.0" }
 libc = { version = "0.2" }
-libsqlite3-sys = { version = "0.37", features = ["bundled"] }
+libsqlite3-sys = { version = "0.38", features = ["bundled"] }
 log = { version = "0.4" }
 mimalloc = { version = "0.1" }
 notify = { version = "8.2" }
@@ -113,11 +115,11 @@ smallvec = { version = "1.15" }
 smol = { version = "2.0" }
 sqlformat = { version = "0.5" }
 strum = { version = "0.28", features = ["derive"] }
-sum_tree = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "sum_tree" }
+sum_tree = { git = "https://github.com/zed-industries/zed", rev = "96165ec626", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
-text = { git = "https://github.com/zed-industries/zed", rev = "e2e7a6769e", package = "text" }
+text = { git = "https://github.com/zed-industries/zed", rev = "96165ec626", package = "text" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }
@@ -127,8 +129,10 @@ unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.23", features = ["v4"] }
 windows = { version = "0.62", features = [
+  "Wdk_System_SystemServices",
   "Win32_Foundation",
   "Win32_Storage_FileSystem",
+  "Win32_System_SystemInformation",
 ] }
 ##################################################
 # Workspace member crates
@@ -145,6 +149,7 @@ language = { path = "crates/language" }
 logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }
+platform_title_bar = { path = "crates/platform_title_bar" }
 project = { path = "crates/project" }
 project_panel = { path = "crates/project_panel" }
 request_buffer = { path = "crates/request_buffer" }
@@ -157,6 +162,7 @@ settings_macros = { path = "crates/settings_macros" }
 sql = { path = "crates/sql" }
 sql_macros = { path = "crates/sql_macros" }
 theme = { path = "crates/theme" }
+title_bar = { path = "crates/title_bar" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }
 util = { path = "crates/util" }
