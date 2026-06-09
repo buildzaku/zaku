@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use util::ResultExt;
 use uuid::Uuid;
 
-use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
+use self::model::{SerializedWorkspace, SessionWorkspace};
 use crate::WorkspaceId;
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
@@ -224,7 +224,7 @@ impl WorkspaceDb {
         if let Err(error) = self
             .0
             .write(move |connection| {
-                let workspace_location = workspace.location.path();
+                let workspace_location = workspace.location.as_path();
                 connection.with_savepoint("save_workspace", || {
                     connection
                         .exec_bound(sql!(
@@ -283,13 +283,12 @@ impl WorkspaceDb {
     pub async fn recent_workspaces_on_disk(
         &self,
         fs: &dyn Fs,
-    ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>> {
+    ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
         let mut existing_workspaces = Vec::new();
         let mut delete_tasks = Vec::new();
 
         for (workspace_id, location, timestamp) in self.recent_workspaces()? {
-            let workspace_path = location.path().to_path_buf();
-            if Self::workspace_path_is_restorable(&workspace_path, fs, Some(timestamp)).await {
+            if Self::workspace_path_is_restorable(&location, fs, Some(timestamp)).await {
                 existing_workspaces.push((workspace_id, location, timestamp));
             } else {
                 delete_tasks.push(self.delete_workspace_by_id(workspace_id));
@@ -304,7 +303,7 @@ impl WorkspaceDb {
     pub async fn last_workspace(
         &self,
         fs: &dyn Fs,
-    ) -> anyhow::Result<Option<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>> {
+    ) -> anyhow::Result<Option<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
         Ok(self.recent_workspaces_on_disk(fs).await?.into_iter().next())
     }
 
@@ -344,8 +343,7 @@ impl WorkspaceDb {
         for (workspace_id, location, window_id) in
             self.session_workspaces(last_session_id.to_owned())?
         {
-            let workspace_path = location.path().to_path_buf();
-            if Self::workspace_path_is_restorable(&workspace_path, fs, None).await {
+            if Self::workspace_path_is_restorable(&location, fs, None).await {
                 workspaces.push(SessionWorkspace {
                     workspace_id,
                     location,
@@ -414,18 +412,12 @@ impl WorkspaceDb {
             .await
     }
 
-    fn recent_workspaces(
-        &self,
-    ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>> {
+    fn recent_workspaces(&self) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
         Ok(self
             .recent_workspaces_query()?
             .into_iter()
             .map(|(workspace_id, location, timestamp)| {
-                (
-                    workspace_id,
-                    SerializedWorkspaceLocation::Local(location),
-                    parse_timestamp(&timestamp),
-                )
+                (workspace_id, location, parse_timestamp(&timestamp))
             })
             .collect())
     }
@@ -442,14 +434,14 @@ impl WorkspaceDb {
     fn session_workspaces(
         &self,
         session_id: String,
-    ) -> anyhow::Result<Vec<(WorkspaceId, SerializedWorkspaceLocation, Option<u64>)>> {
+    ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Option<u64>)>> {
         Ok(self
             .session_workspaces_query(session_id)?
             .into_iter()
             .map(|(workspace_id, location, window_id)| {
                 (
                     workspace_id,
-                    SerializedWorkspaceLocation::Local(location),
+                    location,
                     window_id.and_then(|window_id| u64::try_from(window_id).ok()),
                 )
             })
@@ -529,7 +521,7 @@ impl WorkspaceDb {
                         )| {
                             SerializedWorkspace {
                                 id: workspace_id,
-                                location: SerializedWorkspaceLocation::Local(location),
+                                location,
                                 window_bounds,
                                 display,
                                 session_id,
@@ -578,7 +570,7 @@ impl WorkspaceDb {
                         |(location, window_bounds, display, session_id, window_id)| {
                             SerializedWorkspace {
                                 id: workspace_id,
-                                location: SerializedWorkspaceLocation::Local(location),
+                                location,
                                 window_bounds,
                                 display,
                                 session_id,
@@ -644,7 +636,7 @@ mod tests {
         workspace_db
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
-                location: SerializedWorkspaceLocation::Local(project_path.clone()),
+                location: project_path.clone(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -654,7 +646,7 @@ mod tests {
         workspace_db
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
-                location: SerializedWorkspaceLocation::Local(project_path.clone()),
+                location: project_path.clone(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -671,7 +663,7 @@ mod tests {
             panic!("expected a recent workspace");
         };
         assert_eq!(*workspace_id, WorkspaceId::from(1));
-        assert_eq!(location.path(), project_path);
+        assert_eq!(location, &project_path);
         assert_eq!(workspace_db.recent_workspace_count().unwrap(), 1);
     }
 
@@ -685,7 +677,7 @@ mod tests {
         workspace_db
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
-                location: SerializedWorkspaceLocation::Local(path.clone()),
+                location: path.clone(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -695,7 +687,7 @@ mod tests {
 
         let rows = workspace_db.recent_workspaces().unwrap();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].1, SerializedWorkspaceLocation::Local(path));
+        assert_eq!(rows[0].1, path);
     }
 
     #[gpui::test]
@@ -784,7 +776,7 @@ mod tests {
             workspace_db
                 .save_workspace(SerializedWorkspace {
                     id: WorkspaceId::from(workspace_id),
-                    location: SerializedWorkspaceLocation::Local(location),
+                    location,
                     window_bounds: None,
                     display: None,
                     session_id: Some("session-uuid".to_string()),
@@ -812,22 +804,22 @@ mod tests {
             vec![
                 SessionWorkspace {
                     workspace_id: WorkspaceId::from(4),
-                    location: SerializedWorkspaceLocation::Local(fourth_path),
+                    location: fourth_path,
                     window_id: Some(WindowId::from(2_u64)),
                 },
                 SessionWorkspace {
                     workspace_id: WorkspaceId::from(3),
-                    location: SerializedWorkspaceLocation::Local(third_path),
+                    location: third_path,
                     window_id: Some(WindowId::from(8_u64)),
                 },
                 SessionWorkspace {
                     workspace_id: WorkspaceId::from(2),
-                    location: SerializedWorkspaceLocation::Local(second_path),
+                    location: second_path,
                     window_id: Some(WindowId::from(5_u64)),
                 },
                 SessionWorkspace {
                     workspace_id: WorkspaceId::from(1),
-                    location: SerializedWorkspaceLocation::Local(first_path),
+                    location: first_path,
                     window_id: Some(WindowId::from(9_u64)),
                 },
             ]
@@ -848,7 +840,7 @@ mod tests {
         workspace_db
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
-                location: SerializedWorkspaceLocation::Local(temp_fs.path().join(path!("project"))),
+                location: temp_fs.path().join(path!("project")),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-uuid".to_string()),
@@ -858,9 +850,7 @@ mod tests {
         workspace_db
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(2),
-                location: SerializedWorkspaceLocation::Local(
-                    temp_fs.path().join(path!("missing_project")),
-                ),
+                location: temp_fs.path().join(path!("missing_project")),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-uuid".to_string()),
@@ -877,7 +867,7 @@ mod tests {
             locations,
             vec![SessionWorkspace {
                 workspace_id: WorkspaceId::from(1),
-                location: SerializedWorkspaceLocation::Local(temp_fs.path().join(path!("project"))),
+                location: temp_fs.path().join(path!("project")),
                 window_id: Some(WindowId::from(1_u64)),
             }]
         );

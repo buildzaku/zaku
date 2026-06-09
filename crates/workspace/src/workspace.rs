@@ -13,7 +13,7 @@ pub use item::{
 };
 pub use persistence::{
     SerializedWindowBounds, WorkspaceDb,
-    model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
+    model::{SerializedWorkspace, SessionWorkspace},
 };
 
 use futures::channel::oneshot;
@@ -1203,7 +1203,7 @@ impl Workspace {
             let Some(serialized_workspace) = workspace_db.workspace_for_id(workspace_id) else {
                 anyhow::bail!("Workspace {workspace_id:?} not found");
             };
-            let path = serialized_workspace.location.path().to_path_buf();
+            let path = serialized_workspace.location.clone();
             let project = cx
                 .update(|cx| Project::open(shared_state.fs.clone(), path, cx))
                 .await?;
@@ -1639,7 +1639,7 @@ impl Workspace {
             Some(root_path) => {
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
-                    location: SerializedWorkspaceLocation::Local(root_path),
+                    location: root_path,
                     window_bounds: Some(SerializedWindowBounds(window.window_bounds())),
                     display: None,
                     session_id: self.session_id.clone(),
@@ -2420,12 +2420,12 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path)
+                .any(|(_, location, _)| location == &canonical_project_path)
         );
         assert!(
             recent_workspaces
                 .iter()
-                .all(|(_, location, _)| location.path() != alternate_project_path)
+                .all(|(_, location, _)| location != &alternate_project_path)
         );
     }
 
@@ -2592,7 +2592,7 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| { location.path() == project_path })
+                .any(|(_, location, _)| location == &project_path)
         );
     }
 
@@ -3484,12 +3484,12 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path)
+                .any(|(_, location, _)| location == &canonical_project_path)
         );
         assert!(
             recent_workspaces
                 .iter()
-                .all(|(_, location, _)| location.path() != alias_project_path)
+                .all(|(_, location, _)| location != &alias_project_path)
         );
     }
 

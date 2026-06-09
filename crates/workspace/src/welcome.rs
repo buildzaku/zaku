@@ -3,6 +3,7 @@ use gpui::{
     Action, App, Context, FocusHandle, Focusable, FontWeight, Render, SharedString, WeakEntity,
     Window, prelude::*,
 };
+use std::path::{Path, PathBuf};
 
 use metadata::{ZAKU_DESCRIPTION, ZAKU_NAME};
 use theme::ActiveTheme;
@@ -11,7 +12,7 @@ use ui::{
     KeyBinding, Label, LabelCommon, LabelSize,
 };
 
-use crate::{OpenMode, SerializedWorkspaceLocation, Workspace, WorkspaceDb, WorkspaceId};
+use crate::{OpenMode, Workspace, WorkspaceDb, WorkspaceId};
 
 #[derive(IntoElement)]
 struct SectionHeader {
@@ -158,7 +159,7 @@ const CONTENT: Section<1> = Section {
 pub struct WelcomePage {
     workspace: WeakEntity<Workspace>,
     focus_handle: FocusHandle,
-    recent_workspaces: Option<Vec<(WorkspaceId, SerializedWorkspaceLocation, DateTime<Utc>)>>,
+    recent_workspaces: Option<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>>,
 }
 
 impl WelcomePage {
@@ -236,7 +237,7 @@ impl WelcomePage {
         else {
             return;
         };
-        let recent_workspace_path = location.path().to_path_buf();
+        let recent_workspace_path = location.clone();
 
         if let Err(error) = self.workspace.update(cx, |workspace, cx| {
             workspace
@@ -258,21 +259,16 @@ impl WelcomePage {
         &self,
         project_index: usize,
         tab_index: usize,
-        location: &SerializedWorkspaceLocation,
+        path: &Path,
     ) -> impl IntoElement {
-        let (icon, title) = match location {
-            SerializedWorkspaceLocation::Local(path) => {
-                let title = path.file_name().map_or_else(
-                    || path.to_string_lossy().into_owned(),
-                    |file_name| file_name.to_string_lossy().into_owned(),
-                );
-                (IconName::Folder, title)
-            }
-        };
+        let title = path.file_name().map_or_else(
+            || path.to_string_lossy().into_owned(),
+            |file_name| file_name.to_string_lossy().into_owned(),
+        );
 
         SectionButton::new(
             title,
-            icon,
+            IconName::Folder,
             &actions::workspace::OpenRecentProject {
                 index: project_index,
             },
