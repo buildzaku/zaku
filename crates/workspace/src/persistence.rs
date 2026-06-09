@@ -6,15 +6,15 @@ use gpui::{Bounds, WindowBounds, WindowId};
 use std::path::{Path, PathBuf};
 
 use db::{
-    Bind, Column, Row, Statement, StaticColumnCount, ThreadSafeConnection, kv::KeyValueStore,
-    query, sql_macros::sql,
+    Bind, Column, Connection, Row, Statement, StaticColumnCount, ThreadSafeConnection,
+    kv::KeyValueStore, query, sql_macros::sql,
 };
 use fs::Fs;
 use serde::{Deserialize, Serialize};
 use util::ResultExt;
 use uuid::Uuid;
 
-use self::model::{SerializedWorkspace, SessionWorkspace};
+use self::model::{PaneId, SerializedItem, SerializedPane, SerializedWorkspace, SessionWorkspace};
 use crate::WorkspaceId;
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
@@ -228,6 +228,15 @@ impl WorkspaceDb {
                 connection.with_savepoint("save_workspace", || {
                     connection
                         .exec_bound(sql!(
+                            DELETE FROM pane
+                            WHERE workspace_id = ?1
+                        ))
+                        .context("failed to prepare old pane cleanup query")
+                        .and_then(|mut f| f(workspace.id))
+                        .context("failed to clear old pane")?;
+
+                    connection
+                        .exec_bound(sql!(
                             DELETE FROM workspace
                             WHERE id != ?1 AND location = ?2
                         ))
@@ -270,6 +279,9 @@ impl WorkspaceDb {
                             ))
                         })
                         .context("failed to upsert workspace")?;
+
+                    Self::save_pane(connection, workspace.id, &workspace.center_pane)
+                        .context("failed to save center pane")?;
 
                     Ok(())
                 })
@@ -387,6 +399,43 @@ impl WorkspaceDb {
                         .context("failed to set up workspace table initialization")
                         .and_then(|mut f| f())
                         .context("failed to initialize workspace persistence table")?;
+
+                    connection
+                        .exec(sql!(
+                            CREATE TABLE IF NOT EXISTS pane(
+                                id INTEGER PRIMARY KEY,
+                                workspace_id INTEGER NOT NULL UNIQUE,
+                                active INTEGER NOT NULL,
+                                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+                                ON DELETE CASCADE
+                                ON UPDATE CASCADE
+                            ) STRICT
+                        ))
+                        .context("failed to set up pane table initialization")
+                        .and_then(|mut f| f())
+                        .context("failed to initialize pane table")?;
+
+                    connection
+                        .exec(sql!(
+                            CREATE TABLE IF NOT EXISTS item(
+                                id INTEGER NOT NULL,
+                                workspace_id INTEGER NOT NULL,
+                                pane_id INTEGER NOT NULL,
+                                kind TEXT NOT NULL,
+                                position INTEGER NOT NULL,
+                                active INTEGER NOT NULL,
+                                preview INTEGER NOT NULL,
+                                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+                                ON DELETE CASCADE
+                                ON UPDATE CASCADE,
+                                FOREIGN KEY(pane_id) REFERENCES pane(id)
+                                ON DELETE CASCADE,
+                                PRIMARY KEY(id, workspace_id)
+                            ) STRICT
+                        ))
+                        .context("failed to set up item table initialization")
+                        .and_then(|mut f| f())
+                        .context("failed to initialize item table")?;
 
                     connection
                         .exec(sql!(
@@ -510,7 +559,7 @@ impl WorkspaceDb {
                 .and_then(|mut f| f(worktree_root.as_ref()))
                 .context("failed to query workspace by root")
                 .map(|workspace| {
-                    workspace.map(
+                    workspace.and_then(
                         |(
                             workspace_id,
                             location,
@@ -519,14 +568,17 @@ impl WorkspaceDb {
                             session_id,
                             window_id,
                         )| {
-                            SerializedWorkspace {
+                            Some(SerializedWorkspace {
                                 id: workspace_id,
                                 location,
+                                center_pane: Self::get_center_pane(connection, workspace_id)
+                                    .context("failed to get center pane")
+                                    .log_err()?,
                                 window_bounds,
                                 display,
                                 session_id,
                                 window_id,
-                            }
+                            })
                         },
                     )
                 })
@@ -566,16 +618,19 @@ impl WorkspaceDb {
                 .and_then(|mut f| f(workspace_id))
                 .context("failed to query workspace by id")
                 .map(|workspace| {
-                    workspace.map(
+                    workspace.and_then(
                         |(location, window_bounds, display, session_id, window_id)| {
-                            SerializedWorkspace {
+                            Some(SerializedWorkspace {
                                 id: workspace_id,
                                 location,
+                                center_pane: Self::get_center_pane(connection, workspace_id)
+                                    .context("failed to get center pane")
+                                    .log_err()?,
                                 window_bounds,
                                 display,
                                 session_id,
                                 window_id,
-                            }
+                            })
                         },
                     )
                 })
@@ -583,6 +638,87 @@ impl WorkspaceDb {
         .context("No workspace found for id")
         .log_err()
         .flatten()
+    }
+
+    fn get_center_pane(
+        connection: &Connection,
+        workspace_id: WorkspaceId,
+    ) -> anyhow::Result<SerializedPane> {
+        let pane = connection
+            .select_row_bound::<WorkspaceId, (PaneId, bool)>(sql!(
+                SELECT id, active
+                FROM pane
+                WHERE workspace_id = ?
+            ))
+            .context("failed to prepare center pane query")
+            .and_then(|mut f| f(workspace_id))
+            .context("failed to query center pane")?;
+
+        if let Some((pane_id, active)) = pane {
+            let items = Self::get_items(connection, pane_id)?;
+            if items.is_empty() {
+                Ok(SerializedPane::new(Vec::new(), true))
+            } else {
+                Ok(SerializedPane::new(items, active))
+            }
+        } else {
+            Ok(SerializedPane::new(Vec::new(), true))
+        }
+    }
+
+    fn get_items(connection: &Connection, pane_id: PaneId) -> anyhow::Result<Vec<SerializedItem>> {
+        connection
+            .select_bound::<PaneId, SerializedItem>(sql!(
+                SELECT kind, id, active, preview
+                FROM item
+                WHERE pane_id = ?
+                ORDER BY position
+            ))
+            .context("failed to prepare items query")
+            .and_then(|mut f| f(pane_id))
+            .context("failed to query items")
+    }
+
+    fn save_pane(
+        connection: &Connection,
+        workspace_id: WorkspaceId,
+        pane: &SerializedPane,
+    ) -> anyhow::Result<PaneId> {
+        let pane_id = connection
+            .select_row_bound::<(WorkspaceId, bool), PaneId>(sql!(
+                INSERT INTO pane(workspace_id, active)
+                VALUES (?, ?)
+                RETURNING id
+            ))
+            .context("failed to prepare pane insertion")
+            .and_then(|mut f| f((workspace_id, pane.active)))
+            .context("failed to insert pane")?
+            .context("failed to retrieve id from inserted pane")?;
+
+        Self::save_items(connection, workspace_id, pane_id, &pane.children)
+            .context("failed to save pane items")?;
+
+        Ok(pane_id)
+    }
+
+    fn save_items(
+        connection: &Connection,
+        workspace_id: WorkspaceId,
+        pane_id: PaneId,
+        items: &[SerializedItem],
+    ) -> anyhow::Result<()> {
+        let mut insert = connection
+            .exec_bound(sql!(
+                INSERT INTO item(workspace_id, pane_id, position, kind, id, active, preview)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ))
+            .context("failed to prepare item insertion")?;
+
+        for (position, item) in items.iter().enumerate() {
+            insert((workspace_id, pane_id, position, item)).context("failed to insert item")?;
+        }
+
+        Ok(())
     }
 
     #[cfg(test)]
@@ -637,6 +773,7 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: project_path.clone(),
+                center_pane: SerializedPane::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -647,6 +784,7 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: project_path.clone(),
+                center_pane: SerializedPane::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -678,6 +816,7 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: path.clone(),
+                center_pane: SerializedPane::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -777,6 +916,7 @@ mod tests {
                 .save_workspace(SerializedWorkspace {
                     id: WorkspaceId::from(workspace_id),
                     location,
+                    center_pane: SerializedPane::default(),
                     window_bounds: None,
                     display: None,
                     session_id: Some("session-uuid".to_string()),
@@ -841,6 +981,7 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: temp_fs.path().join(path!("project")),
+                center_pane: SerializedPane::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-uuid".to_string()),
@@ -851,6 +992,7 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(2),
                 location: temp_fs.path().join(path!("missing_project")),
+                center_pane: SerializedPane::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-uuid".to_string()),
@@ -1001,5 +1143,104 @@ mod tests {
 
         assert_eq!(serialized_workspace.session_id, None);
         assert_eq!(serialized_workspace.window_id, None);
+    }
+
+    #[gpui::test]
+    async fn test_center_pane_serialization(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_center_pane_serialization").await;
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let location = PathBuf::from("project");
+        let center_pane = SerializedPane::new(
+            vec![
+                SerializedItem::new("Editor", 1, false, false),
+                SerializedItem::new("RequestEditor", 2, true, false),
+                SerializedItem::new("RequestEditor", 3, false, true),
+            ],
+            true,
+        );
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: location.clone(),
+                center_pane: center_pane.clone(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-a".to_string()),
+                window_id: Some(10),
+            })
+            .await;
+
+        let serialized_workspace = workspace_db.workspace_for_root(&location).unwrap();
+        assert_eq!(serialized_workspace.center_pane, center_pane);
+    }
+
+    #[gpui::test]
+    async fn test_empty_center_pane_serialization(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_empty_center_pane_serialization").await;
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let location = PathBuf::from("project");
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: location.clone(),
+                center_pane: SerializedPane::default(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-a".to_string()),
+                window_id: Some(10),
+            })
+            .await;
+
+        let serialized_workspace = workspace_db.workspace_for_root(&location).unwrap();
+        assert_eq!(
+            serialized_workspace.center_pane,
+            SerializedPane::new(Vec::new(), true)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_cleanup_pane_items(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_cleanup_pane_items").await;
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let location = PathBuf::from("project");
+        let old_center_pane = SerializedPane::new(
+            vec![
+                SerializedItem::new("Editor", 1, true, false),
+                SerializedItem::new("RequestEditor", 2, false, true),
+            ],
+            true,
+        );
+        let new_center_pane = SerializedPane::new(
+            vec![SerializedItem::new("RequestEditor", 3, true, true)],
+            true,
+        );
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: location.clone(),
+                center_pane: old_center_pane,
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-a".to_string()),
+                window_id: Some(10),
+            })
+            .await;
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: location.clone(),
+                center_pane: new_center_pane.clone(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-a".to_string()),
+                window_id: Some(10),
+            })
+            .await;
+
+        let serialized_workspace = workspace_db.workspace_for_root(&location).unwrap();
+        assert_eq!(serialized_workspace.center_pane, new_center_pane);
     }
 }

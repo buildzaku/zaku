@@ -13,7 +13,7 @@ pub use item::{
 };
 pub use persistence::{
     SerializedWindowBounds, WorkspaceDb,
-    model::{SerializedWorkspace, SessionWorkspace},
+    model::{SerializedPane, SerializedWorkspace, SessionWorkspace},
 };
 
 use futures::channel::oneshot;
@@ -1646,6 +1646,7 @@ impl Workspace {
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
                     location: root_path,
+                    center_pane: SerializedPane::default(),
                     window_bounds: Some(SerializedWindowBounds(window.window_bounds())),
                     display: None,
                     session_id: self.session_id.clone(),
@@ -3828,6 +3829,7 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: workspace_id,
                 location: project_path.clone(),
+                center_pane: SerializedPane::default(),
                 window_bounds: None,
                 display: None,
                 session_id: None,
