@@ -403,7 +403,9 @@ fn register_actions(
 }
 
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
-    let (window_bounds, display) = if let Some((display_uuid, bounds)) =
+    let (window_bounds, display) = if cx.active_window().is_some() {
+        (None, None)
+    } else if let Some((display_uuid, bounds)) =
         persistence::read_default_window_bounds(&KeyValueStore::global(cx))
     {
         (Some(bounds), Some(display_uuid))
@@ -1125,6 +1127,8 @@ impl Workspace {
                         && let Some(bounds) = workspace.window_bounds.as_ref()
                     {
                         (Some(bounds.0), Some(display))
+                    } else if cx.active_window().is_some() {
+                        (None, None)
                     } else if let Some((display, bounds)) =
                         persistence::read_default_window_bounds(&KeyValueStore::global(cx))
                     {
@@ -1252,6 +1256,8 @@ impl Workspace {
                         && let Some(bounds) = serialized_workspace.window_bounds.as_ref()
                     {
                         (Some(bounds.0), Some(display))
+                    } else if cx.active_window().is_some() {
+                        (None, None)
                     } else if let Some((display, bounds)) =
                         persistence::read_default_window_bounds(&KeyValueStore::global(cx))
                     {
@@ -2235,6 +2241,46 @@ mod tests {
             theme::init(LoadThemes::JustBase, cx);
             crate::init(shared_state, cx);
         });
+    }
+
+    async fn init_default_window_bounds(
+        shared_state: Arc<SharedState>,
+        cx: &mut TestAppContext,
+    ) -> Bounds<Pixels> {
+        let bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(680.0), gpui::px(440.0)),
+        );
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let root = cx
+            .update(|cx| {
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        ..WindowOptions::default()
+                    },
+                    move |window, cx| {
+                        cx.new(|cx| {
+                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                        })
+                    },
+                )
+            })
+            .unwrap();
+        root.update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+        })
+        .unwrap()
+        .await;
+        root.update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+
+        assert!(cx.windows().is_empty());
+
+        bounds
     }
 
     #[gpui::test]
@@ -3569,5 +3615,250 @@ mod tests {
 
         assert_ne!(current_worktree_id, Some(first_worktree_id));
         assert_eq!(current_root, Some(second_path));
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_on_initial_launch(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap()
+                .get_bounds()
+                .size,
+            DEFAULT_WINDOW_SIZE
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_restore_saved_default(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let default_bounds = init_default_window_bounds(shared_state.clone(), cx).await;
+        let project_path = temp_fs.path().join(path!("project"));
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(default_bounds)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_cascade_on_new_window(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        init_test(shared_state.clone(), cx);
+
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        init_default_window_bounds(shared_state.clone(), cx).await;
+
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let active_bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(860.0), gpui::px(540.0)),
+        );
+        let root = cx
+            .update(|cx| {
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(active_bounds)),
+                        ..WindowOptions::default()
+                    },
+                    move |window, cx| {
+                        window.activate_window();
+                        cx.new(|cx| {
+                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                        })
+                    },
+                )
+            })
+            .unwrap();
+
+        cx.dispatch_action(root.into(), actions::workspace::NewWindow);
+        cx.run_until_parked();
+
+        let new_window = cx.update(|cx| cx.active_window().unwrap().downcast::<Root>().unwrap());
+        let cascade_offset = gpui::point(gpui::px(25.0), gpui::px(25.0));
+        let cascaded_bounds =
+            Bounds::new(active_bounds.origin + cascade_offset, active_bounds.size);
+        assert_eq!(cx.windows().len(), 2);
+        assert_eq!(
+            new_window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(cascaded_bounds)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_cascade_on_new_project_window(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        init_default_window_bounds(shared_state.clone(), cx).await;
+
+        let active_bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(860.0), gpui::px(540.0)),
+        );
+        let active_workspace_id = workspace_db.next_id().await.unwrap();
+        cx.update(|cx| {
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(active_bounds)),
+                    ..WindowOptions::default()
+                },
+                {
+                    let shared_state = shared_state.clone();
+                    move |window, cx| {
+                        window.activate_window();
+                        cx.new(|cx| {
+                            Root::new(Workspace::create(
+                                active_workspace_id,
+                                shared_state,
+                                window,
+                                cx,
+                            ))
+                        })
+                    }
+                },
+            )
+        })
+        .unwrap();
+
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        let cascade_offset = gpui::point(gpui::px(25.0), gpui::px(25.0));
+        let cascaded_bounds =
+            Bounds::new(active_bounds.origin + cascade_offset, active_bounds.size);
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(cascaded_bounds)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_restore_saved_workspace(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        init_default_window_bounds(shared_state.clone(), cx).await;
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+
+        let active_bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(860.0), gpui::px(540.0)),
+        );
+        let active_workspace_id = workspace_db.next_id().await.unwrap();
+        let active_window = cx
+            .update(|cx| {
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(active_bounds)),
+                        ..WindowOptions::default()
+                    },
+                    {
+                        let shared_state = shared_state.clone();
+                        move |window, cx| {
+                            window.activate_window();
+                            cx.new(|cx| {
+                                Root::new(Workspace::create(
+                                    active_workspace_id,
+                                    shared_state,
+                                    window,
+                                    cx,
+                                ))
+                            })
+                        }
+                    },
+                )
+            })
+            .unwrap();
+        let display_uuid = active_window
+            .update(cx, |_, window, cx| {
+                window.display(cx).unwrap().uuid().unwrap()
+            })
+            .unwrap();
+
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: project_path.clone(),
+                window_bounds: None,
+                display: None,
+                session_id: None,
+                window_id: None,
+            })
+            .await;
+
+        let saved_workspace_bounds = Bounds::new(
+            gpui::point(gpui::px(200.0), gpui::px(200.0)),
+            gpui::size(gpui::px(500.0), gpui::px(500.0)),
+        );
+        workspace_db
+            .set_window_open_status(
+                workspace_id,
+                SerializedWindowBounds(WindowBounds::Windowed(saved_workspace_bounds)),
+                display_uuid,
+            )
+            .await
+            .unwrap();
+
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(saved_workspace_bounds)
+        );
     }
 }
