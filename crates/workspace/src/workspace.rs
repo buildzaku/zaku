@@ -12,7 +12,7 @@ pub use item::{
     WeakItemHandle,
 };
 pub use persistence::{
-    WorkspaceDb,
+    SerializedWindowBounds, WorkspaceDb,
     model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
 };
 
@@ -34,11 +34,12 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use uuid::Uuid;
 
 #[cfg(any(test, feature = "test-support"))]
 use fs::TempFs;
 
-use db::{Bind, Column, Row, Statement, StaticColumnCount};
+use db::{Bind, Column, Row, Statement, StaticColumnCount, kv::KeyValueStore};
 use http_client::HttpClient;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
@@ -51,9 +52,6 @@ use util::ResultExt;
 
 #[cfg(any(test, feature = "test-support"))]
 use session::Session;
-
-#[cfg(test)]
-use uuid::Uuid;
 
 use crate::{
     dock::{Dock, PanelButtons},
@@ -405,8 +403,29 @@ fn register_actions(
 }
 
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
-    let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
-    bounds.origin.y -= gpui::px(36.0);
+    let (window_bounds, display) = if let Some((display_uuid, bounds)) =
+        persistence::read_default_window_bounds(&KeyValueStore::global(cx))
+    {
+        (Some(bounds), Some(display_uuid))
+    } else if cx.windows().is_empty() {
+        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
+        bounds.origin.y -= gpui::px(36.0);
+        (Some(WindowBounds::Windowed(bounds)), None)
+    } else {
+        (None, None)
+    };
+
+    let mut options = build_window_options(display, cx);
+    options.window_bounds = window_bounds;
+    options
+}
+
+fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptions {
+    let display = display_uuid.and_then(|uuid| {
+        cx.displays()
+            .into_iter()
+            .find(|display| display.uuid().ok() == Some(uuid))
+    });
     let window_background = cx.theme().window_background_appearance();
     let window_decorations = {
         #[cfg(target_os = "linux")]
@@ -436,7 +455,7 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
             appears_transparent: true,
             traffic_light_position,
         }),
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        display_id: display.map(|display| display.id()),
         window_background,
         window_decorations,
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
@@ -898,10 +917,12 @@ pub struct Workspace {
     suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
+    bounds_save_task_queued: Option<Task<()>>,
     scheduled_serialization_task: Option<Task<()>>,
     serialization_task: Option<Task<()>>,
     _project_subscription: Subscription,
     _window_activation_subscription: Subscription,
+    _window_bounds_subscription: Subscription,
     _window_appearance_subscription: Subscription,
 }
 
@@ -1052,7 +1073,12 @@ impl Workspace {
             let project = cx
                 .update(|cx| Project::open(shared_state.fs.clone(), path.clone(), cx))
                 .await?;
-            let workspace_id = workspace_db.next_id().await?;
+            let serialized_workspace = workspace_db.workspace_for_root(path.as_path());
+            let workspace_id = if let Some(serialized_workspace) = serialized_workspace.as_ref() {
+                serialized_workspace.id
+            } else {
+                workspace_db.next_id().await?
+            };
 
             let (window, workspace) = if let Some(window) = window_to_replace {
                 let workspace = window.update(cx, |root: &mut Root, window, cx| {
@@ -1092,7 +1118,156 @@ impl Workspace {
 
                 (window, workspace)
             } else {
-                let window_options = cx.update(default_window_options);
+                let window_options = cx.update(|cx| {
+                    let (window_bounds, display) = if let Some(workspace) =
+                        serialized_workspace.as_ref()
+                        && let Some(display) = workspace.display
+                        && let Some(bounds) = workspace.window_bounds.as_ref()
+                    {
+                        (Some(bounds.0), Some(display))
+                    } else if let Some((display, bounds)) =
+                        persistence::read_default_window_bounds(&KeyValueStore::global(cx))
+                    {
+                        (Some(bounds), Some(display))
+                    } else if cx.windows().is_empty() {
+                        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
+                        bounds.origin.y -= gpui::px(36.0);
+                        (Some(WindowBounds::Windowed(bounds)), None)
+                    } else {
+                        (None, None)
+                    };
+
+                    let mut options = build_window_options(display, cx);
+                    options.window_bounds = window_bounds;
+                    options
+                });
+                let window = cx.open_window(window_options, move |window, cx| {
+                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let workspace = cx.new(|cx| {
+                        Workspace::new(
+                            Some(workspace_id),
+                            Some(session_id),
+                            shared_state,
+                            project,
+                            window,
+                            cx,
+                        )
+                    });
+                    cx.new(|_| Root::new(workspace))
+                })?;
+
+                let workspace = window.update(cx, |root: &mut Root, window, cx| {
+                    let workspace = root.workspace().clone();
+                    workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        workspace.pane.update(cx, |pane, _cx| {
+                            pane.set_should_display_welcome_page(false);
+                        });
+                        workspace.left_dock.update(cx, |dock, cx| {
+                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
+                                dock.activate_panel(panel_index, window, cx);
+                                dock.set_open(true, window, cx);
+                            }
+                        });
+
+                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
+                        window.focus(&focus_handle, cx);
+                        workspace.serialize_workspace(window, cx);
+                        cx.notify();
+                    });
+                    workspace
+                })?;
+
+                (window, workspace)
+            };
+
+            if let Some(database_id) =
+                workspace.read_with(cx, |workspace, _| workspace.database_id())
+                && let Err(error) = workspace_db.update_activation_order(database_id).await
+            {
+                log::error!("Failed to update workspace activation order: {error}");
+            }
+
+            Ok(OpenResult { window, workspace })
+        })
+    }
+
+    pub fn open_workspace_by_id(
+        workspace_id: WorkspaceId,
+        shared_state: Arc<SharedState>,
+        requesting_window: Option<WindowHandle<Root>>,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<OpenResult>> {
+        let workspace_db = WorkspaceDb::global(cx);
+
+        cx.spawn(async move |cx| {
+            let Some(serialized_workspace) = workspace_db.workspace_for_id(workspace_id) else {
+                anyhow::bail!("Workspace {workspace_id:?} not found");
+            };
+            let path = serialized_workspace.location.path().to_path_buf();
+            let project = cx
+                .update(|cx| Project::open(shared_state.fs.clone(), path, cx))
+                .await?;
+
+            let (window, workspace) = if let Some(window) = requesting_window {
+                let workspace = window.update(cx, |root: &mut Root, window, cx| {
+                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let project = project.clone();
+                    let shared_state = shared_state.clone();
+                    let workspace = cx.new(|cx| {
+                        Workspace::new(
+                            Some(workspace_id),
+                            Some(session_id),
+                            shared_state,
+                            project,
+                            window,
+                            cx,
+                        )
+                    });
+                    root.workspace = workspace.clone();
+                    workspace.update(cx, |workspace: &mut Workspace, cx| {
+                        workspace.pane.update(cx, |pane, _cx| {
+                            pane.set_should_display_welcome_page(false);
+                        });
+                        workspace.left_dock.update(cx, |dock, cx| {
+                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
+                                dock.activate_panel(panel_index, window, cx);
+                                dock.set_open(true, window, cx);
+                            }
+                        });
+
+                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
+                        window.focus(&focus_handle, cx);
+                        workspace.serialize_workspace(window, cx);
+                        cx.notify();
+                    });
+                    cx.notify();
+                    workspace
+                })?;
+
+                (window, workspace)
+            } else {
+                let window_options = cx.update(|cx| {
+                    let (window_bounds, display) = if let Some(display) =
+                        serialized_workspace.display
+                        && let Some(bounds) = serialized_workspace.window_bounds.as_ref()
+                    {
+                        (Some(bounds.0), Some(display))
+                    } else if let Some((display, bounds)) =
+                        persistence::read_default_window_bounds(&KeyValueStore::global(cx))
+                    {
+                        (Some(bounds), Some(display))
+                    } else if cx.windows().is_empty() {
+                        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
+                        bounds.origin.y -= gpui::px(36.0);
+                        (Some(WindowBounds::Windowed(bounds)), None)
+                    } else {
+                        (None, None)
+                    };
+
+                    let mut options = build_window_options(display, cx);
+                    options.window_bounds = window_bounds;
+                    options
+                });
                 let window = cx.open_window(window_options, move |window, cx| {
                     let session_id = shared_state.session.read(cx).id().to_string();
                     let workspace = cx.new(|cx| {
@@ -1383,12 +1558,55 @@ impl Workspace {
         }
     }
 
+    fn save_window_bounds(&self, window: &mut Window, cx: &mut App) -> Task<()> {
+        let Some(display) = window.display(cx) else {
+            return Task::ready(());
+        };
+        let Ok(display_uuid) = display.uuid() else {
+            return Task::ready(());
+        };
+
+        let window_bounds = window.inner_window_bounds();
+        let database_id = self.database_id;
+        let has_root = self.root(cx).is_some();
+        let workspace_db = WorkspaceDb::global(cx);
+        let kv_store = KeyValueStore::global(cx);
+
+        cx.background_spawn(async move {
+            if !has_root {
+                persistence::write_default_window_bounds(&kv_store, window_bounds, display_uuid)
+                    .await
+                    .log_err();
+            }
+
+            if let Some(database_id) = database_id {
+                workspace_db
+                    .set_window_open_status(
+                        database_id,
+                        SerializedWindowBounds(window_bounds),
+                        display_uuid,
+                    )
+                    .await
+                    .log_err();
+            } else {
+                persistence::write_default_window_bounds(&kv_store, window_bounds, display_uuid)
+                    .await
+                    .log_err();
+            }
+        })
+    }
+
     pub fn flush_serialization(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
         self.scheduled_serialization_task.take();
         self.serialization_task.take();
+        self.bounds_save_task_queued.take();
 
+        let bounds_task = self.save_window_bounds(window, cx);
         let serialize_task = self.serialize_workspace_internal(window, cx);
-        cx.spawn(async move |_| serialize_task.await)
+        cx.spawn(async move |_| {
+            bounds_task.await;
+            serialize_task.await;
+        })
     }
 
     fn remove_from_session(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
@@ -1422,6 +1640,8 @@ impl Workspace {
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
                     location: SerializedWorkspaceLocation::Local(root_path),
+                    window_bounds: Some(SerializedWindowBounds(window.window_bounds())),
+                    display: None,
                     session_id: self.session_id.clone(),
                     window_id: self
                         .session_id
@@ -1513,6 +1733,27 @@ impl Workspace {
                 }
             });
 
+        let window_bounds_subscription =
+            cx.observe_window_bounds(window, |workspace, window, cx| {
+                if workspace.bounds_save_task_queued.is_some() {
+                    return;
+                }
+
+                workspace.bounds_save_task_queued =
+                    Some(cx.spawn_in(window, async move |this, cx| {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(100))
+                            .await;
+                        if let Err(error) = this.update_in(cx, |this, window, cx| {
+                            this.save_window_bounds(window, cx).detach();
+                            this.bounds_save_task_queued.take();
+                        }) {
+                            log::debug!("Failed to save window bounds: {error}");
+                        }
+                    }));
+                cx.notify();
+            });
+
         let window_appearance_subscription =
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
@@ -1586,10 +1827,12 @@ impl Workspace {
             suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
+            bounds_save_task_queued: None,
             scheduled_serialization_task: None,
             serialization_task: None,
             _project_subscription: project_subscription,
             _window_activation_subscription: window_activation_subscription,
+            _window_bounds_subscription: window_bounds_subscription,
             _window_appearance_subscription: window_appearance_subscription,
         };
 

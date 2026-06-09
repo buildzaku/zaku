@@ -2,14 +2,212 @@ pub mod model;
 
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use gpui::WindowId;
-use std::path::PathBuf;
+use gpui::{Bounds, WindowBounds, WindowId};
+use std::path::{Path, PathBuf};
 
-use db::{ThreadSafeConnection, query, sql_macros::sql};
+use db::{
+    Bind, Column, Row, Statement, StaticColumnCount, ThreadSafeConnection, kv::KeyValueStore,
+    query, sql_macros::sql,
+};
 use fs::Fs;
+use serde::{Deserialize, Serialize};
+use util::ResultExt;
+use uuid::Uuid;
 
 use self::model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace};
 use crate::WorkspaceId;
+
+#[derive(Copy, Clone, Debug, PartialEq, Default)]
+pub struct SerializedWindowBounds(pub WindowBounds);
+
+impl StaticColumnCount for SerializedWindowBounds {
+    fn column_count() -> usize {
+        5
+    }
+}
+
+impl Bind for SerializedWindowBounds {
+    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
+        match self.0 {
+            WindowBounds::Windowed(bounds) => {
+                let next_index = statement.bind(&"Windowed", start_index)?;
+                statement.bind(
+                    &(
+                        f32::from(bounds.origin.x),
+                        f32::from(bounds.origin.y),
+                        f32::from(bounds.size.width),
+                        f32::from(bounds.size.height),
+                    ),
+                    next_index,
+                )
+            }
+            WindowBounds::Maximized(bounds) => {
+                let next_index = statement.bind(&"Maximized", start_index)?;
+                statement.bind(
+                    &(
+                        f32::from(bounds.origin.x),
+                        f32::from(bounds.origin.y),
+                        f32::from(bounds.size.width),
+                        f32::from(bounds.size.height),
+                    ),
+                    next_index,
+                )
+            }
+            WindowBounds::Fullscreen(bounds) => {
+                let next_index = statement.bind(&"FullScreen", start_index)?;
+                statement.bind(
+                    &(
+                        f32::from(bounds.origin.x),
+                        f32::from(bounds.origin.y),
+                        f32::from(bounds.size.width),
+                        f32::from(bounds.size.height),
+                    ),
+                    next_index,
+                )
+            }
+        }
+    }
+}
+
+impl Column for SerializedWindowBounds {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
+        let (window_state, next_index) = String::column(row, start_index)?;
+        let ((x, y, width, height), _): ((f32, f32, f32, f32), _) =
+            Column::column(row, next_index)?;
+        let bounds = Bounds {
+            origin: gpui::point(gpui::px(x), gpui::px(y)),
+            size: gpui::size(gpui::px(width), gpui::px(height)),
+        };
+
+        let status = match window_state.as_str() {
+            "Windowed" | "Fixed" => SerializedWindowBounds(WindowBounds::Windowed(bounds)),
+            "Maximized" => SerializedWindowBounds(WindowBounds::Maximized(bounds)),
+            "FullScreen" => SerializedWindowBounds(WindowBounds::Fullscreen(bounds)),
+            _ => anyhow::bail!("Window State did not have a valid string"),
+        };
+
+        Ok((status, next_index + 4))
+    }
+}
+
+const DEFAULT_WINDOW_BOUNDS_KEY: &str = "default_window_bounds";
+
+pub fn read_default_window_bounds(kv_store: &KeyValueStore) -> Option<(Uuid, WindowBounds)> {
+    let json_str = kv_store
+        .read_kv(DEFAULT_WINDOW_BOUNDS_KEY)
+        .log_err()
+        .flatten()?;
+
+    let (display_uuid, persisted) =
+        serde_json::from_str::<(Uuid, WindowBoundsJson)>(&json_str).ok()?;
+    Some((display_uuid, persisted.into()))
+}
+
+pub async fn write_default_window_bounds(
+    kv_store: &KeyValueStore,
+    bounds: WindowBounds,
+    display_uuid: Uuid,
+) -> anyhow::Result<()> {
+    let persisted = WindowBoundsJson::from(bounds);
+    let json_str = serde_json::to_string(&(display_uuid, persisted))?;
+    kv_store
+        .write_kv(DEFAULT_WINDOW_BOUNDS_KEY.to_string(), json_str)
+        .await?;
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum WindowBoundsJson {
+    Windowed {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Maximized {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Fullscreen {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+}
+
+impl From<WindowBounds> for WindowBoundsJson {
+    fn from(bounds: WindowBounds) -> Self {
+        match bounds {
+            WindowBounds::Windowed(bounds) => {
+                let origin = bounds.origin;
+                let size = bounds.size;
+                WindowBoundsJson::Windowed {
+                    x: f32::from(origin.x),
+                    y: f32::from(origin.y),
+                    width: f32::from(size.width),
+                    height: f32::from(size.height),
+                }
+            }
+            WindowBounds::Maximized(bounds) => {
+                let origin = bounds.origin;
+                let size = bounds.size;
+                WindowBoundsJson::Maximized {
+                    x: f32::from(origin.x),
+                    y: f32::from(origin.y),
+                    width: f32::from(size.width),
+                    height: f32::from(size.height),
+                }
+            }
+            WindowBounds::Fullscreen(bounds) => {
+                let origin = bounds.origin;
+                let size = bounds.size;
+                WindowBoundsJson::Fullscreen {
+                    x: f32::from(origin.x),
+                    y: f32::from(origin.y),
+                    width: f32::from(size.width),
+                    height: f32::from(size.height),
+                }
+            }
+        }
+    }
+}
+
+impl From<WindowBoundsJson> for WindowBounds {
+    fn from(bounds: WindowBoundsJson) -> Self {
+        match bounds {
+            WindowBoundsJson::Windowed {
+                x,
+                y,
+                width,
+                height,
+            } => WindowBounds::Windowed(Bounds {
+                origin: gpui::point(gpui::px(x), gpui::px(y)),
+                size: gpui::size(gpui::px(width), gpui::px(height)),
+            }),
+            WindowBoundsJson::Maximized {
+                x,
+                y,
+                width,
+                height,
+            } => WindowBounds::Maximized(Bounds {
+                origin: gpui::point(gpui::px(x), gpui::px(y)),
+                size: gpui::size(gpui::px(width), gpui::px(height)),
+            }),
+            WindowBoundsJson::Fullscreen {
+                x,
+                y,
+                width,
+                height,
+            } => WindowBounds::Fullscreen(Bounds {
+                origin: gpui::point(gpui::px(x), gpui::px(y)),
+                size: gpui::size(gpui::px(width), gpui::px(height)),
+            }),
+        }
+    }
+}
 
 pub struct WorkspaceDb(ThreadSafeConnection);
 
@@ -27,7 +225,6 @@ impl WorkspaceDb {
             .0
             .write(move |connection| {
                 let workspace_location = workspace.location.path();
-                let window_id = serialize_window_id(workspace.window_id)?;
                 connection.with_savepoint("save_workspace", || {
                     connection
                         .exec_bound(sql!(
@@ -35,13 +232,27 @@ impl WorkspaceDb {
                             WHERE id != ?1 AND location = ?2
                         ))
                         .context("failed to prepare old workspace location cleanup query")
-                        .and_then(|mut f| f((i64::from(workspace.id), workspace_location)))
+                        .and_then(|mut f| f((workspace.id, workspace_location)))
                         .context("failed to clear old workspace locations")?;
 
                     connection
                         .exec_bound(sql!(
-                            INSERT INTO workspace(id, location, session_id, window_id, activation_order, timestamp)
-                            VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace), CURRENT_TIMESTAMP)
+                            INSERT INTO workspace(
+                                id,
+                                location,
+                                session_id,
+                                window_id,
+                                activation_order,
+                                timestamp
+                            )
+                            VALUES (
+                                ?1,
+                                ?2,
+                                ?3,
+                                ?4,
+                                (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace),
+                                CURRENT_TIMESTAMP
+                            )
                             ON CONFLICT(id)
                             DO UPDATE SET
                                 location = excluded.location,
@@ -52,10 +263,10 @@ impl WorkspaceDb {
                         .context("failed to prepare workspace upsert query")
                         .and_then(|mut f| {
                             f((
-                                i64::from(workspace.id),
+                                workspace.id,
                                 workspace_location,
                                 workspace.session_id.as_deref(),
-                                window_id,
+                                workspace.window_id,
                             ))
                         })
                         .context("failed to upsert workspace")?;
@@ -78,13 +289,7 @@ impl WorkspaceDb {
 
         for (workspace_id, location, timestamp) in self.recent_workspaces()? {
             let workspace_path = location.path().to_path_buf();
-            if Self::all_paths_exist_with_a_directory(
-                std::slice::from_ref(&workspace_path),
-                fs,
-                Some(timestamp),
-            )
-            .await
-            {
+            if Self::workspace_path_is_restorable(&workspace_path, fs, Some(timestamp)).await {
                 existing_workspaces.push((workspace_id, location, timestamp));
             } else {
                 delete_tasks.push(self.delete_workspace_by_id(workspace_id));
@@ -111,6 +316,23 @@ impl WorkspaceDb {
         }
     }
 
+    query! {
+        pub(crate) async fn set_window_open_status(
+            workspace_id: WorkspaceId,
+            bounds: SerializedWindowBounds,
+            display: Uuid,
+        ) -> anyhow::Result<()> {
+            UPDATE workspace
+            SET window_state = ?2,
+                window_x = ?3,
+                window_y = ?4,
+                window_width = ?5,
+                window_height = ?6,
+                display = ?7
+            WHERE id = ?1
+        }
+    }
+
     pub async fn last_session_workspace_locations(
         &self,
         last_session_id: &str,
@@ -123,13 +345,7 @@ impl WorkspaceDb {
             self.session_workspaces(last_session_id.to_owned())?
         {
             let workspace_path = location.path().to_path_buf();
-            if Self::all_paths_exist_with_a_directory(
-                std::slice::from_ref(&workspace_path),
-                fs,
-                None,
-            )
-            .await
-            {
+            if Self::workspace_path_is_restorable(&workspace_path, fs, None).await {
                 workspaces.push(SessionWorkspace {
                     workspace_id,
                     location,
@@ -158,6 +374,12 @@ impl WorkspaceDb {
                             CREATE TABLE IF NOT EXISTS workspace(
                                 id INTEGER PRIMARY KEY,
                                 location BLOB UNIQUE,
+                                window_state TEXT,
+                                window_x REAL,
+                                window_y REAL,
+                                window_width REAL,
+                                window_height REAL,
+                                display BLOB,
                                 session_id TEXT,
                                 window_id INTEGER,
                                 activation_order INTEGER NOT NULL DEFAULT 0,
@@ -251,40 +473,100 @@ impl WorkspaceDb {
         }
     }
 
-    async fn all_paths_exist_with_a_directory(
-        paths: &[PathBuf],
+    async fn workspace_path_is_restorable(
+        path: &Path,
         fs: &dyn Fs,
         timestamp: Option<DateTime<Utc>>,
     ) -> bool {
-        let mut any_directory = false;
-
-        for path in paths {
-            match fs.metadata(path).await.ok().flatten() {
-                None => {
-                    return timestamp.is_some_and(|timestamp| {
-                        Utc::now() - timestamp < chrono::Duration::days(7)
-                    });
-                }
-                Some(metadata) => {
-                    if metadata.is_dir {
-                        any_directory = true;
-                    }
-                }
-            }
+        match fs.metadata(path).await.ok().flatten() {
+            None => timestamp
+                .is_some_and(|timestamp| Utc::now() - timestamp < chrono::Duration::days(7)),
+            Some(metadata) => metadata.is_dir,
         }
-
-        any_directory
     }
 
-    #[cfg(test)]
+    pub(crate) fn workspace_for_root<P: AsRef<Path>>(
+        &self,
+        worktree_root: P,
+    ) -> Option<SerializedWorkspace> {
+        self.read(|connection| {
+            connection
+                .select_row_bound::<&Path, (
+                    WorkspaceId,
+                    PathBuf,
+                    Option<SerializedWindowBounds>,
+                    Option<Uuid>,
+                    Option<String>,
+                    Option<u64>,
+                )>(sql!(
+                    SELECT
+                        id,
+                        location,
+                        window_state,
+                        window_x,
+                        window_y,
+                        window_width,
+                        window_height,
+                        display,
+                        session_id,
+                        window_id
+                    FROM workspace
+                    WHERE location = ? AND location IS NOT NULL
+                    LIMIT 1
+                ))
+                .context("failed to prepare workspace by root query")
+                .and_then(|mut f| f(worktree_root.as_ref()))
+                .context("failed to query workspace by root")
+                .map(|workspace| {
+                    workspace.map(
+                        |(
+                            workspace_id,
+                            location,
+                            window_bounds,
+                            display,
+                            session_id,
+                            window_id,
+                        )| {
+                            SerializedWorkspace {
+                                id: workspace_id,
+                                location: SerializedWorkspaceLocation::Local(location),
+                                window_bounds,
+                                display,
+                                session_id,
+                                window_id,
+                            }
+                        },
+                    )
+                })
+        })
+        .context("No workspace found for root")
+        .log_err()
+        .flatten()
+    }
+
     pub(crate) fn workspace_for_id(
         &self,
         workspace_id: WorkspaceId,
-    ) -> anyhow::Result<Option<SerializedWorkspace>> {
+    ) -> Option<SerializedWorkspace> {
         self.read(|connection| {
             connection
-                .select_row_bound::<WorkspaceId, (PathBuf, Option<String>, Option<u64>)>(sql!(
-                    SELECT location, session_id, window_id
+                .select_row_bound::<WorkspaceId, (
+                    PathBuf,
+                    Option<SerializedWindowBounds>,
+                    Option<Uuid>,
+                    Option<String>,
+                    Option<u64>,
+                )>(sql!(
+                    SELECT
+                        location,
+                        window_state,
+                        window_x,
+                        window_y,
+                        window_width,
+                        window_height,
+                        display,
+                        session_id,
+                        window_id
                     FROM workspace
                     WHERE id = ? AND location IS NOT NULL
                 ))
@@ -292,14 +574,23 @@ impl WorkspaceDb {
                 .and_then(|mut f| f(workspace_id))
                 .context("failed to query workspace by id")
                 .map(|workspace| {
-                    workspace.map(|(location, session_id, window_id)| SerializedWorkspace {
-                        id: workspace_id,
-                        location: SerializedWorkspaceLocation::Local(location),
-                        session_id,
-                        window_id,
-                    })
+                    workspace.map(
+                        |(location, window_bounds, display, session_id, window_id)| {
+                            SerializedWorkspace {
+                                id: workspace_id,
+                                location: SerializedWorkspaceLocation::Local(location),
+                                window_bounds,
+                                display,
+                                session_id,
+                                window_id,
+                            }
+                        },
+                    )
                 })
         })
+        .context("No workspace found for id")
+        .log_err()
+        .flatten()
     }
 
     #[cfg(test)]
@@ -320,12 +611,6 @@ impl WorkspaceDb {
 fn parse_timestamp(text: &str) -> DateTime<Utc> {
     NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
         .map_or_else(|_| Utc::now(), |naive| naive.and_utc())
-}
-
-fn serialize_window_id(window_id: Option<u64>) -> anyhow::Result<Option<i64>> {
-    window_id
-        .map(|window_id| i64::try_from(window_id).context("window id exceeds SQLite INTEGER range"))
-        .transpose()
 }
 
 #[cfg(test)]
@@ -360,6 +645,8 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: SerializedWorkspaceLocation::Local(project_path.clone()),
+                window_bounds: None,
+                display: None,
                 session_id: Some("session-a".to_string()),
                 window_id: Some(10),
             })
@@ -368,6 +655,8 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: SerializedWorkspaceLocation::Local(project_path.clone()),
+                window_bounds: None,
+                display: None,
                 session_id: Some("session-a".to_string()),
                 window_id: Some(10),
             })
@@ -397,6 +686,8 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: SerializedWorkspaceLocation::Local(path.clone()),
+                window_bounds: None,
+                display: None,
                 session_id: Some("session-a".to_string()),
                 window_id: Some(10),
             })
@@ -460,7 +751,7 @@ mod tests {
             })
             .await;
 
-        let serialized = workspace_db.workspace_for_id(workspace_id).unwrap();
+        let serialized = workspace_db.workspace_for_id(workspace_id);
         assert!(
             serialized.is_some(),
             "workspace should be fully serialized in the DB after database_id assignment"
@@ -494,6 +785,8 @@ mod tests {
                 .save_workspace(SerializedWorkspace {
                     id: WorkspaceId::from(workspace_id),
                     location: SerializedWorkspaceLocation::Local(location),
+                    window_bounds: None,
+                    display: None,
                     session_id: Some("session-uuid".to_string()),
                     window_id: Some(window_id),
                 })
@@ -556,6 +849,8 @@ mod tests {
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
                 location: SerializedWorkspaceLocation::Local(temp_fs.path().join(path!("project"))),
+                window_bounds: None,
+                display: None,
                 session_id: Some("session-uuid".to_string()),
                 window_id: Some(1),
             })
@@ -566,6 +861,8 @@ mod tests {
                 location: SerializedWorkspaceLocation::Local(
                     temp_fs.path().join(path!("missing_project")),
                 ),
+                window_bounds: None,
+                display: None,
                 session_id: Some("session-uuid".to_string()),
                 window_id: Some(2),
             })
@@ -635,7 +932,6 @@ mod tests {
             .unwrap();
         let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
-            .unwrap()
             .expect("workspace row should exist after serialization");
 
         assert!(serialized_workspace.session_id.is_some());
@@ -646,7 +942,6 @@ mod tests {
 
         let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
-            .unwrap()
             .expect("workspace row should remain after replacement");
 
         assert_eq!(serialized_workspace.session_id, None);
@@ -700,7 +995,6 @@ mod tests {
             .unwrap();
         let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
-            .unwrap()
             .expect("workspace row should exist after serialization");
 
         assert!(serialized_workspace.session_id.is_some());
@@ -713,7 +1007,6 @@ mod tests {
 
         let serialized_workspace = workspace_db
             .workspace_for_id(workspace_id)
-            .unwrap()
             .expect("workspace row should remain after close");
 
         assert_eq!(serialized_workspace.session_id, None);

@@ -42,12 +42,14 @@ parking_lot = { workspace = true }
 project = { workspace = true }
 session = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 settings = { workspace = true }
 smallvec = { workspace = true }
 smol = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
 util = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 db = { workspace = true, features = ["test-support"] }
@@ -57,8 +59,6 @@ http_client = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
 session = { workspace = true, features = ["test-support"] }
 settings = { workspace = true, features = ["test-support"] }
-serde_json = { workspace = true }
 util = { workspace = true, features = ["test-support"] }
 util_macros = { workspace = true }
-uuid = { workspace = true }
 worktree = { workspace = true, features = ["test-support"] }
