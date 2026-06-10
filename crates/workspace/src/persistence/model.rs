@@ -20,7 +20,6 @@ pub struct SerializedWorkspace {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SessionWorkspace {
-    pub workspace_id: WorkspaceId,
     pub location: PathBuf,
     pub window_id: Option<WindowId>,
 }

@@ -352,12 +352,9 @@ impl WorkspaceDb {
     ) -> anyhow::Result<Vec<SessionWorkspace>> {
         let mut workspaces = Vec::new();
 
-        for (workspace_id, location, window_id) in
-            self.session_workspaces(last_session_id.to_owned())?
-        {
+        for (location, window_id) in self.session_workspaces(last_session_id.to_owned())? {
             if Self::workspace_path_is_restorable(&location, fs, None).await {
                 workspaces.push(SessionWorkspace {
-                    workspace_id,
                     location,
                     window_id: window_id.map(WindowId::from),
                 });
@@ -483,13 +480,12 @@ impl WorkspaceDb {
     fn session_workspaces(
         &self,
         session_id: String,
-    ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Option<u64>)>> {
+    ) -> anyhow::Result<Vec<(PathBuf, Option<u64>)>> {
         Ok(self
             .session_workspaces_query(session_id)?
             .into_iter()
-            .map(|(workspace_id, location, window_id)| {
+            .map(|(location, window_id)| {
                 (
-                    workspace_id,
                     location,
                     window_id.and_then(|window_id| u64::try_from(window_id).ok()),
                 )
@@ -500,8 +496,8 @@ impl WorkspaceDb {
     query! {
         fn session_workspaces_query(
             session_id: String,
-        ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Option<i64>)>> {
-            SELECT id, location, window_id
+        ) -> anyhow::Result<Vec<(PathBuf, Option<i64>)>> {
+            SELECT location, window_id
             FROM workspace
             WHERE session_id = ? AND location IS NOT NULL
             ORDER BY activation_order DESC
@@ -526,9 +522,9 @@ impl WorkspaceDb {
         }
     }
 
-    pub(crate) fn workspace_for_root<P: AsRef<Path>>(
+    pub(crate) fn workspace_for_path<P: AsRef<Path>>(
         &self,
-        worktree_root: P,
+        path: P,
     ) -> Option<SerializedWorkspace> {
         self.read(|connection| {
             connection
@@ -555,9 +551,9 @@ impl WorkspaceDb {
                     WHERE location = ? AND location IS NOT NULL
                     LIMIT 1
                 ))
-                .context("failed to prepare workspace by root query")
-                .and_then(|mut f| f(worktree_root.as_ref()))
-                .context("failed to query workspace by root")
+                .context("failed to prepare workspace by path query")
+                .and_then(|mut f| f(path.as_ref()))
+                .context("failed to query workspace by path")
                 .map(|workspace| {
                     workspace.and_then(
                         |(
@@ -583,59 +579,7 @@ impl WorkspaceDb {
                     )
                 })
         })
-        .context("No workspace found for root")
-        .log_err()
-        .flatten()
-    }
-
-    pub(crate) fn workspace_for_id(
-        &self,
-        workspace_id: WorkspaceId,
-    ) -> Option<SerializedWorkspace> {
-        self.read(|connection| {
-            connection
-                .select_row_bound::<WorkspaceId, (
-                    PathBuf,
-                    Option<SerializedWindowBounds>,
-                    Option<Uuid>,
-                    Option<String>,
-                    Option<u64>,
-                )>(sql!(
-                    SELECT
-                        location,
-                        window_state,
-                        window_x,
-                        window_y,
-                        window_width,
-                        window_height,
-                        display,
-                        session_id,
-                        window_id
-                    FROM workspace
-                    WHERE id = ? AND location IS NOT NULL
-                ))
-                .context("failed to prepare workspace by id query")
-                .and_then(|mut f| f(workspace_id))
-                .context("failed to query workspace by id")
-                .map(|workspace| {
-                    workspace.and_then(
-                        |(location, window_bounds, display, session_id, window_id)| {
-                            Some(SerializedWorkspace {
-                                id: workspace_id,
-                                location,
-                                center_pane: Self::get_center_pane(connection, workspace_id)
-                                    .context("failed to get center pane")
-                                    .log_err()?,
-                                window_bounds,
-                                display,
-                                session_id,
-                                window_id,
-                            })
-                        },
-                    )
-                })
-        })
-        .context("No workspace found for id")
+        .context("No workspace found for path")
         .log_err()
         .flatten()
     }
@@ -882,11 +826,10 @@ mod tests {
             })
             .await;
 
-        let serialized = workspace_db.workspace_for_id(workspace_id);
-        assert!(
-            serialized.is_some(),
-            "workspace should be fully serialized in the DB after database_id assignment"
-        );
+        let serialized = workspace_db
+            .workspace_for_path(&project_path)
+            .expect("workspace should be fully serialized in the DB after database_id assignment");
+        assert_eq!(serialized.id, workspace_id);
     }
 
     #[gpui::test]
@@ -943,22 +886,18 @@ mod tests {
             locations,
             vec![
                 SessionWorkspace {
-                    workspace_id: WorkspaceId::from(4),
                     location: fourth_path,
                     window_id: Some(WindowId::from(2_u64)),
                 },
                 SessionWorkspace {
-                    workspace_id: WorkspaceId::from(3),
                     location: third_path,
                     window_id: Some(WindowId::from(8_u64)),
                 },
                 SessionWorkspace {
-                    workspace_id: WorkspaceId::from(2),
                     location: second_path,
                     window_id: Some(WindowId::from(5_u64)),
                 },
                 SessionWorkspace {
-                    workspace_id: WorkspaceId::from(1),
                     location: first_path,
                     window_id: Some(WindowId::from(9_u64)),
                 },
@@ -1008,7 +947,6 @@ mod tests {
         assert_eq!(
             locations,
             vec![SessionWorkspace {
-                workspace_id: WorkspaceId::from(1),
                 location: temp_fs.path().join(path!("project")),
                 window_id: Some(WindowId::from(1_u64)),
             }]
@@ -1059,11 +997,8 @@ mod tests {
             })
             .await;
 
-        let workspace_id = workspace
-            .read_with(cx, |workspace, _| workspace.database_id())
-            .unwrap();
         let serialized_workspace = workspace_db
-            .workspace_for_id(workspace_id)
+            .workspace_for_path(&project_path)
             .expect("workspace row should exist after serialization");
 
         assert!(serialized_workspace.session_id.is_some());
@@ -1073,7 +1008,7 @@ mod tests {
         cx.run_until_parked();
 
         let serialized_workspace = workspace_db
-            .workspace_for_id(workspace_id)
+            .workspace_for_path(&project_path)
             .expect("workspace row should remain after replacement");
 
         assert_eq!(serialized_workspace.session_id, None);
@@ -1122,11 +1057,8 @@ mod tests {
             })
             .await;
 
-        let workspace_id = workspace
-            .read_with(cx, |workspace, _| workspace.database_id())
-            .unwrap();
         let serialized_workspace = workspace_db
-            .workspace_for_id(workspace_id)
+            .workspace_for_path(&project_path)
             .expect("workspace row should exist after serialization");
 
         assert!(serialized_workspace.session_id.is_some());
@@ -1138,7 +1070,7 @@ mod tests {
         cx.run_until_parked();
 
         let serialized_workspace = workspace_db
-            .workspace_for_id(workspace_id)
+            .workspace_for_path(&project_path)
             .expect("workspace row should remain after close");
 
         assert_eq!(serialized_workspace.session_id, None);
@@ -1171,7 +1103,7 @@ mod tests {
             })
             .await;
 
-        let serialized_workspace = workspace_db.workspace_for_root(&location).unwrap();
+        let serialized_workspace = workspace_db.workspace_for_path(&location).unwrap();
         assert_eq!(serialized_workspace.center_pane, center_pane);
     }
 
@@ -1193,7 +1125,7 @@ mod tests {
             })
             .await;
 
-        let serialized_workspace = workspace_db.workspace_for_root(&location).unwrap();
+        let serialized_workspace = workspace_db.workspace_for_path(&location).unwrap();
         assert_eq!(
             serialized_workspace.center_pane,
             SerializedPane::new(Vec::new(), true)
@@ -1240,7 +1172,7 @@ mod tests {
             })
             .await;
 
-        let serialized_workspace = workspace_db.workspace_for_root(&location).unwrap();
+        let serialized_workspace = workspace_db.workspace_for_path(&location).unwrap();
         assert_eq!(serialized_workspace.center_pane, new_center_pane);
     }
 }

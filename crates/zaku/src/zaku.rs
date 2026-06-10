@@ -12,8 +12,8 @@ use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use workspace::{
-    CloseIntent, DockPosition, Root, SessionWorkspace, SharedState, Toast, Workspace, WorkspaceDb,
-    create_and_open_file,
+    CloseIntent, DockPosition, OpenMode, Root, SessionWorkspace, SharedState, Toast, Workspace,
+    WorkspaceDb, create_and_open_file,
     notifications::{
         NotificationId, dismiss_app_notification, show_app_notification,
         simple_message_notification::MessageNotification,
@@ -372,10 +372,11 @@ pub async fn restore_or_create_workspace(
         for session_workspace in workspaces {
             let result = cx
                 .update(|cx| {
-                    Workspace::open_workspace_by_id(
-                        session_workspace.workspace_id,
+                    Workspace::open(
+                        session_workspace.location,
                         shared_state.clone(),
                         None,
+                        OpenMode::NewWindow,
                         cx,
                     )
                 })

@@ -1075,7 +1075,7 @@ impl Workspace {
             let project = cx
                 .update(|cx| Project::open(shared_state.fs.clone(), path.clone(), cx))
                 .await?;
-            let serialized_workspace = workspace_db.workspace_for_root(path.as_path());
+            let serialized_workspace = workspace_db.workspace_for_path(path.as_path());
             let workspace_id = if let Some(serialized_workspace) = serialized_workspace.as_ref() {
                 serialized_workspace.id
             } else {
@@ -1125,135 +1125,6 @@ impl Workspace {
                         serialized_workspace.as_ref()
                         && let Some(display) = workspace.display
                         && let Some(bounds) = workspace.window_bounds.as_ref()
-                    {
-                        (Some(bounds.0), Some(display))
-                    } else if cx.active_window().is_some() {
-                        (None, None)
-                    } else if let Some((display, bounds)) =
-                        persistence::read_default_window_bounds(&KeyValueStore::global(cx))
-                    {
-                        (Some(bounds), Some(display))
-                    } else if cx.windows().is_empty() {
-                        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
-                        bounds.origin.y -= gpui::px(36.0);
-                        (Some(WindowBounds::Windowed(bounds)), None)
-                    } else {
-                        (None, None)
-                    };
-
-                    let mut options = build_window_options(display, cx);
-                    options.window_bounds = window_bounds;
-                    options
-                });
-                let window = cx.open_window(window_options, move |window, cx| {
-                    let session_id = shared_state.session.read(cx).id().to_string();
-                    let workspace = cx.new(|cx| {
-                        Workspace::new(
-                            Some(workspace_id),
-                            Some(session_id),
-                            shared_state,
-                            project,
-                            window,
-                            cx,
-                        )
-                    });
-                    cx.new(|_| Root::new(workspace))
-                })?;
-
-                let workspace = window.update(cx, |root: &mut Root, window, cx| {
-                    let workspace = root.workspace().clone();
-                    workspace.update(cx, |workspace: &mut Workspace, cx| {
-                        workspace.pane.update(cx, |pane, _cx| {
-                            pane.set_should_display_welcome_page(false);
-                        });
-                        workspace.left_dock.update(cx, |dock, cx| {
-                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
-                                dock.activate_panel(panel_index, window, cx);
-                                dock.set_open(true, window, cx);
-                            }
-                        });
-
-                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
-                        window.focus(&focus_handle, cx);
-                        workspace.serialize_workspace(window, cx);
-                        cx.notify();
-                    });
-                    workspace
-                })?;
-
-                (window, workspace)
-            };
-
-            if let Some(database_id) =
-                workspace.read_with(cx, |workspace, _| workspace.database_id())
-                && let Err(error) = workspace_db.update_activation_order(database_id).await
-            {
-                log::error!("Failed to update workspace activation order: {error}");
-            }
-
-            Ok(OpenResult { window, workspace })
-        })
-    }
-
-    pub fn open_workspace_by_id(
-        workspace_id: WorkspaceId,
-        shared_state: Arc<SharedState>,
-        requesting_window: Option<WindowHandle<Root>>,
-        cx: &mut App,
-    ) -> Task<anyhow::Result<OpenResult>> {
-        let workspace_db = WorkspaceDb::global(cx);
-
-        cx.spawn(async move |cx| {
-            let Some(serialized_workspace) = workspace_db.workspace_for_id(workspace_id) else {
-                anyhow::bail!("Workspace {workspace_id:?} not found");
-            };
-            let path = serialized_workspace.location.clone();
-            let project = cx
-                .update(|cx| Project::open(shared_state.fs.clone(), path, cx))
-                .await?;
-
-            let (window, workspace) = if let Some(window) = requesting_window {
-                let workspace = window.update(cx, |root: &mut Root, window, cx| {
-                    let session_id = shared_state.session.read(cx).id().to_string();
-                    let project = project.clone();
-                    let shared_state = shared_state.clone();
-                    let workspace = cx.new(|cx| {
-                        Workspace::new(
-                            Some(workspace_id),
-                            Some(session_id),
-                            shared_state,
-                            project,
-                            window,
-                            cx,
-                        )
-                    });
-                    root.workspace = workspace.clone();
-                    workspace.update(cx, |workspace: &mut Workspace, cx| {
-                        workspace.pane.update(cx, |pane, _cx| {
-                            pane.set_should_display_welcome_page(false);
-                        });
-                        workspace.left_dock.update(cx, |dock, cx| {
-                            if let Ok(panel_index) = dock.first_enabled_panel_idx(cx) {
-                                dock.activate_panel(panel_index, window, cx);
-                                dock.set_open(true, window, cx);
-                            }
-                        });
-
-                        let focus_handle = workspace.pane.read(cx).focus_handle(cx);
-                        window.focus(&focus_handle, cx);
-                        workspace.serialize_workspace(window, cx);
-                        cx.notify();
-                    });
-                    cx.notify();
-                    workspace
-                })?;
-
-                (window, workspace)
-            } else {
-                let window_options = cx.update(|cx| {
-                    let (window_bounds, display) = if let Some(display) =
-                        serialized_workspace.display
-                        && let Some(bounds) = serialized_workspace.window_bounds.as_ref()
                     {
                         (Some(bounds.0), Some(display))
                     } else if cx.active_window().is_some() {
