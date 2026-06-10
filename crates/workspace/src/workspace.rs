@@ -8,28 +8,35 @@ pub mod welcome;
 
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
 pub use item::{
-    Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
-    WeakItemHandle,
+    Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, SerializableItem,
+    SerializableItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,
 };
 pub use persistence::{
-    SerializedWindowBounds, WorkspaceDb,
-    model::{SerializedPane, SerializedWorkspace, SessionWorkspace},
+    SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
+    model::{ItemId, SerializedItem, SerializedPane, SerializedWorkspace, SessionWorkspace},
 };
 
-use futures::channel::oneshot;
+use futures::{
+    StreamExt,
+    channel::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        oneshot,
+    },
+};
 #[cfg(target_os = "linux")]
 use gpui::WindowDecorations;
 use gpui::{
-    Action, AnyView, App, Bounds, BoxShadow, Context, CursorStyle, Decorations, Div, DragMoveEvent,
-    Entity, FocusHandle, Focusable, Global, HitboxBehavior, Hsla, KeyContext, MouseButton,
-    MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful,
-    Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
-    WindowId, WindowOptions, prelude::*,
+    Action, AnyView, App, AsyncWindowContext, Bounds, BoxShadow, Context, CursorStyle, Decorations,
+    Div, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, Global, HitboxBehavior, Hsla,
+    KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel,
+    ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window,
+    WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    any::TypeId,
     borrow::Cow,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -299,6 +306,101 @@ impl Global for ProjectItemRegistry {}
 
 pub fn register_project_item<I: ProjectItem>(cx: &mut App) {
     cx.default_global::<ProjectItemRegistry>().register::<I>();
+}
+
+#[derive(Copy, Clone)]
+struct SerializableItemDescriptor {
+    deserialize: fn(
+        Entity<Project>,
+        WeakEntity<Workspace>,
+        WorkspaceId,
+        ItemId,
+        &mut Window,
+        &mut Context<Pane>,
+    ) -> Task<anyhow::Result<Box<dyn ItemHandle>>>,
+    cleanup: fn(WorkspaceId, Vec<ItemId>, &mut Window, &mut App) -> Task<anyhow::Result<()>>,
+    view_to_serializable_item: fn(AnyView) -> Box<dyn SerializableItemHandle>,
+}
+
+#[derive(Default)]
+pub(crate) struct SerializableItemRegistry {
+    descriptors_by_kind: HashMap<Arc<str>, SerializableItemDescriptor>,
+    descriptors_by_type: HashMap<TypeId, SerializableItemDescriptor>,
+}
+
+impl Global for SerializableItemRegistry {}
+
+impl SerializableItemRegistry {
+    pub(crate) fn deserialize(
+        item_kind: &str,
+        project: Entity<Project>,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut Context<Pane>,
+    ) -> Task<anyhow::Result<Box<dyn ItemHandle>>> {
+        let Some(descriptor) = Self::descriptor(item_kind, cx) else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "cannot deserialize {item_kind}, descriptor not found"
+            )));
+        };
+
+        (descriptor.deserialize)(project, workspace, workspace_id, item_id, window, cx)
+    }
+
+    fn cleanup(
+        item_kind: &str,
+        workspace_id: WorkspaceId,
+        loaded_items: Vec<ItemId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(descriptor) = Self::descriptor(item_kind, cx) else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "cannot cleanup {item_kind}, descriptor not found"
+            )));
+        };
+
+        (descriptor.cleanup)(workspace_id, loaded_items, window, cx)
+    }
+
+    pub(crate) fn view_to_serializable_item_handle(
+        view: AnyView,
+        cx: &App,
+    ) -> Option<Box<dyn SerializableItemHandle>> {
+        let this = cx.try_global::<Self>()?;
+        let descriptor = this.descriptors_by_type.get(&view.entity_type())?;
+        Some((descriptor.view_to_serializable_item)(view))
+    }
+
+    fn descriptor(item_kind: &str, cx: &App) -> Option<SerializableItemDescriptor> {
+        let this = cx.try_global::<Self>()?;
+        this.descriptors_by_kind.get(item_kind).copied()
+    }
+}
+
+pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
+    let serialized_item_kind = I::serialized_item_kind();
+
+    let registry = cx.default_global::<SerializableItemRegistry>();
+    let descriptor = SerializableItemDescriptor {
+        deserialize: |project, workspace, workspace_id, item_id, window, cx| {
+            let task = I::deserialize(project, workspace, workspace_id, item_id, window, cx);
+            cx.foreground_executor()
+                .spawn(async { Ok(Box::new(task.await?) as Box<_>) })
+        },
+        cleanup: |workspace_id, loaded_items, window, cx| {
+            I::cleanup(workspace_id, loaded_items, window, cx)
+        },
+        view_to_serializable_item: |view| Box::new(view.downcast::<I>().unwrap()),
+    };
+    registry
+        .descriptors_by_kind
+        .insert(Arc::from(serialized_item_kind), descriptor);
+    registry
+        .descriptors_by_type
+        .insert(TypeId::of::<I>(), descriptor);
 }
 
 pub fn create_and_open_file(
@@ -913,6 +1015,7 @@ pub struct Workspace {
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
     pane: Entity<Pane>,
+    panes_by_item: HashMap<EntityId, WeakEntity<Pane>>,
     status_bar: Entity<StatusBar>,
     titlebar_item: Option<AnyView>,
     notifications: Notifications,
@@ -922,6 +1025,8 @@ pub struct Workspace {
     bounds_save_task_queued: Option<Task<()>>,
     scheduled_serialization_task: Option<Task<()>>,
     serialization_task: Option<Task<()>>,
+    serializable_items_tx: UnboundedSender<Box<dyn SerializableItemHandle>>,
+    _items_serializer: Task<anyhow::Result<()>>,
     _project_subscription: Subscription,
     _window_activation_subscription: Subscription,
     _window_bounds_subscription: Subscription,
@@ -1184,6 +1289,15 @@ impl Workspace {
                 (window, workspace)
             };
 
+            if let Some(serialized_workspace) = serialized_workspace {
+                let restore_task = window.update(cx, |root: &mut Root, window, cx| {
+                    root.workspace().update(cx, |workspace, cx| {
+                        workspace.restore_workspace(serialized_workspace, window, cx)
+                    })
+                })?;
+                restore_task.await.log_err();
+            }
+
             if let Some(database_id) =
                 workspace.read_with(cx, |workspace, _| workspace.database_id())
                 && let Err(error) = workspace_db.update_activation_order(database_id).await
@@ -1192,6 +1306,71 @@ impl Workspace {
             }
 
             Ok(OpenResult { window, workspace })
+        })
+    }
+
+    fn restore_workspace(
+        &mut self,
+        serialized_workspace: SerializedWorkspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let project = self.project.clone();
+        let pane = self.pane.downgrade();
+        let workspace_id = serialized_workspace.id;
+        let center_pane = serialized_workspace.center_pane;
+
+        cx.spawn_in(window, async move |workspace, cx| {
+            let scan_complete =
+                workspace.read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))?;
+            scan_complete.await;
+
+            let deserialized_items = match center_pane
+                .deserialize_to(&project, &pane, workspace_id, workspace.clone(), cx)
+                .await
+            {
+                Ok(items) => items,
+                Err(error) => return Err(error),
+            };
+
+            let item_ids_by_kind = cx.update(|_, cx| {
+                let mut item_ids_by_kind = HashMap::<&'static str, Vec<ItemId>>::new();
+                for item in deserialized_items.into_iter().flatten() {
+                    if let Some(serializable_item_handle) = item.to_serializable_item_handle(cx) {
+                        item_ids_by_kind
+                            .entry(serializable_item_handle.serialized_item_kind())
+                            .or_default()
+                            .push(item.item_id().as_u64());
+                    }
+                }
+                item_ids_by_kind
+            })?;
+
+            let cleanup_tasks = workspace.update_in(cx, |workspace, window, cx| {
+                workspace.active_item_path_changed(cx);
+                item_ids_by_kind
+                    .into_iter()
+                    .map(|(item_kind, loaded_items)| {
+                        SerializableItemRegistry::cleanup(
+                            item_kind,
+                            workspace_id,
+                            loaded_items,
+                            window,
+                            cx,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })?;
+
+            for task in cleanup_tasks {
+                task.await.log_err();
+            }
+
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.serialize_workspace_internal(window, cx).detach();
+            })?;
+
+            Ok(())
         })
     }
 
@@ -1367,13 +1546,25 @@ impl Workspace {
         });
     }
 
-    fn handle_pane_event(&mut self, event: &PaneEvent, cx: &mut Context<Self>) {
+    fn handle_pane_event(
+        &mut self,
+        pane: &Entity<Pane>,
+        event: &PaneEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let PaneEvent::AddItem { item } = event {
+            item.added_to_pane(self, pane.clone(), window, cx);
+        }
+
         if matches!(
             event,
             PaneEvent::ActivateItem { .. } | PaneEvent::ChangeItemTitle
         ) {
             self.active_item_path_changed(cx);
         }
+
+        self.serialize_workspace(window, cx);
     }
 
     pub fn save_active_item(
@@ -1508,16 +1699,46 @@ impl Workspace {
     }
 
     fn serialize_workspace_internal(&self, window: &mut Window, cx: &mut App) -> Task<()> {
+        fn serialize_pane_handle(
+            pane_handle: &Entity<Pane>,
+            window: &mut Window,
+            cx: &mut App,
+        ) -> SerializedPane {
+            let (items, active) = {
+                let pane = pane_handle.read(cx);
+                let active_item_id = pane.active_item().map(|item| item.item_id());
+                let items = pane
+                    .items()
+                    .filter_map(|handle| {
+                        let handle = handle.to_serializable_item_handle(cx)?;
+                        let item_id = handle.item_id();
+                        Some(SerializedItem {
+                            kind: Arc::from(handle.serialized_item_kind()),
+                            item_id: item_id.as_u64(),
+                            active: Some(item_id) == active_item_id,
+                            preview: pane.is_active_preview_item(item_id),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                (items, pane.has_focus(window, cx))
+            };
+
+            SerializedPane::new(items, active)
+        }
+
         let Some(database_id) = self.database_id() else {
             return Task::ready(());
         };
 
         match self.root(cx) {
             Some(root_path) => {
+                let pane = self.pane.clone();
+                let center_pane = serialize_pane_handle(&pane, window, cx);
                 let serialized_workspace = SerializedWorkspace {
                     id: database_id,
                     location: root_path,
-                    center_pane: SerializedPane::default(),
+                    center_pane,
                     window_bounds: Some(SerializedWindowBounds(window.window_bounds())),
                     display: None,
                     session_id: self.session_id.clone(),
@@ -1534,6 +1755,50 @@ impl Workspace {
             }
             None => Task::ready(()),
         }
+    }
+
+    async fn serialize_items(
+        workspace: &WeakEntity<Self>,
+        items_rx: UnboundedReceiver<Box<dyn SerializableItemHandle>>,
+        cx: &mut AsyncWindowContext,
+    ) -> anyhow::Result<()> {
+        const CHUNK_SIZE: usize = 200;
+
+        let mut serializable_items = items_rx.ready_chunks(CHUNK_SIZE);
+
+        while let Some(items_received) = serializable_items.next().await {
+            let unique_items = items_received.into_iter().fold(
+                HashMap::<EntityId, _>::default(),
+                |mut items, item| {
+                    items.entry(item.item_id()).or_insert(item);
+                    items
+                },
+            );
+
+            for (_, item) in unique_items {
+                if let Ok(Some(task)) = workspace.update_in(cx, |workspace, window, cx| {
+                    item.serialize(workspace, false, window, cx)
+                }) {
+                    cx.background_spawn(async move { task.await.log_err() })
+                        .detach();
+                }
+            }
+
+            cx.background_executor()
+                .timer(SERIALIZATION_THROTTLE_TIME)
+                .await;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn enqueue_item_serialization(
+        &mut self,
+        item: Box<dyn SerializableItemHandle>,
+    ) -> anyhow::Result<()> {
+        self.serializable_items_tx
+            .unbounded_send(item)
+            .map_err(|err| anyhow::anyhow!("failed to send serializable item over channel: {err}"))
     }
 
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
@@ -1642,8 +1907,8 @@ impl Workspace {
         let workspace = cx.entity();
         let weak_handle = workspace.downgrade();
         let pane = cx.new(|cx| Pane::new(weak_handle.clone(), &project, window, cx));
-        cx.subscribe_in(&pane, window, |workspace, _, event, _, cx| {
-            workspace.handle_pane_event(event, cx);
+        cx.subscribe_in(&pane, window, |workspace, pane, event, window, cx| {
+            workspace.handle_pane_event(pane, event, window, cx);
         })
         .detach();
 
@@ -1689,6 +1954,12 @@ impl Workspace {
             status_bar.add_right_item(bottom_dock_buttons, window, cx);
         });
 
+        let (serializable_items_tx, serializable_items_rx) =
+            mpsc::unbounded::<Box<dyn SerializableItemHandle>>();
+        let items_serializer = cx.spawn_in(window, async move |workspace, cx| {
+            Self::serialize_items(&workspace, serializable_items_rx, cx).await
+        });
+
         let this = Self {
             shared_state,
             weak_self: weak_handle,
@@ -1699,6 +1970,7 @@ impl Workspace {
             left_dock,
             bottom_dock,
             pane,
+            panes_by_item: HashMap::default(),
             status_bar,
             titlebar_item: None,
             notifications: Notifications::default(),
@@ -1708,6 +1980,8 @@ impl Workspace {
             bounds_save_task_queued: None,
             scheduled_serialization_task: None,
             serialization_task: None,
+            serializable_items_tx,
+            _items_serializer: items_serializer,
             _project_subscription: project_subscription,
             _window_activation_subscription: window_activation_subscription,
             _window_bounds_subscription: window_bounds_subscription,

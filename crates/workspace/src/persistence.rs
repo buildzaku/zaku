@@ -2,7 +2,7 @@ pub mod model;
 
 use anyhow::Context;
 use chrono::{DateTime, NaiveDateTime, Utc};
-use gpui::{Bounds, WindowBounds, WindowId};
+use gpui::{App, Bounds, Task, WindowBounds, WindowId};
 use std::path::{Path, PathBuf};
 
 use db::{
@@ -15,7 +15,7 @@ use util::ResultExt;
 use uuid::Uuid;
 
 use self::model::{PaneId, SerializedItem, SerializedPane, SerializedWorkspace, SessionWorkspace};
-use crate::WorkspaceId;
+use crate::{ItemId, WorkspaceId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
 pub struct SerializedWindowBounds(pub WindowBounds);
@@ -678,6 +678,36 @@ impl WorkspaceDb {
             SELECT COUNT(*) FROM workspace
         }
     }
+}
+
+pub fn delete_unloaded_items(
+    alive_items: Vec<ItemId>,
+    workspace_id: WorkspaceId,
+    table: &'static str,
+    db: &ThreadSafeConnection,
+    cx: &mut App,
+) -> Task<anyhow::Result<()>> {
+    let db = db.clone();
+    cx.spawn(async move |_| {
+        db.write(move |connection| {
+            let placeholders = alive_items
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
+            let query = format!(
+                "DELETE FROM {table} WHERE workspace_id = ? AND id NOT IN ({placeholders})"
+            );
+            let mut statement = Statement::prepare(connection, query)
+                .context("failed to prepare unloaded item deletion")?;
+            let mut next_index = statement.bind(&workspace_id, 1)?;
+            for item_id in alive_items {
+                next_index = statement.bind(&item_id, next_index)?;
+            }
+            statement.exec().context("failed to delete unloaded items")
+        })
+        .await
+    })
 }
 
 fn parse_timestamp(text: &str) -> DateTime<Utc> {

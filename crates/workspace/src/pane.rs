@@ -61,7 +61,6 @@ pub struct Pane {
     active_item_index: usize,
     preview_item_id: Option<EntityId>,
     tab_bar_scroll_handle: ScrollHandle,
-    item_subscriptions: Vec<(EntityId, Subscription)>,
     save_modals_spawned: HashSet<EntityId>,
     _focus_subscriptions: Vec<Subscription>,
 }
@@ -91,7 +90,6 @@ impl Pane {
             active_item_index: 0,
             preview_item_id: None,
             tab_bar_scroll_handle: ScrollHandle::new(),
-            item_subscriptions: Vec::new(),
             save_modals_spawned: HashSet::default(),
             _focus_subscriptions: focus_subscriptions,
         }
@@ -265,22 +263,7 @@ impl Pane {
                 self.activate_item(insertion_index, activate_pane, focus_item, window, cx);
             }
         } else {
-            let item_id = item.item_id();
-            let pane = cx.weak_entity();
-            let subscription = item.subscribe_to_item_events(
-                window,
-                cx,
-                Box::new(move |event, window, cx| {
-                    if let Err(error) = pane.update(cx, |pane, cx| {
-                        pane.handle_item_event(item_id, event, window, cx);
-                    }) {
-                        log::debug!("Failed to handle pane item event: {error:?}");
-                    }
-                }),
-            );
-
             self.items.insert(insertion_index, item.clone());
-            self.item_subscriptions.push((item_id, subscription));
             cx.notify();
 
             if activate {
@@ -404,9 +387,6 @@ impl Pane {
         if should_focus_pane {
             self.focus_handle.focus(window, cx);
         }
-
-        self.item_subscriptions
-            .retain(|(subscription_item_id, _)| *subscription_item_id != item_id);
 
         item.deactivated(window, cx);
         item.on_removed(cx);
@@ -804,14 +784,14 @@ impl Pane {
         Ok(true)
     }
 
-    fn handle_item_event(
+    pub(crate) fn handle_item_event(
         &mut self,
         item_id: EntityId,
-        event: ItemEvent,
+        item_event: ItemEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        match event {
+        match item_event {
             ItemEvent::CloseItem => {
                 self.close_item_by_id(item_id, actions::pane::SaveIntent::Close, window, cx)
                     .detach_and_log_err(cx);

@@ -2,6 +2,7 @@ pub mod display_map;
 mod element;
 mod items;
 mod movement;
+mod persistence;
 mod scroll;
 mod selections_collection;
 
@@ -29,7 +30,7 @@ use std::{
 use text::{Bias, OffsetUtf16, Selection, SelectionGoal, TransactionId};
 
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
-use language::{Buffer, Capability};
+use language::{Buffer, BufferEvent, Capability};
 use multi_buffer::{Anchor, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint};
 use theme::{ActiveTheme, ThemeSettings};
 
@@ -42,7 +43,11 @@ use crate::{
 const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
 pub fn init(cx: &mut App) {
+    smol::block_on(persistence::EditorDb::global(cx).initialize_schema())
+        .expect("editor persistence schema should initialize");
+
     workspace::register_project_item::<Editor>(cx);
+    workspace::register_serializable_item::<Editor>(cx);
 
     _ = ERASED_EDITOR_FACTORY.set(|window, cx| {
         Arc::new(ErasedEditorImpl(
@@ -56,6 +61,9 @@ pub enum EditorEvent {
     BufferEdited,
     Blurred,
     DirtyChanged,
+    Saved,
+    TitleChanged,
+    FileHandleChanged,
 }
 
 const MAX_SELECTION_HISTORY_LEN: usize = 1024;
@@ -375,10 +383,36 @@ impl Editor {
         let selections = SelectionsCollection::new();
         let selection_history = SelectionHistory::new(selections.disjoint_anchors_arc());
 
-        let subscriptions = vec![
+        let editor = cx.weak_entity();
+        let mut subscriptions = vec![
             cx.on_focus(&focus_handle, window, Self::on_focus),
             cx.on_blur(&focus_handle, window, Self::on_blur),
         ];
+        if let Some(singleton_buffer) = buffer.read(cx).as_singleton() {
+            subscriptions.push(window.subscribe(
+                &singleton_buffer,
+                cx,
+                move |_, event: &BufferEvent, _, cx| {
+                    let events = match event {
+                        BufferEvent::DirtyChanged => [Some(EditorEvent::DirtyChanged), None],
+                        BufferEvent::FileHandleChanged => [
+                            Some(EditorEvent::TitleChanged),
+                            Some(EditorEvent::FileHandleChanged),
+                        ],
+                        BufferEvent::Saved => [Some(EditorEvent::Saved), None],
+                        _ => return,
+                    };
+                    if let Err(error) = editor.update(cx, |_, cx| {
+                        for event in events.into_iter().flatten() {
+                            cx.emit(event);
+                        }
+                        cx.notify();
+                    }) {
+                        log::debug!("Failed to update editor buffer state: {error:?}");
+                    }
+                },
+            ));
+        }
 
         let mut editor = Self {
             focus_handle,
@@ -2856,7 +2890,10 @@ impl ErasedEditor for ErasedEditorImpl {
             let event = match event {
                 EditorEvent::BufferEdited => ErasedEditorEvent::BufferEdited,
                 EditorEvent::Blurred => ErasedEditorEvent::Blurred,
-                EditorEvent::DirtyChanged => return,
+                EditorEvent::DirtyChanged
+                | EditorEvent::FileHandleChanged
+                | EditorEvent::Saved
+                | EditorEvent::TitleChanged => return,
             };
             (callback)(event, window, cx);
         })

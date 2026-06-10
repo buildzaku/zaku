@@ -9,7 +9,9 @@ use language::Capability;
 use project::{Project, ProjectEntryId, ProjectPath};
 use ui::{Color, Icon, Label, LabelCommon};
 
-use crate::pane::Pane;
+use crate::{
+    SerializableItemRegistry, Workspace, WorkspaceId, pane::Pane, persistence::model::ItemId,
+};
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
 pub enum ItemEvent {
@@ -138,6 +140,76 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
     }
 }
 
+pub trait SerializableItem: Item + 'static {
+    fn serialized_item_kind() -> &'static str;
+
+    fn cleanup(
+        workspace_id: WorkspaceId,
+        alive_items: Vec<ItemId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>>;
+
+    fn deserialize(
+        project: Entity<Project>,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Self>>>;
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: ItemId,
+        closing: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>>;
+
+    fn should_serialize(&self, event: &Self::Event) -> bool;
+}
+
+pub trait SerializableItemHandle: ItemHandle {
+    fn serialized_item_kind(&self) -> &'static str;
+    fn serialize(
+        &self,
+        workspace: &mut Workspace,
+        closing: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Task<anyhow::Result<()>>>;
+    fn should_serialize(&self, event: &dyn Any, cx: &App) -> bool;
+}
+
+impl<T> SerializableItemHandle for Entity<T>
+where
+    T: SerializableItem,
+{
+    fn serialized_item_kind(&self) -> &'static str {
+        T::serialized_item_kind()
+    }
+
+    fn serialize(
+        &self,
+        workspace: &mut Workspace,
+        closing: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        self.update(cx, |this, cx| {
+            this.serialize(workspace, cx.entity_id().as_u64(), closing, window, cx)
+        })
+    }
+
+    fn should_serialize(&self, event: &dyn Any, cx: &App) -> bool {
+        event
+            .downcast_ref::<T::Event>()
+            .is_some_and(|event| self.read(cx).should_serialize(event))
+    }
+}
+
 pub trait ItemHandle: 'static + Send {
     fn item_focus_handle(&self, cx: &App) -> FocusHandle;
     fn subscribe_to_item_events(
@@ -161,10 +233,18 @@ pub trait ItemHandle: 'static + Send {
     fn buffer_kind(&self, cx: &App) -> ItemBufferKind;
     fn boxed_clone(&self) -> Box<dyn ItemHandle>;
     fn downgrade_item(&self) -> Box<dyn WeakItemHandle>;
+    fn added_to_pane(
+        &self,
+        workspace: &mut Workspace,
+        pane: Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    );
     fn deactivated(&self, window: &mut Window, cx: &mut App);
     fn on_removed(&self, cx: &mut App);
     fn navigate(&self, data: Arc<dyn Any + Send>, window: &mut Window, cx: &mut App) -> bool;
     fn item_id(&self) -> EntityId;
+    fn to_serializable_item_handle(&self, cx: &App) -> Option<Box<dyn SerializableItemHandle>>;
     fn to_any_view(&self) -> AnyView;
     fn is_dirty(&self, cx: &App) -> bool;
     fn capability(&self, cx: &App) -> Capability;
@@ -274,6 +354,64 @@ impl<T: Item> ItemHandle for Entity<T> {
         Box::new(self.downgrade())
     }
 
+    fn added_to_pane(
+        &self,
+        workspace: &mut Workspace,
+        pane: Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        if let Some(serializable_item) = self.to_serializable_item_handle(cx)
+            && let Err(error) = workspace.enqueue_item_serialization(serializable_item)
+        {
+            log::debug!("Failed to enqueue item serialization: {error}");
+        }
+
+        let old_item_pane = workspace
+            .panes_by_item
+            .insert(self.item_id(), pane.downgrade());
+
+        if old_item_pane.is_none() {
+            let mut event_subscription = Some(cx.subscribe_in(
+                self,
+                window,
+                move |workspace, item: &Entity<T>, event, window, cx| {
+                    let Some(pane) = workspace
+                        .panes_by_item
+                        .get(&item.item_id())
+                        .and_then(|pane| pane.upgrade())
+                    else {
+                        return;
+                    };
+
+                    if let Some(serializable_item) = item.to_serializable_item_handle(cx)
+                        && serializable_item.should_serialize(event, cx)
+                        && let Err(error) = workspace.enqueue_item_serialization(serializable_item)
+                    {
+                        log::debug!("Failed to enqueue item serialization: {error}");
+                    }
+
+                    T::to_item_events(event, &mut |item_event| {
+                        pane.update(cx, |pane, cx| {
+                            pane.handle_item_event(item.item_id(), item_event, window, cx);
+                        });
+                    });
+                },
+            ));
+
+            let item_id = self.item_id();
+            cx.observe_release_in(self, window, move |workspace, _, _, _| {
+                workspace.panes_by_item.remove(&item_id);
+                event_subscription.take();
+            })
+            .detach();
+        }
+
+        cx.defer_in(window, |workspace, window, cx| {
+            workspace.serialize_workspace(window, cx);
+        });
+    }
+
     fn deactivated(&self, window: &mut Window, cx: &mut App) {
         self.update(cx, |this, cx| this.deactivated(window, cx));
     }
@@ -288,6 +426,10 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn item_id(&self) -> EntityId {
         Entity::entity_id(self)
+    }
+
+    fn to_serializable_item_handle(&self, cx: &App) -> Option<Box<dyn SerializableItemHandle>> {
+        SerializableItemRegistry::view_to_serializable_item_handle(self.to_any_view(), cx)
     }
 
     fn to_any_view(&self) -> AnyView {

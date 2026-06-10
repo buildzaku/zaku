@@ -1,3 +1,5 @@
+mod persistence;
+
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EntityId, EventEmitter, FocusHandle,
@@ -29,14 +31,20 @@ use ui::{
 };
 use util::{path::PathStyle, truncate_and_trailoff};
 use workspace::{
-    Item, ItemBufferKind, ItemEvent, ProjectItem, SharedState, TabContentParams, Workspace,
-    pane::Pane,
+    Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, SharedState,
+    TabContentParams, Workspace, WorkspaceId, delete_unloaded_items, pane::Pane,
 };
+
+use crate::persistence::{RequestEditorDb, SerializedRequestEditor};
 
 const MAX_TAB_TITLE_LEN: usize = 24;
 
 pub fn init(cx: &mut App) {
+    smol::block_on(RequestEditorDb::global(cx).initialize_schema())
+        .expect("request editor persistence schema should initialize");
+
     workspace::register_project_item::<RequestEditor>(cx);
+    workspace::register_serializable_item::<RequestEditor>(cx);
 
     cx.observe_new(
         |workspace: &mut Workspace, _: Option<&mut Window>, cx: &mut Context<Workspace>| {
@@ -126,6 +134,15 @@ enum RequestEditorTab {
     Parameters,
     Headers,
     Body,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RequestEditorEvent {
+    RequestBufferEdited,
+    DirtyChanged,
+    Saved,
+    TitleChanged,
+    FileHandleChanged,
 }
 
 struct Request {
@@ -390,11 +407,26 @@ impl RequestEditor {
             &buffer,
             cx,
             move |buffer, event: &RequestBufferEvent, window, cx| match event {
-                RequestBufferEvent::DirtyChanged
-                | RequestBufferEvent::FileHandleChanged
-                | RequestBufferEvent::Saved => {
+                RequestBufferEvent::DirtyChanged => {
                     if let Err(error) = request_editor.update(cx, |_, cx| {
-                        cx.emit(ItemEvent::UpdateTab);
+                        cx.emit(RequestEditorEvent::DirtyChanged);
+                        cx.notify();
+                    }) {
+                        log::debug!("Failed to update request editor tab: {error:?}");
+                    }
+                }
+                RequestBufferEvent::FileHandleChanged => {
+                    if let Err(error) = request_editor.update(cx, |_, cx| {
+                        cx.emit(RequestEditorEvent::TitleChanged);
+                        cx.emit(RequestEditorEvent::FileHandleChanged);
+                        cx.notify();
+                    }) {
+                        log::debug!("Failed to update request editor tab: {error:?}");
+                    }
+                }
+                RequestBufferEvent::Saved => {
+                    if let Err(error) = request_editor.update(cx, |_, cx| {
+                        cx.emit(RequestEditorEvent::Saved);
                         cx.notify();
                     }) {
                         log::debug!("Failed to update request editor tab: {error:?}");
@@ -409,7 +441,7 @@ impl RequestEditor {
                         request_editor.request_snapshot = request_snapshot;
                         request_editor.input_subscriptions = input_subscriptions;
                         request_editor.body_subscription = body_subscription;
-                        cx.emit(ItemEvent::UpdateTab);
+                        cx.emit(RequestEditorEvent::TitleChanged);
                         cx.notify();
                     }) {
                         log::debug!("Failed to reload request editor: {error:?}");
@@ -640,9 +672,9 @@ impl RequestEditor {
             buffer.set_dirty(is_dirty, cx)
         });
 
-        cx.emit(ItemEvent::Edit);
+        cx.emit(RequestEditorEvent::RequestBufferEdited);
         if dirty_changed {
-            cx.emit(ItemEvent::UpdateTab);
+            cx.emit(RequestEditorEvent::DirtyChanged);
         }
         cx.notify();
     }
@@ -1494,7 +1526,7 @@ impl RequestEditor {
     }
 }
 
-impl EventEmitter<ItemEvent> for RequestEditor {}
+impl EventEmitter<RequestEditorEvent> for RequestEditor {}
 
 impl Focusable for RequestEditor {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -1512,10 +1544,17 @@ impl Render for RequestEditor {
 }
 
 impl Item for RequestEditor {
-    type Event = ItemEvent;
+    type Event = RequestEditorEvent;
 
     fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
-        f(*event);
+        match event {
+            RequestEditorEvent::Saved | RequestEditorEvent::TitleChanged => {
+                f(ItemEvent::UpdateTab);
+            }
+            RequestEditorEvent::DirtyChanged => f(ItemEvent::UpdateTab),
+            RequestEditorEvent::RequestBufferEdited => f(ItemEvent::Edit),
+            RequestEditorEvent::FileHandleChanged => {}
+        }
     }
 
     fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
@@ -1624,18 +1663,12 @@ impl Item for RequestEditor {
         buffer.update(cx, |buffer, cx| {
             buffer.set_request_file(RequestFileState::Parsed(request_snapshot.0.clone()), cx);
         });
-        let was_dirty = buffer.read(cx).is_dirty();
-
         cx.spawn_in(window, async move |this, cx| {
             project
                 .update(cx, |project, cx| project.save_request_buffer(&buffer, cx))
                 .await?;
             this.update(cx, |request_editor, cx| {
                 request_editor.request_snapshot = Some(request_snapshot.clone());
-
-                if was_dirty {
-                    cx.emit(ItemEvent::UpdateTab);
-                }
                 cx.notify();
             })?;
             Ok(())
@@ -1674,6 +1707,111 @@ impl ProjectItem for RequestEditor {
     {
         let workspace = pane.map_or_else(WeakEntity::new_invalid, Pane::workspace);
         Self::for_buffer(workspace, project, item, window, cx)
+    }
+}
+
+impl SerializableItem for RequestEditor {
+    fn serialized_item_kind() -> &'static str {
+        "RequestEditor"
+    }
+
+    fn cleanup(
+        workspace_id: WorkspaceId,
+        alive_items: Vec<ItemId>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        delete_unloaded_items(
+            alive_items,
+            workspace_id,
+            "request_editor",
+            &RequestEditorDb::global(cx),
+            cx,
+        )
+    }
+
+    fn deserialize(
+        project: Entity<Project>,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Self>>> {
+        let serialized_request_editor = match RequestEditorDb::global(cx)
+            .load_serialized_request_editor(item_id, workspace_id)
+        {
+            Ok(Some(serialized_request_editor)) => serialized_request_editor,
+            Ok(None) => {
+                return Task::ready(Err(anyhow::anyhow!(
+                    "Unable to deserialize request editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
+                )));
+            }
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let path = serialized_request_editor.absolute_path;
+
+        let Some(project_path) = project
+            .read(cx)
+            .project_path_for_absolute_path(path.as_path(), cx)
+        else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "Unable to deserialize request editor: path is not in project: {}",
+                path.display()
+            )));
+        };
+
+        let Some(open_buffer) =
+            <RequestBuffer as project::ProjectItem>::try_open(&project, &project_path, cx)
+        else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "Unable to deserialize request editor: cannot open path: {}",
+                path.display()
+            )));
+        };
+
+        window.spawn(cx, async move |cx| {
+            let buffer = open_buffer.await?;
+            cx.update(|window, cx| {
+                cx.new(|cx| RequestEditor::for_buffer(workspace, project, buffer, window, cx))
+            })
+        })
+    }
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: ItemId,
+        _closing: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let project_path = project::ProjectItem::project_path(self.buffer.read(cx), cx)?;
+        let path = self.project.read(cx).absolute_path(&project_path, cx)?;
+        let workspace_id = workspace.database_id()?;
+        let request_editor_db = RequestEditorDb::global(cx);
+
+        Some(cx.spawn_in(window, async move |_, _| {
+            request_editor_db
+                .save_serialized_request_editor(
+                    item_id,
+                    workspace_id,
+                    SerializedRequestEditor {
+                        absolute_path: path,
+                    },
+                )
+                .await
+        }))
+    }
+
+    fn should_serialize(&self, event: &Self::Event) -> bool {
+        matches!(
+            event,
+            RequestEditorEvent::Saved
+                | RequestEditorEvent::DirtyChanged
+                | RequestEditorEvent::RequestBufferEdited
+                | RequestEditorEvent::FileHandleChanged
+        )
     }
 }
 

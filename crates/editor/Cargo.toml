@@ -8,6 +8,9 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+test-support = ["db/test-support"]
+
 [lib]
 name = "editor"
 path = "src/editor.rs"
@@ -15,21 +18,25 @@ path = "src/editor.rs"
 [dependencies]
 actions = { workspace = true }
 anyhow = { workspace = true }
+db = { workspace = true }
 gpui = { workspace = true }
 icons = { workspace = true }
 input = { workspace = true }
 itertools = { workspace = true }
 language = { workspace = true }
+log = { workspace = true }
 multi_buffer = { workspace = true }
 num-traits = { workspace = true }
 project = { workspace = true }
 serde = { workspace = true }
+smol = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
 workspace = { workspace = true }
 
 [dev-dependencies]
+db = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
 pretty_assertions = { workspace = true }

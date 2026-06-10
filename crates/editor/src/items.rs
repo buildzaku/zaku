@@ -1,4 +1,4 @@
-use gpui::{App, Context, Entity, EntityId, SharedString, Task, Window};
+use gpui::{App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use icons::FileIcons;
@@ -6,18 +6,27 @@ use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
 use project::Project;
 use ui::Icon;
-use workspace::{Item, ItemBufferKind, ItemEvent, ProjectItem, pane::Pane};
+use workspace::{
+    Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, Workspace, WorkspaceId,
+    delete_unloaded_items, pane::Pane,
+};
 
-use crate::{Editor, EditorEvent, scroll::Autoscroll};
+use crate::{
+    Editor, EditorEvent,
+    persistence::{EditorDb, SerializedEditor},
+    scroll::Autoscroll,
+};
 
 impl Item for Editor {
     type Event = EditorEvent;
 
     fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
         match event {
+            EditorEvent::Saved | EditorEvent::TitleChanged | EditorEvent::DirtyChanged => {
+                f(ItemEvent::UpdateTab);
+            }
             EditorEvent::BufferEdited => f(ItemEvent::Edit),
-            EditorEvent::DirtyChanged => f(ItemEvent::UpdateTab),
-            EditorEvent::Blurred => {}
+            EditorEvent::Blurred | EditorEvent::FileHandleChanged => {}
         }
     }
 
@@ -99,17 +108,10 @@ impl Item for Editor {
         let Some(buffer) = self.buffer.read(cx).as_singleton() else {
             return Task::ready(Err(anyhow::anyhow!("Cannot save multi-buffer editor")));
         };
-        let was_dirty = buffer.read(cx).is_dirty();
         let save = project.update(cx, |project, cx| project.save_buffer(buffer, cx));
 
-        cx.spawn_in(window, async move |this, cx| {
+        cx.spawn_in(window, async move |_, _| {
             save.await?;
-            if was_dirty {
-                this.update(cx, |_, cx| {
-                    cx.emit(EditorEvent::DirtyChanged);
-                    cx.notify();
-                })?;
-            }
             Ok(())
         })
     }
@@ -195,5 +197,112 @@ impl ProjectItem for Editor {
         Self: Sized,
     {
         Self::for_buffer(item, window, cx)
+    }
+}
+
+impl SerializableItem for Editor {
+    fn serialized_item_kind() -> &'static str {
+        "Editor"
+    }
+
+    fn cleanup(
+        workspace_id: WorkspaceId,
+        alive_items: Vec<ItemId>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        delete_unloaded_items(
+            alive_items,
+            workspace_id,
+            "editor",
+            &EditorDb::global(cx),
+            cx,
+        )
+    }
+
+    fn deserialize(
+        project: Entity<Project>,
+        _workspace: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Self>>> {
+        let serialized_editor = match EditorDb::global(cx)
+            .load_serialized_editor(item_id, workspace_id)
+        {
+            Ok(Some(serialized_editor)) => serialized_editor,
+            Ok(None) => {
+                return Task::ready(Err(anyhow::anyhow!(
+                    "Unable to deserialize editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
+                )));
+            }
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let path = serialized_editor.absolute_path;
+
+        let Some(project_path) = project
+            .read(cx)
+            .project_path_for_absolute_path(path.as_path(), cx)
+        else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "Unable to deserialize editor: path is not in project: {}",
+                path.display()
+            )));
+        };
+
+        let Some(open_buffer) =
+            <Buffer as project::ProjectItem>::try_open(&project, &project_path, cx)
+        else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "Unable to deserialize editor: cannot open path: {}",
+                path.display()
+            )));
+        };
+
+        window.spawn(cx, async move |cx| {
+            let buffer = open_buffer.await?;
+            cx.update(|window, cx| cx.new(|cx| Editor::for_buffer(buffer, window, cx)))
+        })
+    }
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: ItemId,
+        _closing: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        let buffer = self.buffer.read(cx).as_singleton()?;
+        let project_path = project::ProjectItem::project_path(buffer.read(cx), cx)?;
+        let path = workspace
+            .project()
+            .read(cx)
+            .absolute_path(&project_path, cx)?;
+        let workspace_id = workspace.database_id()?;
+        let editor_db = EditorDb::global(cx);
+
+        Some(cx.spawn_in(window, async move |_, _| {
+            editor_db
+                .save_serialized_editor(
+                    item_id,
+                    workspace_id,
+                    SerializedEditor {
+                        absolute_path: path,
+                    },
+                )
+                .await
+        }))
+    }
+
+    fn should_serialize(&self, event: &Self::Event) -> bool {
+        matches!(
+            event,
+            EditorEvent::Saved
+                | EditorEvent::DirtyChanged
+                | EditorEvent::BufferEdited
+                | EditorEvent::FileHandleChanged
+        )
     }
 }

@@ -221,7 +221,10 @@ impl ProjectPanel {
                             project_panel.discard_edit_state(window, cx);
                         }
                     }
-                    EditorEvent::DirtyChanged => {}
+                    EditorEvent::DirtyChanged
+                    | EditorEvent::FileHandleChanged
+                    | EditorEvent::Saved
+                    | EditorEvent::TitleChanged => {}
                 },
             )
             .detach();
