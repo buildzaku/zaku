@@ -6086,6 +6086,7 @@ dependencies = [
  "gpui",
  "indexmap",
  "indoc",
+ "inventory",
  "log",
  "logger",
  "rust-embed",

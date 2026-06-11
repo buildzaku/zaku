@@ -1,4 +1,5 @@
 pub mod display_map;
+mod editor_settings;
 mod element;
 mod items;
 mod movement;
@@ -6,6 +7,7 @@ mod persistence;
 mod scroll;
 mod selections_collection;
 
+pub use editor_settings::{EditorSettings, Gutter};
 pub use element::EditorElement;
 pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
 

@@ -1,3 +1,4 @@
+mod editor;
 mod fallible_options;
 mod keymap_file;
 pub mod log_settings;
@@ -6,6 +7,15 @@ mod paths;
 mod settings_file;
 mod settings_store;
 
+pub use settings_macros::RegisterSetting;
+
+#[doc(hidden)]
+pub mod private {
+    pub use crate::settings_store::RegisteredSetting;
+    pub use inventory;
+}
+
+pub use editor::GutterContent;
 pub use fallible_options::ParseStatus;
 pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
 pub use paths::{

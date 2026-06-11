@@ -11,5 +11,9 @@
   "buffer_font_features": { "calt": false },
   "buffer_font_weight": 400,
   "buffer_line_height": "comfortable",
+  "gutter": {
+    "line_numbers": true,
+    "min_line_number_digits": 4
+  },
   "log": {}
 }

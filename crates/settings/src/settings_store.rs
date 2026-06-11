@@ -11,8 +11,18 @@ use std::{
 
 use settings_macros::{MergeFrom, with_fallible_options};
 
-use crate::fallible_options::{ParseStatus, parse_json};
-use crate::merge_from::MergeFrom;
+use crate::{
+    editor::GutterContent,
+    fallible_options::{ParseStatus, parse_json},
+    merge_from::MergeFrom,
+};
+
+pub struct RegisteredSetting {
+    pub id: fn() -> TypeId,
+    pub from_settings: fn(&SettingsContent) -> Box<dyn Any + Send + Sync>,
+}
+
+inventory::collect!(RegisteredSetting);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -153,6 +163,7 @@ pub struct SettingsContent {
     buffer_font_features: Option<FontFeaturesContent>,
     buffer_font_weight: Option<FontWeightContent>,
     buffer_line_height: Option<BufferLineHeight>,
+    gutter: Option<GutterContent>,
     pub(crate) log: Option<HashMap<String, String>>,
 }
 
@@ -203,6 +214,10 @@ impl SettingsContent {
 
     pub fn buffer_line_height(&self) -> BufferLineHeight {
         self.buffer_line_height.unwrap_or_default()
+    }
+
+    pub fn gutter(&self) -> GutterContent {
+        self.gutter.clone().unwrap_or_default()
     }
 }
 
@@ -268,13 +283,15 @@ impl SettingsStore {
 
         let merged_settings = default_settings.clone();
 
-        Self {
+        let mut store = Self {
             default_settings,
             user_settings: None,
             merged_settings,
             setting_factories: HashMap::new(),
             settings: HashMap::new(),
-        }
+        };
+        store.load_settings_types();
+        store
     }
 
     pub fn content(&self) -> &SettingsContent {
@@ -330,9 +347,27 @@ impl SettingsStore {
             Box::new(T::from_settings(content))
         }
 
-        let type_id = TypeId::of::<T>();
-        self.setting_factories.insert(type_id, build::<T>);
-        self.settings.insert(type_id, build::<T>(self.content()));
+        self.register_setting_internal(&RegisteredSetting {
+            id: || TypeId::of::<T>(),
+            from_settings: build::<T>,
+        });
+    }
+
+    fn load_settings_types(&mut self) {
+        for registered_setting in inventory::iter::<RegisteredSetting>() {
+            self.register_setting_internal(registered_setting);
+        }
+    }
+
+    fn register_setting_internal(&mut self, registered_setting: &RegisteredSetting) {
+        let type_id = (registered_setting.id)();
+        if self.settings.contains_key(&type_id) {
+            return;
+        }
+
+        let from_settings = registered_setting.from_settings;
+        self.setting_factories.insert(type_id, from_settings);
+        self.settings.insert(type_id, from_settings(self.content()));
     }
 
     pub fn get<T: Settings>(&self) -> &T {

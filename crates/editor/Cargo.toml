@@ -29,6 +29,7 @@ multi_buffer = { workspace = true }
 num-traits = { workspace = true }
 project = { workspace = true }
 serde = { workspace = true }
+settings = { workspace = true }
 smol = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }
