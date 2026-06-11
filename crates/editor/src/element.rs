@@ -51,6 +51,7 @@ pub(crate) struct PositionMap {
     pub text_align: TextAlign,
     pub content_width: Pixels,
     pub text_hitbox: Hitbox,
+    pub gutter_hitbox: Hitbox,
     pub masked: bool,
 }
 
@@ -444,6 +445,30 @@ impl EditorElement {
         }
     }
 
+    fn mouse_left_down(
+        editor: &mut Editor,
+        event: &MouseDownEvent,
+        position_map: &PositionMap,
+        window: &mut Window,
+        cx: &mut Context<Editor>,
+    ) {
+        if window.default_prevented() {
+            return;
+        }
+
+        let text_hitbox = &position_map.text_hitbox;
+        let gutter_hitbox = &position_map.gutter_hitbox;
+        let mut click_count = event.click_count;
+
+        if gutter_hitbox.is_hovered(window) {
+            click_count = 3;
+        } else if !text_hitbox.is_hovered(window) {
+            return;
+        }
+
+        editor.on_mouse_down(event, click_count, window, cx);
+    }
+
     fn shape_line_number(
         &self,
         text: SharedString,
@@ -548,14 +573,15 @@ impl EditorElement {
 
     fn paint_mouse_listeners(&mut self, layout: &EditorLayout, window: &mut Window) {
         let hitbox = layout.hitbox.clone();
-        let text_bounds = layout.position_map.text_hitbox.bounds;
+        let position_map = layout.position_map.clone();
+        let text_bounds = position_map.text_hitbox.bounds;
         let line_height = layout.position_map.line_height;
         let em_width = layout.em_width;
         let scroll_max = layout.position_map.scroll_max;
 
         window.on_mouse_event({
             let editor = self.editor.clone();
-            let hitbox = hitbox.clone();
+            let position_map = position_map.clone();
 
             move |event: &MouseDownEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble {
@@ -566,16 +592,8 @@ impl EditorElement {
                     return;
                 }
 
-                let is_inside_text_bounds = event.position.x >= text_bounds.left()
-                    && event.position.x <= text_bounds.right()
-                    && event.position.y >= text_bounds.top()
-                    && event.position.y <= text_bounds.bottom();
-                if !hitbox.is_hovered(window) || !is_inside_text_bounds {
-                    return;
-                }
-
                 editor.update(cx, |editor, cx| {
-                    editor.on_mouse_down(event, window, cx);
+                    Self::mouse_left_down(editor, event, &position_map, window, cx);
                 });
             }
         });
@@ -583,6 +601,7 @@ impl EditorElement {
         window.on_mouse_event({
             let editor = self.editor.clone();
             let hitbox = hitbox.clone();
+            let position_map = position_map.clone();
 
             move |event: &MouseUpEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble {
@@ -594,11 +613,11 @@ impl EditorElement {
                 }
 
                 editor.update(cx, |editor, cx| {
-                    let is_inside_text_bounds = event.position.x >= text_bounds.left()
-                        && event.position.x <= text_bounds.right()
-                        && event.position.y >= text_bounds.top()
-                        && event.position.y <= text_bounds.bottom();
-                    if editor.selecting || (hitbox.is_hovered(window) && is_inside_text_bounds) {
+                    if editor.selecting
+                        || (hitbox.is_hovered(window)
+                            && (position_map.text_hitbox.is_hovered(window)
+                                || position_map.gutter_hitbox.is_hovered(window)))
+                    {
                         editor.on_mouse_up(event, window, cx);
                     }
                 });
@@ -1505,6 +1524,7 @@ impl Element for EditorElement {
                 text_align: TextAlign::Left,
                 content_width: content_bounds.size.width,
                 text_hitbox,
+                gutter_hitbox: gutter_hitbox.clone(),
                 masked,
                 line_layouts: lines,
             });

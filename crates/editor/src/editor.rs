@@ -2401,6 +2401,7 @@ impl Editor {
     fn on_mouse_down(
         &mut self,
         event: &MouseDownEvent,
+        click_count: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -2411,9 +2412,9 @@ impl Editor {
         let position = self.display_point_for_mouse_position(event.position, cx);
 
         if event.modifiers.shift {
-            self.extend_selection(position, event.click_count, cx);
+            self.extend_selection(position, click_count, cx);
         } else {
-            self.begin_selection(position, event.click_count, cx);
+            self.begin_selection(position, click_count, cx);
         }
     }
 
