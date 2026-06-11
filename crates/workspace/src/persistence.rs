@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use util::ResultExt;
 use uuid::Uuid;
 
-use self::model::{PaneId, SerializedItem, SerializedPane, SerializedWorkspace, SessionWorkspace};
+use self::model::{
+    DockStructure, PaneId, SerializedItem, SerializedPane, SerializedWorkspace, SessionWorkspace,
+};
 use crate::{ItemId, WorkspaceId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Default)]
@@ -112,6 +114,28 @@ pub async fn write_default_window_bounds(
     let json_str = serde_json::to_string(&(display_uuid, persisted))?;
     kv_store
         .write_kv(DEFAULT_WINDOW_BOUNDS_KEY.to_string(), json_str)
+        .await?;
+    Ok(())
+}
+
+const DEFAULT_DOCK_STATE_KEY: &str = "default_dock_state";
+
+pub fn read_default_dock_state(kv_store: &KeyValueStore) -> Option<DockStructure> {
+    let json_str = kv_store
+        .read_kv(DEFAULT_DOCK_STATE_KEY)
+        .log_err()
+        .flatten()?;
+
+    serde_json::from_str::<DockStructure>(&json_str).ok()
+}
+
+pub async fn write_default_dock_state(
+    kv_store: &KeyValueStore,
+    docks: DockStructure,
+) -> anyhow::Result<()> {
+    let json_str = serde_json::to_string(&docks)?;
+    kv_store
+        .write_kv(DEFAULT_DOCK_STATE_KEY.to_string(), json_str)
         .await?;
     Ok(())
 }
@@ -249,6 +273,10 @@ impl WorkspaceDb {
                             INSERT INTO workspace(
                                 id,
                                 location,
+                                left_dock_open,
+                                left_dock_active_panel,
+                                bottom_dock_open,
+                                bottom_dock_active_panel,
                                 session_id,
                                 window_id,
                                 activation_order,
@@ -259,12 +287,20 @@ impl WorkspaceDb {
                                 ?2,
                                 ?3,
                                 ?4,
+                                ?5,
+                                ?6,
+                                ?7,
+                                ?8,
                                 (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace),
                                 CURRENT_TIMESTAMP
                             )
                             ON CONFLICT(id)
                             DO UPDATE SET
                                 location = excluded.location,
+                                left_dock_open = excluded.left_dock_open,
+                                left_dock_active_panel = excluded.left_dock_active_panel,
+                                bottom_dock_open = excluded.bottom_dock_open,
+                                bottom_dock_active_panel = excluded.bottom_dock_active_panel,
                                 session_id = excluded.session_id,
                                 window_id = excluded.window_id,
                                 timestamp = CURRENT_TIMESTAMP
@@ -274,6 +310,7 @@ impl WorkspaceDb {
                             f((
                                 workspace.id,
                                 workspace_location,
+                                workspace.docks.clone(),
                                 workspace.session_id.as_deref(),
                                 workspace.window_id,
                             ))
@@ -387,6 +424,10 @@ impl WorkspaceDb {
                                 window_width REAL,
                                 window_height REAL,
                                 display BLOB,
+                                left_dock_open INTEGER,
+                                left_dock_active_panel TEXT,
+                                bottom_dock_open INTEGER,
+                                bottom_dock_active_panel TEXT,
                                 session_id TEXT,
                                 window_id INTEGER,
                                 activation_order INTEGER NOT NULL DEFAULT 0,
@@ -533,6 +574,7 @@ impl WorkspaceDb {
                     PathBuf,
                     Option<SerializedWindowBounds>,
                     Option<Uuid>,
+                    DockStructure,
                     Option<String>,
                     Option<u64>,
                 )>(sql!(
@@ -545,6 +587,10 @@ impl WorkspaceDb {
                         window_width,
                         window_height,
                         display,
+                        left_dock_open,
+                        left_dock_active_panel,
+                        bottom_dock_open,
+                        bottom_dock_active_panel,
                         session_id,
                         window_id
                     FROM workspace
@@ -561,6 +607,7 @@ impl WorkspaceDb {
                             location,
                             window_bounds,
                             display,
+                            docks,
                             session_id,
                             window_id,
                         )| {
@@ -570,6 +617,7 @@ impl WorkspaceDb {
                                 center_pane: Self::get_center_pane(connection, workspace_id)
                                     .context("failed to get center pane")
                                     .log_err()?,
+                                docks,
                                 window_bounds,
                                 display,
                                 session_id,
@@ -748,6 +796,7 @@ mod tests {
                 id: WorkspaceId::from(1),
                 location: project_path.clone(),
                 center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -759,6 +808,7 @@ mod tests {
                 id: WorkspaceId::from(1),
                 location: project_path.clone(),
                 center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -791,6 +841,7 @@ mod tests {
                 id: WorkspaceId::from(1),
                 location: path.clone(),
                 center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -890,6 +941,7 @@ mod tests {
                     id: WorkspaceId::from(workspace_id),
                     location,
                     center_pane: SerializedPane::default(),
+                    docks: DockStructure::default(),
                     window_bounds: None,
                     display: None,
                     session_id: Some("session-uuid".to_string()),
@@ -951,6 +1003,7 @@ mod tests {
                 id: WorkspaceId::from(1),
                 location: temp_fs.path().join(path!("project")),
                 center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-uuid".to_string()),
@@ -962,6 +1015,7 @@ mod tests {
                 id: WorkspaceId::from(2),
                 location: temp_fs.path().join(path!("missing_project")),
                 center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-uuid".to_string()),
@@ -1126,6 +1180,7 @@ mod tests {
                 id: workspace_id,
                 location: location.clone(),
                 center_pane: center_pane.clone(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -1148,6 +1203,7 @@ mod tests {
                 id: workspace_id,
                 location: location.clone(),
                 center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -1184,6 +1240,7 @@ mod tests {
                 id: workspace_id,
                 location: location.clone(),
                 center_pane: old_center_pane,
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -1195,6 +1252,7 @@ mod tests {
                 id: workspace_id,
                 location: location.clone(),
                 center_pane: new_center_pane.clone(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: Some("session-a".to_string()),
@@ -1204,5 +1262,38 @@ mod tests {
 
         let serialized_workspace = workspace_db.workspace_for_path(&location).unwrap();
         assert_eq!(serialized_workspace.center_pane, new_center_pane);
+    }
+
+    #[gpui::test]
+    async fn test_dock_serialization(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_dock_serialization").await;
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let location = PathBuf::from("project");
+        let docks = DockStructure {
+            left: model::DockData {
+                visible: true,
+                active_panel: Some("ProjectPanel".to_string()),
+            },
+            bottom: model::DockData {
+                visible: false,
+                active_panel: Some("ResponsePanel".to_string()),
+            },
+        };
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: location.clone(),
+                center_pane: SerializedPane::default(),
+                docks: docks.clone(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-a".to_string()),
+                window_id: Some(10),
+            })
+            .await;
+
+        let serialized_workspace = workspace_db.workspace_for_path(&location).unwrap();
+        assert_eq!(serialized_workspace.docks, docks);
     }
 }

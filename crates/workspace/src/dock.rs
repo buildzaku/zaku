@@ -12,11 +12,12 @@ use ui::{
     IconSize, StyledTypography, Toggleable, Tooltip,
 };
 
-use crate::{pane::Pane, status_bar::StatusItemView};
+use crate::{DockData, pane::Pane, status_bar::StatusItemView};
 
 pub(crate) const RESIZE_HANDLE_SIZE: Pixels = gpui::px(6.);
 
 pub trait Panel: Focusable + Render + Sized {
+    fn persistent_name() -> &'static str;
     fn panel_key() -> &'static str;
     fn default_size(&self, window: &Window, cx: &App) -> Pixels;
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
@@ -34,6 +35,7 @@ pub trait Panel: Focusable + Render + Sized {
 
 pub trait PanelHandle: Send + Sync {
     fn panel_id(&self) -> EntityId;
+    fn persistent_name(&self) -> &'static str;
     fn panel_key(&self) -> &'static str;
     fn default_size(&self, window: &Window, cx: &App) -> Pixels;
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
@@ -52,6 +54,10 @@ where
 {
     fn panel_id(&self) -> EntityId {
         Entity::entity_id(self)
+    }
+
+    fn persistent_name(&self) -> &'static str {
+        T::persistent_name()
     }
 
     fn panel_key(&self) -> &'static str {
@@ -166,6 +172,8 @@ pub struct Dock {
     panel_entries: Vec<PanelEntry>,
     is_open: bool,
     active_panel_index: Option<usize>,
+    #[allow(clippy::struct_field_names)]
+    pub(crate) serialized_dock: Option<DockData>,
     focus_handle: FocusHandle,
     _focus_subscription: Subscription,
 }
@@ -188,6 +196,7 @@ impl Dock {
             panel_entries: Vec::default(),
             is_open: false,
             active_panel_index: None,
+            serialized_dock: None,
             focus_handle: focus_handle.clone(),
             _focus_subscription: focus_subscription,
         }
@@ -231,7 +240,7 @@ impl Dock {
         panel: &Entity<T>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> usize {
         let panel = panel.clone();
         let observe_panel_subscription = cx.observe(&panel, |_, _, cx| cx.notify());
         let panel_priority = panel.read(cx).activation_priority();
@@ -272,18 +281,43 @@ impl Dock {
             PanelEntry::new(panel_handle, size_state, observe_panel_subscription),
         );
 
-        if panel_starts_open {
+        let restored = self.restore_state(window, cx);
+
+        if !restored && panel_starts_open {
             self.activate_panel(index, window, cx);
             self.set_open(true, window, cx);
         }
 
         cx.notify();
+        index
     }
 
     pub fn panel_index_for_type<T: Panel>(&self) -> Option<usize> {
         self.panel_entries
             .iter()
             .position(|entry| entry.panel().to_any().downcast::<T>().is_ok())
+    }
+
+    pub fn panel_index_for_persistent_name(&self, persistent_name: &str) -> Option<usize> {
+        self.panel_entries
+            .iter()
+            .position(|entry| entry.panel().persistent_name() == persistent_name)
+    }
+
+    pub fn restore_state(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if let Some(serialized) = self.serialized_dock.clone() {
+            if let Some(active_panel) = serialized.active_panel.filter(|_| serialized.visible)
+                && let Some(panel_index) =
+                    self.panel_index_for_persistent_name(active_panel.as_str())
+            {
+                self.activate_panel(panel_index, window, cx);
+            }
+
+            self.set_open(serialized.visible, window, cx);
+            return true;
+        }
+
+        false
     }
 
     pub fn activate_panel(
@@ -597,6 +631,10 @@ pub mod test {
     }
 
     impl Panel for TestPanel {
+        fn persistent_name() -> &'static str {
+            "TestPanel"
+        }
+
         fn panel_key() -> &'static str {
             "TestPanel"
         }

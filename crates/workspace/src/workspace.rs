@@ -13,7 +13,10 @@ pub use item::{
 };
 pub use persistence::{
     SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
-    model::{ItemId, SerializedItem, SerializedPane, SerializedWorkspace, SessionWorkspace},
+    model::{
+        DockData, DockStructure, ItemId, SerializedItem, SerializedPane, SerializedWorkspace,
+        SessionWorkspace,
+    },
 };
 
 use futures::{
@@ -1319,8 +1322,13 @@ impl Workspace {
         let pane = self.pane.downgrade();
         let workspace_id = serialized_workspace.id;
         let center_pane = serialized_workspace.center_pane;
+        let docks = serialized_workspace.docks;
 
         cx.spawn_in(window, async move |workspace, cx| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.set_dock_structure(docks, window, cx);
+            })?;
+
             let scan_complete =
                 workspace.read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))?;
             scan_complete.await;
@@ -1597,6 +1605,46 @@ impl Workspace {
         &self.bottom_dock
     }
 
+    pub fn capture_dock_state(&self, _window: &Window, cx: &App) -> DockStructure {
+        let left_dock = self.left_dock.read(cx);
+        let left_visible = left_dock.is_open();
+        let left_active_panel = left_dock
+            .active_panel()
+            .map(|panel| panel.persistent_name().to_string());
+
+        let bottom_dock = self.bottom_dock.read(cx);
+        let bottom_visible = bottom_dock.is_open();
+        let bottom_active_panel = bottom_dock
+            .active_panel()
+            .map(|panel| panel.persistent_name().to_string());
+
+        DockStructure {
+            left: DockData {
+                visible: left_visible,
+                active_panel: left_active_panel,
+            },
+            bottom: DockData {
+                visible: bottom_visible,
+                active_panel: bottom_active_panel,
+            },
+        }
+    }
+
+    pub fn set_dock_structure(
+        &self,
+        docks: DockStructure,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let DockStructure { left, bottom } = docks;
+        for (dock, data) in [(&self.left_dock, left), (&self.bottom_dock, bottom)] {
+            dock.update(cx, |dock, cx| {
+                dock.serialized_dock = Some(data);
+                dock.restore_state(window, cx);
+            });
+        }
+    }
+
     pub fn add_panel<T: Panel>(
         &mut self,
         panel: Entity<T>,
@@ -1727,33 +1775,45 @@ impl Workspace {
             SerializedPane::new(items, active)
         }
 
+        let docks = self.capture_dock_state(window, cx);
+
         let Some(database_id) = self.database_id() else {
-            return Task::ready(());
+            let kv_store = KeyValueStore::global(cx);
+            return cx.background_spawn(async move {
+                persistence::write_default_dock_state(&kv_store, docks)
+                    .await
+                    .log_err();
+            });
         };
 
-        match self.root(cx) {
-            Some(root_path) => {
-                let pane = self.pane.clone();
-                let center_pane = serialize_pane_handle(&pane, window, cx);
-                let serialized_workspace = SerializedWorkspace {
-                    id: database_id,
-                    location: root_path,
-                    center_pane,
-                    window_bounds: Some(SerializedWindowBounds(window.window_bounds())),
-                    display: None,
-                    session_id: self.session_id.clone(),
-                    window_id: self
-                        .session_id
-                        .as_ref()
-                        .map(|_| window.window_handle().window_id().as_u64()),
-                };
+        if let Some(root_path) = self.root(cx) {
+            let pane = self.pane.clone();
+            let center_pane = serialize_pane_handle(&pane, window, cx);
+            let serialized_workspace = SerializedWorkspace {
+                id: database_id,
+                location: root_path,
+                center_pane,
+                docks,
+                window_bounds: Some(SerializedWindowBounds(window.window_bounds())),
+                display: None,
+                session_id: self.session_id.clone(),
+                window_id: self
+                    .session_id
+                    .as_ref()
+                    .map(|_| window.window_handle().window_id().as_u64()),
+            };
 
-                let workspace_db = WorkspaceDb::global(cx);
-                window.spawn(cx, async move |_| {
-                    workspace_db.save_workspace(serialized_workspace).await;
-                })
-            }
-            None => Task::ready(()),
+            let workspace_db = WorkspaceDb::global(cx);
+            window.spawn(cx, async move |_| {
+                workspace_db.save_workspace(serialized_workspace).await;
+            })
+        } else {
+            let kv_store = KeyValueStore::global(cx);
+            cx.background_spawn(async move {
+                persistence::write_default_dock_state(&kv_store, docks)
+                    .await
+                    .log_err();
+            })
         }
     }
 
@@ -1850,6 +1910,7 @@ impl Workspace {
         }
 
         cx.notify();
+        self.serialize_workspace(window, cx);
     }
 
     pub fn new(
@@ -1940,6 +2001,21 @@ impl Workspace {
 
         let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, window, cx));
         let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, window, cx));
+
+        if project.read(cx).root_worktree(cx).is_none()
+            && let Some(default_docks) =
+                persistence::read_default_dock_state(&KeyValueStore::global(cx))
+        {
+            for (dock, serialized_dock) in [
+                (&left_dock, &default_docks.left),
+                (&bottom_dock, &default_docks.bottom),
+            ] {
+                dock.update(cx, |dock, cx| {
+                    dock.serialized_dock = Some(serialized_dock.clone());
+                    dock.restore_state(window, cx);
+                });
+            }
+        }
 
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
@@ -2084,6 +2160,7 @@ impl Workspace {
         }
 
         if toggled_panel {
+            self.serialize_workspace(window, cx);
             cx.notify();
         }
 
@@ -3975,6 +4052,7 @@ mod tests {
                 id: workspace_id,
                 location: project_path.clone(),
                 center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
                 session_id: None,

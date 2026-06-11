@@ -2550,6 +2550,10 @@ impl Focusable for ProjectPanel {
 }
 
 impl Panel for ProjectPanel {
+    fn persistent_name() -> &'static str {
+        Self::PANEL_KEY
+    }
+
     fn panel_key() -> &'static str {
         Self::PANEL_KEY
     }

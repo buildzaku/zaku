@@ -1,5 +1,6 @@
 use futures::future;
 use gpui::{AsyncWindowContext, Entity, WeakEntity, WindowId};
+use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
@@ -15,10 +16,59 @@ pub struct SerializedWorkspace {
     pub id: WorkspaceId,
     pub location: PathBuf,
     pub center_pane: SerializedPane,
+    pub docks: DockStructure,
     pub window_bounds: Option<SerializedWindowBounds>,
     pub display: Option<Uuid>,
     pub session_id: Option<String>,
     pub window_id: Option<u64>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
+pub struct DockStructure {
+    pub left: DockData,
+    pub bottom: DockData,
+}
+
+impl Bind for DockStructure {
+    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
+        let next_index = statement.bind(&self.left, start_index)?;
+        statement.bind(&self.bottom, next_index)
+    }
+}
+
+impl Column for DockStructure {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
+        let (left, next_index) = DockData::column(row, start_index)?;
+        let (bottom, next_index) = DockData::column(row, next_index)?;
+        Ok((DockStructure { left, bottom }, next_index))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
+pub struct DockData {
+    pub visible: bool,
+    pub active_panel: Option<String>,
+}
+
+impl Bind for DockData {
+    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
+        let next_index = statement.bind(&self.visible, start_index)?;
+        statement.bind(&self.active_panel, next_index)
+    }
+}
+
+impl Column for DockData {
+    fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
+        let (visible, next_index) = Option::<bool>::column(row, start_index)?;
+        let (active_panel, next_index) = Option::<String>::column(row, next_index)?;
+        Ok((
+            DockData {
+                visible: visible.unwrap_or(false),
+                active_panel,
+            },
+            next_index,
+        ))
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

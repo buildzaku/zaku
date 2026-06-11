@@ -296,6 +296,10 @@ impl Focusable for ResponsePanel {
 }
 
 impl Panel for ResponsePanel {
+    fn persistent_name() -> &'static str {
+        Self::PANEL_KEY
+    }
+
     fn panel_key() -> &'static str {
         Self::PANEL_KEY
     }
