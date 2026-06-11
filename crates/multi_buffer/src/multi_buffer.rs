@@ -41,6 +41,13 @@ impl Add<usize> for MultiBufferRow {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct RowInfo {
+    pub buffer_row: Option<u32>,
+    pub multibuffer_row: Option<MultiBufferRow>,
+    pub wrapped_buffer_row: Option<u32>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CharKind {
     Whitespace,
@@ -668,6 +675,10 @@ impl MultiBufferSnapshot {
     #[inline]
     pub fn max_point(&self) -> Point {
         self.buffer.max_point()
+    }
+
+    pub fn widest_line_number(&self) -> u32 {
+        self.max_point().row.saturating_add(1)
     }
 
     pub fn char_classifier_at<T: ToOffset>(&self, point: &T) -> CharClassifier {
