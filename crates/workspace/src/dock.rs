@@ -2,8 +2,9 @@ use anyhow::Context as AnyhowContext;
 use gpui::{
     Action, AnyView, App, Axis, Context, Empty, Entity, EntityId, FocusHandle, Focusable,
     IntoElement, KeyContext, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Render,
-    Subscription, Window, prelude::*,
+    Subscription, WeakEntity, Window, prelude::*,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use theme::ActiveTheme;
@@ -12,9 +13,10 @@ use ui::{
     IconSize, StyledTypography, Toggleable, Tooltip,
 };
 
-use crate::{DockData, pane::Pane, status_bar::StatusItemView};
+use crate::{DockData, Workspace, pane::Pane, status_bar::StatusItemView};
 
 pub(crate) const RESIZE_HANDLE_SIZE: Pixels = gpui::px(6.);
+pub(crate) const PANEL_SIZE_STATE_KEY: &str = "dock_panel_size";
 
 pub trait Panel: Focusable + Render + Sized {
     fn persistent_name() -> &'static str;
@@ -138,9 +140,9 @@ impl Render for DraggedDock {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct PanelSizeState {
-    size: Option<Pixels>,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PanelSizeState {
+    pub size: Option<Pixels>,
 }
 
 pub(crate) struct PanelEntry {
@@ -169,6 +171,7 @@ impl PanelEntry {
 
 pub struct Dock {
     position: DockPosition,
+    workspace: WeakEntity<Workspace>,
     panel_entries: Vec<PanelEntry>,
     is_open: bool,
     active_panel_index: Option<usize>,
@@ -179,7 +182,12 @@ pub struct Dock {
 }
 
 impl Dock {
-    pub fn new(position: DockPosition, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        position: DockPosition,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let focus_handle = cx.focus_handle();
         let focus_subscription =
             cx.on_focus(&focus_handle, window, |dock: &mut Dock, window, cx| {
@@ -193,6 +201,7 @@ impl Dock {
 
         Self {
             position,
+            workspace,
             panel_entries: Vec::default(),
             is_open: false,
             active_panel_index: None,
@@ -397,7 +406,43 @@ impl Dock {
         };
 
         entry.size_state.size = size.map(|size| size.max(RESIZE_HANDLE_SIZE).round());
+        let panel_key = entry.panel.panel_key();
+        let size_state = entry.size_state;
+        let workspace = self.workspace.clone();
+        cx.defer(move |cx| {
+            if let Some(workspace) = workspace.upgrade() {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.save_panel_size_state(panel_key, size_state, cx);
+                });
+            }
+        });
         cx.notify();
+    }
+
+    pub fn stored_panel_size_state(&self, panel: &dyn PanelHandle) -> Option<PanelSizeState> {
+        self.panel_entries
+            .iter()
+            .find(|entry| entry.panel.panel_id() == panel.panel_id())
+            .map(|entry| entry.size_state)
+    }
+
+    pub fn set_panel_size_state(
+        &mut self,
+        panel: &dyn PanelHandle,
+        size_state: PanelSizeState,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if let Some(entry) = self
+            .panel_entries
+            .iter_mut()
+            .find(|entry| entry.panel.panel_id() == panel.panel_id())
+        {
+            entry.size_state = size_state;
+            cx.notify();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn clamp_panel_size(&mut self, max_size: Pixels, window: &Window, cx: &mut Context<Self>) {

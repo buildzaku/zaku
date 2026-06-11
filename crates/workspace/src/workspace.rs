@@ -1114,6 +1114,10 @@ impl Workspace {
         self.database_id
     }
 
+    pub fn session_id(&self) -> Option<String> {
+        self.session_id.clone()
+    }
+
     #[cfg(test)]
     pub(crate) fn set_random_database_id(&mut self) {
         self.database_id = Some(WorkspaceId(Uuid::new_v4().as_u64_pair().0.cast_signed()));
@@ -1605,6 +1609,62 @@ impl Workspace {
         &self.bottom_dock
     }
 
+    pub fn panel_size_state<T: Panel>(&self, cx: &App) -> Option<dock::PanelSizeState> {
+        [self.left_dock.clone(), self.bottom_dock.clone()]
+            .into_iter()
+            .find_map(|dock| {
+                let dock = dock.read(cx);
+                let panel = dock.panel::<T>()?;
+                dock.stored_panel_size_state(&panel)
+            })
+    }
+
+    pub fn load_panel_size_state(
+        &self,
+        panel_key: &'static str,
+        cx: &App,
+    ) -> Option<dock::PanelSizeState> {
+        let workspace_id = self
+            .database_id()
+            .map(|id| i64::from(id).to_string())
+            .or_else(|| self.session_id())?;
+        let kv_store = KeyValueStore::global(cx);
+        let scope = kv_store.scoped(dock::PANEL_SIZE_STATE_KEY);
+        scope
+            .read(&format!("{workspace_id}:{panel_key}"))
+            .log_err()
+            .flatten()
+            .and_then(|json| serde_json::from_str::<dock::PanelSizeState>(&json).log_err())
+    }
+
+    pub fn save_panel_size_state(
+        &self,
+        panel_key: &str,
+        size_state: dock::PanelSizeState,
+        cx: &mut App,
+    ) {
+        let Some(workspace_id) = self
+            .database_id()
+            .map(|id| i64::from(id).to_string())
+            .or_else(|| self.session_id())
+        else {
+            return;
+        };
+
+        let kv_store = KeyValueStore::global(cx);
+        let panel_key = panel_key.to_string();
+        cx.background_spawn(async move {
+            let scope = kv_store.scoped(dock::PANEL_SIZE_STATE_KEY);
+            scope
+                .write(
+                    format!("{workspace_id}:{panel_key}"),
+                    serde_json::to_string(&size_state)?,
+                )
+                .await
+        })
+        .detach_and_log_err(cx);
+    }
+
     pub fn capture_dock_state(&self, _window: &Window, cx: &App) -> DockStructure {
         let left_dock = self.left_dock.read(cx);
         let left_visible = left_dock.is_open();
@@ -1652,8 +1712,14 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let persisted_size_state = self.load_panel_size_state(T::panel_key(), cx);
         let dock = self.dock_at_position(position).clone();
-        dock.update(cx, move |dock, cx| dock.add_panel(&panel, window, cx));
+        dock.update(cx, move |dock, cx| {
+            dock.add_panel(&panel, window, cx);
+            if let Some(size_state) = persisted_size_state {
+                dock.set_panel_size_state(&panel, size_state, cx);
+            }
+        });
     }
 
     fn root(&self, cx: &App) -> Option<PathBuf> {
@@ -1999,8 +2065,9 @@ impl Workspace {
             },
         );
 
-        let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, window, cx));
-        let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, window, cx));
+        let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, weak_handle.clone(), window, cx));
+        let bottom_dock =
+            cx.new(|cx| Dock::new(DockPosition::Bottom, weak_handle.clone(), window, cx));
 
         if project.read(cx).root_worktree(cx).is_none()
             && let Some(default_docks) =
@@ -2942,6 +3009,71 @@ mod tests {
             assert!(workspace.left_dock.read(cx).is_open());
             assert_eq!(active_panel_id, Some(Entity::entity_id(&panel)));
             assert!(panel.read(cx).focus_handle(cx).contains_focused(window, cx));
+        });
+    }
+
+    #[gpui::test]
+    fn test_panel_size_state_persistence(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        let workspace_id = workspace.update(cx, |workspace, _| {
+            workspace.set_random_database_id();
+            workspace.bounds.size.width = gpui::px(640.0);
+            workspace.database_id().unwrap()
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new(100, cx));
+            workspace.add_panel(panel, DockPosition::Left, window, cx);
+            workspace.toggle_dock(DockPosition::Left, window, cx);
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.resize_left_dock(gpui::px(350.0), window, cx);
+        });
+
+        cx.run_until_parked();
+
+        let persisted = workspace.read_with(cx, |workspace, cx| {
+            workspace.load_panel_size_state(TestPanel::panel_key(), cx)
+        });
+        assert_eq!(
+            persisted.and_then(|state| state.size),
+            Some(gpui::px(350.0))
+        );
+
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(
+                workspace_id,
+                shared_state.clone(),
+                window,
+                cx,
+            ))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new(100, cx));
+            workspace.add_panel(panel, DockPosition::Left, window, cx);
+
+            let left_dock = workspace.left_dock().read(cx);
+            let size_state = left_dock
+                .panel::<TestPanel>()
+                .and_then(|panel| left_dock.stored_panel_size_state(&panel));
+            assert_eq!(
+                size_state.and_then(|state| state.size),
+                Some(gpui::px(350.0))
+            );
         });
     }
 
