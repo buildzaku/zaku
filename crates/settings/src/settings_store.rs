@@ -12,7 +12,7 @@ use std::{
 use settings_macros::{MergeFrom, with_fallible_options};
 
 use crate::{
-    editor::GutterContent,
+    editor::{EditorSettingsContent, GutterContent},
     fallible_options::{ParseStatus, parse_json},
     merge_from::MergeFrom,
 };
@@ -141,7 +141,7 @@ where
     let value = f32::deserialize(deserializer)?;
     if value < 1.0 {
         return Err(serde::de::Error::custom(
-            "buffer_line_height.custom must be at least 1.0",
+            "editor.line_height.custom must be at least 1.0",
         ));
     }
 
@@ -150,74 +150,99 @@ where
 
 #[with_fallible_options]
 #[derive(Clone, Default, Deserialize, MergeFrom)]
+pub struct UiSettingsContent {
+    density: Option<UiDensity>,
+    font_size: Option<Pixels>,
+    font_family: Option<String>,
+    font_fallbacks: Option<Vec<String>>,
+    font_features: Option<FontFeaturesContent>,
+    font_weight: Option<FontWeightContent>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Default, Deserialize, MergeFrom)]
 pub struct SettingsContent {
-    ui_density: Option<UiDensity>,
-    ui_font_size: Option<Pixels>,
-    ui_font_family: Option<String>,
-    ui_font_fallbacks: Option<Vec<String>>,
-    ui_font_features: Option<FontFeaturesContent>,
-    ui_font_weight: Option<FontWeightContent>,
-    buffer_font_size: Option<Pixels>,
-    buffer_font_family: Option<String>,
-    buffer_font_fallbacks: Option<Vec<String>>,
-    buffer_font_features: Option<FontFeaturesContent>,
-    buffer_font_weight: Option<FontWeightContent>,
-    buffer_line_height: Option<BufferLineHeight>,
-    gutter: Option<GutterContent>,
+    ui: Option<UiSettingsContent>,
+    editor: Option<EditorSettingsContent>,
     pub(crate) log: Option<HashMap<String, String>>,
 }
 
 impl SettingsContent {
     pub fn ui_density(&self) -> UiDensity {
-        self.ui_density.unwrap_or_default()
+        self.ui
+            .as_ref()
+            .and_then(|ui| ui.density)
+            .unwrap_or_default()
     }
 
     pub fn ui_font_size(&self) -> Pixels {
-        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(13.0)))
+        let font_size = self
+            .ui
+            .as_ref()
+            .and_then(|ui| ui.font_size)
+            .unwrap_or(gpui::px(13.0));
+        clamp_font_size(font_size)
     }
 
     pub fn buffer_font_size(&self) -> Pixels {
-        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(13.0)))
+        let font_size = self
+            .editor
+            .as_ref()
+            .and_then(|editor| editor.font_size)
+            .unwrap_or(gpui::px(13.0));
+        clamp_font_size(font_size)
     }
 
     pub fn ui_font_family(&self) -> Option<&str> {
-        self.ui_font_family.as_deref()
+        self.ui.as_ref().and_then(|ui| ui.font_family.as_deref())
     }
 
     pub fn ui_font_fallbacks(&self) -> Option<&[String]> {
-        self.ui_font_fallbacks.as_deref()
+        self.ui.as_ref().and_then(|ui| ui.font_fallbacks.as_deref())
     }
 
     pub fn ui_font_features(&self) -> Option<&FontFeaturesContent> {
-        self.ui_font_features.as_ref()
+        self.ui.as_ref().and_then(|ui| ui.font_features.as_ref())
     }
 
     pub fn ui_font_weight(&self) -> Option<FontWeightContent> {
-        self.ui_font_weight
+        self.ui.as_ref().and_then(|ui| ui.font_weight)
     }
 
     pub fn buffer_font_family(&self) -> Option<&str> {
-        self.buffer_font_family.as_deref()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.font_family.as_deref())
     }
 
     pub fn buffer_font_fallbacks(&self) -> Option<&[String]> {
-        self.buffer_font_fallbacks.as_deref()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.font_fallbacks.as_deref())
     }
 
     pub fn buffer_font_features(&self) -> Option<&FontFeaturesContent> {
-        self.buffer_font_features.as_ref()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.font_features.as_ref())
     }
 
     pub fn buffer_font_weight(&self) -> Option<FontWeightContent> {
-        self.buffer_font_weight
+        self.editor.as_ref().and_then(|editor| editor.font_weight)
     }
 
     pub fn buffer_line_height(&self) -> BufferLineHeight {
-        self.buffer_line_height.unwrap_or_default()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.line_height)
+            .unwrap_or_default()
     }
 
     pub fn gutter(&self) -> GutterContent {
-        self.gutter.clone().unwrap_or_default()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.gutter.clone())
+            .unwrap_or_default()
     }
 }
 
