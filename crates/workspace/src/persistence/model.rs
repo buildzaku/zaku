@@ -89,7 +89,7 @@ impl SerializedPane {
                 }
 
                 pane.update_in(cx, |pane, window, cx| {
-                    pane.add_item(item_handle, true, false, false, None, window, cx);
+                    pane.add_item(item_handle, true, false, false, Some(index), window, cx);
                 })?;
             }
 
