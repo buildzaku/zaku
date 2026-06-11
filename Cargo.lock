@@ -1659,6 +1659,7 @@ dependencies = [
  "actions",
  "anyhow",
  "db",
+ "fs",
  "gpui",
  "icons",
  "indoc",
@@ -1671,12 +1672,14 @@ dependencies = [
  "pretty_assertions",
  "project",
  "serde",
+ "serde_json",
  "settings",
  "smol",
  "text",
  "theme",
  "ui",
  "util 0.0.0",
+ "util_macros 0.0.0",
  "workspace",
 ]
 

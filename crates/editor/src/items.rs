@@ -240,25 +240,7 @@ impl SerializableItem for Editor {
             Err(error) => return Task::ready(Err(error)),
         };
         let path = serialized_editor.absolute_path;
-
-        let Some(project_path) = project
-            .read(cx)
-            .project_path_for_absolute_path(path.as_path(), cx)
-        else {
-            return Task::ready(Err(anyhow::anyhow!(
-                "Unable to deserialize editor: path is not in project: {}",
-                path.display()
-            )));
-        };
-
-        let Some(open_buffer) =
-            <Buffer as project::ProjectItem>::try_open(&project, &project_path, cx)
-        else {
-            return Task::ready(Err(anyhow::anyhow!(
-                "Unable to deserialize editor: cannot open path: {}",
-                path.display()
-            )));
-        };
+        let open_buffer = project.update(cx, |project, cx| project.open_buffer_at(path, cx));
 
         window.spawn(cx, async move |cx| {
             let buffer = open_buffer.await?;
@@ -304,5 +286,158 @@ impl SerializableItem for Editor {
                 | EditorEvent::BufferEdited
                 | EditorEvent::FileHandleChanged
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::{TestAppContext, VisualTestContext};
+    use serde_json::json;
+
+    use settings::SettingsStore;
+    use theme::LoadThemes;
+    use util_macros::path;
+    use workspace::{Root, SharedState, WorkspaceDb};
+
+    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme::init(LoadThemes::JustBase, cx);
+            workspace::init(shared_state, cx);
+            crate::init(cx);
+        });
+    }
+
+    fn build_workspace<'a>(
+        project: &Entity<Project>,
+        cx: &'a mut TestAppContext,
+    ) -> (Entity<Workspace>, &'a mut VisualTestContext) {
+        let project = project.clone();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(project.clone(), window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        (workspace, cx)
+    }
+
+    #[gpui::test]
+    async fn test_deserialize(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                ".zaku": {
+                    "settings.json": r#"{"ui_density": "default"}"#
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let editor_db = cx.update(|_, cx| EditorDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let item_id: ItemId = 1;
+        let serialized_editor = SerializedEditor {
+            absolute_path: project_path.join(path!(".zaku/settings.json")),
+        };
+
+        editor_db
+            .save_serialized_editor(item_id, workspace_id, serialized_editor)
+            .await
+            .unwrap();
+
+        let weak_workspace = workspace.downgrade();
+        let editor = workspace
+            .update_in(cx, |_, window, cx| {
+                Editor::deserialize(
+                    project.clone(),
+                    weak_workspace.clone(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap();
+
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.text(cx), r#"{"ui_density": "default"}"#);
+            let buffer = editor.buffer.read(cx).as_singleton().unwrap();
+            assert!(buffer.read(cx).file().is_some());
+        });
+    }
+
+    #[gpui::test]
+    async fn test_deserialize_non_worktree_file_does_not_add_to_pane(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(
+            path!("outside"),
+            json!({
+                ".zaku": {
+                    "settings.json": r#"{"ui_density": "default"}"#
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let editor_db = cx.update(|_, cx| EditorDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let item_id: ItemId = 1;
+        let serialized_editor = SerializedEditor {
+            absolute_path: temp_fs.path().join(path!("outside/.zaku/settings.json")),
+        };
+
+        editor_db
+            .save_serialized_editor(item_id, workspace_id, serialized_editor)
+            .await
+            .unwrap();
+
+        let pane_items_before = pane.read_with(cx, |pane, _| pane.items_len());
+        let weak_workspace = workspace.downgrade();
+        let deserialized = workspace
+            .update_in(cx, |_, window, cx| {
+                Editor::deserialize(
+                    project,
+                    weak_workspace.clone(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+            .await;
+        cx.run_until_parked();
+
+        let editor = deserialized.unwrap();
+        editor.update(cx, |editor, cx| {
+            let buffer = editor.buffer.read(cx).as_singleton().unwrap();
+            assert!(buffer.read(cx).file().is_some());
+        });
+        assert_eq!(
+            pane.read_with(cx, |pane, _| pane.items_len()),
+            pane_items_before
+        );
     }
 }

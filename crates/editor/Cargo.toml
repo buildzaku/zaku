@@ -37,8 +37,13 @@ workspace = { workspace = true }
 
 [dev-dependencies]
 db = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
 pretty_assertions = { workspace = true }
+project = { workspace = true, features = ["test-support"] }
+serde_json = { workspace = true }
 settings = { workspace = true, features = ["test-support"] }
 util = { workspace = true, features = ["test-support"] }
+util_macros = { workspace = true }
+workspace = { workspace = true, features = ["test-support"] }

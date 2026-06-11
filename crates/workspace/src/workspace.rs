@@ -4008,4 +4008,66 @@ mod tests {
             WindowBounds::Windowed(saved_workspace_bounds)
         );
     }
+
+    #[gpui::test]
+    async fn test_center_pane_deserialization_preserves_item_order(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+        cx.update(register_serializable_item::<TestItem>);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let workspace_project = project.clone();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(cx.new(|cx| Workspace::test_new(workspace_project.clone(), window, cx)))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let serialized_pane = SerializedPane::new(
+            vec![
+                SerializedItem::new("TestItem", 1, false, false),
+                SerializedItem::new("TestItem", 2, false, false),
+                SerializedItem::new("TestItem", 3, true, false),
+                SerializedItem::new("TestItem", 4, false, false),
+                SerializedItem::new("TestItem", 5, false, true),
+            ],
+            true,
+        );
+        let weak_pane = pane.downgrade();
+        let weak_workspace = workspace.downgrade();
+
+        let deserialized_items = workspace
+            .update_in(cx, |_, window, cx| {
+                cx.spawn_in(window, async move |_, cx| {
+                    serialized_pane
+                        .deserialize_to(&project, &weak_pane, workspace_id, weak_workspace, cx)
+                        .await
+                })
+            })
+            .await
+            .unwrap();
+        let expected_item_ids = deserialized_items
+            .iter()
+            .flatten()
+            .map(|item| item.item_id())
+            .collect::<Vec<_>>();
+        let pane_item_ids = pane.read_with(cx, |pane, _| {
+            pane.items().map(|item| item.item_id()).collect::<Vec<_>>()
+        });
+
+        assert_eq!(pane_item_ids, expected_item_ids);
+        let active_item_id =
+            pane.read_with(cx, |pane, _| pane.active_item().map(|item| item.item_id()));
+        let preview_item_id =
+            pane.read_with(cx, |pane, _| pane.preview_item().map(|item| item.item_id()));
+        assert_eq!(active_item_id.as_ref(), expected_item_ids.get(2));
+        assert_eq!(preview_item_id.as_ref(), expected_item_ids.get(4));
+    }
 }

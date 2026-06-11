@@ -537,12 +537,14 @@ pub mod test {
     }
 
     pub struct TestItem {
+        pub workspace_id: Option<WorkspaceId>,
         pub label: String,
         pub save_count: usize,
         pub reload_count: usize,
         pub is_dirty: bool,
         pub buffer_kind: ItemBufferKind,
         pub project_items: Vec<Entity<TestProjectItem>>,
+        serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
         focus_handle: FocusHandle,
     }
 
@@ -584,14 +586,22 @@ pub mod test {
     impl TestItem {
         pub fn new(cx: &mut Context<Self>) -> Self {
             Self {
+                workspace_id: None,
                 label: String::new(),
                 save_count: 0,
                 reload_count: 0,
                 is_dirty: false,
                 buffer_kind: ItemBufferKind::Singleton,
                 project_items: Vec::new(),
+                serialize: None,
                 focus_handle: cx.focus_handle(),
             }
+        }
+
+        pub fn new_deserialized(workspace_id: WorkspaceId, cx: &mut Context<Self>) -> Self {
+            let mut this = Self::new(cx);
+            this.workspace_id = Some(workspace_id);
+            this
         }
 
         pub fn with_label(mut self, label: &str) -> Self {
@@ -606,6 +616,14 @@ pub mod test {
 
         pub fn with_buffer_kind(mut self, buffer_kind: ItemBufferKind) -> Self {
             self.buffer_kind = buffer_kind;
+            self
+        }
+
+        pub fn with_serialize(
+            mut self,
+            serialize: impl Fn() -> Option<Task<anyhow::Result<()>>> + 'static,
+        ) -> Self {
+            self.serialize = Some(Box::new(serialize));
             self
         }
     }
@@ -688,6 +706,53 @@ pub mod test {
             self.reload_count += 1;
             self.is_dirty = false;
             Task::ready(Ok(()))
+        }
+    }
+
+    impl SerializableItem for TestItem {
+        fn serialized_item_kind() -> &'static str {
+            "TestItem"
+        }
+
+        fn serialize(
+            &mut self,
+            _workspace: &mut Workspace,
+            _item_id: ItemId,
+            _closing: bool,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> Option<Task<anyhow::Result<()>>> {
+            if let Some(serialize) = self.serialize.take() {
+                let result = serialize();
+                self.serialize = Some(serialize);
+                result
+            } else {
+                None
+            }
+        }
+
+        fn deserialize(
+            _project: Entity<Project>,
+            _workspace: WeakEntity<Workspace>,
+            workspace_id: WorkspaceId,
+            _item_id: ItemId,
+            _window: &mut Window,
+            cx: &mut App,
+        ) -> Task<anyhow::Result<Entity<Self>>> {
+            Task::ready(Ok(cx.new(|cx| Self::new_deserialized(workspace_id, cx))))
+        }
+
+        fn cleanup(
+            _workspace_id: WorkspaceId,
+            _alive_items: Vec<ItemId>,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) -> Task<anyhow::Result<()>> {
+            Task::ready(Ok(()))
+        }
+
+        fn should_serialize(&self, _event: &Self::Event) -> bool {
+            false
         }
     }
 }
