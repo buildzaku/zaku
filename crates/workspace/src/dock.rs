@@ -2,8 +2,9 @@ use anyhow::Context as AnyhowContext;
 use gpui::{
     Action, AnyView, App, Axis, Context, Empty, Entity, EntityId, FocusHandle, Focusable,
     IntoElement, KeyContext, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Render,
-    Subscription, Window, prelude::*,
+    Subscription, WeakEntity, Window, prelude::*,
 };
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use theme::ActiveTheme;
@@ -12,11 +13,13 @@ use ui::{
     IconSize, StyledTypography, Toggleable, Tooltip,
 };
 
-use crate::{pane::Pane, status_bar::StatusItemView};
+use crate::{DockData, Workspace, pane::Pane, status_bar::StatusItemView};
 
 pub(crate) const RESIZE_HANDLE_SIZE: Pixels = gpui::px(6.);
+pub(crate) const PANEL_SIZE_STATE_KEY: &str = "dock_panel_size";
 
 pub trait Panel: Focusable + Render + Sized {
+    fn persistent_name() -> &'static str;
     fn panel_key() -> &'static str;
     fn default_size(&self, window: &Window, cx: &App) -> Pixels;
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
@@ -34,6 +37,7 @@ pub trait Panel: Focusable + Render + Sized {
 
 pub trait PanelHandle: Send + Sync {
     fn panel_id(&self) -> EntityId;
+    fn persistent_name(&self) -> &'static str;
     fn panel_key(&self) -> &'static str;
     fn default_size(&self, window: &Window, cx: &App) -> Pixels;
     fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
@@ -52,6 +56,10 @@ where
 {
     fn panel_id(&self) -> EntityId {
         Entity::entity_id(self)
+    }
+
+    fn persistent_name(&self) -> &'static str {
+        T::persistent_name()
     }
 
     fn panel_key(&self) -> &'static str {
@@ -132,9 +140,9 @@ impl Render for DraggedDock {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub(crate) struct PanelSizeState {
-    size: Option<Pixels>,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PanelSizeState {
+    pub size: Option<Pixels>,
 }
 
 pub(crate) struct PanelEntry {
@@ -163,15 +171,23 @@ impl PanelEntry {
 
 pub struct Dock {
     position: DockPosition,
+    workspace: WeakEntity<Workspace>,
     panel_entries: Vec<PanelEntry>,
     is_open: bool,
     active_panel_index: Option<usize>,
+    #[allow(clippy::struct_field_names)]
+    pub(crate) serialized_dock: Option<DockData>,
     focus_handle: FocusHandle,
     _focus_subscription: Subscription,
 }
 
 impl Dock {
-    pub fn new(position: DockPosition, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        position: DockPosition,
+        workspace: WeakEntity<Workspace>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let focus_handle = cx.focus_handle();
         let focus_subscription =
             cx.on_focus(&focus_handle, window, |dock: &mut Dock, window, cx| {
@@ -185,9 +201,11 @@ impl Dock {
 
         Self {
             position,
+            workspace,
             panel_entries: Vec::default(),
             is_open: false,
             active_panel_index: None,
+            serialized_dock: None,
             focus_handle: focus_handle.clone(),
             _focus_subscription: focus_subscription,
         }
@@ -231,7 +249,7 @@ impl Dock {
         panel: &Entity<T>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> usize {
         let panel = panel.clone();
         let observe_panel_subscription = cx.observe(&panel, |_, _, cx| cx.notify());
         let panel_priority = panel.read(cx).activation_priority();
@@ -272,18 +290,43 @@ impl Dock {
             PanelEntry::new(panel_handle, size_state, observe_panel_subscription),
         );
 
-        if panel_starts_open {
+        let restored = self.restore_state(window, cx);
+
+        if !restored && panel_starts_open {
             self.activate_panel(index, window, cx);
             self.set_open(true, window, cx);
         }
 
         cx.notify();
+        index
     }
 
     pub fn panel_index_for_type<T: Panel>(&self) -> Option<usize> {
         self.panel_entries
             .iter()
             .position(|entry| entry.panel().to_any().downcast::<T>().is_ok())
+    }
+
+    pub fn panel_index_for_persistent_name(&self, persistent_name: &str) -> Option<usize> {
+        self.panel_entries
+            .iter()
+            .position(|entry| entry.panel().persistent_name() == persistent_name)
+    }
+
+    pub fn restore_state(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if let Some(serialized) = self.serialized_dock.clone() {
+            if let Some(active_panel) = serialized.active_panel.filter(|_| serialized.visible)
+                && let Some(panel_index) =
+                    self.panel_index_for_persistent_name(active_panel.as_str())
+            {
+                self.activate_panel(panel_index, window, cx);
+            }
+
+            self.set_open(serialized.visible, window, cx);
+            return true;
+        }
+
+        false
     }
 
     pub fn activate_panel(
@@ -363,7 +406,43 @@ impl Dock {
         };
 
         entry.size_state.size = size.map(|size| size.max(RESIZE_HANDLE_SIZE).round());
+        let panel_key = entry.panel.panel_key();
+        let size_state = entry.size_state;
+        let workspace = self.workspace.clone();
+        cx.defer(move |cx| {
+            if let Some(workspace) = workspace.upgrade() {
+                workspace.update(cx, |workspace, cx| {
+                    workspace.save_panel_size_state(panel_key, size_state, cx);
+                });
+            }
+        });
         cx.notify();
+    }
+
+    pub fn stored_panel_size_state(&self, panel: &dyn PanelHandle) -> Option<PanelSizeState> {
+        self.panel_entries
+            .iter()
+            .find(|entry| entry.panel.panel_id() == panel.panel_id())
+            .map(|entry| entry.size_state)
+    }
+
+    pub fn set_panel_size_state(
+        &mut self,
+        panel: &dyn PanelHandle,
+        size_state: PanelSizeState,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if let Some(entry) = self
+            .panel_entries
+            .iter_mut()
+            .find(|entry| entry.panel.panel_id() == panel.panel_id())
+        {
+            entry.size_state = size_state;
+            cx.notify();
+            true
+        } else {
+            false
+        }
     }
 
     pub fn clamp_panel_size(&mut self, max_size: Pixels, window: &Window, cx: &mut Context<Self>) {
@@ -597,6 +676,10 @@ pub mod test {
     }
 
     impl Panel for TestPanel {
+        fn persistent_name() -> &'static str {
+            "TestPanel"
+        }
+
         fn panel_key() -> &'static str {
             "TestPanel"
         }

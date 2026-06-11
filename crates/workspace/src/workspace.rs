@@ -8,37 +8,50 @@ pub mod welcome;
 
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
 pub use item::{
-    Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, TabContentParams, TabTooltipContent,
-    WeakItemHandle,
+    Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, SerializableItem,
+    SerializableItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,
 };
 pub use persistence::{
-    WorkspaceDb,
-    model::{SerializedWorkspace, SerializedWorkspaceLocation, SessionWorkspace},
+    SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
+    model::{
+        DockData, DockStructure, ItemId, SerializedItem, SerializedPane, SerializedWorkspace,
+        SessionWorkspace,
+    },
 };
 
-use futures::channel::oneshot;
+use futures::{
+    StreamExt,
+    channel::{
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
+        oneshot,
+    },
+};
 #[cfg(target_os = "linux")]
 use gpui::WindowDecorations;
 use gpui::{
-    Action, AnyView, App, Bounds, BoxShadow, Context, CursorStyle, Decorations, Div, DragMoveEvent,
-    Entity, FocusHandle, Focusable, Global, HitboxBehavior, Hsla, KeyContext, MouseButton,
-    MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful,
-    Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle,
-    WindowId, WindowOptions, prelude::*,
+    Action, AnyView, App, AsyncWindowContext, Bounds, BoxShadow, Context, CursorStyle, Decorations,
+    Div, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, Global, HitboxBehavior, Hsla,
+    KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel,
+    ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window,
+    WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
+#[cfg(any(test, feature = "test-support"))]
+use gpui::{TestAppContext, VisualTestContext};
 use serde::{Deserialize, Serialize};
 use std::{
+    any::TypeId,
     borrow::Cow,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
+use uuid::Uuid;
 
 #[cfg(any(test, feature = "test-support"))]
 use fs::TempFs;
 
-use db::{Bind, Column, Row, Statement, StaticColumnCount};
+use db::{Bind, Column, Row, Statement, StaticColumnCount, kv::KeyValueStore};
 use http_client::HttpClient;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
@@ -51,9 +64,6 @@ use util::ResultExt;
 
 #[cfg(any(test, feature = "test-support"))]
 use session::Session;
-
-#[cfg(test)]
-use uuid::Uuid;
 
 use crate::{
     dock::{Dock, PanelButtons},
@@ -303,6 +313,101 @@ pub fn register_project_item<I: ProjectItem>(cx: &mut App) {
     cx.default_global::<ProjectItemRegistry>().register::<I>();
 }
 
+#[derive(Copy, Clone)]
+struct SerializableItemDescriptor {
+    deserialize: fn(
+        Entity<Project>,
+        WeakEntity<Workspace>,
+        WorkspaceId,
+        ItemId,
+        &mut Window,
+        &mut Context<Pane>,
+    ) -> Task<anyhow::Result<Box<dyn ItemHandle>>>,
+    cleanup: fn(WorkspaceId, Vec<ItemId>, &mut Window, &mut App) -> Task<anyhow::Result<()>>,
+    view_to_serializable_item: fn(AnyView) -> Box<dyn SerializableItemHandle>,
+}
+
+#[derive(Default)]
+pub(crate) struct SerializableItemRegistry {
+    descriptors_by_kind: HashMap<Arc<str>, SerializableItemDescriptor>,
+    descriptors_by_type: HashMap<TypeId, SerializableItemDescriptor>,
+}
+
+impl Global for SerializableItemRegistry {}
+
+impl SerializableItemRegistry {
+    pub(crate) fn deserialize(
+        item_kind: &str,
+        project: Entity<Project>,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut Context<Pane>,
+    ) -> Task<anyhow::Result<Box<dyn ItemHandle>>> {
+        let Some(descriptor) = Self::descriptor(item_kind, cx) else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "cannot deserialize {item_kind}, descriptor not found"
+            )));
+        };
+
+        (descriptor.deserialize)(project, workspace, workspace_id, item_id, window, cx)
+    }
+
+    fn cleanup(
+        item_kind: &str,
+        workspace_id: WorkspaceId,
+        loaded_items: Vec<ItemId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        let Some(descriptor) = Self::descriptor(item_kind, cx) else {
+            return Task::ready(Err(anyhow::anyhow!(
+                "cannot cleanup {item_kind}, descriptor not found"
+            )));
+        };
+
+        (descriptor.cleanup)(workspace_id, loaded_items, window, cx)
+    }
+
+    pub(crate) fn view_to_serializable_item_handle(
+        view: AnyView,
+        cx: &App,
+    ) -> Option<Box<dyn SerializableItemHandle>> {
+        let this = cx.try_global::<Self>()?;
+        let descriptor = this.descriptors_by_type.get(&view.entity_type())?;
+        Some((descriptor.view_to_serializable_item)(view))
+    }
+
+    fn descriptor(item_kind: &str, cx: &App) -> Option<SerializableItemDescriptor> {
+        let this = cx.try_global::<Self>()?;
+        this.descriptors_by_kind.get(item_kind).copied()
+    }
+}
+
+pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
+    let serialized_item_kind = I::serialized_item_kind();
+
+    let registry = cx.default_global::<SerializableItemRegistry>();
+    let descriptor = SerializableItemDescriptor {
+        deserialize: |project, workspace, workspace_id, item_id, window, cx| {
+            let task = I::deserialize(project, workspace, workspace_id, item_id, window, cx);
+            cx.foreground_executor()
+                .spawn(async { Ok(Box::new(task.await?) as Box<_>) })
+        },
+        cleanup: |workspace_id, loaded_items, window, cx| {
+            I::cleanup(workspace_id, loaded_items, window, cx)
+        },
+        view_to_serializable_item: |view| Box::new(view.downcast::<I>().unwrap()),
+    };
+    registry
+        .descriptors_by_kind
+        .insert(Arc::from(serialized_item_kind), descriptor);
+    registry
+        .descriptors_by_type
+        .insert(TypeId::of::<I>(), descriptor);
+}
+
 pub fn create_and_open_file(
     path: &'static Path,
     window: &mut Window,
@@ -405,8 +510,31 @@ fn register_actions(
 }
 
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
-    let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
-    bounds.origin.y -= gpui::px(36.0);
+    let (window_bounds, display) = if cx.active_window().is_some() {
+        (None, None)
+    } else if let Some((display_uuid, bounds)) =
+        persistence::read_default_window_bounds(&KeyValueStore::global(cx))
+    {
+        (Some(bounds), Some(display_uuid))
+    } else if cx.windows().is_empty() {
+        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
+        bounds.origin.y -= gpui::px(36.0);
+        (Some(WindowBounds::Windowed(bounds)), None)
+    } else {
+        (None, None)
+    };
+
+    let mut options = build_window_options(display, cx);
+    options.window_bounds = window_bounds;
+    options
+}
+
+fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptions {
+    let display = display_uuid.and_then(|uuid| {
+        cx.displays()
+            .into_iter()
+            .find(|display| display.uuid().ok() == Some(uuid))
+    });
     let window_background = cx.theme().window_background_appearance();
     let window_decorations = {
         #[cfg(target_os = "linux")]
@@ -436,7 +564,7 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
             appears_transparent: true,
             traffic_light_position,
         }),
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        display_id: display.map(|display| display.id()),
         window_background,
         window_decorations,
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
@@ -583,6 +711,21 @@ impl Root {
         })
         .detach_and_log_err(cx);
     }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn build_workspace<'a>(
+    project: &Entity<Project>,
+    cx: &'a mut TestAppContext,
+) -> (Entity<Workspace>, &'a mut VisualTestContext) {
+    let project = project.clone();
+    let (root, cx) = cx.add_window_view(move |window, cx| {
+        window.activate_window();
+        Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+    });
+    cx.run_until_parked();
+    let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+    (workspace, cx)
 }
 
 impl Focusable for Root {
@@ -892,16 +1035,21 @@ pub struct Workspace {
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
     pane: Entity<Pane>,
+    panes_by_item: HashMap<EntityId, WeakEntity<Pane>>,
     status_bar: Entity<StatusBar>,
     titlebar_item: Option<AnyView>,
     notifications: Notifications,
     suppressed_notifications: HashSet<NotificationId>,
     bounds: Bounds<Pixels>,
     previous_dock_drag_coordinates: Option<Point<Pixels>>,
+    bounds_save_task_queued: Option<Task<()>>,
     scheduled_serialization_task: Option<Task<()>>,
     serialization_task: Option<Task<()>>,
+    serializable_items_tx: UnboundedSender<Box<dyn SerializableItemHandle>>,
+    _items_serializer: Task<anyhow::Result<()>>,
     _project_subscription: Subscription,
     _window_activation_subscription: Subscription,
+    _window_bounds_subscription: Subscription,
     _window_appearance_subscription: Subscription,
 }
 
@@ -983,6 +1131,10 @@ impl Workspace {
         self.database_id
     }
 
+    pub fn session_id(&self) -> Option<String> {
+        self.session_id.clone()
+    }
+
     #[cfg(test)]
     pub(crate) fn set_random_database_id(&mut self) {
         self.database_id = Some(WorkspaceId(Uuid::new_v4().as_u64_pair().0.cast_signed()));
@@ -1052,7 +1204,12 @@ impl Workspace {
             let project = cx
                 .update(|cx| Project::open(shared_state.fs.clone(), path.clone(), cx))
                 .await?;
-            let workspace_id = workspace_db.next_id().await?;
+            let serialized_workspace = workspace_db.workspace_for_path(path.as_path());
+            let workspace_id = if let Some(serialized_workspace) = serialized_workspace.as_ref() {
+                serialized_workspace.id
+            } else {
+                workspace_db.next_id().await?
+            };
 
             let (window, workspace) = if let Some(window) = window_to_replace {
                 let workspace = window.update(cx, |root: &mut Root, window, cx| {
@@ -1092,7 +1249,31 @@ impl Workspace {
 
                 (window, workspace)
             } else {
-                let window_options = cx.update(default_window_options);
+                let window_options = cx.update(|cx| {
+                    let (window_bounds, display) = if let Some(workspace) =
+                        serialized_workspace.as_ref()
+                        && let Some(display) = workspace.display
+                        && let Some(bounds) = workspace.window_bounds.as_ref()
+                    {
+                        (Some(bounds.0), Some(display))
+                    } else if cx.active_window().is_some() {
+                        (None, None)
+                    } else if let Some((display, bounds)) =
+                        persistence::read_default_window_bounds(&KeyValueStore::global(cx))
+                    {
+                        (Some(bounds), Some(display))
+                    } else if cx.windows().is_empty() {
+                        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
+                        bounds.origin.y -= gpui::px(36.0);
+                        (Some(WindowBounds::Windowed(bounds)), None)
+                    } else {
+                        (None, None)
+                    };
+
+                    let mut options = build_window_options(display, cx);
+                    options.window_bounds = window_bounds;
+                    options
+                });
                 let window = cx.open_window(window_options, move |window, cx| {
                     let session_id = shared_state.session.read(cx).id().to_string();
                     let workspace = cx.new(|cx| {
@@ -1132,6 +1313,15 @@ impl Workspace {
                 (window, workspace)
             };
 
+            if let Some(serialized_workspace) = serialized_workspace {
+                let restore_task = window.update(cx, |root: &mut Root, window, cx| {
+                    root.workspace().update(cx, |workspace, cx| {
+                        workspace.restore_workspace(serialized_workspace, window, cx)
+                    })
+                })?;
+                restore_task.await.log_err();
+            }
+
             if let Some(database_id) =
                 workspace.read_with(cx, |workspace, _| workspace.database_id())
                 && let Err(error) = workspace_db.update_activation_order(database_id).await
@@ -1140,6 +1330,76 @@ impl Workspace {
             }
 
             Ok(OpenResult { window, workspace })
+        })
+    }
+
+    fn restore_workspace(
+        &mut self,
+        serialized_workspace: SerializedWorkspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let project = self.project.clone();
+        let pane = self.pane.downgrade();
+        let workspace_id = serialized_workspace.id;
+        let center_pane = serialized_workspace.center_pane;
+        let docks = serialized_workspace.docks;
+
+        cx.spawn_in(window, async move |workspace, cx| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.set_dock_structure(docks, window, cx);
+            })?;
+
+            let scan_complete =
+                workspace.read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))?;
+            scan_complete.await;
+
+            let deserialized_items = match center_pane
+                .deserialize_to(&project, &pane, workspace_id, workspace.clone(), cx)
+                .await
+            {
+                Ok(items) => items,
+                Err(error) => return Err(error),
+            };
+
+            let item_ids_by_kind = cx.update(|_, cx| {
+                let mut item_ids_by_kind = HashMap::<&'static str, Vec<ItemId>>::new();
+                for item in deserialized_items.into_iter().flatten() {
+                    if let Some(serializable_item_handle) = item.to_serializable_item_handle(cx) {
+                        item_ids_by_kind
+                            .entry(serializable_item_handle.serialized_item_kind())
+                            .or_default()
+                            .push(item.item_id().as_u64());
+                    }
+                }
+                item_ids_by_kind
+            })?;
+
+            let cleanup_tasks = workspace.update_in(cx, |workspace, window, cx| {
+                workspace.active_item_path_changed(cx);
+                item_ids_by_kind
+                    .into_iter()
+                    .map(|(item_kind, loaded_items)| {
+                        SerializableItemRegistry::cleanup(
+                            item_kind,
+                            workspace_id,
+                            loaded_items,
+                            window,
+                            cx,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            })?;
+
+            for task in cleanup_tasks {
+                task.await.log_err();
+            }
+
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.serialize_workspace_internal(window, cx).detach();
+            })?;
+
+            Ok(())
         })
     }
 
@@ -1315,13 +1575,25 @@ impl Workspace {
         });
     }
 
-    fn handle_pane_event(&mut self, event: &PaneEvent, cx: &mut Context<Self>) {
+    fn handle_pane_event(
+        &mut self,
+        pane: &Entity<Pane>,
+        event: &PaneEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let PaneEvent::AddItem { item } = event {
+            item.added_to_pane(self, pane.clone(), window, cx);
+        }
+
         if matches!(
             event,
             PaneEvent::ActivateItem { .. } | PaneEvent::ChangeItemTitle
         ) {
             self.active_item_path_changed(cx);
         }
+
+        self.serialize_workspace(window, cx);
     }
 
     pub fn save_active_item(
@@ -1354,6 +1626,102 @@ impl Workspace {
         &self.bottom_dock
     }
 
+    pub fn panel_size_state<T: Panel>(&self, cx: &App) -> Option<dock::PanelSizeState> {
+        [self.left_dock.clone(), self.bottom_dock.clone()]
+            .into_iter()
+            .find_map(|dock| {
+                let dock = dock.read(cx);
+                let panel = dock.panel::<T>()?;
+                dock.stored_panel_size_state(&panel)
+            })
+    }
+
+    pub fn load_panel_size_state(
+        &self,
+        panel_key: &'static str,
+        cx: &App,
+    ) -> Option<dock::PanelSizeState> {
+        let workspace_id = self
+            .database_id()
+            .map(|id| i64::from(id).to_string())
+            .or_else(|| self.session_id())?;
+        let kv_store = KeyValueStore::global(cx);
+        let scope = kv_store.scoped(dock::PANEL_SIZE_STATE_KEY);
+        scope
+            .read(&format!("{workspace_id}:{panel_key}"))
+            .log_err()
+            .flatten()
+            .and_then(|json| serde_json::from_str::<dock::PanelSizeState>(&json).log_err())
+    }
+
+    pub fn save_panel_size_state(
+        &self,
+        panel_key: &str,
+        size_state: dock::PanelSizeState,
+        cx: &mut App,
+    ) {
+        let Some(workspace_id) = self
+            .database_id()
+            .map(|id| i64::from(id).to_string())
+            .or_else(|| self.session_id())
+        else {
+            return;
+        };
+
+        let kv_store = KeyValueStore::global(cx);
+        let panel_key = panel_key.to_string();
+        cx.background_spawn(async move {
+            let scope = kv_store.scoped(dock::PANEL_SIZE_STATE_KEY);
+            scope
+                .write(
+                    format!("{workspace_id}:{panel_key}"),
+                    serde_json::to_string(&size_state)?,
+                )
+                .await
+        })
+        .detach_and_log_err(cx);
+    }
+
+    pub fn capture_dock_state(&self, _window: &Window, cx: &App) -> DockStructure {
+        let left_dock = self.left_dock.read(cx);
+        let left_visible = left_dock.is_open();
+        let left_active_panel = left_dock
+            .active_panel()
+            .map(|panel| panel.persistent_name().to_string());
+
+        let bottom_dock = self.bottom_dock.read(cx);
+        let bottom_visible = bottom_dock.is_open();
+        let bottom_active_panel = bottom_dock
+            .active_panel()
+            .map(|panel| panel.persistent_name().to_string());
+
+        DockStructure {
+            left: DockData {
+                visible: left_visible,
+                active_panel: left_active_panel,
+            },
+            bottom: DockData {
+                visible: bottom_visible,
+                active_panel: bottom_active_panel,
+            },
+        }
+    }
+
+    pub fn set_dock_structure(
+        &self,
+        docks: DockStructure,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let DockStructure { left, bottom } = docks;
+        for (dock, data) in [(&self.left_dock, left), (&self.bottom_dock, bottom)] {
+            dock.update(cx, |dock, cx| {
+                dock.serialized_dock = Some(data);
+                dock.restore_state(window, cx);
+            });
+        }
+    }
+
     pub fn add_panel<T: Panel>(
         &mut self,
         panel: Entity<T>,
@@ -1361,8 +1729,14 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let persisted_size_state = self.load_panel_size_state(T::panel_key(), cx);
         let dock = self.dock_at_position(position).clone();
-        dock.update(cx, move |dock, cx| dock.add_panel(&panel, window, cx));
+        dock.update(cx, move |dock, cx| {
+            dock.add_panel(&panel, window, cx);
+            if let Some(size_state) = persisted_size_state {
+                dock.set_panel_size_state(&panel, size_state, cx);
+            }
+        });
     }
 
     fn root(&self, cx: &App) -> Option<PathBuf> {
@@ -1383,12 +1757,55 @@ impl Workspace {
         }
     }
 
+    fn save_window_bounds(&self, window: &mut Window, cx: &mut App) -> Task<()> {
+        let Some(display) = window.display(cx) else {
+            return Task::ready(());
+        };
+        let Ok(display_uuid) = display.uuid() else {
+            return Task::ready(());
+        };
+
+        let window_bounds = window.inner_window_bounds();
+        let database_id = self.database_id;
+        let has_root = self.root(cx).is_some();
+        let workspace_db = WorkspaceDb::global(cx);
+        let kv_store = KeyValueStore::global(cx);
+
+        cx.background_spawn(async move {
+            if !has_root {
+                persistence::write_default_window_bounds(&kv_store, window_bounds, display_uuid)
+                    .await
+                    .log_err();
+            }
+
+            if let Some(database_id) = database_id {
+                workspace_db
+                    .set_window_open_status(
+                        database_id,
+                        SerializedWindowBounds(window_bounds),
+                        display_uuid,
+                    )
+                    .await
+                    .log_err();
+            } else {
+                persistence::write_default_window_bounds(&kv_store, window_bounds, display_uuid)
+                    .await
+                    .log_err();
+            }
+        })
+    }
+
     pub fn flush_serialization(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
         self.scheduled_serialization_task.take();
         self.serialization_task.take();
+        self.bounds_save_task_queued.take();
 
+        let bounds_task = self.save_window_bounds(window, cx);
         let serialize_task = self.serialize_workspace_internal(window, cx);
-        cx.spawn(async move |_| serialize_task.await)
+        cx.spawn(async move |_| {
+            bounds_task.await;
+            serialize_task.await;
+        })
     }
 
     fn remove_from_session(&mut self, window: &mut Window, cx: &mut App) -> Task<()> {
@@ -1413,29 +1830,118 @@ impl Workspace {
     }
 
     fn serialize_workspace_internal(&self, window: &mut Window, cx: &mut App) -> Task<()> {
+        fn serialize_pane_handle(
+            pane_handle: &Entity<Pane>,
+            window: &mut Window,
+            cx: &mut App,
+        ) -> SerializedPane {
+            let (items, active) = {
+                let pane = pane_handle.read(cx);
+                let active_item_id = pane.active_item().map(|item| item.item_id());
+                let items = pane
+                    .items()
+                    .filter_map(|handle| {
+                        let handle = handle.to_serializable_item_handle(cx)?;
+                        let item_id = handle.item_id();
+                        Some(SerializedItem {
+                            kind: Arc::from(handle.serialized_item_kind()),
+                            item_id: item_id.as_u64(),
+                            active: Some(item_id) == active_item_id,
+                            preview: pane.is_active_preview_item(item_id),
+                        })
+                    })
+                    .collect::<Vec<_>>();
+
+                (items, pane.has_focus(window, cx))
+            };
+
+            SerializedPane::new(items, active)
+        }
+
+        let docks = self.capture_dock_state(window, cx);
+
         let Some(database_id) = self.database_id() else {
-            return Task::ready(());
+            let kv_store = KeyValueStore::global(cx);
+            return cx.background_spawn(async move {
+                persistence::write_default_dock_state(&kv_store, docks)
+                    .await
+                    .log_err();
+            });
         };
 
-        match self.root(cx) {
-            Some(root_path) => {
-                let serialized_workspace = SerializedWorkspace {
-                    id: database_id,
-                    location: SerializedWorkspaceLocation::Local(root_path),
-                    session_id: self.session_id.clone(),
-                    window_id: self
-                        .session_id
-                        .as_ref()
-                        .map(|_| window.window_handle().window_id().as_u64()),
-                };
+        if let Some(root_path) = self.root(cx) {
+            let pane = self.pane.clone();
+            let center_pane = serialize_pane_handle(&pane, window, cx);
+            let serialized_workspace = SerializedWorkspace {
+                id: database_id,
+                location: root_path,
+                center_pane,
+                docks,
+                window_bounds: Some(SerializedWindowBounds(window.window_bounds())),
+                display: None,
+                session_id: self.session_id.clone(),
+                window_id: self
+                    .session_id
+                    .as_ref()
+                    .map(|_| window.window_handle().window_id().as_u64()),
+            };
 
-                let workspace_db = WorkspaceDb::global(cx);
-                window.spawn(cx, async move |_| {
-                    workspace_db.save_workspace(serialized_workspace).await;
-                })
-            }
-            None => Task::ready(()),
+            let workspace_db = WorkspaceDb::global(cx);
+            window.spawn(cx, async move |_| {
+                workspace_db.save_workspace(serialized_workspace).await;
+            })
+        } else {
+            let kv_store = KeyValueStore::global(cx);
+            cx.background_spawn(async move {
+                persistence::write_default_dock_state(&kv_store, docks)
+                    .await
+                    .log_err();
+            })
         }
+    }
+
+    async fn serialize_items(
+        workspace: &WeakEntity<Self>,
+        items_rx: UnboundedReceiver<Box<dyn SerializableItemHandle>>,
+        cx: &mut AsyncWindowContext,
+    ) -> anyhow::Result<()> {
+        const CHUNK_SIZE: usize = 200;
+
+        let mut serializable_items = items_rx.ready_chunks(CHUNK_SIZE);
+
+        while let Some(items_received) = serializable_items.next().await {
+            let unique_items = items_received.into_iter().fold(
+                HashMap::<EntityId, _>::default(),
+                |mut items, item| {
+                    items.entry(item.item_id()).or_insert(item);
+                    items
+                },
+            );
+
+            for (_, item) in unique_items {
+                if let Ok(Some(task)) = workspace.update_in(cx, |workspace, window, cx| {
+                    item.serialize(workspace, false, window, cx)
+                }) {
+                    cx.background_spawn(async move { task.await.log_err() })
+                        .detach();
+                }
+            }
+
+            cx.background_executor()
+                .timer(SERIALIZATION_THROTTLE_TIME)
+                .await;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn enqueue_item_serialization(
+        &mut self,
+        item: Box<dyn SerializableItemHandle>,
+    ) -> anyhow::Result<()> {
+        self.serializable_items_tx
+            .unbounded_send(item)
+            .map_err(|err| anyhow::anyhow!("failed to send serializable item over channel: {err}"))
     }
 
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
@@ -1487,6 +1993,7 @@ impl Workspace {
         }
 
         cx.notify();
+        self.serialize_workspace(window, cx);
     }
 
     pub fn new(
@@ -1513,6 +2020,27 @@ impl Workspace {
                 }
             });
 
+        let window_bounds_subscription =
+            cx.observe_window_bounds(window, |workspace, window, cx| {
+                if workspace.bounds_save_task_queued.is_some() {
+                    return;
+                }
+
+                workspace.bounds_save_task_queued =
+                    Some(cx.spawn_in(window, async move |this, cx| {
+                        cx.background_executor()
+                            .timer(Duration::from_millis(100))
+                            .await;
+                        if let Err(error) = this.update_in(cx, |this, window, cx| {
+                            this.save_window_bounds(window, cx).detach();
+                            this.bounds_save_task_queued.take();
+                        }) {
+                            log::debug!("Failed to save window bounds: {error}");
+                        }
+                    }));
+                cx.notify();
+            });
+
         let window_appearance_subscription =
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
@@ -1523,8 +2051,8 @@ impl Workspace {
         let workspace = cx.entity();
         let weak_handle = workspace.downgrade();
         let pane = cx.new(|cx| Pane::new(weak_handle.clone(), &project, window, cx));
-        cx.subscribe_in(&pane, window, |workspace, _, event, _, cx| {
-            workspace.handle_pane_event(event, cx);
+        cx.subscribe_in(&pane, window, |workspace, pane, event, window, cx| {
+            workspace.handle_pane_event(pane, event, window, cx);
         })
         .detach();
 
@@ -1554,8 +2082,24 @@ impl Workspace {
             },
         );
 
-        let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, window, cx));
-        let bottom_dock = cx.new(|cx| Dock::new(DockPosition::Bottom, window, cx));
+        let left_dock = cx.new(|cx| Dock::new(DockPosition::Left, weak_handle.clone(), window, cx));
+        let bottom_dock =
+            cx.new(|cx| Dock::new(DockPosition::Bottom, weak_handle.clone(), window, cx));
+
+        if project.read(cx).root_worktree(cx).is_none()
+            && let Some(default_docks) =
+                persistence::read_default_dock_state(&KeyValueStore::global(cx))
+        {
+            for (dock, serialized_dock) in [
+                (&left_dock, &default_docks.left),
+                (&bottom_dock, &default_docks.bottom),
+            ] {
+                dock.update(cx, |dock, cx| {
+                    dock.serialized_dock = Some(serialized_dock.clone());
+                    dock.restore_state(window, cx);
+                });
+            }
+        }
 
         let left_dock_buttons = cx.new(|cx| PanelButtons::new(left_dock.clone(), cx));
         let bottom_dock_buttons = cx.new(|cx| PanelButtons::new(bottom_dock.clone(), cx));
@@ -1570,6 +2114,12 @@ impl Workspace {
             status_bar.add_right_item(bottom_dock_buttons, window, cx);
         });
 
+        let (serializable_items_tx, serializable_items_rx) =
+            mpsc::unbounded::<Box<dyn SerializableItemHandle>>();
+        let items_serializer = cx.spawn_in(window, async move |workspace, cx| {
+            Self::serialize_items(&workspace, serializable_items_rx, cx).await
+        });
+
         let this = Self {
             shared_state,
             weak_self: weak_handle,
@@ -1580,16 +2130,21 @@ impl Workspace {
             left_dock,
             bottom_dock,
             pane,
+            panes_by_item: HashMap::default(),
             status_bar,
             titlebar_item: None,
             notifications: Notifications::default(),
             suppressed_notifications: HashSet::default(),
             bounds: Bounds::default(),
             previous_dock_drag_coordinates: None,
+            bounds_save_task_queued: None,
             scheduled_serialization_task: None,
             serialization_task: None,
+            serializable_items_tx,
+            _items_serializer: items_serializer,
             _project_subscription: project_subscription,
             _window_activation_subscription: window_activation_subscription,
+            _window_bounds_subscription: window_bounds_subscription,
             _window_appearance_subscription: window_appearance_subscription,
         };
 
@@ -1689,6 +2244,7 @@ impl Workspace {
         }
 
         if toggled_panel {
+            self.serialize_workspace(window, cx);
             cx.notify();
         }
 
@@ -1994,6 +2550,46 @@ mod tests {
         });
     }
 
+    async fn init_default_window_bounds(
+        shared_state: Arc<SharedState>,
+        cx: &mut TestAppContext,
+    ) -> Bounds<Pixels> {
+        let bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(680.0), gpui::px(440.0)),
+        );
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let root = cx
+            .update(|cx| {
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        ..WindowOptions::default()
+                    },
+                    move |window, cx| {
+                        cx.new(|cx| {
+                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                        })
+                    },
+                )
+            })
+            .unwrap();
+        root.update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+        })
+        .unwrap()
+        .await;
+        root.update(cx, |_, window, _| window.remove_window())
+            .unwrap();
+
+        assert!(cx.windows().is_empty());
+
+        bounds
+    }
+
     #[gpui::test]
     async fn test_tracking_active_path(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
@@ -2012,11 +2608,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view({
-            let project = project.clone();
-            move |window, cx| Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let (worktree_id, first_entry_id, first_path, second_entry_id, second_path) = project
@@ -2177,12 +2769,12 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path)
+                .any(|(_, location, _)| location == &canonical_project_path)
         );
         assert!(
             recent_workspaces
                 .iter()
-                .all(|(_, location, _)| location.path() != alternate_project_path)
+                .all(|(_, location, _)| location != &alternate_project_path)
         );
     }
 
@@ -2194,10 +2786,7 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
             path!("first"),
@@ -2269,10 +2858,7 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         workspace.update_in(cx, |workspace, window, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
@@ -2295,10 +2881,7 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2349,7 +2932,7 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| { location.path() == project_path })
+                .any(|(_, location, _)| location == &project_path)
         );
     }
 
@@ -2360,10 +2943,7 @@ mod tests {
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
             let panel = cx.new(|cx| TestPanel::new(100, cx));
@@ -2434,16 +3014,75 @@ mod tests {
     }
 
     #[gpui::test]
+    fn test_panel_size_state_persistence(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let (workspace, cx) = build_workspace(&project, cx);
+
+        let workspace_id = workspace.update(cx, |workspace, _| {
+            workspace.set_random_database_id();
+            workspace.bounds.size.width = gpui::px(640.0);
+            workspace.database_id().unwrap()
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new(100, cx));
+            workspace.add_panel(panel, DockPosition::Left, window, cx);
+            workspace.toggle_dock(DockPosition::Left, window, cx);
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.resize_left_dock(gpui::px(350.0), window, cx);
+        });
+
+        cx.run_until_parked();
+
+        let persisted = workspace.read_with(cx, |workspace, cx| {
+            workspace.load_panel_size_state(TestPanel::panel_key(), cx)
+        });
+        assert_eq!(
+            persisted.and_then(|state| state.size),
+            Some(gpui::px(350.0))
+        );
+
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(Workspace::create(
+                workspace_id,
+                shared_state.clone(),
+                window,
+                cx,
+            ))
+        });
+        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TestPanel::new(100, cx));
+            workspace.add_panel(panel, DockPosition::Left, window, cx);
+
+            let left_dock = workspace.left_dock().read(cx);
+            let size_state = left_dock
+                .panel::<TestPanel>()
+                .and_then(|panel| left_dock.stored_panel_size_state(&panel));
+            assert_eq!(
+                size_state.and_then(|state| state.size),
+                Some(gpui::px(350.0))
+            );
+        });
+    }
+
+    #[gpui::test]
     fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
         let shared_state = cx.update(SharedState::test);
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state, cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         let item = cx.new(TestItem::new);
         let item_id = Entity::entity_id(&item);
@@ -2458,7 +3097,7 @@ mod tests {
             assert!(pane.focus_handle(cx).contains_focused(window, cx));
         });
 
-        root.update_in(cx, |_, window, cx| {
+        workspace.update_in(cx, |_, window, cx| {
             assert!(window.is_action_available(&actions::workspace::NewWindow, cx));
             assert!(window.is_action_available(&actions::workspace::Open::default(), cx));
             assert!(window.is_action_available(&actions::workspace::CloseProject, cx));
@@ -2477,10 +3116,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         add_labeled_item(&pane, "First", false, cx);
@@ -2578,10 +3214,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let first_item = add_labeled_item(&pane, "First", true, cx);
@@ -2640,10 +3273,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let item = add_labeled_item(&pane, "First", true, cx);
@@ -2683,10 +3313,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let first = cx.update(|_, cx| TestProjectItem::new_dirty(1, "first.toml", cx));
@@ -2733,10 +3360,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let first_item = add_labeled_item(&pane, "First", false, cx);
@@ -2770,10 +3394,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         add_labeled_item(&pane, "First", false, cx);
@@ -2807,10 +3428,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         add_labeled_item(&pane, "First", false, cx);
@@ -2870,10 +3488,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -3084,10 +3699,7 @@ mod tests {
         let canonical_project_path = temp_fs.path().join(path!("project"));
         let alternate_project_path = canonical_project_path.join("..").join("project");
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -3163,10 +3775,7 @@ mod tests {
             .await
             .unwrap();
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
@@ -3241,12 +3850,12 @@ mod tests {
         assert!(
             recent_workspaces
                 .iter()
-                .any(|(_, location, _)| location.path() == canonical_project_path)
+                .any(|(_, location, _)| location == &canonical_project_path)
         );
         assert!(
             recent_workspaces
                 .iter()
-                .all(|(_, location, _)| location.path() != alias_project_path)
+                .all(|(_, location, _)| location != &alias_project_path)
         );
     }
 
@@ -3284,10 +3893,7 @@ mod tests {
         let first_path = temp_fs.path().join(path!("first"));
         let second_path = temp_fs.path().join(path!("second"));
         let project = Project::test_new(temp_fs.clone(), &first_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -3326,5 +3932,310 @@ mod tests {
 
         assert_ne!(current_worktree_id, Some(first_worktree_id));
         assert_eq!(current_root, Some(second_path));
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_on_initial_launch(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap()
+                .get_bounds()
+                .size,
+            DEFAULT_WINDOW_SIZE
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_restore_saved_default(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+        temp_fs.insert_tree(path!("project"), json!(null));
+
+        let default_bounds = init_default_window_bounds(shared_state.clone(), cx).await;
+        let project_path = temp_fs.path().join(path!("project"));
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(default_bounds)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_cascade_on_new_window(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        init_test(shared_state.clone(), cx);
+
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        init_default_window_bounds(shared_state.clone(), cx).await;
+
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let active_bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(860.0), gpui::px(540.0)),
+        );
+        let root = cx
+            .update(|cx| {
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(active_bounds)),
+                        ..WindowOptions::default()
+                    },
+                    move |window, cx| {
+                        window.activate_window();
+                        cx.new(|cx| {
+                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                        })
+                    },
+                )
+            })
+            .unwrap();
+
+        cx.dispatch_action(root.into(), actions::workspace::NewWindow);
+        cx.run_until_parked();
+
+        let new_window = cx.update(|cx| cx.active_window().unwrap().downcast::<Root>().unwrap());
+        let cascade_offset = gpui::point(gpui::px(25.0), gpui::px(25.0));
+        let cascaded_bounds =
+            Bounds::new(active_bounds.origin + cascade_offset, active_bounds.size);
+        assert_eq!(cx.windows().len(), 2);
+        assert_eq!(
+            new_window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(cascaded_bounds)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_cascade_on_new_project_window(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+        init_default_window_bounds(shared_state.clone(), cx).await;
+
+        let active_bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(860.0), gpui::px(540.0)),
+        );
+        let active_workspace_id = workspace_db.next_id().await.unwrap();
+        cx.update(|cx| {
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(active_bounds)),
+                    ..WindowOptions::default()
+                },
+                {
+                    let shared_state = shared_state.clone();
+                    move |window, cx| {
+                        window.activate_window();
+                        cx.new(|cx| {
+                            Root::new(Workspace::create(
+                                active_workspace_id,
+                                shared_state,
+                                window,
+                                cx,
+                            ))
+                        })
+                    }
+                },
+            )
+        })
+        .unwrap();
+
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        let cascade_offset = gpui::point(gpui::px(25.0), gpui::px(25.0));
+        let cascaded_bounds =
+            Bounds::new(active_bounds.origin + cascade_offset, active_bounds.size);
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(cascaded_bounds)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_window_bounds_restore_saved_workspace(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state.clone(), cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        let project_path = temp_fs.path().join(path!("project"));
+        init_default_window_bounds(shared_state.clone(), cx).await;
+        let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
+
+        let active_bounds = Bounds::new(
+            gpui::point(gpui::px(100.0), gpui::px(100.0)),
+            gpui::size(gpui::px(860.0), gpui::px(540.0)),
+        );
+        let active_workspace_id = workspace_db.next_id().await.unwrap();
+        let active_window = cx
+            .update(|cx| {
+                cx.open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(active_bounds)),
+                        ..WindowOptions::default()
+                    },
+                    {
+                        let shared_state = shared_state.clone();
+                        move |window, cx| {
+                            window.activate_window();
+                            cx.new(|cx| {
+                                Root::new(Workspace::create(
+                                    active_workspace_id,
+                                    shared_state,
+                                    window,
+                                    cx,
+                                ))
+                            })
+                        }
+                    },
+                )
+            })
+            .unwrap();
+        let display_uuid = active_window
+            .update(cx, |_, window, cx| {
+                window.display(cx).unwrap().uuid().unwrap()
+            })
+            .unwrap();
+
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: workspace_id,
+                location: project_path.clone(),
+                center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
+                window_bounds: None,
+                display: None,
+                session_id: None,
+                window_id: None,
+            })
+            .await;
+
+        let saved_workspace_bounds = Bounds::new(
+            gpui::point(gpui::px(200.0), gpui::px(200.0)),
+            gpui::size(gpui::px(500.0), gpui::px(500.0)),
+        );
+        workspace_db
+            .set_window_open_status(
+                workspace_id,
+                SerializedWindowBounds(WindowBounds::Windowed(saved_workspace_bounds)),
+                display_uuid,
+            )
+            .await
+            .unwrap();
+
+        let result = cx
+            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            result
+                .window
+                .update(cx, |_, window, _| window.window_bounds())
+                .unwrap(),
+            WindowBounds::Windowed(saved_workspace_bounds)
+        );
+    }
+
+    #[gpui::test]
+    async fn test_center_pane_deserialization_preserves_item_order(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let shared_state = cx.update(SharedState::test);
+        let temp_fs = shared_state.fs.as_temp();
+        init_test(shared_state, cx);
+        cx.update(register_serializable_item::<TestItem>);
+
+        temp_fs.insert_tree(path!("project"), Value::default());
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db.next_id().await.unwrap();
+        let serialized_pane = SerializedPane::new(
+            vec![
+                SerializedItem::new("TestItem", 1, false, false),
+                SerializedItem::new("TestItem", 2, false, false),
+                SerializedItem::new("TestItem", 3, true, false),
+                SerializedItem::new("TestItem", 4, false, false),
+                SerializedItem::new("TestItem", 5, false, true),
+            ],
+            true,
+        );
+        let weak_pane = pane.downgrade();
+        let weak_workspace = workspace.downgrade();
+
+        let deserialized_items = workspace
+            .update_in(cx, |_, window, cx| {
+                cx.spawn_in(window, async move |_, cx| {
+                    serialized_pane
+                        .deserialize_to(&project, &weak_pane, workspace_id, weak_workspace, cx)
+                        .await
+                })
+            })
+            .await
+            .unwrap();
+        let expected_item_ids = deserialized_items
+            .iter()
+            .flatten()
+            .map(|item| item.item_id())
+            .collect::<Vec<_>>();
+        let pane_item_ids = pane.read_with(cx, |pane, _| {
+            pane.items().map(|item| item.item_id()).collect::<Vec<_>>()
+        });
+
+        assert_eq!(pane_item_ids, expected_item_ids);
+        let active_item_id =
+            pane.read_with(cx, |pane, _| pane.active_item().map(|item| item.item_id()));
+        let preview_item_id =
+            pane.read_with(cx, |pane, _| pane.preview_item().map(|item| item.item_id()));
+        assert_eq!(active_item_id.as_ref(), expected_item_ids.get(2));
+        assert_eq!(preview_item_id.as_ref(), expected_item_ids.get(4));
     }
 }

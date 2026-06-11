@@ -179,7 +179,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         .await
         .unwrap()
         .into_iter()
-        .map(|(_, location, _)| location.path().to_path_buf())
+        .map(|(_, location, _)| location)
         .collect::<Vec<_>>();
 
     for window in &restored_windows {

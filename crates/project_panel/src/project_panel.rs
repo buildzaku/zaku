@@ -221,7 +221,10 @@ impl ProjectPanel {
                             project_panel.discard_edit_state(window, cx);
                         }
                     }
-                    EditorEvent::DirtyChanged => {}
+                    EditorEvent::DirtyChanged
+                    | EditorEvent::FileHandleChanged
+                    | EditorEvent::Saved
+                    | EditorEvent::TitleChanged => {}
                 },
             )
             .detach();
@@ -2547,6 +2550,10 @@ impl Focusable for ProjectPanel {
 }
 
 impl Panel for ProjectPanel {
+    fn persistent_name() -> &'static str {
+        Self::PANEL_KEY
+    }
+
     fn panel_key() -> &'static str {
         Self::PANEL_KEY
     }
@@ -2823,7 +2830,7 @@ mod tests {
     use theme::LoadThemes;
     use util::rel_path::rel_path;
     use util_macros::path;
-    use workspace::{Root, SharedState, Workspace, pane::PaneEvent};
+    use workspace::{SharedState, Workspace, build_workspace, pane::PaneEvent};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -3028,10 +3035,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3067,10 +3071,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3139,10 +3140,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3231,10 +3229,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
@@ -3324,10 +3319,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3411,10 +3403,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3543,10 +3532,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3661,10 +3647,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3775,10 +3758,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3841,10 +3821,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -3935,10 +3912,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -4022,10 +3996,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
@@ -4117,10 +4088,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         cx.run_until_parked();
@@ -4233,10 +4201,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let panel = workspace.update_in(cx, ProjectPanel::new);
         cx.run_until_parked();
 
