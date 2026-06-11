@@ -295,7 +295,7 @@ impl SerializableItem for RequestEditor {
 mod tests {
     use super::*;
 
-    use gpui::{TestAppContext, VisualTestContext};
+    use gpui::TestAppContext;
     use indoc::indoc;
     use serde_json::json;
     use std::sync::Arc;
@@ -304,7 +304,7 @@ mod tests {
     use theme::LoadThemes;
     use util::rel_path::rel_path;
     use util_macros::path;
-    use workspace::{Root, SharedState, WorkspaceDb};
+    use workspace::{SharedState, WorkspaceDb, build_workspace};
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -316,19 +316,6 @@ mod tests {
             crate::init(cx);
             response_panel::init(cx);
         });
-    }
-
-    fn build_workspace<'a>(
-        project: &Entity<Project>,
-        cx: &'a mut TestAppContext,
-    ) -> (Entity<Workspace>, &'a mut VisualTestContext) {
-        let project = project.clone();
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project.clone(), window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
-
-        (workspace, cx)
     }
 
     #[gpui::test]

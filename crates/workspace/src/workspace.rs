@@ -35,6 +35,8 @@ use gpui::{
     ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window,
     WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
+#[cfg(any(test, feature = "test-support"))]
+use gpui::{TestAppContext, VisualTestContext};
 use serde::{Deserialize, Serialize};
 use std::{
     any::TypeId,
@@ -709,6 +711,21 @@ impl Root {
         })
         .detach_and_log_err(cx);
     }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn build_workspace<'a>(
+    project: &Entity<Project>,
+    cx: &'a mut TestAppContext,
+) -> (Entity<Workspace>, &'a mut VisualTestContext) {
+    let project = project.clone();
+    let (root, cx) = cx.add_window_view(move |window, cx| {
+        window.activate_window();
+        Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
+    });
+    cx.run_until_parked();
+    let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+    (workspace, cx)
 }
 
 impl Focusable for Root {
@@ -2591,11 +2608,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs, &project_path, cx).await;
-        let (root, cx) = cx.add_window_view({
-            let project = project.clone();
-            move |window, cx| Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let (worktree_id, first_entry_id, first_path, second_entry_id, second_path) = project
@@ -2773,10 +2786,7 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
             path!("first"),
@@ -2848,10 +2858,7 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         workspace.update_in(cx, |workspace, window, cx| {
             assert!(workspace.pane.read(cx).should_display_welcome_page());
@@ -2874,10 +2881,7 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2939,10 +2943,7 @@ mod tests {
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
             let panel = cx.new(|cx| TestPanel::new(100, cx));
@@ -3021,10 +3022,7 @@ mod tests {
         init_test(shared_state.clone(), cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let workspace_id = workspace.update(cx, |workspace, _| {
             workspace.set_random_database_id();
@@ -3084,10 +3082,7 @@ mod tests {
         init_test(shared_state, cx);
 
         let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         let item = cx.new(TestItem::new);
         let item_id = Entity::entity_id(&item);
@@ -3102,7 +3097,7 @@ mod tests {
             assert!(pane.focus_handle(cx).contains_focused(window, cx));
         });
 
-        root.update_in(cx, |_, window, cx| {
+        workspace.update_in(cx, |_, window, cx| {
             assert!(window.is_action_available(&actions::workspace::NewWindow, cx));
             assert!(window.is_action_available(&actions::workspace::Open::default(), cx));
             assert!(window.is_action_available(&actions::workspace::CloseProject, cx));
@@ -3121,10 +3116,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         add_labeled_item(&pane, "First", false, cx);
@@ -3222,10 +3214,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let first_item = add_labeled_item(&pane, "First", true, cx);
@@ -3284,10 +3273,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let item = add_labeled_item(&pane, "First", true, cx);
@@ -3327,10 +3313,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let first = cx.update(|_, cx| TestProjectItem::new_dirty(1, "first.toml", cx));
@@ -3377,10 +3360,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let first_item = add_labeled_item(&pane, "First", false, cx);
@@ -3414,10 +3394,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         add_labeled_item(&pane, "First", false, cx);
@@ -3451,10 +3428,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         add_labeled_item(&pane, "First", false, cx);
@@ -3514,10 +3488,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -3728,10 +3699,7 @@ mod tests {
         let canonical_project_path = temp_fs.path().join(path!("project"));
         let alternate_project_path = canonical_project_path.join("..").join("project");
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -3807,10 +3775,7 @@ mod tests {
             .await
             .unwrap();
         let project = Project::test_new(temp_fs.clone(), &canonical_project_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         workspace.update_in(cx, |workspace, _, _| workspace.set_random_database_id());
 
@@ -3928,10 +3893,7 @@ mod tests {
         let first_path = temp_fs.path().join(path!("first"));
         let second_path = temp_fs.path().join(path!("second"));
         let project = Project::test_new(temp_fs.clone(), &first_path, cx).await;
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
 
         let first_worktree_id = workspace
             .update_in(cx, |workspace, _, cx| {
@@ -4232,11 +4194,7 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let workspace_project = project.clone();
-        let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(cx.new(|cx| Workspace::test_new(workspace_project.clone(), window, cx)))
-        });
-        let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
+        let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
