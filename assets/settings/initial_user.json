@@ -1,4 +1,4 @@
 {
-  "ui_font_size": 13,
-  "buffer_font_size": 13
+  "ui": { "font_size": 13 },
+  "editor": { "font_size": 13 }
 }

@@ -11,8 +11,18 @@ use std::{
 
 use settings_macros::{MergeFrom, with_fallible_options};
 
-use crate::fallible_options::{ParseStatus, parse_json};
-use crate::merge_from::MergeFrom;
+use crate::{
+    editor::{CurrentLineHighlight, EditorSettingsContent, GutterContent},
+    fallible_options::{ParseStatus, parse_json},
+    merge_from::MergeFrom,
+};
+
+pub struct RegisteredSetting {
+    pub id: fn() -> TypeId,
+    pub from_settings: fn(&SettingsContent) -> Box<dyn Any + Send + Sync>,
+}
+
+inventory::collect!(RegisteredSetting);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -131,7 +141,7 @@ where
     let value = f32::deserialize(deserializer)?;
     if value < 1.0 {
         return Err(serde::de::Error::custom(
-            "buffer_line_height.custom must be at least 1.0",
+            "editor.line_height.custom must be at least 1.0",
         ));
     }
 
@@ -140,69 +150,105 @@ where
 
 #[with_fallible_options]
 #[derive(Clone, Default, Deserialize, MergeFrom)]
+pub struct UiSettingsContent {
+    density: Option<UiDensity>,
+    font_size: Option<Pixels>,
+    font_family: Option<String>,
+    font_fallbacks: Option<Vec<String>>,
+    font_features: Option<FontFeaturesContent>,
+    font_weight: Option<FontWeightContent>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Default, Deserialize, MergeFrom)]
 pub struct SettingsContent {
-    ui_density: Option<UiDensity>,
-    ui_font_size: Option<Pixels>,
-    ui_font_family: Option<String>,
-    ui_font_fallbacks: Option<Vec<String>>,
-    ui_font_features: Option<FontFeaturesContent>,
-    ui_font_weight: Option<FontWeightContent>,
-    buffer_font_size: Option<Pixels>,
-    buffer_font_family: Option<String>,
-    buffer_font_fallbacks: Option<Vec<String>>,
-    buffer_font_features: Option<FontFeaturesContent>,
-    buffer_font_weight: Option<FontWeightContent>,
-    buffer_line_height: Option<BufferLineHeight>,
+    ui: Option<UiSettingsContent>,
+    editor: Option<EditorSettingsContent>,
     pub(crate) log: Option<HashMap<String, String>>,
 }
 
 impl SettingsContent {
     pub fn ui_density(&self) -> UiDensity {
-        self.ui_density.unwrap_or_default()
+        self.ui
+            .as_ref()
+            .and_then(|ui| ui.density)
+            .unwrap_or_default()
     }
 
     pub fn ui_font_size(&self) -> Pixels {
-        clamp_font_size(self.ui_font_size.unwrap_or(gpui::px(13.0)))
+        let font_size = self
+            .ui
+            .as_ref()
+            .and_then(|ui| ui.font_size)
+            .unwrap_or(gpui::px(13.0));
+        clamp_font_size(font_size)
     }
 
     pub fn buffer_font_size(&self) -> Pixels {
-        clamp_font_size(self.buffer_font_size.unwrap_or(gpui::px(13.0)))
+        let font_size = self
+            .editor
+            .as_ref()
+            .and_then(|editor| editor.font_size)
+            .unwrap_or(gpui::px(13.0));
+        clamp_font_size(font_size)
     }
 
     pub fn ui_font_family(&self) -> Option<&str> {
-        self.ui_font_family.as_deref()
+        self.ui.as_ref().and_then(|ui| ui.font_family.as_deref())
     }
 
     pub fn ui_font_fallbacks(&self) -> Option<&[String]> {
-        self.ui_font_fallbacks.as_deref()
+        self.ui.as_ref().and_then(|ui| ui.font_fallbacks.as_deref())
     }
 
     pub fn ui_font_features(&self) -> Option<&FontFeaturesContent> {
-        self.ui_font_features.as_ref()
+        self.ui.as_ref().and_then(|ui| ui.font_features.as_ref())
     }
 
     pub fn ui_font_weight(&self) -> Option<FontWeightContent> {
-        self.ui_font_weight
+        self.ui.as_ref().and_then(|ui| ui.font_weight)
     }
 
     pub fn buffer_font_family(&self) -> Option<&str> {
-        self.buffer_font_family.as_deref()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.font_family.as_deref())
     }
 
     pub fn buffer_font_fallbacks(&self) -> Option<&[String]> {
-        self.buffer_font_fallbacks.as_deref()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.font_fallbacks.as_deref())
     }
 
     pub fn buffer_font_features(&self) -> Option<&FontFeaturesContent> {
-        self.buffer_font_features.as_ref()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.font_features.as_ref())
     }
 
     pub fn buffer_font_weight(&self) -> Option<FontWeightContent> {
-        self.buffer_font_weight
+        self.editor.as_ref().and_then(|editor| editor.font_weight)
     }
 
     pub fn buffer_line_height(&self) -> BufferLineHeight {
-        self.buffer_line_height.unwrap_or_default()
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.line_height)
+            .unwrap_or_default()
+    }
+
+    pub fn current_line_highlight(&self) -> Option<CurrentLineHighlight> {
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.current_line_highlight)
+    }
+
+    pub fn gutter(&self) -> GutterContent {
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.gutter.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -268,13 +314,15 @@ impl SettingsStore {
 
         let merged_settings = default_settings.clone();
 
-        Self {
+        let mut store = Self {
             default_settings,
             user_settings: None,
             merged_settings,
             setting_factories: HashMap::new(),
             settings: HashMap::new(),
-        }
+        };
+        store.load_settings_types();
+        store
     }
 
     pub fn content(&self) -> &SettingsContent {
@@ -330,9 +378,27 @@ impl SettingsStore {
             Box::new(T::from_settings(content))
         }
 
-        let type_id = TypeId::of::<T>();
-        self.setting_factories.insert(type_id, build::<T>);
-        self.settings.insert(type_id, build::<T>(self.content()));
+        self.register_setting_internal(&RegisteredSetting {
+            id: || TypeId::of::<T>(),
+            from_settings: build::<T>,
+        });
+    }
+
+    fn load_settings_types(&mut self) {
+        for registered_setting in inventory::iter::<RegisteredSetting>() {
+            self.register_setting_internal(registered_setting);
+        }
+    }
+
+    fn register_setting_internal(&mut self, registered_setting: &RegisteredSetting) {
+        let type_id = (registered_setting.id)();
+        if self.settings.contains_key(&type_id) {
+            return;
+        }
+
+        let from_settings = registered_setting.from_settings;
+        self.setting_factories.insert(type_id, from_settings);
+        self.settings.insert(type_id, from_settings(self.content()));
     }
 
     pub fn get<T: Settings>(&self) -> &T {

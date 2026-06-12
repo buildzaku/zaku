@@ -1,4 +1,6 @@
+mod config;
 pub mod display_map;
+mod editor_settings;
 mod element;
 mod items;
 mod movement;
@@ -6,14 +8,16 @@ mod persistence;
 mod scroll;
 mod selections_collection;
 
+pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter};
 pub use element::EditorElement;
 pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
 
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontStyle, HighlightStyle, Hsla,
-    KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
-    Subscription, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontId, FontStyle, HighlightStyle,
+    Hsla, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
+    SharedString, Subscription, TextRun, TextStyle, UTF16Selection, UnderlineStyle, Window,
+    prelude::*,
 };
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -21,7 +25,7 @@ use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
     num::NonZeroU32,
-    ops::{Range, RangeInclusive},
+    ops::{Deref, Range, RangeInclusive},
     path::PathBuf,
     rc::Rc,
     sync::Arc,
@@ -32,11 +36,14 @@ use text::{Bias, OffsetUtf16, Selection, SelectionGoal, TransactionId};
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use language::{Buffer, BufferEvent, Capability};
 use multi_buffer::{Anchor, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint};
+use settings::{Settings, SettingsStore};
 use theme::{ActiveTheme, ThemeSettings};
+use util::ResultExt;
 
 use crate::{
-    display_map::{DisplayPoint, HighlightKey},
+    display_map::{DisplayMap, DisplayPoint, DisplayRow, DisplaySnapshot, HighlightKey},
     element::PositionMap,
+    scroll::ScrollOffset,
     selections_collection::{MutableSelectionsCollection, SelectionsCollection},
 };
 
@@ -122,14 +129,6 @@ impl EditorMode {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActiveLineHighlight {
-    None,
-    #[default]
-    Line,
-}
-
 #[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
 pub enum SizingBehavior {
     #[default]
@@ -153,15 +152,111 @@ impl Default for EditorStyle {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct EditorSnapshot {
-    scroll_position: Point<scroll::ScrollOffset>,
+    scroll_position: Point<ScrollOffset>,
+    show_gutter: bool,
+    show_line_numbers: Option<bool>,
+    current_line_highlight: CurrentLineHighlight,
+    pub display_snapshot: DisplaySnapshot,
 }
 
 impl EditorSnapshot {
-    pub fn scroll_position(&self) -> Point<scroll::ScrollOffset> {
+    pub fn scroll_position(&self) -> Point<ScrollOffset> {
         self.scroll_position
     }
+
+    pub fn max_line_number_width(&self, style: &EditorStyle, window: &mut Window) -> Pixels {
+        let digit_count = self.widest_line_number().ilog10() + 1;
+        column_pixels(style, digit_count as usize, window)
+    }
+
+    pub fn gutter_dimensions(
+        &self,
+        font_id: FontId,
+        font_size: Pixels,
+        style: &EditorStyle,
+        window: &mut Window,
+        cx: &App,
+    ) -> GutterDimensions {
+        if self.show_gutter
+            && let Some(ch_width) = cx.text_system().ch_width(font_id, font_size).log_err()
+            && let Some(ch_advance) = cx.text_system().ch_advance(font_id, font_size).log_err()
+        {
+            let gutter_settings = EditorSettings::get_global(cx).gutter;
+            let show_line_numbers = self
+                .show_line_numbers
+                .unwrap_or(gutter_settings.line_numbers);
+            let line_gutter_width = if show_line_numbers {
+                let min_line_number_digits = u16::try_from(gutter_settings.min_line_number_digits)
+                    .expect("min line number digits should fit in u16");
+                let min_width_for_number_on_gutter = ch_advance * f32::from(min_line_number_digits);
+                self.max_line_number_width(style, window)
+                    .max(min_width_for_number_on_gutter)
+            } else {
+                0.0.into()
+            };
+
+            let left_padding = ch_width * 3.0;
+            let right_padding = if show_line_numbers {
+                ch_width
+            } else {
+                gpui::px(0.0)
+            };
+
+            GutterDimensions {
+                left_padding,
+                right_padding,
+                width: line_gutter_width + left_padding + right_padding,
+                margin: GutterDimensions::default_gutter_margin(font_id, font_size, cx),
+            }
+        } else {
+            GutterDimensions::default()
+        }
+    }
+}
+
+impl Deref for EditorSnapshot {
+    type Target = DisplaySnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.display_snapshot
+    }
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct GutterDimensions {
+    pub left_padding: Pixels,
+    pub right_padding: Pixels,
+    pub width: Pixels,
+    pub margin: Pixels,
+}
+
+impl GutterDimensions {
+    fn default_gutter_margin(font_id: FontId, font_size: Pixels, cx: &App) -> Pixels {
+        -cx.text_system().descent(font_id, font_size)
+    }
+
+    pub fn full_width(&self) -> Pixels {
+        self.margin + self.width
+    }
+}
+
+pub fn column_pixels(style: &EditorStyle, column: usize, window: &Window) -> Pixels {
+    let font_size = style.text.font_size.to_pixels(window.rem_size());
+    let layout = window.text_system().shape_line(
+        SharedString::from(" ".repeat(column)),
+        font_size,
+        &[TextRun {
+            len: column,
+            font: style.text.font(),
+            color: Hsla::default(),
+            ..Default::default()
+        }],
+        None,
+    );
+
+    layout.width
 }
 
 #[derive(Clone, Debug)]
@@ -297,7 +392,7 @@ struct ScrollbarAxes {
 pub struct Editor {
     focus_handle: FocusHandle,
     buffer: Entity<MultiBuffer>,
-    display_map: Entity<display_map::DisplayMap>,
+    display_map: Entity<DisplayMap>,
     pub selections: SelectionsCollection,
     scroll_manager: scroll::ScrollManager,
     mode: EditorMode,
@@ -307,7 +402,10 @@ pub struct Editor {
     defer_selection_effects: bool,
     deferred_selection_effects_state: Option<DeferredSelectionEffectsState>,
     last_position_map: Option<Rc<PositionMap>>,
+    show_gutter: bool,
     show_scrollbars: ScrollbarAxes,
+    show_line_numbers: Option<bool>,
+    gutter_dimensions: GutterDimensions,
     scrollbar_drag: Option<ScrollbarDrag>,
     selecting: bool,
     input_enabled: bool,
@@ -315,7 +413,7 @@ pub struct Editor {
     selection_mark_mode: bool,
     masked: bool,
     muted: bool,
-    active_line_highlight: Option<ActiveLineHighlight>,
+    current_line_highlight: Option<CurrentLineHighlight>,
     selection_goal: SelectionGoal,
     _subscriptions: Vec<Subscription>,
 }
@@ -376,10 +474,9 @@ impl Editor {
         cx: &mut Context<Self>,
     ) -> Self {
         let focus_handle = cx.focus_handle();
-        let display_map =
-            cx.new(|cx| display_map::DisplayMap::new(buffer.clone(), DEFAULT_TAB_SIZE, cx));
+        let display_map = cx.new(|cx| DisplayMap::new(buffer.clone(), DEFAULT_TAB_SIZE, cx));
         let scroll_manager = scroll::ScrollManager::new();
-        let show_scrollbars = matches!(mode, EditorMode::Full { .. });
+        let full_mode = mode.is_full();
         let selections = SelectionsCollection::new();
         let selection_history = SelectionHistory::new(selections.disjoint_anchors_arc());
 
@@ -387,6 +484,7 @@ impl Editor {
         let mut subscriptions = vec![
             cx.on_focus(&focus_handle, window, Self::on_focus),
             cx.on_blur(&focus_handle, window, Self::on_blur),
+            cx.observe_global_in::<SettingsStore>(window, |_, _, cx| cx.notify()),
         ];
         if let Some(singleton_buffer) = buffer.read(cx).as_singleton() {
             subscriptions.push(window.subscribe(
@@ -427,10 +525,13 @@ impl Editor {
             defer_selection_effects: false,
             deferred_selection_effects_state: None,
             last_position_map: None,
+            show_gutter: full_mode,
             show_scrollbars: ScrollbarAxes {
-                horizontal: show_scrollbars,
-                vertical: show_scrollbars,
+                horizontal: full_mode,
+                vertical: full_mode,
             },
+            show_line_numbers: (!full_mode).then_some(false),
+            gutter_dimensions: GutterDimensions::default(),
             scrollbar_drag: None,
             selecting: false,
             input_enabled: true,
@@ -438,7 +539,7 @@ impl Editor {
             selection_mark_mode: false,
             masked: false,
             muted: false,
-            active_line_highlight: None,
+            current_line_highlight: None,
             selection_goal: SelectionGoal::None,
             _subscriptions: subscriptions,
         };
@@ -473,10 +574,16 @@ impl Editor {
             .update(cx, |display_map, cx| display_map.snapshot(cx));
         EditorSnapshot {
             scroll_position: self.scroll_position(&display_snapshot),
+            show_gutter: self.show_gutter,
+            show_line_numbers: self.show_line_numbers,
+            current_line_highlight: self
+                .current_line_highlight
+                .unwrap_or_else(|| EditorSettings::get_global(cx).current_line_highlight),
+            display_snapshot,
         }
     }
 
-    pub fn display_snapshot(&self, cx: &mut Context<Self>) -> display_map::DisplaySnapshot {
+    pub fn display_snapshot(&self, cx: &mut Context<Self>) -> DisplaySnapshot {
         self.display_map
             .update(cx, |display_map, cx| display_map.snapshot(cx))
     }
@@ -939,7 +1046,7 @@ impl Editor {
             Bias::Left,
         );
         let cursor_point = buffer_snapshot.offset_to_point(cursor);
-        let row = display_map::DisplayRow(cursor_point.row);
+        let row = DisplayRow(cursor_point.row);
         let line_start = buffer_snapshot.point_to_offset(text::Point::new(cursor_point.row, 0));
         let line = buffer_line_text(display_snapshot.buffer_snapshot(), row.0);
 
@@ -1215,11 +1322,11 @@ impl Editor {
         self.read_only = read_only;
     }
 
-    pub fn set_active_line_highlight(
+    pub fn set_current_line_highlight(
         &mut self,
-        active_line_highlight: Option<ActiveLineHighlight>,
+        current_line_highlight: Option<CurrentLineHighlight>,
     ) {
-        self.active_line_highlight = active_line_highlight;
+        self.current_line_highlight = current_line_highlight;
     }
 
     pub fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {
@@ -2287,6 +2394,7 @@ impl Editor {
     fn on_mouse_down(
         &mut self,
         event: &MouseDownEvent,
+        click_count: usize,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -2297,9 +2405,9 @@ impl Editor {
         let position = self.display_point_for_mouse_position(event.position, cx);
 
         if event.modifiers.shift {
-            self.extend_selection(position, event.click_count, cx);
+            self.extend_selection(position, click_count, cx);
         } else {
-            self.begin_selection(position, event.click_count, cx);
+            self.begin_selection(position, click_count, cx);
         }
     }
 
@@ -2325,23 +2433,22 @@ impl Editor {
             return 0;
         }
 
-        if position.y < position_map.bounds.top() {
+        if position.y < position_map.text_hitbox.bounds.top() {
             return 0;
         }
-        if position.y > position_map.bounds.bottom() {
+        if position.y > position_map.text_hitbox.bounds.bottom() {
             return snapshot.len().0;
         }
 
         let point_for_position = position_map.point_for_position(position);
         let offset = if position_map.masked {
             let row = point_for_position.previous_valid.row().0;
-            let scroll_row = position_map
-                .scroll_position
-                .y
-                .max(0.0)
-                .to_u32()
-                .expect("scroll row should fit in u32");
-            let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
+            let Some(line_index) = row
+                .checked_sub(position_map.visible_row_range.start.0)
+                .and_then(|row| usize::try_from(row).ok())
+            else {
+                return snapshot.len().0;
+            };
             let Some(line) = position_map.line_layouts.get(line_index) else {
                 return snapshot.len().0;
             };
@@ -2740,7 +2847,7 @@ impl EntityInputHandler for Editor {
                 .point_to_display_point(end_point, Bias::Right)
                 .column() as usize
         } else {
-            let row = display_map::DisplayRow(row);
+            let row = DisplayRow(row);
             display_snapshot.line_len(row) as usize
         };
         let line_display_column_start = line.line_display_column_start;
@@ -2770,18 +2877,14 @@ impl EntityInputHandler for Editor {
         _cx: &mut Context<Self>,
     ) -> Option<usize> {
         let position_map = self.last_position_map.as_ref()?;
-        position_map.bounds.localize(&point)?;
+        position_map.text_hitbox.bounds.localize(&point)?;
         let snapshot = position_map.snapshot.buffer_snapshot();
         let point_for_position = position_map.point_for_position(point);
         let offset = if position_map.masked {
             let row = point_for_position.previous_valid.row().0;
-            let scroll_row = position_map
-                .scroll_position
-                .y
-                .max(0.0)
-                .to_u32()
-                .expect("scroll row should fit in u32");
-            let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
+            let line_index = row
+                .checked_sub(position_map.visible_row_range.start.0)
+                .and_then(|row| usize::try_from(row).ok())?;
             let line = position_map.line_layouts.get(line_index)?;
             if line.row.0 != row {
                 return None;

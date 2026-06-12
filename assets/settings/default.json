@@ -1,15 +1,24 @@
 {
-  "ui_density": "default",
-  "ui_font_size": 13,
-  "ui_font_family": "Source Code Pro",
-  "ui_font_fallbacks": null,
-  "ui_font_features": { "calt": false },
-  "ui_font_weight": 400,
-  "buffer_font_size": 13,
-  "buffer_font_family": "Source Code Pro",
-  "buffer_font_fallbacks": null,
-  "buffer_font_features": { "calt": false },
-  "buffer_font_weight": 400,
-  "buffer_line_height": "comfortable",
+  "ui": {
+    "density": "default",
+    "font_size": 13,
+    "font_family": "Source Code Pro",
+    "font_fallbacks": null,
+    "font_features": { "calt": false },
+    "font_weight": 400
+  },
+  "editor": {
+    "font_size": 13,
+    "font_family": "Source Code Pro",
+    "font_fallbacks": null,
+    "font_features": { "calt": false },
+    "font_weight": 400,
+    "line_height": "comfortable",
+    "current_line_highlight": "all",
+    "gutter": {
+      "line_numbers": true,
+      "min_line_number_digits": 4
+    }
+  },
   "log": {}
 }

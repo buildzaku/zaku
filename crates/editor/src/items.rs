@@ -323,7 +323,7 @@ mod tests {
             path!("project"),
             json!({
                 ".zaku": {
-                    "settings.json": r#"{"ui_density": "default"}"#
+                    "settings.json": r#"{ "ui": { "density": "default" } }"#
                 }
             }),
         );
@@ -360,7 +360,7 @@ mod tests {
             .unwrap();
 
         editor.update(cx, |editor, cx| {
-            assert_eq!(editor.text(cx), r#"{"ui_density": "default"}"#);
+            assert_eq!(editor.text(cx), r#"{ "ui": { "density": "default" } }"#);
             let buffer = editor.buffer.read(cx).as_singleton().unwrap();
             assert!(buffer.read(cx).file().is_some());
         });
@@ -379,7 +379,7 @@ mod tests {
             path!("outside"),
             json!({
                 ".zaku": {
-                    "settings.json": r#"{"ui_density": "default"}"#
+                    "settings.json": r#"{ "ui": { "density": "default" } }"#
                 }
             }),
         );

@@ -67,6 +67,24 @@ pub fn derive_merge_from(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+#[proc_macro_derive(RegisterSetting)]
+pub fn derive_register_setting(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as DeriveInput);
+    let type_name = &input.ident;
+
+    quote! {
+        settings::private::inventory::submit! {
+            settings::private::RegisteredSetting {
+                id: || std::any::TypeId::of::<#type_name>(),
+                from_settings: |content| {
+                    Box::new(<#type_name as settings::Settings>::from_settings(content))
+                },
+            }
+        }
+    }
+    .into()
+}
+
 // Adds serde attributes to each field with type Option<T>:
 // #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "crate::fallible_options::deserialize")]
 #[proc_macro_attribute]

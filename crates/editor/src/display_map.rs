@@ -16,7 +16,8 @@ use std::{
 use text::{Bias, Point, subscription::Subscription as BufferSubscription};
 
 use multi_buffer::{
-    Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferSnapshot, ToPoint,
+    Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferRow, MultiBufferSnapshot,
+    RowInfo, ToPoint,
 };
 
 use crate::movement::TextLayoutDetails;
@@ -151,6 +152,20 @@ impl DisplaySnapshot {
             .map(|chunk| chunk.text)
     }
 
+    pub fn row_infos(&self, start_row: DisplayRow) -> impl Iterator<Item = RowInfo> + '_ {
+        let end_row = self.max_point().row().0;
+        (start_row.0..=end_row).map(|row| {
+            let buffer_row = self
+                .display_point_to_point(DisplayPoint::new(DisplayRow(row), 0), Bias::Left)
+                .row;
+            RowInfo {
+                buffer_row: Some(buffer_row),
+                multibuffer_row: Some(MultiBufferRow(buffer_row)),
+                wrapped_buffer_row: None,
+            }
+        })
+    }
+
     pub fn clip_point(&self, point: DisplayPoint, bias: Bias) -> DisplayPoint {
         DisplayPoint::from_tab_point(self.tab_snapshot.clip_point(point.to_tab_point(), bias))
     }
@@ -161,6 +176,10 @@ impl DisplaySnapshot {
 
     pub fn longest_row(&self) -> DisplayRow {
         DisplayRow(self.buffer_snapshot().text_summary().longest_row)
+    }
+
+    pub fn widest_line_number(&self) -> u32 {
+        self.buffer_snapshot().widest_line_number()
     }
 
     pub fn layout_row(

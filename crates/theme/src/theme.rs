@@ -80,7 +80,6 @@ pub enum LoadThemes {
 
 pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     SystemAppearance::init(cx);
-    ThemeSettings::init(cx);
 
     let (assets, load_bundled_themes) = match themes_to_load {
         LoadThemes::JustBase => (Box::new(()) as Box<dyn AssetSource>, false),
@@ -203,6 +202,9 @@ pub struct ThemeColors {
     pub editor_background: Hsla,
     pub editor_foreground: Hsla,
     pub editor_active_line_background: Hsla,
+    pub editor_gutter_background: Hsla,
+    pub editor_line_number: Hsla,
+    pub editor_active_line_number: Hsla,
 
     pub scrollbar_track_background: Hsla,
     pub scrollbar_track_border: Hsla,
@@ -391,6 +393,12 @@ pub struct ThemeStyleContent {
     pub editor_foreground: Option<String>,
     #[serde(rename = "editor.active_line_background")]
     pub editor_active_line_background: Option<String>,
+    #[serde(rename = "editor.gutter.background")]
+    pub editor_gutter_background: Option<String>,
+    #[serde(rename = "editor.line_number")]
+    pub editor_line_number: Option<String>,
+    #[serde(rename = "editor.active_line_number")]
+    pub editor_active_line_number: Option<String>,
 
     #[serde(rename = "scrollbar.track.background")]
     pub scrollbar_track_background: Option<String>,
@@ -624,6 +632,18 @@ impl ThemeStyleContent {
             editor_active_line_background: parse_color(
                 "editor.active_line_background",
                 self.editor_active_line_background.as_deref(),
+            )?,
+            editor_gutter_background: parse_color(
+                "editor.gutter.background",
+                self.editor_gutter_background.as_deref(),
+            )?,
+            editor_line_number: parse_color(
+                "editor.line_number",
+                self.editor_line_number.as_deref(),
+            )?,
+            editor_active_line_number: parse_color(
+                "editor.active_line_number",
+                self.editor_active_line_number.as_deref(),
             )?,
             scrollbar_track_background: parse_color(
                 "scrollbar.track.background",

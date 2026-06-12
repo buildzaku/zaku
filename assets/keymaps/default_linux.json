@@ -123,6 +123,7 @@
       "ctrl-alt-right": "editor::MoveToNextSubwordEnd",
       "ctrl-alt-shift-left": "editor::SelectToPreviousSubwordStart",
       "ctrl-alt-shift-right": "editor::SelectToNextSubwordEnd",
+      "ctrl-;": "editor::ToggleLineNumbers",
       "ctrl-backspace": ["editor::DeleteToPreviousWordStart", { "ignore_newlines": false, "ignore_brackets": false }],
       "ctrl-delete": ["editor::DeleteToNextWordEnd", { "ignore_newlines": false, "ignore_brackets": false }],
       "ctrl-a": "editor::SelectAll",

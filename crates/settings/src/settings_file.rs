@@ -73,7 +73,7 @@ mod tests {
             .write(
                 &settings_path,
                 indoc! {r#"
-                    { "ui_font_size": 13 }
+                    { "ui": { "font_size": 13 } }
                 "#}
                 .as_bytes(),
             )
@@ -89,7 +89,7 @@ mod tests {
         assert_eq!(
             receiver.next().await.as_deref(),
             Some(indoc! {r#"
-                { "ui_font_size": 13 }
+                { "ui": { "font_size": 13 } }
             "#})
         );
 
@@ -97,7 +97,7 @@ mod tests {
             .write(
                 &settings_path,
                 indoc! {r#"
-                    { "ui_font_size": 14 }
+                    { "ui": { "font_size": 14 } }
                 "#}
                 .as_bytes(),
             )
@@ -107,7 +107,7 @@ mod tests {
         assert_eq!(
             receiver.next().await.as_deref(),
             Some(indoc! {r#"
-                { "ui_font_size": 14 }
+                { "ui": { "font_size": 14 } }
             "#})
         );
     }

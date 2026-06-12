@@ -153,6 +153,8 @@ gpui::actions!(
         RedoSelection,
         /// Select all text.
         SelectAll,
+        /// Toggle gutter line numbers.
+        ToggleLineNumbers,
         /// Extend selection left.
         SelectLeft,
         /// Extend selection right.

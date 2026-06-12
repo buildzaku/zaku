@@ -1,6 +1,8 @@
 use gpui::{App, Font, FontFallbacks, FontFeatures, FontStyle, FontWeight, Pixels, Window};
 use std::sync::Arc;
 
+use settings::RegisterSetting;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
 pub enum UiDensity {
     Compact,
@@ -19,7 +21,7 @@ impl From<settings::UiDensity> for UiDensity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, RegisterSetting)]
 pub struct ThemeSettings {
     pub ui_density: UiDensity,
     ui_font_size: Pixels,
@@ -74,10 +76,6 @@ impl BufferLineHeight {
 }
 
 impl ThemeSettings {
-    pub fn init(cx: &mut App) {
-        <Self as settings::Settings>::register(cx);
-    }
-
     pub fn get_global(cx: &App) -> &Self {
         <Self as settings::Settings>::get_global(cx)
     }
