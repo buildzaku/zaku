@@ -24,7 +24,7 @@ pub use paths::{
 pub use settings_file::watch_config_file;
 pub use settings_store::{
     BufferLineHeight, FontFeaturesContent, FontWeightContent, Settings, SettingsContent,
-    SettingsStore, UiDensity,
+    SettingsStore, ThemeAppearanceMode, UiDensity,
 };
 
 use gpui::App;

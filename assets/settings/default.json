@@ -1,4 +1,7 @@
 {
+  "theme": {
+    "mode": "system"
+  },
   "ui": {
     "density": "default",
     "font_size": 13,
