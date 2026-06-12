@@ -1,10 +1,11 @@
 use gpui::App;
 use std::collections::HashMap;
 
-use crate::{Settings, SettingsStore, settings_store::SettingsContent};
+use crate::{
+    self as settings, RegisterSetting, Settings, SettingsStore, settings_store::SettingsContent,
+};
 
 pub fn init(cx: &mut App) {
-    LogSettings::register(cx);
     cx.observe_global::<SettingsStore>(|cx| {
         let log_settings = LogSettings::get_global(cx);
         logger::filter::refresh_from_settings(&log_settings.scopes);
@@ -12,7 +13,7 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, RegisterSetting)]
 pub struct LogSettings {
     /// A map of log scopes to the desired log level.
     /// Useful for filtering out noisy logs or enabling more verbose logging.
