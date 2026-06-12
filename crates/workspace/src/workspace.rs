@@ -472,33 +472,7 @@ fn register_actions(
         })
         .register_action({
             move |_, _: &actions::workspace::NewWindow, _, cx| {
-                cx.activate(true);
-                let shared_state = shared_state.clone();
-                let workspace_db = WorkspaceDb::global(cx);
-
-                cx.spawn(async move |_, cx| {
-                    let workspace_id = match workspace_db.next_id().await {
-                        Ok(workspace_id) => workspace_id,
-                        Err(error) => {
-                            log::error!("Failed to allocate workspace id: {error}");
-                            return;
-                        }
-                    };
-
-                    if let Err(error) = cx.update(|cx| {
-                        let window_options = default_window_options(cx);
-                        cx.open_window(window_options, move |window, cx| {
-                            window.activate_window();
-
-                            cx.new(|cx| {
-                                Root::new(Workspace::create(workspace_id, shared_state, window, cx))
-                            })
-                        })
-                    }) {
-                        log::error!("Failed to open workspace window: {error}");
-                    }
-                })
-                .detach();
+                open_new(shared_state.clone(), cx).detach_and_log_err(cx);
             }
         })
         .register_action(|_, _: &actions::zaku::Minimize, window, _| {
@@ -570,6 +544,26 @@ fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptio
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
         ..WindowOptions::default()
     }
+}
+
+pub fn open_new(shared_state: Arc<SharedState>, cx: &mut App) -> Task<anyhow::Result<()>> {
+    let workspace_db = WorkspaceDb::global(cx);
+
+    cx.spawn(async move |cx| {
+        let workspace_id = workspace_db.next_id().await?;
+        let window_options = cx.update(|cx| {
+            cx.activate(true);
+            default_window_options(cx)
+        });
+
+        cx.open_window(window_options, move |window, cx| {
+            window.activate_window();
+
+            cx.new(|cx| Root::new(Workspace::create(workspace_id, shared_state, window, cx)))
+        })?;
+
+        anyhow::Ok(())
+    })
 }
 
 pub async fn last_session_workspace_locations(
@@ -4000,25 +3994,26 @@ mod tests {
             gpui::point(gpui::px(100.0), gpui::px(100.0)),
             gpui::size(gpui::px(860.0), gpui::px(540.0)),
         );
-        let root = cx
-            .update(|cx| {
-                cx.open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(active_bounds)),
-                        ..WindowOptions::default()
-                    },
+        cx.update(|cx| {
+            cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(active_bounds)),
+                    ..WindowOptions::default()
+                },
+                {
+                    let shared_state = shared_state.clone();
                     move |window, cx| {
                         window.activate_window();
                         cx.new(|cx| {
                             Root::new(Workspace::create(workspace_id, shared_state, window, cx))
                         })
-                    },
-                )
-            })
-            .unwrap();
+                    }
+                },
+            )
+        })
+        .unwrap();
 
-        cx.dispatch_action(root.into(), actions::workspace::NewWindow);
-        cx.run_until_parked();
+        cx.update(|cx| open_new(shared_state, cx)).await.unwrap();
 
         let new_window = cx.update(|cx| cx.active_window().unwrap().downcast::<Root>().unwrap());
         let cascade_offset = gpui::point(gpui::px(25.0), gpui::px(25.0));
