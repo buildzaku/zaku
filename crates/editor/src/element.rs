@@ -237,6 +237,7 @@ impl EditorElement {
         register_action(editor, window, Editor::redo);
         register_action(editor, window, Editor::undo_selection);
         register_action(editor, window, Editor::redo_selection);
+        register_action(editor, window, Editor::toggle_line_numbers);
         register_action(editor, window, Editor::move_to_beginning_of_line);
         register_action(editor, window, Editor::move_to_end_of_line);
         register_action(editor, window, Editor::select_to_beginning_of_line);

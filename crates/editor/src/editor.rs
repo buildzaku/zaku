@@ -36,7 +36,7 @@ use text::{Bias, OffsetUtf16, Selection, SelectionGoal, TransactionId};
 use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use language::{Buffer, BufferEvent, Capability};
 use multi_buffer::{Anchor, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint};
-use settings::Settings;
+use settings::{Settings, SettingsStore};
 use theme::{ActiveTheme, ThemeSettings};
 use util::ResultExt;
 
@@ -204,11 +204,7 @@ impl EditorSnapshot {
                 0.0.into()
             };
 
-            let left_padding = if show_line_numbers {
-                ch_width
-            } else {
-                gpui::px(0.0)
-            };
+            let left_padding = ch_width * 3.0;
             let right_padding = if show_line_numbers {
                 ch_width
             } else {
@@ -495,6 +491,7 @@ impl Editor {
         let mut subscriptions = vec![
             cx.on_focus(&focus_handle, window, Self::on_focus),
             cx.on_blur(&focus_handle, window, Self::on_blur),
+            cx.observe_global_in::<SettingsStore>(window, |_, _, cx| cx.notify()),
         ];
         if let Some(singleton_buffer) = buffer.read(cx).as_singleton() {
             subscriptions.push(window.subscribe(

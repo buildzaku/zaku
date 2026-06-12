@@ -129,6 +129,7 @@
       "ctrl-alt-shift-right": "editor::SelectToNextSubwordEnd",
       "ctrl-alt-shift-b": "editor::SelectToPreviousSubwordStart",
       "ctrl-alt-shift-f": "editor::SelectToNextSubwordEnd",
+      "cmd-;": "editor::ToggleLineNumbers",
       "cmd-backspace": "editor::DeleteToBeginningOfLine",
       "cmd-delete": "editor::DeleteToEndOfLine",
       "cmd-left": ["editor::MoveToBeginningOfLine", { "stop_at_soft_wraps": true, "stop_at_indent": true }],
