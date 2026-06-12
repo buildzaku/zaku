@@ -25,7 +25,7 @@ use theme::ActiveTheme;
 use util::ResultExt;
 
 use crate::{
-    ActiveLineHighlight, Editor, EditorMode, EditorSettings, EditorSnapshot, EditorStyle,
+    CurrentLineHighlight, Editor, EditorMode, EditorSettings, EditorSnapshot, EditorStyle,
     GutterDimensions, MAX_LINE_LEN, ScrollbarDrag, SizingBehavior,
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, TabPoint},
     scroll::ScrollOffset,
@@ -1139,7 +1139,6 @@ impl Element for EditorElement {
                 selection_range,
                 marked_range,
                 cursor_offset,
-                active_line_highlight,
             ) = {
                 let editor = self.editor.read(cx);
                 (
@@ -1153,7 +1152,6 @@ impl Element for EditorElement {
                     editor.selected_range(cx),
                     editor.marked_range(cx),
                     editor.cursor_offset(cx),
-                    editor.active_line_highlight.unwrap_or_default(),
                 )
             };
             let placeholder_color = if muted {
@@ -1168,6 +1166,7 @@ impl Element for EditorElement {
                 editor.gutter_dimensions = gutter_dimensions;
                 (snapshot, gutter_dimensions)
             });
+            let current_line_highlight = snapshot.current_line_highlight;
             let display_snapshot = snapshot.display_snapshot.clone();
             let height_in_lines = f64::from(bounds.size.height / line_height);
             let max_row = f64::from(display_snapshot.buffer_snapshot().max_point().row);
@@ -1256,12 +1255,10 @@ impl Element for EditorElement {
                 } => {
                     show_active_line_background
                         && (selection_range.is_empty() || has_ime_marked_range)
-                        && matches!(active_line_highlight, ActiveLineHighlight::Line)
+                        && !matches!(current_line_highlight, CurrentLineHighlight::None)
                 }
                 _ => false,
             };
-            let text_area_width = text_bounds.size.width;
-
             let has_content = !display_snapshot.buffer_snapshot().is_empty();
 
             let clamped_scroll_position_y = scroll_position.y.clamp(0.0, scroll_max.y);
@@ -1417,15 +1414,26 @@ impl Element for EditorElement {
 
                 if show_active_line_background
                     && active_line_background.is_none()
-                    && cursor_row == line.row.0
+                    && cursor_display_row == line.row
                 {
-                    active_line_background = Some(gpui::fill(
-                        Bounds::new(
-                            gpui::point(text_bounds.left(), line.origin.y),
-                            gpui::size(text_area_width, line_height),
-                        ),
-                        cx.theme().colors().editor_active_line_background,
-                    ));
+                    let highlight_range = match current_line_highlight {
+                        CurrentLineHighlight::Gutter => Some(bounds.left()..gutter_bounds.right()),
+                        CurrentLineHighlight::Line => Some(text_bounds.left()..text_bounds.right()),
+                        CurrentLineHighlight::All => Some(bounds.left()..bounds.right()),
+                        CurrentLineHighlight::None => None,
+                    };
+                    if let Some(highlight_range) = highlight_range {
+                        active_line_background = Some(gpui::fill(
+                            Bounds::new(
+                                gpui::point(highlight_range.start, line.origin.y),
+                                gpui::size(
+                                    highlight_range.end - highlight_range.start,
+                                    line_height,
+                                ),
+                            ),
+                            cx.theme().colors().editor_active_line_background,
+                        ));
+                    }
                 }
 
                 if cursor.is_none() && cursor_row == line.row.0 {
@@ -1592,6 +1600,9 @@ impl Element for EditorElement {
                 layout.gutter_hitbox.bounds,
                 cx.theme().colors().editor_gutter_background,
             ));
+            if let Some(active_line_background) = layout.active_line_background.take() {
+                window.paint_quad(active_line_background);
+            }
             window.with_content_mask(
                 Some(ContentMask {
                     bounds: layout.gutter_hitbox.bounds,
@@ -1606,10 +1617,6 @@ impl Element for EditorElement {
                     bounds: text_bounds,
                 }),
                 |window| {
-                    if let Some(active_line_background) = layout.active_line_background.take() {
-                        window.paint_quad(active_line_background);
-                    }
-
                     Self::paint_highlights(layout, text_bounds, window, cx);
 
                     for line in &layout.position_map.line_layouts {

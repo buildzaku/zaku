@@ -13,7 +13,17 @@ pub struct EditorSettingsContent {
     pub font_features: Option<FontFeaturesContent>,
     pub font_weight: Option<FontWeightContent>,
     pub line_height: Option<BufferLineHeight>,
+    pub current_line_highlight: Option<CurrentLineHighlight>,
     pub gutter: Option<GutterContent>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, MergeFrom)]
+#[serde(rename_all = "snake_case")]
+pub enum CurrentLineHighlight {
+    None,
+    Gutter,
+    Line,
+    All,
 }
 
 #[with_fallible_options]

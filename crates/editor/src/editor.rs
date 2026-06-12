@@ -8,7 +8,7 @@ mod persistence;
 mod scroll;
 mod selections_collection;
 
-pub use editor_settings::{EditorSettings, Gutter};
+pub use editor_settings::{CurrentLineHighlight, EditorSettings, Gutter};
 pub use element::EditorElement;
 pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
 
@@ -129,14 +129,6 @@ impl EditorMode {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActiveLineHighlight {
-    None,
-    #[default]
-    Line,
-}
-
 #[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
 pub enum SizingBehavior {
     #[default]
@@ -165,6 +157,7 @@ pub struct EditorSnapshot {
     scroll_position: Point<ScrollOffset>,
     show_gutter: bool,
     show_line_numbers: Option<bool>,
+    current_line_highlight: CurrentLineHighlight,
     pub display_snapshot: DisplaySnapshot,
 }
 
@@ -420,7 +413,7 @@ pub struct Editor {
     selection_mark_mode: bool,
     masked: bool,
     muted: bool,
-    active_line_highlight: Option<ActiveLineHighlight>,
+    current_line_highlight: Option<CurrentLineHighlight>,
     selection_goal: SelectionGoal,
     _subscriptions: Vec<Subscription>,
 }
@@ -546,7 +539,7 @@ impl Editor {
             selection_mark_mode: false,
             masked: false,
             muted: false,
-            active_line_highlight: None,
+            current_line_highlight: None,
             selection_goal: SelectionGoal::None,
             _subscriptions: subscriptions,
         };
@@ -583,6 +576,9 @@ impl Editor {
             scroll_position: self.scroll_position(&display_snapshot),
             show_gutter: self.show_gutter,
             show_line_numbers: self.show_line_numbers,
+            current_line_highlight: self
+                .current_line_highlight
+                .unwrap_or_else(|| EditorSettings::get_global(cx).current_line_highlight),
             display_snapshot,
         }
     }
@@ -1326,11 +1322,11 @@ impl Editor {
         self.read_only = read_only;
     }
 
-    pub fn set_active_line_highlight(
+    pub fn set_current_line_highlight(
         &mut self,
-        active_line_highlight: Option<ActiveLineHighlight>,
+        current_line_highlight: Option<CurrentLineHighlight>,
     ) {
-        self.active_line_highlight = active_line_highlight;
+        self.current_line_highlight = current_line_highlight;
     }
 
     pub fn move_selection_to_end(&mut self, cx: &mut Context<Self>) {

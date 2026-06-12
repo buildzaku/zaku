@@ -15,7 +15,7 @@ pub mod private {
     pub use inventory;
 }
 
-pub use editor::GutterContent;
+pub use editor::{CurrentLineHighlight, GutterContent};
 pub use fallible_options::ParseStatus;
 pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
 pub use paths::{

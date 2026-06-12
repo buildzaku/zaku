@@ -12,7 +12,7 @@ use std::{
 use settings_macros::{MergeFrom, with_fallible_options};
 
 use crate::{
-    editor::{EditorSettingsContent, GutterContent},
+    editor::{CurrentLineHighlight, EditorSettingsContent, GutterContent},
     fallible_options::{ParseStatus, parse_json},
     merge_from::MergeFrom,
 };
@@ -236,6 +236,12 @@ impl SettingsContent {
             .as_ref()
             .and_then(|editor| editor.line_height)
             .unwrap_or_default()
+    }
+
+    pub fn current_line_highlight(&self) -> Option<CurrentLineHighlight> {
+        self.editor
+            .as_ref()
+            .and_then(|editor| editor.current_line_highlight)
     }
 
     pub fn gutter(&self) -> GutterContent {

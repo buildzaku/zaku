@@ -14,6 +14,7 @@
     "font_features": { "calt": false },
     "font_weight": 400,
     "line_height": "comfortable",
+    "current_line_highlight": "all",
     "gutter": {
       "line_numbers": true,
       "min_line_number_digits": 4
