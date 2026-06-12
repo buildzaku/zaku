@@ -12,12 +12,21 @@ use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
+use ::settings::{SettingsStore, ThemeAppearanceMode};
+
 pub use settings::*;
 
 pub(crate) const DEFAULT_LIGHT_THEME: &str = "Zaku Light";
 pub(crate) const DEFAULT_DARK_THEME: &str = "Zaku Dark";
 pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = gpui::px(10.0);
 pub const CLIENT_SIDE_DECORATION_SHADOW: Pixels = gpui::px(10.0);
+
+fn default_theme(appearance: Appearance) -> &'static str {
+    match appearance {
+        Appearance::Light => DEFAULT_LIGHT_THEME,
+        Appearance::Dark => DEFAULT_DARK_THEME,
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
 pub enum Appearance {
@@ -94,6 +103,9 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
 
     let theme = GlobalTheme::configured_theme(cx);
     cx.set_global(GlobalTheme { theme });
+
+    cx.observe_global::<SettingsStore>(GlobalTheme::reload_theme_if_changed)
+        .detach();
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -918,22 +930,29 @@ impl Global for GlobalTheme {}
 impl GlobalTheme {
     fn configured_theme(cx: &mut App) -> Arc<Theme> {
         let registry = ThemeRegistry::global(cx);
-        let system_appearance = SystemAppearance::global(cx).0;
-        let theme_name = match system_appearance {
-            Appearance::Light => DEFAULT_LIGHT_THEME,
-            Appearance::Dark => DEFAULT_DARK_THEME,
+        let theme_mode = cx
+            .try_global::<SettingsStore>()
+            .map(|settings| settings.content().theme_mode())
+            .unwrap_or_default();
+        let appearance = match theme_mode {
+            ThemeAppearanceMode::System => SystemAppearance::global(cx).0,
+            ThemeAppearanceMode::Light => Appearance::Light,
+            ThemeAppearanceMode::Dark => Appearance::Dark,
         };
-
+        let theme_name = default_theme(appearance);
         registry
             .get(theme_name)
             .or_else(|| registry.get(DEFAULT_DARK_THEME))
             .unwrap_or_else(|| Arc::new(fallback::fallback_dark_theme()))
     }
 
-    pub fn reload_theme(cx: &mut App) {
+    pub fn reload_theme_if_changed(cx: &mut App) {
         let theme = Self::configured_theme(cx);
-        cx.update_global::<Self, _>(|this, _| this.theme = theme);
-        cx.refresh_windows();
+        let theme_changed = Self::theme(cx).name.as_ref() != theme.name.as_ref();
+        if theme_changed {
+            cx.update_global::<Self, _>(|this, _| this.theme = theme);
+            cx.refresh_windows();
+        }
     }
 
     pub fn theme(cx: &App) -> &Arc<Theme> {

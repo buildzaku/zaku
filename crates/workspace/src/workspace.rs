@@ -2045,7 +2045,7 @@ impl Workspace {
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
                 *SystemAppearance::global_mut(cx) = SystemAppearance(window_appearance.into());
-                GlobalTheme::reload_theme(cx);
+                GlobalTheme::reload_theme_if_changed(cx);
             });
 
         let workspace = cx.entity();
