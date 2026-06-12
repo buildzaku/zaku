@@ -33,6 +33,15 @@ pub enum UiDensity {
     Comfortable,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, MergeFrom, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeAppearanceMode {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Deserialize, MergeFrom)]
 #[serde(transparent)]
 pub struct FontWeightContent(pub f32);
@@ -150,6 +159,12 @@ where
 
 #[with_fallible_options]
 #[derive(Clone, Default, Deserialize, MergeFrom)]
+pub struct ThemeSettingsContent {
+    mode: Option<ThemeAppearanceMode>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Default, Deserialize, MergeFrom)]
 pub struct UiSettingsContent {
     density: Option<UiDensity>,
     font_size: Option<Pixels>,
@@ -162,12 +177,20 @@ pub struct UiSettingsContent {
 #[with_fallible_options]
 #[derive(Clone, Default, Deserialize, MergeFrom)]
 pub struct SettingsContent {
+    theme: Option<ThemeSettingsContent>,
     ui: Option<UiSettingsContent>,
     editor: Option<EditorSettingsContent>,
     pub(crate) log: Option<HashMap<String, String>>,
 }
 
 impl SettingsContent {
+    pub fn theme_mode(&self) -> ThemeAppearanceMode {
+        self.theme
+            .as_ref()
+            .and_then(|theme| theme.mode)
+            .unwrap_or_default()
+    }
+
     pub fn ui_density(&self) -> UiDensity {
         self.ui
             .as_ref()
