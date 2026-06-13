@@ -1,3 +1,4 @@
+mod into_gpui;
 mod keymap_file;
 pub mod log_settings;
 mod paths;
@@ -21,6 +22,7 @@ pub mod private {
 }
 
 pub use ::settings_content::*;
+pub use into_gpui::IntoGpui;
 pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
 pub use paths::{
     config_dir, data_dir, keymap_file, log_file, logs_dir, old_log_file, settings_file,
