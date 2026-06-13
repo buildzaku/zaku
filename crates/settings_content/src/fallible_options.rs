@@ -1,14 +1,10 @@
 use serde::Deserialize;
 use std::cell::RefCell;
 
+use crate::ParseStatus;
+
 thread_local! {
     static ERRORS: RefCell<Option<Vec<anyhow::Error>>> = const { RefCell::new(None) };
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseStatus {
-    Success,
-    Failed { error: String },
 }
 
 pub fn parse_json<'de, T>(json: &'de str) -> (Option<T>, ParseStatus)
@@ -95,9 +91,9 @@ mod tests {
     fn test_fallible() {
         let input = indoc! {r#"
             {
-                "foo": "bar",
-                "bar": "foo",
-                "baz": 3
+              "foo": "bar",
+              "bar": "foo",
+              "baz": 3
             }
         "#};
 
@@ -117,7 +113,7 @@ mod tests {
         );
         assert_eq!(
             error,
-            "invalid type: string \"foo\", expected usize at line 3 column 16\ninvalid type: integer `3`, expected a boolean at line 4 column 12".to_string()
+            "invalid type: string \"foo\", expected usize at line 3 column 14\ninvalid type: integer `3`, expected a boolean at line 4 column 10".to_string()
         );
     }
 }

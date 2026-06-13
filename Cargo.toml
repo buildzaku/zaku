@@ -22,6 +22,7 @@ members = [
   "crates/response_panel",
   "crates/session",
   "crates/settings",
+  "crates/settings_content",
   "crates/settings_macros",
   "crates/sql",
   "crates/sql_macros",
@@ -159,6 +160,7 @@ reqwest_client = { path = "crates/reqwest_client" }
 response_panel = { path = "crates/response_panel" }
 session = { path = "crates/session" }
 settings = { path = "crates/settings" }
+settings_content = { path = "crates/settings_content" }
 settings_macros = { path = "crates/settings_macros" }
 sql = { path = "crates/sql" }
 sql_macros = { path = "crates/sql_macros" }

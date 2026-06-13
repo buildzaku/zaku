@@ -3,11 +3,14 @@ use std::sync::Arc;
 
 use settings::RegisterSetting;
 
+const MIN_FONT_SIZE: Pixels = gpui::px(10.0);
+const MAX_FONT_SIZE: Pixels = gpui::px(64.0);
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
 pub enum UiDensity {
-    Compact,
     #[default]
     Default,
+    Compact,
     Comfortable,
 }
 
@@ -85,16 +88,26 @@ impl ThemeSettings {
     }
 
     pub fn ui_font_size(&self, _cx: &App) -> Pixels {
-        self.ui_font_size
+        clamp_font_size(self.ui_font_size)
     }
 
     pub fn buffer_font_size(&self, _cx: &App) -> Pixels {
-        self.buffer_font_size
+        clamp_font_size(self.buffer_font_size)
     }
 
     pub fn line_height(&self) -> f32 {
         const MIN_LINE_HEIGHT: f32 = 1.;
         f32::max(self.buffer_line_height.value(), MIN_LINE_HEIGHT)
+    }
+}
+
+pub fn clamp_font_size(size: Pixels) -> Pixels {
+    if size < MIN_FONT_SIZE {
+        MIN_FONT_SIZE
+    } else if size > MAX_FONT_SIZE {
+        MAX_FONT_SIZE
+    } else {
+        size
     }
 }
 
@@ -130,7 +143,7 @@ fn font_weight_from_settings(weight: Option<settings::FontWeightContent>) -> Fon
 
 impl settings::Settings for ThemeSettings {
     fn from_settings(content: &settings::SettingsContent) -> Self {
-        let ui_font_size = content.ui_font_size();
+        let ui_font_size = clamp_font_size(content.ui_font_size());
         Self {
             ui_density: content.ui_density().into(),
             ui_font_size,
@@ -145,7 +158,7 @@ impl settings::Settings for ThemeSettings {
                 weight: font_weight_from_settings(content.ui_font_weight()),
                 style: FontStyle::default(),
             },
-            buffer_font_size: content.buffer_font_size(),
+            buffer_font_size: clamp_font_size(content.buffer_font_size()),
             buffer_font: Font {
                 family: content
                     .buffer_font_family()

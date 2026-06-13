@@ -1,9 +1,7 @@
 use gpui::App;
 use std::collections::HashMap;
 
-use crate::{
-    self as settings, RegisterSetting, Settings, SettingsStore, settings_store::SettingsContent,
-};
+use crate::{self as settings, RegisterSetting, Settings, SettingsContent, SettingsStore};
 
 pub fn init(cx: &mut App) {
     cx.observe_global::<SettingsStore>(|cx| {
