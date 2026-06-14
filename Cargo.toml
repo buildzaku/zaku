@@ -10,6 +10,7 @@ members = [
   "crates/icons",
   "crates/input",
   "crates/language",
+  "crates/language_core",
   "crates/logger",
   "crates/metadata",
   "crates/multi_buffer",
@@ -104,6 +105,7 @@ pretty_assertions = { version = "1.4", features = ["unstable"] }
 proc-macro2 = { version = "1.0" }
 quote = { version = "1.0" }
 rand = { version = "0.10" }
+regex = { version = "1.12" }
 reqwest = { version = "0.13", default-features = false, features = [
   "charset",
   "http2",
@@ -153,6 +155,7 @@ http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
 input = { path = "crates/input" }
 language = { path = "crates/language" }
+language_core = { path = "crates/language_core" }
 logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }

@@ -3538,6 +3538,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "language_core"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "regex",
+ "schemars",
+ "serde",
+ "toml 1.1.2+spec-1.1.0",
+ "util 0.0.0",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

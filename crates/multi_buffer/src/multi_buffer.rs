@@ -106,8 +106,8 @@ impl MultiBufferOffset {
 }
 
 impl fmt::Display for MultiBufferOffset {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.0)
     }
 }
 
