@@ -1,13 +1,19 @@
-mod editor;
-mod fallible_options;
+mod into_gpui;
 mod keymap_file;
 pub mod log_settings;
-pub mod merge_from;
 mod paths;
 mod settings_file;
 mod settings_store;
 
 pub use settings_macros::RegisterSetting;
+
+pub mod settings_content {
+    pub use ::settings_content::*;
+}
+
+pub mod fallible_options {
+    pub use ::settings_content::{FallibleOption, parse_json};
+}
 
 #[doc(hidden)]
 pub mod private {
@@ -15,17 +21,14 @@ pub mod private {
     pub use inventory;
 }
 
-pub use editor::{CurrentLineHighlight, GutterContent};
-pub use fallible_options::ParseStatus;
+pub use ::settings_content::*;
+pub use into_gpui::IntoGpui;
 pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
 pub use paths::{
     config_dir, data_dir, keymap_file, log_file, logs_dir, old_log_file, settings_file,
 };
 pub use settings_file::watch_config_file;
-pub use settings_store::{
-    BufferLineHeight, FontFeaturesContent, FontWeightContent, Settings, SettingsContent,
-    SettingsStore, ThemeAppearanceMode, UiDensity,
-};
+pub use settings_store::{Settings, SettingsStore};
 
 use gpui::App;
 use rust_embed::RustEmbed;

@@ -6118,9 +6118,24 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "settings_content",
  "settings_macros",
  "util 0.0.0",
  "util_macros 0.0.0",
+]
+
+[[package]]
+name = "settings_content"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "indexmap",
+ "indoc",
+ "log",
+ "serde",
+ "serde_json",
+ "settings_macros",
 ]
 
 [[package]]
@@ -6615,6 +6630,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "syntax_theme"
+version = "0.0.0"
+dependencies = [
+ "gpui",
 ]
 
 [[package]]
