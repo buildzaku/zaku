@@ -2482,7 +2482,7 @@ dependencies = [
  "proptest",
  "rand 0.9.4",
  "raw-window-handle",
- "refineable",
+ "refineable 0.1.0",
  "regex",
  "resvg",
  "scheduler",
@@ -5392,10 +5392,26 @@ dependencies = [
 
 [[package]]
 name = "refineable"
+version = "0.0.0"
+dependencies = [
+ "refineable_derive",
+]
+
+[[package]]
+name = "refineable"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=138139f830#138139f830e6a3a0271c8aac60ed494b752dbc46"
 dependencies = [
  "derive_refineable",
+]
+
+[[package]]
+name = "refineable_derive"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

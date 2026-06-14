@@ -16,6 +16,8 @@ members = [
   "crates/platform_title_bar",
   "crates/project",
   "crates/project_panel",
+  "crates/refineable",
+  "crates/refineable_derive",
   "crates/request_buffer",
   "crates/request_editor",
   "crates/reqwest_client",
@@ -98,6 +100,7 @@ num-traits = { version = "0.2" }
 palette = { version = "0.7", default-features = false, features = ["std"] }
 parking_lot = { version = "0.12" }
 pretty_assertions = { version = "1.4", features = ["unstable"] }
+proc-macro2 = { version = "1.0" }
 quote = { version = "1.0" }
 rand = { version = "0.10" }
 reqwest = { version = "0.13", default-features = false, features = [
@@ -155,6 +158,8 @@ multi_buffer = { path = "crates/multi_buffer" }
 platform_title_bar = { path = "crates/platform_title_bar" }
 project = { path = "crates/project" }
 project_panel = { path = "crates/project_panel" }
+refineable = { path = "crates/refineable" }
+refineable_derive = { path = "crates/refineable_derive" }
 request_buffer = { path = "crates/request_buffer" }
 request_editor = { path = "crates/request_editor" }
 reqwest_client = { path = "crates/reqwest_client" }
