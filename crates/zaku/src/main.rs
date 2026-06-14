@@ -70,7 +70,7 @@ fn main() {
         );
         zaku::handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
         zaku::handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
-        theme::init(LoadThemes::All(Box::new(Assets)), cx);
+        theme_settings::init(LoadThemes::All(Box::new(Assets)), cx);
         register_embedded_fonts(cx);
         let session = cx.foreground_executor().block_on(session);
         let app_session = cx.new(|cx| AppSession::new(session, cx));

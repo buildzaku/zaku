@@ -1,5 +1,5 @@
 [package]
-name = "theme"
+name = "theme_settings"
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -9,17 +9,16 @@ publish.workspace = true
 workspace = true
 
 [lib]
-name = "theme"
-path = "src/theme.rs"
+name = "theme_settings"
+path = "src/theme_settings.rs"
 
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
-palette = { workspace = true }
-parking_lot = { workspace = true }
+log = { workspace = true }
 refineable = { workspace = true }
-schemars = { workspace = true }
-settings = { workspace = true }
 serde = { workspace = true }
-syntax_theme = { workspace = true }
+serde_json = { workspace = true }
+settings = { workspace = true }
+theme = { workspace = true }
 uuid = { workspace = true }

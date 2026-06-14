@@ -6797,12 +6797,28 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "gpui",
- "log",
  "palette",
  "parking_lot",
+ "refineable 0.0.0",
+ "schemars",
+ "serde",
+ "settings",
+ "syntax_theme",
+ "uuid",
+]
+
+[[package]]
+name = "theme_settings"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "log",
+ "refineable 0.0.0",
  "serde",
  "serde_json",
  "settings",
+ "theme",
  "uuid",
 ]
 
@@ -8742,6 +8758,7 @@ dependencies = [
  "smallvec",
  "smol",
  "theme",
+ "theme_settings",
  "ui",
  "util 0.0.0",
  "util_macros 0.0.0",
@@ -8978,6 +8995,7 @@ dependencies = [
  "session",
  "settings",
  "theme",
+ "theme_settings",
  "title_bar",
  "ui",
  "uuid",

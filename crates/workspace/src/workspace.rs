@@ -56,7 +56,7 @@ use http_client::HttpClient;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
-use theme::{ActiveTheme, GlobalTheme, SystemAppearance};
+use theme::{ActiveTheme, SystemAppearance};
 #[cfg(target_os = "macos")]
 use ui::utils;
 use ui::{StyledTypography, h_flex};
@@ -2039,7 +2039,7 @@ impl Workspace {
             cx.observe_window_appearance(window, |_, window, cx| {
                 let window_appearance = window.appearance();
                 *SystemAppearance::global_mut(cx) = SystemAppearance(window_appearance.into());
-                GlobalTheme::reload_theme_if_changed(cx);
+                theme_settings::reload_theme(cx);
             });
 
         let workspace = cx.entity();

@@ -30,6 +30,7 @@ members = [
   "crates/sql_macros",
   "crates/syntax_theme",
   "crates/theme",
+  "crates/theme_settings",
   "crates/title_bar",
   "crates/ui",
   "crates/ui_macros",
@@ -172,6 +173,7 @@ sql = { path = "crates/sql" }
 sql_macros = { path = "crates/sql_macros" }
 syntax_theme = { path = "crates/syntax_theme" }
 theme = { path = "crates/theme" }
+theme_settings = { path = "crates/theme_settings" }
 title_bar = { path = "crates/title_bar" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }

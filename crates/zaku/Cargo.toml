@@ -57,6 +57,7 @@ response_panel = { workspace = true }
 session = { workspace = true }
 settings = { workspace = true }
 theme = { workspace = true }
+theme_settings = { workspace = true }
 title_bar = { workspace = true }
 ui = { workspace = true }
 uuid = { workspace = true }
