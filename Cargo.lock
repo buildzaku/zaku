@@ -6633,6 +6633,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "syntax_theme"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+]
+
+[[package]]
 name = "sys-locale"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
