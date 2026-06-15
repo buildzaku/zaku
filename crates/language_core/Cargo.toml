@@ -15,8 +15,11 @@ path = "src/language_core.rs"
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
 regex = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
+tree-sitter = { workspace = true }
 util = { workspace = true }
