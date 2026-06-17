@@ -3546,8 +3546,13 @@ dependencies = [
  "futures",
  "gpui",
  "imara-diff",
+ "language_core",
+ "log",
+ "parking_lot",
  "settings",
  "text",
+ "theme",
+ "tree-sitter",
  "util 0.0.0",
 ]
 

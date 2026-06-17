@@ -22,6 +22,11 @@ fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
 imara-diff = { workspace = true }
+language_core = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
 settings = { workspace = true }
 text = { workspace = true }
+theme = { workspace = true }
+tree-sitter = { workspace = true }
 util = { workspace = true }
