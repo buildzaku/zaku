@@ -1,5 +1,6 @@
 mod buffer;
 mod language_registry;
+mod syntax_map;
 mod text_diff;
 
 pub use buffer::*;
@@ -15,6 +16,9 @@ pub use language_core::{
 pub use language_registry::{
     AvailableLanguage, LanguageNotFound, LanguageRegistry, LoadedLanguage,
 };
+pub use syntax_map::{
+    OwnedSyntaxLayer, ParseTimeout, SyntaxLayer, SyntaxMap, SyntaxSnapshot, ToTreeSitterPoint,
+};
 pub use text::{
     Anchor, Bias, Buffer as TextBuffer, BufferId, BufferSnapshot as TextBufferSnapshot, Edit,
     HistoryEntry, LineEnding, OffsetUtf16, Point, PointUtf16, ReplicaId, Rope, Selection,
@@ -22,9 +26,16 @@ pub use text::{
     Transaction, TransactionId, Unclipped,
 };
 
-use std::sync::{Arc, LazyLock};
+use parking_lot::Mutex;
+use std::{
+    fmt,
+    sync::{Arc, LazyLock},
+};
+use tree_sitter::Parser;
 
 use theme::SyntaxTheme;
+
+static PARSERS: Mutex<Vec<Parser>> = Mutex::new(Vec::new());
 
 pub static PLAIN_TEXT: LazyLock<Arc<Language>> = LazyLock::new(|| {
     Arc::new(Language::new(
@@ -207,6 +218,25 @@ impl Language {
     }
 }
 
+impl PartialEq for Language {
+    fn eq(&self, other: &Self) -> bool {
+        self.id.eq(&other.id)
+    }
+}
+
+impl Eq for Language {}
+
+impl fmt::Debug for Language {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Language")
+            .field("id", &self.id)
+            .field("name", &self.config.name)
+            .field("grammar", &self.grammar.is_some())
+            .finish()
+    }
+}
+
 #[inline]
 pub fn build_highlight_map(capture_names: &[&str], theme: &SyntaxTheme) -> HighlightMap {
     HighlightMap::from_ids(
@@ -214,4 +244,18 @@ pub fn build_highlight_map(capture_names: &[&str], theme: &SyntaxTheme) -> Highl
             .iter()
             .map(|capture_name| theme.highlight_id(capture_name).map(HighlightId::new)),
     )
+}
+
+pub fn with_parser<F, R>(func: F) -> R
+where
+    F: FnOnce(&mut Parser) -> R,
+{
+    let mut parser = PARSERS.lock().pop().unwrap_or_default();
+    parser.reset();
+    parser
+        .set_included_ranges(&[])
+        .expect("included ranges should reset");
+    let result = func(&mut parser);
+    PARSERS.lock().push(parser);
+    result
 }

@@ -3550,6 +3550,7 @@ dependencies = [
  "log",
  "parking_lot",
  "settings",
+ "sum_tree",
  "text",
  "theme",
  "tree-sitter",

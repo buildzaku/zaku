@@ -1,5 +1,6 @@
 use futures::channel::oneshot;
 use gpui::{App, AppContext, Context, EventEmitter, Task};
+use parking_lot::Mutex;
 use std::{
     any::Any,
     cell::Cell,
@@ -7,15 +8,18 @@ use std::{
     ops::{Deref, Range},
     path::PathBuf,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
-use text::{Buffer as TextBuffer, LineEnding, ReplicaId, ToOffset, Transaction, TransactionId};
+use text::{
+    Buffer as TextBuffer, BufferSnapshot as TextBufferSnapshot, LineEnding, ReplicaId, ToOffset,
+    Transaction, TransactionId,
+};
 
 use fs::MTime;
 use settings::WorktreeId;
 use util::{path::PathStyle, rel_path::RelPath};
 
-use crate::text_diff::text_diff;
+use crate::{Language, PLAIN_TEXT, SyntaxMap, SyntaxSnapshot, text_diff::text_diff};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Capability {
@@ -37,6 +41,8 @@ pub enum BufferEvent {
     Saved,
     FileHandleChanged,
     CapabilityChanged,
+    Reparsed,
+    LanguageChanged(bool),
     Reloaded,
     ReloadNeeded,
 }
@@ -90,6 +96,8 @@ pub struct Diff {
 
 pub struct Buffer {
     text: TextBuffer,
+    syntax_map: Mutex<SyntaxMap>,
+    language: Option<Arc<Language>>,
     file: Option<Arc<dyn File>>,
     saved_mtime: Option<MTime>,
     saved_version: clock::Global,
@@ -99,6 +107,8 @@ pub struct Buffer {
     has_conflict: bool,
     has_unsaved_edits: Cell<(clock::Global, bool)>,
     reload_task: Option<Task<anyhow::Result<()>>>,
+    reparse: Option<Task<()>>,
+    sync_parse_timeout: Option<Duration>,
 }
 
 impl EventEmitter<BufferEvent> for Buffer {}
@@ -118,9 +128,13 @@ impl Buffer {
 
     pub fn build(buffer: TextBuffer, file: Option<Arc<dyn File>>, capability: Capability) -> Self {
         let saved_mtime = file.as_ref().and_then(|file| file.disk_state().mtime());
+        let snapshot = buffer.snapshot();
         let saved_version = buffer.version();
+        let syntax_map = Mutex::new(SyntaxMap::new(snapshot));
         Self {
             text: buffer,
+            syntax_map,
+            language: None,
             file,
             saved_mtime,
             saved_version: saved_version.clone(),
@@ -130,7 +144,27 @@ impl Buffer {
             has_conflict: false,
             has_unsaved_edits: Cell::new((saved_version, false)),
             reload_task: None,
+            reparse: None,
+            sync_parse_timeout: if cfg!(any(test, feature = "test-support")) {
+                Some(Duration::from_millis(10))
+            } else {
+                Some(Duration::from_millis(1))
+            },
         }
+    }
+
+    pub fn with_language_async(mut self, language: Arc<Language>, cx: &mut Context<Self>) -> Self {
+        self.set_language_async(Some(language), cx);
+        self
+    }
+
+    pub fn with_language(mut self, language: Arc<Language>, cx: &mut Context<Self>) -> Self {
+        self.set_language(Some(language), cx);
+        self
+    }
+
+    pub fn language(&self) -> Option<&Arc<Language>> {
+        self.language.as_ref()
     }
 
     pub fn capability(&self) -> Capability {
@@ -150,6 +184,53 @@ impl Buffer {
 
     pub fn file(&self) -> Option<&Arc<dyn File>> {
         self.file.as_ref()
+    }
+
+    pub fn as_text_snapshot(&self) -> &TextBufferSnapshot {
+        self.text.snapshot()
+    }
+
+    pub fn text_snapshot(&self) -> TextBufferSnapshot {
+        self.text.snapshot().clone()
+    }
+
+    pub fn syntax_snapshot(&self) -> SyntaxSnapshot {
+        self.syntax_map.lock().snapshot()
+    }
+
+    pub fn set_language_async(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
+        self.set_language_inner(language, cfg!(any(test, feature = "test-support")), cx);
+    }
+
+    pub fn set_language(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
+        self.set_language_inner(language, true, cx);
+    }
+
+    fn set_language_inner(
+        &mut self,
+        language: Option<Arc<Language>>,
+        may_block: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if language == self.language {
+            return;
+        }
+
+        self.syntax_map.lock().clear(self.text.snapshot());
+        let old_language = mem::replace(&mut self.language, language);
+        self.reparse(cx, may_block);
+        let has_fresh_language =
+            self.language.is_some() && old_language.is_none_or(|old| old.id() == PLAIN_TEXT.id());
+        cx.emit(BufferEvent::LanguageChanged(has_fresh_language));
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn is_parsing(&self) -> bool {
+        self.reparse.is_some()
+    }
+
+    pub fn set_sync_parse_timeout(&mut self, timeout: Option<Duration>) {
+        self.sync_parse_timeout = timeout;
     }
 
     pub fn saved_version(&self) -> &clock::Global {
@@ -490,11 +571,74 @@ impl Buffer {
             return;
         }
 
+        self.reparse(cx, true);
         cx.emit(BufferEvent::Edited);
         let is_dirty = self.is_dirty();
         if was_dirty != is_dirty {
             cx.emit(BufferEvent::DirtyChanged);
         }
+        cx.notify();
+    }
+
+    pub fn reparse(&mut self, cx: &mut Context<Self>, may_block: bool) {
+        if self.reparse.is_some() {
+            return;
+        }
+        let Some(language) = self.language.clone() else {
+            return;
+        };
+
+        let text = self.text_snapshot();
+        let parsed_version = self.version();
+        let mut syntax_snapshot = {
+            let mut syntax_map = self.syntax_map.lock();
+            syntax_map.interpolate(&text);
+            syntax_map.snapshot()
+        };
+
+        if may_block
+            && let Some(sync_parse_timeout) = self.sync_parse_timeout
+            && syntax_snapshot
+                .reparse_with_timeout(&text, language.clone(), sync_parse_timeout)
+                .is_ok()
+        {
+            self.did_finish_parsing(syntax_snapshot, cx);
+            self.reparse = None;
+            return;
+        }
+
+        let parse_task = cx.background_spawn({
+            let language = language.clone();
+            async move {
+                syntax_snapshot.reparse(&text, language);
+                syntax_snapshot
+            }
+        });
+
+        self.reparse = Some(cx.spawn(async move |this, cx| {
+            let new_syntax_map = parse_task.await;
+            if let Err(error) = this.update(cx, move |this, cx| {
+                let grammar_changed = || {
+                    this.language
+                        .as_ref()
+                        .is_none_or(|current_language| !Arc::ptr_eq(&language, current_language))
+                };
+                let parse_again =
+                    this.version().changed_since(&parsed_version) || grammar_changed();
+                this.did_finish_parsing(new_syntax_map, cx);
+                this.reparse = None;
+                if parse_again {
+                    this.reparse(cx, false);
+                }
+            }) {
+                log::debug!("Failed to finish parsing buffer: {error}");
+            }
+        }));
+    }
+
+    fn did_finish_parsing(&mut self, syntax_snapshot: SyntaxSnapshot, cx: &mut Context<Self>) {
+        self.syntax_map.lock().did_parse(syntax_snapshot);
+        cx.emit(BufferEvent::Reparsed);
         cx.notify();
     }
 }
