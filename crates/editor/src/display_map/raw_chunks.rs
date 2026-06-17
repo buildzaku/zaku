@@ -1,12 +1,13 @@
 use std::{cmp, ops::Range};
 
-use multi_buffer::{MultiBufferChunk, MultiBufferChunks, MultiBufferOffset, MultiBufferSnapshot};
+use language::LanguageAwareStyling;
+use multi_buffer::{MultiBufferChunks, MultiBufferOffset, MultiBufferSnapshot};
 
 use super::tab_map::Chunk;
 
 pub struct RawChunks<'a> {
     buffer_chunks: MultiBufferChunks<'a>,
-    buffer_chunk: Option<MultiBufferChunk<'a>>,
+    buffer_chunk: Option<language::Chunk<'a>>,
     offset: MultiBufferOffset,
     max_offset: MultiBufferOffset,
 }
@@ -18,7 +19,13 @@ impl<'a> RawChunks<'a> {
     ) -> Self {
         let range = normalize_range(multibuffer_snapshot, range);
         Self {
-            buffer_chunks: multibuffer_snapshot.chunks(range.start..range.end),
+            buffer_chunks: multibuffer_snapshot.chunks(
+                range.start..range.end,
+                LanguageAwareStyling {
+                    tree_sitter: false,
+                    diagnostics: false,
+                },
+            ),
             buffer_chunk: None,
             offset: range.start,
             max_offset: range.end,
@@ -61,13 +68,21 @@ impl<'a> Iterator for RawChunks<'a> {
             }
 
             let (text, suffix) = chunk.text.split_at(split_index);
+            let shift = u32::try_from(split_index).expect("split index should fit in u32");
+            let mask = 1u128.unbounded_shl(shift).wrapping_sub(1);
+            let chars = chunk.chars & mask;
+            let tabs = chunk.tabs & mask;
+            let newlines = chunk.newlines & mask;
             chunk.text = suffix;
-            if chunk.text.is_empty() {
+            chunk.chars = chunk.chars.unbounded_shr(shift);
+            chunk.tabs = chunk.tabs.unbounded_shr(shift);
+            chunk.newlines = chunk.newlines.unbounded_shr(shift);
+            let chunk_is_empty = chunk.text.is_empty();
+            self.offset += split_index;
+            if chunk_is_empty {
                 self.buffer_chunk = None;
             }
-            self.offset += split_index;
 
-            let (chars, tabs, newlines) = compute_bitmaps(text);
             return Some(Chunk {
                 text,
                 is_tab: false,
@@ -99,33 +114,4 @@ fn floor_char_boundary(text: &str, mut index: usize) -> usize {
     }
 
     text.chars().next().map_or(0, char::len_utf8)
-}
-
-fn compute_bitmaps(text: &str) -> (u128, u128, u128) {
-    let mut chars = 0u128;
-    let mut tabs = 0u128;
-    let mut newlines = 0u128;
-
-    for (index, character) in text.char_indices() {
-        if let Ok(index) = u32::try_from(index)
-            && let Some(mask) = bit(index)
-        {
-            chars |= mask;
-            if character == '\t' {
-                tabs |= mask;
-            } else if character == '\n' {
-                newlines |= mask;
-            }
-        }
-    }
-
-    (chars, tabs, newlines)
-}
-
-fn bit(shift: u32) -> Option<u128> {
-    if shift >= u128::BITS {
-        None
-    } else {
-        Some(1u128 << shift)
-    }
 }

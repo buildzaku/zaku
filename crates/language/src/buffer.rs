@@ -10,16 +10,16 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use text::{
-    Buffer as TextBuffer, BufferSnapshot as TextBufferSnapshot, LineEnding, ReplicaId, ToOffset,
-    Transaction, TransactionId,
-};
+use text::{LineEnding, ReplicaId, ToOffset, Transaction, TransactionId};
 
 use fs::MTime;
 use settings::WorktreeId;
 use util::{path::PathStyle, rel_path::RelPath};
 
-use crate::{Language, PLAIN_TEXT, SyntaxMap, SyntaxSnapshot, text_diff::text_diff};
+use crate::{
+    HighlightId, HighlightMap, Language, PLAIN_TEXT, Rope, SyntaxMap, SyntaxMapCapture,
+    SyntaxMapCaptures, SyntaxSnapshot, text_diff::text_diff,
+};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Capability {
@@ -45,6 +45,219 @@ pub enum BufferEvent {
     LanguageChanged(bool),
     Reloaded,
     ReloadNeeded,
+}
+
+pub struct BufferSnapshot {
+    pub text: text::BufferSnapshot,
+    pub(crate) syntax: SyntaxSnapshot,
+    language: Option<Arc<Language>>,
+    file: Option<Arc<dyn File>>,
+    non_text_state_update_count: usize,
+    pub capability: Capability,
+}
+
+impl Clone for BufferSnapshot {
+    fn clone(&self) -> Self {
+        Self {
+            text: self.text.clone(),
+            syntax: self.syntax.clone(),
+            language: self.language.clone(),
+            file: self.file.clone(),
+            non_text_state_update_count: self.non_text_state_update_count,
+            capability: self.capability,
+        }
+    }
+}
+
+impl Deref for BufferSnapshot {
+    type Target = text::BufferSnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text
+    }
+}
+
+impl BufferSnapshot {
+    pub fn language(&self) -> Option<&Arc<Language>> {
+        self.language.as_ref()
+    }
+
+    pub fn file(&self) -> Option<&Arc<dyn File>> {
+        self.file.as_ref()
+    }
+
+    pub fn non_text_state_update_count(&self) -> usize {
+        self.non_text_state_update_count
+    }
+
+    fn get_highlights(&self, range: Range<usize>) -> (SyntaxMapCaptures<'_>, Vec<HighlightMap>) {
+        let captures = self.syntax.captures(range, &self.text, |grammar| {
+            grammar
+                .highlights_config
+                .as_ref()
+                .map(|config| &config.query)
+        });
+        let highlight_maps = captures
+            .grammars()
+            .iter()
+            .map(|grammar| grammar.highlight_map())
+            .collect();
+        (captures, highlight_maps)
+    }
+
+    pub fn chunks<T: ToOffset>(
+        &self,
+        range: Range<T>,
+        language_aware: LanguageAwareStyling,
+    ) -> BufferChunks<'_> {
+        let range = range.start.to_offset(self)..range.end.to_offset(self);
+        let mut syntax = None;
+        if language_aware.tree_sitter {
+            syntax = Some(self.get_highlights(range.clone()));
+        }
+        BufferChunks::new(self.text.as_rope(), range, syntax)
+    }
+}
+
+struct BufferChunkHighlights<'a> {
+    captures: SyntaxMapCaptures<'a>,
+    next_capture: Option<SyntaxMapCapture<'a>>,
+    stack: Vec<(usize, HighlightId)>,
+    highlight_maps: Vec<HighlightMap>,
+}
+
+pub struct BufferChunks<'a> {
+    range: Range<usize>,
+    chunks: text::Chunks<'a>,
+    highlights: Option<BufferChunkHighlights<'a>>,
+}
+
+impl<'a> BufferChunks<'a> {
+    pub fn new(
+        text: &'a Rope,
+        range: Range<usize>,
+        syntax: Option<(SyntaxMapCaptures<'a>, Vec<HighlightMap>)>,
+    ) -> Self {
+        let highlights = syntax.map(|(captures, highlight_maps)| BufferChunkHighlights {
+            captures,
+            next_capture: None,
+            stack: Vec::new(),
+            highlight_maps,
+        });
+        let chunks = text.chunks_in_range(range.clone());
+        Self {
+            range,
+            chunks,
+            highlights,
+        }
+    }
+}
+
+impl<'a> Iterator for BufferChunks<'a> {
+    type Item = Chunk<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.range.start >= self.range.end {
+            return None;
+        }
+
+        let mut next_capture_start = usize::MAX;
+        if let Some(highlights) = self.highlights.as_mut() {
+            while let Some((parent_capture_end, _)) = highlights.stack.last() {
+                if *parent_capture_end <= self.range.start {
+                    highlights.stack.pop();
+                } else {
+                    break;
+                }
+            }
+
+            if highlights.next_capture.is_none() {
+                highlights.next_capture = highlights.captures.next();
+            }
+
+            while let Some(capture) = highlights.next_capture.as_ref() {
+                if self.range.start < capture.node.start_byte() {
+                    next_capture_start = capture.node.start_byte();
+                    break;
+                }
+
+                let capture_end = capture.node.end_byte();
+                if capture_end > self.range.start
+                    && let Some(highlight_id) =
+                        highlights.highlight_maps[capture.grammar_index].get(capture.index)
+                {
+                    highlights.stack.push((capture_end, highlight_id));
+                }
+                highlights.next_capture = highlights.captures.next();
+            }
+        }
+
+        if let Some(text::ChunkBitmaps {
+            text: chunk,
+            chars: chars_map,
+            tabs,
+            newlines,
+        }) = self.chunks.peek_with_bitmaps()
+        {
+            let chunk_start = self.range.start;
+            let mut chunk_end = self
+                .chunks
+                .offset()
+                .saturating_add(chunk.len())
+                .min(self.range.end)
+                .min(next_capture_start);
+            let mut highlight_id = None;
+            if let Some(highlights) = self.highlights.as_ref()
+                && let Some((parent_capture_end, parent_highlight_id)) = highlights.stack.last()
+            {
+                chunk_end = chunk_end.min(*parent_capture_end);
+                highlight_id = Some(*parent_highlight_id);
+            }
+
+            let bit_start = chunk_start - self.chunks.offset();
+            let split_index = chunk_end - self.chunks.offset();
+            let bit_end = split_index;
+            let slice = &chunk[bit_start..bit_end];
+
+            let shift = u32::try_from(bit_start).expect("chunk bit start should fit in u32");
+            let mask_len =
+                u32::try_from(bit_end - bit_start).expect("chunk bit length should fit in u32");
+            let mask = 1u128.unbounded_shl(mask_len).wrapping_sub(1);
+            let tabs = (tabs >> shift) & mask;
+            let chars = (chars_map >> shift) & mask;
+            let newlines = (newlines >> shift) & mask;
+
+            self.range.start = self.chunks.offset() + split_index;
+            if self.range.start == self.chunks.offset() + chunk.len() {
+                self.chunks.next().unwrap();
+            }
+
+            Some(Chunk {
+                text: slice,
+                syntax_highlight_id: highlight_id,
+                chars,
+                tabs,
+                newlines,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Chunk<'a> {
+    pub text: &'a str,
+    pub syntax_highlight_id: Option<HighlightId>,
+    pub chars: u128,
+    pub tabs: u128,
+    pub newlines: u128,
+}
+
+#[derive(Clone, Copy)]
+pub struct LanguageAwareStyling {
+    pub tree_sitter: bool,
+    pub diagnostics: bool,
 }
 
 pub trait File: Send + Sync + Any {
@@ -95,10 +308,11 @@ pub struct Diff {
 }
 
 pub struct Buffer {
-    text: TextBuffer,
+    text: text::Buffer,
     syntax_map: Mutex<SyntaxMap>,
     language: Option<Arc<Language>>,
     file: Option<Arc<dyn File>>,
+    non_text_state_update_count: usize,
     saved_mtime: Option<MTime>,
     saved_version: clock::Global,
     transaction_depth: usize,
@@ -116,7 +330,7 @@ impl EventEmitter<BufferEvent> for Buffer {}
 impl Buffer {
     pub fn local<T: Into<String>>(base_text: T, cx: &Context<Self>) -> Self {
         Self::build(
-            TextBuffer::new(
+            text::Buffer::new(
                 ReplicaId::LOCAL,
                 cx.entity_id().as_non_zero_u64().into(),
                 base_text.into(),
@@ -126,7 +340,11 @@ impl Buffer {
         )
     }
 
-    pub fn build(buffer: TextBuffer, file: Option<Arc<dyn File>>, capability: Capability) -> Self {
+    pub fn build(
+        buffer: text::Buffer,
+        file: Option<Arc<dyn File>>,
+        capability: Capability,
+    ) -> Self {
         let saved_mtime = file.as_ref().and_then(|file| file.disk_state().mtime());
         let snapshot = buffer.snapshot();
         let saved_version = buffer.version();
@@ -136,6 +354,7 @@ impl Buffer {
             syntax_map,
             language: None,
             file,
+            non_text_state_update_count: 0,
             saved_mtime,
             saved_version: saved_version.clone(),
             transaction_depth: 0,
@@ -178,6 +397,7 @@ impl Buffer {
     pub fn set_capability(&mut self, capability: Capability, cx: &mut Context<Self>) {
         if self.capability != capability {
             self.capability = capability;
+            self.non_text_state_update_count += 1;
             cx.emit(BufferEvent::CapabilityChanged);
         }
     }
@@ -186,11 +406,29 @@ impl Buffer {
         self.file.as_ref()
     }
 
-    pub fn as_text_snapshot(&self) -> &TextBufferSnapshot {
+    pub fn snapshot(&self) -> BufferSnapshot {
+        let text = self.text.snapshot();
+        let syntax = {
+            let mut syntax_map = self.syntax_map.lock();
+            syntax_map.interpolate(text);
+            syntax_map.snapshot()
+        };
+
+        BufferSnapshot {
+            text: text.clone(),
+            syntax,
+            language: self.language.clone(),
+            file: self.file.clone(),
+            non_text_state_update_count: self.non_text_state_update_count,
+            capability: self.capability,
+        }
+    }
+
+    pub fn as_text_snapshot(&self) -> &text::BufferSnapshot {
         self.text.snapshot()
     }
 
-    pub fn text_snapshot(&self) -> TextBufferSnapshot {
+    pub fn text_snapshot(&self) -> text::BufferSnapshot {
         self.text.snapshot().clone()
     }
 
@@ -218,6 +456,7 @@ impl Buffer {
 
         self.syntax_map.lock().clear(self.text.snapshot());
         let old_language = mem::replace(&mut self.language, language);
+        self.non_text_state_update_count += 1;
         self.reparse(cx, may_block);
         let has_fresh_language =
             self.language.is_some() && old_language.is_none_or(|old| old.id() == PLAIN_TEXT.id());
@@ -346,6 +585,7 @@ impl Buffer {
 
         self.file = Some(new_file);
         if file_changed {
+            self.non_text_state_update_count += 1;
             if was_dirty != self.is_dirty() {
                 cx.emit(BufferEvent::DirtyChanged);
             }
@@ -538,7 +778,7 @@ impl Buffer {
     }
 
     pub fn apply_diff(&mut self, diff: Diff, cx: &mut Context<Self>) -> Option<TransactionId> {
-        let snapshot = self.snapshot().clone();
+        let snapshot = self.snapshot();
         let mut edits_since = snapshot.edits_since::<usize>(&diff.base_version).peekable();
         let mut delta = 0isize;
         let adjusted_edits = diff.edits.into_iter().filter_map(|(range, new_text)| {
@@ -638,13 +878,14 @@ impl Buffer {
 
     fn did_finish_parsing(&mut self, syntax_snapshot: SyntaxSnapshot, cx: &mut Context<Self>) {
         self.syntax_map.lock().did_parse(syntax_snapshot);
+        self.non_text_state_update_count += 1;
         cx.emit(BufferEvent::Reparsed);
         cx.notify();
     }
 }
 
 impl Deref for Buffer {
-    type Target = TextBuffer;
+    type Target = text::Buffer;
 
     fn deref(&self) -> &Self::Target {
         &self.text
