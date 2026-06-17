@@ -259,3 +259,70 @@ where
     PARSERS.lock().push(parser);
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::ops::ControlFlow;
+    use tree_sitter::{Language, ParseOptions};
+
+    #[test]
+    fn test_with_parser_resets_after_cancellation() {
+        let json_lang: Language = tree_sitter_json::LANGUAGE.into();
+
+        PARSERS.lock().clear();
+
+        let repeated_entries = r#"{"a":1},"#.repeat(5_000);
+        let large_input = format!(r#"[{repeated_entries}{{"a":1}}]"#);
+        let small_input = "{}";
+
+        let cancelled = with_parser(|parser| {
+            parser.set_language(&json_lang).unwrap();
+            let bytes = large_input.as_bytes();
+            let mut break_immediately = |_: &_| ControlFlow::Break(());
+            parser.parse_with_options(
+                &mut |offset, _| {
+                    if offset < bytes.len() {
+                        &bytes[offset..]
+                    } else {
+                        &[]
+                    }
+                },
+                None,
+                Some(ParseOptions {
+                    progress_callback: Some(&mut break_immediately),
+                }),
+            )
+        });
+        assert!(
+            cancelled.is_none(),
+            "first parse should be cancelled by the progress callback"
+        );
+
+        let tree = with_parser(|parser| {
+            let bytes = small_input.as_bytes();
+            parser
+                .parse_with_options(
+                    &mut |offset, _| {
+                        if offset < bytes.len() {
+                            &bytes[offset..]
+                        } else {
+                            &[]
+                        }
+                    },
+                    None,
+                    None,
+                )
+                .expect("parse of small_input should succeed")
+        });
+
+        assert_eq!(tree.root_node().byte_range(), 0..small_input.len());
+        assert_eq!(tree.root_node().kind(), "document");
+        let tree_sexp = tree.root_node().to_sexp();
+        assert!(
+            !tree.root_node().has_error(),
+            "tree should be error-free, got: {tree_sexp}"
+        );
+    }
+}

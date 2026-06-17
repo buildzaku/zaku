@@ -3554,6 +3554,8 @@ dependencies = [
  "text",
  "theme",
  "tree-sitter",
+ "tree-sitter-html",
+ "tree-sitter-json",
  "util 0.0.0",
 ]
 

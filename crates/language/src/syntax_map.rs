@@ -400,6 +400,11 @@ impl SyntaxMap {
         self.snapshot.interpolate(text);
     }
 
+    #[cfg(test)]
+    pub fn reparse(&mut self, root_language: Arc<Language>, text: &TextBufferSnapshot) {
+        self.snapshot.reparse(text, root_language);
+    }
+
     pub fn did_parse(&mut self, snapshot: SyntaxSnapshot) {
         self.snapshot = snapshot;
     }
@@ -468,4 +473,95 @@ fn parse_text(
             None => panic!("tree-sitter parse should succeed"),
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use text::{Buffer, ReplicaId};
+
+    use crate::LanguageConfig;
+
+    fn json_lang() -> Arc<Language> {
+        Arc::new(Language::new(
+            LanguageConfig {
+                name: "JSON".into(),
+                ..Default::default()
+            },
+            Some(tree_sitter_json::LANGUAGE.into()),
+        ))
+    }
+
+    fn range_for_text(buffer: &Buffer, text: &str) -> Range<usize> {
+        let start = buffer.as_rope().to_string().find(text).unwrap();
+        start..start + text.len()
+    }
+
+    #[track_caller]
+    fn assert_layers_for_range(
+        syntax_map: &SyntaxMap,
+        buffer: &TextBufferSnapshot,
+        range: Range<Point>,
+        expected_layers: &[&str],
+    ) {
+        let layers = syntax_map
+            .layers_for_range(range, buffer)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            layers.len(),
+            expected_layers.len(),
+            "wrong number of layers"
+        );
+        for (index, (layer, expected_sexp)) in layers.iter().zip(expected_layers.iter()).enumerate()
+        {
+            let actual_sexp = layer.node().to_sexp();
+            assert_eq!(
+                actual_sexp, *expected_sexp,
+                "layer {index} had the wrong syntax tree"
+            );
+        }
+    }
+
+    #[test]
+    fn test_syntax_map_layers_for_range() {
+        let language = json_lang();
+        let mut buffer = Buffer::new(
+            ReplicaId::LOCAL,
+            BufferId::new(1).unwrap(),
+            r#"{"items":[]}"#,
+        );
+        let mut syntax_map = SyntaxMap::new(buffer.snapshot());
+        syntax_map.reparse(language.clone(), buffer.snapshot());
+
+        assert_layers_for_range(
+            &syntax_map,
+            buffer.snapshot(),
+            Point::new(0, 0)..Point::new(0, 0),
+            &["(document (object (pair key: (string (string_content)) value: (array))))"],
+        );
+
+        let array_range = range_for_text(&buffer, "[]");
+        buffer.edit([(array_range, "{}")]);
+        syntax_map.interpolate(buffer.snapshot());
+        syntax_map.reparse(language.clone(), buffer.snapshot());
+
+        assert_layers_for_range(
+            &syntax_map,
+            buffer.snapshot(),
+            Point::new(0, 9)..Point::new(0, 11),
+            &["(document (object (pair key: (string (string_content)) value: (object))))"],
+        );
+
+        assert!(buffer.undo().is_some());
+        syntax_map.interpolate(buffer.snapshot());
+        syntax_map.reparse(language, buffer.snapshot());
+
+        assert_layers_for_range(
+            &syntax_map,
+            buffer.snapshot(),
+            Point::new(0, 9)..Point::new(0, 11),
+            &["(document (object (pair key: (string (string_content)) value: (array))))"],
+        );
+    }
 }

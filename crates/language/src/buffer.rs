@@ -650,3 +650,129 @@ impl Deref for Buffer {
         &self.text
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::{AppContext, Entity, TestAppContext};
+
+    use crate::LanguageConfig;
+
+    fn get_tree_sexp(buffer: &Entity<Buffer>, cx: &mut TestAppContext) -> String {
+        buffer.update(cx, |buffer, _| {
+            let snapshot = buffer.syntax_snapshot();
+            let layers = snapshot.layers(buffer.as_text_snapshot());
+            layers[0].node().to_sexp()
+        })
+    }
+
+    fn json_lang() -> Arc<Language> {
+        Arc::new(Language::new(
+            LanguageConfig {
+                name: "JSON".into(),
+                ..Default::default()
+            },
+            Some(tree_sitter_json::LANGUAGE.into()),
+        ))
+    }
+
+    fn html_lang() -> Arc<Language> {
+        Arc::new(Language::new(
+            LanguageConfig {
+                name: "HTML".into(),
+                ..Default::default()
+            },
+            Some(tree_sitter_html::LANGUAGE.into()),
+        ))
+    }
+
+    #[gpui::test]
+    fn test_reparse(cx: &mut TestAppContext) {
+        let buffer = cx.new(|cx| Buffer::local("{}", cx).with_language(json_lang(), cx));
+
+        cx.executor().run_until_parked();
+        assert!(!buffer.update(cx, |buffer, _| buffer.is_parsing()));
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
+
+        buffer.update(cx, |buffer, _| buffer.set_sync_parse_timeout(None));
+
+        buffer.update(cx, |buffer, cx| {
+            buffer.start_transaction();
+
+            buffer.edit([(0..1, "[")], cx);
+            assert!(!buffer.is_parsing());
+
+            let offset = buffer.text().find('}').unwrap();
+            buffer.edit([(offset..offset + 1, "]")], cx);
+            assert!(!buffer.is_parsing());
+
+            buffer.end_transaction(cx);
+            assert_eq!(buffer.text(), "[]");
+            assert!(buffer.is_parsing());
+        });
+        cx.executor().run_until_parked();
+        assert!(!buffer.update(cx, |buffer, _| buffer.is_parsing()));
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (array))");
+
+        buffer.update(cx, |buffer, cx| {
+            let offset = buffer.text().find(']').unwrap();
+            buffer.edit([(offset..offset, "{}")], cx);
+            assert_eq!(buffer.text(), "[{}]");
+            assert!(buffer.is_parsing());
+        });
+        buffer.update(cx, |buffer, cx| {
+            let offset = buffer.text().find(']').unwrap();
+            buffer.edit([(offset..offset, ",{}")], cx);
+            assert_eq!(buffer.text(), "[{},{}]");
+            assert!(buffer.is_parsing());
+        });
+        cx.executor().run_until_parked();
+        assert_eq!(
+            get_tree_sexp(&buffer, cx),
+            "(document (array (object) (object)))"
+        );
+
+        buffer.update(cx, |buffer, cx| {
+            assert!(buffer.undo(cx).is_some());
+            assert!(buffer.undo(cx).is_some());
+            assert!(buffer.undo(cx).is_some());
+            assert_eq!(buffer.text(), "{}");
+            assert!(buffer.is_parsing());
+        });
+
+        cx.executor().run_until_parked();
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
+
+        buffer.update(cx, |buffer, cx| {
+            assert!(buffer.redo(cx).is_some());
+            assert!(buffer.redo(cx).is_some());
+            assert!(buffer.redo(cx).is_some());
+            assert_eq!(buffer.text(), "[{},{}]");
+            assert!(buffer.is_parsing());
+        });
+        cx.executor().run_until_parked();
+        assert_eq!(
+            get_tree_sexp(&buffer, cx),
+            "(document (array (object) (object)))"
+        );
+    }
+
+    #[gpui::test]
+    fn test_resetting_language(cx: &mut TestAppContext) {
+        let buffer = cx.new(|cx| {
+            let mut buffer = Buffer::local("{}", cx).with_language(html_lang(), cx);
+            buffer.set_sync_parse_timeout(None);
+            buffer
+        });
+
+        cx.executor().run_until_parked();
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (text))");
+
+        buffer.update(cx, |buffer, cx| {
+            buffer.set_language(Some(json_lang()), cx);
+        });
+        cx.executor().run_until_parked();
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
+    }
+}

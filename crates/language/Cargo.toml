@@ -31,3 +31,7 @@ text = { workspace = true }
 theme = { workspace = true }
 tree-sitter = { workspace = true }
 util = { workspace = true }
+
+[dev-dependencies]
+tree-sitter-html = { workspace = true }
+tree-sitter-json = { workspace = true }
