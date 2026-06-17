@@ -53,6 +53,7 @@ use fs::TempFs;
 
 use db::{Bind, Column, Row, Statement, StaticColumnCount, kv::KeyValueStore};
 use http_client::HttpClient;
+use language::LanguageRegistry;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
@@ -175,6 +176,7 @@ pub struct OpenResult {
 pub struct SharedState {
     pub fs: Arc<dyn fs::Fs>,
     pub http_client: Arc<dyn HttpClient>,
+    pub languages: Arc<LanguageRegistry>,
     pub session: Entity<AppSession>,
 }
 
@@ -187,10 +189,12 @@ impl SharedState {
         fs: Arc<dyn fs::Fs>,
         http_client: Arc<dyn HttpClient>,
         session: Entity<AppSession>,
+        languages: Arc<LanguageRegistry>,
     ) -> Self {
         Self {
             fs,
             http_client,
+            languages,
             session,
         }
     }
@@ -201,11 +205,13 @@ impl SharedState {
 
         let fs = TempFs::new(cx.background_executor().clone());
         let http_client = FakeHttpClient::with_404_response();
+        let languages = Arc::new(LanguageRegistry::new(cx.background_executor().clone()));
         let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
 
         Arc::new(Self {
             fs,
             http_client,
+            languages,
             session,
         })
     }

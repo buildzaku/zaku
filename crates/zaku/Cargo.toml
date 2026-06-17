@@ -45,6 +45,7 @@ gpui_platform = { workspace = true, features = ["font-kit"] }
 icons = { workspace = true }
 indoc = { workspace = true }
 language = { workspace = true }
+languages = { workspace = true }
 log = { workspace = true }
 logger = { workspace = true }
 metadata = { workspace = true }

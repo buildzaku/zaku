@@ -12,6 +12,7 @@ members = [
   "crates/input",
   "crates/language",
   "crates/language_core",
+  "crates/languages",
   "crates/logger",
   "crates/metadata",
   "crates/multi_buffer",
@@ -161,6 +162,7 @@ icons = { path = "crates/icons" }
 input = { path = "crates/input" }
 language = { path = "crates/language" }
 language_core = { path = "crates/language_core" }
+languages = { path = "crates/languages" }
 logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }

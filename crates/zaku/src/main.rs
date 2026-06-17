@@ -18,9 +18,10 @@ use uuid::Uuid;
 use assets::Assets;
 use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
+use language::LanguageRegistry;
 use reqwest_client::ReqwestClient;
 use session::{AppSession, Session};
-use theme::LoadThemes;
+use theme::{ActiveTheme, GlobalTheme, LoadThemes};
 use workspace::SharedState;
 
 #[cfg(feature = "mimalloc")]
@@ -75,7 +76,17 @@ fn main() {
         let session = cx.foreground_executor().block_on(session);
         let app_session = cx.new(|cx| AppSession::new(session, cx));
         let http_client = Arc::new(ReqwestClient::new());
-        let shared_state = Arc::new(SharedState::new(fs, http_client, app_session));
+        let languages = Arc::new(LanguageRegistry::new(cx.background_executor().clone()));
+        languages::init(languages.as_ref());
+        languages.set_theme(cx.theme().clone());
+        cx.observe_global::<GlobalTheme>({
+            let languages = languages.clone();
+            move |cx| {
+                languages.set_theme(cx.theme().clone());
+            }
+        })
+        .detach();
+        let shared_state = Arc::new(SharedState::new(fs, http_client, app_session, languages));
         workspace::init(shared_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);

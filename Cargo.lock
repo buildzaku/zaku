@@ -3573,6 +3573,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "languages"
+version = "0.0.0"
+dependencies = [
+ "grammars",
+ "language",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9063,6 +9071,7 @@ dependencies = [
  "icons",
  "indoc",
  "language",
+ "languages",
  "log",
  "logger",
  "metadata",

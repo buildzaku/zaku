@@ -10,7 +10,6 @@ use util::asset_str;
 #[exclude = "*.rs"]
 struct GrammarDir;
 
-#[cfg(feature = "load-grammars")]
 pub fn native_grammars() -> Vec<(&'static str, tree_sitter::Language)> {
     vec![
         ("html", tree_sitter_html::LANGUAGE.into()),
