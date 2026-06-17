@@ -17,7 +17,8 @@ pub use language_registry::{
     AvailableLanguage, LanguageNotFound, LanguageRegistry, LoadedLanguage,
 };
 pub use syntax_map::{
-    OwnedSyntaxLayer, ParseTimeout, SyntaxLayer, SyntaxMap, SyntaxSnapshot, ToTreeSitterPoint,
+    OwnedSyntaxLayer, ParseTimeout, SyntaxLayer, SyntaxMap, SyntaxMapCapture, SyntaxMapCaptures,
+    SyntaxSnapshot, ToTreeSitterPoint,
 };
 pub use text::{
     Anchor, Bias, Buffer as TextBuffer, BufferId, BufferSnapshot as TextBufferSnapshot, Edit,
@@ -31,10 +32,11 @@ use std::{
     fmt,
     sync::{Arc, LazyLock},
 };
-use tree_sitter::Parser;
+use tree_sitter::{Parser, QueryCursor};
 
 use theme::SyntaxTheme;
 
+static QUERY_CURSORS: Mutex<Vec<QueryCursor>> = Mutex::new(Vec::new());
 static PARSERS: Mutex<Vec<Parser>> = Mutex::new(Vec::new());
 
 pub static PLAIN_TEXT: LazyLock<Arc<Language>> = LazyLock::new(|| {
