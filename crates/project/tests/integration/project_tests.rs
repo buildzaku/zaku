@@ -1,7 +1,8 @@
 use gpui::TestAppContext;
 use indoc::indoc;
+use language::LanguageRegistry;
 use serde_json::{Value, json};
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use fs::Fs;
@@ -25,8 +26,16 @@ async fn test_newer_find_or_create_worktree_request_supersedes_previous_request(
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
 
+    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), temp_fs.path().join("project"), cx))
+        .update(|cx| {
+            Project::open(
+                temp_fs.clone(),
+                languages.clone(),
+                temp_fs.path().join("project"),
+                cx,
+            )
+        })
         .await
         .expect("project open should succeed");
 
@@ -69,8 +78,9 @@ async fn test_remove_worktree_invalidates_pending_find_or_create_worktree_reques
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
 
+    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), first_path, cx))
+        .update(|cx| Project::open(temp_fs.clone(), languages.clone(), first_path, cx))
         .await
         .expect("project open should succeed");
 
@@ -103,8 +113,9 @@ async fn test_open_project_creates_worktree(cx: &mut TestAppContext) {
     temp_fs.insert_tree(path!("project"), Value::default());
     let project_path = temp_fs.path().join("project");
 
+    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), project_path.clone(), cx))
+        .update(|cx| Project::open(temp_fs.clone(), languages.clone(), project_path.clone(), cx))
         .await
         .expect("project open should succeed");
 
@@ -138,8 +149,9 @@ async fn test_open_buffer_at_uses_hidden_worktree_for_external_file(cx: &mut Tes
     let project_path = temp_fs.path().join("project");
     let settings_path = temp_fs.path().join("settings.json");
 
+    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), project_path.clone(), cx))
+        .update(|cx| Project::open(temp_fs.clone(), languages.clone(), project_path.clone(), cx))
         .await
         .expect("project open should succeed");
 
@@ -185,8 +197,9 @@ async fn test_find_or_create_worktree_replaces_existing_worktree(cx: &mut TestAp
     let first_path = temp_fs.path().join("first");
     let second_path = temp_fs.path().join("second");
 
+    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), first_path.clone(), cx))
+        .update(|cx| Project::open(temp_fs.clone(), languages.clone(), first_path.clone(), cx))
         .await
         .expect("project open should succeed");
 
@@ -232,8 +245,16 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
     let canonical_project_path = temp_fs.path().join("project");
     let alternate_project_path = canonical_project_path.join("..").join("project");
 
+    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), canonical_project_path.clone(), cx))
+        .update(|cx| {
+            Project::open(
+                temp_fs.clone(),
+                languages.clone(),
+                canonical_project_path.clone(),
+                cx,
+            )
+        })
         .await
         .expect("project open should succeed");
 
@@ -274,8 +295,16 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_sy
         .await
         .unwrap();
 
+    let languages = Arc::new(LanguageRegistry::test(cx.executor()));
     let project = cx
-        .update(|cx| Project::open(temp_fs.clone(), alias_project_path.clone(), cx))
+        .update(|cx| {
+            Project::open(
+                temp_fs.clone(),
+                languages.clone(),
+                alias_project_path.clone(),
+                cx,
+            )
+        })
         .await
         .expect("project open should succeed");
 

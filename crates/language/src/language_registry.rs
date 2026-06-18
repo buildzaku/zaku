@@ -3,9 +3,10 @@ use futures::{
     Future,
     channel::{mpsc, oneshot},
 };
-use gpui::BackgroundExecutor;
+use gpui::{App, BackgroundExecutor};
 use parking_lot::RwLock;
 use std::{
+    cell::LazyCell,
     collections::{HashMap, hash_map},
     fmt,
     path::Path,
@@ -15,8 +16,8 @@ use std::{
 use theme::Theme;
 
 use crate::{
-    Language, LanguageConfig, LanguageId, LanguageMatcher, LanguageName, LanguageQueries,
-    PLAIN_TEXT,
+    Bias, File, Language, LanguageConfig, LanguageId, LanguageMatcher, LanguageName,
+    LanguageQueries, PLAIN_TEXT, Point, Rope,
 };
 
 pub struct LanguageRegistry {
@@ -93,6 +94,11 @@ impl LanguageRegistry {
         };
         registry.add(PLAIN_TEXT.clone());
         registry
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn test(executor: BackgroundExecutor) -> Self {
+        Self::new(executor)
     }
 
     pub fn reload(&self) {
@@ -241,13 +247,37 @@ impl LanguageRegistry {
             .cloned()
     }
 
+    pub fn language_for_file(
+        self: &Arc<Self>,
+        file: &Arc<dyn File>,
+        content: Option<&Rope>,
+        cx: &App,
+    ) -> Option<AvailableLanguage> {
+        self.language_for_file_internal(&file.full_path(cx), content)
+    }
+
     pub fn language_for_file_path(self: &Arc<Self>, path: &Path) -> Option<AvailableLanguage> {
+        self.language_for_file_internal(path, None)
+    }
+
+    fn language_for_file_internal(
+        self: &Arc<Self>,
+        path: &Path,
+        content: Option<&Rope>,
+    ) -> Option<AvailableLanguage> {
         let filename = path.file_name().and_then(|filename| filename.to_str());
         let extension = filename.and_then(|filename| filename.split('.').next_back());
         let path_suffixes = [extension, filename, path.to_str()]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
+        let content = LazyCell::new(|| {
+            content.map(|content| {
+                let end = content.clip_point(Point::new(0, 256), Bias::Left);
+                let end = content.point_to_offset(end);
+                content.chunks_in_range(0..end).collect::<String>()
+            })
+        });
 
         self.find_matching_language(move |_, matcher, current_best_match| {
             let path_match_length = matcher.path_suffixes.iter().fold(0, |length, path_suffix| {
@@ -261,14 +291,23 @@ impl LanguageRegistry {
                 matched_suffix_length.map_or(length, |suffix_length| length.max(suffix_length))
             });
             let path_match_length = (path_match_length > 0).then_some(path_match_length);
+            let content_matches = || {
+                matcher.first_line_pattern.as_ref().is_some_and(|pattern| {
+                    content
+                        .as_ref()
+                        .is_some_and(|content| pattern.is_match(content))
+                })
+            };
 
             match current_best_match {
                 LanguageMatchPrecedence::PathOrContent(current_length) => path_match_length
                     .filter(|length| *length >= current_length)
                     .map(LanguageMatchPrecedence::PathOrContent),
-                LanguageMatchPrecedence::Undetermined => {
-                    path_match_length.map(LanguageMatchPrecedence::PathOrContent)
-                }
+                LanguageMatchPrecedence::Undetermined => path_match_length
+                    .map(LanguageMatchPrecedence::PathOrContent)
+                    .or_else(|| {
+                        content_matches().then_some(LanguageMatchPrecedence::PathOrContent(1))
+                    }),
             }
         })
     }

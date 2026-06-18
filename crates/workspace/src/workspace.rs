@@ -1065,7 +1065,8 @@ impl Workspace {
     {
         let project = cx.new({
             let fs = shared_state.fs.clone();
-            move |cx| Project::new(fs.clone(), cx)
+            let languages = shared_state.languages.clone();
+            move |cx| Project::new(fs.clone(), languages.clone(), cx)
         });
 
         cx.new(|cx| {
@@ -1202,7 +1203,14 @@ impl Workspace {
 
         cx.spawn(async move |cx| {
             let project = cx
-                .update(|cx| Project::open(shared_state.fs.clone(), path.clone(), cx))
+                .update(|cx| {
+                    Project::open(
+                        shared_state.fs.clone(),
+                        shared_state.languages.clone(),
+                        path.clone(),
+                        cx,
+                    )
+                })
                 .await?;
             let serialized_workspace = workspace_db.workspace_for_path(path.as_path());
             let workspace_id = if let Some(serialized_workspace) = serialized_workspace.as_ref() {
@@ -2596,7 +2604,7 @@ mod tests {
 
         let shared_state = cx.update(SharedState::test);
         let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2696,7 +2704,8 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
-        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let project =
+            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
         });
@@ -2785,7 +2794,8 @@ mod tests {
         let shared_state = cx.update(SharedState::test);
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
-        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let project =
+            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
@@ -2857,7 +2867,8 @@ mod tests {
         let shared_state = cx.update(SharedState::test);
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
-        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let project =
+            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         workspace.update_in(cx, |workspace, window, cx| {
@@ -2880,7 +2891,8 @@ mod tests {
         let shared_state = cx.update(SharedState::test);
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
-        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let project =
+            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
@@ -2942,7 +2954,8 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
-        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let project =
+            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
@@ -3021,7 +3034,8 @@ mod tests {
         let temp_fs = shared_state.fs.as_temp();
         init_test(shared_state.clone(), cx);
 
-        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let project =
+            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         let workspace_id = workspace.update(cx, |workspace, _| {
@@ -3079,9 +3093,10 @@ mod tests {
     fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
         let shared_state = cx.update(SharedState::test);
         let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        init_test(shared_state.clone(), cx);
 
-        let project = cx.new(|cx| Project::new(temp_fs.clone(), cx));
+        let project =
+            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         let item = cx.new(TestItem::new);

@@ -141,6 +141,10 @@ impl BufferStore {
         self.opened_buffers.get(&buffer_id)?.upgrade()
     }
 
+    pub fn buffers(&self) -> impl '_ + Iterator<Item = Entity<Buffer>> {
+        self.opened_buffers.values().filter_map(WeakEntity::upgrade)
+    }
+
     fn add_buffer(
         &mut self,
         buffer_entity: Entity<Buffer>,
