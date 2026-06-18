@@ -3550,14 +3550,17 @@ dependencies = [
  "language_core",
  "log",
  "parking_lot",
+ "regex",
  "settings",
  "streaming-iterator",
  "sum_tree",
  "text",
  "theme",
+ "toml 1.1.2+spec-1.1.0",
  "tree-sitter",
  "tree-sitter-html",
  "tree-sitter-json",
+ "tree-sitter-xml",
  "util 0.0.0",
 ]
 

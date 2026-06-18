@@ -28,6 +28,8 @@ pub use text::{
 };
 
 use parking_lot::Mutex;
+#[cfg(any(test, feature = "test-support"))]
+use std::borrow::Cow;
 use std::{
     fmt,
     sync::{Arc, LazyLock},
@@ -262,16 +264,168 @@ where
     result
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub fn html_lang() -> Arc<Language> {
+    let language = Language::new(
+        toml::from_str(include_str!("../../grammars/src/html/config.toml"))
+            .expect("html language config should load"),
+        Some(tree_sitter_html::LANGUAGE.into()),
+    )
+    .with_queries(LanguageQueries {
+        highlights: Some(Cow::from(include_str!(
+            "../../grammars/src/html/highlights.scm"
+        ))),
+        brackets: Some(Cow::from(include_str!(
+            "../../grammars/src/html/brackets.scm"
+        ))),
+        indents: Some(Cow::from(include_str!(
+            "../../grammars/src/html/indents.scm"
+        ))),
+        injections: Some(Cow::from(include_str!(
+            "../../grammars/src/html/injections.scm"
+        ))),
+        overrides: Some(Cow::from(include_str!(
+            "../../grammars/src/html/overrides.scm"
+        ))),
+        ..LanguageQueries::default()
+    })
+    .expect("html queries should parse");
+    Arc::new(language)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn json_lang() -> Arc<Language> {
+    let language = Language::new(
+        toml::from_str(include_str!("../../grammars/src/json/config.toml"))
+            .expect("json language config should load"),
+        Some(tree_sitter_json::LANGUAGE.into()),
+    )
+    .with_queries(LanguageQueries {
+        highlights: Some(Cow::from(include_str!(
+            "../../grammars/src/json/highlights.scm"
+        ))),
+        brackets: Some(Cow::from(include_str!(
+            "../../grammars/src/json/brackets.scm"
+        ))),
+        indents: Some(Cow::from(include_str!(
+            "../../grammars/src/json/indents.scm"
+        ))),
+        overrides: Some(Cow::from(include_str!(
+            "../../grammars/src/json/overrides.scm"
+        ))),
+        redactions: Some(Cow::from(include_str!(
+            "../../grammars/src/json/redactions.scm"
+        ))),
+        ..LanguageQueries::default()
+    })
+    .expect("json queries should parse");
+    Arc::new(language)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn jsonc_lang() -> Arc<Language> {
+    let language = Language::new(
+        toml::from_str(include_str!("../../grammars/src/jsonc/config.toml"))
+            .expect("jsonc language config should load"),
+        Some(tree_sitter_json::LANGUAGE.into()),
+    )
+    .with_queries(LanguageQueries {
+        highlights: Some(Cow::from(include_str!(
+            "../../grammars/src/jsonc/highlights.scm"
+        ))),
+        brackets: Some(Cow::from(include_str!(
+            "../../grammars/src/jsonc/brackets.scm"
+        ))),
+        indents: Some(Cow::from(include_str!(
+            "../../grammars/src/jsonc/indents.scm"
+        ))),
+        injections: Some(Cow::from(include_str!(
+            "../../grammars/src/jsonc/injections.scm"
+        ))),
+        overrides: Some(Cow::from(include_str!(
+            "../../grammars/src/jsonc/overrides.scm"
+        ))),
+        redactions: Some(Cow::from(include_str!(
+            "../../grammars/src/jsonc/redactions.scm"
+        ))),
+    })
+    .expect("jsonc queries should parse");
+    Arc::new(language)
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn xml_lang() -> Arc<Language> {
+    let language = Language::new(
+        toml::from_str(include_str!("../../grammars/src/xml/config.toml"))
+            .expect("xml language config should load"),
+        Some(tree_sitter_xml::LANGUAGE_XML.into()),
+    )
+    .with_queries(LanguageQueries {
+        highlights: Some(Cow::from(include_str!(
+            "../../grammars/src/xml/highlights.scm"
+        ))),
+        brackets: Some(Cow::from(include_str!(
+            "../../grammars/src/xml/brackets.scm"
+        ))),
+        indents: Some(Cow::from(include_str!(
+            "../../grammars/src/xml/indents.scm"
+        ))),
+        overrides: Some(Cow::from(include_str!(
+            "../../grammars/src/xml/overrides.scm"
+        ))),
+        ..LanguageQueries::default()
+    })
+    .expect("xml queries should parse");
+    Arc::new(language)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use gpui::HighlightStyle;
     use std::ops::ControlFlow;
-    use tree_sitter::{Language, ParseOptions};
+    use tree_sitter::ParseOptions;
+
+    #[test]
+    fn test_highlight_map() {
+        let theme = SyntaxTheme::new(
+            [
+                "constant",
+                "constant.builtin",
+                "property",
+                "property.json_key",
+                "string",
+                "string.escape",
+            ]
+            .into_iter()
+            .map(|name| (name.to_string(), HighlightStyle::default())),
+        );
+
+        let capture_names = &[
+            "property.special",
+            "constant.builtin.json",
+            "string.escape.unicode",
+        ];
+
+        let map = build_highlight_map(capture_names, &theme);
+        assert_eq!(
+            theme.get_capture_name(map.get(0).unwrap()),
+            Some("property")
+        );
+        assert_eq!(
+            theme.get_capture_name(map.get(1).unwrap()),
+            Some("constant.builtin")
+        );
+        assert_eq!(
+            theme.get_capture_name(map.get(2).unwrap()),
+            Some("string.escape")
+        );
+    }
 
     #[test]
     fn test_with_parser_resets_after_cancellation() {
-        let json_lang: Language = tree_sitter_json::LANGUAGE.into();
+        let json_language: tree_sitter::Language = tree_sitter_json::LANGUAGE.into();
 
         PARSERS.lock().clear();
 
@@ -280,7 +434,7 @@ mod tests {
         let small_input = "{}";
 
         let cancelled = with_parser(|parser| {
-            parser.set_language(&json_lang).unwrap();
+            parser.set_language(&json_language).unwrap();
             let bytes = large_input.as_bytes();
             let mut break_immediately = |_: &_| ControlFlow::Break(());
             parser.parse_with_options(

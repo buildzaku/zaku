@@ -718,17 +718,7 @@ mod tests {
 
     use text::{Buffer, ReplicaId};
 
-    use crate::LanguageConfig;
-
-    fn json_lang() -> Arc<Language> {
-        Arc::new(Language::new(
-            LanguageConfig {
-                name: "JSON".into(),
-                ..Default::default()
-            },
-            Some(tree_sitter_json::LANGUAGE.into()),
-        ))
-    }
+    use crate::json_lang;
 
     fn range_for_text(buffer: &Buffer, text: &str) -> Range<usize> {
         let start = buffer.as_rope().to_string().find(text).unwrap();

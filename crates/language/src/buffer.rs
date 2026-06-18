@@ -898,7 +898,7 @@ mod tests {
 
     use gpui::{AppContext, Entity, TestAppContext};
 
-    use crate::LanguageConfig;
+    use crate::{html_lang, json_lang};
 
     fn get_tree_sexp(buffer: &Entity<Buffer>, cx: &mut TestAppContext) -> String {
         buffer.update(cx, |buffer, _| {
@@ -906,26 +906,6 @@ mod tests {
             let layers = snapshot.layers(buffer.as_text_snapshot());
             layers[0].node().to_sexp()
         })
-    }
-
-    fn json_lang() -> Arc<Language> {
-        Arc::new(Language::new(
-            LanguageConfig {
-                name: "JSON".into(),
-                ..Default::default()
-            },
-            Some(tree_sitter_json::LANGUAGE.into()),
-        ))
-    }
-
-    fn html_lang() -> Arc<Language> {
-        Arc::new(Language::new(
-            LanguageConfig {
-                name: "HTML".into(),
-                ..Default::default()
-            },
-            Some(tree_sitter_html::LANGUAGE.into()),
-        ))
     }
 
     #[gpui::test]
@@ -1015,5 +995,49 @@ mod tests {
         });
         cx.executor().run_until_parked();
         assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
+    }
+
+    #[gpui::test]
+    fn test_formatted_chunks(cx: &mut App) {
+        let buffer = cx.new(|cx| {
+            Buffer::local(r#"{ "ui": { "font_size": 13 } }"#, cx).with_language(json_lang(), cx)
+        });
+        let snapshot = buffer.read(cx).snapshot();
+
+        let chunks = snapshot.chunks(
+            0..snapshot.len(),
+            LanguageAwareStyling {
+                tree_sitter: true,
+                diagnostics: false,
+            },
+        );
+
+        for chunk in chunks {
+            let chunk_text = chunk.text;
+            let character_bitmap = chunk.chars;
+            let chunk_len = chunk_text.len();
+
+            assert!(
+                chunk_len <= 128,
+                "Chunk text length {chunk_len} exceeds 128 bytes"
+            );
+
+            let character_indices = chunk_text
+                .char_indices()
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            let character_count = u32::try_from(character_indices.len()).unwrap();
+            assert_eq!(character_count, character_bitmap.count_ones());
+
+            for byte_index in 0..chunk_text.len() {
+                let should_have_bit = character_indices.contains(&byte_index);
+                let has_bit = character_bitmap & (1 << byte_index) != 0;
+
+                assert_eq!(
+                    has_bit, should_have_bit,
+                    "Chars bitmap mismatch at byte index {byte_index} in chunk {chunk_text:?}. Expected bit: {should_have_bit}, Got bit: {has_bit}",
+                );
+            }
+        }
     }
 }

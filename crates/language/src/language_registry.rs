@@ -136,6 +136,21 @@ impl LanguageRegistry {
         state.notify_subscribers();
     }
 
+    #[cfg(any(feature = "test-support", test))]
+    pub fn register_test_language(&self, config: LanguageConfig) {
+        self.register_language(
+            config.name.clone(),
+            config.grammar.clone(),
+            config.matcher.clone(),
+            Arc::new(move || {
+                Ok(LoadedLanguage {
+                    config: config.clone(),
+                    queries: LanguageQueries::default(),
+                })
+            }),
+        );
+    }
+
     pub fn register_native_grammars(
         &self,
         grammars: impl IntoIterator<Item = (impl Into<Arc<str>>, impl Into<tree_sitter::Language>)>,
@@ -523,5 +538,106 @@ fn send_language_result(
 ) {
     if sender.send(result).is_err() {
         log::trace!("Language load receiver dropped");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use regex::Regex;
+
+    #[gpui::test]
+    fn test_select_language(cx: &mut App) {
+        let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+        registry.add(Arc::new(Language::new(
+            LanguageConfig {
+                name: LanguageName::new_static("JSON"),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["json".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_json::LANGUAGE.into()),
+        )));
+        registry.add(Arc::new(Language::new(
+            LanguageConfig {
+                name: LanguageName::new_static("JSONC"),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["jsonc".to_string(), "settings.jsonc".to_string()],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            Some(tree_sitter_json::LANGUAGE.into()),
+        )));
+
+        assert_eq!(
+            registry
+                .language_for_file_path(Path::new("settings.json"))
+                .map(|language| language.name),
+            Some("JSON".into())
+        );
+        assert_eq!(
+            registry
+                .language_for_file_path(Path::new("settings.jsonc"))
+                .map(|language| language.name),
+            Some("JSONC".into())
+        );
+
+        assert_eq!(
+            registry
+                .language_for_file_path(Path::new("project/project.settings.jsonc"))
+                .map(|language| language.name),
+            Some("JSONC".into())
+        );
+
+        assert!(
+            registry
+                .language_for_file_path(Path::new("request"))
+                .is_none()
+        );
+        assert!(
+            registry
+                .language_for_file_path(Path::new("request.toml"))
+                .is_none()
+        );
+    }
+
+    #[gpui::test]
+    fn test_first_line_pattern(cx: &mut App) {
+        let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+
+        registry.register_test_language(LanguageConfig {
+            name: "XML".into(),
+            matcher: LanguageMatcher {
+                path_suffixes: vec!["xml".into()],
+                first_line_pattern: Some(Regex::new(r"<\?xml\b").unwrap()),
+            },
+            ..Default::default()
+        });
+
+        assert!(
+            registry
+                .language_for_file_internal(Path::new("response"), None)
+                .is_none()
+        );
+
+        let plain_text: Rope = "nothing".into();
+        assert!(
+            registry
+                .language_for_file_internal(Path::new("response"), Some(&plain_text))
+                .is_none()
+        );
+
+        let xml_document: Rope = r#"<?xml version="1.0"?>"#.into();
+        assert_eq!(
+            registry
+                .language_for_file_internal(Path::new("response"), Some(&xml_document))
+                .unwrap()
+                .name(),
+            "XML"
+        );
     }
 }
