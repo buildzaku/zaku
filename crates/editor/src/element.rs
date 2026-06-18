@@ -1201,6 +1201,7 @@ impl Element for EditorElement {
                 origin: gutter_bounds.top_right(),
                 size: gpui::size(text_width, bounds.size.height),
             };
+            let scrollbar_bounds = text_bounds;
             text_bounds.size.width = (text_bounds.size.width - scrollbar_width).max(gpui::px(0.0));
             let mut content_bounds = text_bounds;
             content_bounds.origin.x += gutter_dimensions.margin;
@@ -1511,7 +1512,7 @@ impl Element for EditorElement {
             window.set_focus_handle(&focus_handle, cx);
 
             let (vertical_scrollbar, horizontal_scrollbar) = Self::layout_scrollbars(
-                bounds,
+                scrollbar_bounds,
                 show_vertical_scrollbar,
                 show_horizontal_scrollbar,
                 scrollbar_drag,
