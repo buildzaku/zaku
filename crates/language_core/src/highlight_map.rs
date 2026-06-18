@@ -11,7 +11,7 @@ impl HighlightId {
     pub const TABSTOP_REPLACE_ID: HighlightId = HighlightId(NonZeroU32::new(u32::MAX - 2).unwrap());
 
     pub fn new(capture_id: u32) -> Self {
-        Self(NonZeroU32::new(capture_id + 1).unwrap_or(NonZeroU32::MAX))
+        Self(NonZeroU32::new(capture_id + 1).unwrap())
     }
 }
 

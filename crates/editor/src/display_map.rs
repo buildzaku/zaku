@@ -15,12 +15,13 @@ use std::{
 };
 use text::{Bias, Point, subscription::Subscription as BufferSubscription};
 
+use language::LanguageAwareStyling;
 use multi_buffer::{
     Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferRow, MultiBufferSnapshot,
     RowInfo, ToPoint,
 };
 
-use crate::movement::TextLayoutDetails;
+use crate::{EditorStyle, movement::TextLayoutDetails};
 
 pub trait ToDisplayPoint {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint;
@@ -29,6 +30,11 @@ pub trait ToDisplayPoint {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum HighlightKey {
     InputComposition,
+}
+
+pub struct HighlightedChunk<'a> {
+    pub text: &'a str,
+    pub style: Option<HighlightStyle>,
 }
 
 pub struct DisplayMap {
@@ -148,8 +154,34 @@ impl DisplaySnapshot {
         };
 
         self.tab_snapshot
-            .chunks(start..max_point)
+            .chunks(
+                start..max_point,
+                LanguageAwareStyling {
+                    tree_sitter: false,
+                    diagnostics: false,
+                },
+            )
             .map(|chunk| chunk.text)
+    }
+
+    pub fn highlighted_chunks<'a>(
+        &'a self,
+        range: Range<TabPoint>,
+        language_aware: LanguageAwareStyling,
+        editor_style: &'a EditorStyle,
+    ) -> impl Iterator<Item = HighlightedChunk<'a>> {
+        self.tab_snapshot
+            .chunks(range, language_aware)
+            .map(move |chunk| {
+                let style = chunk
+                    .syntax_highlight_id
+                    .and_then(|id| editor_style.syntax.get(id).copied());
+
+                HighlightedChunk {
+                    text: chunk.text,
+                    style,
+                }
+            })
     }
 
     pub fn row_infos(&self, start_row: DisplayRow) -> impl Iterator<Item = RowInfo> + '_ {

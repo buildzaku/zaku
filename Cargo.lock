@@ -5601,6 +5601,7 @@ dependencies = [
  "gpui",
  "http_client 0.0.0",
  "language",
+ "log",
  "multi_buffer",
  "num-traits",
  "theme",

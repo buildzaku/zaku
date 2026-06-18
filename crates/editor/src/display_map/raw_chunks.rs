@@ -16,16 +16,11 @@ impl<'a> RawChunks<'a> {
     pub fn new(
         range: Range<MultiBufferOffset>,
         multibuffer_snapshot: &'a MultiBufferSnapshot,
+        language_aware: LanguageAwareStyling,
     ) -> Self {
         let range = normalize_range(multibuffer_snapshot, range);
         Self {
-            buffer_chunks: multibuffer_snapshot.chunks(
-                range.start..range.end,
-                LanguageAwareStyling {
-                    tree_sitter: false,
-                    diagnostics: false,
-                },
-            ),
+            buffer_chunks: multibuffer_snapshot.chunks(range.start..range.end, language_aware),
             buffer_chunk: None,
             offset: range.start,
             max_offset: range.end,
@@ -73,6 +68,7 @@ impl<'a> Iterator for RawChunks<'a> {
             let chars = chunk.chars & mask;
             let tabs = chunk.tabs & mask;
             let newlines = chunk.newlines & mask;
+            let syntax_highlight_id = chunk.syntax_highlight_id;
             chunk.text = suffix;
             chunk.chars = chunk.chars.unbounded_shr(shift);
             chunk.tabs = chunk.tabs.unbounded_shr(shift);
@@ -85,7 +81,7 @@ impl<'a> Iterator for RawChunks<'a> {
 
             return Some(Chunk {
                 text,
-                is_tab: false,
+                syntax_highlight_id,
                 chars,
                 tabs,
                 newlines,

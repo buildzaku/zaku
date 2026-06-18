@@ -10,6 +10,7 @@ use num_traits::ToPrimitive;
 use smallvec::SmallVec;
 use std::{
     any::TypeId,
+    borrow::Cow,
     cmp::{self, Ordering},
     collections::{BTreeMap, HashMap},
     fmt::Write,
@@ -19,6 +20,7 @@ use std::{
     sync::Arc,
 };
 
+use language::LanguageAwareStyling;
 use multi_buffer::{MultiBufferOffset, MultiBufferRow, RowInfo};
 use settings::Settings;
 use theme::ActiveTheme;
@@ -1281,7 +1283,7 @@ impl Element for EditorElement {
                 &display_snapshot,
                 content_bounds,
                 line_height,
-                &style,
+                &self.style,
                 font_size,
                 &placeholder,
                 placeholder_color,
@@ -1318,7 +1320,7 @@ impl Element for EditorElement {
                         &display_snapshot,
                         content_bounds,
                         line_height,
-                        &style,
+                        &self.style,
                         font_size,
                         &placeholder,
                         placeholder_color,
@@ -1348,7 +1350,7 @@ impl Element for EditorElement {
                     &display_snapshot,
                     content_bounds,
                     line_height,
-                    &style,
+                    &self.style,
                     font_size,
                     &placeholder,
                     placeholder_color,
@@ -1662,7 +1664,7 @@ fn build_visible_lines(
     display_snapshot: &DisplaySnapshot,
     bounds: Bounds<Pixels>,
     line_height: Pixels,
-    style: &TextStyle,
+    editor_style: &EditorStyle,
     font_size: Pixels,
     placeholder: &SharedString,
     placeholder_color: Hsla,
@@ -1677,6 +1679,7 @@ fn build_visible_lines(
     em_layout_width: Pixels,
     window: &mut Window,
 ) -> Vec<LineWithInvisibles> {
+    let style = &editor_style.text;
     let scroll_x_pixels = Pixels::from(f64::from(em_layout_width) * line_scroll_x);
     let mut lines = Vec::new();
 
@@ -1695,6 +1698,7 @@ fn build_visible_lines(
             .line_len(MultiBufferRow(row.0)) as usize;
         let line_end_offset = line_start_offset + line_len;
         let mut line_text = String::new();
+        let mut runs = Vec::new();
         let line_display_column_start = if masked {
             let mut line_exceeded_max_len = false;
             for text_chunk in display_snapshot.text_chunks(row) {
@@ -1759,26 +1763,44 @@ fn build_visible_lines(
                     TabPoint::new(row.0, u32::try_from(line_display_column_start).unwrap());
                 let chunk_end =
                     TabPoint::new(row.0, u32::try_from(line_display_column_end).unwrap());
-                for chunk in display_snapshot
-                    .tab_snapshot()
-                    .chunks(chunk_start..chunk_end)
-                {
-                    let chunk_text = chunk.text;
-                    let (mut chunk, has_newline) = if let Some(index) = chunk_text.find('\n') {
+                for highlighted_chunk in display_snapshot.highlighted_chunks(
+                    chunk_start..chunk_end,
+                    LanguageAwareStyling {
+                        tree_sitter: true,
+                        diagnostics: false,
+                    },
+                    editor_style,
+                ) {
+                    let chunk_text = highlighted_chunk.text;
+                    let (mut chunk_text, has_newline) = if let Some(index) = chunk_text.find('\n') {
                         (&chunk_text[..index], true)
                     } else {
                         (chunk_text, false)
                     };
 
-                    if !chunk.is_empty() && line_text.len() < MAX_LINE_LEN {
+                    if !chunk_text.is_empty() && line_text.len() < MAX_LINE_LEN {
                         let remaining_capacity = MAX_LINE_LEN - line_text.len();
-                        let mut bounded_end = remaining_capacity.min(chunk.len());
-                        while bounded_end > 0 && !chunk.is_char_boundary(bounded_end) {
+                        let mut bounded_end = remaining_capacity.min(chunk_text.len());
+                        while bounded_end > 0 && !chunk_text.is_char_boundary(bounded_end) {
                             bounded_end -= 1;
                         }
                         if bounded_end > 0 {
-                            chunk = &chunk[..bounded_end];
-                            line_text.push_str(chunk);
+                            chunk_text = &chunk_text[..bounded_end];
+                            line_text.push_str(chunk_text);
+                            let text_style = if let Some(highlight_style) = highlighted_chunk.style
+                            {
+                                Cow::Owned(style.clone().highlight(highlight_style))
+                            } else {
+                                Cow::Borrowed(style)
+                            };
+                            runs.push(TextRun {
+                                len: chunk_text.len(),
+                                font: text_style.font(),
+                                color: text_style.color,
+                                background_color: text_style.background_color,
+                                underline: text_style.underline,
+                                strikethrough: text_style.strikethrough,
+                            });
                         }
                     }
 
@@ -1799,6 +1821,8 @@ fn build_visible_lines(
             (line_text.clone().into(), style.color)
         };
         let expanded_len = expanded.len();
+        let mut base_style = style.clone();
+        base_style.color = text_color;
 
         let line_x_offset =
             Pixels::from(f64::from(em_layout_width) * line_display_column_start.to_f64().unwrap());
@@ -1809,16 +1833,18 @@ fn build_visible_lines(
             first_row_origin_y + line_y_offset,
         );
 
-        let base_run = TextRun {
-            len: expanded_len,
-            font: style.font(),
-            color: text_color,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        };
+        if runs.is_empty() {
+            runs.push(TextRun {
+                len: expanded_len,
+                font: base_style.font(),
+                color: base_style.color,
+                background_color: base_style.background_color,
+                underline: base_style.underline,
+                strikethrough: base_style.strikethrough,
+            });
+        }
 
-        let runs = if let Some(marked_range) = marked_range {
+        if let Some(marked_range) = marked_range {
             let marked_start = marked_range.start.max(line_start_offset.0);
             let marked_end = marked_range.end.min(line_end_offset.0);
             if marked_start < marked_end {
@@ -1856,38 +1882,52 @@ fn build_visible_lines(
                 display_start = display_start.min(expanded_len);
                 display_end = display_end.min(expanded_len);
 
-                let mut runs = Vec::new();
-                if display_start > 0 {
-                    runs.push(TextRun {
-                        len: display_start,
-                        ..base_run.clone()
-                    });
-                }
                 if display_end > display_start {
-                    runs.push(TextRun {
-                        len: display_end - display_start,
-                        underline: Some(UnderlineStyle {
-                            color: Some(base_run.color),
-                            thickness: gpui::px(1.0),
-                            wavy: false,
-                        }),
-                        ..base_run.clone()
-                    });
-                }
-                if display_end < expanded_len {
-                    runs.push(TextRun {
-                        len: expanded_len - display_end,
-                        ..base_run.clone()
-                    });
-                }
+                    let range = display_start..display_end;
+                    let mut offset = 0;
+                    let mut underlined_runs = Vec::with_capacity(runs.len() + 2);
+                    for run in runs {
+                        let run_start = offset;
+                        let run_end = offset + run.len;
+                        offset = run_end;
 
-                runs
-            } else {
-                vec![base_run.clone()]
+                        if run_end <= range.start || run_start >= range.end {
+                            underlined_runs.push(run);
+                            continue;
+                        }
+
+                        if run_start < range.start {
+                            underlined_runs.push(TextRun {
+                                len: range.start - run_start,
+                                ..run.clone()
+                            });
+                        }
+
+                        let underline_start = cmp::max(run_start, range.start);
+                        let underline_end = cmp::min(run_end, range.end);
+                        if underline_start < underline_end {
+                            underlined_runs.push(TextRun {
+                                len: underline_end - underline_start,
+                                underline: Some(UnderlineStyle {
+                                    color: Some(run.color),
+                                    thickness: gpui::px(1.0),
+                                    wavy: false,
+                                }),
+                                ..run.clone()
+                            });
+                        }
+
+                        if underline_end < run_end {
+                            underlined_runs.push(TextRun {
+                                len: run_end - underline_end,
+                                ..run
+                            });
+                        }
+                    }
+                    runs = underlined_runs;
+                }
             }
-        } else {
-            vec![base_run.clone()]
-        };
+        }
 
         let shaped_line = window
             .text_system()

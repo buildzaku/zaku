@@ -12,9 +12,11 @@ use std::{
 };
 
 use editor::{Editor, EditorEvent};
-use http_client::{AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url};
+use http_client::{
+    AsyncBody, Builder, HttpClient, HttpRequestExt, Method, RedirectPolicy, Url, http,
+};
 use input::{ErasedEditorEvent, InputField};
-use language::Buffer;
+use language::{Buffer, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
@@ -343,7 +345,8 @@ impl RequestBody {
     fn new(data: impl Into<String>, window: &mut Window, cx: &mut App) -> Self {
         let data = data.into();
         let payload = cx.new(move |cx| {
-            let buffer = cx.new(|cx| Buffer::local(data, cx));
+            let buffer =
+                cx.new(move |cx| Buffer::local(data, cx).with_language(PLAIN_TEXT.clone(), cx));
             MultiBuffer::singleton(buffer, cx)
         });
         let editor = cx.new(|cx| Editor::for_multibuffer(payload.clone(), window, cx));
@@ -436,6 +439,7 @@ impl RequestEditor {
                         request_editor.request_snapshot = request_snapshot;
                         request_editor.input_subscriptions = input_subscriptions;
                         request_editor.body_subscription = body_subscription;
+                        request_editor.set_language_for_body(cx);
                         cx.emit(RequestEditorEvent::TitleChanged);
                         cx.notify();
                     }) {
@@ -446,7 +450,7 @@ impl RequestEditor {
             },
         );
 
-        Self {
+        let this = Self {
             focus_handle,
             workspace,
             project,
@@ -461,7 +465,9 @@ impl RequestEditor {
             input_subscriptions,
             body_subscription,
             _buffer_subscription: buffer_subscription,
-        }
+        };
+        this.set_language_for_body(cx);
+        this
     }
 
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {
@@ -595,6 +601,70 @@ impl RequestEditor {
         })
     }
 
+    fn set_language_for_body(&self, cx: &mut Context<Self>) {
+        let Some((body_type, payload)) = (match &self.request {
+            RequestEditorState::Ready(request) => request
+                .http
+                .body
+                .as_ref()
+                .map(|body| (request.http.body_type, body.payload.clone())),
+            RequestEditorState::Invalid { .. } => None,
+        }) else {
+            return;
+        };
+
+        payload.update(cx, |payload, cx| {
+            if let Some(buffer) = payload.as_singleton() {
+                buffer.update(cx, |buffer, cx| {
+                    buffer.set_language(Some(PLAIN_TEXT.clone()), cx);
+                });
+            }
+        });
+
+        if body_type != Some(RequestBodyType::Json) {
+            return;
+        }
+
+        let payload_id = payload.entity_id();
+        let languages = SharedState::global(cx).languages.clone();
+        cx.spawn(async move |this, cx| {
+            let language = match languages.language_for_name("JSON").await {
+                Ok(language) => language,
+                Err(error) => {
+                    log::error!("Failed to load JSON language: {error:?}");
+                    return;
+                }
+            };
+
+            if let Err(error) = this.update(cx, |request_editor, cx| {
+                let RequestEditorState::Ready(request) = &request_editor.request else {
+                    return;
+                };
+                if request.http.body_type != Some(RequestBodyType::Json) {
+                    return;
+                }
+                let Some(body) = request.http.body.as_ref() else {
+                    return;
+                };
+                if body.payload.entity_id() != payload_id {
+                    return;
+                }
+
+                body.payload.update(cx, |payload, cx| {
+                    if let Some(buffer) = payload.as_singleton() {
+                        let language = language.clone();
+                        buffer.update(cx, |buffer, cx| {
+                            buffer.set_language(Some(language), cx);
+                        });
+                    }
+                });
+            }) {
+                log::debug!("Failed to set request body language: {error:?}");
+            }
+        })
+        .detach();
+    }
+
     fn state_from_request_file(
         request_file: RequestFileState,
         window: &mut Window,
@@ -713,6 +783,7 @@ impl RequestEditor {
         cx: &mut Context<Self>,
     ) {
         let mut edited = false;
+        let mut should_set_language_for_body = false;
 
         if let RequestEditorState::Ready(request) = &mut self.request {
             match r#type {
@@ -722,19 +793,26 @@ impl RequestEditor {
                         self.body_subscription =
                             Some(Self::subscribe_to_body(&body.editor, window, cx));
                         request.http.body = Some(body);
+                        should_set_language_for_body = true;
                     }
 
                     if request.http.body_type != Some(r#type) {
                         request.http.body_type = Some(r#type);
+                        should_set_language_for_body = true;
                         edited = true;
                     }
                 }
                 None => {
                     if request.http.body_type.take().is_some() {
+                        should_set_language_for_body = true;
                         edited = true;
                     }
                 }
             }
+        }
+
+        if should_set_language_for_body {
+            self.set_language_for_body(cx);
         }
 
         if edited {
@@ -833,7 +911,7 @@ impl RequestEditor {
                                 },
                                 cx,
                             );
-                            response.set_payload(request_id, "Error: invalid URL", cx);
+                            response.set_payload(request_id, "Error: invalid URL", None, cx);
                         });
                         return;
                     };
@@ -869,7 +947,12 @@ impl RequestEditor {
                                     },
                                     cx,
                                 );
-                                response.set_payload(request_id, format!("Error: {error}"), cx);
+                                response.set_payload(
+                                    request_id,
+                                    format!("Error: {error}"),
+                                    None,
+                                    cx,
+                                );
                             });
                             return;
                         }
@@ -902,6 +985,7 @@ impl RequestEditor {
                                             response.set_payload(
                                                 request_id,
                                                 format!("Error: {error}"),
+                                                None,
                                                 cx,
                                             );
                                         });
@@ -934,6 +1018,11 @@ impl RequestEditor {
                     };
 
                     let status_code = received.status();
+                    let content_type = received
+                        .headers()
+                        .get(http::header::CONTENT_TYPE)
+                        .and_then(|content_type| content_type.to_str().ok())
+                        .map(str::to_owned);
                     let mut bytes_received = 0_u64;
                     let mut payload = Vec::new();
                     let mut buffer = [0; 8192];
@@ -987,13 +1076,14 @@ impl RequestEditor {
                     }
 
                     let elapsed_duration = request_started_at.elapsed();
-                    let (payload, response_state) = match read_error {
+                    let (payload, response_state, language_name) = match read_error {
                         Some(ref error) => (
                             format!("(failed to read response body: {error})"),
                             ResponseState::Error {
                                 bytes_received,
                                 elapsed_duration,
                             },
+                            None,
                         ),
                         None => (
                             String::from_utf8_lossy(&payload).into_owned(),
@@ -1002,12 +1092,27 @@ impl RequestEditor {
                                 bytes_received,
                                 elapsed_duration,
                             },
+                            content_type.as_deref().and_then(|content_type| {
+                                let media_type = content_type.split(';').next()?.trim();
+                                let media_type_lowercase = media_type.to_ascii_lowercase();
+
+                                if media_type.eq_ignore_ascii_case("application/json")
+                                    || media_type.eq_ignore_ascii_case("text/json")
+                                    || media_type_lowercase.ends_with("+json")
+                                {
+                                    Some("JSON")
+                                } else if media_type.eq_ignore_ascii_case("text/html") {
+                                    Some("HTML")
+                                } else {
+                                    None
+                                }
+                            }),
                         ),
                     };
 
                     response.update(cx, |response, cx| {
                         response.set_state(request_id, response_state, cx);
-                        response.set_payload(request_id, payload, cx);
+                        response.set_payload(request_id, payload, language_name, cx);
                     });
                 }
             })
