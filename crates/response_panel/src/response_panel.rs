@@ -3,11 +3,11 @@ use gpui::{
     Subscription, WeakEntity, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use editor::Editor;
 use http_client::StatusCode;
-use language::Buffer;
+use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{Color, DynamicSpacing, IconName, Label, LabelCommon, LabelSize};
@@ -151,7 +151,7 @@ impl Response {
 
     fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<MultiBuffer>, Entity<Editor>) {
         let payload = cx.new(move |cx| {
-            let buffer = cx.new(|cx| Buffer::local("", cx));
+            let buffer = cx.new(|cx| Buffer::local("", cx).with_language(PLAIN_TEXT.clone(), cx));
             MultiBuffer::singleton(buffer, cx)
         });
         let editor = cx.new(|cx| {
@@ -211,14 +211,23 @@ impl Response {
         &mut self,
         request_id: usize,
         payload: T,
+        language: Option<Arc<Language>>,
         cx: &mut Context<Self>,
     ) -> bool {
         if self.request_id != request_id {
             return false;
         }
 
+        let language = language.unwrap_or_else(|| PLAIN_TEXT.clone());
         self.payload.update(cx, |payload_buffer, cx| {
-            payload_buffer.set_text(payload.into(), cx);
+            let payload = payload.into();
+            if let Some(buffer) = payload_buffer.as_singleton() {
+                let language = language.clone();
+                buffer.update(cx, |buffer, cx| {
+                    buffer.set_language(Some(language), cx);
+                });
+            }
+            payload_buffer.set_text(payload, cx);
         });
         cx.notify();
         true

@@ -15,10 +15,11 @@ path = "src/theme.rs"
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
-log = { workspace = true }
 palette = { workspace = true }
 parking_lot = { workspace = true }
+refineable = { workspace = true }
+schemars = { workspace = true }
 settings = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
+syntax_theme = { workspace = true }
 uuid = { workspace = true }

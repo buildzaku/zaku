@@ -1,5 +1,6 @@
 use futures::channel::oneshot;
 use gpui::{App, AppContext, Context, EventEmitter, Task};
+use parking_lot::Mutex;
 use std::{
     any::Any,
     cell::Cell,
@@ -7,15 +8,18 @@ use std::{
     ops::{Deref, Range},
     path::PathBuf,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
-use text::{Buffer as TextBuffer, LineEnding, ReplicaId, ToOffset, Transaction, TransactionId};
+use text::{LineEnding, ReplicaId, ToOffset, Transaction, TransactionId};
 
 use fs::MTime;
 use settings::WorktreeId;
 use util::{path::PathStyle, rel_path::RelPath};
 
-use crate::text_diff::text_diff;
+use crate::{
+    HighlightId, HighlightMap, Language, PLAIN_TEXT, Rope, SyntaxMap, SyntaxMapCapture,
+    SyntaxMapCaptures, SyntaxSnapshot, text_diff::text_diff,
+};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Capability {
@@ -37,8 +41,223 @@ pub enum BufferEvent {
     Saved,
     FileHandleChanged,
     CapabilityChanged,
+    Reparsed,
+    LanguageChanged(bool),
     Reloaded,
     ReloadNeeded,
+}
+
+pub struct BufferSnapshot {
+    pub text: text::BufferSnapshot,
+    pub(crate) syntax: SyntaxSnapshot,
+    language: Option<Arc<Language>>,
+    file: Option<Arc<dyn File>>,
+    non_text_state_update_count: usize,
+    pub capability: Capability,
+}
+
+impl Clone for BufferSnapshot {
+    fn clone(&self) -> Self {
+        Self {
+            text: self.text.clone(),
+            syntax: self.syntax.clone(),
+            language: self.language.clone(),
+            file: self.file.clone(),
+            non_text_state_update_count: self.non_text_state_update_count,
+            capability: self.capability,
+        }
+    }
+}
+
+impl Deref for BufferSnapshot {
+    type Target = text::BufferSnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text
+    }
+}
+
+impl BufferSnapshot {
+    pub fn language(&self) -> Option<&Arc<Language>> {
+        self.language.as_ref()
+    }
+
+    pub fn file(&self) -> Option<&Arc<dyn File>> {
+        self.file.as_ref()
+    }
+
+    pub fn non_text_state_update_count(&self) -> usize {
+        self.non_text_state_update_count
+    }
+
+    fn get_highlights(&self, range: Range<usize>) -> (SyntaxMapCaptures<'_>, Vec<HighlightMap>) {
+        let captures = self.syntax.captures(range, &self.text, |grammar| {
+            grammar
+                .highlights_config
+                .as_ref()
+                .map(|config| &config.query)
+        });
+        let highlight_maps = captures
+            .grammars()
+            .iter()
+            .map(|grammar| grammar.highlight_map())
+            .collect();
+        (captures, highlight_maps)
+    }
+
+    pub fn chunks<T: ToOffset>(
+        &self,
+        range: Range<T>,
+        language_aware: LanguageAwareStyling,
+    ) -> BufferChunks<'_> {
+        let range = range.start.to_offset(self)..range.end.to_offset(self);
+        let mut syntax = None;
+        if language_aware.tree_sitter {
+            syntax = Some(self.get_highlights(range.clone()));
+        }
+        BufferChunks::new(self.text.as_rope(), range, syntax)
+    }
+}
+
+struct BufferChunkHighlights<'a> {
+    captures: SyntaxMapCaptures<'a>,
+    next_capture: Option<SyntaxMapCapture<'a>>,
+    stack: Vec<(usize, HighlightId)>,
+    highlight_maps: Vec<HighlightMap>,
+}
+
+pub struct BufferChunks<'a> {
+    range: Range<usize>,
+    chunks: text::Chunks<'a>,
+    highlights: Option<BufferChunkHighlights<'a>>,
+}
+
+impl<'a> BufferChunks<'a> {
+    pub fn new(
+        text: &'a Rope,
+        range: Range<usize>,
+        syntax: Option<(SyntaxMapCaptures<'a>, Vec<HighlightMap>)>,
+    ) -> Self {
+        let highlights = syntax.map(|(captures, highlight_maps)| BufferChunkHighlights {
+            captures,
+            next_capture: None,
+            stack: Vec::new(),
+            highlight_maps,
+        });
+        let chunks = text.chunks_in_range(range.clone());
+        Self {
+            range,
+            chunks,
+            highlights,
+        }
+    }
+}
+
+impl<'a> Iterator for BufferChunks<'a> {
+    type Item = Chunk<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.range.start >= self.range.end {
+            return None;
+        }
+
+        let mut next_capture_start = usize::MAX;
+        if let Some(highlights) = self.highlights.as_mut() {
+            while let Some((parent_capture_end, _)) = highlights.stack.last() {
+                if *parent_capture_end <= self.range.start {
+                    highlights.stack.pop();
+                } else {
+                    break;
+                }
+            }
+
+            if highlights.next_capture.is_none() {
+                highlights.next_capture = highlights.captures.next();
+            }
+
+            while let Some(capture) = highlights.next_capture.as_ref() {
+                if self.range.start < capture.node.start_byte() {
+                    next_capture_start = capture.node.start_byte();
+                    break;
+                }
+
+                let capture_end = capture.node.end_byte();
+                if capture_end > self.range.start
+                    && let Some(highlight_id) =
+                        highlights.highlight_maps[capture.grammar_index].get(capture.index)
+                {
+                    highlights.stack.push((capture_end, highlight_id));
+                }
+                highlights.next_capture = highlights.captures.next();
+            }
+        }
+
+        if let Some(text::ChunkBitmaps {
+            text: chunk,
+            chars: chars_map,
+            tabs,
+            newlines,
+        }) = self.chunks.peek_with_bitmaps()
+        {
+            let chunk_start = self.range.start;
+            let mut chunk_end = self
+                .chunks
+                .offset()
+                .saturating_add(chunk.len())
+                .min(self.range.end)
+                .min(next_capture_start);
+            let mut highlight_id = None;
+            if let Some(highlights) = self.highlights.as_ref()
+                && let Some((parent_capture_end, parent_highlight_id)) = highlights.stack.last()
+            {
+                chunk_end = chunk_end.min(*parent_capture_end);
+                highlight_id = Some(*parent_highlight_id);
+            }
+
+            let bit_start = chunk_start - self.chunks.offset();
+            let split_index = chunk_end - self.chunks.offset();
+            let bit_end = split_index;
+            let slice = &chunk[bit_start..bit_end];
+
+            let shift = u32::try_from(bit_start).expect("chunk bit start should fit in u32");
+            let mask_len =
+                u32::try_from(bit_end - bit_start).expect("chunk bit length should fit in u32");
+            let mask = 1u128.unbounded_shl(mask_len).wrapping_sub(1);
+            let tabs = (tabs >> shift) & mask;
+            let chars = (chars_map >> shift) & mask;
+            let newlines = (newlines >> shift) & mask;
+
+            self.range.start = self.chunks.offset() + split_index;
+            if self.range.start == self.chunks.offset() + chunk.len() {
+                self.chunks.next().unwrap();
+            }
+
+            Some(Chunk {
+                text: slice,
+                syntax_highlight_id: highlight_id,
+                chars,
+                tabs,
+                newlines,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Chunk<'a> {
+    pub text: &'a str,
+    pub syntax_highlight_id: Option<HighlightId>,
+    pub chars: u128,
+    pub tabs: u128,
+    pub newlines: u128,
+}
+
+#[derive(Clone, Copy)]
+pub struct LanguageAwareStyling {
+    pub tree_sitter: bool,
+    pub diagnostics: bool,
 }
 
 pub trait File: Send + Sync + Any {
@@ -89,8 +308,11 @@ pub struct Diff {
 }
 
 pub struct Buffer {
-    text: TextBuffer,
+    text: text::Buffer,
+    syntax_map: Mutex<SyntaxMap>,
+    language: Option<Arc<Language>>,
     file: Option<Arc<dyn File>>,
+    non_text_state_update_count: usize,
     saved_mtime: Option<MTime>,
     saved_version: clock::Global,
     transaction_depth: usize,
@@ -99,6 +321,8 @@ pub struct Buffer {
     has_conflict: bool,
     has_unsaved_edits: Cell<(clock::Global, bool)>,
     reload_task: Option<Task<anyhow::Result<()>>>,
+    reparse: Option<Task<()>>,
+    sync_parse_timeout: Option<Duration>,
 }
 
 impl EventEmitter<BufferEvent> for Buffer {}
@@ -106,7 +330,7 @@ impl EventEmitter<BufferEvent> for Buffer {}
 impl Buffer {
     pub fn local<T: Into<String>>(base_text: T, cx: &Context<Self>) -> Self {
         Self::build(
-            TextBuffer::new(
+            text::Buffer::new(
                 ReplicaId::LOCAL,
                 cx.entity_id().as_non_zero_u64().into(),
                 base_text.into(),
@@ -116,12 +340,21 @@ impl Buffer {
         )
     }
 
-    pub fn build(buffer: TextBuffer, file: Option<Arc<dyn File>>, capability: Capability) -> Self {
+    pub fn build(
+        buffer: text::Buffer,
+        file: Option<Arc<dyn File>>,
+        capability: Capability,
+    ) -> Self {
         let saved_mtime = file.as_ref().and_then(|file| file.disk_state().mtime());
+        let snapshot = buffer.snapshot();
         let saved_version = buffer.version();
+        let syntax_map = Mutex::new(SyntaxMap::new(snapshot));
         Self {
             text: buffer,
+            syntax_map,
+            language: None,
             file,
+            non_text_state_update_count: 0,
             saved_mtime,
             saved_version: saved_version.clone(),
             transaction_depth: 0,
@@ -130,7 +363,27 @@ impl Buffer {
             has_conflict: false,
             has_unsaved_edits: Cell::new((saved_version, false)),
             reload_task: None,
+            reparse: None,
+            sync_parse_timeout: if cfg!(any(test, feature = "test-support")) {
+                Some(Duration::from_millis(10))
+            } else {
+                Some(Duration::from_millis(1))
+            },
         }
+    }
+
+    pub fn with_language_async(mut self, language: Arc<Language>, cx: &mut Context<Self>) -> Self {
+        self.set_language_async(Some(language), cx);
+        self
+    }
+
+    pub fn with_language(mut self, language: Arc<Language>, cx: &mut Context<Self>) -> Self {
+        self.set_language(Some(language), cx);
+        self
+    }
+
+    pub fn language(&self) -> Option<&Arc<Language>> {
+        self.language.as_ref()
     }
 
     pub fn capability(&self) -> Capability {
@@ -144,12 +397,79 @@ impl Buffer {
     pub fn set_capability(&mut self, capability: Capability, cx: &mut Context<Self>) {
         if self.capability != capability {
             self.capability = capability;
+            self.non_text_state_update_count += 1;
             cx.emit(BufferEvent::CapabilityChanged);
         }
     }
 
     pub fn file(&self) -> Option<&Arc<dyn File>> {
         self.file.as_ref()
+    }
+
+    pub fn snapshot(&self) -> BufferSnapshot {
+        let text = self.text.snapshot();
+        let syntax = {
+            let mut syntax_map = self.syntax_map.lock();
+            syntax_map.interpolate(text);
+            syntax_map.snapshot()
+        };
+
+        BufferSnapshot {
+            text: text.clone(),
+            syntax,
+            language: self.language.clone(),
+            file: self.file.clone(),
+            non_text_state_update_count: self.non_text_state_update_count,
+            capability: self.capability,
+        }
+    }
+
+    pub fn as_text_snapshot(&self) -> &text::BufferSnapshot {
+        self.text.snapshot()
+    }
+
+    pub fn text_snapshot(&self) -> text::BufferSnapshot {
+        self.text.snapshot().clone()
+    }
+
+    pub fn syntax_snapshot(&self) -> SyntaxSnapshot {
+        self.syntax_map.lock().snapshot()
+    }
+
+    pub fn set_language_async(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
+        self.set_language_inner(language, cfg!(any(test, feature = "test-support")), cx);
+    }
+
+    pub fn set_language(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
+        self.set_language_inner(language, true, cx);
+    }
+
+    fn set_language_inner(
+        &mut self,
+        language: Option<Arc<Language>>,
+        may_block: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if language == self.language {
+            return;
+        }
+
+        self.syntax_map.lock().clear(self.text.snapshot());
+        let old_language = mem::replace(&mut self.language, language);
+        self.non_text_state_update_count += 1;
+        self.reparse(cx, may_block);
+        let has_fresh_language =
+            self.language.is_some() && old_language.is_none_or(|old| old.id() == PLAIN_TEXT.id());
+        cx.emit(BufferEvent::LanguageChanged(has_fresh_language));
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn is_parsing(&self) -> bool {
+        self.reparse.is_some()
+    }
+
+    pub fn set_sync_parse_timeout(&mut self, timeout: Option<Duration>) {
+        self.sync_parse_timeout = timeout;
     }
 
     pub fn saved_version(&self) -> &clock::Global {
@@ -265,6 +585,7 @@ impl Buffer {
 
         self.file = Some(new_file);
         if file_changed {
+            self.non_text_state_update_count += 1;
             if was_dirty != self.is_dirty() {
                 cx.emit(BufferEvent::DirtyChanged);
             }
@@ -457,7 +778,7 @@ impl Buffer {
     }
 
     pub fn apply_diff(&mut self, diff: Diff, cx: &mut Context<Self>) -> Option<TransactionId> {
-        let snapshot = self.snapshot().clone();
+        let snapshot = self.snapshot();
         let mut edits_since = snapshot.edits_since::<usize>(&diff.base_version).peekable();
         let mut delta = 0isize;
         let adjusted_edits = diff.edits.into_iter().filter_map(|(range, new_text)| {
@@ -490,6 +811,7 @@ impl Buffer {
             return;
         }
 
+        self.reparse(cx, true);
         cx.emit(BufferEvent::Edited);
         let is_dirty = self.is_dirty();
         if was_dirty != is_dirty {
@@ -497,12 +819,225 @@ impl Buffer {
         }
         cx.notify();
     }
+
+    pub fn reparse(&mut self, cx: &mut Context<Self>, may_block: bool) {
+        if self.reparse.is_some() {
+            return;
+        }
+        let Some(language) = self.language.clone() else {
+            return;
+        };
+
+        let text = self.text_snapshot();
+        let parsed_version = self.version();
+        let mut syntax_snapshot = {
+            let mut syntax_map = self.syntax_map.lock();
+            syntax_map.interpolate(&text);
+            syntax_map.snapshot()
+        };
+
+        if may_block
+            && let Some(sync_parse_timeout) = self.sync_parse_timeout
+            && syntax_snapshot
+                .reparse_with_timeout(&text, language.clone(), sync_parse_timeout)
+                .is_ok()
+        {
+            self.did_finish_parsing(syntax_snapshot, cx);
+            self.reparse = None;
+            return;
+        }
+
+        let parse_task = cx.background_spawn({
+            let language = language.clone();
+            async move {
+                syntax_snapshot.reparse(&text, language);
+                syntax_snapshot
+            }
+        });
+
+        self.reparse = Some(cx.spawn(async move |this, cx| {
+            let new_syntax_map = parse_task.await;
+            if let Err(error) = this.update(cx, move |this, cx| {
+                let grammar_changed = || {
+                    this.language
+                        .as_ref()
+                        .is_none_or(|current_language| !Arc::ptr_eq(&language, current_language))
+                };
+                let parse_again =
+                    this.version().changed_since(&parsed_version) || grammar_changed();
+                this.did_finish_parsing(new_syntax_map, cx);
+                this.reparse = None;
+                if parse_again {
+                    this.reparse(cx, false);
+                }
+            }) {
+                log::debug!("Failed to finish parsing buffer: {error}");
+            }
+        }));
+    }
+
+    fn did_finish_parsing(&mut self, syntax_snapshot: SyntaxSnapshot, cx: &mut Context<Self>) {
+        self.syntax_map.lock().did_parse(syntax_snapshot);
+        self.non_text_state_update_count += 1;
+        cx.emit(BufferEvent::Reparsed);
+        cx.notify();
+    }
 }
 
 impl Deref for Buffer {
-    type Target = TextBuffer;
+    type Target = text::Buffer;
 
     fn deref(&self) -> &Self::Target {
         &self.text
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use gpui::{AppContext, Entity, TestAppContext};
+
+    use crate::{html_lang, json_lang};
+
+    fn get_tree_sexp(buffer: &Entity<Buffer>, cx: &mut TestAppContext) -> String {
+        buffer.update(cx, |buffer, _| {
+            let snapshot = buffer.syntax_snapshot();
+            let layers = snapshot.layers(buffer.as_text_snapshot());
+            layers[0].node().to_sexp()
+        })
+    }
+
+    #[gpui::test]
+    fn test_reparse(cx: &mut TestAppContext) {
+        let buffer = cx.new(|cx| Buffer::local("{}", cx).with_language(json_lang(), cx));
+
+        cx.executor().run_until_parked();
+        assert!(!buffer.update(cx, |buffer, _| buffer.is_parsing()));
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
+
+        buffer.update(cx, |buffer, _| buffer.set_sync_parse_timeout(None));
+
+        buffer.update(cx, |buffer, cx| {
+            buffer.start_transaction();
+
+            buffer.edit([(0..1, "[")], cx);
+            assert!(!buffer.is_parsing());
+
+            let offset = buffer.text().find('}').unwrap();
+            buffer.edit([(offset..offset + 1, "]")], cx);
+            assert!(!buffer.is_parsing());
+
+            buffer.end_transaction(cx);
+            assert_eq!(buffer.text(), "[]");
+            assert!(buffer.is_parsing());
+        });
+        cx.executor().run_until_parked();
+        assert!(!buffer.update(cx, |buffer, _| buffer.is_parsing()));
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (array))");
+
+        buffer.update(cx, |buffer, cx| {
+            let offset = buffer.text().find(']').unwrap();
+            buffer.edit([(offset..offset, "{}")], cx);
+            assert_eq!(buffer.text(), "[{}]");
+            assert!(buffer.is_parsing());
+        });
+        buffer.update(cx, |buffer, cx| {
+            let offset = buffer.text().find(']').unwrap();
+            buffer.edit([(offset..offset, ",{}")], cx);
+            assert_eq!(buffer.text(), "[{},{}]");
+            assert!(buffer.is_parsing());
+        });
+        cx.executor().run_until_parked();
+        assert_eq!(
+            get_tree_sexp(&buffer, cx),
+            "(document (array (object) (object)))"
+        );
+
+        buffer.update(cx, |buffer, cx| {
+            assert!(buffer.undo(cx).is_some());
+            assert!(buffer.undo(cx).is_some());
+            assert!(buffer.undo(cx).is_some());
+            assert_eq!(buffer.text(), "{}");
+            assert!(buffer.is_parsing());
+        });
+
+        cx.executor().run_until_parked();
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
+
+        buffer.update(cx, |buffer, cx| {
+            assert!(buffer.redo(cx).is_some());
+            assert!(buffer.redo(cx).is_some());
+            assert!(buffer.redo(cx).is_some());
+            assert_eq!(buffer.text(), "[{},{}]");
+            assert!(buffer.is_parsing());
+        });
+        cx.executor().run_until_parked();
+        assert_eq!(
+            get_tree_sexp(&buffer, cx),
+            "(document (array (object) (object)))"
+        );
+    }
+
+    #[gpui::test]
+    fn test_resetting_language(cx: &mut TestAppContext) {
+        let buffer = cx.new(|cx| {
+            let mut buffer = Buffer::local("{}", cx).with_language(html_lang(), cx);
+            buffer.set_sync_parse_timeout(None);
+            buffer
+        });
+
+        cx.executor().run_until_parked();
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (text))");
+
+        buffer.update(cx, |buffer, cx| {
+            buffer.set_language(Some(json_lang()), cx);
+        });
+        cx.executor().run_until_parked();
+        assert_eq!(get_tree_sexp(&buffer, cx), "(document (object))");
+    }
+
+    #[gpui::test]
+    fn test_formatted_chunks(cx: &mut App) {
+        let buffer = cx.new(|cx| {
+            Buffer::local(r#"{ "ui": { "font_size": 13 } }"#, cx).with_language(json_lang(), cx)
+        });
+        let snapshot = buffer.read(cx).snapshot();
+
+        let chunks = snapshot.chunks(
+            0..snapshot.len(),
+            LanguageAwareStyling {
+                tree_sitter: true,
+                diagnostics: false,
+            },
+        );
+
+        for chunk in chunks {
+            let chunk_text = chunk.text;
+            let character_bitmap = chunk.chars;
+            let chunk_len = chunk_text.len();
+
+            assert!(
+                chunk_len <= 128,
+                "Chunk text length {chunk_len} exceeds 128 bytes"
+            );
+
+            let character_indices = chunk_text
+                .char_indices()
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            let character_count = u32::try_from(character_indices.len()).unwrap();
+            assert_eq!(character_count, character_bitmap.count_ones());
+
+            for byte_index in 0..chunk_text.len() {
+                let should_have_bit = character_indices.contains(&byte_index);
+                let has_bit = character_bitmap & (1 << byte_index) != 0;
+
+                assert_eq!(
+                    has_bit, should_have_bit,
+                    "Chars bitmap mismatch at byte index {byte_index} in chunk {chunk_text:?}. Expected bit: {should_have_bit}, Got bit: {has_bit}",
+                );
+            }
+        }
     }
 }

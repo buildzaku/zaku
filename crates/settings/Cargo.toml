@@ -29,6 +29,7 @@ rust-embed = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_path_to_error = { workspace = true }
+settings_content = { workspace = true }
 settings_macros = { workspace = true }
 util = { workspace = true }
 

@@ -13,7 +13,13 @@ name = "language"
 path = "src/language.rs"
 
 [features]
-test-support = ["gpui/test-support"]
+test-support = [
+    "gpui/test-support",
+    "toml",
+    "tree-sitter-html",
+    "tree-sitter-json",
+    "tree-sitter-xml",
+]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -22,6 +28,24 @@ fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }
 imara-diff = { workspace = true }
+language_core = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
 settings = { workspace = true }
+streaming-iterator = { workspace = true }
+sum_tree = { workspace = true }
 text = { workspace = true }
+theme = { workspace = true }
+toml = { workspace = true, optional = true }
+tree-sitter = { workspace = true }
+tree-sitter-html = { workspace = true, optional = true }
+tree-sitter-json = { workspace = true, optional = true }
+tree-sitter-xml = { workspace = true, optional = true }
 util = { workspace = true }
+
+[dev-dependencies]
+regex = { workspace = true }
+toml = { workspace = true }
+tree-sitter-html = { workspace = true }
+tree-sitter-json = { workspace = true }
+tree-sitter-xml = { workspace = true }

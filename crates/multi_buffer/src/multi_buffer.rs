@@ -15,12 +15,11 @@ use std::{
     sync::Arc,
 };
 use text::{
-    Bias, BufferSnapshot as TextBufferSnapshot, Edit as TextEdit, OffsetUtf16, Point, PointUtf16,
-    TextDimension, TextSummary,
+    Bias, OffsetUtf16, Point, PointUtf16, TextDimension, TextSummary,
     subscription::{Subscription, Topic},
 };
 
-use language::{Buffer, Capability};
+use language::{Buffer, BufferChunks, BufferSnapshot, Capability, Chunk, LanguageAwareStyling};
 
 pub type MultiBufferPoint = Point;
 
@@ -106,8 +105,8 @@ impl MultiBufferOffset {
 }
 
 impl fmt::Display for MultiBufferOffset {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.0)
     }
 }
 
@@ -347,7 +346,7 @@ pub trait ToPoint: 'static + fmt::Debug {
 
 #[derive(Clone)]
 pub struct MultiBufferSnapshot {
-    buffer: TextBufferSnapshot,
+    buffer: BufferSnapshot,
     edit_count: usize,
     is_dirty: bool,
     has_deleted_file: bool,
@@ -363,21 +362,15 @@ pub struct MultiBuffer {
     capability: Capability,
 }
 
-pub struct MultiBufferChunk<'a> {
-    pub text: &'a str,
-}
-
 pub struct MultiBufferChunks<'a> {
-    text_chunks: text::Chunks<'a>,
+    buffer_chunks: BufferChunks<'a>,
 }
 
 impl<'a> Iterator for MultiBufferChunks<'a> {
-    type Item = MultiBufferChunk<'a>;
+    type Item = Chunk<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.text_chunks
-            .next()
-            .map(|text| MultiBufferChunk { text })
+        self.buffer_chunks.next()
     }
 }
 
@@ -386,7 +379,7 @@ impl MultiBuffer {
         let (buffer_snapshot, capability, is_dirty, has_deleted_file, has_conflict) = {
             let buffer = buffer.read(cx);
             (
-                buffer.snapshot().clone(),
+                buffer.snapshot(),
                 buffer.capability(),
                 buffer.is_dirty(),
                 buffer
@@ -565,7 +558,7 @@ impl MultiBuffer {
         let (buffer_snapshot, is_dirty, has_deleted_file, has_conflict) = {
             let buffer = self.buffer.read(cx);
             (
-                buffer.snapshot().clone(),
+                buffer.snapshot(),
                 buffer.is_dirty(),
                 buffer
                     .file()
@@ -576,6 +569,8 @@ impl MultiBuffer {
         let previous_version = {
             let snapshot = self.snapshot.borrow();
             if snapshot.buffer.version() == buffer_snapshot.version()
+                && snapshot.buffer.non_text_state_update_count()
+                    == buffer_snapshot.non_text_state_update_count()
                 && snapshot.is_dirty == is_dirty
                 && snapshot.has_deleted_file == has_deleted_file
                 && snapshot.has_conflict == has_conflict
@@ -587,7 +582,7 @@ impl MultiBuffer {
 
         let edits = buffer_snapshot
             .edits_since::<usize>(&previous_version)
-            .map(|edit| TextEdit {
+            .map(|edit| text::Edit {
                 old: MultiBufferOffset(edit.old.start)..MultiBufferOffset(edit.old.end),
                 new: MultiBufferOffset(edit.new.start)..MultiBufferOffset(edit.new.end),
             })
@@ -613,7 +608,7 @@ impl MultiBuffer {
         let (buffer_snapshot, is_dirty, has_deleted_file, has_conflict) = {
             let buffer = self.buffer.read(cx);
             (
-                buffer.snapshot().clone(),
+                buffer.snapshot(),
                 buffer.is_dirty(),
                 buffer
                     .file()
@@ -623,6 +618,8 @@ impl MultiBuffer {
         };
         let snapshot = self.snapshot.get_mut();
         if snapshot.buffer.version() == buffer_snapshot.version()
+            && snapshot.buffer.non_text_state_update_count()
+                == buffer_snapshot.non_text_state_update_count()
             && snapshot.is_dirty == is_dirty
             && snapshot.has_deleted_file == has_deleted_file
             && snapshot.has_conflict == has_conflict
@@ -633,7 +630,7 @@ impl MultiBuffer {
 
         let edits = buffer_snapshot
             .edits_since::<usize>(&previous_version)
-            .map(|edit| TextEdit {
+            .map(|edit| text::Edit {
                 old: MultiBufferOffset(edit.old.start)..MultiBufferOffset(edit.old.end),
                 new: MultiBufferOffset(edit.new.start)..MultiBufferOffset(edit.new.end),
             })
@@ -946,14 +943,25 @@ impl MultiBufferSnapshot {
     }
 
     pub fn text_for_range<T: ToOffset>(&self, range: Range<T>) -> impl Iterator<Item = &str> + '_ {
-        self.chunks(range).map(|chunk| chunk.text)
+        self.chunks(
+            range,
+            LanguageAwareStyling {
+                tree_sitter: false,
+                diagnostics: false,
+            },
+        )
+        .map(|chunk| chunk.text)
     }
 
-    pub fn chunks<T: ToOffset>(&self, range: Range<T>) -> MultiBufferChunks<'_> {
+    pub fn chunks<T: ToOffset>(
+        &self,
+        range: Range<T>,
+        language_aware: LanguageAwareStyling,
+    ) -> MultiBufferChunks<'_> {
         let start = range.start.to_offset(self);
         let end = range.end.to_offset(self);
         MultiBufferChunks {
-            text_chunks: self.buffer.text_for_range(start.0..end.0),
+            buffer_chunks: self.buffer.chunks(start.0..end.0, language_aware),
         }
     }
 

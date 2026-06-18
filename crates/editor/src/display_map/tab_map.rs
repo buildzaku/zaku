@@ -1,6 +1,7 @@
 use std::{cmp, mem, num::NonZeroU32, ops::Range};
-use text::{Bias, Edit as TextEdit, Point};
+use text::{Bias, Point};
 
+use language::{HighlightId, LanguageAwareStyling};
 use multi_buffer::{MultiBufferOffset, MultiBufferRow, MultiBufferSnapshot};
 
 use super::raw_chunks::RawChunks;
@@ -11,7 +12,7 @@ const SPACES: &[u8; text::Chunk::MASK_BITS] = &[b' '; text::Chunk::MASK_BITS];
 #[derive(Clone, Debug, Default)]
 pub struct Chunk<'a> {
     pub text: &'a str,
-    pub is_tab: bool,
+    pub syntax_highlight_id: Option<HighlightId>,
     pub chars: u128,
     pub tabs: u128,
     pub newlines: u128,
@@ -37,7 +38,7 @@ impl TabMap {
     pub fn sync(
         &mut self,
         buffer_snapshot: MultiBufferSnapshot,
-        mut buffer_edits: Vec<TextEdit<MultiBufferOffset>>,
+        mut buffer_edits: Vec<text::Edit<MultiBufferOffset>>,
         tab_size: NonZeroU32,
     ) -> (TabSnapshot, Vec<TabEdit>) {
         let old_snapshot = &mut self.0;
@@ -81,9 +82,13 @@ impl TabMap {
                 let mut offset_from_edit = 0;
                 let mut first_tab_offset = None;
                 let mut last_tab_with_changed_expansion_offset = None;
-                'outer: for chunk in
-                    old_snapshot.raw_chunks(buffer_edit.old.end..old_end_row_successor_offset)
-                {
+                'outer: for chunk in old_snapshot.raw_chunks(
+                    buffer_edit.old.end..old_end_row_successor_offset,
+                    LanguageAwareStyling {
+                        tree_sitter: false,
+                        diagnostics: false,
+                    },
+                ) {
                     let mut remaining_tabs = chunk.tabs;
                     while remaining_tabs != 0 {
                         let tab_index = remaining_tabs.trailing_zeros();
@@ -213,7 +218,11 @@ impl TabSnapshot {
         }
     }
 
-    pub(crate) fn chunks(&self, range: Range<TabPoint>) -> TabChunks<'_> {
+    pub(crate) fn chunks(
+        &self,
+        range: Range<TabPoint>,
+        language_aware: LanguageAwareStyling,
+    ) -> TabChunks<'_> {
         let (input_start, expanded_char_column, to_next_stop) =
             self.tab_point_to_buffer_point(range.start, Bias::Left);
         let input_column = input_start.column;
@@ -232,7 +241,7 @@ impl TabSnapshot {
         };
 
         TabChunks {
-            raw_chunks: self.raw_chunks(input_start..input_end),
+            raw_chunks: self.raw_chunks(input_start..input_end, language_aware),
             input_column,
             column: expanded_char_column,
             max_expansion_column: self.max_expansion_column,
@@ -242,7 +251,6 @@ impl TabSnapshot {
             chunk: Chunk {
                 // Safety: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
                 text: unsafe { std::str::from_utf8_unchecked(&SPACES[..to_next_stop as usize]) },
-                is_tab: true,
                 chars: bitmask_for_len(to_next_stop),
                 ..Default::default()
             },
@@ -265,7 +273,13 @@ impl TabSnapshot {
         let line_start_offset = self.buffer_snapshot.point_to_offset(line_start);
         let point_offset = self.buffer_snapshot.point_to_offset(point);
 
-        let chunks = self.raw_chunks(line_start_offset..point_offset);
+        let chunks = self.raw_chunks(
+            line_start_offset..point_offset,
+            LanguageAwareStyling {
+                tree_sitter: false,
+                diagnostics: false,
+            },
+        );
         let tab_cursor = TabStopCursor::new(chunks);
         let expanded = self.expand_tabs(tab_cursor, point.column);
         TabPoint::new(row, expanded)
@@ -285,7 +299,13 @@ impl TabSnapshot {
         let line_end = Point::new(row, self.buffer_snapshot.line_len(MultiBufferRow(row)));
         let line_end_offset = self.buffer_snapshot.point_to_offset(line_end);
 
-        let chunks = self.raw_chunks(line_start_offset..line_end_offset);
+        let chunks = self.raw_chunks(
+            line_start_offset..line_end_offset,
+            LanguageAwareStyling {
+                tree_sitter: false,
+                diagnostics: false,
+            },
+        );
 
         let tab_cursor = TabStopCursor::new(chunks);
         let expanded = output.column();
@@ -299,8 +319,12 @@ impl TabSnapshot {
         )
     }
 
-    fn raw_chunks(&self, range: Range<MultiBufferOffset>) -> RawChunks<'_> {
-        RawChunks::new(range, &self.buffer_snapshot)
+    fn raw_chunks(
+        &self,
+        range: Range<MultiBufferOffset>,
+        language_aware: LanguageAwareStyling,
+    ) -> RawChunks<'_> {
+        RawChunks::new(range, &self.buffer_snapshot, language_aware)
     }
 
     fn expand_tabs<'a, I>(&self, mut cursor: TabStopCursor<'a, I>, column: u32) -> u32
@@ -417,7 +441,7 @@ impl From<Point> for TabPoint {
     }
 }
 
-pub type TabEdit = TextEdit<TabPoint>;
+pub type TabEdit = text::Edit<TabPoint>;
 
 pub struct TabChunks<'a> {
     max_expansion_column: u32,
@@ -435,7 +459,7 @@ impl<'a> Iterator for TabChunks<'a> {
     type Item = Chunk<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.chunk.text.is_empty() {
+        while self.chunk.text.is_empty() {
             if let Some(chunk) = self.raw_chunks.next() {
                 self.chunk = chunk;
                 if self.inside_leading_tab {
@@ -451,13 +475,7 @@ impl<'a> Iterator for TabChunks<'a> {
             }
         }
 
-        let first_tab_idx = if self.chunk.tabs != 0 {
-            self.chunk.tabs.trailing_zeros() as usize
-        } else {
-            self.chunk.text.len()
-        };
-
-        if first_tab_idx == 0 {
+        if self.chunk.tabs & 1 != 0 {
             self.chunk.text = &self.chunk.text[1..];
             self.chunk.tabs >>= 1;
             self.chunk.chars >>= 1;
@@ -481,20 +499,52 @@ impl<'a> Iterator for TabChunks<'a> {
             return Some(Chunk {
                 // Safety: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
                 text: unsafe { std::str::from_utf8_unchecked(&SPACES[..len as usize]) },
-                is_tab: true,
                 chars: bitmask_for_len(len),
                 tabs: 0,
                 newlines: 0,
+                ..self.chunk.clone()
             });
         }
 
-        let prefix_len = first_tab_idx;
+        if self.chunk.tabs == 0 {
+            let chunk = self.chunk.clone();
+            self.chunk.text = "";
+            self.chunk.tabs = 0;
+            self.chunk.chars = 0;
+            self.chunk.newlines = 0;
+            let chunk_len = u32::try_from(chunk.text.len()).unwrap();
+
+            let newline_count = chunk.newlines.count_ones();
+            if newline_count > 0 {
+                let last_newline_bit = 128 - chunk.newlines.leading_zeros();
+                let chars_after_last_newline =
+                    chunk.chars.unbounded_shr(last_newline_bit).count_ones();
+                let bytes_after_last_newline = chunk_len - last_newline_bit;
+
+                self.column = chars_after_last_newline;
+                self.input_column = bytes_after_last_newline;
+                self.output_position = Point::new(
+                    self.output_position.row + newline_count,
+                    bytes_after_last_newline,
+                );
+            } else {
+                let char_count = chunk.chars.count_ones();
+                self.column += char_count;
+                if !self.inside_leading_tab {
+                    self.input_column += chunk_len;
+                }
+                self.output_position.column += chunk_len;
+            }
+
+            return Some(chunk);
+        }
+
+        let prefix_len = self.chunk.tabs.trailing_zeros() as usize;
         let (prefix, suffix) = self.chunk.text.split_at(prefix_len);
         let prefix_len = u32::try_from(prefix_len).unwrap();
 
         let mask = 1u128.unbounded_shl(prefix_len).wrapping_sub(1);
         let prefix_chars = self.chunk.chars & mask;
-        let prefix_tabs = self.chunk.tabs & mask;
         let prefix_newlines = self.chunk.newlines & mask;
 
         self.chunk.text = suffix;
@@ -526,10 +576,10 @@ impl<'a> Iterator for TabChunks<'a> {
 
         Some(Chunk {
             text: prefix,
-            is_tab: self.chunk.is_tab,
             chars: prefix_chars,
-            tabs: prefix_tabs,
+            tabs: 0,
             newlines: prefix_newlines,
+            ..self.chunk.clone()
         })
     }
 }
@@ -813,7 +863,13 @@ mod tests {
 
     fn tab_snapshot_text(tab_snapshot: &TabSnapshot) -> String {
         tab_snapshot
-            .chunks(TabPoint::zero()..tab_snapshot.max_point())
+            .chunks(
+                TabPoint::zero()..tab_snapshot.max_point(),
+                LanguageAwareStyling {
+                    tree_sitter: false,
+                    diagnostics: false,
+                },
+            )
             .map(|chunk| chunk.text)
             .collect()
     }
@@ -832,7 +888,13 @@ mod tests {
             let input_column = u32::try_from(index).unwrap();
             assert_eq!(
                 tab_snapshot
-                    .chunks(TabPoint::new(0, input_column)..tab_snapshot.max_point())
+                    .chunks(
+                        TabPoint::new(0, input_column)..tab_snapshot.max_point(),
+                        LanguageAwareStyling {
+                            tree_sitter: false,
+                            diagnostics: false,
+                        },
+                    )
                     .map(|chunk| chunk.text)
                     .collect::<String>(),
                 &output[index..],
@@ -870,56 +932,16 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_marking_tabs(cx: &mut App) {
-        let input = "\t \thello";
-        let tab_snapshot = tab_snapshot_for_text(input, cx);
-
-        let chunks = |snapshot: &TabSnapshot, start: TabPoint| -> Vec<(String, bool)> {
-            let mut chunks = Vec::new();
-            let mut was_tab = false;
-            let mut text = String::new();
-            for chunk in snapshot.chunks(start..snapshot.max_point()) {
-                if chunk.is_tab != was_tab {
-                    if !text.is_empty() {
-                        chunks.push((std::mem::take(&mut text), was_tab));
-                    }
-                    was_tab = chunk.is_tab;
-                }
-                text.push_str(chunk.text);
-            }
-
-            if !text.is_empty() {
-                chunks.push((text, was_tab));
-            }
-            chunks
-        };
-
-        assert_eq!(
-            chunks(&tab_snapshot, TabPoint::zero()),
-            vec![
-                ("    ".to_string(), true),
-                (" ".to_string(), false),
-                ("   ".to_string(), true),
-                ("hello".to_string(), false),
-            ]
-        );
-        assert_eq!(
-            chunks(&tab_snapshot, TabPoint::new(0, 2)),
-            vec![
-                ("  ".to_string(), true),
-                (" ".to_string(), false),
-                ("   ".to_string(), true),
-                ("hello".to_string(), false),
-            ]
-        );
-    }
-
-    #[gpui::test]
     fn test_tab_stop_cursor_utf8(cx: &mut App) {
         let text = "\tfoo\tbarbarbar\t\tbaz\n";
         let tab_snapshot = tab_snapshot_for_text(text, cx);
-        let chunks =
-            tab_snapshot.raw_chunks(MultiBufferOffset(0)..tab_snapshot.buffer_snapshot().len());
+        let chunks = tab_snapshot.raw_chunks(
+            MultiBufferOffset(0)..tab_snapshot.buffer_snapshot().len(),
+            LanguageAwareStyling {
+                tree_sitter: false,
+                diagnostics: false,
+            },
+        );
         let mut cursor = TabStopCursor::new(chunks);
         assert!(cursor.seek(0).is_none());
         let mut tab_stops = Vec::new();
@@ -948,8 +970,13 @@ mod tests {
     fn test_tab_stop_with_end_range_utf8(cx: &mut App) {
         let input = "A\tBC\t";
         let tab_snapshot = tab_snapshot_for_text(input, cx);
-        let chunks =
-            tab_snapshot.raw_chunks(MultiBufferOffset(0)..tab_snapshot.buffer_snapshot().len());
+        let chunks = tab_snapshot.raw_chunks(
+            MultiBufferOffset(0)..tab_snapshot.buffer_snapshot().len(),
+            LanguageAwareStyling {
+                tree_sitter: false,
+                diagnostics: false,
+            },
+        );
         let mut cursor = TabStopCursor::new(chunks);
         let mut actual_tab_stops = Vec::new();
         let mut expected_tab_stops = Vec::new();

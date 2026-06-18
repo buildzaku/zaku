@@ -28,7 +28,7 @@ use std::{
     ops::{Deref, Range, RangeInclusive},
     path::PathBuf,
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::Instant,
 };
 use text::{Bias, OffsetUtf16, Selection, SelectionGoal, TransactionId};
@@ -37,7 +37,7 @@ use input::{ERASED_EDITOR_FACTORY, ErasedEditor, ErasedEditorEvent};
 use language::{Buffer, BufferEvent, Capability};
 use multi_buffer::{Anchor, MultiBuffer, MultiBufferRow, MultiBufferSnapshot, ToOffset, ToPoint};
 use settings::{Settings, SettingsStore};
-use theme::{ActiveTheme, ThemeSettings};
+use theme::{ActiveTheme, SyntaxTheme, ThemeSettings};
 use util::ResultExt;
 
 use crate::{
@@ -141,13 +141,18 @@ pub enum SizingBehavior {
 pub struct EditorStyle {
     pub background: Hsla,
     pub text: TextStyle,
+    pub syntax: Arc<SyntaxTheme>,
 }
 
 impl Default for EditorStyle {
     fn default() -> Self {
+        static NONE_SYNTAX: LazyLock<Arc<SyntaxTheme>> =
+            LazyLock::new(|| Arc::new(SyntaxTheme::default()));
+
         Self {
             background: Hsla::transparent_black(),
             text: TextStyle::default(),
+            syntax: NONE_SYNTAX.clone(),
         }
     }
 }
@@ -2549,6 +2554,7 @@ impl Editor {
         EditorStyle {
             background: theme_colors.editor_background,
             text: text_style,
+            syntax: cx.theme().syntax().clone(),
         }
     }
 
@@ -3025,6 +3031,7 @@ impl ErasedEditor for ErasedEditorImpl {
         let editor_style = EditorStyle {
             background: theme_colors.ghost_element_background,
             text: text_style,
+            syntax: cx.theme().syntax().clone(),
         };
 
         EditorElement::new(&self.0, editor_style).into_any()

@@ -47,6 +47,7 @@ settings = { workspace = true }
 smallvec = { workspace = true }
 smol = { workspace = true }
 theme = { workspace = true }
+theme_settings = { workspace = true }
 ui = { workspace = true }
 util = { workspace = true }
 uuid = { workspace = true }

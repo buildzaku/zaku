@@ -9,6 +9,7 @@ pub use worktree::{
     RequestFileState, Snapshot, UpdatedEntriesSet, Worktree, WorktreeId, request_method_label,
 };
 
+use futures::{FutureExt, StreamExt};
 #[cfg(any(test, feature = "test-support"))]
 use gpui::TestAppContext;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
@@ -20,7 +21,7 @@ use std::{
 };
 
 use fs::{Fs, MTime};
-use language::{Buffer, BufferEvent};
+use language::{AvailableLanguage, Buffer, BufferEvent, Language, LanguageRegistry, PLAIN_TEXT};
 use util::{ResultExt, path::PathStyle, rel_path::RelPath};
 
 use crate::{
@@ -198,8 +199,10 @@ pub struct Project {
     worktree_store: Entity<WorktreeStore>,
     buffer_store: Entity<BufferStore>,
     request_buffer_store: Entity<RequestBufferStore>,
+    languages: Arc<LanguageRegistry>,
     active_entry: Option<ProjectEntryId>,
     metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
+    _maintain_buffer_languages: Task<()>,
 }
 
 pub enum ProjectEvent {
@@ -214,7 +217,7 @@ pub enum ProjectEvent {
 impl EventEmitter<ProjectEvent> for Project {}
 
 impl Project {
-    pub fn new(fs: Arc<dyn Fs>, cx: &mut Context<Self>) -> Self {
+    pub fn new(fs: Arc<dyn Fs>, languages: Arc<LanguageRegistry>, cx: &mut Context<Self>) -> Self {
         let worktree_store =
             cx.new(move |cx| WorktreeStore::new(fs.clone(), WorktreeIdCounter::get(cx)));
         let buffer_store = cx.new({
@@ -229,30 +232,34 @@ impl Project {
             this.on_worktree_store_event(event, cx);
         })
         .detach();
-        cx.subscribe(&buffer_store, |_, _, event, cx| {
-            Self::on_buffer_store_event(event, cx);
+        cx.subscribe(&buffer_store, |this, _, event, cx| {
+            this.on_buffer_store_event(event, cx);
         })
         .detach();
         cx.subscribe(&request_buffer_store, |_, _, event, cx| {
             Self::on_request_buffer_store_event(event, cx);
         })
         .detach();
+        let maintain_buffer_languages = Self::maintain_buffer_languages(languages.clone(), cx);
 
         Self {
             worktree_store,
             buffer_store,
             request_buffer_store,
+            languages,
             active_entry: None,
             metadata_by_entry_id: HashMap::new(),
+            _maintain_buffer_languages: maintain_buffer_languages,
         }
     }
 
     pub fn open(
         fs: Arc<dyn Fs>,
+        languages: Arc<LanguageRegistry>,
         abs_path: PathBuf,
         cx: &mut App,
     ) -> Task<anyhow::Result<Entity<Self>>> {
-        let project = cx.new(move |cx| Self::new(fs.clone(), cx));
+        let project = cx.new(move |cx| Self::new(fs.clone(), languages.clone(), cx));
         let open_task = project.update(cx, |project, cx| {
             project.find_or_create_worktree(abs_path, true, cx)
         });
@@ -269,10 +276,12 @@ impl Project {
         root_path: &Path,
         cx: &mut TestAppContext,
     ) -> Entity<Project> {
+        let languages = Arc::new(LanguageRegistry::test(cx.executor()));
         let project = cx.update(|cx| {
             cx.new({
                 let fs = fs.clone();
-                move |cx| Self::new(fs.clone(), cx)
+                let languages = languages.clone();
+                move |cx| Self::new(fs.clone(), languages.clone(), cx)
             })
         });
 
@@ -311,14 +320,21 @@ impl Project {
         }
     }
 
-    fn on_buffer_store_event(event: &BufferStoreEvent, cx: &mut Context<Self>) {
+    fn on_buffer_store_event(&mut self, event: &BufferStoreEvent, cx: &mut Context<Self>) {
         match event {
             BufferStoreEvent::BufferAdded(buffer) => {
-                Self::register_buffer(buffer, cx);
+                self.on_buffer_added(buffer, cx);
             }
-            BufferStoreEvent::BufferDropped(_) | BufferStoreEvent::BufferChangedFilePath { .. } => {
+            BufferStoreEvent::BufferChangedFilePath { buffer, .. } => {
+                self.detect_language_for_buffer(buffer, cx);
             }
+            BufferStoreEvent::BufferDropped(_) => {}
         }
+    }
+
+    fn on_buffer_added(&mut self, buffer: &Entity<Buffer>, cx: &mut Context<Self>) {
+        Self::register_buffer(buffer, cx);
+        self.detect_language_for_buffer(buffer, cx);
     }
 
     fn register_buffer(buffer: &Entity<Buffer>, cx: &mut Context<Self>) {
@@ -337,6 +353,90 @@ impl Project {
         if event == &BufferEvent::ReloadNeeded {
             self.reload_buffer(buffer, cx).detach_and_log_err(cx);
         }
+    }
+
+    fn detect_language_for_buffer(
+        &mut self,
+        buffer_handle: &Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Option<AvailableLanguage> {
+        let available_language = {
+            let buffer = buffer_handle.read(cx);
+            let file = buffer.file()?;
+            let content = buffer.as_rope();
+            self.languages.language_for_file(file, Some(content), cx)
+        };
+
+        if let Some(available_language) = &available_language
+            && let Some(Ok(Ok(new_language))) = self
+                .languages
+                .load_language(available_language)
+                .now_or_never()
+        {
+            Self::set_language_for_buffer(buffer_handle, new_language, cx);
+        }
+
+        available_language
+    }
+
+    fn set_language_for_buffer(
+        buffer: &Entity<Buffer>,
+        new_language: Arc<Language>,
+        cx: &mut Context<Self>,
+    ) {
+        if buffer
+            .read(cx)
+            .language()
+            .is_none_or(|old_language| !Arc::ptr_eq(old_language, &new_language))
+        {
+            buffer.update(cx, move |buffer, cx| {
+                buffer.set_language_async(Some(new_language), cx);
+            });
+        }
+    }
+
+    fn maintain_buffer_languages(
+        languages: Arc<LanguageRegistry>,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
+        let mut subscription = languages.subscribe();
+        let mut previous_reload_count = languages.reload_count();
+        cx.spawn(async move |this, cx| {
+            while let Some(()) = subscription.next().await {
+                let Some(this) = this.upgrade() else {
+                    break;
+                };
+
+                let reload_count = languages.reload_count();
+                if reload_count > previous_reload_count {
+                    previous_reload_count = reload_count;
+                    this.update(cx, |this, cx| {
+                        let buffers = this.buffer_store.read(cx).buffers().collect::<Vec<_>>();
+                        for buffer in buffers {
+                            if buffer.read(cx).file().is_some() {
+                                buffer.update(cx, |buffer, cx| {
+                                    buffer.set_language_async(None, cx);
+                                });
+                            }
+                        }
+                    });
+                }
+
+                this.update(cx, |this, cx| {
+                    let mut plain_text_buffers = Vec::new();
+                    for handle in this.buffer_store.read(cx).buffers() {
+                        let buffer = handle.read(cx);
+                        if buffer.language().is_none() || buffer.language() == Some(&*PLAIN_TEXT) {
+                            plain_text_buffers.push(handle);
+                        }
+                    }
+
+                    for buffer in plain_text_buffers {
+                        this.detect_language_for_buffer(&buffer, cx);
+                    }
+                });
+            }
+        })
     }
 
     fn on_request_buffer_store_event(event: &RequestBufferStoreEvent, cx: &mut Context<Self>) {
