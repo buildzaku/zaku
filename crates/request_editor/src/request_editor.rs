@@ -625,7 +625,8 @@ impl RequestEditor {
         let language_name = match body_type {
             Some(RequestBodyType::Json) => "JSON",
             Some(RequestBodyType::Html) => "HTML",
-            Some(RequestBodyType::Text | RequestBodyType::Xml) | None => {
+            Some(RequestBodyType::Xml) => "XML",
+            Some(RequestBodyType::Text) | None => {
                 return;
             }
         };
@@ -1108,6 +1109,11 @@ impl RequestEditor {
                                     Some("JSON")
                                 } else if media_type.eq_ignore_ascii_case("text/html") {
                                     Some("HTML")
+                                } else if media_type.eq_ignore_ascii_case("application/xml")
+                                    || media_type.eq_ignore_ascii_case("text/xml")
+                                    || media_type_lowercase.ends_with("+xml")
+                                {
+                                    Some("XML")
                                 } else {
                                     None
                                 }

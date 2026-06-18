@@ -10,9 +10,10 @@ pub fn init(languages: &LanguageRegistry) {
     languages.register_native_grammars(grammars::native_grammars());
 
     let built_in_languages = [
+        LanguageInfo { name: "html" },
         LanguageInfo { name: "json" },
         LanguageInfo { name: "jsonc" },
-        LanguageInfo { name: "html" },
+        LanguageInfo { name: "xml" },
     ];
 
     for registration in built_in_languages {

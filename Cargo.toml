@@ -140,6 +140,7 @@ trash = { version = "5.2" }
 tree-sitter = { version = "0.26" }
 tree-sitter-html = { version = "0.23" }
 tree-sitter-json = { version = "0.24" }
+tree-sitter-xml = { version = "0.7" }
 unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.23", features = ["v4"] }

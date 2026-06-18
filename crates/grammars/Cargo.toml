@@ -20,4 +20,5 @@ toml = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-html = { workspace = true }
 tree-sitter-json = { workspace = true }
+tree-sitter-xml = { workspace = true }
 util = { workspace = true }
