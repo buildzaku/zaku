@@ -168,6 +168,7 @@ async fn test_native_fs_self_referential_symlink_metadata(executor: BackgroundEx
 }
 
 #[gpui::test]
+#[ignore = "stress test; run explicitly when needed"]
 async fn test_native_fs_watch_stress_reports_rescan_when_paths_are_missed(
     executor: BackgroundExecutor,
     cx: &mut TestAppContext,
