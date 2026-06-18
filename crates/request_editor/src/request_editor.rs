@@ -114,6 +114,7 @@ fn body_type_label(r#type: Option<RequestBodyType>) -> &'static str {
         None => "None",
         Some(RequestBodyType::Text) => "Text",
         Some(RequestBodyType::Json) => "JSON",
+        Some(RequestBodyType::Html) => "HTML",
         Some(RequestBodyType::Xml) => "XML",
     }
 }
@@ -621,17 +622,21 @@ impl RequestEditor {
             }
         });
 
-        if body_type != Some(RequestBodyType::Json) {
-            return;
-        }
+        let language_name = match body_type {
+            Some(RequestBodyType::Json) => "JSON",
+            Some(RequestBodyType::Html) => "HTML",
+            Some(RequestBodyType::Text | RequestBodyType::Xml) | None => {
+                return;
+            }
+        };
 
         let payload_id = payload.entity_id();
         let languages = SharedState::global(cx).languages.clone();
         cx.spawn(async move |this, cx| {
-            let language = match languages.language_for_name("JSON").await {
+            let language = match languages.language_for_name(language_name).await {
                 Ok(language) => language,
                 Err(error) => {
-                    log::error!("Failed to load JSON language: {error:?}");
+                    log::error!("Failed to load {language_name} language: {error:?}");
                     return;
                 }
             };
@@ -640,7 +645,7 @@ impl RequestEditor {
                 let RequestEditorState::Ready(request) = &request_editor.request else {
                     return;
                 };
-                if request.http.body_type != Some(RequestBodyType::Json) {
+                if request.http.body_type != body_type {
                     return;
                 }
                 let Some(body) = request.http.body.as_ref() else {
@@ -1449,6 +1454,7 @@ impl RequestEditor {
                 None,
                 Some(RequestBodyType::Text),
                 Some(RequestBodyType::Json),
+                Some(RequestBodyType::Html),
                 Some(RequestBodyType::Xml),
             ] {
                 let request_editor = request_editor.clone();

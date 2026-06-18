@@ -82,6 +82,7 @@ pub struct RequestFileBody {
 pub enum RequestFileBodyType {
     Text,
     Json,
+    Html,
     Xml,
 }
 
