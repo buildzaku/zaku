@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 use text::{
-    Bias, Edit as TextEdit, OffsetUtf16, Point, PointUtf16, TextDimension, TextSummary,
+    Bias, OffsetUtf16, Point, PointUtf16, TextDimension, TextSummary,
     subscription::{Subscription, Topic},
 };
 
@@ -582,7 +582,7 @@ impl MultiBuffer {
 
         let edits = buffer_snapshot
             .edits_since::<usize>(&previous_version)
-            .map(|edit| TextEdit {
+            .map(|edit| text::Edit {
                 old: MultiBufferOffset(edit.old.start)..MultiBufferOffset(edit.old.end),
                 new: MultiBufferOffset(edit.new.start)..MultiBufferOffset(edit.new.end),
             })
@@ -630,7 +630,7 @@ impl MultiBuffer {
 
         let edits = buffer_snapshot
             .edits_since::<usize>(&previous_version)
-            .map(|edit| TextEdit {
+            .map(|edit| text::Edit {
                 old: MultiBufferOffset(edit.old.start)..MultiBufferOffset(edit.old.end),
                 new: MultiBufferOffset(edit.new.start)..MultiBufferOffset(edit.new.end),
             })

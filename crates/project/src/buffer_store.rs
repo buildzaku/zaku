@@ -6,7 +6,7 @@ use std::{
     io,
     sync::Arc,
 };
-use text::{Buffer as TextBuffer, BufferId, ReplicaId};
+use text::{BufferId, ReplicaId};
 
 use language::{Buffer, BufferEvent, Capability};
 use util::{debug_panic, rel_path::RelPath};
@@ -377,7 +377,7 @@ impl BufferStore {
                     let buffer_id = BufferId::from(reservation.entity_id().as_non_zero_u64());
                     let text_buffer = cx
                         .background_spawn(async move {
-                            TextBuffer::new(ReplicaId::LOCAL, buffer_id, loaded.text)
+                            text::Buffer::new(ReplicaId::LOCAL, buffer_id, loaded.text)
                         })
                         .await;
                     let file: Arc<dyn language::File> = loaded.file;
@@ -387,7 +387,7 @@ impl BufferStore {
                 }
                 Err(error) if is_not_found_error(&error) => cx.new(|cx| {
                     let buffer_id = BufferId::from(cx.entity_id().as_non_zero_u64());
-                    let text_buffer = TextBuffer::new(ReplicaId::LOCAL, buffer_id, "");
+                    let text_buffer = text::Buffer::new(ReplicaId::LOCAL, buffer_id, "");
                     let file: Arc<dyn language::File> = Arc::new(File {
                         worktree,
                         path,

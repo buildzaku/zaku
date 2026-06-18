@@ -9,9 +9,7 @@ use std::{
 };
 use streaming_iterator::StreamingIterator;
 use sum_tree::{Dimensions, Item, SumTree, Summary};
-use text::{
-    Anchor, BufferId, BufferSnapshot as TextBufferSnapshot, Point, Rope, ToOffset, ToPoint,
-};
+use text::{Anchor, BufferId, Point, Rope, ToOffset, ToPoint};
 use tree_sitter::{Node, ParseOptions, Query, QueryCapture, QueryCaptures, QueryCursor, Tree};
 
 #[cfg(debug_assertions)]
@@ -303,7 +301,7 @@ impl Drop for QueryCursorHandle {
 }
 
 impl SyntaxSnapshot {
-    fn new(text: &TextBufferSnapshot) -> Self {
+    fn new(text: &text::BufferSnapshot) -> Self {
         Self {
             layers: SumTree::new(text),
             parsed_version: clock::Global::default(),
@@ -336,7 +334,7 @@ impl SyntaxSnapshot {
         &self.interpolated_version
     }
 
-    pub fn interpolate(&mut self, text: &TextBufferSnapshot) {
+    pub fn interpolate(&mut self, text: &text::BufferSnapshot) {
         let edits = text
             .anchored_edits_since::<Dimensions<usize, Point>>(&self.interpolated_version)
             .collect::<Vec<_>>();
@@ -370,7 +368,7 @@ impl SyntaxSnapshot {
         }
     }
 
-    pub fn reparse(&mut self, text: &TextBufferSnapshot, root_language: Arc<Language>) {
+    pub fn reparse(&mut self, text: &text::BufferSnapshot, root_language: Arc<Language>) {
         match self.reparse_inner(text, root_language, None) {
             Ok(()) => {}
             Err(ParseTimeout) => unreachable!("unbounded parse should not time out"),
@@ -379,7 +377,7 @@ impl SyntaxSnapshot {
 
     pub fn reparse_with_timeout(
         &mut self,
-        text: &TextBufferSnapshot,
+        text: &text::BufferSnapshot,
         root_language: Arc<Language>,
         budget: Duration,
     ) -> Result<(), ParseTimeout> {
@@ -389,7 +387,7 @@ impl SyntaxSnapshot {
     pub fn captures<'a>(
         &'a self,
         range: Range<usize>,
-        buffer: &'a TextBufferSnapshot,
+        buffer: &'a text::BufferSnapshot,
         query: fn(&Grammar) -> Option<&Query>,
     ) -> SyntaxMapCaptures<'a> {
         SyntaxMapCaptures::new(
@@ -402,7 +400,7 @@ impl SyntaxSnapshot {
 
     fn reparse_inner(
         &mut self,
-        text: &TextBufferSnapshot,
+        text: &text::BufferSnapshot,
         root_language: Arc<Language>,
         mut budget: Option<Duration>,
     ) -> Result<(), ParseTimeout> {
@@ -437,7 +435,7 @@ impl SyntaxSnapshot {
     }
 
     #[cfg(debug_assertions)]
-    fn check_invariants(&self, text: &TextBufferSnapshot) {
+    fn check_invariants(&self, text: &text::BufferSnapshot) {
         let mut max_depth = 0;
         let mut previous_layer: Option<(Range<Anchor>, Option<LanguageId>)> = None;
         for layer in self.layers.iter() {
@@ -473,14 +471,14 @@ impl SyntaxSnapshot {
     }
 
     #[cfg(test)]
-    pub fn layers<'a>(&'a self, buffer: &'a TextBufferSnapshot) -> Vec<SyntaxLayer<'a>> {
+    pub fn layers<'a>(&'a self, buffer: &'a text::BufferSnapshot) -> Vec<SyntaxLayer<'a>> {
         self.layers_for_range(0..buffer.len(), buffer).collect()
     }
 
     pub fn layers_for_range<'a, T: ToOffset>(
         &'a self,
         range: Range<T>,
-        buffer: &'a TextBufferSnapshot,
+        buffer: &'a text::BufferSnapshot,
     ) -> impl 'a + Iterator<Item = SyntaxLayer<'a>> {
         let start_offset = range.start.to_offset(buffer);
         let end_offset = range.end.to_offset(buffer);
@@ -563,7 +561,7 @@ struct SyntaxLayerEntry {
 impl Item for SyntaxLayerEntry {
     type Summary = SyntaxLayerSummary;
 
-    fn summary(&self, _cx: &TextBufferSnapshot) -> Self::Summary {
+    fn summary(&self, _cx: &text::BufferSnapshot) -> Self::Summary {
         SyntaxLayerSummary {
             min_depth: self.depth,
             max_depth: self.depth,
@@ -592,9 +590,9 @@ struct SyntaxLayerSummary {
 }
 
 impl Summary for SyntaxLayerSummary {
-    type Context<'a> = &'a TextBufferSnapshot;
+    type Context<'a> = &'a text::BufferSnapshot;
 
-    fn zero(buffer: &TextBufferSnapshot) -> Self {
+    fn zero(buffer: &text::BufferSnapshot) -> Self {
         Self {
             max_depth: 0,
             min_depth: 0,
@@ -623,7 +621,7 @@ pub struct SyntaxMap {
 }
 
 impl SyntaxMap {
-    pub fn new(text: &TextBufferSnapshot) -> Self {
+    pub fn new(text: &text::BufferSnapshot) -> Self {
         Self {
             snapshot: SyntaxSnapshot::new(text),
         }
@@ -633,12 +631,12 @@ impl SyntaxMap {
         self.snapshot.clone()
     }
 
-    pub fn interpolate(&mut self, text: &TextBufferSnapshot) {
+    pub fn interpolate(&mut self, text: &text::BufferSnapshot) {
         self.snapshot.interpolate(text);
     }
 
     #[cfg(test)]
-    pub fn reparse(&mut self, root_language: Arc<Language>, text: &TextBufferSnapshot) {
+    pub fn reparse(&mut self, root_language: Arc<Language>, text: &text::BufferSnapshot) {
         self.snapshot.reparse(text, root_language);
     }
 
@@ -646,7 +644,7 @@ impl SyntaxMap {
         self.snapshot = snapshot;
     }
 
-    pub fn clear(&mut self, text: &TextBufferSnapshot) {
+    pub fn clear(&mut self, text: &text::BufferSnapshot) {
         let update_count = self.snapshot.update_count + 1;
         self.snapshot = SyntaxSnapshot::new(text);
         self.snapshot.update_count = update_count;
@@ -716,11 +714,11 @@ fn parse_text(
 mod tests {
     use super::*;
 
-    use text::{Buffer, ReplicaId};
+    use text::ReplicaId;
 
     use crate::json_lang;
 
-    fn range_for_text(buffer: &Buffer, text: &str) -> Range<usize> {
+    fn range_for_text(buffer: &text::Buffer, text: &str) -> Range<usize> {
         let start = buffer.as_rope().to_string().find(text).unwrap();
         start..start + text.len()
     }
@@ -728,7 +726,7 @@ mod tests {
     #[track_caller]
     fn assert_layers_for_range(
         syntax_map: &SyntaxMap,
-        buffer: &TextBufferSnapshot,
+        buffer: &text::BufferSnapshot,
         range: Range<Point>,
         expected_layers: &[&str],
     ) {
@@ -753,7 +751,7 @@ mod tests {
     #[test]
     fn test_syntax_map_layers_for_range() {
         let language = json_lang();
-        let mut buffer = Buffer::new(
+        let mut buffer = text::Buffer::new(
             ReplicaId::LOCAL,
             BufferId::new(1).unwrap(),
             r#"{"items":[]}"#,

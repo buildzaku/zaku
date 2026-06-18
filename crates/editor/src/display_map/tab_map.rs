@@ -1,5 +1,5 @@
 use std::{cmp, mem, num::NonZeroU32, ops::Range};
-use text::{Bias, Edit as TextEdit, Point};
+use text::{Bias, Point};
 
 use language::{HighlightId, LanguageAwareStyling};
 use multi_buffer::{MultiBufferOffset, MultiBufferRow, MultiBufferSnapshot};
@@ -38,7 +38,7 @@ impl TabMap {
     pub fn sync(
         &mut self,
         buffer_snapshot: MultiBufferSnapshot,
-        mut buffer_edits: Vec<TextEdit<MultiBufferOffset>>,
+        mut buffer_edits: Vec<text::Edit<MultiBufferOffset>>,
         tab_size: NonZeroU32,
     ) -> (TabSnapshot, Vec<TabEdit>) {
         let old_snapshot = &mut self.0;
@@ -441,7 +441,7 @@ impl From<Point> for TabPoint {
     }
 }
 
-pub type TabEdit = TextEdit<TabPoint>;
+pub type TabEdit = text::Edit<TabPoint>;
 
 pub struct TabChunks<'a> {
     max_expansion_column: u32,

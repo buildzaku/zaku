@@ -4,7 +4,7 @@ use gpui::{App, AppContext};
 use indoc::indoc;
 use rand::{RngExt, rngs::StdRng};
 use std::time::{Duration, Instant};
-use text::{Buffer as TextBuffer, BufferId, Point, ReplicaId};
+use text::{BufferId, Point, ReplicaId};
 
 use language::{Buffer, Capability};
 
@@ -13,7 +13,7 @@ fn test_empty_singleton(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
     let buffer = cx.new(|_| {
         Buffer::build(
-            TextBuffer::new(ReplicaId::LOCAL, buffer_id, ""),
+            text::Buffer::new(ReplicaId::LOCAL, buffer_id, ""),
             None,
             Capability::ReadWrite,
         )
@@ -33,7 +33,7 @@ fn test_singleton(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
     let buffer = cx.new(|_| {
         Buffer::build(
-            TextBuffer::new(
+            text::Buffer::new(
                 ReplicaId::LOCAL,
                 buffer_id,
                 indoc! {"
@@ -71,7 +71,7 @@ fn test_singleton_multibuffer_anchors(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
     let buffer = cx.new(|_| {
         Buffer::build(
-            TextBuffer::new(ReplicaId::LOCAL, buffer_id, "abcd"),
+            text::Buffer::new(ReplicaId::LOCAL, buffer_id, "abcd"),
             None,
             Capability::ReadWrite,
         )
@@ -122,7 +122,7 @@ fn test_trailing_deletion_without_newline(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
     let buffer = cx.new(|_| {
         Buffer::build(
-            TextBuffer::new(
+            text::Buffer::new(
                 ReplicaId::LOCAL,
                 buffer_id,
                 "The quick brown fox\njumps over the lazy dog",
@@ -166,7 +166,7 @@ fn test_random_multibuffer(cx: &mut App, mut rng: StdRng) {
         let expected = expected.clone();
         move |_| {
             Buffer::build(
-                TextBuffer::new(ReplicaId::LOCAL, buffer_id, expected),
+                text::Buffer::new(ReplicaId::LOCAL, buffer_id, expected),
                 None,
                 Capability::ReadWrite,
             )
@@ -274,7 +274,7 @@ fn test_history(cx: &mut App) {
     let buffer_id = BufferId::new(1).unwrap();
     let buffer = cx.new(|_| {
         Buffer::build(
-            TextBuffer::new(ReplicaId::LOCAL, buffer_id, "fox"),
+            text::Buffer::new(ReplicaId::LOCAL, buffer_id, "fox"),
             None,
             Capability::ReadWrite,
         )
