@@ -1594,49 +1594,51 @@ impl Element for EditorElement {
             let clamped_scroll_position = layout.clamped_scroll_position;
             let text_bounds = layout.position_map.text_hitbox.bounds;
 
-            self.paint_mouse_listeners(layout, window);
+            window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                self.paint_mouse_listeners(layout, window);
 
-            if !self.style.background.is_transparent() {
-                window.paint_quad(gpui::fill(bounds, self.style.background));
-            }
-            window.paint_quad(gpui::fill(
-                layout.gutter_hitbox.bounds,
-                cx.theme().colors().editor_gutter_background,
-            ));
-            if let Some(active_line_background) = layout.active_line_background.take() {
-                window.paint_quad(active_line_background);
-            }
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: layout.gutter_hitbox.bounds,
-                }),
-                |window| {
-                    Self::paint_line_numbers(layout, window, cx);
-                },
-            );
+                if !self.style.background.is_transparent() {
+                    window.paint_quad(gpui::fill(bounds, self.style.background));
+                }
+                window.paint_quad(gpui::fill(
+                    layout.gutter_hitbox.bounds,
+                    cx.theme().colors().editor_gutter_background,
+                ));
+                if let Some(active_line_background) = layout.active_line_background.take() {
+                    window.paint_quad(active_line_background);
+                }
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: layout.gutter_hitbox.bounds,
+                    }),
+                    |window| {
+                        Self::paint_line_numbers(layout, window, cx);
+                    },
+                );
 
-            window.with_content_mask(
-                Some(ContentMask {
-                    bounds: text_bounds,
-                }),
-                |window| {
-                    Self::paint_highlights(layout, text_bounds, window, cx);
+                window.with_content_mask(
+                    Some(ContentMask {
+                        bounds: text_bounds,
+                    }),
+                    |window| {
+                        Self::paint_highlights(layout, text_bounds, window, cx);
 
-                    for line in &layout.position_map.line_layouts {
-                        line.shaped_line
-                            .paint(line.origin, line_height, TextAlign::Left, None, window, cx)
-                            .log_err();
-                    }
+                        for line in &layout.position_map.line_layouts {
+                            line.shaped_line
+                                .paint(line.origin, line_height, TextAlign::Left, None, window, cx)
+                                .log_err();
+                        }
 
-                    if focus_handle.is_focused(window)
-                        && let Some(cursor) = layout.cursor.take()
-                    {
-                        window.paint_quad(cursor);
-                    }
-                },
-            );
+                        if focus_handle.is_focused(window)
+                            && let Some(cursor) = layout.cursor.take()
+                        {
+                            window.paint_quad(cursor);
+                        }
+                    },
+                );
 
-            self.paint_scrollbars(layout, window, cx);
+                self.paint_scrollbars(layout, window, cx);
+            });
 
             if layout.needs_scroll_clamp {
                 self.editor.update(cx, |editor, cx| {
