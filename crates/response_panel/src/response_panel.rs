@@ -220,13 +220,14 @@ impl Response {
 
         let language = language.unwrap_or_else(|| PLAIN_TEXT.clone());
         self.payload.update(cx, |payload_buffer, cx| {
-            payload_buffer.set_text(payload.into(), cx);
+            let payload = payload.into();
             if let Some(buffer) = payload_buffer.as_singleton() {
                 let language = language.clone();
                 buffer.update(cx, |buffer, cx| {
                     buffer.set_language(Some(language), cx);
                 });
             }
+            payload_buffer.set_text(payload, cx);
         });
         cx.notify();
         true
