@@ -6197,7 +6197,6 @@ name = "settings_content"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "gpui",
  "indexmap",
  "indoc",
  "log",

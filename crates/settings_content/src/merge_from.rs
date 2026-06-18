@@ -1,4 +1,3 @@
-use gpui::Pixels;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub trait MergeFrom {
@@ -41,8 +40,6 @@ merge_from_overwrites!(
     std::path::PathBuf,
     std::sync::Arc<str>,
     std::sync::Arc<std::path::Path>,
-    Pixels,
-    crate::UiDensity,
 );
 
 impl<T: Clone + MergeFrom> MergeFrom for Option<T> {

@@ -1,13 +1,14 @@
-use gpui::Pixels;
 use indexmap::IndexMap;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{MapAccess, Visitor},
 };
 use settings_macros::{MergeFrom, with_fallible_options};
-use std::fmt;
+use std::{fmt, sync::Arc};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, Deserialize)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default, Deserialize, MergeFrom,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum UiDensity {
     #[default]
@@ -116,6 +117,45 @@ pub enum BufferLineHeight {
     Custom(#[serde(deserialize_with = "deserialize_line_height")] f32),
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, MergeFrom, PartialEq, PartialOrd)]
+#[serde(transparent)]
+pub struct FontSize(pub f32);
+
+impl fmt::Display for FontSize {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{:.2}", self.0)
+    }
+}
+
+impl From<f32> for FontSize {
+    fn from(value: f32) -> Self {
+        Self(value)
+    }
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Deserialize, MergeFrom, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct FontFamilyName(pub Arc<str>);
+
+impl AsRef<str> for FontFamilyName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for FontFamilyName {
+    fn from(value: String) -> Self {
+        Self(Arc::from(value))
+    }
+}
+
+impl From<FontFamilyName> for String {
+    fn from(value: FontFamilyName) -> Self {
+        value.0.to_string()
+    }
+}
+
 fn deserialize_line_height<'de, D>(deserializer: D) -> Result<f32, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -140,9 +180,9 @@ pub struct ThemeSettingsContent {
 #[derive(Clone, Default, Deserialize, MergeFrom)]
 pub struct UiSettingsContent {
     pub density: Option<UiDensity>,
-    pub font_size: Option<Pixels>,
-    pub font_family: Option<String>,
-    pub font_fallbacks: Option<Vec<String>>,
+    pub font_size: Option<FontSize>,
+    pub font_family: Option<FontFamilyName>,
+    pub font_fallbacks: Option<Vec<FontFamilyName>>,
     pub font_features: Option<FontFeaturesContent>,
     pub font_weight: Option<FontWeightContent>,
 }

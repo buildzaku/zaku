@@ -1,8 +1,9 @@
-use gpui::{FontFeatures, FontStyle, FontWeight, WindowBackgroundAppearance};
+use gpui::{FontFeatures, FontStyle, FontWeight, Pixels, SharedString, WindowBackgroundAppearance};
 use std::sync::Arc;
 
 use settings_content::{
-    FontFeaturesContent, FontStyleContent, FontWeightContent, WindowBackgroundContent,
+    FontFamilyName, FontFeaturesContent, FontSize, FontStyleContent, FontWeightContent,
+    WindowBackgroundContent,
 };
 
 pub trait IntoGpui {
@@ -28,6 +29,22 @@ impl IntoGpui for FontWeightContent {
 
     fn into_gpui(self) -> Self::Output {
         FontWeight(self.0.clamp(100.0, 950.0))
+    }
+}
+
+impl IntoGpui for FontSize {
+    type Output = Pixels;
+
+    fn into_gpui(self) -> Self::Output {
+        gpui::px(self.0)
+    }
+}
+
+impl IntoGpui for FontFamilyName {
+    type Output = SharedString;
+
+    fn into_gpui(self) -> Self::Output {
+        SharedString::from(self.0)
     }
 }
 

@@ -14,7 +14,6 @@ path = "src/settings_content.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-gpui = { workspace = true }
 indexmap = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }

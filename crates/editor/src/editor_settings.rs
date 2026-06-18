@@ -16,9 +16,14 @@ pub struct Gutter {
 
 impl Settings for EditorSettings {
     fn from_settings(content: &SettingsContent) -> Self {
-        let gutter = content.gutter();
+        let editor = content.editor.as_ref();
+        let gutter = editor
+            .and_then(|editor| editor.gutter.clone())
+            .unwrap_or_default();
         Self {
-            current_line_highlight: content.current_line_highlight().unwrap(),
+            current_line_highlight: editor
+                .and_then(|editor| editor.current_line_highlight)
+                .unwrap(),
             gutter: Gutter {
                 min_line_number_digits: gutter.min_line_number_digits.unwrap(),
                 line_numbers: gutter.line_numbers.unwrap(),

@@ -38,7 +38,13 @@ fn configured_theme(cx: &mut App) -> Arc<Theme> {
     let system_appearance = SystemAppearance::global(cx);
     let theme_mode = cx
         .try_global::<SettingsStore>()
-        .map(|settings| settings.content().theme_mode())
+        .and_then(|settings| {
+            settings
+                .content()
+                .theme
+                .as_ref()
+                .and_then(|theme| theme.mode)
+        })
         .unwrap_or_default();
     let appearance = match theme_mode {
         ThemeAppearanceMode::System => system_appearance.0,
