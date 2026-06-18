@@ -7,7 +7,8 @@ use util::asset_str;
 
 #[derive(RustEmbed)]
 #[folder = "src/"]
-#[exclude = "*.rs"]
+#[include = "*/config.toml"]
+#[include = "*/*.scm"]
 struct GrammarDir;
 
 pub fn native_grammars() -> Vec<(&'static str, tree_sitter::Language)> {
