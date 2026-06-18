@@ -614,19 +614,18 @@ impl RequestEditor {
             return;
         };
 
-        payload.update(cx, |payload, cx| {
-            if let Some(buffer) = payload.as_singleton() {
-                buffer.update(cx, |buffer, cx| {
-                    buffer.set_language(Some(PLAIN_TEXT.clone()), cx);
-                });
-            }
-        });
-
         let language_name = match body_type {
             Some(RequestBodyType::Json) => "JSON",
             Some(RequestBodyType::Html) => "HTML",
             Some(RequestBodyType::Xml) => "XML",
             Some(RequestBodyType::Text) | None => {
+                payload.update(cx, |payload, cx| {
+                    if let Some(buffer) = payload.as_singleton() {
+                        buffer.update(cx, |buffer, cx| {
+                            buffer.set_language(Some(PLAIN_TEXT.clone()), cx);
+                        });
+                    }
+                });
                 return;
             }
         };
@@ -638,7 +637,7 @@ impl RequestEditor {
                 Ok(language) => language,
                 Err(error) => {
                     log::error!("Failed to load {language_name} language: {error:?}");
-                    return;
+                    PLAIN_TEXT.clone()
                 }
             };
 
@@ -903,6 +902,7 @@ impl RequestEditor {
 
         let request_started_at = Instant::now();
         let http_client = self.http_client.clone();
+        let languages = SharedState::global(cx).languages.clone();
 
         window
             .spawn(cx, {
@@ -1029,6 +1029,40 @@ impl RequestEditor {
                         .get(http::header::CONTENT_TYPE)
                         .and_then(|content_type| content_type.to_str().ok())
                         .map(str::to_owned);
+                    let language_name = content_type.as_deref().and_then(|content_type| {
+                        let media_type = content_type.split(';').next()?.trim();
+                        let media_type_lowercase = media_type.to_ascii_lowercase();
+
+                        if media_type.eq_ignore_ascii_case("application/json")
+                            || media_type.eq_ignore_ascii_case("text/json")
+                            || media_type_lowercase.ends_with("+json")
+                        {
+                            Some("JSON")
+                        } else if media_type.eq_ignore_ascii_case("text/html") {
+                            Some("HTML")
+                        } else if media_type.eq_ignore_ascii_case("application/xml")
+                            || media_type.eq_ignore_ascii_case("text/xml")
+                            || media_type_lowercase.ends_with("+xml")
+                        {
+                            Some("XML")
+                        } else {
+                            None
+                        }
+                    });
+                    let language = language_name.map(|language_name| {
+                        let languages = languages.clone();
+                        cx.background_executor().spawn(async move {
+                            match languages.language_for_name(language_name).await {
+                                Ok(language) => Some(language),
+                                Err(error) => {
+                                    log::error!(
+                                        "Failed to load {language_name} language: {error:?}"
+                                    );
+                                    None
+                                }
+                            }
+                        })
+                    });
                     let mut bytes_received = 0_u64;
                     let mut payload = Vec::new();
                     let mut buffer = [0; 8192];
@@ -1082,14 +1116,14 @@ impl RequestEditor {
                     }
 
                     let elapsed_duration = request_started_at.elapsed();
-                    let (payload, response_state, language_name) = match read_error {
+                    let read_succeeded = read_error.is_none();
+                    let (payload, response_state) = match read_error {
                         Some(ref error) => (
                             format!("(failed to read response body: {error})"),
                             ResponseState::Error {
                                 bytes_received,
                                 elapsed_duration,
                             },
-                            None,
                         ),
                         None => (
                             String::from_utf8_lossy(&payload).into_owned(),
@@ -1098,32 +1132,20 @@ impl RequestEditor {
                                 bytes_received,
                                 elapsed_duration,
                             },
-                            content_type.as_deref().and_then(|content_type| {
-                                let media_type = content_type.split(';').next()?.trim();
-                                let media_type_lowercase = media_type.to_ascii_lowercase();
-
-                                if media_type.eq_ignore_ascii_case("application/json")
-                                    || media_type.eq_ignore_ascii_case("text/json")
-                                    || media_type_lowercase.ends_with("+json")
-                                {
-                                    Some("JSON")
-                                } else if media_type.eq_ignore_ascii_case("text/html") {
-                                    Some("HTML")
-                                } else if media_type.eq_ignore_ascii_case("application/xml")
-                                    || media_type.eq_ignore_ascii_case("text/xml")
-                                    || media_type_lowercase.ends_with("+xml")
-                                {
-                                    Some("XML")
-                                } else {
-                                    None
-                                }
-                            }),
                         ),
+                    };
+                    let language = if read_succeeded {
+                        match language {
+                            Some(language) => language.await,
+                            None => None,
+                        }
+                    } else {
+                        None
                     };
 
                     response.update(cx, |response, cx| {
                         response.set_state(request_id, response_state, cx);
-                        response.set_payload(request_id, payload, language_name, cx);
+                        response.set_payload(request_id, payload, language, cx);
                     });
                 }
             })

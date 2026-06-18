@@ -3,15 +3,15 @@ use gpui::{
     Subscription, WeakEntity, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use editor::Editor;
 use http_client::StatusCode;
-use language::{Buffer, PLAIN_TEXT};
+use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{Color, DynamicSpacing, IconName, Label, LabelCommon, LabelSize};
-use workspace::{Panel, SharedState, Workspace, pane::Pane};
+use workspace::{Panel, Workspace, pane::Pane};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(
@@ -211,51 +211,23 @@ impl Response {
         &mut self,
         request_id: usize,
         payload: T,
-        language_name: Option<&'static str>,
+        language: Option<Arc<Language>>,
         cx: &mut Context<Self>,
     ) -> bool {
         if self.request_id != request_id {
             return false;
         }
 
+        let language = language.unwrap_or_else(|| PLAIN_TEXT.clone());
         self.payload.update(cx, |payload_buffer, cx| {
             payload_buffer.set_text(payload.into(), cx);
             if let Some(buffer) = payload_buffer.as_singleton() {
+                let language = language.clone();
                 buffer.update(cx, |buffer, cx| {
-                    buffer.set_language(Some(PLAIN_TEXT.clone()), cx);
+                    buffer.set_language(Some(language), cx);
                 });
             }
         });
-        if let Some(language_name) = language_name {
-            let languages = SharedState::global(cx).languages.clone();
-            cx.spawn(async move |this, cx| {
-                let language = match languages.language_for_name(language_name).await {
-                    Ok(language) => language,
-                    Err(error) => {
-                        log::error!("Failed to load {language_name} language: {error:?}");
-                        return;
-                    }
-                };
-
-                if let Err(error) = this.update(cx, |response, cx| {
-                    if response.request_id != request_id {
-                        return;
-                    }
-
-                    response.payload.update(cx, |payload_buffer, cx| {
-                        if let Some(buffer) = payload_buffer.as_singleton() {
-                            let language = language.clone();
-                            buffer.update(cx, |buffer, cx| {
-                                buffer.set_language(Some(language), cx);
-                            });
-                        }
-                    });
-                }) {
-                    log::debug!("Failed to set response language: {error:?}");
-                }
-            })
-            .detach();
-        }
         cx.notify();
         true
     }
