@@ -61,6 +61,7 @@ pub(crate) struct PositionMap {
 pub struct PointForPosition {
     pub previous_valid: DisplayPoint,
     pub next_valid: DisplayPoint,
+    pub nearest_valid: DisplayPoint,
     pub exact_unclipped: DisplayPoint,
     pub column_overshoot_after_line_end: u32,
 }
@@ -118,6 +119,7 @@ impl PositionMap {
         let mut exact_unclipped = DisplayPoint::new(DisplayRow(row), column);
         let previous_valid = self.snapshot.clip_point(exact_unclipped, text::Bias::Left);
         let next_valid = self.snapshot.clip_point(exact_unclipped, text::Bias::Right);
+        let nearest_valid = previous_valid;
 
         let column_overshoot_after_line_end = if self.em_layout_width == gpui::px(0.0) {
             0
@@ -131,6 +133,7 @@ impl PositionMap {
         PointForPosition {
             previous_valid,
             next_valid,
+            nearest_valid,
             exact_unclipped,
             column_overshoot_after_line_end,
         }
@@ -461,6 +464,7 @@ impl EditorElement {
 
         let text_hitbox = &position_map.text_hitbox;
         let gutter_hitbox = &position_map.gutter_hitbox;
+        let point_for_position = position_map.point_for_position(event.position);
         let mut click_count = event.click_count;
 
         if gutter_hitbox.is_hovered(window) {
@@ -469,7 +473,13 @@ impl EditorElement {
             return;
         }
 
-        editor.on_mouse_down(event, click_count, window, cx);
+        editor.on_mouse_down(
+            event,
+            click_count,
+            point_for_position.nearest_valid,
+            window,
+            cx,
+        );
     }
 
     fn shape_line_number(
@@ -629,6 +639,7 @@ impl EditorElement {
 
         window.on_mouse_event({
             let editor = self.editor.clone();
+            let position_map = position_map.clone();
 
             move |event: &MouseMoveEvent, phase, window, cx| {
                 if phase != DispatchPhase::Bubble {
@@ -640,7 +651,8 @@ impl EditorElement {
                         return;
                     }
 
-                    editor.on_mouse_move(event, window, cx);
+                    let point_for_position = position_map.point_for_position(event.position);
+                    editor.on_mouse_move(point_for_position.nearest_valid, window, cx);
 
                     let mut scroll_delta = Point::<f32>::default();
                     let vertical_margin = line_height.min(text_bounds.size.height / 3.0);
@@ -1486,7 +1498,7 @@ impl Element for EditorElement {
 
             let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
             let gutter_hitbox = window.insert_hitbox(gutter_bounds, HitboxBehavior::Normal);
-            let text_hitbox = window.insert_hitbox(content_bounds, HitboxBehavior::Normal);
+            let text_hitbox = window.insert_hitbox(text_bounds, HitboxBehavior::Normal);
             let row_infos = display_snapshot
                 .row_infos(DisplayRow(top_row))
                 .take(lines.len())
@@ -1534,7 +1546,7 @@ impl Element for EditorElement {
                 visible_row_range: DisplayRow(top_row)..DisplayRow(top_row + visible_row_count),
                 snapshot,
                 text_align: TextAlign::Left,
-                content_width: content_bounds.size.width,
+                content_width: text_hitbox.size.width,
                 text_hitbox,
                 gutter_hitbox: gutter_hitbox.clone(),
                 masked,

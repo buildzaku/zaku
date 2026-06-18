@@ -15,9 +15,8 @@ pub use multi_buffer::{MultiBufferOffset, MultiBufferOffsetUtf16};
 use gpui::{
     AnyElement, App, Axis, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontId, FontStyle, HighlightStyle,
-    Hsla, KeyContext, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
-    SharedString, Subscription, TextRun, TextStyle, UTF16Selection, UnderlineStyle, Window,
-    prelude::*,
+    Hsla, KeyContext, MouseDownEvent, MouseUpEvent, Pixels, Point, Render, SharedString,
+    Subscription, TextRun, TextStyle, UTF16Selection, UnderlineStyle, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -2176,20 +2175,6 @@ impl Editor {
         }
     }
 
-    fn display_point_for_mouse_position(
-        &mut self,
-        position: Point<Pixels>,
-        cx: &mut Context<Self>,
-    ) -> DisplayPoint {
-        let display_snapshot = self.display_snapshot(cx);
-        let text_len = display_snapshot.buffer_snapshot().len().0;
-        let offset = self.index_for_mouse_position(position, cx).min(text_len);
-        let point = display_snapshot
-            .buffer_snapshot()
-            .offset_to_point(MultiBufferOffset(offset));
-        display_snapshot.point_to_display_point(point, Bias::Left)
-    }
-
     fn begin_selection(
         &mut self,
         position: DisplayPoint,
@@ -2400,6 +2385,7 @@ impl Editor {
         &mut self,
         event: &MouseDownEvent,
         click_count: usize,
+        position: DisplayPoint,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -2407,7 +2393,6 @@ impl Editor {
         self.focus_handle.focus(window, cx);
         self.selecting = true;
         self.selection_goal = SelectionGoal::None;
-        let position = self.display_point_for_mouse_position(event.position, cx);
 
         if event.modifiers.shift {
             self.extend_selection(position, click_count, cx);
@@ -2421,68 +2406,11 @@ impl Editor {
         self.end_selection(cx);
     }
 
-    fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_move(&mut self, position: DisplayPoint, _: &mut Window, cx: &mut Context<Self>) {
         if self.selecting {
             self.selection_goal = SelectionGoal::None;
-            let position = self.display_point_for_mouse_position(event.position, cx);
             self.update_selection(position, cx);
         }
-    }
-
-    fn index_for_mouse_position(&self, position: Point<Pixels>, _cx: &mut Context<Self>) -> usize {
-        let Some(position_map) = self.last_position_map.as_ref() else {
-            return 0;
-        };
-        let snapshot = position_map.snapshot.buffer_snapshot();
-        if snapshot.is_empty() {
-            return 0;
-        }
-
-        if position.y < position_map.text_hitbox.bounds.top() {
-            return 0;
-        }
-        if position.y > position_map.text_hitbox.bounds.bottom() {
-            return snapshot.len().0;
-        }
-
-        let point_for_position = position_map.point_for_position(position);
-        let offset = if position_map.masked {
-            let row = point_for_position.previous_valid.row().0;
-            let Some(line_index) = row
-                .checked_sub(position_map.visible_row_range.start.0)
-                .and_then(|row| usize::try_from(row).ok())
-            else {
-                return snapshot.len().0;
-            };
-            let Some(line) = position_map.line_layouts.get(line_index) else {
-                return snapshot.len().0;
-            };
-            if line.row.0 != row {
-                return snapshot.len().0;
-            }
-
-            let unclipped_column = point_for_position
-                .previous_valid
-                .column()
-                .saturating_add(point_for_position.column_overshoot_after_line_end);
-            let line_display_column_start = u32::try_from(line.line_display_column_start)
-                .expect("line display column should fit in u32");
-            let local_display_column =
-                usize::try_from(unclipped_column.saturating_sub(line_display_column_start))
-                    .unwrap();
-            let local_display_column = local_display_column.min(line.len);
-            let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
-            line.line_start_offset + buffer_column
-        } else {
-            let display_point = point_for_position
-                .as_valid()
-                .unwrap_or(point_for_position.previous_valid);
-            let point = position_map
-                .snapshot
-                .display_point_to_point(display_point, Bias::Left);
-            snapshot.point_to_offset(point).0
-        };
-        offset.min(snapshot.len().0)
     }
 
     pub fn key_context(&self, window: &mut Window, cx: &mut App) -> KeyContext {
