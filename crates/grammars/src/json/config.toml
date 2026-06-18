@@ -12,7 +12,6 @@ brackets = [
     ] },
 ]
 tab_size = 2
-prettier_parser_name = "json"
 debuggers = ["JavaScript"]
 word_characters = ["#"]
 

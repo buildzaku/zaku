@@ -13,7 +13,6 @@ brackets = [
     ] },
 ]
 tab_size = 2
-prettier_parser_name = "jsonc"
 
 [overrides.string]
 completion_query_characters = [":", " "]
