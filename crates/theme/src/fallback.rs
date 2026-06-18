@@ -158,313 +158,192 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 (
                     "attribute".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x74ade8).into()),
+                        color: Some(gpui::rgb(0xaaa0fa).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "boolean".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xbf956a).into()),
+                        color: Some(gpui::rgb(0xebc88d).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "comment".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x5d636f).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "comment.doc".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x878e98).into()),
+                        color: Some(gpui::rgb(0x6d6d6d).into()),
+                        font_style: Some(FontStyle::Italic),
                         ..Default::default()
                     },
                 ),
                 (
                     "constant".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xdfc184).into()),
+                        color: Some(gpui::rgb(0xebc88d).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "constructor".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x73ade9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "embedded".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xc3c3c3).into()),
+                        color: Some(gpui::rgb(0x87c3ff).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "emphasis".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x74ade8).into()),
+                        color: Some(gpui::rgb(0x83d6c5).into()),
+                        font_style: Some(FontStyle::Italic),
                         ..Default::default()
                     },
                 ),
                 (
                     "emphasis.strong".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xbf956a).into()),
+                        color: Some(gpui::rgb(0xf8c762).into()),
                         font_weight: Some(FontWeight::BOLD),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "enum".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x6eb4bf).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "function".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x73ade9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "function.definition".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x73ade9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "function.method".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x73ade9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "hint".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x74ade8).into()),
+                        color: Some(gpui::rgb(0xefb080).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "keyword".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xb477cf).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "label".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x74ade8).into()),
+                        color: Some(gpui::rgb(0x83d6c5).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "link_text".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x73ade9).into()),
-                        font_style: Some(FontStyle::Italic),
+                        color: Some(gpui::rgb(0x83d6c5).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "link_uri".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x6eb4bf).into()),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "namespace".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xc3c3c3).into()),
+                        color: Some(gpui::rgb(0x83d6c5).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "number".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xbf956a).into()),
+                        color: Some(gpui::rgb(0xebc88d).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "operator".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xa6a6b9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "primary".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xc3c3c3).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "predictive".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5a6a87).into()),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "preproc".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xb477cf).into()),
+                        color: Some(gpui::rgb(0xd6d6dd).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "property".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x74ade8).into()),
+                        color: Some(gpui::rgb(0xaa9bf5).into()),
+                        ..Default::default()
+                    },
+                ),
+                (
+                    "property.json_key".to_string(),
+                    HighlightStyle {
+                        color: Some(gpui::rgb(0x82d2ce).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "punctuation".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xa6a6b9).into()),
+                        color: Some(gpui::rgb(0xd6d6dd).into()),
                         ..Default::default()
                     },
                 ),
                 (
-                    "punctuation.bracket".to_string(),
+                    "punctuation.bracket.html".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xa6a6b9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "punctuation.delimiter".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xa6a6b9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "punctuation.list_marker".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xa6a6b9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "punctuation.special".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xa6a6b9).into()),
+                        color: Some(gpui::rgb(0x898989).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xa1c181).into()),
+                        color: Some(gpui::rgb(0xe394dc).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string.escape".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x878e98).into()),
+                        color: Some(gpui::rgb(0xd6d6dd).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string.regex".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xbf956a).into()),
+                        color: Some(gpui::rgb(0xd6d6dd).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string.special".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xbf956a).into()),
+                        color: Some(gpui::rgb(0xd8dee9).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string.special.symbol".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xbf956a).into()),
+                        color: Some(gpui::rgb(0x88c0d0).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "tag".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x74ade8).into()),
+                        color: Some(gpui::rgb(0x87c3ff).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "text.literal".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xa1c181).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "title".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xd07277).into()),
-                        font_weight: Some(FontWeight::NORMAL),
+                        color: Some(gpui::rgb(0xe394dc).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "type".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x6eb4bf).into()),
+                        color: Some(gpui::rgb(0x87c3ff).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "variable".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xc3c3c3).into()),
+                        color: Some(gpui::rgb(0x94c1fa).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "variable.special".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xbf956a).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "variant".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x73ade9).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "diff.plus".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xa1c181).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "diff.minus".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xd07277).into()),
+                        color: Some(gpui::rgb(0xc1808a).into()),
                         ..Default::default()
                     },
                 ),
@@ -578,313 +457,162 @@ fn fallback_theme_styles(appearance: Appearance) -> ThemeStyles {
                 (
                     "attribute".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x5c78e2).into()),
+                        color: Some(gpui::rgb(0x0088aa).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "boolean".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xad6e25).into()),
+                        color: Some(gpui::rgb(0x0088aa).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "comment".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xa2a3a7).into()),
+                        color: Some(gpui::rgb(0x059669).into()),
+                        font_style: Some(FontStyle::Italic),
                         ..Default::default()
                     },
                 ),
                 (
-                    "comment.doc".to_string(),
+                    "constant.builtin".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x7c7e86).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "constant".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xc18401).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "constructor".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5c78e2).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "embedded".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x0b0b0e).into()),
+                        color: Some(gpui::rgb(0x0088aa).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "emphasis".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x5c78e2).into()),
+                        color: Some(gpui::rgb(0x008080).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "emphasis.strong".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xad6e25).into()),
-                        font_weight: Some(FontWeight::BOLD),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "enum".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x3882b7).into()),
+                        color: Some(gpui::rgb(0x000080).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "function".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x5b79e3).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "function.definition".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5b79e3).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "function.method".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5b79e3).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "hint".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x7274a7).into()),
+                        color: Some(gpui::rgb(0xd97700).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "keyword".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xa449ab).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "label".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5c78e2).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "link_text".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5b79e3).into()),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "link_uri".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x3882b7).into()),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "namespace".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x0b0b0e).into()),
+                        color: Some(gpui::rgb(0x0088aa).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "number".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xad6e25).into()),
+                        color: Some(gpui::rgb(0xea8500).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "operator".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x474750).into()),
+                        color: Some(gpui::rgb(0x2a2a2a).into()),
                         ..Default::default()
                     },
                 ),
                 (
-                    "primary".to_string(),
+                    "property.json_key".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x0b0b0e).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "predictive".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x9b9ec6).into()),
-                        font_style: Some(FontStyle::Italic),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "preproc".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xa449ab).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "property".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5c78e2).into()),
+                        color: Some(gpui::rgb(0x0451a5).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "punctuation".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x474750).into()),
+                        color: Some(gpui::rgb(0x000000).into()),
                         ..Default::default()
                     },
                 ),
                 (
-                    "punctuation.bracket".to_string(),
+                    "punctuation.bracket.html".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x474750).into()),
+                        color: Some(gpui::rgb(0x800000).into()),
                         ..Default::default()
                     },
                 ),
                 (
-                    "punctuation.delimiter".to_string(),
+                    "punctuation.delimiter.html".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x474750).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "punctuation.list_marker".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x474750).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "punctuation.special".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x474750).into()),
+                        color: Some(gpui::rgb(0x2a2a2a).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x649f57).into()),
+                        color: Some(gpui::rgb(0xc2185b).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string.escape".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x7c7e86).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "string.regex".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xad6e26).into()),
+                        color: Some(gpui::rgb(0xff0000).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string.special".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xad6e26).into()),
+                        color: Some(gpui::rgb(0xff0000).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "string.special.symbol".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xad6e26).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "tag".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5c78e2).into()),
+                        color: Some(gpui::rgb(0x2a2a2a).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "text.literal".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x649f57).into()),
+                        color: Some(gpui::rgb(0xc2185b).into()),
                         ..Default::default()
                     },
                 ),
                 (
-                    "title".to_string(),
+                    "tag".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xd3604f).into()),
-                        font_weight: Some(FontWeight::NORMAL),
+                        color: Some(gpui::rgb(0x2563eb).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "type".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x3882b7).into()),
+                        color: Some(gpui::rgb(0xd97700).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "variable".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0x0b0b0e).into()),
+                        color: Some(gpui::rgb(0x2a2a2a).into()),
                         ..Default::default()
                     },
                 ),
                 (
                     "variable.special".to_string(),
                     HighlightStyle {
-                        color: Some(gpui::rgb(0xad6e25).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "variant".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x5b79e3).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "diff.plus".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0x669f59).into()),
-                        ..Default::default()
-                    },
-                ),
-                (
-                    "diff.minus".to_string(),
-                    HighlightStyle {
-                        color: Some(gpui::rgb(0xd07277).into()),
+                        color: Some(gpui::rgb(0xbe185d).into()),
                         ..Default::default()
                     },
                 ),
