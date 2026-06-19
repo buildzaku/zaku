@@ -1,8 +1,33 @@
-use std::{path::PathBuf, sync::OnceLock};
+use std::{
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 pub fn home_dir() -> &'static PathBuf {
     static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
     HOME_DIR.get_or_init(|| dirs::home_dir().expect("failed to determine home directory"))
+}
+
+pub trait PathExt {
+    fn compact(&self) -> PathBuf;
+}
+
+impl<T: AsRef<Path>> PathExt for T {
+    fn compact(&self) -> PathBuf {
+        if cfg!(any(target_os = "linux", target_os = "macos")) {
+            match self.as_ref().strip_prefix(home_dir().as_path()) {
+                Ok(relative_path) => {
+                    let mut shortened_path = PathBuf::new();
+                    shortened_path.push("~");
+                    shortened_path.push(relative_path);
+                    shortened_path
+                }
+                Err(_) => self.as_ref().to_path_buf(),
+            }
+        } else {
+            self.as_ref().to_path_buf()
+        }
+    }
 }
 
 /// Returns the path to the configuration directory.
@@ -102,4 +127,26 @@ pub fn settings_file() -> &'static PathBuf {
 pub fn keymap_file() -> &'static PathBuf {
     static KEYMAP_FILE: OnceLock<PathBuf> = OnceLock::new();
     KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.json"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_path_compact() {
+        let path = home_dir()
+            .join(".config")
+            .join("zaku")
+            .join("settings.json");
+
+        if cfg!(any(target_os = "linux", target_os = "macos")) {
+            assert_eq!(
+                path.compact().to_str(),
+                Some("~/.config/zaku/settings.json")
+            );
+        } else {
+            assert_eq!(path.compact().to_str(), path.to_str());
+        }
+    }
 }

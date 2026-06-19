@@ -27,6 +27,7 @@ input = { workspace = true }
 language = { workspace = true }
 log = { workspace = true }
 multi_buffer = { workspace = true }
+path = { workspace = true }
 project = { workspace = true }
 response_panel = { workspace = true }
 smol = { workspace = true }

@@ -5402,6 +5402,7 @@ dependencies = [
  "log",
  "multi_buffer",
  "parking_lot",
+ "path",
  "project",
  "response_panel",
  "serde_json",
