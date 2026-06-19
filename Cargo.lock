@@ -1601,6 +1601,7 @@ dependencies = [
  "log",
  "multi_buffer",
  "num-traits",
+ "path",
  "pretty_assertions",
  "project",
  "serde",

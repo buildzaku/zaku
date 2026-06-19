@@ -4,6 +4,7 @@ use std::{borrow::Cow, path::Path, sync::Arc};
 use icons::FileIcons;
 use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
+use path::PathExt;
 use project::Project;
 use ui::Icon;
 use workspace::{
@@ -49,6 +50,7 @@ impl Item for Editor {
                 file.worktree
                     .read(cx)
                     .absolutize(&file.path)
+                    .compact()
                     .to_string_lossy()
                     .into_owned()
                     .into(),
