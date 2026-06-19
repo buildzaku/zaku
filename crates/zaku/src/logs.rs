@@ -62,7 +62,7 @@ impl Item for LogsView {
     }
 
     fn tab_icon(&self, _: &Window, cx: &App) -> Option<Icon> {
-        FileIcons::get_icon(settings::log_file(), cx).map(Icon::from_path)
+        FileIcons::get_icon(path::log_file(), cx).map(Icon::from_path)
     }
 
     fn capability(&self, cx: &App) -> Capability {
@@ -92,10 +92,7 @@ pub fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Co
     let fs = workspace.shared_state().fs.clone();
     cx.spawn_in(window, async move |workspace, cx| {
         let log = {
-            let result = futures::join!(
-                fs.load(settings::old_log_file()),
-                fs.load(settings::log_file())
-            );
+            let result = futures::join!(fs.load(path::old_log_file()), fs.load(path::log_file()));
 
             match result {
                 (Err(_), Err(error)) => Err(error),
@@ -132,7 +129,7 @@ pub fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Co
                                 MessageNotification::new(
                                     format!(
                                         "Unable to access/open log file at path {}: {error:#}",
-                                        settings::log_file().display()
+                                        path::log_file().display()
                                     ),
                                     cx,
                                 )

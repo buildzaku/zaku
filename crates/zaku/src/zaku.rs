@@ -117,7 +117,7 @@ fn register_actions(cx: &mut App) {
     .on_action(|_: &actions::zaku::OpenSettingsFile, cx| {
         with_active_or_new_workspace(cx, |_, window, cx| {
             open_settings_file(
-                settings::settings_file(),
+                path::settings_file(),
                 settings::initial_user_settings,
                 window,
                 cx,
@@ -127,7 +127,7 @@ fn register_actions(cx: &mut App) {
     .on_action(|_: &actions::zaku::OpenKeymapFile, cx| {
         with_active_or_new_workspace(cx, |_, window, cx| {
             open_settings_file(
-                settings::keymap_file(),
+                path::keymap_file(),
                 settings::initial_user_keymap,
                 window,
                 cx,
@@ -148,7 +148,7 @@ fn open_settings_file(
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) {
-    let config_dir = settings::config_dir().clone();
+    let config_dir = path::config_dir().clone();
     cx.spawn_in(window, async move |workspace, cx| {
         let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
         let (_worktree, _) = project

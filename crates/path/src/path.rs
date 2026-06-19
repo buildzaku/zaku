@@ -1,7 +1,8 @@
 use std::{path::PathBuf, sync::OnceLock};
 
-fn home_dir() -> PathBuf {
-    dirs::home_dir().expect("failed to determine home directory")
+pub fn home_dir() -> &'static PathBuf {
+    static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
+    HOME_DIR.get_or_init(|| dirs::home_dir().expect("failed to determine home directory"))
 }
 
 /// Returns the path to the configuration directory.

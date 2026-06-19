@@ -17,7 +17,6 @@ test-support = ["gpui/test-support", "fs/test-support"]
 
 [dependencies]
 anyhow = { workspace = true }
-dirs = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }

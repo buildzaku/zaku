@@ -16,6 +16,7 @@ members = [
   "crates/logger",
   "crates/metadata",
   "crates/multi_buffer",
+  "crates/path",
   "crates/platform_title_bar",
   "crates/project",
   "crates/project_panel",
@@ -168,6 +169,7 @@ languages = { path = "crates/languages" }
 logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }
+path = { path = "crates/path" }
 platform_title_bar = { path = "crates/platform_title_bar" }
 project = { path = "crates/project" }
 project_panel = { path = "crates/project_panel" }

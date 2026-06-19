@@ -1,0 +1,16 @@
+[package]
+name = "path"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "path"
+path = "src/path.rs"
+
+[dependencies]
+dirs = { workspace = true }

@@ -51,6 +51,7 @@ logger = { workspace = true }
 metadata = { workspace = true }
 mimalloc = { workspace = true, optional = true }
 multi_buffer = { workspace = true }
+path = { workspace = true }
 project_panel = { workspace = true }
 request_editor = { workspace = true }
 reqwest_client = { workspace = true }
