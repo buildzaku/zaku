@@ -5,7 +5,7 @@ mod logs;
 pub use app_menu::app_menu;
 
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{Action, App, AsyncApp, DismissEvent, KeyBinding, Task, prelude::*};
+use gpui::{Action, App, AsyncApp, Context, DismissEvent, KeyBinding, Task, Window, prelude::*};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use project_panel::ProjectPanel;
@@ -18,6 +18,7 @@ use workspace::{
         NotificationId, dismiss_app_notification, show_app_notification,
         simple_message_notification::MessageNotification,
     },
+    with_active_or_new_workspace,
 };
 
 use crate::logs::open_log_file;
@@ -114,17 +115,29 @@ fn register_actions(cx: &mut App) {
     })
     .on_action(|_: &actions::zaku::About, cx| about::open_window(cx))
     .on_action(|_: &actions::zaku::OpenSettingsFile, cx| {
-        open_settings_file(
-            settings::settings_file(),
-            settings::initial_user_settings,
-            cx,
-        );
+        with_active_or_new_workspace(cx, |_, window, cx| {
+            open_settings_file(
+                settings::settings_file(),
+                settings::initial_user_settings,
+                window,
+                cx,
+            );
+        });
     })
     .on_action(|_: &actions::zaku::OpenKeymapFile, cx| {
-        open_settings_file(settings::keymap_file(), settings::initial_user_keymap, cx);
+        with_active_or_new_workspace(cx, |_, window, cx| {
+            open_settings_file(
+                settings::keymap_file(),
+                settings::initial_user_keymap,
+                window,
+                cx,
+            );
+        });
     })
     .on_action(|_: &actions::zaku::OpenLogFile, cx| {
-        open_log_file(cx);
+        with_active_or_new_workspace(cx, |workspace, window, cx| {
+            open_log_file(workspace, window, cx);
+        });
     })
     .on_action(|_: &actions::workspace::CloseWindow, cx| Workspace::close_window(cx));
 }
@@ -132,42 +145,27 @@ fn register_actions(cx: &mut App) {
 fn open_settings_file(
     abs_path: &'static Path,
     default_content: impl FnOnce() -> Cow<'static, str> + Send + 'static,
-    cx: &mut App,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
 ) {
-    cx.defer(move |cx| {
-        let Some(window) = cx
-            .active_window()
-            .and_then(|window| window.downcast::<Root>())
-        else {
-            log::error!("Cannot open configuration file without an active workspace");
-            return;
-        };
+    let config_dir = settings::config_dir().clone();
+    cx.spawn_in(window, async move |workspace, cx| {
+        let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
+        let (_worktree, _) = project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(&config_dir, false, cx)
+            })
+            .await?;
 
-        if let Err(error) = window.update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                let project = workspace.project().clone();
-                let config_dir = settings::config_dir().clone();
-                cx.spawn_in(window, async move |workspace, cx| {
-                    let (_worktree, _) = project
-                        .update(cx, |project, cx| {
-                            project.find_or_create_worktree(&config_dir, false, cx)
-                        })
-                        .await?;
+        workspace
+            .update_in(cx, |_, window, cx| {
+                create_and_open_file(abs_path, window, cx, default_content)
+            })?
+            .await?;
 
-                    workspace
-                        .update_in(cx, |_, window, cx| {
-                            create_and_open_file(abs_path, window, cx, default_content)
-                        })?
-                        .await?;
-
-                    anyhow::Ok(())
-                })
-                .detach_and_log_err(cx);
-            });
-        }) {
-            log::error!("Failed to open configuration file: {error}");
-        }
-    });
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
 }
 
 pub fn handle_settings_file_changes(

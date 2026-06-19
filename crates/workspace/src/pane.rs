@@ -1050,6 +1050,10 @@ impl Pane {
             && let Some(welcome_page) = self.welcome_page.as_ref()
             && self.focus_handle.is_focused(window)
         {
+            cx.on_next_frame(window, |_, _, cx| {
+                cx.notify();
+            });
+
             welcome_page.read(cx).focus_handle(cx).focus(window, cx);
         }
     }
@@ -1090,33 +1094,23 @@ impl Render for DraggedTab {
 
 impl Render for Pane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let has_worktree = self
+        let has_worktrees = self
             .project
             .upgrade()
-            .is_some_and(|project| project.read(cx).root_worktree(cx).is_some());
+            .is_some_and(|project| project.read(cx).visible_worktrees(cx).next().is_some());
 
-        if !has_worktree && self.should_display_welcome_page() {
-            if self.welcome_page.is_none() {
-                let workspace = self.workspace.clone();
-                self.welcome_page = Some(cx.new(|cx| WelcomePage::new(workspace, window, cx)));
-            }
+        let active_item = self.active_item();
+        let welcome_page =
+            if active_item.is_none() && !has_worktrees && self.should_display_welcome_page() {
+                if self.welcome_page.is_none() {
+                    let workspace = self.workspace.clone();
+                    self.welcome_page = Some(cx.new(|cx| WelcomePage::new(workspace, window, cx)));
+                }
 
-            return gpui::div()
-                .track_focus(&self.focus_handle)
-                .size_full()
-                .overflow_hidden()
-                .bg(cx.theme().colors().panel_background)
-                .child(
-                    ui::h_flex()
-                        .size_full()
-                        .justify_center()
-                        .when_some(self.welcome_page.clone(), |container, welcome_page| {
-                            container.child(welcome_page)
-                        }),
-                );
-        }
-
-        let active_item = self.active_item().map(|item| item.to_any_view());
+                self.welcome_page.clone()
+            } else {
+                None
+            };
         let should_render_tab_bar = !self.items.is_empty();
 
         gpui::div()
@@ -1142,12 +1136,22 @@ impl Render for Pane {
             .when(should_render_tab_bar, |this| {
                 this.child(self.render_tab_bar(window, cx))
             })
-            .child(
-                gpui::div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .when_some(active_item, |this, active_item| this.child(active_item)),
-            )
+            .child({
+                let placeholder = gpui::div().flex_1().overflow_hidden();
+
+                if let Some(active_item) = active_item {
+                    placeholder.child(active_item.to_any_view())
+                } else if let Some(welcome_page) = welcome_page {
+                    placeholder.child(
+                        ui::h_flex()
+                            .size_full()
+                            .justify_center()
+                            .child(welcome_page),
+                    )
+                } else {
+                    placeholder
+                }
+            })
     }
 }
 

@@ -10,7 +10,7 @@ use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
 use ui::Icon;
 use workspace::{
-    Item, ItemEvent, Root,
+    Item, ItemEvent, Workspace,
     notifications::{NotificationId, simple_message_notification::MessageNotification},
 };
 
@@ -85,110 +85,90 @@ impl Item for LogsView {
     }
 }
 
-pub fn open_log_file(cx: &mut App) {
+pub fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
     const MAX_LINES: usize = 1000;
     struct OpenLogFileErrorNotification;
 
-    cx.defer(|cx| {
-        let Some(window) = cx
-            .active_window()
-            .and_then(|window| window.downcast::<Root>())
-        else {
-            log::error!("Cannot open log file without an active workspace");
-            return;
+    let fs = workspace.shared_state().fs.clone();
+    cx.spawn_in(window, async move |workspace, cx| {
+        let log = {
+            let result = futures::join!(
+                fs.load(settings::old_log_file()),
+                fs.load(settings::log_file())
+            );
+
+            match result {
+                (Err(_), Err(error)) => Err(error),
+                (old_log, new_log) => {
+                    let mut lines = VecDeque::with_capacity(MAX_LINES);
+                    for line in old_log
+                        .iter()
+                        .flat_map(|log| log.lines())
+                        .chain(new_log.iter().flat_map(|log| log.lines()))
+                    {
+                        if lines.len() == MAX_LINES {
+                            lines.pop_front();
+                        }
+                        lines.push_back(line);
+                    }
+
+                    Ok(lines
+                        .into_iter()
+                        .flat_map(|line| [line, "\n"])
+                        .collect::<String>())
+                }
+            }
         };
 
-        if let Err(error) = window.update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                let fs = workspace.shared_state().fs.clone();
-                cx.spawn_in(window, async move |workspace, cx| {
-                    let log = {
-                        let result = futures::join!(
-                            fs.load(settings::old_log_file()),
-                            fs.load(settings::log_file())
-                        );
-
-                        match result {
-                            (Err(_), Err(error)) => Err(error),
-                            (old_log, new_log) => {
-                                let mut lines = VecDeque::with_capacity(MAX_LINES);
-                                for line in old_log
-                                    .iter()
-                                    .flat_map(|log| log.lines())
-                                    .chain(new_log.iter().flat_map(|log| log.lines()))
-                                {
-                                    if lines.len() == MAX_LINES {
-                                        lines.pop_front();
-                                    }
-                                    lines.push_back(line);
-                                }
-
-                                Ok(lines
-                                    .into_iter()
-                                    .flat_map(|line| [line, "\n"])
-                                    .collect::<String>())
-                            }
-                        }
-                    };
-
-                    let log = match log {
-                        Ok(log) => log,
-                        Err(error) => {
-                            if let Err(update_error) = workspace.update(cx, |workspace, cx| {
-                                workspace.show_notification(
-                                    &NotificationId::unique::<OpenLogFileErrorNotification>(),
+        let log = match log {
+            Ok(log) => log,
+            Err(error) => {
+                if let Err(update_error) = workspace.update(cx, |workspace, cx| {
+                    workspace.show_notification(
+                        &NotificationId::unique::<OpenLogFileErrorNotification>(),
+                        cx,
+                        |cx| {
+                            cx.new(|cx| {
+                                MessageNotification::new(
+                                    format!(
+                                        "Unable to access/open log file at path {}: {error:#}",
+                                        settings::log_file().display()
+                                    ),
                                     cx,
-                                    |cx| {
-                                        cx.new(|cx| {
-                                            MessageNotification::new(
-                                                format!(
-                                                    "Unable to access/open log file at path {}: {error:#}",
-                                                    settings::log_file().display()
-                                                ),
-                                                cx,
-                                            )
-                                        })
-                                    },
-                                );
-                            }) {
-                                log::error!(
-                                    "Failed to show log file error notification: {update_error}"
-                                );
-                            }
-                            return anyhow::Ok(());
-                        }
-                    };
+                                )
+                            })
+                        },
+                    );
+                }) {
+                    log::error!("Failed to show log file error notification: {update_error}");
+                }
+                return anyhow::Ok(());
+            }
+        };
 
-                    workspace.update_in(cx, |workspace, window, cx| {
-                        let buffer = cx.new(|cx| {
-                            let mut buffer = Buffer::local(log, cx);
-                            buffer.set_capability(Capability::ReadOnly, cx);
-                            buffer
-                        });
-                        let buffer = cx.new(|cx| {
-                            MultiBuffer::singleton(buffer, cx).with_title("Logs".into())
-                        });
-                        let editor = cx.new(|cx| {
-                            let mut editor = Editor::for_multibuffer(buffer, window, cx);
-                            editor.set_read_only(true);
-                            editor.move_selection_to_end(cx);
-                            editor
-                        });
-                        workspace.add_item_to_active_pane(
-                            Box::new(cx.new(|cx| LogsView::new(editor, cx))),
-                            None,
-                            true,
-                            window,
-                            cx,
-                        );
-                    })?;
-
-                    anyhow::Ok(())
-                })
-                .detach_and_log_err(cx);
+        workspace.update_in(cx, |workspace, window, cx| {
+            let buffer = cx.new(|cx| {
+                let mut buffer = Buffer::local(log, cx);
+                buffer.set_capability(Capability::ReadOnly, cx);
+                buffer
             });
-        }) {
-            log::error!("Failed to open log file: {error}");
-        }
-    });
+            let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx).with_title("Logs".into()));
+            let editor = cx.new(|cx| {
+                let mut editor = Editor::for_multibuffer(buffer, window, cx);
+                editor.set_read_only(true);
+                editor.move_selection_to_end(cx);
+                editor
+            });
+            workspace.add_item_to_active_pane(
+                Box::new(cx.new(|cx| LogsView::new(editor, cx))),
+                None,
+                true,
+                window,
+                cx,
+            );
+        })?;
+
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
 }
