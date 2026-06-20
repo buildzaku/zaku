@@ -8,7 +8,7 @@ use theme::ActiveTheme;
 
 use crate::{
     ButtonCommon, Clickable, Color, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize,
-    LabelSize, SelectableButton, StyledTypography, Toggleable,
+    LabelSize, SelectableButton, StyledTypography, TOOLTIP_SHOW_DELAY, Toggleable,
 };
 
 #[derive(Debug, Clone)]
@@ -604,7 +604,8 @@ impl RenderOnce for Button {
         self.base
             .id(self.id)
             .when_some(self.tooltip, |this, tooltip| {
-                this.tooltip(move |window, cx| tooltip(window, cx))
+                this.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                    .tooltip(move |window, cx| tooltip(window, cx))
             })
             .when_some(self.tab_index, |this, tab_index| this.tab_index(tab_index))
             .flex()

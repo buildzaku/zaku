@@ -13,7 +13,7 @@ use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
-    IconSize, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
+    IconSize, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
 };
 use util::{ResultExt, path::PathStyle};
 
@@ -924,21 +924,23 @@ impl Pane {
                 TabPosition::Middle(position_relative_to_active_item)
             })
             .toggle_state(is_active)
-            .map(|this| match tab_tooltip_content {
+            .map(|tab| match tab_tooltip_content {
                 Some(TabTooltipContent::Text(text)) => {
                     if capability.editable() {
-                        this.tooltip(Tooltip::text(text))
+                        tab.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                            .tooltip(Tooltip::text(text))
                     } else {
-                        this.tooltip(move |_, cx| {
-                            let text = text.clone();
-                            Tooltip::with_meta(text, None, "Read-Only", cx)
-                        })
+                        tab.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                            .tooltip(move |_, cx| {
+                                let text = text.clone();
+                                Tooltip::with_meta(text, None, "Read-Only", cx)
+                            })
                     }
                 }
-                Some(TabTooltipContent::Custom(element_fn)) => {
-                    this.tooltip(move |window, cx| element_fn(window, cx))
-                }
-                None => this,
+                Some(TabTooltipContent::Custom(element_fn)) => tab
+                    .tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                    .tooltip(move |window, cx| element_fn(window, cx)),
+                None => tab,
             })
             .on_click(
                 cx.listener(move |pane: &mut Self, event: &ClickEvent, window, cx| {
