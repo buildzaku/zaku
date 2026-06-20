@@ -1053,6 +1053,15 @@ dependencies = [
 
 [[package]]
 name = "collections"
+version = "0.0.0"
+dependencies = [
+ "gpui_util",
+ "indexmap",
+ "rustc-hash 2.1.2",
+]
+
+[[package]]
+name = "collections"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=f99df1a155#f99df1a155673598965d35b73528557cedcfe6f2"
 dependencies = [
@@ -2373,7 +2382,7 @@ dependencies = [
  "chrono",
  "cocoa 0.26.0",
  "cocoa-foundation 0.2.0",
- "collections",
+ "collections 0.1.0",
  "core-foundation 0.10.0",
  "core-foundation-sys",
  "core-graphics 0.24.0",
@@ -2454,7 +2463,7 @@ dependencies = [
  "bytemuck",
  "calloop",
  "calloop-wayland-source",
- "collections",
+ "collections 0.1.0",
  "filedescriptor",
  "futures",
  "gpui",
@@ -2503,7 +2512,7 @@ dependencies = [
  "block",
  "cbindgen",
  "cocoa 0.26.0",
- "collections",
+ "collections 0.1.0",
  "core-foundation 0.10.0",
  "core-foundation-sys",
  "core-graphics 0.24.0",
@@ -2613,7 +2622,7 @@ source = "git+https://github.com/zed-industries/zed?rev=f99df1a155#f99df1a155673
 dependencies = [
  "anyhow",
  "bytemuck",
- "collections",
+ "collections 0.1.0",
  "cosmic-text",
  "etagere",
  "gpui",
@@ -2643,7 +2652,7 @@ dependencies = [
  "accesskit",
  "accesskit_windows",
  "anyhow",
- "collections",
+ "collections 0.1.0",
  "dunce",
  "etagere",
  "futures",
@@ -4631,7 +4640,7 @@ name = "perf"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=f99df1a155#f99df1a155673598965d35b73528557cedcfe6f2"
 dependencies = [
- "collections",
+ "collections 0.1.0",
  "serde",
  "serde_json",
 ]
@@ -6789,7 +6798,7 @@ source = "git+https://github.com/zed-industries/zed?rev=f99df1a155#f99df1a155673
 dependencies = [
  "anyhow",
  "clock",
- "collections",
+ "collections 0.1.0",
  "log",
  "parking_lot",
  "postage",
@@ -7498,7 +7507,7 @@ dependencies = [
  "anyhow",
  "async-fs",
  "async_zip",
- "collections",
+ "collections 0.1.0",
  "command-fds",
  "dirs",
  "dunce",
@@ -9274,7 +9283,7 @@ source = "git+https://github.com/zed-industries/zed?rev=f99df1a155#f99df1a155673
 dependencies = [
  "anyhow",
  "chrono",
- "collections",
+ "collections 0.1.0",
  "log",
 ]
 

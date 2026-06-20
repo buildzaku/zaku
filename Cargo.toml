@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "crates/actions",
   "crates/assets",
+  "crates/collections",
   "crates/command_palette",
   "crates/db",
   "crates/editor",
@@ -91,6 +92,7 @@ futures = { version = "0.3" }
 fuzzy_nucleo = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "fuzzy_nucleo" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "gpui" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "gpui_platform" }
+gpui_util = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "gpui_util" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
 imara-diff = { version = "0.2" }
@@ -122,6 +124,7 @@ reqwest = { version = "0.13", default-features = false, features = [
   "system-proxy",
 ] }
 rust-embed = { version = "8.11", features = ["debug-embed"] }
+rustc-hash = { version = "2.1" }
 schemars = { version = "1.2" }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0" }
@@ -159,6 +162,7 @@ windows = { version = "0.62", features = [
 ##################################################
 actions = { path = "crates/actions" }
 assets = { path = "crates/assets" }
+collections = { path = "crates/collections" }
 command_palette = { path = "crates/command_palette" }
 db = { path = "crates/db" }
 editor = { path = "crates/editor" }
