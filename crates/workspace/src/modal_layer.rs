@@ -175,7 +175,7 @@ impl Default for ModalLayer {
 }
 
 impl Render for ModalLayer {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(active_modal) = &self.active_modal else {
             return gpui::div().into_any_element();
         };
@@ -205,13 +205,14 @@ impl Render for ModalLayer {
                     .flex()
                     .flex_col()
                     .h(gpui::px(0.0))
-                    .top_20()
+                    .top(ui::utils::title_bar_height(window.rem_size()) / 5.0)
                     .items_center()
                     .track_focus(&active_modal.focus_handle)
                     .child(
                         gpui::div()
                             .flex()
                             .flex_row()
+                            .items_center()
                             .occlude()
                             .child(active_modal.modal.view())
                             .on_mouse_down(MouseButton::Left, |_, _, cx| {

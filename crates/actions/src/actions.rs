@@ -1,3 +1,4 @@
+pub mod command_palette;
 pub mod editor;
 pub mod menu;
 pub mod pane;

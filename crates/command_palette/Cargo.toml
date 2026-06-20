@@ -1,0 +1,23 @@
+[package]
+name = "command_palette"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "command_palette"
+path = "src/command_palette.rs"
+
+[dependencies]
+actions = { workspace = true }
+fuzzy_nucleo = { workspace = true }
+gpui = { workspace = true }
+log = { workspace = true }
+picker = { workspace = true }
+smol = { workspace = true }
+ui = { workspace = true }
+workspace = { workspace = true }

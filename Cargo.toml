@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "crates/actions",
   "crates/assets",
+  "crates/command_palette",
   "crates/db",
   "crates/editor",
   "crates/fs",
@@ -87,6 +88,7 @@ clock = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", pac
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }
 futures = { version = "0.3" }
+fuzzy_nucleo = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "fuzzy_nucleo" }
 gpui = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "gpui" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "gpui_platform" }
 http = { version = "1.4" }
@@ -157,6 +159,7 @@ windows = { version = "0.62", features = [
 ##################################################
 actions = { path = "crates/actions" }
 assets = { path = "crates/assets" }
+command_palette = { path = "crates/command_palette" }
 db = { path = "crates/db" }
 editor = { path = "crates/editor" }
 fs = { path = "crates/fs" }

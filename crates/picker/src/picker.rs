@@ -160,6 +160,7 @@ pub trait PickerDelegate: Sized + 'static {
                 gpui::div()
                     .flex()
                     .flex_row()
+                    .items_center()
                     .overflow_hidden()
                     .flex_none()
                     .h_9()
