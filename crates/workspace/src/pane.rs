@@ -925,18 +925,21 @@ impl Pane {
             })
             .toggle_state(is_active)
             .map(|tab| match tab_tooltip_content {
-                Some(TabTooltipContent::Text(text)) => {
-                    if capability.editable() {
-                        tab.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
-                            .tooltip(Tooltip::text(text))
-                    } else {
-                        tab.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
-                            .tooltip(move |_, cx| {
-                                let text = text.clone();
-                                Tooltip::with_meta(text, None, "Read-Only", cx)
-                            })
-                    }
-                }
+                Some(TabTooltipContent::Text(text)) => tab
+                    .tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                    .tooltip(move |_, cx| {
+                        let text = text.clone();
+                        let tooltip = Tooltip::new(text).max_w(gpui::rems(32.0));
+
+                        cx.new(move |_| {
+                            if capability.editable() {
+                                tooltip
+                            } else {
+                                tooltip.meta("Read-Only")
+                            }
+                        })
+                        .into()
+                    }),
                 Some(TabTooltipContent::Custom(element_fn)) => tab
                     .tooltip_show_delay(TOOLTIP_SHOW_DELAY)
                     .tooltip(move |window, cx| element_fn(window, cx)),

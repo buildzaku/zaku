@@ -1,5 +1,5 @@
 use gpui::{
-    Action, AnyElement, AnyView, App, AppContext, Div, FocusHandle, SharedString, Window,
+    Action, AnyElement, AnyView, App, AppContext, Div, FocusHandle, Length, SharedString, Window,
     prelude::*,
 };
 use std::{borrow::Borrow, rc::Rc};
@@ -13,6 +13,7 @@ pub struct Tooltip {
     title: Title,
     meta: Option<SharedString>,
     key_binding: Option<KeyBinding>,
+    max_w: Option<Length>,
 }
 
 #[derive(Clone, IntoElement)]
@@ -48,6 +49,7 @@ impl Tooltip {
             title: Title::Str(title.into()),
             meta: None,
             key_binding: None,
+            max_w: None,
         })
         .into()
     }
@@ -59,6 +61,7 @@ impl Tooltip {
                 title: title.clone().into(),
                 meta: None,
                 key_binding: None,
+                max_w: None,
             })
             .into()
         }
@@ -75,6 +78,7 @@ impl Tooltip {
                 title: Title::Str(title.clone()),
                 meta: None,
                 key_binding: Some(KeyBinding::for_action(action.as_ref(), cx)),
+                max_w: None,
             })
             .into()
         }
@@ -97,6 +101,7 @@ impl Tooltip {
                     &focus_handle,
                     cx,
                 )),
+                max_w: None,
             })
             .into()
         }
@@ -111,6 +116,7 @@ impl Tooltip {
             title: Title::Str(title.into()),
             meta: None,
             key_binding: Some(KeyBinding::for_action(action, cx)),
+            max_w: None,
         })
         .into()
     }
@@ -125,6 +131,7 @@ impl Tooltip {
             title: Title::text(title),
             meta: None,
             key_binding: Some(KeyBinding::for_action_in(action, focus_handle, cx)),
+            max_w: None,
         })
         .into()
     }
@@ -139,6 +146,7 @@ impl Tooltip {
             title: Title::text(title),
             meta: Some(meta.into()),
             key_binding: action.map(|action| KeyBinding::for_action(action, cx)),
+            max_w: None,
         })
         .into()
     }
@@ -154,6 +162,7 @@ impl Tooltip {
             title: Title::text(title),
             meta: Some(meta.into()),
             key_binding: action.map(|action| KeyBinding::for_action_in(action, focus_handle, cx)),
+            max_w: None,
         })
         .into()
     }
@@ -163,6 +172,7 @@ impl Tooltip {
             title: Title::text(title),
             meta: None,
             key_binding: None,
+            max_w: None,
         }
     }
 
@@ -171,6 +181,7 @@ impl Tooltip {
             title: Title::Callback(Rc::new(title)),
             meta: None,
             key_binding: None,
+            max_w: None,
         }
     }
 
@@ -184,6 +195,7 @@ impl Tooltip {
                 title,
                 meta: None,
                 key_binding: None,
+                max_w: None,
             })
             .into()
         }
@@ -198,24 +210,43 @@ impl Tooltip {
         self.key_binding = key_binding.into();
         self
     }
+
+    pub fn max_w(mut self, max_w: impl Into<Length>) -> Self {
+        self.max_w = Some(max_w.into());
+        self
+    }
 }
 
 impl Render for Tooltip {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        tooltip_container(cx, |el, _| {
+        let title = self.title.clone();
+        let meta = self.meta.clone();
+        let key_binding = self.key_binding.clone();
+        let max_w = self.max_w;
+        tooltip_container(cx, move |el, _| {
             el.child(
                 gpui::div()
                     .h_flex()
                     .gap_4()
-                    .child(gpui::div().max_w_72().child(self.title.clone()))
-                    .when_some(self.key_binding.clone(), |this, key_binding| {
+                    .child(
+                        gpui::div()
+                            .map(|this| match max_w {
+                                Some(max_w) => this.max_w(max_w),
+                                None => this.max_w_72(),
+                            })
+                            .child(title),
+                    )
+                    .when_some(key_binding, |this, key_binding| {
                         this.justify_between().child(key_binding)
                     }),
             )
-            .when_some(self.meta.clone(), |this, meta| {
+            .when_some(meta, |this, meta| {
                 this.child(
                     gpui::div()
-                        .max_w_72()
+                        .map(|this| match max_w {
+                            Some(max_w) => this.max_w(max_w),
+                            None => this.max_w_72(),
+                        })
                         .child(Label::new(meta).size(LabelSize::Small).color(Color::Muted)),
                 )
             })
