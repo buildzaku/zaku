@@ -9,7 +9,7 @@ use std::{
 use anyhow::{Context, anyhow};
 use serde::{Deserialize, Serialize};
 
-use crate::path::{PathStyle, is_absolute};
+use crate::{PathStyle, is_absolute};
 
 #[repr(transparent)]
 #[derive(PartialEq, Eq, Hash, Serialize)]

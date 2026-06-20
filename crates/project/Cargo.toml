@@ -27,6 +27,7 @@ futures = { workspace = true }
 gpui = { workspace = true }
 language = { workspace = true }
 log = { workspace = true }
+path = { workspace = true }
 request_buffer = { workspace = true }
 text = { workspace = true }
 tokio = { workspace = true }
@@ -37,6 +38,7 @@ worktree = { workspace = true }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
+path = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
 util = { workspace = true, features = ["test-support"] }
 util_macros = { workspace = true }

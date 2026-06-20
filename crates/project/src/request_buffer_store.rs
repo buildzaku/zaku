@@ -7,8 +7,9 @@ use std::{
 };
 use text::BufferId;
 
+use path::RelPath;
 use request_buffer::RequestBuffer;
-use util::{debug_panic, rel_path::RelPath};
+use util::debug_panic;
 use worktree::{
     DiskState, File, PathChange, ProjectEntryId, RequestFileState, Snapshot, Worktree,
     WorktreeEvent,

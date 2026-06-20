@@ -3,8 +3,8 @@ use gpui::{AnyView, App, ClickEvent, ElementId, Hsla, Pixels, SharedString, Wind
 use theme::ActiveTheme;
 
 use crate::{
-    Color, DynamicSpacing, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, ToggleState,
-    h_flex,
+    Color, DynamicSpacing, Icon, IconName, IconSize, Label, LabelCommon, LabelSize,
+    TOOLTIP_SHOW_DELAY, ToggleState, h_flex,
 };
 
 pub fn checkbox(id: impl Into<ElementId>, toggle_state: ToggleState) -> Checkbox {
@@ -170,7 +170,8 @@ impl RenderOnce for Checkbox {
                 )
             })
             .when_some(self.tooltip, |this, tooltip| {
-                this.tooltip(move |window, cx| tooltip(window, cx))
+                this.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                    .tooltip(move |window, cx| tooltip(window, cx))
             })
             .when_some(
                 self.on_click.filter(|_| !self.disabled),

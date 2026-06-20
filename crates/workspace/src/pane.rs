@@ -9,13 +9,14 @@ use std::{
     mem,
 };
 
+use path::PathStyle;
 use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
-    IconSize, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
+    IconSize, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
 };
-use util::{ResultExt, path::PathStyle};
+use util::ResultExt;
 
 use crate::{
     ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,
@@ -924,21 +925,26 @@ impl Pane {
                 TabPosition::Middle(position_relative_to_active_item)
             })
             .toggle_state(is_active)
-            .map(|this| match tab_tooltip_content {
-                Some(TabTooltipContent::Text(text)) => {
-                    if capability.editable() {
-                        this.tooltip(Tooltip::text(text))
-                    } else {
-                        this.tooltip(move |_, cx| {
-                            let text = text.clone();
-                            Tooltip::with_meta(text, None, "Read-Only", cx)
+            .map(|tab| match tab_tooltip_content {
+                Some(TabTooltipContent::Text(text)) => tab
+                    .tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                    .tooltip(move |_, cx| {
+                        let text = text.clone();
+                        let tooltip = Tooltip::new(text).max_w(gpui::rems(32.0));
+
+                        cx.new(move |_| {
+                            if capability.editable() {
+                                tooltip
+                            } else {
+                                tooltip.meta("Read-Only")
+                            }
                         })
-                    }
-                }
-                Some(TabTooltipContent::Custom(element_fn)) => {
-                    this.tooltip(move |window, cx| element_fn(window, cx))
-                }
-                None => this,
+                        .into()
+                    }),
+                Some(TabTooltipContent::Custom(element_fn)) => tab
+                    .tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                    .tooltip(move |window, cx| element_fn(window, cx)),
+                None => tab,
             })
             .on_click(
                 cx.listener(move |pane: &mut Self, event: &ClickEvent, window, cx| {

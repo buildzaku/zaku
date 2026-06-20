@@ -2574,9 +2574,9 @@ mod tests {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     use fs::Fs;
 
+    use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
-    use util::rel_path::rel_path;
     use util_macros::path;
     use worktree::WorktreeModelHandle;
 

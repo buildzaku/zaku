@@ -1,7 +1,5 @@
 pub mod command;
 pub mod disambiguate;
-pub mod path;
-pub mod rel_path;
 pub mod serde;
 pub mod test;
 

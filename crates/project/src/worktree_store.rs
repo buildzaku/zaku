@@ -13,10 +13,7 @@ use std::{
 use tokio::sync::watch;
 
 use fs::{CopyOptions, Fs, RenameOptions};
-use util::{
-    path::{PathStyle, SanitizedPath},
-    rel_path::RelPath,
-};
+use path::{PathStyle, RelPath, SanitizedPath};
 use worktree::{
     Entry, ProjectEntryId, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent, WorktreeId,
 };

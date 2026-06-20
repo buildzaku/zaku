@@ -5,8 +5,8 @@ use gpui::{
 use smallvec::SmallVec;
 
 use crate::{
-    ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth, Toggleable,
-    VisibleOnHover,
+    ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth,
+    TOOLTIP_SHOW_DELAY, Toggleable, VisibleOnHover,
 };
 
 pub trait SelectableButton: Toggleable {
@@ -170,7 +170,8 @@ impl RenderOnce for ButtonLike {
         self.base
             .id(self.id.clone())
             .when_some(self.tooltip, |this, tooltip| {
-                this.tooltip(move |window, cx| tooltip(window, cx))
+                this.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
+                    .tooltip(move |window, cx| tooltip(window, cx))
             })
             .when_some(self.tab_index, |this, tab_index| this.tab_index(tab_index))
             .flex()

@@ -5,7 +5,7 @@ use gpui::{
 use smallvec::SmallVec;
 use std::sync::Arc;
 
-use crate::{Disclosure, prelude::*};
+use crate::{Disclosure, TOOLTIP_SHOW_DELAY, prelude::*};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
 pub enum ListItemSpacing {
@@ -280,7 +280,9 @@ impl RenderOnce for ListItem {
                             (on_mouse_down)(event, window, cx);
                         })
                     })
-                    .when_some(self.tooltip, |this, tooltip| this.tooltip(tooltip))
+                    .when_some(self.tooltip, |this, tooltip| {
+                        this.tooltip_show_delay(TOOLTIP_SHOW_DELAY).tooltip(tooltip)
+                    })
                     .map(|this| {
                         if self.inset {
                             this.rounded_sm()

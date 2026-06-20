@@ -39,7 +39,7 @@ fn main() {
     if std::io::stdout().is_terminal() {
         logger::init_output_stdout();
     } else {
-        let result = logger::init_output_file(settings::log_file(), Some(settings::old_log_file()));
+        let result = logger::init_output_file(path::log_file(), Some(path::old_log_file()));
         if let Err(error) = result {
             eprintln!("Could not open log file: {error}... Defaulting to stdout");
             logger::init_output_stdout();
@@ -62,12 +62,12 @@ fn main() {
         let (user_settings_file_rx, user_settings_watcher) = settings::watch_config_file(
             cx.background_executor(),
             fs.clone(),
-            settings::settings_file().clone(),
+            path::settings_file().clone(),
         );
         let (user_keymap_file_rx, user_keymap_watcher) = settings::watch_config_file(
             cx.background_executor(),
             fs.clone(),
-            settings::keymap_file().clone(),
+            path::keymap_file().clone(),
         );
         zaku::handle_settings_file_changes(user_settings_file_rx, user_settings_watcher, cx);
         zaku::handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
@@ -108,21 +108,17 @@ fn main() {
 }
 
 fn init_paths() -> HashMap<ErrorKind, Vec<&'static Path>> {
-    [
-        settings::config_dir(),
-        settings::data_dir(),
-        settings::logs_dir(),
-    ]
-    .into_iter()
-    .fold(HashMap::default(), |mut errors, path| {
-        if let Err(error) = std::fs::create_dir_all(path) {
+    [path::config_dir(), path::data_dir(), path::logs_dir()]
+        .into_iter()
+        .fold(HashMap::default(), |mut errors, path| {
+            if let Err(error) = std::fs::create_dir_all(path) {
+                errors
+                    .entry(error.kind())
+                    .or_insert_with(Vec::new)
+                    .push(path);
+            }
             errors
-                .entry(error.kind())
-                .or_insert_with(Vec::new)
-                .push(path);
-        }
-        errors
-    })
+        })
 }
 
 fn register_embedded_fonts(cx: &App) {

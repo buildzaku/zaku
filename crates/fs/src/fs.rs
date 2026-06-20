@@ -31,7 +31,8 @@ use std::ffi::CString;
 #[cfg(target_os = "windows")]
 use util::command::new_command;
 
-use util::{ResultExt, path::SanitizedPath};
+use path::SanitizedPath;
+use util::ResultExt;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::os::fd::{AsFd, AsRawFd};

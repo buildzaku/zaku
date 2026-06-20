@@ -3,6 +3,7 @@ use gpui::{
     WeakEntity, Window, prelude::*,
 };
 
+use path::PathExt;
 use project::{Project, RequestBuffer, RequestFileState};
 use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
 use util::truncate_and_trailoff;
@@ -102,7 +103,7 @@ impl Item for RequestEditor {
         self.project
             .read(cx)
             .absolute_path(&project_path, cx)
-            .map(|path| path.to_string_lossy().into_owned().into())
+            .map(|path| path.compact().to_string_lossy().into_owned().into())
     }
 
     fn for_each_project_item(
@@ -300,9 +301,9 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
-    use util::rel_path::rel_path;
     use util_macros::path;
     use workspace::{SharedState, WorkspaceDb, build_workspace};
 

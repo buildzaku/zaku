@@ -1,24 +1,35 @@
+mod rel_path;
+
+#[cfg(any(test, feature = "test-support"))]
+pub use rel_path::rel_path;
+pub use rel_path::{RelPath, RelPathAncestors, RelPathBuf, RelPathComponents};
+
 #[cfg(target_os = "windows")]
 use anyhow::Context;
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-use std::os::unix::ffi::OsStrExt;
 
 use std::{
     borrow::Cow,
     cmp::Ordering,
     ffi::OsStr,
     fmt::{self, Debug, Display, Formatter},
-    path::Path,
-    sync::Arc,
+    path::{Path, PathBuf},
+    sync::{Arc, OnceLock},
 };
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use std::os::unix::ffi::OsStrExt;
 
 #[cfg(target_os = "windows")]
 use tendril::fmt::{Format, WTF8};
 
-use crate::rel_path::RelPath;
+pub fn home_dir() -> &'static PathBuf {
+    static HOME_DIR: OnceLock<PathBuf> = OnceLock::new();
+    HOME_DIR.get_or_init(|| dirs::home_dir().expect("failed to determine home directory"))
+}
 
 pub trait PathExt {
+    fn compact(&self) -> PathBuf;
+
     fn try_from_bytes<'a>(bytes: &'a [u8]) -> anyhow::Result<Self>
     where
         Self: From<&'a Path>;
@@ -390,6 +401,22 @@ pub fn compare_rel_paths_by(
 }
 
 impl<T: AsRef<Path>> PathExt for T {
+    fn compact(&self) -> PathBuf {
+        if cfg!(any(target_os = "linux", target_os = "macos")) {
+            match self.as_ref().strip_prefix(home_dir().as_path()) {
+                Ok(relative_path) => {
+                    let mut shortened_path = PathBuf::new();
+                    shortened_path.push("~");
+                    shortened_path.push(relative_path);
+                    shortened_path
+                }
+                Err(_) => self.as_ref().to_path_buf(),
+            }
+        } else {
+            self.as_ref().to_path_buf()
+        }
+    }
+
     fn try_from_bytes<'a>(bytes: &'a [u8]) -> anyhow::Result<Self>
     where
         Self: From<&'a Path>,
@@ -412,6 +439,105 @@ impl<T: AsRef<Path>> PathExt for T {
                 .with_context(|| format!("Invalid WTF-8 sequence: {bytes:?}"))
         }
     }
+}
+
+/// Returns the path to the configuration directory.
+///
+/// - macOS: `~/.config/zaku`
+/// - Linux: `$XDG_CONFIG_HOME/zaku` (or `~/.config/zaku`), with Flatpak override.
+/// - Windows: `%APPDATA%\\Zaku`
+pub fn config_dir() -> &'static PathBuf {
+    static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
+    CONFIG_DIR.get_or_init(|| {
+        if cfg!(target_os = "macos") {
+            home_dir().join(".config").join("zaku")
+        } else if cfg!(target_os = "linux") {
+            if let Ok(flatpak_xdg_config) = std::env::var("FLATPAK_XDG_CONFIG_HOME") {
+                PathBuf::from(flatpak_xdg_config)
+            } else {
+                dirs::config_dir().expect("failed to determine XDG_CONFIG_HOME directory")
+            }
+            .join("zaku")
+        } else if cfg!(target_os = "windows") {
+            dirs::config_dir()
+                .expect("failed to determine RoamingAppData directory")
+                .join("Zaku")
+        } else {
+            unreachable!("Unsupported platform")
+        }
+    })
+}
+
+/// Returns the path to the data directory.
+///
+/// - macOS: `~/Library/Application Support/Zaku`
+/// - Linux: `$XDG_DATA_HOME/zaku` (or `~/.local/share/zaku`), with Flatpak override.
+/// - Windows: `%LOCALAPPDATA%\\Zaku`
+pub fn data_dir() -> &'static PathBuf {
+    static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+    DATA_DIR.get_or_init(|| {
+        if cfg!(target_os = "macos") {
+            home_dir()
+                .join("Library")
+                .join("Application Support")
+                .join("Zaku")
+        } else if cfg!(target_os = "linux") {
+            if let Ok(flatpak_xdg_data) = std::env::var("FLATPAK_XDG_DATA_HOME") {
+                PathBuf::from(flatpak_xdg_data)
+            } else {
+                dirs::data_local_dir().expect("failed to determine XDG_DATA_HOME directory")
+            }
+            .join("zaku")
+        } else if cfg!(target_os = "windows") {
+            dirs::data_local_dir()
+                .expect("failed to determine LocalAppData directory")
+                .join("Zaku")
+        } else {
+            unreachable!("Unsupported platform")
+        }
+    })
+}
+
+/// Returns the path to the logs directory.
+///
+/// - macOS: `~/Library/Logs/Zaku`
+/// - Linux: `$XDG_DATA_HOME/zaku/logs` (or `~/.local/share/zaku/logs`), with Flatpak override.
+/// - Windows: `%LOCALAPPDATA%\\Zaku\\logs`
+pub fn logs_dir() -> &'static PathBuf {
+    static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
+    LOGS_DIR.get_or_init(|| {
+        if cfg!(target_os = "macos") {
+            home_dir().join("Library/Logs/Zaku")
+        } else if cfg!(target_os = "linux") || cfg!(target_os = "windows") {
+            data_dir().join("logs")
+        } else {
+            unreachable!("Unsupported platform")
+        }
+    })
+}
+
+/// Returns the path to the `Zaku.log` file.
+pub fn log_file() -> &'static PathBuf {
+    static LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log"))
+}
+
+/// Returns the path to the `Zaku.log.old` file.
+pub fn old_log_file() -> &'static PathBuf {
+    static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    OLD_LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log.old"))
+}
+
+/// Returns the path to the `settings.json` file.
+pub fn settings_file() -> &'static PathBuf {
+    static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
+    SETTINGS_FILE.get_or_init(|| config_dir().join("settings.json"))
+}
+
+/// Returns the path to the `keymap.json` file.
+pub fn keymap_file() -> &'static PathBuf {
+    static KEYMAP_FILE: OnceLock<PathBuf> = OnceLock::new();
+    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.json"))
 }
 
 /// In memory, this is identical to `Path`. On non-Windows conversions to this
@@ -523,6 +649,23 @@ mod tests {
     ) -> Vec<(&'static RelPath, bool)> {
         paths.sort_by(|&left, &right| compare_rel_paths_by(left, right, mode, order));
         paths
+    }
+
+    #[test]
+    fn test_path_compact() {
+        let path = home_dir()
+            .join(".config")
+            .join("zaku")
+            .join("settings.json");
+
+        if cfg!(any(target_os = "linux", target_os = "macos")) {
+            assert_eq!(
+                path.compact().to_str(),
+                Some("~/.config/zaku/settings.json")
+            );
+        } else {
+            assert_eq!(path.compact().to_str(), path.to_str());
+        }
     }
 
     #[test]

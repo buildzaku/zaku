@@ -8,8 +8,8 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 use fs::Fs;
 
 use fs::TempFs;
+use path::{RelPath, rel_path};
 use project::{Project, ProjectItem, RequestBuffer, RequestBufferEvent};
-use util::rel_path::{RelPath, rel_path};
 use util_macros::path;
 use worktree::WorktreeModelHandle;
 

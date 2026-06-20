@@ -9,7 +9,8 @@ use std::{
 use text::{BufferId, ReplicaId};
 
 use language::{Buffer, BufferEvent, Capability};
-use util::{debug_panic, rel_path::RelPath};
+use path::RelPath;
+use util::debug_panic;
 use worktree::{DiskState, File, PathChange, ProjectEntryId, Snapshot, Worktree, WorktreeEvent};
 
 use crate::{

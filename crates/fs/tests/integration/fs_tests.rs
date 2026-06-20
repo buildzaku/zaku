@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use fs::{Fs, NativeFs, PathEventKind, RenameOptions};
 
 #[cfg(target_os = "windows")]
-use util::path::SanitizedPath;
+use path::SanitizedPath;
 
 #[gpui::test]
 async fn test_native_fs_parallel_rename_without_overwrite_preserves_failed_source(

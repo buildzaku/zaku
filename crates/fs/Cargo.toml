@@ -29,6 +29,7 @@ libc = { workspace = true }
 log = { workspace = true }
 notify = { workspace = true }
 parking_lot = { workspace = true }
+path = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 smol = { workspace = true }

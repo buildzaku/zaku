@@ -1423,7 +1423,7 @@ dependencies = [
  "fs",
  "gpui",
  "log",
- "settings",
+ "path",
  "smol",
  "sql",
  "sql_macros",
@@ -1601,6 +1601,7 @@ dependencies = [
  "log",
  "multi_buffer",
  "num-traits",
+ "path",
  "pretty_assertions",
  "project",
  "serde",
@@ -1984,6 +1985,7 @@ dependencies = [
  "log",
  "notify",
  "parking_lot",
+ "path",
  "serde",
  "serde_json",
  "smol",
@@ -3431,6 +3433,7 @@ dependencies = [
  "language_core",
  "log",
  "parking_lot",
+ "path",
  "regex",
  "settings",
  "streaming-iterator",
@@ -4515,6 +4518,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
+name = "path"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "dunce",
+ "pretty_assertions",
+ "serde",
+ "tendril 0.5.0",
+]
+
+[[package]]
 name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4867,6 +4882,7 @@ dependencies = [
  "indoc",
  "language",
  "log",
+ "path",
  "request_buffer",
  "serde_json",
  "text",
@@ -4886,6 +4902,7 @@ dependencies = [
  "fs",
  "gpui",
  "indoc",
+ "path",
  "project",
  "request_editor",
  "serde_json",
@@ -5395,6 +5412,7 @@ dependencies = [
  "log",
  "multi_buffer",
  "parking_lot",
+ "path",
  "project",
  "response_panel",
  "serde_json",
@@ -6039,7 +6057,6 @@ name = "settings"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "dirs",
  "fs",
  "futures",
  "gpui",
@@ -6288,10 +6305,10 @@ dependencies = [
  "libsqlite3-sys",
  "num-traits",
  "parking_lot",
+ "path",
  "smol",
  "tempfile",
  "thread_local",
- "util 0.0.0",
  "uuid",
 ]
 
@@ -7397,14 +7414,10 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 name = "util"
 version = "0.0.0"
 dependencies = [
- "anyhow",
- "dunce",
  "log",
- "pretty_assertions",
  "rust-embed",
  "serde",
  "smol",
- "tendril 0.5.0",
 ]
 
 [[package]]
@@ -8724,6 +8737,7 @@ dependencies = [
  "log",
  "metadata",
  "parking_lot",
+ "path",
  "project",
  "serde",
  "serde_json",
@@ -8753,6 +8767,7 @@ dependencies = [
  "language",
  "log",
  "parking_lot",
+ "path",
  "pretty_assertions",
  "serde",
  "serde_json",
@@ -8953,6 +8968,7 @@ dependencies = [
  "metadata",
  "mimalloc",
  "multi_buffer",
+ "path",
  "project_panel",
  "request_editor",
  "reqwest_client",

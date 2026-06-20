@@ -13,8 +13,8 @@ use std::{
 use text::{LineEnding, ReplicaId, ToOffset, Transaction, TransactionId};
 
 use fs::MTime;
+use path::{PathStyle, RelPath};
 use settings::WorktreeId;
-use util::{path::PathStyle, rel_path::RelPath};
 
 use crate::{
     HighlightId, HighlightMap, Language, PLAIN_TEXT, Rope, SyntaxMap, SyntaxMapCapture,

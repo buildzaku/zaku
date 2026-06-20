@@ -1,5 +1,5 @@
 [package]
-name = "util"
+name = "path"
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -8,17 +8,21 @@ publish.workspace = true
 [lints]
 workspace = true
 
-[lib]
-name = "util"
-path = "src/util.rs"
-
 [features]
 test-support = []
 
+[lib]
+name = "path"
+path = "src/path.rs"
+
 [dependencies]
-log = { workspace = true }
-rust-embed = { workspace = true }
+anyhow = { workspace = true }
+dirs = { workspace = true }
+dunce = { workspace = true }
 serde = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-smol = { workspace = true }
+tendril = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

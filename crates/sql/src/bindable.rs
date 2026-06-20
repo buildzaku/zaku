@@ -4,7 +4,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use util::path::PathExt;
+
+use path::PathExt;
 
 use crate::statement::{Row, SqlType, Statement};
 

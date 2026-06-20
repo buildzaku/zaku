@@ -128,7 +128,7 @@ fn database_path(db_dir: &Path) -> anyhow::Result<PathBuf> {
 }
 
 pub fn database_dir() -> PathBuf {
-    settings::data_dir().join("db")
+    path::data_dir().join("db")
 }
 
 pub struct AppDatabase(pub ThreadSafeConnection);

@@ -17,6 +17,7 @@ actions = { workspace = true }
 anyhow = { workspace = true }
 editor = { workspace = true }
 gpui = { workspace = true }
+path = { workspace = true }
 project = { workspace = true }
 smallvec = { workspace = true }
 theme = { workspace = true }
@@ -28,6 +29,7 @@ workspace = { workspace = true }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
+path = { workspace = true, features = ["test-support"] }
 request_editor = { workspace = true }
 serde_json = { workspace = true }
 settings = { workspace = true, features = ["test-support"] }
