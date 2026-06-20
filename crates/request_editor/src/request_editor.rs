@@ -18,6 +18,7 @@ use http_client::{
 use input::{ErasedEditorEvent, InputField};
 use language::{Buffer, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
+use path::PathStyle;
 use project::{
     Project, ProjectPath, RequestBuffer, RequestBufferEvent, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
@@ -31,7 +32,6 @@ use ui::{
     IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
-use util::path::PathStyle;
 use workspace::{SharedState, Workspace, pane::Pane};
 
 use crate::persistence::RequestEditorDb;
@@ -1690,9 +1690,9 @@ mod tests {
 
     use fs::Fs;
     use http_client::{Response, StatusCode};
+    use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
-    use util::rel_path::rel_path;
     use util_macros::path;
     use workspace::{DockPosition, Item, Root, SharedState};
 

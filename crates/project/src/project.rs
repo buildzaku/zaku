@@ -22,7 +22,8 @@ use std::{
 
 use fs::{Fs, MTime};
 use language::{AvailableLanguage, Buffer, BufferEvent, Language, LanguageRegistry, PLAIN_TEXT};
-use util::{ResultExt, path::PathStyle, rel_path::RelPath};
+use path::{PathStyle, RelPath};
+use util::ResultExt;
 
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent},

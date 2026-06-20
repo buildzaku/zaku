@@ -527,8 +527,9 @@ pub mod test {
     use super::*;
 
     use gpui::{Empty, IntoElement};
+
+    use path::rel_path;
     use project::WorktreeId;
-    use util::rel_path::rel_path;
 
     pub struct TestProjectItem {
         pub entry_id: Option<ProjectEntryId>,

@@ -16,6 +16,7 @@ use std::{
 };
 
 use editor::{Editor, EditorEvent, MultiBufferOffset, SelectionEffects};
+use path::{PathStyle, RelPath, SortMode, SortOrder};
 use project::{
     Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, ProjectPath, Snapshot, Worktree,
     WorktreeId,
@@ -26,11 +27,7 @@ use ui::{
     IndentGuideLayout, Label, LabelCommon, LabelSize, ListItem, ListItemSpacing,
     RenderedIndentGuide, ScrollAxes, Scrollbars, TrackLayout, WithScrollbar,
 };
-use util::{
-    ResultExt,
-    path::{PathStyle, SortMode, SortOrder},
-    rel_path::RelPath,
-};
+use util::ResultExt;
 
 use workspace::{Panel, Workspace, pane::Pane};
 
@@ -2461,7 +2458,7 @@ impl ProjectPanel {
 fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) -> cmp::Ordering {
     let a = (a.path.as_ref(), a.is_file());
     let b = (b.path.as_ref(), b.is_file());
-    util::path::compare_rel_paths_by(a, b, mode, order)
+    path::compare_rel_paths_by(a, b, mode, order)
 }
 
 fn display_depth(entry: &Entry) -> usize {
@@ -2824,11 +2821,11 @@ mod tests {
     use std::{collections::HashSet, ops::Range, sync::Arc};
 
     use fs::Fs;
+    use path::rel_path;
     use project::{Project, ProjectEvent, ProjectPath};
     use request_editor::RequestEditor;
     use settings::SettingsStore;
     use theme::LoadThemes;
-    use util::rel_path::rel_path;
     use util_macros::path;
     use workspace::{SharedState, Workspace, build_workspace, pane::PaneEvent};
 

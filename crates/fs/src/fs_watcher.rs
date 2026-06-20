@@ -12,7 +12,8 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use util::{ResultExt, path::SanitizedPath};
+use path::SanitizedPath;
+use util::ResultExt;
 
 use crate::{PathEvent, PathEventKind, Watcher};
 

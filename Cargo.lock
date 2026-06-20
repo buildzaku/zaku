@@ -1985,6 +1985,7 @@ dependencies = [
  "log",
  "notify",
  "parking_lot",
+ "path",
  "serde",
  "serde_json",
  "smol",
@@ -3432,6 +3433,7 @@ dependencies = [
  "language_core",
  "log",
  "parking_lot",
+ "path",
  "regex",
  "settings",
  "streaming-iterator",
@@ -4519,7 +4521,12 @@ checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 name = "path"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "dirs",
+ "dunce",
+ "pretty_assertions",
+ "serde",
+ "tendril 0.5.0",
 ]
 
 [[package]]
@@ -4875,6 +4882,7 @@ dependencies = [
  "indoc",
  "language",
  "log",
+ "path",
  "request_buffer",
  "serde_json",
  "text",
@@ -4894,6 +4902,7 @@ dependencies = [
  "fs",
  "gpui",
  "indoc",
+ "path",
  "project",
  "request_editor",
  "serde_json",
@@ -6296,10 +6305,10 @@ dependencies = [
  "libsqlite3-sys",
  "num-traits",
  "parking_lot",
+ "path",
  "smol",
  "tempfile",
  "thread_local",
- "util 0.0.0",
  "uuid",
 ]
 
@@ -7405,14 +7414,10 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 name = "util"
 version = "0.0.0"
 dependencies = [
- "anyhow",
- "dunce",
  "log",
- "pretty_assertions",
  "rust-embed",
  "serde",
  "smol",
- "tendril 0.5.0",
 ]
 
 [[package]]
@@ -8732,6 +8737,7 @@ dependencies = [
  "log",
  "metadata",
  "parking_lot",
+ "path",
  "project",
  "serde",
  "serde_json",
@@ -8761,6 +8767,7 @@ dependencies = [
  "language",
  "log",
  "parking_lot",
+ "path",
  "pretty_assertions",
  "serde",
  "serde_json",

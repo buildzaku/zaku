@@ -9,13 +9,14 @@ use std::{
     mem,
 };
 
+use path::PathStyle;
 use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
     IconSize, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
 };
-use util::{ResultExt, path::PathStyle};
+use util::ResultExt;
 
 use crate::{
     ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,

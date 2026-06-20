@@ -9,7 +9,7 @@ use std::{
 };
 
 use fs::{Fs, RenameOptions, TempFs};
-use util::rel_path::{RelPath, rel_path};
+use path::{RelPath, rel_path};
 use util_macros::path;
 use worktree::{EntryKind, PathChange, Worktree, WorktreeEvent, WorktreeId, WorktreeModelHandle};
 

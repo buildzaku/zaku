@@ -301,9 +301,9 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
-    use util::rel_path::rel_path;
     use util_macros::path;
     use workspace::{SharedState, WorkspaceDb, build_workspace};
 

@@ -43,11 +43,8 @@ use fs::{
     Watcher as FsWatcher,
 };
 use language::{LineEnding, Rope};
-use util::{
-    ResultExt,
-    path::{PathStyle, SanitizedPath},
-    rel_path::RelPath,
-};
+use path::{PathStyle, RelPath, SanitizedPath};
+use util::ResultExt;
 
 pub const FS_WATCH_LATENCY: Duration = Duration::from_millis(100);
 
