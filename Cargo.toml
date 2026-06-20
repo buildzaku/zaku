@@ -17,6 +17,7 @@ members = [
   "crates/metadata",
   "crates/multi_buffer",
   "crates/path",
+  "crates/picker",
   "crates/platform_title_bar",
   "crates/project",
   "crates/project_panel",
@@ -170,6 +171,7 @@ logger = { path = "crates/logger" }
 metadata = { path = "crates/metadata" }
 multi_buffer = { path = "crates/multi_buffer" }
 path = { path = "crates/path" }
+picker = { path = "crates/picker" }
 platform_title_bar = { path = "crates/platform_title_bar" }
 project = { path = "crates/project" }
 project_panel = { path = "crates/project_panel" }

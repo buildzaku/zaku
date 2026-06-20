@@ -1,0 +1,23 @@
+[package]
+name = "picker"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "picker"
+path = "src/picker.rs"
+
+[dependencies]
+actions = { workspace = true }
+anyhow = { workspace = true }
+gpui = { workspace = true }
+input = { workspace = true }
+log = { workspace = true }
+theme = { workspace = true }
+ui = { workspace = true }
+workspace = { workspace = true }
