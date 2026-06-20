@@ -2,7 +2,7 @@ use gpui::{Action, App, Context, Entity, Window, prelude::*};
 
 use ui::{
     ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu,
-    PopoverMenuHandle, prelude::*,
+    PopoverMenuHandle, Tooltip, prelude::*,
 };
 
 pub struct ApplicationMenu {
@@ -42,11 +42,12 @@ impl Render for ApplicationMenu {
                 PopoverMenu::new("application-menu-popover")
                     .menu(move |window, cx| Some(Self::build_menu(window, cx)))
                     .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
-                    .trigger(
+                    .trigger_with_tooltip(
                         IconButton::new("application-menu-trigger", IconName::Menu)
                             .variant(ButtonVariant::Ghost)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::Small),
+                        Tooltip::text("Open Application Menu"),
                     )
                     .with_handle(handle),
             )
