@@ -234,11 +234,12 @@ where
         gpui::div()
             .v_flex()
             .elevation_2(app)
+            .rounded_sm()
             .font(ui_font)
             .text_ui(app)
             .text_color(app.theme().colors().text)
-            .py_1()
-            .px_2()
+            .py_0p5()
+            .px_1p5()
             .map(|el| f(el, cx)),
     )
 }
