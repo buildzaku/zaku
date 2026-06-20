@@ -297,6 +297,7 @@ fn test_action_namespaces(cx: &mut TestAppContext) {
             all_namespaces,
             BTreeSet::from([
                 "action".to_string(),
+                "command_palette".to_string(),
                 "editor".to_string(),
                 "menu".to_string(),
                 "pane".to_string(),
