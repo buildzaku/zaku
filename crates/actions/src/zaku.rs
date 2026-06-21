@@ -3,6 +3,8 @@ gpui::actions!(
     [
         /// Show information about Zaku.
         About,
+        /// Copy system specifications into the clipboard.
+        CopySystemSpecsIntoClipboard,
         /// Hide the application.
         Hide,
         /// Hide other applications.

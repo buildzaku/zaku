@@ -37,6 +37,7 @@ members = [
   "crates/sql",
   "crates/sql_macros",
   "crates/syntax_theme",
+  "crates/system_specs",
   "crates/theme",
   "crates/theme_settings",
   "crates/title_bar",
@@ -138,6 +139,7 @@ streaming-iterator = { version = "0.1" }
 strum = { version = "0.28", features = ["derive"] }
 sum_tree = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "sum_tree" }
 syn = { version = "2.0", features = ["extra-traits", "full", "visit-mut"] }
+sysinfo = { version = "0.39" }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
 text = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "text" }
@@ -198,6 +200,7 @@ settings_macros = { path = "crates/settings_macros" }
 sql = { path = "crates/sql" }
 sql_macros = { path = "crates/sql_macros" }
 syntax_theme = { path = "crates/syntax_theme" }
+system_specs = { path = "crates/system_specs" }
 theme = { path = "crates/theme" }
 theme_settings = { path = "crates/theme_settings" }
 title_bar = { path = "crates/title_bar" }

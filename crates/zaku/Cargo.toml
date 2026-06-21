@@ -59,6 +59,7 @@ reqwest_client = { workspace = true }
 response_panel = { workspace = true }
 session = { workspace = true }
 settings = { workspace = true }
+system_specs = { workspace = true }
 theme = { workspace = true }
 theme_settings = { workspace = true }
 title_bar = { workspace = true }
