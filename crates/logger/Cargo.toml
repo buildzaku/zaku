@@ -16,7 +16,7 @@ default = []
 
 [dependencies]
 anyhow = { workspace = true }
-chrono = { workspace = true }
+jiff = { workspace = true }
 log = { workspace = true }
 
 [dev-dependencies]

@@ -85,7 +85,6 @@ ashpd = { version = "0.13", default-features = false, features = [
 async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
-chrono = { version = "0.4" }
 clock = { git = "https://github.com/zed-industries/zed", rev = "f99df1a155", package = "clock" }
 derive_more = { version = "2.1", features = ["deref", "deref_mut"] }
 dirs = { version = "6.0" }

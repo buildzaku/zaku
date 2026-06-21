@@ -27,7 +27,6 @@ path = "src/workspace.rs"
 [dependencies]
 actions = { workspace = true }
 anyhow = { workspace = true }
-chrono = { workspace = true }
 db = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
@@ -35,6 +34,7 @@ gpui = { workspace = true }
 http_client = { workspace = true }
 indoc = { workspace = true }
 itertools = { workspace = true }
+jiff = { workspace = true }
 language = { workspace = true }
 log = { workspace = true }
 metadata = { workspace = true }

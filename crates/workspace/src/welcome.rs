@@ -1,8 +1,8 @@
-use chrono::{DateTime, Utc};
 use gpui::{
     Action, App, Context, FocusHandle, Focusable, FontWeight, Render, SharedString, WeakEntity,
     Window, prelude::*,
 };
+use jiff::Timestamp;
 use std::path::{Path, PathBuf};
 
 use metadata::{ZAKU_DESCRIPTION, ZAKU_NAME};
@@ -159,7 +159,7 @@ const CONTENT: Section<1> = Section {
 pub struct WelcomePage {
     workspace: WeakEntity<Workspace>,
     focus_handle: FocusHandle,
-    recent_workspaces: Option<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>>,
+    recent_workspaces: Option<Vec<(WorkspaceId, PathBuf, Timestamp)>>,
 }
 
 impl WelcomePage {

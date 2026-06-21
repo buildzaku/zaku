@@ -3769,9 +3769,9 @@ name = "logger"
 version = "0.0.0"
 dependencies = [
  "anyhow",
- "chrono",
  "fs",
  "gpui",
+ "jiff",
  "log",
 ]
 
@@ -8847,7 +8847,6 @@ version = "0.0.0"
 dependencies = [
  "actions",
  "anyhow",
- "chrono",
  "db",
  "fs",
  "futures",
@@ -8855,6 +8854,7 @@ dependencies = [
  "http_client 0.0.0",
  "indoc",
  "itertools 0.14.0",
+ "jiff",
  "language",
  "log",
  "metadata",

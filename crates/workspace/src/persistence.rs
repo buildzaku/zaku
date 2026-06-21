@@ -1,8 +1,8 @@
 pub mod model;
 
 use anyhow::Context;
-use chrono::{DateTime, NaiveDateTime, Utc};
 use gpui::{App, Bounds, Task, WindowBounds, WindowId};
+use jiff::{SignedDuration, Timestamp, civil::DateTime, tz::TimeZone};
 use std::path::{Path, PathBuf};
 
 use db::{
@@ -332,7 +332,7 @@ impl WorkspaceDb {
     pub async fn recent_workspaces_on_disk(
         &self,
         fs: &dyn Fs,
-    ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
+    ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Timestamp)>> {
         let mut existing_workspaces = Vec::new();
         let mut delete_tasks = Vec::new();
 
@@ -352,7 +352,7 @@ impl WorkspaceDb {
     pub async fn last_workspace(
         &self,
         fs: &dyn Fs,
-    ) -> anyhow::Result<Option<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
+    ) -> anyhow::Result<Option<(WorkspaceId, PathBuf, Timestamp)>> {
         Ok(self.recent_workspaces_on_disk(fs).await?.into_iter().next())
     }
 
@@ -499,7 +499,7 @@ impl WorkspaceDb {
             .await
     }
 
-    fn recent_workspaces(&self) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
+    fn recent_workspaces(&self) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Timestamp)>> {
         Ok(self
             .recent_workspaces_query()?
             .into_iter()
@@ -554,11 +554,12 @@ impl WorkspaceDb {
     async fn workspace_path_is_restorable(
         path: &Path,
         fs: &dyn Fs,
-        timestamp: Option<DateTime<Utc>>,
+        timestamp: Option<Timestamp>,
     ) -> bool {
         match fs.metadata(path).await.ok().flatten() {
-            None => timestamp
-                .is_some_and(|timestamp| Utc::now() - timestamp < chrono::Duration::days(7)),
+            None => timestamp.is_some_and(|timestamp| {
+                Timestamp::now().duration_since(timestamp) < SignedDuration::from_hours(24 * 7)
+            }),
             Some(metadata) => metadata.is_dir,
         }
     }
@@ -758,9 +759,10 @@ pub fn delete_unloaded_items(
     })
 }
 
-fn parse_timestamp(text: &str) -> DateTime<Utc> {
-    NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
-        .map_or_else(|_| Utc::now(), |naive| naive.and_utc())
+fn parse_timestamp(text: &str) -> Timestamp {
+    DateTime::strptime("%Y-%m-%d %H:%M:%S", text)
+        .and_then(|datetime| datetime.to_zoned(TimeZone::UTC))
+        .map_or_else(|_| Timestamp::now(), |datetime| datetime.timestamp())
 }
 
 #[cfg(test)]
