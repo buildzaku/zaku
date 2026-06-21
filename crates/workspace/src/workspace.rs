@@ -491,6 +491,11 @@ fn register_actions(
             window.zoom_window();
         })
         .register_action(
+            |workspace, action: &actions::projects::ClearRecent, window, cx| {
+                workspace.clear_recent_projects(action, window, cx);
+            },
+        )
+        .register_action(
             |workspace, action: &actions::theme::ToggleMode, window, cx| {
                 workspace.toggle_theme_mode(action, window, cx);
             },
@@ -2255,6 +2260,26 @@ impl Workspace {
         self.bottom_dock.update(cx, |dock, cx| {
             dock.resize_active_panel(Some(size), window, cx);
         });
+    }
+
+    fn clear_recent_projects(
+        &mut self,
+        _: &actions::projects::ClearRecent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane = self.pane.clone();
+        let workspace_db = WorkspaceDb::global(cx);
+
+        cx.spawn_in(window, async move |_, cx| {
+            workspace_db.clear_recent_workspaces().await?;
+            pane.update_in(cx, |pane, window, cx| {
+                pane.reload_recent_workspaces(window, cx);
+            })?;
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
     }
 
     fn toggle_theme_mode(

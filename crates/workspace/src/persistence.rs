@@ -551,6 +551,12 @@ impl WorkspaceDb {
         }
     }
 
+    query! {
+        pub(crate) async fn clear_recent_workspaces() -> anyhow::Result<()> {
+            DELETE FROM workspace
+        }
+    }
+
     async fn workspace_path_is_restorable(
         path: &Path,
         fs: &dyn Fs,
@@ -716,13 +722,6 @@ impl WorkspaceDb {
 
     #[cfg(test)]
     query! {
-        pub(crate) async fn clear_recent_workspaces() -> anyhow::Result<()> {
-            DELETE FROM workspace
-        }
-    }
-
-    #[cfg(test)]
-    query! {
         pub(crate) fn recent_workspace_count() -> anyhow::Result<usize> {
             SELECT COUNT(*) FROM workspace
         }
@@ -829,6 +828,43 @@ mod tests {
         assert_eq!(*workspace_id, WorkspaceId::from(1));
         assert_eq!(location, &project_path);
         assert_eq!(workspace_db.recent_workspace_count().unwrap(), 1);
+    }
+
+    #[gpui::test]
+    async fn test_clear_recent_workspaces(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_clear_recent_workspaces").await;
+        workspace_db.clear_recent_workspaces().await.unwrap();
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(1),
+                location: PathBuf::from("project-a"),
+                center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-a".to_string()),
+                window_id: Some(10),
+            })
+            .await;
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(2),
+                location: PathBuf::from("project-b"),
+                center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-a".to_string()),
+                window_id: Some(11),
+            })
+            .await;
+
+        assert_eq!(workspace_db.recent_workspaces().unwrap().len(), 2);
+
+        workspace_db.clear_recent_workspaces().await.unwrap();
+
+        assert!(workspace_db.recent_workspaces().unwrap().is_empty());
     }
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]

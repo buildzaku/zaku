@@ -172,7 +172,18 @@ impl WelcomePage {
         cx.on_focus(&focus_handle, window, |_, _, cx| cx.notify())
             .detach();
 
-        let fs = workspace
+        let welcome_page = Self {
+            workspace,
+            focus_handle,
+            recent_workspaces: None,
+        };
+        welcome_page.reload_recent_workspaces(window, cx);
+        welcome_page
+    }
+
+    pub(crate) fn reload_recent_workspaces(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let fs = self
+            .workspace
             .upgrade()
             .map(|workspace| workspace.read(cx).shared_state().fs.clone());
         let workspace_db = WorkspaceDb::global(cx);
@@ -196,12 +207,6 @@ impl WelcomePage {
             }
         })
         .detach();
-
-        Self {
-            workspace,
-            focus_handle,
-            recent_workspaces: None,
-        }
     }
 
     fn select_next(
