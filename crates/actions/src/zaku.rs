@@ -13,8 +13,8 @@ gpui::actions!(
         OpenSettingsFile,
         /// Open the keymap JSON file.
         OpenKeymapFile,
-        /// Open the log file.
-        OpenLogFile,
+        /// Open logs.
+        OpenLogs,
         /// Show all hidden windows.
         ShowAll,
         /// Zoom the current window.

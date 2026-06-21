@@ -134,7 +134,7 @@ fn register_actions(cx: &mut App) {
             );
         });
     })
-    .on_action(|_: &actions::zaku::OpenLogFile, cx| {
+    .on_action(|_: &actions::zaku::OpenLogs, cx| {
         with_active_or_new_workspace(cx, |workspace, window, cx| {
             open_log_file(workspace, window, cx);
         });

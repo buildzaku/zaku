@@ -87,7 +87,7 @@ impl Item for LogsView {
 
 pub fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
     const MAX_LINES: usize = 1000;
-    struct OpenLogFileErrorNotification;
+    struct OpenLogsErrorNotification;
 
     let fs = workspace.shared_state().fs.clone();
     cx.spawn_in(window, async move |workspace, cx| {
@@ -122,7 +122,7 @@ pub fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Co
             Err(error) => {
                 if let Err(update_error) = workspace.update(cx, |workspace, cx| {
                     workspace.show_notification(
-                        &NotificationId::unique::<OpenLogFileErrorNotification>(),
+                        &NotificationId::unique::<OpenLogsErrorNotification>(),
                         cx,
                         |cx| {
                             cx.new(|cx| {

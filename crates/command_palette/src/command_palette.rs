@@ -639,6 +639,7 @@ mod tests {
             humanize_action_name("zaku::OpenSettingsFile"),
             "zaku: open settings file"
         );
+        assert_eq!(humanize_action_name("zaku::OpenLogs"), "zaku: open logs");
         assert_eq!(
             humanize_action_name("project_panel::ToggleFocus"),
             "project panel: toggle focus"
