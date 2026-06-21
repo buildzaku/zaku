@@ -1,8 +1,10 @@
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{BackgroundExecutor, Task};
+use gpui::{App, BackgroundExecutor, ReadGlobal, Task};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use fs::Fs;
+
+use crate::{settings_content::SettingsContent, settings_store::SettingsStore};
 
 const FILE_WATCH_LATENCY: Duration = Duration::from_millis(100);
 
@@ -35,6 +37,14 @@ pub fn watch_config_file(
     });
 
     (rx, task)
+}
+
+pub fn update_settings_file(
+    fs: Arc<dyn Fs>,
+    cx: &App,
+    update: impl 'static + Send + FnOnce(&mut SettingsContent, &App),
+) {
+    SettingsStore::global(cx).update_settings_file(fs, update);
 }
 
 #[cfg(test)]

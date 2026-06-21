@@ -14,7 +14,7 @@ fn init_test(shared_state: Arc<SharedState>, app_db: AppDatabase, cx: &mut TestA
     cx.update(|cx| {
         cx.set_global(app_db);
 
-        let settings_store = SettingsStore::test(cx);
+        let settings_store = SettingsStore::test_new(cx);
         cx.set_global(settings_store);
         theme::init(LoadThemes::JustBase, cx);
         workspace::init(shared_state, cx);

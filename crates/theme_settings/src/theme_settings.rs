@@ -11,7 +11,7 @@ use gpui::{App, WindowBackgroundAppearance};
 use refineable::Refineable;
 use std::sync::Arc;
 
-use settings::{IntoGpui, SettingsStore, ThemeAppearanceMode};
+use settings::{IntoGpui, SettingsContent, SettingsStore, ThemeAppearanceMode};
 use theme::{
     Appearance, AppearanceContent, GlobalTheme, LoadThemes, StatusColors, SyntaxTheme,
     SystemAppearance, Theme, ThemeColors, ThemeFamily, ThemeRegistry, ThemeStyles,
@@ -69,6 +69,10 @@ pub fn reload_theme(cx: &mut App) {
     let theme = configured_theme(cx);
     GlobalTheme::update_theme(cx, theme);
     cx.refresh_windows();
+}
+
+pub fn set_mode(content: &mut SettingsContent, mode: ThemeAppearanceMode) {
+    content.theme.get_or_insert_default().mode = Some(mode);
 }
 
 pub fn load_bundled_themes(registry: &ThemeRegistry) {

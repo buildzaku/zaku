@@ -6252,6 +6252,7 @@ dependencies = [
  "inventory",
  "log",
  "logger",
+ "path",
  "rust-embed",
  "serde",
  "serde_json",

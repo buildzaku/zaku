@@ -309,7 +309,7 @@ mod tests {
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
-            let settings_store = SettingsStore::test(cx);
+            let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
             workspace::init(shared_state, cx);

@@ -24,6 +24,7 @@ indexmap = { workspace = true }
 inventory = { workspace = true }
 logger = { workspace = true }
 log = { workspace = true }
+path = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

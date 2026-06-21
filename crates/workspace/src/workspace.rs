@@ -59,7 +59,8 @@ use language::LanguageRegistry;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
-use theme::{ActiveTheme, SystemAppearance};
+use settings::{SettingsStore, ThemeAppearanceMode};
+use theme::{ActiveTheme, Appearance, SystemAppearance};
 #[cfg(target_os = "macos")]
 use ui::utils;
 use ui::{StyledTypography, h_flex};
@@ -488,7 +489,12 @@ fn register_actions(
         })
         .register_action(|_, _: &actions::zaku::Zoom, window, _| {
             window.zoom_window();
-        });
+        })
+        .register_action(
+            |workspace, action: &actions::theme::ToggleMode, window, cx| {
+                workspace.toggle_theme_mode(action, window, cx);
+            },
+        );
 }
 
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
@@ -2251,6 +2257,33 @@ impl Workspace {
         });
     }
 
+    fn toggle_theme_mode(
+        &mut self,
+        _: &actions::theme::ToggleMode,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let current_mode = cx
+            .global::<SettingsStore>()
+            .content()
+            .theme
+            .as_ref()
+            .and_then(|theme| theme.mode);
+        let new_mode = match current_mode {
+            Some(ThemeAppearanceMode::Light) => ThemeAppearanceMode::Dark,
+            Some(ThemeAppearanceMode::Dark) => ThemeAppearanceMode::Light,
+            Some(ThemeAppearanceMode::System) | None => match cx.theme().appearance() {
+                Appearance::Light => ThemeAppearanceMode::Dark,
+                Appearance::Dark => ThemeAppearanceMode::Light,
+            },
+        };
+
+        let fs = self.shared_state.fs.clone();
+        settings::update_settings_file(fs, cx, move |settings, _| {
+            theme_settings::set_mode(settings, new_mode);
+        });
+    }
+
     pub fn toggle_panel_focus<T: Panel>(
         &mut self,
         window: &mut Window,
@@ -2620,7 +2653,7 @@ mod tests {
 
     pub fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
-            let settings_store = SettingsStore::test(cx);
+            let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
             crate::init(shared_state, cx);
