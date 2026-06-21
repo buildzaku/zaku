@@ -53,8 +53,11 @@ pub fn init(cx: &mut App) {
 
             workspace.register_action(
                 |workspace, _: &actions::workspace::SendRequest, window, cx| {
-                    workspace.pane().update(cx, |pane, cx| {
-                        pane.send_request(window, cx);
+                    let pane = workspace.pane().clone();
+                    window.defer(cx, move |window, cx| {
+                        pane.update(cx, |pane, cx| {
+                            pane.send_request(window, cx);
+                        });
                     });
                 },
             );
