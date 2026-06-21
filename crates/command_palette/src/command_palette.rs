@@ -1,28 +1,36 @@
+mod persistence;
+
 use fuzzy_nucleo::{StringMatch, StringMatchCandidate};
 use gpui::{
     Action, App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    ParentElement, Render, Styled, Task, WeakEntity, Window, prelude::*,
+    ParentElement, Render, Styled, Task, TaskExt, WeakEntity, Window, prelude::*,
 };
 use smol::channel::Receiver;
 use std::{
-    cmp,
+    cmp::{self, Reverse},
+    collections::{HashMap, VecDeque},
     sync::{Arc, atomic::AtomicBool},
     time::Duration,
 };
 
-use picker::{Picker, PickerDelegate};
+use command_palette_hooks::CommandPaletteFilter;
+use picker::{Direction, Picker, PickerDelegate};
 use ui::{HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, Toggleable};
 use workspace::{ModalView, Workspace};
 
+use crate::persistence::CommandPaletteDB;
+
 pub fn init(cx: &mut App) {
+    command_palette_hooks::init(cx);
+    smol::block_on(CommandPaletteDB::global(cx).initialize_schema())
+        .expect("command palette persistence schema should initialize");
+
     cx.observe_new(CommandPalette::register).detach();
 }
 
 pub struct CommandPalette {
     picker: Entity<Picker<CommandPaletteDelegate>>,
 }
-
-impl ModalView for CommandPalette {}
 
 impl CommandPalette {
     fn register(workspace: &mut Workspace, _: Option<&mut Window>, _: &mut Context<Workspace>) {
@@ -54,12 +62,20 @@ impl CommandPalette {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let filter = CommandPaletteFilter::try_global(cx);
+
         let commands = window
             .available_actions(cx)
             .into_iter()
-            .map(|action| Command {
-                name: humanize_action_name(action.name()),
-                action,
+            .filter_map(|action| {
+                if filter.is_some_and(|filter| filter.is_hidden(action.as_ref())) {
+                    return None;
+                }
+
+                Some(Command {
+                    name: humanize_action_name(action.name()),
+                    action,
+                })
             })
             .collect();
 
@@ -85,6 +101,8 @@ impl CommandPalette {
         });
     }
 }
+
+impl ModalView for CommandPalette {}
 
 impl EventEmitter<DismissEvent> for CommandPalette {}
 
@@ -128,6 +146,7 @@ pub fn normalize_action_query(input: &str) -> String {
 }
 
 pub struct CommandPaletteDelegate {
+    latest_query: String,
     command_palette: WeakEntity<CommandPalette>,
     all_commands: Vec<Command>,
     commands: Vec<Command>,
@@ -135,6 +154,7 @@ pub struct CommandPaletteDelegate {
     selected_index: usize,
     previous_focus_handle: FocusHandle,
     updating_matches: Option<(Task<()>, Receiver<(Vec<Command>, Vec<StringMatch>)>)>,
+    query_history: QueryHistory,
 }
 
 impl CommandPaletteDelegate {
@@ -144,6 +164,7 @@ impl CommandPaletteDelegate {
         previous_focus_handle: FocusHandle,
     ) -> Self {
         Self {
+            latest_query: String::new(),
             command_palette,
             all_commands: commands.clone(),
             commands,
@@ -151,16 +172,19 @@ impl CommandPaletteDelegate {
             selected_index: 0,
             previous_focus_handle,
             updating_matches: None,
+            query_history: QueryHistory::default(),
         }
     }
 
     fn matches_updated(
         &mut self,
+        query: String,
         commands: Vec<Command>,
         matches: Vec<StringMatch>,
         _: &mut Context<Picker<Self>>,
     ) {
         drop(self.updating_matches.take());
+        self.latest_query = query;
         self.commands = commands;
         self.matches = matches;
         if self.matches.is_empty() {
@@ -168,6 +192,110 @@ impl CommandPaletteDelegate {
         } else {
             self.selected_index = cmp::min(self.selected_index, self.matches.len() - 1);
         }
+    }
+
+    fn hit_counts(cx: &App) -> HashMap<String, u16> {
+        match CommandPaletteDB::global(cx).list_commands_used() {
+            Ok(commands) => commands
+                .into_iter()
+                .map(|command| (command.command_name, command.invocations))
+                .collect(),
+            Err(error) => {
+                log::debug!("Failed to load command palette usage history: {error:?}");
+                HashMap::new()
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct QueryHistory {
+    history: Option<VecDeque<String>>,
+    cursor: Option<usize>,
+    prefix: Option<String>,
+}
+
+impl QueryHistory {
+    fn history(&mut self, cx: &App) -> &mut VecDeque<String> {
+        self.history.get_or_insert_with(|| {
+            match CommandPaletteDB::global(cx).list_recent_queries() {
+                Ok(queries) => queries.into_iter().collect(),
+                Err(error) => {
+                    log::debug!("Failed to load command palette query history: {error:?}");
+                    VecDeque::new()
+                }
+            }
+        })
+    }
+
+    fn add(&mut self, query: String, cx: &App) {
+        if let Some(position) = self
+            .history(cx)
+            .iter()
+            .position(|history| history == &query)
+        {
+            self.history(cx).remove(position);
+        }
+        self.history(cx).push_back(query);
+        self.cursor = None;
+        self.prefix = None;
+    }
+
+    fn validate_cursor(&mut self, current_query: &str, cx: &App) -> Option<usize> {
+        if let Some(position) = self.cursor
+            && self.history(cx).get(position).map(String::as_str) != Some(current_query)
+        {
+            self.cursor = None;
+            self.prefix = None;
+        }
+        self.cursor
+    }
+
+    fn previous(&mut self, current_query: &str, cx: &App) -> Option<&str> {
+        if self.validate_cursor(current_query, cx).is_none() {
+            self.prefix = Some(current_query.to_string());
+        }
+
+        let prefix = self.prefix.clone().unwrap_or_default();
+        let start_index = self.cursor.unwrap_or(self.history(cx).len());
+
+        for index in (0..start_index).rev() {
+            if self
+                .history(cx)
+                .get(index)
+                .is_some_and(|history| history.starts_with(&prefix))
+            {
+                self.cursor = Some(index);
+                return self.history(cx).get(index).map(String::as_str);
+            }
+        }
+        None
+    }
+
+    fn next(&mut self, current_query: &str, cx: &App) -> Option<&str> {
+        let selected = self.validate_cursor(current_query, cx)?;
+        let prefix = self.prefix.clone().unwrap_or_default();
+
+        for index in (selected + 1)..self.history(cx).len() {
+            if self
+                .history(cx)
+                .get(index)
+                .is_some_and(|history| history.starts_with(&prefix))
+            {
+                self.cursor = Some(index);
+                return self.history(cx).get(index).map(String::as_str);
+            }
+        }
+        None
+    }
+
+    fn reset_cursor(&mut self) {
+        self.cursor = None;
+        self.prefix = None;
+    }
+
+    fn is_navigating(&self) -> bool {
+        self.cursor.is_some()
     }
 }
 
@@ -180,6 +308,41 @@ impl PickerDelegate for CommandPaletteDelegate {
 
     fn placeholder_text(&self, _: &mut Window, _: &mut App) -> Arc<str> {
         "Execute a command...".into()
+    }
+
+    fn select_history(
+        &mut self,
+        direction: Direction,
+        query: &str,
+        _: &mut Window,
+        cx: &mut App,
+    ) -> Option<String> {
+        match direction {
+            Direction::Up => {
+                let should_use_history =
+                    self.selected_index == 0 || self.query_history.is_navigating();
+                if should_use_history
+                    && let Some(query) = self
+                        .query_history
+                        .previous(query, cx)
+                        .map(ToString::to_string)
+                {
+                    return Some(query);
+                }
+            }
+            Direction::Down => {
+                if self.query_history.is_navigating() {
+                    if let Some(query) = self.query_history.next(query, cx).map(ToString::to_string)
+                    {
+                        return Some(query);
+                    }
+                    let prefix = self.query_history.prefix.take().unwrap_or_default();
+                    self.query_history.reset_cursor();
+                    return Some(prefix);
+                }
+            }
+        }
+        None
     }
 
     fn match_count(&self) -> usize {
@@ -205,9 +368,15 @@ impl PickerDelegate for CommandPaletteDelegate {
 
         let task = cx.background_spawn({
             let mut commands = self.all_commands.clone();
+            let hit_counts = Self::hit_counts(cx);
             let executor = cx.background_executor().clone();
             async move {
-                commands.sort_by_key(|command| command.name.clone());
+                commands.sort_by_key(|command| {
+                    (
+                        Reverse(hit_counts.get(&command.name).copied()),
+                        command.name.clone(),
+                    )
+                });
 
                 let candidates = commands
                     .iter()
@@ -240,7 +409,9 @@ impl PickerDelegate for CommandPaletteDelegate {
             };
 
             if let Err(error) = picker.update(cx, |picker, cx| {
-                picker.delegate.matches_updated(commands, matches, cx);
+                picker
+                    .delegate
+                    .matches_updated(query, commands, matches, cx);
             }) {
                 log::debug!("Failed to update command palette matches: {error:?}");
             }
@@ -249,7 +420,7 @@ impl PickerDelegate for CommandPaletteDelegate {
 
     fn finalize_update_matches(
         &mut self,
-        _: String,
+        query: String,
         duration: Duration,
         _: &mut Window,
         cx: &mut Context<Picker<Self>>,
@@ -263,7 +434,7 @@ impl PickerDelegate for CommandPaletteDelegate {
             .block_with_timeout(duration, rx.clone().recv())
         {
             Ok(Ok((commands, matches))) => {
-                self.matches_updated(commands, matches, cx);
+                self.matches_updated(query, commands, matches, cx);
                 true
             }
             Ok(Err(_)) => true,
@@ -306,9 +477,22 @@ impl PickerDelegate for CommandPaletteDelegate {
             return;
         }
 
+        if !self.latest_query.is_empty() {
+            self.query_history.add(self.latest_query.clone(), cx);
+            self.query_history.reset_cursor();
+        }
+
         let command = self.commands.swap_remove(action_index);
         self.matches.clear();
         self.commands.clear();
+        let command_name = command.name.clone();
+        let latest_query = self.latest_query.clone();
+        let db = CommandPaletteDB::global(cx);
+        cx.background_spawn(async move {
+            db.write_command_invocation(command_name, latest_query)
+                .await
+        })
+        .detach_and_log_err(cx);
         let action = command.action;
         self.previous_focus_handle.focus(window, cx);
         self.dismissed(window, cx);

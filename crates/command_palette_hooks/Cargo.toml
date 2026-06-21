@@ -1,0 +1,18 @@
+[package]
+name = "command_palette_hooks"
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "command_palette_hooks"
+path = "src/command_palette_hooks.rs"
+
+[dependencies]
+collections = { workspace = true }
+derive_more = { workspace = true }
+gpui = { workspace = true }
