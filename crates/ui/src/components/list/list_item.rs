@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, AnyView, App, ClickEvent, ElementId, MouseButton, MouseDownEvent, Pixels,
+    AnyElement, AnyView, App, ClickEvent, ElementId, Hsla, MouseButton, MouseDownEvent, Pixels,
     SharedString, Window, prelude::*,
 };
 use smallvec::SmallVec;
@@ -21,6 +21,9 @@ pub struct ListItem {
     group_name: Option<SharedString>,
     disabled: bool,
     selected: bool,
+    hover_background: Option<Hsla>,
+    active_background: Option<Hsla>,
+    selected_background: Option<Hsla>,
     spacing: ListItemSpacing,
     indent_level: u16,
     indent_step_size: Pixels,
@@ -50,6 +53,9 @@ impl ListItem {
             group_name: None,
             disabled: false,
             selected: false,
+            hover_background: None,
+            active_background: None,
+            selected_background: None,
             spacing: ListItemSpacing::Dense,
             indent_level: 0,
             indent_step_size: gpui::px(12.),
@@ -85,6 +91,21 @@ impl ListItem {
 
     pub fn selectable(mut self, has_hover: bool) -> Self {
         self.selectable = has_hover;
+        self
+    }
+
+    pub fn hover_background(mut self, color: Hsla) -> Self {
+        self.hover_background = Some(color);
+        self
+    }
+
+    pub fn active_background(mut self, color: Hsla) -> Self {
+        self.active_background = Some(color);
+        self
+    }
+
+    pub fn selected_background(mut self, color: Hsla) -> Self {
+        self.selected_background = Some(color);
         self
     }
 
@@ -205,6 +226,15 @@ impl ParentElement for ListItem {
 
 impl RenderOnce for ListItem {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let colors = cx.theme().colors();
+        let hover_background = self.hover_background.unwrap_or(colors.ghost_element_hover);
+        let active_background = self
+            .active_background
+            .unwrap_or(colors.ghost_element_active);
+        let selected_background = self
+            .selected_background
+            .unwrap_or(colors.ghost_element_selected);
+
         h_flex()
             .id(self.id)
             .when_some(self.group_name, |this, group| this.group(group))
@@ -225,12 +255,10 @@ impl RenderOnce for ListItem {
                     }
                 })
                 .when(self.selectable, |this| {
-                    this.hover(|style| style.bg(cx.theme().colors().ghost_element_hover))
-                        .active(|style| style.bg(cx.theme().colors().ghost_element_active))
+                    this.hover(|style| style.bg(hover_background))
+                        .active(|style| style.bg(active_background))
                         .when(self.outlined, |this| this.rounded_sm())
-                        .when(self.selected, |this| {
-                            this.bg(cx.theme().colors().ghost_element_selected)
-                        })
+                        .when(self.selected, |this| this.bg(selected_background))
                 })
             })
             .when(self.rounded, |this| this.rounded_sm())
@@ -258,11 +286,9 @@ impl RenderOnce for ListItem {
                             }
                         })
                         .when(self.selectable, |this| {
-                            this.hover(|style| style.bg(cx.theme().colors().ghost_element_hover))
-                                .active(|style| style.bg(cx.theme().colors().ghost_element_active))
-                                .when(self.selected, |this| {
-                                    this.bg(cx.theme().colors().ghost_element_selected)
-                                })
+                            this.hover(|style| style.bg(hover_background))
+                                .active(|style| style.bg(active_background))
+                                .when(self.selected, |this| this.bg(selected_background))
                         })
                     })
                     .when_some(
