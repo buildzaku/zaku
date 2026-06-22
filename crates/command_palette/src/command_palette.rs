@@ -7,6 +7,7 @@ use gpui::{
 };
 use smol::channel::Receiver;
 use std::{
+    any::TypeId,
     cmp::{self, Reverse},
     collections::{HashMap, VecDeque},
     sync::{Arc, atomic::AtomicBool},
@@ -24,6 +25,10 @@ use crate::persistence::CommandPaletteDB;
 
 pub fn init(cx: &mut App) {
     command_palette_hooks::init(cx);
+    CommandPaletteFilter::update_global(cx, |filter, _| {
+        filter.hide_action_types(&[TypeId::of::<actions::command_palette::Toggle>()]);
+    });
+
     smol::block_on(CommandPaletteDB::global(cx).initialize_schema())
         .expect("command palette persistence schema should initialize");
 
