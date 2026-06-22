@@ -53,8 +53,11 @@ pub fn init(cx: &mut App) {
 
             workspace.register_action(
                 |workspace, _: &actions::workspace::SendRequest, window, cx| {
-                    workspace.pane().update(cx, |pane, cx| {
-                        pane.send_request(window, cx);
+                    let pane = workspace.pane().clone();
+                    window.defer(cx, move |window, cx| {
+                        pane.update(cx, |pane, cx| {
+                            pane.send_request(window, cx);
+                        });
                     });
                 },
             );
@@ -1698,7 +1701,7 @@ mod tests {
 
     fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
-            let settings_store = SettingsStore::test(cx);
+            let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
             workspace::init(shared_state, cx);
@@ -1775,7 +1778,6 @@ mod tests {
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
         let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
         let (workspace, response_panel, cx) = build_workspace(&project, cx);
-        let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
 
         let request_path = ProjectPath {
             worktree_id,
@@ -1790,9 +1792,13 @@ mod tests {
             .unwrap()
             .downcast::<RequestEditor>()
             .unwrap();
-        pane.update_in(cx, |pane, window, cx| {
-            pane.send_request(window, cx);
+        workspace.update_in(cx, |workspace, window, cx| {
+            let focus_handle = workspace.focus_handle(cx);
+            window.focus(&focus_handle, cx);
         });
+        cx.dispatch_action(actions::workspace::SendRequest);
+        cx.run_until_parked();
+
         workspace.update_in(cx, |workspace, _, cx| {
             let response_panel_id = Entity::entity_id(&response_panel);
             let active_panel_id = workspace
@@ -1804,7 +1810,6 @@ mod tests {
             assert!(workspace.bottom_dock().read(cx).is_open());
             assert_eq!(active_panel_id, Some(response_panel_id));
         });
-        cx.run_until_parked();
 
         let response = Response::builder()
             .status(StatusCode::OK)

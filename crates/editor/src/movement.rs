@@ -447,7 +447,7 @@ mod tests {
     use crate::tests::util::marked_display_snapshot;
 
     fn init_test(cx: &mut App) {
-        let settings_store = SettingsStore::test(cx);
+        let settings_store = SettingsStore::test_new(cx);
         cx.set_global(settings_store);
         theme::init(theme::LoadThemes::JustBase, cx);
         crate::init(cx);

@@ -1,8 +1,8 @@
 pub mod model;
 
 use anyhow::Context;
-use chrono::{DateTime, NaiveDateTime, Utc};
 use gpui::{App, Bounds, Task, WindowBounds, WindowId};
+use jiff::{SignedDuration, Timestamp, civil::DateTime, tz::TimeZone};
 use std::path::{Path, PathBuf};
 
 use db::{
@@ -332,7 +332,7 @@ impl WorkspaceDb {
     pub async fn recent_workspaces_on_disk(
         &self,
         fs: &dyn Fs,
-    ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
+    ) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Timestamp)>> {
         let mut existing_workspaces = Vec::new();
         let mut delete_tasks = Vec::new();
 
@@ -352,7 +352,7 @@ impl WorkspaceDb {
     pub async fn last_workspace(
         &self,
         fs: &dyn Fs,
-    ) -> anyhow::Result<Option<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
+    ) -> anyhow::Result<Option<(WorkspaceId, PathBuf, Timestamp)>> {
         Ok(self.recent_workspaces_on_disk(fs).await?.into_iter().next())
     }
 
@@ -499,7 +499,7 @@ impl WorkspaceDb {
             .await
     }
 
-    fn recent_workspaces(&self) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, DateTime<Utc>)>> {
+    fn recent_workspaces(&self) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Timestamp)>> {
         Ok(self
             .recent_workspaces_query()?
             .into_iter()
@@ -551,14 +551,21 @@ impl WorkspaceDb {
         }
     }
 
+    query! {
+        pub(crate) async fn clear_recent_workspaces() -> anyhow::Result<()> {
+            DELETE FROM workspace
+        }
+    }
+
     async fn workspace_path_is_restorable(
         path: &Path,
         fs: &dyn Fs,
-        timestamp: Option<DateTime<Utc>>,
+        timestamp: Option<Timestamp>,
     ) -> bool {
         match fs.metadata(path).await.ok().flatten() {
-            None => timestamp
-                .is_some_and(|timestamp| Utc::now() - timestamp < chrono::Duration::days(7)),
+            None => timestamp.is_some_and(|timestamp| {
+                Timestamp::now().duration_since(timestamp) < SignedDuration::from_hours(24 * 7)
+            }),
             Some(metadata) => metadata.is_dir,
         }
     }
@@ -715,13 +722,6 @@ impl WorkspaceDb {
 
     #[cfg(test)]
     query! {
-        pub(crate) async fn clear_recent_workspaces() -> anyhow::Result<()> {
-            DELETE FROM workspace
-        }
-    }
-
-    #[cfg(test)]
-    query! {
         pub(crate) fn recent_workspace_count() -> anyhow::Result<usize> {
             SELECT COUNT(*) FROM workspace
         }
@@ -758,9 +758,10 @@ pub fn delete_unloaded_items(
     })
 }
 
-fn parse_timestamp(text: &str) -> DateTime<Utc> {
-    NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S")
-        .map_or_else(|_| Utc::now(), |naive| naive.and_utc())
+fn parse_timestamp(text: &str) -> Timestamp {
+    DateTime::strptime("%Y-%m-%d %H:%M:%S", text)
+        .and_then(|datetime| datetime.to_zoned(TimeZone::UTC))
+        .map_or_else(|_| Timestamp::now(), |datetime| datetime.timestamp())
 }
 
 #[cfg(test)]
@@ -799,7 +800,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -811,7 +812,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -829,6 +830,43 @@ mod tests {
         assert_eq!(workspace_db.recent_workspace_count().unwrap(), 1);
     }
 
+    #[gpui::test]
+    async fn test_clear_recent_workspaces(_cx: &mut TestAppContext) {
+        let workspace_db = WorkspaceDb::test_open("test_clear_recent_workspaces").await;
+        workspace_db.clear_recent_workspaces().await.unwrap();
+
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(1),
+                location: PathBuf::from("first"),
+                center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-uuid".to_string()),
+                window_id: Some(10),
+            })
+            .await;
+        workspace_db
+            .save_workspace(SerializedWorkspace {
+                id: WorkspaceId::from(2),
+                location: PathBuf::from("second"),
+                center_pane: SerializedPane::default(),
+                docks: DockStructure::default(),
+                window_bounds: None,
+                display: None,
+                session_id: Some("session-uuid".to_string()),
+                window_id: Some(11),
+            })
+            .await;
+
+        assert_eq!(workspace_db.recent_workspaces().unwrap().len(), 2);
+
+        workspace_db.clear_recent_workspaces().await.unwrap();
+
+        assert!(workspace_db.recent_workspaces().unwrap().is_empty());
+    }
+
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[gpui::test]
     async fn test_save_workspace_preserves_non_utf8_paths(_cx: &mut TestAppContext) {
@@ -844,7 +882,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1183,7 +1221,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1206,7 +1244,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1243,7 +1281,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1255,7 +1293,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1288,7 +1326,7 @@ mod tests {
                 docks: docks.clone(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;

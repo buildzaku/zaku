@@ -23,7 +23,7 @@ pub mod private {
 pub use ::settings_content::*;
 pub use into_gpui::IntoGpui;
 pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
-pub use settings_file::watch_config_file;
+pub use settings_file::{update_settings_file, watch_config_file};
 pub use settings_store::{Settings, SettingsStore};
 
 use gpui::App;
@@ -73,7 +73,7 @@ impl fmt::Display for WorktreeId {
 pub struct SettingsAssets;
 
 pub fn init(cx: &mut App) {
-    let store = SettingsStore::new(default_settings());
+    let store = SettingsStore::new(cx, default_settings());
     cx.set_global(store);
 }
 

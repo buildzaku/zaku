@@ -1,5 +1,6 @@
 pub mod dock;
 pub mod item;
+mod modal_layer;
 pub mod notifications;
 pub mod pane;
 mod persistence;
@@ -11,6 +12,7 @@ pub use item::{
     Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, SerializableItem,
     SerializableItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,
 };
+pub use modal_layer::*;
 pub use persistence::{
     SerializedWindowBounds, WorkspaceDb, delete_unloaded_items,
     model::{
@@ -31,9 +33,9 @@ use gpui::WindowDecorations;
 use gpui::{
     Action, AnyView, App, AsyncWindowContext, Bounds, BoxShadow, Context, CursorStyle, Decorations,
     Div, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, Global, HitboxBehavior, Hsla,
-    KeyContext, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point, PromptLevel,
-    ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions, WeakEntity, Window,
-    WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
+    KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point,
+    PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions,
+    WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
 #[cfg(any(test, feature = "test-support"))]
 use gpui::{TestAppContext, VisualTestContext};
@@ -57,7 +59,8 @@ use language::LanguageRegistry;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
-use theme::{ActiveTheme, SystemAppearance};
+use settings::{SettingsStore, ThemeAppearanceMode};
+use theme::{ActiveTheme, Appearance, SystemAppearance};
 #[cfg(target_os = "macos")]
 use ui::utils;
 use ui::{StyledTypography, h_flex};
@@ -486,7 +489,17 @@ fn register_actions(
         })
         .register_action(|_, _: &actions::zaku::Zoom, window, _| {
             window.zoom_window();
-        });
+        })
+        .register_action(
+            |workspace, action: &actions::projects::ClearRecent, window, cx| {
+                workspace.clear_recent_projects(action, window, cx);
+            },
+        )
+        .register_action(
+            |workspace, action: &actions::theme::ToggleMode, window, cx| {
+                workspace.toggle_theme_mode(action, window, cx);
+            },
+        );
 }
 
 pub fn default_window_options(cx: &mut App) -> WindowOptions {
@@ -1043,6 +1056,7 @@ impl Render for Root {
         let workspace = self.workspace().clone();
         let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
         let root = workspace.update(cx, |workspace, cx| workspace.actions(h_flex(), window, cx));
+        let modal_layer = workspace.read(cx).modal_layer.clone();
 
         client_side_decorations(
             root.key_context(workspace_key_context)
@@ -1057,7 +1071,8 @@ impl Render for Root {
                         .size_full()
                         .overflow_hidden()
                         .child(self.workspace().clone()),
-                ),
+                )
+                .child(modal_layer),
             window,
             cx,
             Tiling::default(),
@@ -1077,6 +1092,7 @@ pub struct Workspace {
     pane: Entity<Pane>,
     panes_by_item: HashMap<EntityId, WeakEntity<Pane>>,
     status_bar: Entity<StatusBar>,
+    pub(crate) modal_layer: Entity<ModalLayer>,
     titlebar_item: Option<AnyView>,
     notifications: Notifications,
     suppressed_notifications: HashSet<NotificationId>,
@@ -2161,6 +2177,7 @@ impl Workspace {
             status_bar.add_left_item(left_dock_buttons, window, cx);
             status_bar.add_right_item(bottom_dock_buttons, window, cx);
         });
+        let modal_layer = cx.new(|_| ModalLayer::new());
 
         let (serializable_items_tx, serializable_items_rx) =
             mpsc::unbounded::<Box<dyn SerializableItemHandle>>();
@@ -2180,6 +2197,7 @@ impl Workspace {
             pane,
             panes_by_item: HashMap::default(),
             status_bar,
+            modal_layer,
             titlebar_item: None,
             notifications: Notifications::default(),
             suppressed_notifications: HashSet::default(),
@@ -2241,6 +2259,53 @@ impl Workspace {
             .max(MIN_RESPONSE_PANE_HEIGHT.min(max_size));
         self.bottom_dock.update(cx, |dock, cx| {
             dock.resize_active_panel(Some(size), window, cx);
+        });
+    }
+
+    fn clear_recent_projects(
+        &mut self,
+        _: &actions::projects::ClearRecent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane = self.pane.clone();
+        let workspace_db = WorkspaceDb::global(cx);
+
+        cx.spawn_in(window, async move |_, cx| {
+            workspace_db.clear_recent_workspaces().await?;
+            pane.update_in(cx, |pane, window, cx| {
+                pane.reload_recent_workspaces(window, cx);
+            })?;
+
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+    }
+
+    fn toggle_theme_mode(
+        &mut self,
+        _: &actions::theme::ToggleMode,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let current_mode = cx
+            .global::<SettingsStore>()
+            .content()
+            .theme
+            .as_ref()
+            .and_then(|theme| theme.mode);
+        let new_mode = match current_mode {
+            Some(ThemeAppearanceMode::Light) => ThemeAppearanceMode::Dark,
+            Some(ThemeAppearanceMode::Dark) => ThemeAppearanceMode::Light,
+            Some(ThemeAppearanceMode::System) | None => match cx.theme().appearance() {
+                Appearance::Light => ThemeAppearanceMode::Dark,
+                Appearance::Dark => ThemeAppearanceMode::Light,
+            },
+        };
+
+        let fs = self.shared_state.fs.clone();
+        settings::update_settings_file(fs, cx, move |settings, _| {
+            theme_settings::set_mode(settings, new_mode);
         });
     }
 
@@ -2404,6 +2469,28 @@ impl Workspace {
             div = (action)(div, self, window, cx);
         }
         div
+    }
+
+    pub fn has_active_modal(&self, _: &mut Window, cx: &mut App) -> bool {
+        self.modal_layer.read(cx).has_active_modal()
+    }
+
+    pub fn active_modal<V: ManagedView + 'static>(&self, cx: &App) -> Option<Entity<V>> {
+        self.modal_layer.read(cx).active_modal()
+    }
+
+    pub fn toggle_modal<V: ModalView, B>(&mut self, window: &mut Window, cx: &mut App, build: B)
+    where
+        B: FnOnce(&mut Window, &mut Context<V>) -> V,
+    {
+        self.modal_layer.update(cx, |modal_layer, cx| {
+            modal_layer.toggle_modal(window, cx, build);
+        });
+    }
+
+    pub fn hide_modal(&mut self, window: &mut Window, cx: &mut App) -> bool {
+        self.modal_layer
+            .update(cx, |modal_layer, cx| modal_layer.hide_modal(window, cx))
     }
 
     fn render_notifications(&self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<Div> {
@@ -2591,7 +2678,7 @@ mod tests {
 
     pub fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
-            let settings_store = SettingsStore::test(cx);
+            let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
             crate::init(shared_state, cx);

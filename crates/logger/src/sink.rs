@@ -1,3 +1,4 @@
+use jiff::Zoned;
 use log::Level;
 use std::{
     fmt::{Arguments, Display, Formatter, Write as FmtWrite},
@@ -117,7 +118,7 @@ pub fn submit(mut record: Record) {
         _ = writeln!(
             &mut stdout,
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
-            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z"),
+            Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
             LEVEL_ANSI_COLORS[record.level as usize],
             LEVEL_OUTPUT_STRINGS[record.level as usize],
             SourceFmt {
@@ -133,7 +134,7 @@ pub fn submit(mut record: Record) {
         _ = writeln!(
             &mut stdout,
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
-            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z"),
+            Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
             LEVEL_ANSI_COLORS[record.level as usize],
             LEVEL_OUTPUT_STRINGS[record.level as usize],
             SourceFmt {
@@ -174,7 +175,7 @@ pub fn submit(mut record: Record) {
             _ = writeln!(
                 &mut writer,
                 "{} {} {} {}",
-                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%:z"),
+                Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
                 LEVEL_OUTPUT_STRINGS[record.level as usize],
                 SourceFmt {
                     scope: record.scope,

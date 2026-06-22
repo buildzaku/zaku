@@ -8,7 +8,7 @@ pub use fallible_options::*;
 pub use merge_from::MergeFrom as MergeFromTrait;
 pub use theme::*;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use settings_macros::{MergeFrom, with_fallible_options};
 use std::collections::HashMap;
 
@@ -19,7 +19,7 @@ pub enum ParseStatus {
 }
 
 #[with_fallible_options]
-#[derive(Clone, Default, Deserialize, MergeFrom)]
+#[derive(Clone, Default, Serialize, Deserialize, MergeFrom)]
 pub struct SettingsContent {
     pub theme: Option<ThemeSettingsContent>,
     pub ui: Option<UiSettingsContent>,

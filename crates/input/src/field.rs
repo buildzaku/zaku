@@ -36,7 +36,7 @@ impl InputField {
     pub fn new(window: &mut Window, cx: &mut App, placeholder_text: &str) -> Self {
         let editor_factory = crate::ERASED_EDITOR_FACTORY
             .get()
-            .expect("ErasedEditorFactory to be initialized");
+            .expect("Editor factory should be initialized");
         let editor = (editor_factory)(window, cx);
         editor.set_placeholder_text(placeholder_text, window, cx);
 

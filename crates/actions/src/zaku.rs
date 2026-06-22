@@ -3,6 +3,8 @@ gpui::actions!(
     [
         /// Show information about Zaku.
         About,
+        /// Copy system specifications into the clipboard.
+        CopySystemSpecsIntoClipboard,
         /// Hide the application.
         Hide,
         /// Hide other applications.
@@ -13,8 +15,8 @@ gpui::actions!(
         OpenSettingsFile,
         /// Open the keymap JSON file.
         OpenKeymapFile,
-        /// Open the log file.
-        OpenLogFile,
+        /// Open logs.
+        OpenLogs,
         /// Show all hidden windows.
         ShowAll,
         /// Zoom the current window.

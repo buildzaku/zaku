@@ -94,6 +94,7 @@ fn main() {
         response_panel::init(cx);
         title_bar::init(cx);
         zaku::init(cx);
+        command_palette::init(cx);
         let menus = zaku::app_menu(cx);
         cx.set_menus(menus);
 

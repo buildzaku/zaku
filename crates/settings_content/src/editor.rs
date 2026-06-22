@@ -1,10 +1,10 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use settings_macros::{MergeFrom, with_fallible_options};
 
 use crate::{BufferLineHeight, FontFamilyName, FontFeaturesContent, FontSize, FontWeightContent};
 
 #[with_fallible_options]
-#[derive(Clone, Default, Deserialize, MergeFrom)]
+#[derive(Clone, Default, Serialize, Deserialize, MergeFrom)]
 pub struct EditorSettingsContent {
     pub font_size: Option<FontSize>,
     pub font_family: Option<FontFamilyName>,
@@ -16,7 +16,7 @@ pub struct EditorSettingsContent {
     pub gutter: Option<GutterContent>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize, MergeFrom)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
 #[serde(rename_all = "snake_case")]
 pub enum CurrentLineHighlight {
     None,
@@ -26,7 +26,7 @@ pub enum CurrentLineHighlight {
 }
 
 #[with_fallible_options]
-#[derive(Clone, Default, Deserialize, MergeFrom)]
+#[derive(Clone, Default, Serialize, Deserialize, MergeFrom)]
 pub struct GutterContent {
     pub line_numbers: Option<bool>,
     pub min_line_number_digits: Option<usize>,

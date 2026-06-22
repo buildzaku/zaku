@@ -36,6 +36,7 @@ path = "tests/integration/workspace_tests.rs"
 actions = { workspace = true }
 anyhow = { workspace = true }
 assets = { workspace = true }
+command_palette = { workspace = true }
 db = { workspace = true }
 editor = { workspace = true }
 fs = { workspace = true }
@@ -58,6 +59,7 @@ reqwest_client = { workspace = true }
 response_panel = { workspace = true }
 session = { workspace = true }
 settings = { workspace = true }
+system_specs = { workspace = true }
 theme = { workspace = true }
 theme_settings = { workspace = true }
 title_bar = { workspace = true }

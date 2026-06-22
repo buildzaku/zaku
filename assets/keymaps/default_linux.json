@@ -21,9 +21,17 @@
       "alt-shift-enter": "menu::Restart",
       "shift-new": "workspace::NewWindow",
       "ctrl-shift-n": "workspace::NewWindow",
+      "ctrl-shift-p": "command_palette::Toggle",
       "ctrl-k ctrl-o": "workspace::Open",
       "ctrl-alt-,": "zaku::OpenSettingsFile",
       "ctrl-q": "zaku::Quit"
+    }
+  },
+  {
+    "context": "Picker || menu",
+    "bindings": {
+      "up": "menu::SelectPrevious",
+      "down": "menu::SelectNext"
     }
   },
   {
@@ -148,6 +156,14 @@
     "bindings": {
       "ctrl-enter": "editor::Newline",
       "shift-enter": "editor::Newline"
+    }
+  },
+  {
+    "context": "Picker > Editor",
+    "bindings": {
+      "escape": "menu::Cancel",
+      "up": "menu::SelectPrevious",
+      "down": "menu::SelectNext"
     }
   }
 ]

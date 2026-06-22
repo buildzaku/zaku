@@ -5,12 +5,16 @@ mod logs;
 pub use app_menu::app_menu;
 
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{Action, App, AsyncApp, Context, DismissEvent, KeyBinding, Task, Window, prelude::*};
+use gpui::{
+    Action, App, AsyncApp, ClipboardItem, Context, DismissEvent, KeyBinding, PromptLevel, Task,
+    Window, prelude::*,
+};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
+use system_specs::SystemSpecs;
 use workspace::{
     CloseIntent, DockPosition, OpenMode, Root, SessionWorkspace, SharedState, Toast, Workspace,
     WorkspaceDb, create_and_open_file,
@@ -37,6 +41,40 @@ pub fn init(cx: &mut App) {
         let pane = workspace.pane().downgrade();
         let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
         workspace.add_panel(response_panel, DockPosition::Bottom, window, cx);
+
+        workspace.register_action(
+            |_, _: &actions::zaku::CopySystemSpecsIntoClipboard, window, cx| {
+                let specs = SystemSpecs::new(
+                    window,
+                    cx,
+                    system_specs::os_name(),
+                    system_specs::os_version(),
+                );
+
+                cx.spawn_in(window, async move |_, cx| {
+                    let specs = specs.await.to_string();
+
+                    cx.update(|_, cx| {
+                        cx.write_to_clipboard(ClipboardItem::new_string(specs.clone()));
+                    })?;
+
+                    if let Err(error) = cx
+                        .prompt(
+                            PromptLevel::Info,
+                            "Copied into clipboard",
+                            Some(&specs),
+                            &["OK"],
+                        )
+                        .await
+                    {
+                        log::debug!("Failed to show copied system specs prompt: {error}");
+                    }
+
+                    anyhow::Ok(())
+                })
+                .detach_and_log_err(cx);
+            },
+        );
     })
     .detach();
 
@@ -134,7 +172,7 @@ fn register_actions(cx: &mut App) {
             );
         });
     })
-    .on_action(|_: &actions::zaku::OpenLogFile, cx| {
+    .on_action(|_: &actions::zaku::OpenLogs, cx| {
         with_active_or_new_workspace(cx, |workspace, window, cx| {
             open_log_file(workspace, window, cx);
         });
