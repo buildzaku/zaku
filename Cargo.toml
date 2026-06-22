@@ -199,11 +199,7 @@ async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd
 
 [workspace.lints.rust]
 # Visibility.
-missing_debug_implementations = "warn"
 unreachable_pub = "warn"
-
-# Unsafe.
-unsafe_op_in_unsafe_fn = "warn"
 
 [workspace.lints.rustdoc]
 # Docs.

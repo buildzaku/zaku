@@ -126,7 +126,10 @@ fn scope_alloc_from_scope_str(scope_str: &str) -> Option<ScopeAlloc> {
         if scope_name.is_empty() {
             continue;
         }
-        scope_buffer[index] = scope_name;
+        let entry = scope_buffer
+            .get_mut(index)
+            .expect("scope index should be in bounds");
+        *entry = scope_name;
         index += 1;
     }
 
@@ -206,8 +209,11 @@ impl ScopeMap {
 
         for (scope_str, level_filter) in all_filters {
             if scope_str.contains("::") {
-                if let Some(index) = modules.iter().position(|(module, _)| module == scope_str) {
-                    modules[index].1 = level_filter;
+                if let Some((_, module_level_filter)) = modules
+                    .iter_mut()
+                    .find(|(module, _)| module == scope_str)
+                {
+                    *module_level_filter = level_filter;
                 } else {
                     modules.push((scope_str.to_string(), level_filter));
                 }
@@ -216,11 +222,11 @@ impl ScopeMap {
             let Some(scope) = scope_alloc_from_scope_str(scope_str) else {
                 continue;
             };
-            if let Some(index) = items
-                .iter()
-                .position(|(scope_existing, _)| scope_existing == &scope)
+            if let Some((_, item_level_filter)) = items
+                .iter_mut()
+                .find(|(scope_existing, _)| scope_existing == &scope)
             {
-                items[index].1 = level_filter;
+                *item_level_filter = level_filter;
             } else {
                 items.push((scope, level_filter));
             }
@@ -258,9 +264,21 @@ impl ScopeMap {
             while cursor < items_range.end {
                 let sub_items_start = cursor;
                 cursor += 1;
-                let scope_name = &items[sub_items_start].0[depth];
+                let (scope, level_filter) = items
+                    .get(sub_items_start)
+                    .expect("scope item should be in bounds");
+                let scope_name = scope.get(depth).expect("scope depth should be in bounds");
 
-                while cursor < items_range.end && &items[cursor].0[depth] == scope_name {
+                while cursor < items_range.end {
+                    let cursor_scope_name = items
+                        .get(cursor)
+                        .expect("scope item should be in bounds")
+                        .0
+                        .get(depth)
+                        .expect("scope depth should be in bounds");
+                    if cursor_scope_name != scope_name {
+                        break;
+                    }
                     cursor += 1;
                 }
 
