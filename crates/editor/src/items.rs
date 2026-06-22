@@ -298,6 +298,7 @@ mod tests {
     use gpui::TestAppContext;
     use serde_json::json;
 
+    use fs::TempFs;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
@@ -317,8 +318,8 @@ mod tests {
     async fn test_deserialize(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -372,8 +373,8 @@ mod tests {
     async fn test_deserialize_non_worktree_file_does_not_add_to_pane(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));

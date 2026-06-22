@@ -896,8 +896,8 @@ mod tests {
     async fn test_create_workspace_serialization(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -1081,8 +1081,8 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
@@ -1141,8 +1141,8 @@ mod tests {
     async fn test_close_window_removes_workspace_from_current_session(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));

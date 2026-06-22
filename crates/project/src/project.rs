@@ -277,7 +277,7 @@ impl Project {
         root_path: &Path,
         cx: &mut TestAppContext,
     ) -> Entity<Project> {
-        let languages = Arc::new(LanguageRegistry::test(cx.executor()));
+        let languages = Arc::new(LanguageRegistry::test_new(cx.executor()));
         let project = cx.update(|cx| {
             cx.new({
                 let fs = fs.clone();

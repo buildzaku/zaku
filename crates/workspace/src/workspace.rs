@@ -50,9 +50,6 @@ use std::{
 };
 use uuid::Uuid;
 
-#[cfg(any(test, feature = "test-support"))]
-use fs::TempFs;
-
 use db::{Bind, Column, Row, Statement, StaticColumnCount, kv::KeyValueStore};
 use http_client::HttpClient;
 use language::LanguageRegistry;
@@ -203,12 +200,11 @@ impl SharedState {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn test(cx: &mut App) -> Arc<Self> {
+    pub fn test_new(fs: Arc<dyn fs::Fs>, cx: &mut App) -> Arc<Self> {
         use http_client::FakeHttpClient;
 
-        let fs = TempFs::new(cx.background_executor().clone());
         let http_client = FakeHttpClient::with_404_response();
-        let languages = Arc::new(LanguageRegistry::new(cx.background_executor().clone()));
+        let languages = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
         let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
 
         Arc::new(Self {
@@ -2658,9 +2654,7 @@ mod tests {
     use serde_json::{Value, json};
     use std::sync::Arc;
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    use fs::Fs;
-
+    use fs::{Fs, TempFs};
     use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -2729,8 +2723,8 @@ mod tests {
     async fn test_tracking_active_path(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -2827,8 +2821,8 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         let project =
@@ -2918,8 +2912,8 @@ mod tests {
     async fn test_remove_worktree_invalidates_pending_direct_project_open(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
         let project =
             cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
@@ -2991,8 +2985,8 @@ mod tests {
 
     #[gpui::test]
     fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
         let project =
             cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
@@ -3015,8 +3009,8 @@ mod tests {
     async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
         let project =
             cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
@@ -3077,8 +3071,8 @@ mod tests {
 
     #[gpui::test]
     fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         let project =
@@ -3157,8 +3151,8 @@ mod tests {
     fn test_panel_size_state_persistence(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         let project =
@@ -3218,8 +3212,8 @@ mod tests {
 
     #[gpui::test]
     fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         let project =
@@ -3250,8 +3244,8 @@ mod tests {
     async fn test_close_all_items(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -3348,8 +3342,8 @@ mod tests {
     async fn test_discard_all_reloads_from_disk(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -3407,8 +3401,8 @@ mod tests {
     async fn test_dont_save_single_file_reloads_from_disk(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -3447,8 +3441,8 @@ mod tests {
     async fn test_close_with_save_intent(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -3494,8 +3488,8 @@ mod tests {
     async fn test_drag_first_tab_to_last_position(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -3528,8 +3522,8 @@ mod tests {
     async fn test_drag_last_tab_to_first_position(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -3562,8 +3556,8 @@ mod tests {
     async fn test_drag_tab_to_middle_tab_with_mouse_events(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
@@ -3612,8 +3606,8 @@ mod tests {
     async fn test_opening_same_workspace_reuses_current_worktree(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -3675,8 +3669,8 @@ mod tests {
     async fn test_opening_same_workspace_in_new_window_with_activate(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -3748,8 +3742,8 @@ mod tests {
     async fn test_opening_same_workspace_in_new_window(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -3822,8 +3816,8 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -3894,8 +3888,8 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -4005,8 +3999,8 @@ mod tests {
     async fn test_opening_different_workspace_replaces_current_worktree(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(
@@ -4080,8 +4074,8 @@ mod tests {
     async fn test_window_bounds_on_initial_launch(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
@@ -4106,8 +4100,8 @@ mod tests {
     async fn test_window_bounds_restore_saved_default(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
         temp_fs.insert_tree(path!("project"), json!(null));
 
@@ -4131,7 +4125,8 @@ mod tests {
     async fn test_window_bounds_cascade_on_new_window(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
@@ -4180,8 +4175,8 @@ mod tests {
     async fn test_window_bounds_cascade_on_new_project_window(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
@@ -4239,8 +4234,8 @@ mod tests {
     async fn test_window_bounds_restore_saved_workspace(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
@@ -4328,8 +4323,8 @@ mod tests {
     async fn test_center_pane_deserialization_preserves_item_order(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
         cx.update(register_serializable_item::<TestItem>);
 

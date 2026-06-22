@@ -97,7 +97,7 @@ impl LanguageRegistry {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn test(executor: BackgroundExecutor) -> Self {
+    pub fn test_new(executor: BackgroundExecutor) -> Self {
         Self::new(executor)
     }
 
@@ -549,7 +549,7 @@ mod tests {
 
     #[gpui::test]
     fn test_select_language(cx: &mut App) {
-        let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+        let registry = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
         registry.add(Arc::new(Language::new(
             LanguageConfig {
                 name: LanguageName::new_static("JSON"),
@@ -607,7 +607,7 @@ mod tests {
 
     #[gpui::test]
     fn test_first_line_pattern(cx: &mut App) {
-        let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+        let registry = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
 
         registry.register_test_language(LanguageConfig {
             name: "XML".into(),

@@ -22,9 +22,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(feature = "test-support")]
-use std::sync::Weak;
-
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::ffi::CString;
 
@@ -160,10 +157,6 @@ pub trait Fs: Send + Sync {
     );
     async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()>;
     async fn is_case_sensitive(&self) -> bool;
-    #[cfg(feature = "test-support")]
-    fn as_temp(&self) -> Arc<TempFs> {
-        panic!("as_temp should only be called for TempFs");
-    }
 }
 
 pub trait FileHandle: Send + Sync + std::fmt::Debug {
@@ -828,7 +821,6 @@ impl Fs for NativeFs {
 
 #[cfg(feature = "test-support")]
 pub struct TempFs {
-    this: Weak<Self>,
     path: PathBuf,
     executor: BackgroundExecutor,
     _temp_dir: TempDir,
@@ -837,16 +829,13 @@ pub struct TempFs {
 #[cfg(feature = "test-support")]
 impl TempFs {
     pub fn new(executor: BackgroundExecutor) -> Arc<Self> {
-        Arc::new_cyclic(|this| {
-            let temp_dir = TempDir::new().unwrap();
-            let path = NativeFs::canonicalize(temp_dir.path()).unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let path = NativeFs::canonicalize(temp_dir.path()).unwrap();
 
-            Self {
-                this: this.clone(),
-                path,
-                executor,
-                _temp_dir: temp_dir,
-            }
+        Arc::new(Self {
+            path,
+            executor,
+            _temp_dir: temp_dir,
         })
     }
 
@@ -1054,10 +1043,6 @@ impl Fs for TempFs {
                 })
             })
             .await
-    }
-
-    fn as_temp(&self) -> Arc<TempFs> {
-        self.this.upgrade().unwrap()
     }
 }
 

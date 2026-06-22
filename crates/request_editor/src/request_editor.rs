@@ -1691,7 +1691,7 @@ mod tests {
     use serde_json::json;
     use std::{cell::RefCell, rc::Rc};
 
-    use fs::Fs;
+    use fs::{Fs, TempFs};
     use http_client::{Response, StatusCode};
     use path::rel_path;
     use settings::SettingsStore;
@@ -1738,8 +1738,8 @@ mod tests {
     async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         let http_client = shared_state.http_client.as_fake();
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
@@ -1822,8 +1822,8 @@ mod tests {
     async fn test_send_request_respects_disabled(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         let http_client = shared_state.http_client.as_fake();
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
@@ -1928,8 +1928,8 @@ mod tests {
     async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         let http_client = shared_state.http_client.as_fake();
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
@@ -2086,8 +2086,8 @@ mod tests {
     async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         let http_client = shared_state.http_client.as_fake();
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
@@ -2239,8 +2239,8 @@ mod tests {
     async fn test_save_from_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
 
         init_test(shared_state, cx);
 
@@ -2368,8 +2368,8 @@ mod tests {
     async fn test_file_handle_changed_on_rename(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
 
         init_test(shared_state, cx);
 

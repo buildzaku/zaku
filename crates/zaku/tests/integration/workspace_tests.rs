@@ -4,6 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
+use fs::TempFs;
 use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
@@ -33,8 +34,8 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     let kv_store = KeyValueStore::open(&app_db);
     let session = Session::new(Uuid::new_v4().to_string(), kv_store.clone()).await;
 
-    let shared_state = cx.update(SharedState::test);
-    let temp_fs = shared_state.fs.as_temp();
+    let temp_fs = TempFs::new(cx.executor());
+    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
     cx.update(|cx| {
         shared_state
             .session

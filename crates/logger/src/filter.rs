@@ -209,9 +209,8 @@ impl ScopeMap {
 
         for (scope_str, level_filter) in all_filters {
             if scope_str.contains("::") {
-                if let Some((_, module_level_filter)) = modules
-                    .iter_mut()
-                    .find(|(module, _)| module == scope_str)
+                if let Some((_, module_level_filter)) =
+                    modules.iter_mut().find(|(module, _)| module == scope_str)
                 {
                     *module_level_filter = level_filter;
                 } else {
@@ -264,7 +263,7 @@ impl ScopeMap {
             while cursor < items_range.end {
                 let sub_items_start = cursor;
                 cursor += 1;
-                let (scope, level_filter) = items
+                let (scope, _) = items
                     .get(sub_items_start)
                     .expect("scope item should be in bounds");
                 let scope_name = scope.get(depth).expect("scope depth should be in bounds");

@@ -2820,7 +2820,7 @@ mod tests {
     use serde_json::json;
     use std::{collections::HashSet, ops::Range, sync::Arc};
 
-    use fs::Fs;
+    use fs::{Fs, TempFs};
     use path::rel_path;
     use project::{Project, ProjectEvent, ProjectPath};
     use request_editor::RequestEditor;
@@ -3015,8 +3015,8 @@ mod tests {
     async fn test_sort_mode_directories_first(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3054,8 +3054,8 @@ mod tests {
     async fn test_new_file(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3124,8 +3124,8 @@ mod tests {
     async fn test_new_directory(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3188,8 +3188,8 @@ mod tests {
     async fn test_file_open_in_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3294,8 +3294,8 @@ mod tests {
     async fn test_autoreveal_active_entry(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3386,8 +3386,8 @@ mod tests {
     async fn test_new_entry_validation(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3515,8 +3515,8 @@ mod tests {
     async fn test_copy_paste(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3628,8 +3628,8 @@ mod tests {
     async fn test_cut_paste(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3739,8 +3739,8 @@ mod tests {
     async fn test_duplicate(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3802,8 +3802,8 @@ mod tests {
     async fn test_rename(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3892,8 +3892,8 @@ mod tests {
     async fn test_rename_conflict(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -3976,8 +3976,8 @@ mod tests {
     async fn test_trash(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -4067,8 +4067,8 @@ mod tests {
     async fn test_delete(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
@@ -4172,8 +4172,8 @@ mod tests {
     async fn test_non_request_files_are_hidden(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(

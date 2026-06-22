@@ -301,6 +301,7 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    use fs::TempFs;
     use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -323,8 +324,8 @@ mod tests {
     async fn test_deserialize(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
         init_test(shared_state, cx);
 
         temp_fs.insert_tree(
