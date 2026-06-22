@@ -800,7 +800,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -812,7 +812,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -838,24 +838,24 @@ mod tests {
         workspace_db
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(1),
-                location: PathBuf::from("project-a"),
+                location: PathBuf::from("first"),
                 center_pane: SerializedPane::default(),
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
         workspace_db
             .save_workspace(SerializedWorkspace {
                 id: WorkspaceId::from(2),
-                location: PathBuf::from("project-b"),
+                location: PathBuf::from("second"),
                 center_pane: SerializedPane::default(),
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(11),
             })
             .await;
@@ -882,7 +882,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1221,7 +1221,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1244,7 +1244,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1281,7 +1281,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1293,7 +1293,7 @@ mod tests {
                 docks: DockStructure::default(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
@@ -1326,7 +1326,7 @@ mod tests {
                 docks: docks.clone(),
                 window_bounds: None,
                 display: None,
-                session_id: Some("session-a".to_string()),
+                session_id: Some("session-uuid".to_string()),
                 window_id: Some(10),
             })
             .await;
