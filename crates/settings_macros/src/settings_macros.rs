@@ -1,8 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-    Data, DeriveInput, Field, Fields, ItemEnum, ItemStruct, Type, parse_macro_input, parse_quote,
-};
+use syn::{Data, DeriveInput, Error, Field, Fields, Item, Type, parse_macro_input, parse_quote};
 
 /// Derives the `MergeFrom` trait for a struct.
 ///
@@ -51,7 +49,9 @@ pub fn derive_merge_from(input: TokenStream) -> TokenStream {
             }
         }
         Data::Union(_) => {
-            panic!("MergeFrom cannot be derived for unions");
+            return Error::new_spanned(name, "MergeFrom cannot be derived for unions")
+                .to_compile_error()
+                .into();
         }
     };
 
@@ -120,15 +120,22 @@ pub fn with_fallible_options(_args: TokenStream, input: TokenStream) -> TokenStr
         field.attrs.push(attr);
     }
 
-    if let Ok(mut input) = syn::parse::<ItemStruct>(input.clone()) {
-        apply_on_fields(&mut input.fields);
-        quote::quote!(#input).into()
-    } else if let Ok(mut input) = syn::parse::<ItemEnum>(input) {
-        for variant in &mut input.variants {
-            apply_on_fields(&mut variant.fields);
+    match parse_macro_input!(input as Item) {
+        Item::Struct(mut input) => {
+            apply_on_fields(&mut input.fields);
+            quote::quote!(#input).into()
         }
-        quote::quote!(#input).into()
-    } else {
-        panic!("with_fallible_options can only be applied to struct or enum definitions.");
+        Item::Enum(mut input) => {
+            for variant in &mut input.variants {
+                apply_on_fields(&mut variant.fields);
+            }
+            quote::quote!(#input).into()
+        }
+        item => Error::new_spanned(
+            item,
+            "with_fallible_options can only be applied to struct or enum definitions.",
+        )
+        .to_compile_error()
+        .into(),
     }
 }
