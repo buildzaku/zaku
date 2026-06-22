@@ -166,7 +166,7 @@ impl SerializedPane {
     }
 }
 
-pub type PaneId = i64;
+pub(crate) type PaneId = i64;
 pub type ItemId = u64;
 
 #[derive(Debug, PartialEq, Eq, Clone)]

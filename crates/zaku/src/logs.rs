@@ -85,7 +85,11 @@ impl Item for LogsView {
     }
 }
 
-pub fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
+pub(crate) fn open_log_file(
+    workspace: &mut Workspace,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
     const MAX_LINES: usize = 1000;
     struct OpenLogsErrorNotification;
 

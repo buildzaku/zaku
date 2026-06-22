@@ -18,7 +18,7 @@ pub(super) struct StyledIcon {
 }
 
 impl StyledIcon {
-    pub fn new(icon: IconName) -> Self {
+    pub(super) fn new(icon: IconName) -> Self {
         Self {
             icon,
             size: IconSize::default(),
@@ -30,27 +30,27 @@ impl StyledIcon {
         }
     }
 
-    pub fn size(mut self, size: IconSize) -> Self {
+    pub(super) fn size(mut self, size: IconSize) -> Self {
         self.size = size;
         self
     }
 
-    pub fn color(mut self, color: Color) -> Self {
+    pub(super) fn color(mut self, color: Color) -> Self {
         self.color = color;
         self
     }
 
-    pub fn toggle_state(mut self, selected: bool) -> Self {
+    pub(super) fn toggle_state(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
     }
 
-    pub fn selected_icon(mut self, icon: impl Into<Option<IconName>>) -> Self {
+    pub(super) fn selected_icon(mut self, icon: impl Into<Option<IconName>>) -> Self {
         self.selected_icon = icon.into();
         self
     }
 
-    pub fn selected_icon_color(mut self, color: impl Into<Option<Color>>) -> Self {
+    pub(super) fn selected_icon_color(mut self, color: impl Into<Option<Color>>) -> Self {
         self.selected_icon_color = color.into();
         self
     }

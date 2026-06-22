@@ -12,45 +12,45 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Autoscroll {
+pub(crate) enum Autoscroll {
     Next,
     Strategy(AutoscrollStrategy, Option<Anchor>),
 }
 
 impl Autoscroll {
-    pub fn fit() -> Self {
+    pub(crate) fn fit() -> Self {
         Self::Strategy(AutoscrollStrategy::Fit, None)
     }
 
-    pub fn newest() -> Self {
+    pub(crate) fn newest() -> Self {
         Self::Strategy(AutoscrollStrategy::Newest, None)
     }
 
-    pub fn center() -> Self {
+    pub(crate) fn center() -> Self {
         Self::Strategy(AutoscrollStrategy::Center, None)
     }
 
-    pub fn focused() -> Self {
+    pub(crate) fn focused() -> Self {
         Self::Strategy(AutoscrollStrategy::Focused, None)
     }
 
-    pub fn top_relative(n: usize) -> Self {
+    pub(crate) fn top_relative(n: usize) -> Self {
         Self::Strategy(AutoscrollStrategy::TopRelative(n), None)
     }
 
-    pub fn top() -> Self {
+    pub(crate) fn top() -> Self {
         Self::Strategy(AutoscrollStrategy::Top, None)
     }
 
-    pub fn bottom_relative(n: usize) -> Self {
+    pub(crate) fn bottom_relative(n: usize) -> Self {
         Self::Strategy(AutoscrollStrategy::BottomRelative(n), None)
     }
 
-    pub fn bottom() -> Self {
+    pub(crate) fn bottom() -> Self {
         Self::Strategy(AutoscrollStrategy::Bottom, None)
     }
 
-    pub fn for_anchor(self, anchor: Anchor) -> Self {
+    pub(crate) fn for_anchor(self, anchor: Anchor) -> Self {
         match self {
             Autoscroll::Next => self,
             Autoscroll::Strategy(strategy, _) => Autoscroll::Strategy(strategy, Some(anchor)),
@@ -59,7 +59,7 @@ impl Autoscroll {
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
-pub enum AutoscrollStrategy {
+pub(crate) enum AutoscrollStrategy {
     Fit,
     Newest,
     #[default]
@@ -74,7 +74,7 @@ pub enum AutoscrollStrategy {
 pub(crate) struct NeedsHorizontalAutoscroll(pub(crate) bool);
 
 impl Editor {
-    pub fn request_autoscroll(&mut self, autoscroll: Autoscroll, cx: &mut Context<Self>) {
+    pub(crate) fn request_autoscroll(&mut self, autoscroll: Autoscroll, cx: &mut Context<Self>) {
         self.scroll_manager.autoscroll_request = Some((autoscroll, true));
         cx.notify();
     }

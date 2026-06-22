@@ -6,7 +6,7 @@ use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, StyledE
 
 use crate::ErasedEditor;
 
-pub struct InputFieldStyle {
+pub(crate) struct InputFieldStyle {
     text_color: Hsla,
     icon_color: Hsla,
     background_color: Hsla,

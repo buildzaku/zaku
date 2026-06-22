@@ -7,7 +7,7 @@ use crate::{
     SyntaxTheme, Theme, ThemeColors, ThemeFamily, ThemeStyles,
 };
 
-pub fn zaku_default_themes() -> ThemeFamily {
+pub(crate) fn zaku_default_themes() -> ThemeFamily {
     ThemeFamily {
         id: Uuid::new_v4().to_string(),
         name: "Zaku (Fallback)".into(),

@@ -214,7 +214,7 @@ impl DisplaySnapshot {
         self.buffer_snapshot().widest_line_number()
     }
 
-    pub fn layout_row(
+    fn layout_row(
         &self,
         display_row: DisplayRow,
         TextLayoutDetails {
@@ -249,7 +249,7 @@ impl DisplaySnapshot {
         line
     }
 
-    pub fn x_for_display_point(
+    pub(crate) fn x_for_display_point(
         &self,
         display_point: DisplayPoint,
         text_layout_details: &TextLayoutDetails,
@@ -258,7 +258,7 @@ impl DisplaySnapshot {
         line.x_for_index(display_point.column() as usize)
     }
 
-    pub fn display_column_for_x(
+    pub(crate) fn display_column_for_x(
         &self,
         display_row: DisplayRow,
         x: Pixels,

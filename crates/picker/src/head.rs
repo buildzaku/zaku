@@ -9,7 +9,7 @@ pub(crate) enum Head {
 }
 
 impl Head {
-    pub fn editor<V: 'static>(
+    pub(crate) fn editor<V: 'static>(
         placeholder_text: &str,
         mut edit_handler: impl FnMut(&mut V, ErasedEditorEvent, &mut Window, &mut Context<V>) + 'static,
         window: &mut Window,
@@ -38,7 +38,7 @@ impl Head {
         Self::Editor(editor)
     }
 
-    pub fn empty<V: 'static>(
+    pub(crate) fn empty<V: 'static>(
         blur_handler: impl FnMut(&mut V, &mut Window, &mut Context<V>) + 'static,
         window: &mut Window,
         cx: &mut Context<V>,

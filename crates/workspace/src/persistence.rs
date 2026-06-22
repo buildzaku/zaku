@@ -1,4 +1,4 @@
-pub mod model;
+pub(crate) mod model;
 
 use anyhow::Context;
 use gpui::{App, Bounds, Task, WindowBounds, WindowId};
@@ -94,7 +94,7 @@ impl Column for SerializedWindowBounds {
 
 const DEFAULT_WINDOW_BOUNDS_KEY: &str = "default_window_bounds";
 
-pub fn read_default_window_bounds(kv_store: &KeyValueStore) -> Option<(Uuid, WindowBounds)> {
+pub(crate) fn read_default_window_bounds(kv_store: &KeyValueStore) -> Option<(Uuid, WindowBounds)> {
     let json_str = kv_store
         .read_kv(DEFAULT_WINDOW_BOUNDS_KEY)
         .log_err()
@@ -105,7 +105,7 @@ pub fn read_default_window_bounds(kv_store: &KeyValueStore) -> Option<(Uuid, Win
     Some((display_uuid, persisted.into()))
 }
 
-pub async fn write_default_window_bounds(
+pub(crate) async fn write_default_window_bounds(
     kv_store: &KeyValueStore,
     bounds: WindowBounds,
     display_uuid: Uuid,
@@ -120,7 +120,7 @@ pub async fn write_default_window_bounds(
 
 const DEFAULT_DOCK_STATE_KEY: &str = "default_dock_state";
 
-pub fn read_default_dock_state(kv_store: &KeyValueStore) -> Option<DockStructure> {
+pub(crate) fn read_default_dock_state(kv_store: &KeyValueStore) -> Option<DockStructure> {
     let json_str = kv_store
         .read_kv(DEFAULT_DOCK_STATE_KEY)
         .log_err()
@@ -129,7 +129,7 @@ pub fn read_default_dock_state(kv_store: &KeyValueStore) -> Option<DockStructure
     serde_json::from_str::<DockStructure>(&json_str).ok()
 }
 
-pub async fn write_default_dock_state(
+pub(crate) async fn write_default_dock_state(
     kv_store: &KeyValueStore,
     docks: DockStructure,
 ) -> anyhow::Result<()> {

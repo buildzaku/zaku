@@ -10,7 +10,7 @@ const MAX_EXPANSION_COLUMN: u32 = 256;
 const SPACES: &[u8; text::Chunk::MASK_BITS] = &[b' '; text::Chunk::MASK_BITS];
 
 #[derive(Clone, Debug, Default)]
-pub struct Chunk<'a> {
+pub(super) struct Chunk<'a> {
     pub text: &'a str,
     pub syntax_highlight_id: Option<HighlightId>,
     pub chars: u128,
@@ -35,7 +35,7 @@ impl TabMap {
         (Self(snapshot.clone()), snapshot)
     }
 
-    pub fn sync(
+    pub(super) fn sync(
         &mut self,
         buffer_snapshot: MultiBufferSnapshot,
         mut buffer_edits: Vec<text::Edit<MultiBufferOffset>>,
@@ -218,7 +218,7 @@ impl TabSnapshot {
         }
     }
 
-    pub(crate) fn chunks(
+    pub(super) fn chunks(
         &self,
         range: Range<TabPoint>,
         language_aware: LanguageAwareStyling,
@@ -441,9 +441,9 @@ impl From<Point> for TabPoint {
     }
 }
 
-pub type TabEdit = text::Edit<TabPoint>;
+pub(super) type TabEdit = text::Edit<TabPoint>;
 
-pub struct TabChunks<'a> {
+pub(super) struct TabChunks<'a> {
     max_expansion_column: u32,
     max_output_position: Point,
     tab_size: NonZeroU32,

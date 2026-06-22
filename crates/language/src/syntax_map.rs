@@ -268,7 +268,7 @@ impl<'a> Iterator for ByteChunks<'a> {
 pub(crate) struct QueryCursorHandle(Option<QueryCursor>);
 
 impl QueryCursorHandle {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut cursor = QUERY_CURSORS.lock().pop().unwrap_or_default();
         cursor.set_match_limit(64);
         Self(Some(cursor))

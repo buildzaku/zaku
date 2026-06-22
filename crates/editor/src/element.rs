@@ -58,7 +58,7 @@ pub(crate) struct PositionMap {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct PointForPosition {
+pub(crate) struct PointForPosition {
     pub previous_valid: DisplayPoint,
     pub next_valid: DisplayPoint,
     pub nearest_valid: DisplayPoint,
@@ -67,7 +67,7 @@ pub struct PointForPosition {
 }
 
 impl PointForPosition {
-    pub fn as_valid(&self) -> Option<DisplayPoint> {
+    pub(crate) fn as_valid(&self) -> Option<DisplayPoint> {
         if self.previous_valid == self.exact_unclipped && self.next_valid == self.exact_unclipped {
             Some(self.previous_valid)
         } else {
@@ -152,17 +152,17 @@ pub(crate) struct LineWithInvisibles {
 }
 
 impl LineWithInvisibles {
-    pub fn x_for_index(&self, index: usize) -> Pixels {
+    pub(crate) fn x_for_index(&self, index: usize) -> Pixels {
         self.shaped_line.x_for_index(index.min(self.len))
     }
 
-    pub fn index_for_x(&self, x: Pixels) -> Option<usize> {
+    pub(crate) fn index_for_x(&self, x: Pixels) -> Option<usize> {
         self.shaped_line
             .index_for_x(x)
             .map(|index| index.min(self.len))
     }
 
-    pub fn alignment_offset(&self, text_align: TextAlign, content_width: Pixels) -> Pixels {
+    pub(crate) fn alignment_offset(&self, text_align: TextAlign, content_width: Pixels) -> Pixels {
         match text_align {
             TextAlign::Left => gpui::px(0.0),
             TextAlign::Center => ((content_width - self.width) / 2.0).max(gpui::px(0.0)),
@@ -1966,7 +1966,7 @@ fn build_visible_lines(
 }
 
 #[derive(Debug)]
-pub struct HighlightedRange {
+pub(crate) struct HighlightedRange {
     pub start_y: Pixels,
     pub line_height: Pixels,
     pub lines: Vec<HighlightedRangeLine>,
@@ -1975,13 +1975,13 @@ pub struct HighlightedRange {
 }
 
 #[derive(Debug)]
-pub struct HighlightedRangeLine {
+pub(crate) struct HighlightedRangeLine {
     pub start_x: Pixels,
     pub end_x: Pixels,
 }
 
 impl HighlightedRange {
-    pub fn paint(&self, fill: bool, bounds: Bounds<Pixels>, window: &mut Window) {
+    pub(crate) fn paint(&self, fill: bool, bounds: Bounds<Pixels>, window: &mut Window) {
         if self.lines.len() >= 2 && self.lines[0].start_x > self.lines[1].end_x {
             self.paint_lines(self.start_y, &self.lines[0..1], fill, bounds, window);
             self.paint_lines(
@@ -2125,7 +2125,7 @@ fn scale_horizontal_mouse_autoscroll_delta(delta: Pixels) -> f32 {
     (delta.pow(1.2) / 300.0).into()
 }
 
-pub fn register_action<T: Action>(
+fn register_action<T: Action>(
     editor: &Entity<Editor>,
     window: &mut Window,
     listener: impl Fn(&mut Editor, &T, &mut Window, &mut Context<Editor>) + 'static,

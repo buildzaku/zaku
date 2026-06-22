@@ -5,7 +5,7 @@ use multi_buffer::{MultiBufferChunks, MultiBufferOffset, MultiBufferSnapshot};
 
 use super::tab_map::Chunk;
 
-pub struct RawChunks<'a> {
+pub(super) struct RawChunks<'a> {
     buffer_chunks: MultiBufferChunks<'a>,
     buffer_chunk: Option<language::Chunk<'a>>,
     offset: MultiBufferOffset,
@@ -13,7 +13,7 @@ pub struct RawChunks<'a> {
 }
 
 impl<'a> RawChunks<'a> {
-    pub fn new(
+    pub(super) fn new(
         range: Range<MultiBufferOffset>,
         multibuffer_snapshot: &'a MultiBufferSnapshot,
         language_aware: LanguageAwareStyling,

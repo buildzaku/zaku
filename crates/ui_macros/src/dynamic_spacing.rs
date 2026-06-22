@@ -46,7 +46,7 @@ impl Parse for DynamicSpacingValue {
 }
 
 /// Derives the spacing method for the `DynamicSpacing` enum.
-pub fn derive_spacing(input: TokenStream) -> TokenStream {
+pub(crate) fn derive_spacing(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DynamicSpacingInput);
 
     let spacing_ratios: Vec<_> = input

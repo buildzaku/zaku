@@ -1,6 +1,6 @@
 pub(crate) mod autoscroll;
 
-pub use autoscroll::Autoscroll;
+pub(crate) use autoscroll::Autoscroll;
 
 use gpui::{Axis, Context, Pixels, Point};
 use num_traits::ToPrimitive;
@@ -13,20 +13,20 @@ use crate::{
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
 };
 
-pub type ScrollOffset = f64;
+pub(crate) type ScrollOffset = f64;
 
-pub const SCROLL_EVENT_SEPARATION: Duration = Duration::from_millis(28);
+const SCROLL_EVENT_SEPARATION: Duration = Duration::from_millis(28);
 
-pub struct WasScrolled(pub(crate) bool);
+pub(crate) struct WasScrolled(pub(crate) bool);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScrollAnchor {
+pub(crate) struct ScrollAnchor {
     pub offset: Point<ScrollOffset>,
     pub anchor: Anchor,
 }
 
 impl ScrollAnchor {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             offset: Point::default(),
             anchor: Anchor::Min,
@@ -48,7 +48,7 @@ impl ScrollAnchor {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct OngoingScroll {
+struct OngoingScroll {
     last_event: Instant,
     axis: Option<Axis>,
 }
@@ -103,7 +103,7 @@ impl OngoingScroll {
     }
 }
 
-pub struct ScrollManager {
+pub(crate) struct ScrollManager {
     pub(crate) vertical_scroll_margin: ScrollOffset,
     scroll_anchor: ScrollAnchor,
     ongoing_scroll: OngoingScroll,
@@ -111,7 +111,7 @@ pub struct ScrollManager {
 }
 
 impl ScrollManager {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             vertical_scroll_margin: 3.0,
             scroll_anchor: ScrollAnchor::new(),

@@ -86,7 +86,7 @@ impl Action for ActionSequence {
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
-pub struct KeymapSection {
+pub(crate) struct KeymapSection {
     #[serde(default)]
     pub context: String,
     #[serde(default)]
@@ -101,11 +101,11 @@ pub struct KeymapSection {
 
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(transparent)]
-pub struct KeymapAction(Value);
+pub(crate) struct KeymapAction(Value);
 
 #[derive(Debug, Deserialize, Default, Clone)]
 #[serde(transparent)]
-pub struct UnbindTargetAction(Value);
+pub(crate) struct UnbindTargetAction(Value);
 
 #[derive(Debug)]
 #[must_use]

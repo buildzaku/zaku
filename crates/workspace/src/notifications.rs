@@ -202,7 +202,7 @@ struct AppNotifications {
 }
 
 impl AppNotifications {
-    pub fn insert(
+    fn insert(
         &mut self,
         id: NotificationId,
         build_notification: Arc<dyn Fn(&mut Context<Workspace>) -> AnyView + Send + Sync>,
@@ -211,7 +211,7 @@ impl AppNotifications {
         self.app_notifications.push((id, build_notification));
     }
 
-    pub fn remove(&mut self, id: &NotificationId) {
+    fn remove(&mut self, id: &NotificationId) {
         self.app_notifications
             .retain(|(existing_id, _)| existing_id != id);
     }

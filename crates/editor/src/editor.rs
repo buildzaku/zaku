@@ -2442,7 +2442,7 @@ impl Editor {
         key_context
     }
 
-    pub fn text_layout_details(
+    fn text_layout_details(
         &self,
         window: &mut Window,
         cx: &mut App,

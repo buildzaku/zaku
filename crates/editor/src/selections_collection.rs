@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct PendingSelection {
+pub(crate) struct PendingSelection {
     selection: Selection<Anchor>,
     mode: SelectMode,
 }
