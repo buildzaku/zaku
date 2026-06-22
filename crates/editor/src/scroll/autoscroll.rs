@@ -2,73 +2,29 @@ use gpui::{Bounds, Context, Pixels, Point, Window};
 use num_traits::ToPrimitive;
 use std::cmp;
 
-use multi_buffer::{Anchor, MultiBufferOffset};
+use multi_buffer::MultiBufferOffset;
 
 use crate::{
     Editor, EditorMode,
-    display_map::{DisplayPoint, DisplayRow, ToDisplayPoint},
+    display_map::{DisplayPoint, DisplayRow},
     element::LineWithInvisibles,
     scroll::{ScrollOffset, WasScrolled},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum Autoscroll {
-    Next,
-    Strategy(AutoscrollStrategy, Option<Anchor>),
+    Fit,
+    Newest,
 }
 
 impl Autoscroll {
     pub(crate) fn fit() -> Self {
-        Self::Strategy(AutoscrollStrategy::Fit, None)
+        Self::Fit
     }
 
     pub(crate) fn newest() -> Self {
-        Self::Strategy(AutoscrollStrategy::Newest, None)
+        Self::Newest
     }
-
-    pub(crate) fn center() -> Self {
-        Self::Strategy(AutoscrollStrategy::Center, None)
-    }
-
-    pub(crate) fn focused() -> Self {
-        Self::Strategy(AutoscrollStrategy::Focused, None)
-    }
-
-    pub(crate) fn top_relative(n: usize) -> Self {
-        Self::Strategy(AutoscrollStrategy::TopRelative(n), None)
-    }
-
-    pub(crate) fn top() -> Self {
-        Self::Strategy(AutoscrollStrategy::Top, None)
-    }
-
-    pub(crate) fn bottom_relative(n: usize) -> Self {
-        Self::Strategy(AutoscrollStrategy::BottomRelative(n), None)
-    }
-
-    pub(crate) fn bottom() -> Self {
-        Self::Strategy(AutoscrollStrategy::Bottom, None)
-    }
-
-    pub(crate) fn for_anchor(self, anchor: Anchor) -> Self {
-        match self {
-            Autoscroll::Next => self,
-            Autoscroll::Strategy(strategy, _) => Autoscroll::Strategy(strategy, Some(anchor)),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
-pub(crate) enum AutoscrollStrategy {
-    Fit,
-    Newest,
-    #[default]
-    Center,
-    Focused,
-    Top,
-    Bottom,
-    TopRelative(usize),
-    BottomRelative(usize),
 }
 
 pub(crate) struct NeedsHorizontalAutoscroll(pub(crate) bool);
@@ -113,20 +69,13 @@ impl Editor {
             return (NeedsHorizontalAutoscroll(false), editor_was_scrolled);
         };
 
-        let target_top;
-        let target_bottom;
-        if let Autoscroll::Strategy(_, Some(anchor)) = autoscroll {
-            target_top = f64::from(anchor.to_display_point(&display_snapshot).row().0);
-            target_bottom = target_top + 1.0;
-        } else {
-            let snapshot = display_snapshot.buffer_snapshot();
-            let cursor_offset = self.cursor_offset(cx).min(snapshot.len().0);
-            let cursor_row = snapshot
-                .offset_to_point(MultiBufferOffset(cursor_offset))
-                .row;
-            target_top = f64::from(cursor_row);
-            target_bottom = target_top + 1.0;
-        }
+        let snapshot = display_snapshot.buffer_snapshot();
+        let cursor_offset = self.cursor_offset(cx).min(snapshot.len().0);
+        let cursor_row = snapshot
+            .offset_to_point(MultiBufferOffset(cursor_offset))
+            .row;
+        let target_top = f64::from(cursor_row);
+        let target_bottom = target_top + 1.0;
 
         let margin = if matches!(self.mode, EditorMode::AutoHeight { .. }) {
             0.0
@@ -136,13 +85,8 @@ impl Editor {
                 .max(0.0)
         };
 
-        let strategy = match autoscroll {
-            Autoscroll::Strategy(strategy, _) => strategy,
-            Autoscroll::Next => AutoscrollStrategy::default(),
-        };
-
-        let was_autoscrolled = match strategy {
-            AutoscrollStrategy::Fit | AutoscrollStrategy::Newest => {
+        let was_autoscrolled = match autoscroll {
+            Autoscroll::Fit | Autoscroll::Newest => {
                 let margin = margin.min(self.scroll_manager.vertical_scroll_margin);
                 let target_top = (target_top - margin).max(0.0);
                 let target_bottom = target_bottom + margin;
@@ -170,63 +114,6 @@ impl Editor {
                 } else {
                     WasScrolled(false)
                 }
-            }
-            AutoscrollStrategy::Center => {
-                scroll_position.y = (target_top - margin).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::Focused => {
-                let margin = margin.min(self.scroll_manager.vertical_scroll_margin);
-                scroll_position.y = (target_top - margin).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::Top => {
-                scroll_position.y = target_top.clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::Bottom => {
-                scroll_position.y = (target_bottom - visible_lines).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::TopRelative(lines) => {
-                scroll_position.y =
-                    (target_top - lines.to_f64().unwrap()).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::BottomRelative(lines) => {
-                scroll_position.y =
-                    (target_bottom + lines.to_f64().unwrap()).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
             }
         };
 
