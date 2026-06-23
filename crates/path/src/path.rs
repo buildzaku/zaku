@@ -83,12 +83,19 @@ impl PathStyle {
             .unwrap_or(parent);
         let child = child.to_str()?;
 
-        let stripped = if self.is_windows()
-            && child.as_bytes().get(1) == Some(&b':')
-            && parent.as_bytes().get(1) == Some(&b':')
-            && child.as_bytes()[0].eq_ignore_ascii_case(&parent.as_bytes()[0])
-        {
-            child[2..].strip_prefix(&parent[2..])?
+        let child_bytes = child.as_bytes();
+        let parent_bytes = parent.as_bytes();
+        let has_same_windows_drive = self.is_windows()
+            && child_bytes.get(1) == Some(&b':')
+            && parent_bytes.get(1) == Some(&b':')
+            && child_bytes.first().zip(parent_bytes.first()).is_some_and(
+                |(child_drive, parent_drive)| child_drive.eq_ignore_ascii_case(parent_drive),
+            );
+
+        let stripped_path = if has_same_windows_drive {
+            let child_without_drive = child.get(2..)?;
+            let parent_without_drive = parent.get(2..)?;
+            child_without_drive.strip_prefix(parent_without_drive)?
         } else {
             child.strip_prefix(parent)?
         };
@@ -96,10 +103,10 @@ impl PathStyle {
         if let Some(relative_path) = self
             .separators()
             .iter()
-            .find_map(|separator| stripped.strip_prefix(separator))
+            .find_map(|separator| stripped_path.strip_prefix(separator))
         {
             RelPath::new(relative_path.as_ref(), self).ok()
-        } else if stripped.is_empty() {
+        } else if stripped_path.is_empty() {
             Some(Cow::Borrowed(RelPath::empty()))
         } else {
             None
@@ -108,16 +115,18 @@ impl PathStyle {
 }
 
 pub fn is_absolute(path: &str, path_style: PathStyle) -> bool {
+    let path_bytes = path.as_bytes();
+
     path.starts_with('/')
         || path_style == PathStyle::Windows
             && (path.starts_with('\\')
-                || path
-                    .chars()
-                    .next()
-                    .is_some_and(|ch| ch.is_ascii_alphabetic())
-                    && path[1..]
-                        .strip_prefix(':')
-                        .is_some_and(|suffix| suffix.starts_with('/') || suffix.starts_with('\\')))
+                || path_bytes
+                    .first()
+                    .is_some_and(|drive_letter| drive_letter.is_ascii_alphabetic())
+                    && path_bytes.get(1) == Some(&b':')
+                    && path_bytes
+                        .get(2)
+                        .is_some_and(|separator| matches!(*separator, b'/' | b'\\')))
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]

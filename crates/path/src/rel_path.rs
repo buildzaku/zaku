@@ -32,8 +32,9 @@ impl RelPath {
             PathStyle::Windows => (&["./", ".\\"], &['/', '\\']),
         };
 
-        while prefixes.iter().any(|prefix| path.starts_with(prefix)) {
-            path = &path[prefixes[0].len()..];
+        while let Some(stripped_path) = prefixes.iter().find_map(|prefix| path.strip_prefix(prefix))
+        {
+            path = stripped_path;
         }
         while let Some(prefix) = path.strip_suffix(suffixes)
             && !prefix.is_empty()
@@ -109,11 +110,11 @@ impl RelPath {
     }
 
     pub fn file_stem(&self) -> Option<&str> {
-        Some(self.as_std_path().file_stem()?.to_str().unwrap())
+        self.as_std_path().file_stem()?.to_str()
     }
 
     pub fn extension(&self) -> Option<&str> {
-        Some(self.as_std_path().extension()?.to_str().unwrap())
+        self.as_std_path().extension()?.to_str()
     }
 
     pub fn parent(&self) -> Option<&Self> {
@@ -306,7 +307,7 @@ impl PartialEq<str> for RelPath {
 #[cfg(any(test, feature = "test-support"))]
 #[track_caller]
 pub fn rel_path(path: &str) -> &RelPath {
-    RelPath::unix(path).unwrap()
+    RelPath::unix(path).expect("test path should be relative")
 }
 
 #[derive(Default)]
@@ -326,9 +327,8 @@ impl<'a> Iterator for RelPathComponents<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(index) = self.0.find(SEPARATOR) {
-            let (head, tail) = self.0.split_at(index);
-            self.0 = &tail[1..];
+        if let Some((head, tail)) = self.0.split_once(SEPARATOR) {
+            self.0 = tail;
             Some(head)
         } else if self.0.is_empty() {
             None
@@ -342,10 +342,9 @@ impl<'a> Iterator for RelPathComponents<'a> {
 
 impl DoubleEndedIterator for RelPathComponents<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if let Some(index) = self.0.rfind(SEPARATOR) {
-            let (head, tail) = self.0.split_at(index);
+        if let Some((head, tail)) = self.0.rsplit_once(SEPARATOR) {
             self.0 = head;
-            Some(&tail[1..])
+            Some(tail)
         } else if self.0.is_empty() {
             None
         } else {
@@ -361,8 +360,8 @@ impl<'a> Iterator for RelPathAncestors<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.0?;
-        if let Some(index) = result.rfind(SEPARATOR) {
-            self.0 = Some(&result[..index]);
+        if let Some((ancestor, _)) = result.rsplit_once(SEPARATOR) {
+            self.0 = Some(ancestor);
         } else if !result.is_empty() {
             self.0 = Some("");
         } else {
@@ -473,7 +472,7 @@ mod tests {
     fn test_rel_path_partial_ord_is_compatible_with_std() {
         let test_cases = ["a/b/c", "relative/path/with/dot.", "relative/path/with.dot"];
         for (index, lhs) in test_cases.iter().enumerate() {
-            for rhs in &test_cases[index + 1..] {
+            for rhs in test_cases.iter().skip(index + 1) {
                 assert_eq!(
                     Path::new(lhs).cmp(Path::new(rhs)),
                     RelPath::unix(lhs)
