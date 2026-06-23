@@ -141,13 +141,13 @@ impl Render for PlatformTitleBar {
         let button_layout = self.effective_button_layout(decorations, cx);
         let close_action = Box::new(CloseWindow);
         let traffic_light_padding: Option<Pixels> = {
-            #[cfg(target_os = "macos")]
-            {
-                Some(ui::utils::traffic_light_padding(height, cx))
-            }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
                 None
+            }
+            #[cfg(target_os = "macos")]
+            {
+                Some(ui::utils::traffic_light_padding(height, cx))
             }
         };
 

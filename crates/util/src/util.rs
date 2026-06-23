@@ -107,7 +107,7 @@ fn log_error_with_caller<E>(caller: panic::Location<'_>, error: E)
 where
     E: Debug,
 {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     let file = caller.file();
 
     #[cfg(target_os = "windows")]

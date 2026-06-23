@@ -4,7 +4,7 @@ use language::LanguageRegistry;
 use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use fs::Fs;
 
 use fs::TempFs;
@@ -277,7 +277,7 @@ async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_ca
     );
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[gpui::test]
 async fn test_find_or_create_worktree_reuses_existing_worktree_for_equivalent_symlinked_path(
     cx: &mut TestAppContext,

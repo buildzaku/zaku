@@ -6,7 +6,7 @@ use libsqlite3_sys::{
     SQLITE_OPEN_NOMUTEX, SQLITE_OPEN_READWRITE, SQLITE_OPEN_URI, SQLITE_ROW,
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::ffi::OsStrExt;
 
 use std::{
@@ -256,7 +256,7 @@ impl Drop for Connection {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn path_to_cstring(path: &Path) -> anyhow::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
@@ -318,14 +318,14 @@ mod tests {
     use std::{panic::AssertUnwindSafe, path::PathBuf};
     use uuid::Uuid;
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::{
         ffi::OsString,
         os::unix::ffi::{OsStrExt, OsStringExt},
         path::Path,
     };
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn test_path_to_cstring_preserves_non_utf8_bytes() {
         let path_bytes = OsString::from_vec(vec![b'd', b'b', 0x80]);
@@ -476,7 +476,7 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn test_path_bytes_round_trip() {
         let connection = Connection::open_memory(Some("test_path_bytes_round_trip"));

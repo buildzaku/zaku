@@ -22,7 +22,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::ffi::CString;
 
 #[cfg(target_os = "windows")]
@@ -31,16 +31,16 @@ use util::command::new_command;
 use path::SanitizedPath;
 use util::ResultExt;
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::{AsFd, AsRawFd};
 
 #[cfg(target_os = "macos")]
 use std::ffi::{CStr, OsStr};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::ffi::OsStrExt;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -164,6 +164,21 @@ pub trait FileHandle: Send + Sync + std::fmt::Debug {
 }
 
 impl FileHandle for std::fs::File {
+    #[cfg(target_os = "linux")]
+    fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
+        let fd = self.as_fd();
+        let fd_path = format!("/proc/self/fd/{}", fd.as_raw_fd());
+        let new_path = std::fs::read_link(fd_path)?;
+        if new_path
+            .file_name()
+            .is_some_and(|file_name| file_name.to_string_lossy().ends_with(" (deleted)"))
+        {
+            anyhow::bail!("file was deleted");
+        }
+
+        Ok(new_path)
+    }
+
     #[cfg(target_os = "macos")]
     fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
         let fd = self.as_fd();
@@ -184,21 +199,6 @@ impl FileHandle for std::fs::File {
             "could not find a path for the file handle"
         );
         Ok(PathBuf::from(OsStr::from_bytes(c_str.to_bytes())))
-    }
-
-    #[cfg(target_os = "linux")]
-    fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
-        let fd = self.as_fd();
-        let fd_path = format!("/proc/self/fd/{}", fd.as_raw_fd());
-        let new_path = std::fs::read_link(fd_path)?;
-        if new_path
-            .file_name()
-            .is_some_and(|file_name| file_name.to_string_lossy().ends_with(" (deleted)"))
-        {
-            anyhow::bail!("file was deleted");
-        }
-
-        Ok(new_path)
     }
 
     #[cfg(target_os = "windows")]
@@ -285,7 +285,7 @@ impl NativeFs {
     }
 
     fn canonicalize(path: &Path) -> anyhow::Result<PathBuf> {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             std::fs::canonicalize(path).map_err(Into::into)
         }
@@ -327,22 +327,6 @@ impl NativeFs {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
-    let source = path_to_c_string(source)?;
-    let target = path_to_c_string(target)?;
-
-    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
-    // duration of this call.
-    let result = unsafe { libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL) };
-
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
 #[cfg(target_os = "linux")]
 fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     let source = path_to_c_string(source)?;
@@ -368,6 +352,22 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    let source = path_to_c_string(source)?;
+    let target = path_to_c_string(target)?;
+
+    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
+    // duration of this call.
+    let result = unsafe { libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL) };
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -385,7 +385,7 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     .map_err(|_| std::io::Error::last_os_error())
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn path_to_c_string(path: &Path) -> std::io::Result<CString> {
     CString::new(path.as_os_str().as_bytes()).map_err(|_| {
         std::io::Error::new(
@@ -402,7 +402,7 @@ impl Fs for NativeFs {
     }
 
     async fn create_symlink(&self, path: &Path, target: PathBuf) -> anyhow::Result<()> {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             smol::fs::unix::symlink(target, path).await?;
         }
@@ -464,13 +464,13 @@ impl Fs for NativeFs {
             return Ok(None);
         };
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let inode = metadata.ino();
 
         #[cfg(target_os = "windows")]
         let inode = file_id(&path).await?;
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let is_fifo = metadata.file_type().is_fifo();
 
         #[cfg(target_os = "windows")]
@@ -590,34 +590,31 @@ impl Fs for NativeFs {
         }
 
         let use_metadata_fallback = {
-            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+            let source = source.to_path_buf();
+            let target = target.to_path_buf();
+            match self
+                .executor
+                .spawn(async move { rename_without_replace(&source, &target) })
+                .await
             {
-                let source = source.to_path_buf();
-                let target = target.to_path_buf();
-                match self
-                    .executor
-                    .spawn(async move { rename_without_replace(&source, &target) })
-                    .await
-                {
-                    Ok(()) => return Ok(()),
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                        if options.ignore_if_exists {
-                            return Ok(());
-                        }
-                        return Err(error.into());
+                Ok(()) => return Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    if options.ignore_if_exists {
+                        return Ok(());
                     }
-                    Err(error)
-                        if error.raw_os_error().is_some_and(|code| {
-                            code == libc::ENOSYS
-                                || code == libc::ENOTSUP
-                                || code == libc::EOPNOTSUPP
-                                || code == libc::EINVAL
-                        }) =>
-                    {
-                        true
-                    }
-                    Err(error) => return Err(error.into()),
+                    return Err(error.into());
                 }
+                Err(error)
+                    if error.raw_os_error().is_some_and(|code| {
+                        code == libc::ENOSYS
+                            || code == libc::ENOTSUP
+                            || code == libc::EOPNOTSUPP
+                            || code == libc::EINVAL
+                    }) =>
+                {
+                    true
+                }
+                Err(error) => return Err(error.into()),
             }
         };
 

@@ -536,14 +536,14 @@ fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptio
         }
     };
     let traffic_light_position = {
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            None
+        }
         #[cfg(target_os = "macos")]
         {
             let (x_inset, y_inset) = utils::traffic_light_inset(gpui::px(32.0), cx);
             Some(gpui::point(x_inset, y_inset))
-        }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        {
-            None
         }
     };
 
@@ -3881,7 +3881,7 @@ mod tests {
         assert_eq!(current_root, Some(canonical_project_path));
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[gpui::test]
     async fn test_opening_symlinked_workspace_path_reuses_current_worktree(
         cx: &mut TestAppContext,

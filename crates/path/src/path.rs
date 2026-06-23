@@ -16,7 +16,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::ffi::OsStrExt;
 
 #[cfg(target_os = "windows")]
@@ -42,14 +42,14 @@ pub enum PathStyle {
 }
 
 impl PathStyle {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    pub const fn local() -> Self {
+        Self::Posix
+    }
+
     #[cfg(target_os = "windows")]
     pub const fn local() -> Self {
         Self::Windows
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    pub const fn local() -> Self {
-        Self::Posix
     }
 
     pub fn primary_separator(self) -> &'static str {
@@ -430,7 +430,7 @@ impl<T: AsRef<Path>> PathExt for T {
     where
         Self: From<&'a Path>,
     {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             Ok(Self::from(Path::new(OsStr::from_bytes(bytes))))
         }
@@ -452,75 +452,87 @@ impl<T: AsRef<Path>> PathExt for T {
 
 /// Returns the path to the configuration directory.
 ///
-/// - macOS: `~/.config/zaku`
 /// - Linux: `$XDG_CONFIG_HOME/zaku` (or `~/.config/zaku`), with Flatpak override.
+/// - macOS: `~/.config/zaku`
 /// - Windows: `%APPDATA%\\Zaku`
 pub fn config_dir() -> &'static PathBuf {
     static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
     CONFIG_DIR.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            home_dir().join(".config").join("zaku")
-        } else if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             if let Ok(flatpak_xdg_config) = std::env::var("FLATPAK_XDG_CONFIG_HOME") {
                 PathBuf::from(flatpak_xdg_config)
             } else {
                 dirs::config_dir().expect("failed to determine XDG_CONFIG_HOME directory")
             }
             .join("zaku")
-        } else if cfg!(target_os = "windows") {
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            home_dir().join(".config").join("zaku")
+        }
+
+        #[cfg(target_os = "windows")]
+        {
             dirs::config_dir()
                 .expect("failed to determine RoamingAppData directory")
                 .join("Zaku")
-        } else {
-            unreachable!("Unsupported platform")
         }
     })
 }
 
 /// Returns the path to the data directory.
 ///
-/// - macOS: `~/Library/Application Support/Zaku`
 /// - Linux: `$XDG_DATA_HOME/zaku` (or `~/.local/share/zaku`), with Flatpak override.
+/// - macOS: `~/Library/Application Support/Zaku`
 /// - Windows: `%LOCALAPPDATA%\\Zaku`
 pub fn data_dir() -> &'static PathBuf {
     static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
     DATA_DIR.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            home_dir()
-                .join("Library")
-                .join("Application Support")
-                .join("Zaku")
-        } else if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             if let Ok(flatpak_xdg_data) = std::env::var("FLATPAK_XDG_DATA_HOME") {
                 PathBuf::from(flatpak_xdg_data)
             } else {
                 dirs::data_local_dir().expect("failed to determine XDG_DATA_HOME directory")
             }
             .join("zaku")
-        } else if cfg!(target_os = "windows") {
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            home_dir()
+                .join("Library")
+                .join("Application Support")
+                .join("Zaku")
+        }
+
+        #[cfg(target_os = "windows")]
+        {
             dirs::data_local_dir()
                 .expect("failed to determine LocalAppData directory")
                 .join("Zaku")
-        } else {
-            unreachable!("Unsupported platform")
         }
     })
 }
 
 /// Returns the path to the logs directory.
 ///
-/// - macOS: `~/Library/Logs/Zaku`
 /// - Linux: `$XDG_DATA_HOME/zaku/logs` (or `~/.local/share/zaku/logs`), with Flatpak override.
+/// - macOS: `~/Library/Logs/Zaku`
 /// - Windows: `%LOCALAPPDATA%\\Zaku\\logs`
 pub fn logs_dir() -> &'static PathBuf {
     static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
     LOGS_DIR.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            home_dir().join("Library/Logs/Zaku")
-        } else if cfg!(target_os = "linux") || cfg!(target_os = "windows") {
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
             data_dir().join("logs")
-        } else {
-            unreachable!("Unsupported platform")
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            home_dir().join("Library/Logs/Zaku")
         }
     })
 }
@@ -558,7 +570,7 @@ pub struct SanitizedPath(Path);
 
 impl SanitizedPath {
     pub fn new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         return Self::unchecked_new(path.as_ref());
 
         #[cfg(target_os = "windows")]
@@ -572,7 +584,7 @@ impl SanitizedPath {
     }
 
     pub fn from_arc(path: Arc<Path>) -> Arc<Self> {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         return unsafe { Arc::from_raw(Arc::into_raw(path) as *const Self) };

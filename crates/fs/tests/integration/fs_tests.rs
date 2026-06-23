@@ -3,7 +3,7 @@ use gpui::{BackgroundExecutor, TestAppContext};
 use std::{collections::BTreeSet, time::Duration};
 use tempfile::TempDir;
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
 
 use fs::{Fs, NativeFs, PathEventKind, RenameOptions};
@@ -131,7 +131,7 @@ async fn test_native_fs_canonicalize(executor: BackgroundExecutor) {
     assert!(canonicalized.is_ok());
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[gpui::test]
 async fn test_native_fs_broken_symlink_metadata(executor: BackgroundExecutor) {
     let tempdir = TempDir::new().unwrap();
@@ -149,7 +149,7 @@ async fn test_native_fs_broken_symlink_metadata(executor: BackgroundExecutor) {
     assert!(!metadata.is_executable);
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[gpui::test]
 async fn test_native_fs_self_referential_symlink_metadata(executor: BackgroundExecutor) {
     let tempdir = TempDir::new().unwrap();

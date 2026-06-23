@@ -243,6 +243,19 @@ pub fn handle_keymap_file_changes(
 
     let (keyboard_layout_tx, mut keyboard_layout_rx) = futures::channel::mpsc::unbounded();
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        let mut current_mapping = cx.keyboard_mapper().get_key_equivalents().cloned();
+        cx.on_keyboard_layout_change(move |cx| {
+            let next_mapping = cx.keyboard_mapper().get_key_equivalents();
+            if current_mapping.as_ref() != next_mapping {
+                current_mapping = next_mapping.cloned();
+                keyboard_layout_tx.unbounded_send(()).ok();
+            }
+        })
+        .detach();
+    }
+
     #[cfg(target_os = "windows")]
     {
         let mut current_layout_id = cx.keyboard_layout().id().to_string();
@@ -250,19 +263,6 @@ pub fn handle_keymap_file_changes(
             let next_layout_id = cx.keyboard_layout().id();
             if next_layout_id != current_layout_id {
                 current_layout_id = next_layout_id.to_string();
-                keyboard_layout_tx.unbounded_send(()).ok();
-            }
-        })
-        .detach();
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        let mut current_mapping = cx.keyboard_mapper().get_key_equivalents().cloned();
-        cx.on_keyboard_layout_change(move |cx| {
-            let next_mapping = cx.keyboard_mapper().get_key_equivalents();
-            if current_mapping.as_ref() != next_mapping {
-                current_mapping = next_mapping.cloned();
                 keyboard_layout_tx.unbounded_send(()).ok();
             }
         })
@@ -322,14 +322,14 @@ fn reload_keymaps(cx: &mut App, user_key_bindings: Vec<KeyBinding>) {
 }
 
 fn load_default_keymap(cx: &mut App) {
+    #[cfg(target_os = "linux")]
+    let asset_path = "keymaps/default_linux.json";
+
     #[cfg(target_os = "macos")]
     let asset_path = "keymaps/default_macos.json";
 
     #[cfg(target_os = "windows")]
     let asset_path = "keymaps/default_windows.json";
-
-    #[cfg(target_os = "linux")]
-    let asset_path = "keymaps/default_linux.json";
 
     let key_bindings = match KeymapFile::load_asset(asset_path, cx) {
         Ok(key_bindings) => key_bindings,

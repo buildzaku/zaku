@@ -3,7 +3,7 @@ use notify::{Event, EventKind, RecursiveMode, Watcher as NotifyWatcher};
 use parking_lot::Mutex;
 use smol::channel::Sender;
 
-#[cfg(any(target_os = "windows", target_os = "macos"))]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::ops::Bound;
 
 use std::{
@@ -56,7 +56,15 @@ impl Watcher for FsWatcher {
         let tx = self.tx.clone();
         let pending_paths = self.pending_path_events.clone();
 
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        #[cfg(target_os = "linux")]
+        {
+            if self.registrations.lock().contains_key(path) {
+                log::trace!("Skipping watch for {}; already watched", path.display());
+                return Ok(());
+            }
+        }
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             if let Some((watched_path, _)) = self
                 .registrations
@@ -70,14 +78,6 @@ impl Watcher for FsWatcher {
                     path.display(),
                     watched_path.display()
                 );
-                return Ok(());
-            }
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            if self.registrations.lock().contains_key(path) {
-                log::trace!("Skipping watch for {}; already watched", path.display());
                 return Ok(());
             }
         }
@@ -97,11 +97,11 @@ impl Watcher for FsWatcher {
             );
         }
 
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
-        let mode = RecursiveMode::Recursive;
-
         #[cfg(target_os = "linux")]
         let mode = RecursiveMode::NonRecursive;
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let mode = RecursiveMode::Recursive;
 
         let registration_path = original_watch_path.clone();
         let registration_id = global({
@@ -129,6 +129,9 @@ impl Watcher for FsWatcher {
                                 return None;
                             }
 
+                            #[cfg(any(target_os = "linux", target_os = "windows"))]
+                            let path = event_path.as_path().to_path_buf();
+
                             #[cfg(target_os = "macos")]
                             let path = {
                                 if watched_root_path.as_path() == original_watch_path.as_ref() {
@@ -141,9 +144,6 @@ impl Watcher for FsWatcher {
                                     original_watch_path.join(relative_event_path)
                                 }
                             };
-
-                            #[cfg(any(target_os = "linux", target_os = "windows"))]
-                            let path = event_path.as_path().to_path_buf();
 
                             Some(PathEvent { path, kind })
                         })
@@ -198,16 +198,16 @@ impl Watcher for FsWatcher {
 }
 
 fn canonicalize_path(path: &Path) -> Arc<Path> {
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    {
+        path.into()
+    }
+
     #[cfg(target_os = "macos")]
     {
         std::fs::canonicalize(path)
             .unwrap_or_else(|_| path.to_path_buf())
             .into()
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
-    {
-        path.into()
     }
 }
 
@@ -278,11 +278,11 @@ struct WatcherState {
 #[cfg(target_os = "linux")]
 type PlatformWatcher = notify::INotifyWatcher;
 
-#[cfg(target_os = "windows")]
-type PlatformWatcher = notify::ReadDirectoryChangesWatcher;
-
 #[cfg(target_os = "macos")]
 type PlatformWatcher = notify::FsEventWatcher;
+
+#[cfg(target_os = "windows")]
+type PlatformWatcher = notify::ReadDirectoryChangesWatcher;
 
 pub struct GlobalWatcher {
     state: Mutex<WatcherState>,
@@ -300,13 +300,13 @@ impl GlobalWatcher {
     ) -> anyhow::Result<WatcherRegistrationId> {
         let mut state = self.state.lock();
 
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        #[cfg(target_os = "linux")]
+        let path_already_covered = false;
+
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let path_already_covered = state.path_registrations.keys().any(|existing| {
             path.starts_with(existing.as_ref()) && path.as_ref() != existing.as_ref()
         });
-
-        #[cfg(target_os = "linux")]
-        let path_already_covered = false;
 
         if !path_already_covered && !state.path_registrations.contains_key(&path) {
             drop(state);

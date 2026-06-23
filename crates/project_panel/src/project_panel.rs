@@ -2928,11 +2928,11 @@ mod tests {
                     "  "
                 };
 
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                let file_name = details.file_name;
+
                 #[cfg(target_os = "windows")]
                 let file_name = details.file_name.replace('\\', "/");
-
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
-                let file_name = details.file_name;
 
                 let name = if details.is_editing {
                     format!("[EDITOR: '{file_name}']")

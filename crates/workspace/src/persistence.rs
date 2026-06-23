@@ -772,7 +772,7 @@ mod tests {
     use indoc::indoc;
     use serde_json::json;
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
     use fs::TempFs;
@@ -867,7 +867,7 @@ mod tests {
         assert!(workspace_db.recent_workspaces().unwrap().is_empty());
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[gpui::test]
     async fn test_save_workspace_preserves_non_utf8_paths(_cx: &mut TestAppContext) {
         let workspace_db =

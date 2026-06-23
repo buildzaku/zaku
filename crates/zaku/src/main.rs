@@ -4,7 +4,7 @@ use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
 use indoc::formatdoc;
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
 
 use std::{
@@ -169,7 +169,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                 [_, ..] => format!("{kind} when creating directories {paths:?}"),
             };
 
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             {
                 if kind == ErrorKind::PermissionDenied {
                     error_kind_details.push_str("\n\n");
@@ -221,12 +221,6 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
         });
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
-    eprintln!("Zaku failed to open a window: {error:?}.");
-    std::process::exit(1);
-}
-
 #[cfg(target_os = "linux")]
 fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
     eprintln!("Zaku failed to open a window: {error:?}.");
@@ -254,4 +248,10 @@ fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
         std::process::exit(1);
     })
     .detach();
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
+    eprintln!("Zaku failed to open a window: {error:?}.");
+    std::process::exit(1);
 }
