@@ -110,7 +110,10 @@ pub fn with_fallible_options(_args: TokenStream, input: TokenStream) -> TokenStr
             Type::Path(syn::TypePath { qself: None, path })
                 if path.leading_colon.is_none()
                     && path.segments.len() == 1
-                    && path.segments[0].ident == "Option" => {}
+                    && path
+                        .segments
+                        .first()
+                        .is_some_and(|segment| segment.ident == "Option") => {}
             _ => return,
         }
 

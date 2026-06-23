@@ -84,19 +84,15 @@ pub fn marked_text_ranges(
 ) -> (String, Vec<Range<usize>>) {
     let mut unmarked_text = String::with_capacity(marked_text.len());
     let mut ranges = Vec::new();
-    let mut prev_marked_index = 0;
     let mut current_range_start = None;
     let mut current_range_cursor = None;
 
     let marked_text = marked_text.replace('•', " ");
-    for (marked_index, marker) in marked_text.match_indices(&['«', '»', 'ˇ']) {
-        unmarked_text.push_str(&marked_text[prev_marked_index..marked_index]);
+    for (marked_index, marker) in marked_text.char_indices() {
         let unmarked_len = unmarked_text.len();
-        let len = marker.len();
-        prev_marked_index = marked_index + len;
 
         match marker {
-            "ˇ" => {
+            'ˇ' => {
                 if current_range_start.is_some() {
                     assert!(
                         current_range_cursor.is_none(),
@@ -108,14 +104,14 @@ pub fn marked_text_ranges(
                     ranges.push(unmarked_len..unmarked_len);
                 }
             }
-            "«" => {
+            '«' => {
                 assert!(
                     current_range_start.is_none(),
                     "unexpected range start marker '«' at index {marked_index}"
                 );
                 current_range_start = Some(unmarked_len);
             }
-            "»" => {
+            '»' => {
                 let Some(current_range_start) = current_range_start.take() else {
                     panic!("unexpected range end marker '»' at index {marked_index}");
                 };
@@ -137,11 +133,10 @@ pub fn marked_text_ranges(
                     current_range_start..unmarked_len
                 });
             }
-            _ => unreachable!(),
+            _ => unmarked_text.push(marker),
         }
     }
 
-    unmarked_text.push_str(&marked_text[prev_marked_index..]);
     (unmarked_text, ranges)
 }
 
