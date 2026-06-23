@@ -63,7 +63,7 @@ jobs:
           R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
 
       - name: "Run tests"
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
         run: sccache --show-stats
@@ -114,7 +114,7 @@ jobs:
           R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
 
       - name: "Run tests"
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
         run: sccache --show-stats
@@ -154,7 +154,7 @@ jobs:
           R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
 
       - name: "Run tests"
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
         run: sccache --show-stats
@@ -194,7 +194,7 @@ jobs:
           R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
 
       - name: "Run tests"
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
         run: sccache --show-stats
@@ -234,7 +234,7 @@ jobs:
           R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
 
       - name: "Run tests"
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
         run: if ($env:RUSTC_WRAPPER) { & $env:RUSTC_WRAPPER --show-stats }
@@ -274,7 +274,7 @@ jobs:
           R2_SCCACHE_BUCKET: ${{ secrets.R2_SCCACHE_BUCKET }}
 
       - name: "Run tests"
-        run: cargo nextest run --workspace --no-fail-fast
+        run: cargo nextest run --workspace --all-features --no-fail-fast
 
       - name: "Show sccache stats"
         run: if ($env:RUSTC_WRAPPER) { & $env:RUSTC_WRAPPER --show-stats }
