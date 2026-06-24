@@ -21,6 +21,7 @@ pub use persistence::{
     },
 };
 
+use anyhow::anyhow;
 use futures::{
     StreamExt,
     channel::{
@@ -310,7 +311,7 @@ impl ProjectItemRegistry {
             .rev()
             .find_map(|open_project_item| open_project_item(project, path, window, cx))
         else {
-            return Task::ready(Err(anyhow::anyhow!("cannot open file {:?}", path.path)));
+            return Task::ready(Err(anyhow!("cannot open file {:?}", path.path)));
         };
 
         open_project_item
@@ -356,7 +357,7 @@ impl SerializableItemRegistry {
         cx: &mut Context<Pane>,
     ) -> Task<anyhow::Result<Box<dyn ItemHandle>>> {
         let Some(descriptor) = Self::descriptor(item_kind, cx) else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "cannot deserialize {item_kind}, descriptor not found"
             )));
         };
@@ -372,7 +373,7 @@ impl SerializableItemRegistry {
         cx: &mut App,
     ) -> Task<anyhow::Result<()>> {
         let Some(descriptor) = Self::descriptor(item_kind, cx) else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "cannot cleanup {item_kind}, descriptor not found"
             )));
         };
@@ -2006,7 +2007,7 @@ impl Workspace {
     ) -> anyhow::Result<()> {
         self.serializable_items_tx
             .unbounded_send(item)
-            .map_err(|err| anyhow::anyhow!("failed to send serializable item over channel: {err}"))
+            .map_err(|err| anyhow!("failed to send serializable item over channel: {err}"))
     }
 
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {

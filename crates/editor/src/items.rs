@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use gpui::{App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
@@ -108,7 +109,7 @@ impl Item for Editor {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
         let Some(buffer) = self.buffer.read(cx).as_singleton() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot save multi-buffer editor")));
+            return Task::ready(Err(anyhow!("Cannot save multi-buffer editor")));
         };
         let save = project.update(cx, |project, cx| project.save_buffer(buffer, cx));
 
@@ -125,7 +126,7 @@ impl Item for Editor {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
         let Some(buffer) = self.buffer.read(cx).as_singleton() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot reload multi-buffer editor")));
+            return Task::ready(Err(anyhow!("Cannot reload multi-buffer editor")));
         };
         let reload = project.update(cx, |project, cx| project.reload_buffer(&buffer, cx));
 
@@ -235,7 +236,7 @@ impl SerializableItem for Editor {
         {
             Ok(Some(serialized_editor)) => serialized_editor,
             Ok(None) => {
-                return Task::ready(Err(anyhow::anyhow!(
+                return Task::ready(Err(anyhow!(
                     "Unable to deserialize editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
                 )));
             }

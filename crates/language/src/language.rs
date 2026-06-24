@@ -26,6 +26,7 @@ pub use text::{
     ToPoint, ToPointUtf16, Transaction, TransactionId, Unclipped,
 };
 
+use anyhow::anyhow;
 use parking_lot::Mutex;
 #[cfg(any(test, feature = "test"))]
 use std::borrow::Cow;
@@ -124,8 +125,7 @@ impl Language {
 
     pub fn with_queries(mut self, queries: LanguageQueries) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
             let grammar = grammar.with_queries(queries, &mut self.config)?;
             self.grammar = Some(Arc::new(grammar));
         }
@@ -150,8 +150,7 @@ impl Language {
 
     pub fn with_override_query(mut self, source: &str) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
             let grammar = grammar.with_override_query(
                 source,
                 &self.config.name,
@@ -172,8 +171,7 @@ impl Language {
         build: impl FnOnce(Grammar) -> anyhow::Result<Grammar>,
     ) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
             self.grammar = Some(Arc::new(build(grammar)?));
         }
         Ok(self)
@@ -184,8 +182,7 @@ impl Language {
         build: impl FnOnce(Grammar, &LanguageName) -> anyhow::Result<Grammar>,
     ) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
             self.grammar = Some(Arc::new(build(grammar, &self.config.name)?));
         }
         Ok(self)

@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use libsqlite3_sys::{
     self as sqlite3, SQLITE_BLOB, SQLITE_DONE, SQLITE_FLOAT, SQLITE_INTEGER, SQLITE_MISUSE,
     SQLITE_NULL, SQLITE_ROW, SQLITE_TEXT, SQLITE_TRANSIENT,
@@ -368,7 +368,7 @@ impl<'conn> Statement<'conn> {
         ) -> anyhow::Result<R> {
             let mut row = statement
                 .next_row()?
-                .ok_or_else(|| anyhow::anyhow!("single called with query that returns no rows"))?;
+                .ok_or_else(|| anyhow!("single called with query that returns no rows"))?;
             let result = f(&mut row)?;
             anyhow::ensure!(
                 statement.next_row()?.is_none(),

@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use gpui::{
     Action, ActionBuildError, App, InvalidKeystrokeError, KEYSTROKE_PARSE_EXPECTED_MESSAGE,
     KeyBinding, KeyBindingContextPredicate, NoAction, SharedString, Unbind,
@@ -26,7 +27,7 @@ impl ActionSequence {
                             Ok((action, _)) => Ok(action),
                             Err(error) => Err(ActionBuildError::BuildError {
                                 name: Self::name_for_type().to_string(),
-                                error: anyhow::anyhow!("Error at sequence index {index}: {error}"),
+                                error: anyhow!("Error at sequence index {index}: {error}"),
                             }),
                         }
                     })
@@ -40,7 +41,7 @@ impl ActionSequence {
     fn expected_array_error() -> ActionBuildError {
         ActionBuildError::BuildError {
             name: Self::name_for_type().to_string(),
-            error: anyhow::anyhow!("expected array of actions"),
+            error: anyhow!("expected array of actions"),
         }
     }
 }
@@ -78,7 +79,7 @@ impl Action for ActionSequence {
     }
 
     fn build(_value: Value) -> anyhow::Result<Box<dyn Action>> {
-        Err(anyhow::anyhow!(
+        Err(anyhow!(
             "{} cannot be built directly",
             Self::name_for_type()
         ))

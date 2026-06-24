@@ -1,6 +1,6 @@
 pub mod fs_watcher;
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use futures::{FutureExt, Stream, StreamExt, channel::oneshot, future::BoxFuture};
 use gpui::BackgroundExecutor;
@@ -456,7 +456,7 @@ impl Fs for NativeFs {
                     .await?;
 
                 if !status.success() {
-                    return Err(anyhow::anyhow!(
+                    return Err(anyhow!(
                         "Failed to create junction from {} to {}",
                         path.display(),
                         target.display()
@@ -568,7 +568,7 @@ impl Fs for NativeFs {
         )
         .map(|entry| match entry {
             Ok(entry) => Ok(entry.path()),
-            Err(error) => Err(anyhow::anyhow!("failed to read dir entry {error:?}")),
+            Err(error) => Err(anyhow!("failed to read dir entry {error:?}")),
         });
         Ok(Box::pin(result))
     }

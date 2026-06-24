@@ -9,6 +9,7 @@ pub use worktree::{
     RequestFileState, Snapshot, UpdatedEntriesSet, Worktree, WorktreeId, request_method_label,
 };
 
+use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
 #[cfg(any(test, feature = "test"))]
 use gpui::TestAppContext;
@@ -711,7 +712,7 @@ impl Project {
     ) -> Task<anyhow::Result<Entry>> {
         let project_path = project_path.into();
         let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) else {
-            return Task::ready(Err(anyhow::anyhow!(format!(
+            return Task::ready(Err(anyhow!(format!(
                 "No worktree for path {project_path:?}"
             ))));
         };

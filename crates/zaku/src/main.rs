@@ -1,6 +1,7 @@
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
+use anyhow::anyhow;
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
 use indoc::formatdoc;
 
@@ -207,7 +208,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                     })
                     .detach_and_log_err(cx);
                 }) {
-                    let error = anyhow::anyhow!(formatdoc! {"
+                    let error = anyhow!(formatdoc! {"
                             {message}: {error_details}
 
                             Failed to show launch failure prompt: {error:?}
@@ -215,7 +216,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                     fail_to_open_window(&error, cx);
                 }
             } else {
-                let error = anyhow::anyhow!("{message}: {error_details}");
+                let error = anyhow!("{message}: {error_details}");
                 fail_to_open_window(&error, cx);
             }
         });

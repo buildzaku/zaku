@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use futures::{Future, channel::oneshot};
 use parking_lot::{Mutex, RwLock};
 use std::{
@@ -266,7 +266,7 @@ pub fn background_thread_queue() -> WriteQueueConstructor {
 
         Box::new(move |queued_write| {
             tx.send(queued_write).map_err(|error| {
-                anyhow::anyhow!("could not send write action to background thread: {error}")
+                anyhow!("could not send write action to background thread: {error}")
             })
         })
     })

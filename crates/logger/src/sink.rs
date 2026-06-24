@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use jiff::Zoned;
 use log::Level;
 use std::{
@@ -276,11 +277,11 @@ impl Display for SourceFmt<'_> {
 
 fn rotate_log_file(path: Option<&Path>, path_rotate: Option<&Path>) -> io::Result<Option<File>> {
     let rotation_error = match (path, path_rotate) {
-        (Some(_), None) => Some(anyhow::anyhow!("No rotation log file path configured")),
-        (None, _) => Some(anyhow::anyhow!("No log file path configured")),
+        (Some(_), None) => Some(anyhow!("No rotation log file path configured")),
+        (None, _) => Some(anyhow!("No log file path configured")),
         (Some(path), Some(path_rotate)) => std::fs::copy(path, path_rotate)
             .err()
-            .map(|error| anyhow::anyhow!(error)),
+            .map(|error| anyhow!(error)),
     };
 
     if let Some(error) = rotation_error {

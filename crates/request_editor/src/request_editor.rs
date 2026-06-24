@@ -1,6 +1,7 @@
 mod items;
 mod persistence;
 
+use anyhow::anyhow;
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
@@ -1750,10 +1751,7 @@ mod tests {
                 assert_eq!(request.uri().path(), "/me");
                 let rx = rx.lock().take().unwrap();
 
-                async move {
-                    rx.await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
-                }
+                async move { rx.await.map_err(|_| anyhow!("Response sender dropped"))? }
             }
         });
 
@@ -1857,8 +1855,7 @@ mod tests {
                         "#}
                     );
 
-                    rx.await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                    rx.await.map_err(|_| anyhow!("Response sender dropped"))?
                 }
             }
         });
@@ -1952,9 +1949,7 @@ mod tests {
                 let executor = executor.clone();
 
                 async move {
-                    let response = rx
-                        .await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?;
+                    let response = rx.await.map_err(|_| anyhow!("Response sender dropped"))?;
                     executor.timer(response_delay).await;
                     response
                 }
@@ -2105,10 +2100,7 @@ mod tests {
                     "/second" => second_rx.lock().take().unwrap(),
                     path => panic!("Unexpected request path: {path}"),
                 };
-                async move {
-                    rx.await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
-                }
+                async move { rx.await.map_err(|_| anyhow!("Response sender dropped"))? }
             }
         });
 

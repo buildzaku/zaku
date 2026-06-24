@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use gpui::{
     AnyElement, App, AppContext, Context, Entity, EntityId, FontWeight, SharedString, Task,
     WeakEntity, Window, prelude::*,
@@ -134,7 +135,7 @@ impl Item for RequestEditor {
     ) -> Task<anyhow::Result<()>> {
         let buffer = self.buffer.clone();
         let RequestEditorState::Ready(request) = &self.request else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot save invalid request")));
+            return Task::ready(Err(anyhow!("Cannot save invalid request")));
         };
         let request_snapshot = RequestSnapshot::from_request(request, cx);
         buffer.update(cx, |buffer, cx| {
@@ -220,7 +221,7 @@ impl SerializableItem for RequestEditor {
         {
             Ok(Some(serialized_request_editor)) => serialized_request_editor,
             Ok(None) => {
-                return Task::ready(Err(anyhow::anyhow!(
+                return Task::ready(Err(anyhow!(
                     "Unable to deserialize request editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
                 )));
             }
@@ -232,7 +233,7 @@ impl SerializableItem for RequestEditor {
             .read(cx)
             .project_path_for_absolute_path(path.as_path(), cx)
         else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "Unable to deserialize request editor: path is not in project: {}",
                 path.display()
             )));
@@ -241,7 +242,7 @@ impl SerializableItem for RequestEditor {
         let Some(open_buffer) =
             <RequestBuffer as project::ProjectItem>::try_open(&project, &project_path, cx)
         else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "Unable to deserialize request editor: cannot open path: {}",
                 path.display()
             )));
