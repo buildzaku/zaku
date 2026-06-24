@@ -959,11 +959,14 @@ impl ContextMenu {
                                         let handler = handler.clone();
                                         move |_, window, cx| {
                                             handler(None, window, cx);
-                                            this.update(cx, |this, cx| {
+                                            if let Err(error) = this.update(cx, |this, cx| {
                                                 this.rebuild(window, cx);
                                                 cx.notify();
-                                            })
-                                            .ok();
+                                            }) {
+                                                log::trace!(
+                                                    "Failed to rebuild context menu after slot click: {error:?}"
+                                                );
+                                            }
                                         }
                                     });
 
@@ -983,15 +986,18 @@ impl ContextMenu {
                         let keep_open_on_confirm = self.keep_open_on_confirm;
                         move |_, window, cx| {
                             handler(context.as_ref(), window, cx);
-                            menu.update(cx, |menu, cx| {
+                            if let Err(error) = menu.update(cx, |menu, cx| {
                                 menu.clicked = true;
                                 if keep_open_on_confirm {
                                     menu.rebuild(window, cx);
                                 } else {
                                     cx.emit(DismissEvent);
                                 }
-                            })
-                            .ok();
+                            }) {
+                                log::trace!(
+                                    "Failed to update context menu after item click: {error:?}"
+                                );
+                            }
                         }
                     }),
             )

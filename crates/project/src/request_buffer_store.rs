@@ -162,11 +162,13 @@ impl RequestBufferStore {
         let handle = cx.entity().downgrade();
         buffer_entity.update(cx, move |_, cx| {
             cx.on_release(move |_, cx| {
-                handle
-                    .update(cx, |_, cx| {
-                        cx.emit(RequestBufferStoreEvent::BufferDropped(buffer_id));
-                    })
-                    .ok();
+                if let Err(error) = handle.update(cx, |_, cx| {
+                    cx.emit(RequestBufferStoreEvent::BufferDropped(buffer_id));
+                }) {
+                    log::trace!(
+                        "Failed to update request buffer store after buffer drop: {error:?}"
+                    );
+                }
             })
             .detach();
         });

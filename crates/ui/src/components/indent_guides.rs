@@ -305,7 +305,10 @@ impl Element for IndentGuidesElement {
                             return;
                         };
 
-                        let active_layout = &guides[active_hitbox].layout;
+                        let active_layout = &guides
+                            .get(active_hitbox)
+                            .expect("active hitbox should have indent guide")
+                            .layout;
                         on_hovered_indent_guide_click(active_layout, window, cx);
 
                         cx.stop_propagation();
@@ -316,7 +319,10 @@ impl Element for IndentGuidesElement {
                 let mut hovered_region = None;
                 for (index, region) in hitbox_list.iter().enumerate() {
                     window.set_cursor_style(CursorStyle::PointingHand, region);
-                    let guide = &self.indent_guides[index];
+                    let guide = self
+                        .indent_guides
+                        .get(index)
+                        .expect("hitbox should have indent guide");
                     let fill_color = if region.is_hovered(window) {
                         hovered_region = Some(region.id);
                         self.colors.hover

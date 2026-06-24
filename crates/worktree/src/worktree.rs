@@ -79,23 +79,25 @@ impl Worktree {
         relative_paths: Vec<Arc<RelPath>>,
     ) -> oneshot::Receiver<()> {
         let (tx, rx) = oneshot::channel();
-        self.scan_requests_tx
-            .try_send(ScanRequest {
-                relative_paths,
-                completion_senders: smallvec![tx],
-            })
-            .ok();
+        let request = ScanRequest {
+            relative_paths,
+            completion_senders: smallvec![tx],
+        };
+        if self.scan_requests_tx.try_send(request).is_err() {
+            log::trace!("Worktree scan request receiver dropped");
+        }
         rx
     }
 
     pub fn add_path_prefix_to_scan(&self, path_prefix: Arc<RelPath>) -> oneshot::Receiver<()> {
         let (tx, rx) = oneshot::channel();
-        self.path_prefixes_to_scan_tx
-            .try_send(PathPrefixScanRequest {
-                path: path_prefix,
-                completion_senders: smallvec![tx],
-            })
-            .ok();
+        let request = PathPrefixScanRequest {
+            path: path_prefix,
+            completion_senders: smallvec![tx],
+        };
+        if self.path_prefixes_to_scan_tx.try_send(request).is_err() {
+            log::trace!("Worktree path prefix scan request receiver dropped");
+        }
         rx
     }
 
@@ -124,9 +126,7 @@ impl Worktree {
         };
         let refresh_task = self.refresh_entries_for_paths(paths);
         cx.spawn(async move |this, cx| {
-            refresh_task
-                .await
-                .map_err(|_| anyhow!("Failed to refresh entry"))?;
+            refresh_task.await.context("Failed to refresh entry")?;
             let new_entry = this.read_with(cx, |this, _| {
                 this.entry_for_path(&path).cloned().ok_or_else(|| {
                     anyhow!("Could not find entry in worktree for {path:?} after refresh")
@@ -197,9 +197,7 @@ impl Worktree {
         let path = self.entry_for_id(entry_id)?.path.clone();
         let refresh_task = self.refresh_entries_for_paths(vec![path]);
         Some(cx.background_spawn(async move {
-            refresh_task
-                .await
-                .map_err(|_| anyhow!("Failed to expand entry"))?;
+            refresh_task.await.context("Failed to expand entry")?;
             Ok(())
         }))
     }
@@ -314,7 +312,7 @@ impl Worktree {
                 this.update(cx, |this, _| this.refresh_entries_for_paths(vec![path]))?;
             refresh_task
                 .await
-                .map_err(|_| anyhow!("Failed to refresh deleted entry"))?;
+                .context("Failed to refresh deleted entry")?;
 
             Ok(())
         }))
@@ -347,13 +345,17 @@ impl Worktree {
         new_path: Arc<SanitizedPath>,
         cx: &Context<Worktree>,
     ) {
-        let root_name = new_path
-            .as_path()
-            .file_name()
-            .and_then(|file_name| file_name.to_str())
-            .map_or(RelPath::empty().into(), |file_name| {
-                RelPath::unix(file_name).unwrap().into()
-            });
+        let root_name = match new_path.as_path().file_name() {
+            Some(file_name) => {
+                let file_name = file_name
+                    .to_str()
+                    .expect("worktree root name should be valid utf-8");
+                RelPath::unix(file_name)
+                    .expect("worktree root name should be a valid relative path")
+                    .into()
+            }
+            None => RelPath::empty().into(),
+        };
 
         self.snapshot.update_abs_path(new_path, root_name);
         self.restart_background_scanners(cx);
@@ -500,12 +502,17 @@ impl Worktree {
 
         let path_style = PathStyle::local();
         let fs_case_sensitive = fs.is_case_sensitive().await;
-        let root_name = opened_abs_path
-            .file_name()
-            .and_then(|file_name| file_name.to_str())
-            .map_or(RelPath::empty().into(), |file_name| {
-                RelPath::unix(file_name).unwrap().into()
-            });
+        let root_name = match opened_abs_path.file_name() {
+            Some(file_name) => {
+                let file_name = file_name
+                    .to_str()
+                    .context("worktree root name should be valid utf-8")?;
+                RelPath::unix(file_name)
+                    .context("failed to parse worktree root name")
+                    .map(Arc::<RelPath>::from)?
+            }
+            None => RelPath::empty().into(),
+        };
         let root_file_handle = if metadata.as_ref().is_some() {
             fs.open_handle(opened_abs_path.as_ref())
                 .await
@@ -1103,12 +1110,17 @@ impl WorktreeModelHandle for Entity<Worktree> {
         async move {
             let mut events = cx.events(&worktree);
 
-            fs.write(&root_path.join(file_name), &[]).await.unwrap();
+            fs.write(&root_path.join(file_name), &[])
+                .await
+                .expect("failed to write filesystem event sentinel");
 
             let file_exists = || {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
-                        .entry_for_path(RelPath::unix(file_name).unwrap())
+                        .entry_for_path(
+                            RelPath::unix(file_name)
+                                .expect("test file name should be a valid relative path"),
+                        )
                         .is_some()
                 })
             };
@@ -1122,12 +1134,15 @@ impl WorktreeModelHandle for Entity<Worktree> {
 
             fs.remove_file(&root_path.join(file_name), RemoveOptions::default())
                 .await
-                .unwrap();
+                .expect("failed to remove filesystem event sentinel");
 
             let file_gone = || {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
-                        .entry_for_path(RelPath::unix(file_name).unwrap())
+                        .entry_for_path(
+                            RelPath::unix(file_name)
+                                .expect("test file name should be a valid relative path"),
+                        )
                         .is_none()
                 })
             };
@@ -1192,7 +1207,10 @@ impl WorktreeSnapshot {
         let mut file_entries = self.snapshot.files(0);
         for entry in self.snapshot.entries_by_path.cursor::<()>(()) {
             if entry.is_file() {
-                assert_eq!(file_entries.next().unwrap().inode, entry.inode);
+                assert_eq!(
+                    file_entries.next().expect("file entry should exist").inode,
+                    entry.inode
+                );
             }
         }
 
@@ -1616,9 +1634,13 @@ impl BackgroundScanner {
                         root_path.as_path().display(),
                         new_path.as_path().display(),
                     );
-                    self.status_updates_tx
+                    if self
+                        .status_updates_tx
                         .unbounded_send(ScanState::RootUpdated { new_path })
-                        .ok();
+                        .is_err()
+                    {
+                        log::trace!("Worktree root update receiver dropped");
+                    }
                 } else {
                     log::error!("Root path could not be canonicalized: {error:#}");
                     if self.is_file_worktree {
@@ -1641,9 +1663,13 @@ impl BackgroundScanner {
                         }
                         self.send_status_update(false, SmallVec::new(), &event_roots)
                             .await;
-                        self.status_updates_tx
+                        if self
+                            .status_updates_tx
                             .unbounded_send(ScanState::RootDeleted)
-                            .ok();
+                            .is_err()
+                        {
+                            log::trace!("Worktree root delete receiver dropped");
+                        }
                     }
                 }
                 return;

@@ -127,7 +127,9 @@ impl BufferStore {
     ) -> Task<anyhow::Result<()>> {
         let reload = buffer.update(cx, |buffer, cx| buffer.reload(cx));
         cx.spawn(async move |_, _| {
-            reload.await.map_err(|_| anyhow!("reload canceled"))?;
+            reload
+                .await
+                .map_err(|error| anyhow!("reload canceled: {error}"))?;
             Ok(())
         })
     }
@@ -166,11 +168,11 @@ impl BufferStore {
         let handle = cx.entity().downgrade();
         buffer_entity.update(cx, move |_, cx| {
             cx.on_release(move |buffer, cx| {
-                handle
-                    .update(cx, |_, cx| {
-                        cx.emit(BufferStoreEvent::BufferDropped(buffer.remote_id()));
-                    })
-                    .ok();
+                if let Err(error) = handle.update(cx, |_, cx| {
+                    cx.emit(BufferStoreEvent::BufferDropped(buffer.remote_id()));
+                }) {
+                    log::trace!("Failed to update buffer store after buffer drop: {error:?}");
+                }
             })
             .detach();
         });

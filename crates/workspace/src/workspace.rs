@@ -409,7 +409,12 @@ pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
         cleanup: |workspace_id, loaded_items, window, cx| {
             I::cleanup(workspace_id, loaded_items, window, cx)
         },
-        view_to_serializable_item: |view| Box::new(view.downcast::<I>().unwrap()),
+        view_to_serializable_item: |view| {
+            Box::new(
+                view.downcast::<I>()
+                    .expect("serializable item descriptor should match view type"),
+            )
+        },
     };
     registry
         .descriptors_by_kind

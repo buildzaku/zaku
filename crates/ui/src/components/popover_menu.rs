@@ -328,8 +328,10 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
+        let global_id = global_id.expect("popover menu should have a global element id");
+
         window.with_element_state(
-            global_id.unwrap(),
+            global_id,
             |element_state: Option<PopoverMenuElementState<M>>, window| {
                 let element_state = element_state.unwrap_or_default();
                 let mut menu_layout_id = None;
@@ -416,9 +418,11 @@ impl<M: ManagedView> Element for PopoverMenu<M> {
         }
 
         request_layout.child_layout_id.map(|layout_id| {
+            let global_id = global_id.expect("popover menu should have a global element id");
             let bounds = window.layout_bounds(layout_id);
-            window.with_element_state(global_id.unwrap(), |element_state, _cx| {
-                let mut element_state: PopoverMenuElementState<M> = element_state.unwrap();
+            window.with_element_state(global_id, |element_state, _cx| {
+                let mut element_state: PopoverMenuElementState<M> =
+                    element_state.expect("popover menu element state should be initialized");
                 element_state.child_bounds = Some(bounds);
                 ((), element_state)
             });

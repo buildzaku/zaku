@@ -7457,6 +7457,7 @@ dependencies = [
  "actions",
  "gpui",
  "icons",
+ "log",
  "schemars",
  "serde",
  "settings",

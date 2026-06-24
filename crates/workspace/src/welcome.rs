@@ -79,7 +79,7 @@ impl RenderOnce for SectionButton {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let id = format!("welcome-button-{}-{}", self.label, self.tab_index);
         let action_ref = self.action.as_ref();
-        let tab_index = isize::try_from(self.tab_index).unwrap();
+        let tab_index = isize::try_from(self.tab_index).expect("tab index should fit in isize");
 
         ButtonLike::new(id)
             .tab_index(tab_index)

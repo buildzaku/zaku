@@ -149,9 +149,11 @@ impl Workspace {
         if toast.autohide {
             cx.spawn(async move |workspace, cx| {
                 cx.background_executor().timer(Duration::from_secs(5)).await;
-                workspace
-                    .update(cx, |workspace, cx| workspace.dismiss_toast(&toast.id, cx))
-                    .ok();
+                if let Err(error) =
+                    workspace.update(cx, |workspace, cx| workspace.dismiss_toast(&toast.id, cx))
+                {
+                    log::trace!("Failed to dismiss autohide toast: {error:?}");
+                }
             })
             .detach();
         }
@@ -251,8 +253,8 @@ pub fn show_app_notification<V: Notification + 'static>(
             .insert(id.clone(), build_notification.clone());
 
         for window in cx.windows() {
-            if let Some(root) = window.downcast::<Root>() {
-                root.update(cx, |root, _, cx| {
+            if let Some(root) = window.downcast::<Root>()
+                && let Err(error) = root.update(cx, |root, _, cx| {
                     root.workspace().update(cx, |workspace, cx| {
                         workspace.show_notification_without_handling_dismiss_events(
                             &id,
@@ -261,7 +263,8 @@ pub fn show_app_notification<V: Notification + 'static>(
                         );
                     });
                 })
-                .ok();
+            {
+                log::trace!("Failed to show app notification in window: {error:?}");
             }
         }
     });
@@ -272,13 +275,14 @@ pub fn dismiss_app_notification(id: &NotificationId, cx: &mut App) {
     cx.defer(move |cx| {
         APP_NOTIFICATIONS.lock().remove(&id);
         for window in cx.windows() {
-            if let Some(root) = window.downcast::<Root>() {
-                root.update(cx, |root, _, cx| {
+            if let Some(root) = window.downcast::<Root>()
+                && let Err(error) = root.update(cx, |root, _, cx| {
                     root.workspace().update(cx, |workspace, cx| {
                         workspace.dismiss_notification(&id, cx);
                     });
                 })
-                .ok();
+            {
+                log::trace!("Failed to dismiss app notification in window: {error:?}");
             }
         }
     });
@@ -325,8 +329,9 @@ where
                     }
                     let detail = f(&error, window, cx).unwrap_or(display);
                     window.prompt(PromptLevel::Critical, &msg, Some(&detail), &["Ok"], cx)
-                }) {
-                    prompt.await.ok();
+                }) && let Err(error) = prompt.await
+                {
+                    log::trace!("Failed to await error prompt dismissal: {error:?}");
                 }
                 None
             }

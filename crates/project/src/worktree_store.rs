@@ -120,7 +120,8 @@ impl WorktreeStore {
     pub fn root_worktree(&self, cx: &App) -> Option<Entity<Worktree>> {
         let mut visible_worktrees = self.visible_worktrees(cx);
         let root_worktree = visible_worktrees.next();
-        debug_assert!(visible_worktrees.next().is_none());
+        let has_multiple_visible_worktrees = visible_worktrees.next().is_some();
+        debug_assert!(!has_multiple_visible_worktrees);
         root_worktree
     }
 
@@ -168,10 +169,11 @@ impl WorktreeStore {
         let scan_complete = worktree.read(cx).scan_complete();
         cx.spawn(async move |this, cx| {
             scan_complete.await;
-            this.update(cx, |this, cx| {
+            if let Err(error) = this.update(cx, |this, cx| {
                 this.update_initial_scan_state(cx);
-            })
-            .ok();
+            }) {
+                log::trace!("Failed to update worktree store after scan completion: {error:?}");
+            }
             anyhow::Ok(())
         })
         .detach();

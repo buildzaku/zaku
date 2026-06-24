@@ -103,10 +103,15 @@ fn promote_to_table(parent: &mut Table, key: &str) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let item_type = item.type_name();
-    let table = mem::take(item)
-        .into_table()
-        .map_err(|_| anyhow!("Expected {key} to be table, got {item_type}"))?;
+    let original_item = mem::take(item);
+    let table = match original_item.into_table() {
+        Ok(table) => table,
+        Err(original_item) => {
+            let item_type = original_item.type_name();
+            *item = original_item;
+            return Err(anyhow!("expected {key} to be table, got {item_type}"));
+        }
+    };
     *item = Item::Table(table);
     Ok(())
 }

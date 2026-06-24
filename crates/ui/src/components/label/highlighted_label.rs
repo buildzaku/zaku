@@ -108,11 +108,8 @@ pub fn highlight_ranges(
     while let Some(start_index) = highlight_indices.next() {
         let mut end_index = start_index;
 
-        loop {
-            end_index += text[end_index..]
-                .chars()
-                .next()
-                .map_or(0, |character| character.len_utf8());
+        while let Some(character) = text.get(end_index..).and_then(|text| text.chars().next()) {
+            end_index += character.len_utf8();
             if highlight_indices
                 .next_if(|index| *index == end_index)
                 .is_none()

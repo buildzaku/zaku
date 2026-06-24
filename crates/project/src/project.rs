@@ -292,7 +292,7 @@ impl Project {
                 project.find_or_create_worktree(root_path, true, cx)
             })
             .await
-            .unwrap();
+            .expect("test project should create root worktree");
 
         worktree
             .read_with(cx, |worktree, _| worktree.scan_complete())
