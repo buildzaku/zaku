@@ -84,8 +84,9 @@ pub fn marked_text_ranges(
 ) -> (String, Vec<Range<usize>>) {
     let mut unmarked_text = String::with_capacity(marked_text.len());
     let mut ranges = Vec::new();
-    let mut current_range_start = None;
-    let mut current_range_cursor = None;
+    let mut is_range_open = false;
+    let mut range_start = 0;
+    let mut range_cursor = None;
 
     let marked_text = marked_text.replace('•', " ");
     for (marked_index, marker) in marked_text.char_indices() {
@@ -93,44 +94,55 @@ pub fn marked_text_ranges(
 
         match marker {
             'ˇ' => {
-                if current_range_start.is_some() {
+                if is_range_open {
                     assert!(
-                        current_range_cursor.is_none(),
+                        range_cursor.is_none(),
                         "duplicate point marker 'ˇ' at index {marked_index}"
                     );
 
-                    current_range_cursor = Some(unmarked_len);
+                    range_cursor = Some(unmarked_len);
                 } else {
                     ranges.push(unmarked_len..unmarked_len);
                 }
             }
             '«' => {
                 assert!(
-                    current_range_start.is_none(),
+                    !is_range_open,
                     "unexpected range start marker '«' at index {marked_index}"
                 );
-                current_range_start = Some(unmarked_len);
+
+                is_range_open = true;
+                range_start = unmarked_len;
+                range_cursor = None;
             }
             '»' => {
-                let Some(current_range_start) = current_range_start.take() else {
-                    panic!("unexpected range end marker '»' at index {marked_index}");
-                };
+                assert!(
+                    is_range_open,
+                    "unexpected range end marker '»' at index {marked_index}"
+                );
 
+                is_range_open = false;
                 let mut reversed = false;
-                if let Some(current_range_cursor) = current_range_cursor.take() {
-                    if current_range_cursor == current_range_start {
+                if let Some(range_cursor) = range_cursor.take() {
+                    if range_cursor == range_start {
                         reversed = true;
-                    } else if current_range_cursor != unmarked_len {
-                        panic!("unexpected 'ˇ' marker in the middle of a range");
+                    } else {
+                        assert_eq!(
+                            range_cursor, unmarked_len,
+                            "unexpected 'ˇ' marker in the middle of a range"
+                        );
                     }
-                } else if ranges_are_directed {
-                    panic!("missing 'ˇ' marker to indicate range direction");
+                } else {
+                    assert!(
+                        !ranges_are_directed,
+                        "missing 'ˇ' marker to indicate range direction"
+                    );
                 }
 
                 ranges.push(if reversed {
-                    unmarked_len..current_range_start
+                    unmarked_len..range_start
                 } else {
-                    current_range_start..unmarked_len
+                    range_start..unmarked_len
                 });
             }
             _ => unmarked_text.push(marker),
