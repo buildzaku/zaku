@@ -2,9 +2,10 @@ use gpui::{AnyView, App, ClickEvent, ElementId, Hsla, Pixels, SharedString, Wind
 
 use theme::ActiveTheme;
 
+use super::label::{Label, LabelCommon, LabelSize};
+
 use crate::{
-    Color, DynamicSpacing, Icon, IconName, IconSize, Label, LabelCommon, LabelSize,
-    TOOLTIP_SHOW_DELAY, ToggleState, h_flex,
+    Color, DynamicSpacing, Icon, IconName, IconSize, TOOLTIP_SHOW_DELAY, ToggleState, h_flex,
 };
 
 pub fn checkbox(id: impl Into<ElementId>, toggle_state: ToggleState) -> Checkbox {

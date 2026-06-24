@@ -4,9 +4,11 @@ use gpui::{
 };
 use smallvec::SmallVec;
 
+use super::{ButtonSize, ButtonVariant};
+
 use crate::{
-    ButtonSize, ButtonVariant, Clickable, Disableable, DynamicSpacing, FixedWidth,
-    TOOLTIP_SHOW_DELAY, Toggleable, VisibleOnHover,
+    Clickable, Disableable, DynamicSpacing, FixedWidth, TOOLTIP_SHOW_DELAY, Toggleable,
+    VisibleOnHover,
 };
 
 pub trait SelectableButton: Toggleable {

@@ -5,7 +5,9 @@ use std::ops::Range;
 
 use theme::ActiveTheme;
 
-use crate::{Color, LabelCommon, LabelLike, LabelSize, LineHeightStyle};
+use super::label_like::{LabelCommon, LabelLike, LabelSize, LineHeightStyle};
+
+use crate::Color;
 
 #[derive(IntoElement)]
 pub struct HighlightedLabel {

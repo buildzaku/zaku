@@ -5,6 +5,8 @@ use gpui::{
 };
 use std::{cell::RefCell, panic, rc::Rc};
 
+use super::button::ButtonCommon;
+
 use crate::prelude::*;
 
 pub trait PopoverTrigger: IntoElement + Clickable + Toggleable + 'static {}

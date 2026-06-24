@@ -1,6 +1,8 @@
 use gpui::{App, IntoElement, SharedString, Window, prelude::*};
 
-use crate::{ButtonLike, prelude::*};
+use super::ButtonLike;
+
+use crate::prelude::*;
 
 #[derive(IntoElement)]
 pub struct LinkButton {

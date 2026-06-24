@@ -3,9 +3,12 @@ use gpui::{
     prelude::*,
 };
 
-use crate::{ButtonLike, ContextMenu, PopoverMenu, prelude::*};
+use super::{
+    PopoverMenuHandle,
+    button::{ButtonLike, ButtonSize, ButtonVariant},
+};
 
-use super::PopoverMenuHandle;
+use crate::{ContextMenu, PopoverMenu, prelude::*};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DropdownVariant {

@@ -5,12 +5,11 @@ use gpui::{
 
 use icons::IconName;
 
-use crate::{
-    ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, Clickable, Color, Disableable, FixedWidth,
-    IconSize, SelectableButton, Toggleable, VisibleOnHover,
+use super::{
+    ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, SelectableButton, styled_icon::StyledIcon,
 };
 
-use super::styled_icon::StyledIcon;
+use crate::{Clickable, Color, Disableable, FixedWidth, IconSize, Toggleable, VisibleOnHover};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum IconButtonShape {

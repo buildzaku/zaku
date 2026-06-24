@@ -6,8 +6,10 @@ use std::{borrow::Borrow, rc::Rc};
 
 use theme::ThemeSettings;
 
+use super::label::{Label, LabelCommon, LabelSize};
+
 use crate::prelude::*;
-use crate::{Color, KeyBinding, Label, LabelCommon, LabelSize, StyledExt};
+use crate::{Color, KeyBinding, StyledExt};
 
 pub struct Tooltip {
     title: Title,
