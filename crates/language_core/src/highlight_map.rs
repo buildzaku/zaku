@@ -11,7 +11,11 @@ impl HighlightId {
     pub const TABSTOP_REPLACE_ID: HighlightId = HighlightId(NonZeroU32::new(u32::MAX - 2).unwrap());
 
     pub fn new(capture_id: u32) -> Self {
-        Self(NonZeroU32::new(capture_id + 1).unwrap())
+        let value = capture_id
+            .checked_add(1)
+            .expect("highlight capture id should fit in non-zero u32");
+
+        Self(NonZeroU32::new(value).expect("highlight capture id should not be zero"))
     }
 }
 

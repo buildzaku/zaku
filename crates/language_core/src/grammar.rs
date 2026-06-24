@@ -111,20 +111,20 @@ fn populate_capture_indices(
     query_type: &str,
     expected_prefixes: &[&str],
     captures: &mut [Capture<'_>],
-) -> bool {
+) -> anyhow::Result<bool> {
     let mut found_required_indices = Vec::new();
     'outer: for (capture_index, name) in query.capture_names().iter().enumerate() {
         for (required_index, capture) in captures.iter_mut().enumerate() {
             match capture {
                 Capture::Required(capture_name, index) if capture_name == name => {
                     **index =
-                        u32::try_from(capture_index).expect("capture index should fit in u32");
+                        u32::try_from(capture_index).context("capture index exceeds u32 range")?;
                     found_required_indices.push(required_index);
                     continue 'outer;
                 }
                 Capture::Optional(capture_name, index) if capture_name == name => {
                     **index = Some(
-                        u32::try_from(capture_index).expect("capture index should fit in u32"),
+                        u32::try_from(capture_index).context("capture index exceeds u32 range")?,
                     );
                     continue 'outer;
                 }
@@ -159,7 +159,7 @@ fn populate_capture_indices(
             missing_required_captures.join(", ")
         );
     }
-    success
+    Ok(success)
 }
 
 impl Grammar {
@@ -275,7 +275,7 @@ impl Grammar {
         let query = Query::new(&self.ts_language, source)?;
         let mut open_capture_index = 0;
         let mut close_capture_index = 0;
-        if populate_capture_indices(
+        let has_required_captures = populate_capture_indices(
             &query,
             language_name,
             "brackets",
@@ -284,7 +284,9 @@ impl Grammar {
                 Capture::Required("open", &mut open_capture_index),
                 Capture::Required("close", &mut close_capture_index),
             ],
-        ) {
+        )?;
+
+        if has_required_captures {
             let patterns = (0..query.pattern_count())
                 .map(|pattern_index| {
                     let mut config = BracketsPatternConfig::default();
@@ -320,7 +322,7 @@ impl Grammar {
         let mut start_capture_index = None;
         let mut end_capture_index = None;
         let mut outdent_capture_index = None;
-        if populate_capture_indices(
+        let has_required_captures = populate_capture_indices(
             &query,
             language_name,
             "indents",
@@ -331,12 +333,14 @@ impl Grammar {
                 Capture::Optional("end", &mut end_capture_index),
                 Capture::Optional("outdent", &mut outdent_capture_index),
             ],
-        ) {
+        )?;
+
+        if has_required_captures {
             let mut suffixed_start_captures = HashMap::default();
             for (capture_index, name) in query.capture_names().iter().enumerate() {
                 if let Some(suffix) = name.strip_prefix("start.") {
                     suffixed_start_captures.insert(
-                        u32::try_from(capture_index).expect("capture index should fit in u32"),
+                        u32::try_from(capture_index).context("capture index exceeds u32 range")?,
                         suffix.to_owned().into(),
                     );
                 }
@@ -364,7 +368,7 @@ impl Grammar {
         let mut prefixed_language_capture_index = None;
         let mut content_capture_index = None;
         let mut prefixed_content_capture_index = None;
-        if populate_capture_indices(
+        let has_required_captures = populate_capture_indices(
             &query,
             language_name,
             "injections",
@@ -375,7 +379,9 @@ impl Grammar {
                 Capture::Optional("content", &mut content_capture_index),
                 Capture::Optional("injection.content", &mut prefixed_content_capture_index),
             ],
-        ) {
+        )?;
+
+        if has_required_captures {
             language_capture_index = match (language_capture_index, prefixed_language_capture_index)
             {
                 (None, Some(index)) => Some(index),
@@ -447,7 +453,7 @@ impl Grammar {
 
             let value = overrides.get(name).cloned().unwrap_or_default();
             override_configs_by_id.insert(
-                u32::try_from(capture_index).expect("capture index should fit in u32"),
+                u32::try_from(capture_index).context("capture index exceeds u32 range")?,
                 OverrideEntry {
                     name: name.to_string(),
                     range_is_inclusive,
@@ -502,13 +508,15 @@ impl Grammar {
     ) -> anyhow::Result<Self> {
         let query = Query::new(&self.ts_language, source)?;
         let mut redaction_capture_index = 0;
-        if populate_capture_indices(
+        let has_required_captures = populate_capture_indices(
             &query,
             language_name,
             "redactions",
             &[],
             &mut [Capture::Required("redact", &mut redaction_capture_index)],
-        ) {
+        )?;
+
+        if has_required_captures {
             self.redactions_config = Some(RedactionConfig {
                 query,
                 redaction_capture_ix: redaction_capture_index,

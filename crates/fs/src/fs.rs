@@ -13,6 +13,7 @@ use tempfile::TempDir;
 use serde_json::Value;
 
 use std::{
+    io,
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
@@ -357,7 +358,7 @@ impl NativeFs {
 }
 
 #[cfg(target_os = "linux")]
-fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
     let source = path_to_c_string(source)?;
     let target = path_to_c_string(target)?;
 
@@ -377,12 +378,12 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     if result == 0 {
         Ok(())
     } else {
-        Err(std::io::Error::last_os_error())
+        Err(io::Error::last_os_error())
     }
 }
 
 #[cfg(target_os = "macos")]
-fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
     let source = path_to_c_string(source)?;
     let target = path_to_c_string(target)?;
 
@@ -393,12 +394,12 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     if result == 0 {
         Ok(())
     } else {
-        Err(std::io::Error::last_os_error())
+        Err(io::Error::last_os_error())
     }
 }
 
 #[cfg(target_os = "windows")]
-fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
 
@@ -411,15 +412,15 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
             MOVE_FILE_FLAGS::default(),
         )
     }
-    .map_err(|_| std::io::Error::last_os_error())
+    .map_err(|_| io::Error::last_os_error())
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn path_to_c_string(path: &Path) -> std::io::Result<CString> {
-    CString::new(path.as_os_str().as_bytes()).map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("path contains interior NUL: {}", path.display()),
+fn path_to_c_string(path: &Path) -> io::Result<CString> {
+    CString::new(path.as_os_str().as_bytes()).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("path contains interior NUL: {}: {error}", path.display()),
         )
     })
 }
@@ -627,7 +628,7 @@ impl Fs for NativeFs {
                 .await
             {
                 Ok(()) => return Ok(()),
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                     if options.ignore_if_exists {
                         return Ok(());
                     }
@@ -689,7 +690,7 @@ impl Fs for NativeFs {
         match result {
             Ok(()) => Ok(()),
             Err(error)
-                if error.kind() == std::io::ErrorKind::NotFound && options.ignore_if_not_exists =>
+                if error.kind() == io::ErrorKind::NotFound && options.ignore_if_not_exists =>
             {
                 Ok(())
             }
@@ -717,7 +718,7 @@ impl Fs for NativeFs {
         match smol::fs::remove_file(path).await {
             Ok(()) => Ok(()),
             Err(error)
-                if error.kind() == std::io::ErrorKind::NotFound && options.ignore_if_not_exists =>
+                if error.kind() == io::ErrorKind::NotFound && options.ignore_if_not_exists =>
             {
                 Ok(())
             }
@@ -766,7 +767,7 @@ impl Fs for NativeFs {
                 }
             }
 
-            watcher.add(&target).ok();
+            watcher.add(&target).log_err();
 
             if let Some(parent) = target.parent() {
                 watcher.add(parent).log_err();
@@ -1082,8 +1083,8 @@ fn metadata_for_path(path: &Path) -> anyhow::Result<Option<(std::fs::Metadata, b
     let symlink_metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error)
-            if error.kind() == std::io::ErrorKind::NotFound
-                || error.kind() == std::io::ErrorKind::NotADirectory =>
+            if error.kind() == io::ErrorKind::NotFound
+                || error.kind() == io::ErrorKind::NotADirectory =>
         {
             return Ok(None);
         }
@@ -1097,7 +1098,7 @@ fn metadata_for_path(path: &Path) -> anyhow::Result<Option<(std::fs::Metadata, b
     let metadata = if is_symlink {
         match std::fs::metadata(path) {
             Ok(target_metadata) => target_metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => symlink_metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => symlink_metadata,
             Err(error) => {
                 log::warn!(
                     "Failed to read symlink target metadata for path {}: {error}",
@@ -1219,7 +1220,7 @@ fn is_filesystem_case_sensitive() -> anyhow::Result<bool> {
         .open(&test_file_2)
     {
         Ok(_) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => false,
         Err(error) => {
             return Err(error)
                 .with_context(|| format!("failed to create {}", test_file_2.display()));

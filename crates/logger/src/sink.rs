@@ -85,7 +85,7 @@ fn open_or_create_log_file(
     path: &PathBuf,
     path_rotate: Option<&PathBuf>,
     sink_file_size_bytes_max: u64,
-) -> std::io::Result<File> {
+) -> io::Result<File> {
     let size_bytes = std::fs::metadata(path).map(|metadata| metadata.len());
 
     match size_bytes {
@@ -94,7 +94,7 @@ fn open_or_create_log_file(
 
             match file {
                 Some(file) => Ok(file),
-                None => Err(std::io::Error::other("rotation did not return a log file")),
+                None => Err(io::Error::other("rotation did not return a log file")),
             }
         }
         _ => OpenOptions::new().create(true).append(true).open(path),
@@ -163,14 +163,14 @@ pub fn submit(mut record: Record) {
             written: u64,
         }
 
-        impl std::io::Write for SizedWriter<'_> {
-            fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        impl io::Write for SizedWriter<'_> {
+            fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
                 self.file.write(buffer)?;
                 self.written += buffer.len() as u64;
                 Ok(buffer.len())
             }
 
-            fn flush(&mut self) -> std::io::Result<()> {
+            fn flush(&mut self) -> io::Result<()> {
                 self.file.flush()
             }
         }
@@ -274,10 +274,7 @@ impl Display for SourceFmt<'_> {
     }
 }
 
-fn rotate_log_file(
-    path: Option<&Path>,
-    path_rotate: Option<&Path>,
-) -> std::io::Result<Option<File>> {
+fn rotate_log_file(path: Option<&Path>, path_rotate: Option<&Path>) -> io::Result<Option<File>> {
     let rotation_error = match (path, path_rotate) {
         (Some(_), None) => Some(anyhow::anyhow!("No rotation log file path configured")),
         (None, _) => Some(anyhow::anyhow!("No log file path configured")),

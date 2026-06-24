@@ -3,7 +3,7 @@ use futures::{FutureExt, future};
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Task, WeakEntity};
 use std::{
     collections::HashMap,
-    mem,
+    io, mem,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -349,8 +349,8 @@ impl WorktreeStore {
                 if let Err(error) =
                     do_rename(fs.as_ref(), &old_abs_path, &new_abs_path, overwrite).await
                 {
-                    if let Some(error) = error.downcast_ref::<std::io::Error>()
-                        && error.kind() == std::io::ErrorKind::NotFound
+                    if let Some(error) = error.downcast_ref::<io::Error>()
+                        && error.kind() == io::ErrorKind::NotFound
                         && let Some(parent) = new_abs_path.parent()
                     {
                         fs.create_dir(parent).await.with_context(|| {

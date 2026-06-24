@@ -4,6 +4,7 @@ use gpui::{App, AsyncApp, Global, Task};
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
+    io,
     sync::Arc,
 };
 
@@ -142,8 +143,8 @@ impl SettingsStore {
         match fs.load(path::settings_file()).await {
             result @ Ok(_) => result,
             Err(error) => {
-                if let Some(error) = error.downcast_ref::<std::io::Error>()
-                    && error.kind() == std::io::ErrorKind::NotFound
+                if let Some(error) = error.downcast_ref::<io::Error>()
+                    && error.kind() == io::ErrorKind::NotFound
                 {
                     return Ok(crate::initial_user_settings().to_string());
                 }

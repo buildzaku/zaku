@@ -1,5 +1,5 @@
 #[cfg(target_os = "windows")]
-use std::{ffi::OsStr, path::Path};
+use std::{ffi::OsStr, io, path::Path};
 
 #[cfg(target_os = "windows")]
 use smol::process::windows::CommandExt as SmolCommandExt;
@@ -95,15 +95,15 @@ impl Command {
         self
     }
 
-    pub fn spawn(&mut self) -> std::io::Result<Child> {
+    pub fn spawn(&mut self) -> io::Result<Child> {
         self.0.spawn()
     }
 
-    pub async fn output(&mut self) -> std::io::Result<std::process::Output> {
+    pub async fn output(&mut self) -> io::Result<std::process::Output> {
         self.0.output().await
     }
 
-    pub async fn status(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    pub async fn status(&mut self) -> io::Result<std::process::ExitStatus> {
         self.0.status().await
     }
 }

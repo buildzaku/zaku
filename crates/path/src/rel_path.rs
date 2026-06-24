@@ -378,9 +378,9 @@ mod tests {
 
     #[test]
     fn test_rel_path() {
-        assert!(RelPath::new(Path::new("/"), PathStyle::local()).is_err());
-        assert!(RelPath::new(Path::new("//"), PathStyle::local()).is_err());
-        assert!(RelPath::new(Path::new("/foo/"), PathStyle::local()).is_err());
+        RelPath::new(Path::new("/"), PathStyle::local()).unwrap_err();
+        RelPath::new(Path::new("//"), PathStyle::local()).unwrap_err();
+        RelPath::new(Path::new("/foo/"), PathStyle::local()).unwrap_err();
 
         let path = RelPath::new("foo/".as_ref(), PathStyle::local()).unwrap();
         assert_eq!(path, rel_path("foo").into());
@@ -498,12 +498,12 @@ mod tests {
 
     #[test]
     fn test_rel_path_constructors_absolute_path() {
-        assert!(RelPath::new(Path::new("/a/b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("\\a\\b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("/a/b"), PathStyle::Posix).is_err());
-        assert!(RelPath::new(Path::new("C:/a/b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("C:\\a\\b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("C:/a/b"), PathStyle::Posix).is_ok());
+        RelPath::new(Path::new("/a/b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("\\a\\b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("/a/b"), PathStyle::Posix).unwrap_err();
+        RelPath::new(Path::new("C:/a/b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("C:\\a\\b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("C:/a/b"), PathStyle::Posix).unwrap();
     }
 
     #[test]

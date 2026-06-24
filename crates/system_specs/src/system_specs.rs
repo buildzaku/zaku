@@ -94,7 +94,9 @@ fn format_bytes(bytes: u64) -> String {
     let rounded_tenths = (bytes * 10 + divisor / 2) / divisor;
     let whole = rounded_tenths / 10;
     let fraction = rounded_tenths % 10;
-    let suffix = SUFFIX[unit_index];
+    let suffix = SUFFIX
+        .get(unit_index)
+        .expect("unit index should be in bounds");
 
     if fraction == 0 {
         format!("{whole} {suffix}")

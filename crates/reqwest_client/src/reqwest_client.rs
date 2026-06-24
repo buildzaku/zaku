@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{FutureExt, TryStreamExt};
 use reqwest::redirect;
-use std::{mem, pin::Pin, sync::OnceLock, task::Poll, time::Duration};
+use std::{io, mem, pin::Pin, sync::OnceLock, task, time::Duration};
 
 use http_client::{AsyncBody, HttpClient, Inner, RedirectPolicy, Url, http};
 
@@ -73,16 +73,16 @@ impl StreamReader {
 }
 
 impl futures::Stream for StreamReader {
-    type Item = std::io::Result<Bytes>;
+    type Item = io::Result<Bytes>;
 
     fn poll_next(
         mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Option<Self::Item>> {
         let mut this = self.as_mut();
 
         let Some(mut reader) = this.reader.take() else {
-            return Poll::Ready(None);
+            return task::Poll::Ready(None);
         };
 
         if this.buffer.capacity() == 0 {
@@ -91,32 +91,31 @@ impl futures::Stream for StreamReader {
         }
 
         match poll_read_buffer(reader.as_mut(), cx, &mut this.buffer) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Err(error)) => {
+            task::Poll::Pending => task::Poll::Pending,
+            task::Poll::Ready(Err(error)) => {
                 self.reader = None;
-                Poll::Ready(Some(Err(error)))
+                task::Poll::Ready(Some(Err(error)))
             }
-            Poll::Ready(Ok(0)) => {
+            task::Poll::Ready(Ok(0)) => {
                 self.reader = None;
-                Poll::Ready(None)
+                task::Poll::Ready(None)
             }
-            Poll::Ready(Ok(_)) => {
+            task::Poll::Ready(Ok(_)) => {
                 let chunk = this.buffer.split();
                 self.reader = Some(reader);
-                Poll::Ready(Some(Ok(chunk.freeze())))
+                task::Poll::Ready(Some(Ok(chunk.freeze())))
             }
         }
     }
 }
 
-// Taken from <https://docs.rs/tokio-util/0.7.18/src/tokio_util/util/poll_buf.rs.html#47>
 fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
     reader: Pin<&mut T>,
-    cx: &mut std::task::Context<'_>,
+    cx: &mut task::Context<'_>,
     buffer: &mut B,
-) -> Poll<std::io::Result<usize>> {
+) -> task::Poll<io::Result<usize>> {
     if !buffer.has_remaining_mut() {
-        return Poll::Ready(Ok(0));
+        return task::Poll::Ready(Ok(0));
     }
 
     let size = {
@@ -129,7 +128,7 @@ fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
 
         let pointer = buffer.filled().as_ptr();
         let unfilled_portion = buffer.initialize_unfilled();
-        std::task::ready!(reader.poll_read(cx, unfilled_portion)?);
+        task::ready!(reader.poll_read(cx, unfilled_portion)?);
 
         // Ensure the pointer does not change from under us
         assert_eq!(pointer, buffer.filled().as_ptr());
@@ -142,7 +141,7 @@ fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
         buffer.advance_mut(size);
     }
 
-    Poll::Ready(Ok(size))
+    task::Poll::Ready(Ok(size))
 }
 
 impl HttpClient for ReqwestClient {
