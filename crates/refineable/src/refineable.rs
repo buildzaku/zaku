@@ -23,34 +23,48 @@ pub trait IsEmpty {
     fn is_empty(&self) -> bool;
 }
 
-pub struct Cascade<S: Refineable>(Vec<Option<S::Refinement>>);
+pub struct Cascade<S: Refineable> {
+    base: S::Refinement,
+    refinements: Vec<Option<S::Refinement>>,
+}
 
-impl<S: Refineable + Default> Default for Cascade<S> {
+impl<S: Refineable> Default for Cascade<S> {
     fn default() -> Self {
-        Self(vec![Some(Default::default())])
+        Self {
+            base: Default::default(),
+            refinements: Vec::new(),
+        }
     }
 }
 
 #[derive(Copy, Clone)]
 pub struct CascadeSlot(usize);
 
-impl<S: Refineable + Default> Cascade<S> {
+impl<S: Refineable> Cascade<S> {
     pub fn reserve(&mut self) -> CascadeSlot {
-        self.0.push(None);
-        CascadeSlot(self.0.len() - 1)
+        self.refinements.push(None);
+        CascadeSlot(self.refinements.len() - 1)
     }
 
     pub fn base(&mut self) -> &mut S::Refinement {
-        self.0[0].as_mut().unwrap()
+        &mut self.base
     }
 
     pub fn set(&mut self, slot: CascadeSlot, refinement: Option<S::Refinement>) {
-        self.0[slot.0] = refinement;
+        let slot_is_reserved = match self.refinements.get_mut(slot.0) {
+            Some(reserved_refinement) => {
+                *reserved_refinement = refinement;
+                true
+            }
+            None => false,
+        };
+
+        assert!(slot_is_reserved, "cascade slot should be reserved");
     }
 
     pub fn merged(&self) -> S::Refinement {
-        let mut merged = self.0[0].clone().unwrap();
-        for refinement in self.0.iter().skip(1).flatten() {
+        let mut merged = self.base.clone();
+        for refinement in self.refinements.iter().flatten() {
             merged.refine(refinement);
         }
         merged

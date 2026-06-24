@@ -826,8 +826,9 @@ pub struct TempFs {
 #[cfg(feature = "test")]
 impl TempFs {
     pub fn new(executor: BackgroundExecutor) -> Arc<Self> {
-        let temp_dir = TempDir::new().unwrap();
-        let path = NativeFs::canonicalize(temp_dir.path()).unwrap();
+        let temp_dir = TempDir::new().expect("failed to create temporary filesystem");
+        let path = NativeFs::canonicalize(temp_dir.path())
+            .expect("failed to canonicalize temporary filesystem path");
 
         Arc::new(Self {
             path,
@@ -845,7 +846,8 @@ impl TempFs {
             match tree {
                 Value::Object(map) => {
                     let absolute_path = resolve_path(directory, path);
-                    std::fs::create_dir_all(&absolute_path).unwrap();
+                    std::fs::create_dir_all(&absolute_path)
+                        .expect("failed to create test directory");
                     for (name, contents) in map {
                         let mut new_path = PathBuf::from(path);
                         new_path.push(name);
@@ -854,14 +856,17 @@ impl TempFs {
                 }
                 Value::Null => {
                     let absolute_path = resolve_path(directory, path);
-                    std::fs::create_dir_all(&absolute_path).unwrap();
+                    std::fs::create_dir_all(&absolute_path)
+                        .expect("failed to create test directory");
                 }
                 Value::String(contents) => {
                     let absolute_path = resolve_path(directory, path);
                     if let Some(parent) = absolute_path.parent() {
-                        std::fs::create_dir_all(parent).unwrap();
+                        std::fs::create_dir_all(parent)
+                            .expect("failed to create test file parent directory");
                     }
-                    std::fs::write(&absolute_path, contents.as_bytes()).unwrap();
+                    std::fs::write(&absolute_path, contents.as_bytes())
+                        .expect("failed to write test file");
                 }
                 _ => {
                     panic!("JSON object must contain only objects, strings, or null");

@@ -6,6 +6,21 @@ use std::{
 };
 
 #[derive(Deserialize)]
+struct Manifest {
+    package: Package,
+}
+
+#[derive(Deserialize)]
+struct Package {
+    metadata: PackageMetadata,
+}
+
+#[derive(Deserialize)]
+struct PackageMetadata {
+    bundle: BundleMetadata,
+}
+
+#[derive(Deserialize)]
 struct BundleMetadata {
     name: String,
     description: String,
@@ -39,28 +54,10 @@ fn main() {
 }
 
 fn manifest_metadata(path: &Path) -> BundleMetadata {
-    let manifest = fs::read_to_string(path).unwrap_or_else(|error| {
-        panic!(
-            "Failed to read package manifest at {}: {error}",
-            path.display()
-        )
-    });
-    let manifest: toml::Value = toml::from_str(&manifest).unwrap_or_else(|error| {
-        panic!(
-            "Failed to parse package manifest at {}: {error}",
-            path.display()
-        )
-    });
+    let content = fs::read_to_string(path).expect("failed to read manifest file");
+    let manifest: Manifest = toml::from_str(&content).expect("failed to parse manifest file");
 
-    manifest["package"]["metadata"]["bundle"]
-        .clone()
-        .try_into()
-        .unwrap_or_else(|error| {
-            panic!(
-                "Failed to parse [package.metadata.bundle] in {}: {error}",
-                path.display()
-            )
-        })
+    manifest.package.metadata.bundle
 }
 
 fn commit_sha() -> String {

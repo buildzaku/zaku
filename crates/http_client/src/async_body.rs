@@ -116,8 +116,8 @@ impl Body for AsyncBody {
         match AsyncRead::poll_read(self.as_mut(), cx, &mut buffer) {
             Poll::Ready(Ok(0)) => Poll::Ready(None),
             Poll::Ready(Ok(size)) => {
-                let data = Bytes::copy_from_slice(&buffer[..size]);
-                Poll::Ready(Some(Ok(Frame::data(data))))
+                buffer.truncate(size);
+                Poll::Ready(Some(Ok(Frame::data(Bytes::from(buffer)))))
             }
             Poll::Ready(Err(error)) => Poll::Ready(Some(Err(error))),
             Poll::Pending => Poll::Pending,
