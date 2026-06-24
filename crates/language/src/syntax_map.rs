@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 #[cfg(debug_assertions)]
 use std::cmp::Ordering;
 use std::{
@@ -438,7 +439,16 @@ impl SyntaxSnapshot {
             return Ok(());
         };
 
-        let tree = parse_text(grammar.as_ref(), text.as_rope(), self.tree(), &mut budget)?;
+        let tree = match parse_text(grammar.as_ref(), text.as_rope(), self.tree(), &mut budget) {
+            Ok(tree) => tree,
+            Err(error) if error.downcast_ref::<ParseTimeout>().is_some() => {
+                return Err(ParseTimeout);
+            }
+            Err(error) => {
+                log::error!("Failed to parse text: {error:?}");
+                return Ok(());
+            }
+        };
         let mut layers = SumTree::new(text);
         layers.push(
             SyntaxLayerEntry {
@@ -689,7 +699,7 @@ fn parse_text(
     text: &Rope,
     old_tree: Option<&Tree>,
     parse_budget: &mut Option<Duration>,
-) -> Result<Tree, ParseTimeout> {
+) -> anyhow::Result<Tree> {
     with_parser(|parser| {
         let mut timed_out = false;
         let now = Instant::now();
@@ -705,9 +715,7 @@ fn parse_text(
             }
         });
 
-        parser
-            .set_language(&grammar.ts_language)
-            .expect("incompatible grammar");
+        parser.set_language(&grammar.ts_language)?;
         let mut chunks = text.chunks_in_range(0..text.len());
         let parsed_tree = parser.parse_with_options(
             &mut move |offset, _| {
@@ -729,8 +737,8 @@ fn parse_text(
                 }
                 Ok(tree)
             }
-            None if timed_out => Err(ParseTimeout),
-            None => panic!("tree-sitter parse should succeed"),
+            None if timed_out => Err(anyhow!(ParseTimeout)),
+            None => Err(anyhow!("parsing failed")),
         }
     })
 }
