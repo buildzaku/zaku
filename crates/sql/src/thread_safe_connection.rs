@@ -116,7 +116,9 @@ impl ThreadSafeConnection {
                     let result = thread_safe_connection.with_connection(|connection| {
                         connection.with_write(|connection| write_operation(connection))
                     });
-                    tx.send(result).ok();
+                    if let Err(result) = tx.send(result) {
+                        drop(result);
+                    }
                 }))?;
 
                 rx
@@ -263,8 +265,9 @@ pub fn background_thread_queue() -> WriteQueueConstructor {
             .expect("database worker thread should spawn");
 
         Box::new(move |queued_write| {
-            tx.send(queued_write)
-                .map_err(|_| anyhow::anyhow!("could not send write action to background thread"))
+            tx.send(queued_write).map_err(|error| {
+                anyhow::anyhow!("could not send write action to background thread: {error}")
+            })
         })
     })
 }
@@ -427,7 +430,7 @@ mod tests {
                 .select_row::<i64>("SELECT value FROM test ORDER BY value")
                 .and_then(|mut f| f())
         });
-        assert!(multiple_rows.is_err());
+        multiple_rows.unwrap_err();
     }
 
     #[test]

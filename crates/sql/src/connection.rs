@@ -506,30 +506,22 @@ mod tests {
         let connection =
             Connection::open_memory(Some("test_read_out_of_range_unsigned_values_fail"));
 
-        assert!(
-            connection
-                .select_row::<u64>("SELECT -1")
-                .and_then(|mut f| f())
-                .is_err()
-        );
-        assert!(
-            connection
-                .select_row::<u32>("SELECT 5000000000")
-                .and_then(|mut f| f())
-                .is_err()
-        );
-        assert!(
-            connection
-                .select_row::<u16>("SELECT 70000")
-                .and_then(|mut f| f())
-                .is_err()
-        );
-        assert!(
-            connection
-                .select_row::<usize>("SELECT -1")
-                .and_then(|mut f| f())
-                .is_err()
-        );
+        connection
+            .select_row::<u64>("SELECT -1")
+            .and_then(|mut f| f())
+            .unwrap_err();
+        connection
+            .select_row::<u32>("SELECT 5000000000")
+            .and_then(|mut f| f())
+            .unwrap_err();
+        connection
+            .select_row::<u16>("SELECT 70000")
+            .and_then(|mut f| f())
+            .unwrap_err();
+        connection
+            .select_row::<usize>("SELECT -1")
+            .and_then(|mut f| f())
+            .unwrap_err();
     }
 
     #[test]
@@ -537,12 +529,10 @@ mod tests {
         let connection =
             Connection::open_memory(Some("test_null_text_and_blob_require_option_columns"));
 
-        assert!(
-            connection
-                .select_row::<String>("SELECT CAST(NULL AS TEXT)")
-                .and_then(|mut f| f())
-                .is_err()
-        );
+        connection
+            .select_row::<String>("SELECT CAST(NULL AS TEXT)")
+            .and_then(|mut f| f())
+            .unwrap_err();
         assert_eq!(
             connection
                 .select_row::<Option<String>>("SELECT CAST(NULL AS TEXT)")
@@ -557,12 +547,10 @@ mod tests {
                 .unwrap(),
             Some(String::new())
         );
-        assert!(
-            connection
-                .select_row::<Vec<u8>>("SELECT CAST(NULL AS BLOB)")
-                .and_then(|mut f| f())
-                .is_err()
-        );
+        connection
+            .select_row::<Vec<u8>>("SELECT CAST(NULL AS BLOB)")
+            .and_then(|mut f| f())
+            .unwrap_err();
         assert_eq!(
             connection
                 .select_row::<Option<Vec<u8>>>("SELECT CAST(NULL AS BLOB)")

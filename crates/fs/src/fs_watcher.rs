@@ -41,11 +41,12 @@ impl Drop for FsWatcher {
             std::mem::swap(&mut **old, &mut registrations);
         }
 
-        let _ = global(|watcher| {
+        global(|watcher| {
             for (_, registration) in registrations {
                 watcher.remove(registration);
             }
-        });
+        })
+        .log_err();
     }
 }
 
@@ -165,8 +166,8 @@ impl Watcher for FsWatcher {
                     if !path_events.is_empty() {
                         path_events.sort();
                         let mut pending_paths = pending_paths.lock();
-                        if pending_paths.is_empty() {
-                            tx.try_send(()).ok();
+                        if pending_paths.is_empty() && tx.try_send(()).is_err() {
+                            return;
                         }
                         coalesce_pending_rescans(&mut pending_paths, &mut path_events);
                         util::extend_sorted(

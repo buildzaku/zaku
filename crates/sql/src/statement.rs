@@ -110,10 +110,12 @@ impl<'conn> Statement<'conn> {
     }
 
     fn current_statement_ptr(&self) -> *mut sqlite3::sqlite3_stmt {
-        *self
+        let raw_statement_ptr = self
             .raw_statement_ptrs
             .get(self.current_statement_idx)
-            .unwrap()
+            .expect("current statement index should be in bounds");
+
+        *raw_statement_ptr
     }
 
     pub fn reset(&mut self) -> anyhow::Result<()> {
@@ -178,13 +180,15 @@ impl<'conn> Statement<'conn> {
             .context("blob length exceeds sqlite3_uint64 range")?;
 
         self.bind_index_with(index, &|raw_statement_ptr| {
-            // SAFETY: raw_statement_ptr comes from a successful prepare call, blob_ptr
-            // and blob_len were derived from blob. SQLITE_TRANSIENT avoids borrowing blob after
-            // the bind call returns.
-            unsafe {
-                if blob_len == 0 {
-                    sqlite3::sqlite3_bind_zeroblob(raw_statement_ptr, index, 0)
-                } else {
+            if blob_len == 0 {
+                // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
+                // valid until sqlite3_finalize in Drop.
+                unsafe { sqlite3::sqlite3_bind_zeroblob(raw_statement_ptr, index, 0) }
+            } else {
+                // SAFETY: raw_statement_ptr comes from a successful prepare call, blob_ptr
+                // and blob_len were derived from blob. SQLITE_TRANSIENT avoids borrowing blob after
+                // the bind call returns.
+                unsafe {
                     sqlite3::sqlite3_bind_blob64(
                         raw_statement_ptr,
                         index,
@@ -309,7 +313,7 @@ impl<'conn> Statement<'conn> {
                 self.connection
                     .ensure_ok(result_code)
                     .with_context(|| "failed to step sqlite statement".to_string())?;
-                unreachable!("ensure_ok returned Ok for a failing sqlite3_step result code");
+                anyhow::bail!("sqlite3_step returned unexpected result code {result_code}");
             }
         }
     }
