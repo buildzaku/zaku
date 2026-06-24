@@ -183,8 +183,10 @@ impl<'a> Iterator for BufferChunks<'a> {
 
                 let capture_end = capture.node.end_byte();
                 if capture_end > self.range.start
-                    && let Some(highlight_id) =
-                        highlights.highlight_maps[capture.grammar_index].get(capture.index)
+                    && let Some(highlight_id) = highlights
+                        .highlight_maps
+                        .get(capture.grammar_index)
+                        .and_then(|highlight_map| highlight_map.get(capture.index))
                 {
                     highlights.stack.push((capture_end, highlight_id));
                 }
@@ -217,7 +219,9 @@ impl<'a> Iterator for BufferChunks<'a> {
             let bit_start = chunk_start - self.chunks.offset();
             let split_index = chunk_end - self.chunks.offset();
             let bit_end = split_index;
-            let slice = &chunk[bit_start..bit_end];
+            let slice = chunk
+                .get(bit_start..bit_end)
+                .expect("chunk byte range should be valid");
 
             let shift = u32::try_from(bit_start).expect("chunk bit start should fit in u32");
             let mask_len =
@@ -229,7 +233,9 @@ impl<'a> Iterator for BufferChunks<'a> {
 
             self.range.start = self.chunks.offset() + split_index;
             if self.range.start == self.chunks.offset() + chunk.len() {
-                self.chunks.next().unwrap();
+                self.chunks
+                    .next()
+                    .expect("peeked chunk should still be present");
             }
 
             Some(Chunk {
@@ -664,7 +670,9 @@ impl Buffer {
         assert!(self.transaction_depth > 0);
         self.transaction_depth -= 1;
         let was_dirty = if self.transaction_depth == 0 {
-            self.was_dirty_before_starting_transaction.take().unwrap()
+            self.was_dirty_before_starting_transaction
+                .take()
+                .expect("transaction should have initial dirty state")
         } else {
             false
         };
@@ -733,7 +741,9 @@ impl Buffer {
                     this.finalize_last_transaction();
                     this.apply_diff(diff, cx);
                     let transaction = this.finalize_last_transaction().cloned();
-                    tx.send(transaction).ok();
+                    if tx.send(transaction).is_err() {
+                        log::trace!("Buffer reload receiver dropped");
+                    }
                     this.has_conflict = false;
                     this.did_reload(this.version(), this.line_ending(), new_mtime, cx);
                 } else {

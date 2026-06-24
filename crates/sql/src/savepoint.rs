@@ -245,15 +245,17 @@ mod tests {
             .unwrap();
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let _ = connection.with_savepoint("panic_savepoint", || -> anyhow::Result<()> {
-                connection
-                    .exec("INSERT INTO test(value) VALUES (1)")
-                    .and_then(|mut f| f())?;
-                panic!("panic inside savepoint");
-            });
+            connection
+                .with_savepoint("panic_savepoint", || -> anyhow::Result<()> {
+                    connection
+                        .exec("INSERT INTO test(value) VALUES (1)")
+                        .and_then(|mut f| f())?;
+                    panic!("panic inside savepoint");
+                })
+                .unwrap();
         }));
 
-        assert!(result.is_err());
+        result.unwrap_err();
         assert_eq!(
             connection
                 .select::<i32>("SELECT value FROM test")

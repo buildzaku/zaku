@@ -1,7 +1,6 @@
 mod items;
 mod persistence;
 
-use anyhow::anyhow;
 use futures::{FutureExt, io::AsyncReadExt};
 use gpui::{
     Anchor, AnyElement, App, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,

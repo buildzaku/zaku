@@ -125,7 +125,7 @@ impl Language {
 
     pub fn with_queries(mut self, queries: LanguageQueries) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             let grammar = grammar.with_queries(queries, &mut self.config)?;
             self.grammar = Some(Arc::new(grammar));
         }
@@ -150,7 +150,7 @@ impl Language {
 
     pub fn with_override_query(mut self, source: &str) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             let grammar = grammar.with_override_query(
                 source,
                 &self.config.name,
@@ -171,7 +171,7 @@ impl Language {
         build: impl FnOnce(Grammar) -> anyhow::Result<Grammar>,
     ) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             self.grammar = Some(Arc::new(build(grammar)?));
         }
         Ok(self)
@@ -182,7 +182,7 @@ impl Language {
         build: impl FnOnce(Grammar, &LanguageName) -> anyhow::Result<Grammar>,
     ) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar = Arc::try_unwrap(grammar).map_err(|_| anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             self.grammar = Some(Arc::new(build(grammar, &self.config.name)?));
         }
         Ok(self)
@@ -235,6 +235,13 @@ impl fmt::Debug for Language {
             .field("grammar", &self.grammar.is_some())
             .finish()
     }
+}
+
+fn into_grammar(grammar: Arc<Grammar>) -> anyhow::Result<Grammar> {
+    Arc::try_unwrap(grammar).map_err(|grammar| {
+        let reference_count = Arc::strong_count(&grammar);
+        anyhow!("cannot mutate shared grammar with {reference_count} references")
+    })
 }
 
 #[inline]

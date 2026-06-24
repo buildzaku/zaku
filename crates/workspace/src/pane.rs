@@ -1100,9 +1100,9 @@ impl Render for DraggedTab {
 
         Tab::new("dragged-tab")
             .toggle_state(self.is_active)
+            .font(ui_font)
             .child(label)
             .render(window, cx)
-            .font(ui_font)
     }
 }
 

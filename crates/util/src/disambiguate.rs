@@ -99,7 +99,9 @@ mod tests {
         ];
         let details = compute_disambiguation_details(&items, |item, detail| {
             let clamped = detail.min(item.len() - 1);
-            item.get(clamped).unwrap().to_string()
+            item.get(clamped)
+                .expect("clamped detail should be in bounds")
+                .to_string()
         });
         assert_eq!(details, vec![2, 2, 1]);
     }

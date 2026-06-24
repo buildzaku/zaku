@@ -225,7 +225,6 @@ panic_in_result_fn = "warn"
 string_slice = "warn"
 todo = "warn"
 unreachable = "warn"
-unwrap_in_result = "warn"
 unwrap_used = "warn"
 
 # Discarded errors and futures.
@@ -287,6 +286,7 @@ pub_underscore_fields = "warn"
 ref_option = "warn"
 ref_option_ref = "warn"
 self_only_used_in_recursion = "warn"
+type_complexity = "allow"
 unnecessary_box_returns = "warn"
 unused_async = "warn"
 

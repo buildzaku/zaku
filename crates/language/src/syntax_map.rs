@@ -134,8 +134,11 @@ impl<'a> SyntaxMapCaptures<'a> {
             layer.advance();
             if layer.next_capture.is_some() {
                 let key = layer.sort_key();
-                let index = match result.layers[..result.active_layer_count]
-                    .binary_search_by_key(&key, |layer| layer.sort_key())
+                let active_layers = result
+                    .layers
+                    .get(..result.active_layer_count)
+                    .expect("active layer count should be in bounds");
+                let index = match active_layers.binary_search_by_key(&key, |layer| layer.sort_key())
                 {
                     Ok(index) | Err(index) => index,
                 };
@@ -153,7 +156,11 @@ impl<'a> SyntaxMapCaptures<'a> {
     }
 
     pub fn peek(&self) -> Option<SyntaxMapCapture<'a>> {
-        let layer = self.layers[..self.active_layer_count].first()?;
+        let layer = self
+            .layers
+            .get(..self.active_layer_count)
+            .expect("active layer count should be in bounds")
+            .first()?;
         let capture = layer.next_capture?;
         Some(SyntaxMapCapture {
             node: capture.node,
@@ -163,20 +170,37 @@ impl<'a> SyntaxMapCaptures<'a> {
     }
 
     pub fn advance(&mut self) -> bool {
-        let Some(layer) = self.layers[..self.active_layer_count].first_mut() else {
-            return false;
+        let sort_key = {
+            let active_layers = self
+                .layers
+                .get_mut(..self.active_layer_count)
+                .expect("active layer count should be in bounds");
+            let Some(layer) = active_layers.first_mut() else {
+                return false;
+            };
+
+            layer.advance();
+            layer.next_capture.map(|_| layer.sort_key())
         };
 
-        layer.advance();
-        if layer.next_capture.is_some() {
-            let key = layer.sort_key();
-            let index = 1 + self.layers[1..self.active_layer_count]
+        let active_layers = self
+            .layers
+            .get_mut(..self.active_layer_count)
+            .expect("active layer count should be in bounds");
+
+        if let Some(sort_key) = sort_key {
+            let index = 1 + active_layers
+                .get(1..)
+                .expect("active layer tail should be in bounds")
                 .iter()
-                .position(|later_layer| key < later_layer.sort_key())
+                .position(|later_layer| sort_key < later_layer.sort_key())
                 .unwrap_or(self.active_layer_count - 1);
-            self.layers[0..index].rotate_left(1);
+            active_layers
+                .get_mut(..index)
+                .expect("rotation range should be in bounds")
+                .rotate_left(1);
         } else {
-            self.layers[0..self.active_layer_count].rotate_left(1);
+            active_layers.rotate_left(1);
             self.active_layer_count -= 1;
         }
 
@@ -229,10 +253,12 @@ struct SyntaxMapCapturesLayer<'a> {
 
 impl SyntaxMapCapturesLayer<'_> {
     fn advance(&mut self) {
-        self.next_capture = self
-            .captures
-            .next()
-            .map(|(query_match, capture_index)| query_match.captures[*capture_index]);
+        self.next_capture = self.captures.next().map(|(query_match, capture_index)| {
+            *query_match
+                .captures
+                .get(*capture_index)
+                .expect("capture index should be in bounds")
+        });
     }
 
     fn sort_key(&self) -> (usize, Reverse<usize>, usize) {
@@ -279,19 +305,19 @@ impl Deref for QueryCursorHandle {
     type Target = QueryCursor;
 
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref().unwrap()
+        self.0.as_ref().expect("query cursor should be present")
     }
 }
 
 impl DerefMut for QueryCursorHandle {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.as_mut().unwrap()
+        self.0.as_mut().expect("query cursor should be present")
     }
 }
 
 impl Drop for QueryCursorHandle {
     fn drop(&mut self) {
-        let mut cursor = self.0.take().unwrap();
+        let mut cursor = self.0.take().expect("query cursor should be present");
         cursor.set_byte_range(0..usize::MAX);
         cursor.set_point_range(Point::zero().to_ts_point()..Point::MAX.to_ts_point());
         cursor.set_containing_byte_range(0..usize::MAX);
@@ -369,10 +395,8 @@ impl SyntaxSnapshot {
     }
 
     pub fn reparse(&mut self, text: &text::BufferSnapshot, root_language: Arc<Language>) {
-        match self.reparse_inner(text, root_language, None) {
-            Ok(()) => {}
-            Err(ParseTimeout) => unreachable!("unbounded parse should not time out"),
-        }
+        self.reparse_inner(text, root_language, None)
+            .expect("unbounded parse should not time out");
     }
 
     pub fn reparse_with_timeout(
@@ -450,9 +474,10 @@ impl SyntaxSnapshot {
                                 Ordering::Less => panic!("layers out of order"),
                                 Ordering::Equal => {
                                     let language_id = Some(layer.language.id);
-                                    if language_id < previous_language_id {
-                                        panic!("layers out of order");
-                                    }
+                                    assert!(
+                                        language_id >= previous_language_id,
+                                        "layers out of order"
+                                    )
                                 }
                                 Ordering::Greater => {}
                             },

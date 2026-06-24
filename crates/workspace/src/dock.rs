@@ -175,7 +175,6 @@ pub struct Dock {
     panel_entries: Vec<PanelEntry>,
     is_open: bool,
     active_panel_index: Option<usize>,
-    #[allow(clippy::struct_field_names)]
     pub(crate) serialized_dock: Option<DockData>,
     focus_handle: FocusHandle,
     _focus_subscription: Subscription,

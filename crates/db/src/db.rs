@@ -162,18 +162,18 @@ impl AppDatabase {
     }
 
     pub fn global(cx: &App) -> &ThreadSafeConnection {
-        if let Some(db) = cx.try_global::<Self>() {
-            &db.0
-        } else {
-            #[cfg(any(test, feature = "test"))]
-            {
+        #[cfg(any(test, feature = "test"))]
+        {
+            if let Some(db) = cx.try_global::<Self>() {
+                &db.0
+            } else {
                 &TEST_APP_DATABASE.0
             }
+        }
 
-            #[cfg(not(any(test, feature = "test")))]
-            {
-                panic!("database not initialized")
-            }
+        #[cfg(not(any(test, feature = "test")))]
+        {
+            &cx.global::<Self>().0
         }
     }
 }

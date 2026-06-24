@@ -61,7 +61,7 @@ async fn test_native_fs_rename_ignore_if_exists_leaves_source_and_target_unchang
         )
         .await;
 
-    assert!(result.is_ok());
+    result.unwrap();
     assert_eq!(std::fs::read_to_string(&source).unwrap(), "from source");
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "from target");
 }

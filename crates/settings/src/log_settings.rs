@@ -23,7 +23,10 @@ pub struct LogSettings {
 impl Settings for LogSettings {
     fn from_settings(content: &SettingsContent) -> Self {
         LogSettings {
-            scopes: content.log.clone().unwrap(),
+            scopes: content
+                .log
+                .clone()
+                .expect("merged settings should include log settings"),
         }
     }
 }
