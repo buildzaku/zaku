@@ -76,8 +76,8 @@ gpui_platform = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
-workspace = { workspace = true, features = ["test-support"] }
-worktree = { workspace = true, features = ["test-support"] }
+workspace = { workspace = true, features = ["test"] }
+worktree = { workspace = true, features = ["test"] }

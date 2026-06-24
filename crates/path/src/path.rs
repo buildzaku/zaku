@@ -1,6 +1,6 @@
 mod rel_path;
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub use rel_path::rel_path;
 pub use rel_path::{RelPath, RelPathAncestors, RelPathBuf, RelPathComponents};
 

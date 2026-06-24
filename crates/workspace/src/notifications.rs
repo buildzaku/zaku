@@ -68,7 +68,7 @@ pub trait Notification:
 pub struct SuppressEvent;
 
 impl Workspace {
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn notification_ids(&self) -> Vec<NotificationId> {
         self.notifications
             .iter()

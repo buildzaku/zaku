@@ -13,7 +13,7 @@ name = "collections"
 path = "src/collections.rs"
 
 [features]
-test-support = []
+test = []
 
 [dependencies]
 gpui_util = { workspace = true }

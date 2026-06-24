@@ -645,7 +645,7 @@ impl StatusItemView for PanelButtons {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub mod test {
     use super::*;
 

@@ -17,7 +17,7 @@ name = "worktree_tests"
 path = "tests/integration/worktree_tests.rs"
 
 [features]
-test-support = ["gpui/test-support"]
+test = ["gpui/test-support"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -39,12 +39,12 @@ toml_edit = { workspace = true }
 util = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
 parking_lot = { workspace = true }
-path = { workspace = true, features = ["test-support"] }
+path = { workspace = true, features = ["test"] }
 pretty_assertions = { workspace = true }
 serde_json = { workspace = true }
 util_macros = { workspace = true }
-worktree = { workspace = true, features = ["test-support"] }
+worktree = { workspace = true, features = ["test"] }

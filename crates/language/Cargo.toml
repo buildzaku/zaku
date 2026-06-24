@@ -13,7 +13,7 @@ name = "language"
 path = "src/language.rs"
 
 [features]
-test-support = [
+test = [
     "gpui/test-support",
     "toml",
     "tree-sitter-html",

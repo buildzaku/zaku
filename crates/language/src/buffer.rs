@@ -364,7 +364,7 @@ impl Buffer {
             has_unsaved_edits: Cell::new((saved_version, false)),
             reload_task: None,
             reparse: None,
-            sync_parse_timeout: if cfg!(any(test, feature = "test-support")) {
+            sync_parse_timeout: if cfg!(any(test, feature = "test")) {
                 Some(Duration::from_millis(10))
             } else {
                 Some(Duration::from_millis(1))
@@ -437,7 +437,7 @@ impl Buffer {
     }
 
     pub fn set_language_async(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
-        self.set_language_inner(language, cfg!(any(test, feature = "test-support")), cx);
+        self.set_language_inner(language, cfg!(any(test, feature = "test")), cx);
     }
 
     pub fn set_language(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
@@ -463,7 +463,7 @@ impl Buffer {
         cx.emit(BufferEvent::LanguageChanged(has_fresh_language));
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn is_parsing(&self) -> bool {
         self.reparse.is_some()
     }

@@ -20,5 +20,5 @@ jiff = { workspace = true }
 log = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }

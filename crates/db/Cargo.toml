@@ -9,7 +9,7 @@ publish.workspace = true
 workspace = true
 
 [features]
-test-support = []
+test = []
 
 [lib]
 name = "db"
@@ -26,5 +26,5 @@ sql_macros = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }

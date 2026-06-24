@@ -22,7 +22,7 @@ use std::{
     },
 };
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use sql::thread_safe_connection;
 use sql::thread_safe_connection::ConnectionTarget;
 use sql_macros::sql;
@@ -41,7 +41,7 @@ const DB_INIT_QUERY: &str = sql!(
 const FALLBACK_MEMORY_DB_NAME: &str = "FALLBACK_MEMORY_DB";
 const DB_NAME: &str = "db.sqlite";
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 static TEST_APP_DATABASE: LazyLock<AppDatabase> = LazyLock::new(AppDatabase::test_new);
 
 static FILE_DB_FAILED: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
@@ -102,7 +102,7 @@ async fn open_fallback_db() -> ThreadSafeConnection {
         .expect("fallback in-memory database should open")
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub async fn open_test_db(db_name: &str) -> ThreadSafeConnection {
     ThreadSafeConnection::builder(ConnectionTarget::memory(db_name))
         .with_db_init_query(DB_INIT_QUERY)
@@ -151,7 +151,7 @@ impl AppDatabase {
         app_db
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new() -> Self {
         let name = format!("test-db-{}", uuid::Uuid::new_v4());
         let connection = smol::block_on(open_test_db(&name));
@@ -165,12 +165,12 @@ impl AppDatabase {
         if let Some(db) = cx.try_global::<Self>() {
             &db.0
         } else {
-            #[cfg(any(test, feature = "test-support"))]
+            #[cfg(any(test, feature = "test"))]
             {
                 &TEST_APP_DATABASE.0
             }
 
-            #[cfg(not(any(test, feature = "test-support")))]
+            #[cfg(not(any(test, feature = "test")))]
             {
                 panic!("database not initialized")
             }
@@ -204,7 +204,7 @@ macro_rules! static_connection {
                 $t($crate::AppDatabase::global(cx).clone())
             }
 
-            #[cfg(any(test, feature = "test-support"))]
+            #[cfg(any(test, feature = "test"))]
             pub async fn test_open(name: &'static str) -> Self {
                 let connection = $t($crate::open_test_db(name).await);
                 connection

@@ -27,7 +27,7 @@ pub use text::{
 };
 
 use parking_lot::Mutex;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use std::borrow::Cow;
 use std::{
     fmt,
@@ -263,7 +263,7 @@ where
     result
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn html_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/html/config.toml"))
@@ -292,7 +292,7 @@ pub fn html_lang() -> Arc<Language> {
     Arc::new(language)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn json_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/json/config.toml"))
@@ -321,7 +321,7 @@ pub fn json_lang() -> Arc<Language> {
     Arc::new(language)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn jsonc_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/jsonc/config.toml"))
@@ -352,7 +352,7 @@ pub fn jsonc_lang() -> Arc<Language> {
     Arc::new(language)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn xml_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/xml/config.toml"))

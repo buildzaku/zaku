@@ -9,7 +9,7 @@ publish.workspace = true
 workspace = true
 
 [features]
-test-support = []
+test = []
 
 [lib]
 name = "http_client"

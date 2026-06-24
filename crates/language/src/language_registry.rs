@@ -96,7 +96,7 @@ impl LanguageRegistry {
         registry
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(executor: BackgroundExecutor) -> Self {
         Self::new(executor)
     }
@@ -136,7 +136,7 @@ impl LanguageRegistry {
         state.notify_subscribers();
     }
 
-    #[cfg(any(feature = "test-support", test))]
+    #[cfg(any(test, feature = "test"))]
     pub fn register_test_language(&self, config: LanguageConfig) {
         self.register_language(
             config.name.clone(),

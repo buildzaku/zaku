@@ -3,10 +3,10 @@ mod async_body;
 use futures::future::BoxFuture;
 use http::HeaderValue;
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use parking_lot::Mutex;
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use std::{any::type_name, fmt, sync::Arc};
 
 pub use http::{self, Method, Request, Response, StatusCode, Uri, request::Builder};
@@ -80,13 +80,13 @@ pub trait HttpClient: 'static + Send + Sync {
         }
     }
 
-    #[cfg(feature = "test-support")]
+    #[cfg(feature = "test")]
     fn as_fake(&self) -> &FakeHttpClient {
         panic!("as_fake should only be called for FakeHttpClient");
     }
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 type FakeHttpHandler = Arc<
     dyn Fn(Request<AsyncBody>) -> BoxFuture<'static, anyhow::Result<Response<AsyncBody>>>
         + Send
@@ -94,13 +94,13 @@ type FakeHttpHandler = Arc<
         + 'static,
 >;
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 pub struct FakeHttpClient {
     handler: Mutex<Option<FakeHttpHandler>>,
     user_agent: HeaderValue,
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 impl FakeHttpClient {
     pub fn create<Fut, F>(handler: F) -> Arc<Self>
     where
@@ -146,14 +146,14 @@ impl FakeHttpClient {
     }
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 impl fmt::Debug for FakeHttpClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FakeHttpClient").finish()
     }
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 impl HttpClient for FakeHttpClient {
     fn send(
         &self,

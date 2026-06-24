@@ -9,15 +9,15 @@ publish.workspace = true
 workspace = true
 
 [features]
-test-support = [
-    "db/test-support",
-    "fs/test-support",
+test = [
+    "db/test",
+    "fs/test",
     "gpui/test-support",
-    "http_client/test-support",
-    "project/test-support",
-    "session/test-support",
-    "settings/test-support",
-    "util/test-support",
+    "http_client/test",
+    "project/test",
+    "session/test",
+    "settings/test",
+    "util/test",
 ]
 
 [lib]
@@ -54,14 +54,14 @@ util = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-db = { workspace = true, features = ["test-support"] }
-fs = { workspace = true, features = ["test-support"] }
+db = { workspace = true, features = ["test"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
-http_client = { workspace = true, features = ["test-support"] }
-path = { workspace = true, features = ["test-support"] }
-project = { workspace = true, features = ["test-support"] }
-session = { workspace = true, features = ["test-support"] }
-settings = { workspace = true, features = ["test-support"] }
-util = { workspace = true, features = ["test-support"] }
+http_client = { workspace = true, features = ["test"] }
+path = { workspace = true, features = ["test"] }
+project = { workspace = true, features = ["test"] }
+session = { workspace = true, features = ["test"] }
+settings = { workspace = true, features = ["test"] }
+util = { workspace = true, features = ["test"] }
 util_macros = { workspace = true }
-worktree = { workspace = true, features = ["test-support"] }
+worktree = { workspace = true, features = ["test"] }

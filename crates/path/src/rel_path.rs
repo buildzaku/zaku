@@ -304,7 +304,7 @@ impl PartialEq<str> for RelPath {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 #[track_caller]
 pub fn rel_path(path: &str) -> &RelPath {
     RelPath::unix(path).expect("test path should be relative")

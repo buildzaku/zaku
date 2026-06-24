@@ -10,7 +10,7 @@ pub use worktree::{
 };
 
 use futures::{FutureExt, StreamExt};
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use gpui::TestAppContext;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
 use std::{
@@ -271,7 +271,7 @@ impl Project {
         })
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub async fn test_new(
         fs: Arc<dyn Fs>,
         root_path: &Path,

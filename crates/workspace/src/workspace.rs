@@ -37,7 +37,7 @@ use gpui::{
     PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions,
     WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use gpui::{TestAppContext, VisualTestContext};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -63,7 +63,7 @@ use ui::utils;
 use ui::{StyledTypography, h_flex};
 use util::ResultExt;
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use session::Session;
 
 use crate::{
@@ -199,7 +199,7 @@ impl SharedState {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(fs: Arc<dyn fs::Fs>, cx: &mut App) -> Arc<Self> {
         use http_client::FakeHttpClient;
 
@@ -762,7 +762,7 @@ impl Root {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn build_workspace<'a>(
     project: &Entity<Project>,
     cx: &'a mut TestAppContext,
@@ -2220,7 +2220,7 @@ impl Workspace {
         this
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(project: Entity<Project>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let shared_state = SharedState::global(cx);
         window.activate_window();

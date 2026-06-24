@@ -133,7 +133,7 @@ impl SettingsStore {
         parse_status
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(cx: &mut App) -> Self {
         Self::new(cx, crate::default_settings())
     }

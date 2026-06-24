@@ -13,7 +13,7 @@ name = "util"
 path = "src/util.rs"
 
 [features]
-test-support = []
+test = []
 
 [dependencies]
 log = { workspace = true }

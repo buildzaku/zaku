@@ -10,10 +10,10 @@ pub use settings::WorktreeId;
 
 use anyhow::{Context as AnyhowContext, anyhow};
 use async_lock::Mutex;
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use futures::future::LocalBoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use gpui::TestAppContext;
 use gpui::{
     App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Priority, Task,
@@ -1087,12 +1087,12 @@ pub enum WorktreeEvent {
 impl EventEmitter<WorktreeEvent> for Worktree {}
 
 pub trait WorktreeModelHandle {
-    #[cfg(feature = "test-support")]
+    #[cfg(feature = "test")]
     fn flush_fs_events<'a>(&self, cx: &'a mut TestAppContext) -> LocalBoxFuture<'a, ()>;
 }
 
 impl WorktreeModelHandle for Entity<Worktree> {
-    #[cfg(feature = "test-support")]
+    #[cfg(feature = "test")]
     fn flush_fs_events<'a>(&self, cx: &'a mut TestAppContext) -> LocalBoxFuture<'a, ()> {
         let file_name = "fs-event-sentinel";
         let worktree = self.clone();
@@ -1169,7 +1169,7 @@ impl WorktreeSnapshot {
         entry
     }
 
-    #[cfg(feature = "test-support")]
+    #[cfg(feature = "test")]
     fn check_invariants(&self) {
         use std::collections::BTreeSet;
 
@@ -2259,7 +2259,7 @@ impl BackgroundScannerState {
             self.changed_paths.insert(index, Arc::clone(parent_path));
         }
 
-        #[cfg(feature = "test-support")]
+        #[cfg(feature = "test")]
         self.snapshot.check_invariants();
     }
 
@@ -2267,7 +2267,7 @@ impl BackgroundScannerState {
         self.removed_entries.remove(&entry.inode);
         self.snapshot.insert_entry(entry);
 
-        #[cfg(feature = "test-support")]
+        #[cfg(feature = "test")]
         self.snapshot.check_invariants();
     }
 
@@ -2315,7 +2315,7 @@ impl BackgroundScannerState {
             watcher.remove(removed_dir_abs_path.as_path()).log_err();
         }
 
-        #[cfg(feature = "test-support")]
+        #[cfg(feature = "test")]
         self.snapshot.check_invariants();
     }
 }

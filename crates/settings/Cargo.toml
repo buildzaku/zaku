@@ -13,7 +13,7 @@ name = "settings"
 path = "src/settings.rs"
 
 [features]
-test-support = ["gpui/test-support", "fs/test-support"]
+test = ["gpui/test-support", "fs/test"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -34,7 +34,7 @@ settings_macros = { workspace = true }
 util = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
 util_macros = { workspace = true }

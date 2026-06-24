@@ -14,7 +14,7 @@ path = "src/syntax_theme.rs"
 
 [features]
 default = []
-test-support = ["gpui/test-support"]
+test = ["gpui/test-support"]
 
 [dependencies]
 gpui = { workspace = true }

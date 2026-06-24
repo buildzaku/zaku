@@ -1,5 +1,5 @@
 use gpui::HighlightStyle;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use gpui::Hsla;
 use std::{
     collections::{BTreeMap, btree_map::Entry},
@@ -30,7 +30,7 @@ impl SyntaxTheme {
             .collect()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(colors: impl IntoIterator<Item = (&'static str, Hsla)>) -> Self {
         Self::test_new_styles(colors.into_iter().map(|(key, color)| {
             (
@@ -43,7 +43,7 @@ impl SyntaxTheme {
         }))
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new_styles(
         colors: impl IntoIterator<Item = (&'static str, HighlightStyle)>,
     ) -> Self {

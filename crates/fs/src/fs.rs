@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use serde_json::Value;
 
 use std::{
@@ -816,14 +816,14 @@ impl Fs for NativeFs {
     }
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 pub struct TempFs {
     path: PathBuf,
     executor: BackgroundExecutor,
     _temp_dir: TempDir,
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 impl TempFs {
     pub fn new(executor: BackgroundExecutor) -> Arc<Self> {
         let temp_dir = TempDir::new().unwrap();
@@ -873,7 +873,7 @@ impl TempFs {
     }
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 #[async_trait]
 impl Fs for TempFs {
     async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
@@ -1194,7 +1194,7 @@ fn is_filesystem_case_sensitive() -> anyhow::Result<bool> {
     Ok(case_sensitive)
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 fn resolve_path(root: &Path, path: &Path) -> PathBuf {
     if !path.is_absolute() {
         return root.join(path);
