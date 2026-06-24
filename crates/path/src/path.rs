@@ -440,7 +440,7 @@ impl<T: AsRef<Path>> PathExt for T {
             WTF8::validate(bytes)
                 .then(|| {
                     Self::from(Path::new(
-                        // Safety: `WTF8::validate(bytes)` above guarantees that bytes are valid WTF-8
+                        // SAFETY: `WTF8::validate(bytes)` above guarantees that bytes are valid WTF-8
                         // for `OsStr::from_encoded_bytes_unchecked` on Windows.
                         unsafe { OsStr::from_encoded_bytes_unchecked(bytes) },
                     ))
@@ -578,14 +578,14 @@ impl SanitizedPath {
     }
 
     pub fn unchecked_new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this shared reference cast is valid.
         unsafe { &*(std::ptr::from_ref::<Path>(path.as_ref()) as *const Self) }
     }
 
     pub fn from_arc(path: Arc<Path>) -> Arc<Self> {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         return unsafe { Arc::from_raw(Arc::into_raw(path) as *const Self) };
 
@@ -593,7 +593,7 @@ impl SanitizedPath {
         {
             let simplified = dunce::simplified(path.as_ref());
             if simplified == path.as_ref() {
-                // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+                // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
                 // extra invariants, so this `Arc` cast is valid.
                 unsafe { Arc::from_raw(Arc::into_raw(path) as *const Self) }
             } else {
@@ -607,13 +607,13 @@ impl SanitizedPath {
     }
 
     pub fn cast_arc(path: Arc<Self>) -> Arc<Path> {
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         unsafe { Arc::from_raw(Arc::into_raw(path) as *const Path) }
     }
 
     pub fn cast_arc_ref(path: &Arc<Self>) -> &Arc<Path> {
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this reference to `Arc` cast is valid.
         unsafe { &*std::ptr::from_ref::<Arc<Self>>(path).cast::<Arc<Path>>() }
     }
@@ -643,7 +643,7 @@ impl From<&SanitizedPath> for Arc<SanitizedPath> {
     fn from(sanitized_path: &SanitizedPath) -> Self {
         let path: Arc<Path> = sanitized_path.0.into();
 
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         unsafe { Arc::from_raw(Arc::into_raw(path) as *const SanitizedPath) }
     }

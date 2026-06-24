@@ -88,7 +88,7 @@ impl RelPath {
     }
 
     fn new_unchecked(value: &str) -> &Self {
-        // Safety: `RelPath` is a transparent wrapper around `str` and adds no
+        // SAFETY: `RelPath` is a transparent wrapper around `str` and adds no
         // extra invariants, so this shared reference cast is valid.
         unsafe { &*(std::ptr::from_ref::<str>(value) as *const Self) }
     }
@@ -266,7 +266,7 @@ impl From<&RelPath> for Arc<RelPath> {
     fn from(value: &RelPath) -> Self {
         let bytes: Arc<str> = Arc::from(value.as_unix_str());
 
-        // Safety: `RelPath` is a transparent wrapper around `str` and adds no
+        // SAFETY: `RelPath` is a transparent wrapper around `str` and adds no
         // extra invariants, so this `Arc` cast is valid.
         unsafe { Arc::from_raw(Arc::into_raw(bytes) as *const RelPath) }
     }

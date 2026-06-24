@@ -122,7 +122,7 @@ fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
     let size = {
         let destination = buffer.chunk_mut();
 
-        // Safety: `chunk_mut()` returns a `&mut UninitSlice`, and `UninitSlice` is a
+        // SAFETY: `chunk_mut()` returns a `&mut UninitSlice`, and `UninitSlice` is a
         // transparent wrapper around `[MaybeUninit<u8>]`.
         let destination = unsafe { destination.as_uninit_slice_mut() };
         let mut buffer = tokio::io::ReadBuf::uninit(destination);
@@ -136,7 +136,7 @@ fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
         buffer.filled().len()
     };
 
-    // Safety: This is guaranteed to be the number of initialized (and read)
+    // SAFETY: This is guaranteed to be the number of initialized (and read)
     // bytes due to the invariants provided by `ReadBuf::filled`.
     unsafe {
         buffer.advance_mut(size);

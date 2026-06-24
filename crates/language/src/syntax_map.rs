@@ -105,7 +105,7 @@ impl<'a> SyntaxMapCaptures<'a> {
             };
 
             let mut query_cursor = QueryCursorHandle::new();
-            // Safety: `QueryCaptures` stores the cursor pointer and the layer keeps
+            // SAFETY: `QueryCaptures` stores the cursor pointer and the layer keeps
             // `query_cursor` alive until after `captures` is dropped.
             let cursor = unsafe {
                 std::mem::transmute::<&mut QueryCursor, &'static mut QueryCursor>(

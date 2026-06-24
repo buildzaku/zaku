@@ -184,13 +184,13 @@ impl FileHandle for std::fs::File {
         let fd = self.as_fd();
         let mut path_buf = MaybeUninit::<[u8; libc::PATH_MAX as usize]>::uninit();
 
-        // Safety: `fd` remains valid for the duration of this call and `path_buf`
+        // SAFETY: `fd` remains valid for the duration of this call and `path_buf`
         // provides writable `PATH_MAX`-sized storage for the kernel to fill.
         let result = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETPATH, path_buf.as_mut_ptr()) };
 
         anyhow::ensure!(result != -1, "fcntl returned -1");
 
-        // Safety: Successful `libc::fcntl()` call above populates `path_buf` with
+        // SAFETY: Successful `libc::fcntl()` call above populates `path_buf` with
         // a valid C string.
         let c_str = unsafe { CStr::from_ptr(path_buf.as_ptr().cast()) };
 
@@ -205,7 +205,7 @@ impl FileHandle for std::fs::File {
     fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
         let handle = HANDLE(self.as_raw_handle());
 
-        // Safety: `handle` remains valid for the duration of this call and the empty
+        // SAFETY: `handle` remains valid for the duration of this call and the empty
         // buffer is used to query the required path length.
         let required_len =
             unsafe { GetFinalPathNameByHandleW(handle, &mut [], FILE_NAME_NORMALIZED) };
@@ -217,7 +217,7 @@ impl FileHandle for std::fs::File {
 
         let mut buf = vec![0u16; required_len as usize + 1];
 
-        // Safety: `handle` remains valid for the duration of this call and `buf`
+        // SAFETY: `handle` remains valid for the duration of this call and `buf`
         // provides writable storage for the returned UTF-16 path.
         let written = unsafe { GetFinalPathNameByHandleW(handle, &mut buf, FILE_NAME_NORMALIZED) };
 
@@ -301,7 +301,7 @@ impl NativeFs {
             let path_hstring = HSTRING::from(abs_path.as_os_str());
             let mut volume_buffer = vec![0u16; abs_path.as_os_str().len() + 2];
 
-            // Safety: `path_hstring` remains valid for the duration of this call and
+            // SAFETY: `path_hstring` remains valid for the duration of this call and
             // `volume_buffer` provides writable storage for the returned UTF-16 volume root.
             unsafe { GetVolumePathNameW(&path_hstring, &mut volume_buffer)? };
 
@@ -332,7 +332,7 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     let source = path_to_c_string(source)?;
     let target = path_to_c_string(target)?;
 
-    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
+    // SAFETY: `source` and `target` remain valid NUL-terminated C strings for the
     // duration of this call.
     let result = unsafe {
         libc::syscall(
@@ -357,7 +357,7 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     let source = path_to_c_string(source)?;
     let target = path_to_c_string(target)?;
 
-    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
+    // SAFETY: `source` and `target` remain valid NUL-terminated C strings for the
     // duration of this call.
     let result = unsafe { libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL) };
 
@@ -373,7 +373,7 @@ fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
 
-    // Safety: `source` and `target` remain valid NUL-terminated UTF-16 strings for
+    // SAFETY: `source` and `target` remain valid NUL-terminated UTF-16 strings for
     // the duration of this call.
     unsafe {
         MoveFileExW(
@@ -1219,11 +1219,11 @@ async fn file_id(path: impl AsRef<Path>) -> anyhow::Result<u64> {
     smol::unblock(move || {
         let mut info = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
 
-        // Safety: `file` remains valid for the duration of this call, so the raw handle remains valid,
+        // SAFETY: `file` remains valid for the duration of this call, so the raw handle remains valid,
         // and `info.as_mut_ptr()` points to writable storage for `BY_HANDLE_FILE_INFORMATION`.
         unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), info.as_mut_ptr())? };
 
-        // Safety: A successful `GetFileInformationByHandle` call above guarantees
+        // SAFETY: A successful `GetFileInformationByHandle` call above guarantees
         // that the output buffer was filled.
         let info = unsafe { info.assume_init() };
 

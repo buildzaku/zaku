@@ -60,7 +60,9 @@ impl<'conn> SavepointGuard<'conn> {
 
 impl Drop for SavepointGuard<'_> {
     fn drop(&mut self) {
-        let _ = self.finish();
+        if let Err(error) = self.finish() {
+            drop(error);
+        }
     }
 }
 

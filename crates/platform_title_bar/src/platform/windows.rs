@@ -25,7 +25,7 @@ impl WindowsWindowControls {
         version.dwOSVersionInfoSize = u32::try_from(std::mem::size_of_val(&version))
             .expect("OSVERSIONINFOW size should fit in u32");
 
-        // Safety: RtlGetVersion writes to the provided output buffer, and `version`
+        // SAFETY: RtlGetVersion writes to the provided output buffer, and `version`
         // remains valid for the duration of the call.
         let status = unsafe { SystemServices::RtlGetVersion(&raw mut version) };
 
