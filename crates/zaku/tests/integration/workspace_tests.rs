@@ -35,7 +35,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     let session = Session::new(Uuid::new_v4().to_string(), kv_store.clone()).await;
 
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
+    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
     cx.update(|cx| {
         shared_state
             .session

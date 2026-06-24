@@ -101,7 +101,7 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
+    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
     init_test(shared_state.clone(), cx);
 
     let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
@@ -189,7 +189,7 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
+    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
     init_test(shared_state.clone(), cx);
 
     let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
@@ -268,7 +268,7 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
 #[gpui::test]
 fn test_action_namespaces(cx: &mut TestAppContext) {
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
+    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
     init_test(shared_state, cx);
 
     cx.update(|cx| {

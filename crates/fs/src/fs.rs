@@ -19,6 +19,7 @@ use std::{
         Arc,
         atomic::{AtomicU8, Ordering},
     },
+    task,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -77,6 +78,34 @@ use crate::fs_watcher::FsWatcher;
 pub trait Watcher: Send + Sync {
     fn add(&self, path: &Path) -> anyhow::Result<()>;
     fn remove(&self, path: &Path) -> anyhow::Result<()>;
+}
+
+struct WatchStream {
+    stream: Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>>,
+    _watcher: Arc<dyn Watcher>,
+}
+
+impl WatchStream {
+    fn new(
+        stream: Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>>,
+        watcher: Arc<dyn Watcher>,
+    ) -> Self {
+        Self {
+            stream,
+            _watcher: watcher,
+        }
+    }
+}
+
+impl Stream for WatchStream {
+    type Item = Vec<PathEvent>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        context: &mut task::Context<'_>,
+    ) -> task::Poll<Option<Self::Item>> {
+        self.stream.as_mut().poll_next(context)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -744,25 +773,22 @@ impl Fs for NativeFs {
             }
         }
 
-        (
-            Box::pin(rx.filter_map({
-                let watcher = watcher.clone();
+        let stream: Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>> = Box::pin(rx.filter_map({
+            let executor = executor.clone();
+
+            move |()| {
+                let pending_paths = pending_paths.clone();
                 let executor = executor.clone();
 
-                move |()| {
-                    let _ = watcher.clone();
-                    let pending_paths = pending_paths.clone();
-                    let executor = executor.clone();
-
-                    async move {
-                        executor.timer(latency).await;
-                        let paths = std::mem::take(&mut *pending_paths.lock());
-                        (!paths.is_empty()).then_some(paths)
-                    }
+                async move {
+                    executor.timer(latency).await;
+                    let paths = std::mem::take(&mut *pending_paths.lock());
+                    (!paths.is_empty()).then_some(paths)
                 }
-            })),
-            watcher,
-        )
+            }
+        }));
+
+        (Box::pin(WatchStream::new(stream, watcher.clone())), watcher)
     }
 
     async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()> {
@@ -842,39 +868,43 @@ impl TempFs {
     }
 
     pub fn insert_tree(&self, path: impl AsRef<Path>, tree: Value) {
-        fn inner(directory: &Path, path: &Path, tree: Value) {
+        fn inner(directory: &Path, path: &Path, tree: Value) -> anyhow::Result<()> {
             match tree {
                 Value::Object(map) => {
                     let absolute_path = resolve_path(directory, path);
                     std::fs::create_dir_all(&absolute_path)
-                        .expect("failed to create test directory");
+                        .context("failed to create test directory")?;
+
                     for (name, contents) in map {
                         let mut new_path = PathBuf::from(path);
                         new_path.push(name);
-                        inner(directory, &new_path, contents);
+                        inner(directory, &new_path, contents)?;
                     }
                 }
                 Value::Null => {
                     let absolute_path = resolve_path(directory, path);
                     std::fs::create_dir_all(&absolute_path)
-                        .expect("failed to create test directory");
+                        .context("failed to create test directory")?;
                 }
                 Value::String(contents) => {
                     let absolute_path = resolve_path(directory, path);
                     if let Some(parent) = absolute_path.parent() {
                         std::fs::create_dir_all(parent)
-                            .expect("failed to create test file parent directory");
+                            .context("failed to create test file parent directory")?;
                     }
+
                     std::fs::write(&absolute_path, contents.as_bytes())
-                        .expect("failed to write test file");
+                        .context("failed to write test file")?;
                 }
                 _ => {
-                    panic!("JSON object must contain only objects, strings, or null");
+                    anyhow::bail!("JSON object must contain only objects, strings, or null");
                 }
             }
+
+            Ok(())
         }
 
-        inner(self.path(), path.as_ref(), tree);
+        inner(self.path(), path.as_ref(), tree).expect("failed to insert test filesystem tree");
     }
 }
 

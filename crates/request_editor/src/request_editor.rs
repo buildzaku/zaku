@@ -1692,7 +1692,7 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use fs::{Fs, TempFs};
-    use http_client::{Response, StatusCode};
+    use http_client::{FakeHttpClient, Response, StatusCode};
     use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -1739,8 +1739,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
-        let http_client = shared_state.http_client.as_fake();
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let shared_state =
+            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
 
@@ -1823,8 +1824,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
-        let http_client = shared_state.http_client.as_fake();
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let shared_state =
+            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
 
@@ -1929,8 +1931,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
-        let http_client = shared_state.http_client.as_fake();
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let shared_state =
+            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         let first_rx = Arc::new(Mutex::new(Some(first_rx)));
@@ -2087,8 +2090,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
-        let http_client = shared_state.http_client.as_fake();
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let shared_state =
+            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         let first_rx = Arc::new(Mutex::new(Some(first_rx)));
@@ -2240,7 +2244,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
 
         init_test(shared_state, cx);
 
@@ -2369,7 +2373,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), cx));
+        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
 
         init_test(shared_state, cx);
 
