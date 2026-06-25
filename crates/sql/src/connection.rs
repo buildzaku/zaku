@@ -6,7 +6,7 @@ use libsqlite3_sys::{
     SQLITE_OPEN_NOMUTEX, SQLITE_OPEN_READWRITE, SQLITE_OPEN_URI, SQLITE_ROW,
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::ffi::OsStrExt;
 
 use std::{
@@ -22,10 +22,6 @@ pub struct Connection {
     _marker: PhantomData<sqlite3::sqlite3>,
 }
 
-// Safety: Connection owns its sqlite3 handle, so moving it to another
-// thread transfers that ownership instead of sharing the handle.
-unsafe impl Send for Connection {}
-
 impl Connection {
     fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let path = path_to_cstring(path.as_ref())?;
@@ -35,7 +31,7 @@ impl Connection {
             _marker: PhantomData,
         };
 
-        // Safety: CString path lives for the duration of this call and
+        // SAFETY: CString path lives for the duration of this call and
         // connection.sqlite3 is a valid out-pointer for SQLite to initialize.
         let result_code = unsafe {
             sqlite3::sqlite3_open_v2(
@@ -93,7 +89,7 @@ impl Connection {
         self.ensure_ok(result_code)
     }
 
-    pub(crate) fn with_write<T>(&self, f: impl FnOnce(&Connection) -> T) -> T {
+    pub(crate) fn with_write<T>(&self, write_operation: impl FnOnce(&Connection) -> T) -> T {
         struct RestoreWrite<'a> {
             write: &'a Cell<bool>,
             previous: bool,
@@ -111,7 +107,7 @@ impl Connection {
             previous,
         };
 
-        f(self)
+        write_operation(self)
     }
 
     pub fn sql_has_syntax_error(&self, sql: &str) -> Option<(String, usize)> {
@@ -150,7 +146,7 @@ impl Connection {
                         return Some((format!("{error:#}"), 0));
                     }
 
-                    // Safety: temp_connection.sqlite3 is a valid SQLite handle, remaining_sql is a
+                    // SAFETY: temp_connection.sqlite3 is a valid SQLite handle, remaining_sql is a
                     // NUL-terminated string, raw_statement_ptr and remaining_sql_ptr are
                     // valid out-pointers for SQLite to write.
                     unsafe {
@@ -169,7 +165,7 @@ impl Connection {
                         temp_connection.error_message(),
                     )
                 } else {
-                    // Safety: self.sqlite3 is a valid SQLite handle, remaining_sql is a
+                    // SAFETY: self.sqlite3 is a valid SQLite handle, remaining_sql is a
                     // NUL-terminated string, raw_statement_ptr and remaining_sql_ptr are
                     // valid out-pointers for SQLite to write.
                     unsafe {
@@ -185,7 +181,7 @@ impl Connection {
                     (self.error_code(), self.error_offset(), self.error_message())
                 };
 
-            // Safety: raw_statement_ptr came from sqlite3_prepare_v2 above and
+            // SAFETY: raw_statement_ptr came from sqlite3_prepare_v2 above and
             // sqlite3_finalize accepts null if prepare did not allocate a statement.
             unsafe {
                 sqlite3::sqlite3_finalize(raw_statement_ptr);
@@ -201,7 +197,7 @@ impl Connection {
                 return Some((error_message, error_offset + sub_statement_correction));
             }
 
-            // Safety: sqlite3_prepare_v2 writes remaining_sql_ptr to point at the unused
+            // SAFETY: sqlite3_prepare_v2 writes remaining_sql_ptr to point at the unused
             // tail of sql, which stays NUL-terminated and alive for this borrow.
             remaining_sql = unsafe { CStr::from_ptr(remaining_sql_ptr) };
             alter_table = None;
@@ -210,13 +206,13 @@ impl Connection {
     }
 
     fn error_code(&self) -> std::ffi::c_int {
-        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
+        // SAFETY: self.sqlite3 is a valid SQLite handle owned by Connection
         // and Drop is the only place that closes this handle.
         unsafe { sqlite3::sqlite3_errcode(self.sqlite3) }
     }
 
     fn error_offset(&self) -> std::ffi::c_int {
-        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
+        // SAFETY: self.sqlite3 is a valid SQLite handle owned by Connection
         // and Drop is the only place that closes this handle.
         unsafe { sqlite3::sqlite3_error_offset(self.sqlite3) }
     }
@@ -226,7 +222,7 @@ impl Connection {
             return None;
         }
 
-        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
+        // SAFETY: self.sqlite3 is a valid SQLite handle owned by Connection
         // and Drop is the only place that closes this handle.
         let message_ptr = unsafe { sqlite3::sqlite3_errmsg(self.sqlite3) };
         if message_ptr.is_null() {
@@ -234,7 +230,7 @@ impl Connection {
         } else {
             Some(
                 String::from_utf8_lossy(
-                    // Safety: The null check above guarantees message_ptr is non-null and SQLite
+                    // SAFETY: The null check above guarantees message_ptr is non-null and SQLite
                     // returns a NUL-terminated error message string for CStr::from_ptr to consume.
                     unsafe { CStr::from_ptr(message_ptr) }.to_bytes(),
                 )
@@ -250,13 +246,17 @@ impl Drop for Connection {
             return;
         }
 
-        // Safety: self.sqlite3 is a valid SQLite handle owned by Connection
+        // SAFETY: self.sqlite3 is a valid SQLite handle owned by Connection
         // and this is the only place that closes the handle.
         unsafe { sqlite3::sqlite3_close(self.sqlite3) };
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+// SAFETY: Connection owns its sqlite3 handle, so moving it to another
+// thread transfers that ownership instead of sharing the handle.
+unsafe impl Send for Connection {}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn path_to_cstring(path: &Path) -> anyhow::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
@@ -318,14 +318,14 @@ mod tests {
     use std::{panic::AssertUnwindSafe, path::PathBuf};
     use uuid::Uuid;
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::{
         ffi::OsString,
         os::unix::ffi::{OsStrExt, OsStringExt},
         path::Path,
     };
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn test_path_to_cstring_preserves_non_utf8_bytes() {
         let path_bytes = OsString::from_vec(vec![b'd', b'b', 0x80]);
@@ -476,7 +476,7 @@ mod tests {
         );
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn test_path_bytes_round_trip() {
         let connection = Connection::open_memory(Some("test_path_bytes_round_trip"));
@@ -506,30 +506,22 @@ mod tests {
         let connection =
             Connection::open_memory(Some("test_read_out_of_range_unsigned_values_fail"));
 
-        assert!(
-            connection
-                .select_row::<u64>("SELECT -1")
-                .and_then(|mut f| f())
-                .is_err()
-        );
-        assert!(
-            connection
-                .select_row::<u32>("SELECT 5000000000")
-                .and_then(|mut f| f())
-                .is_err()
-        );
-        assert!(
-            connection
-                .select_row::<u16>("SELECT 70000")
-                .and_then(|mut f| f())
-                .is_err()
-        );
-        assert!(
-            connection
-                .select_row::<usize>("SELECT -1")
-                .and_then(|mut f| f())
-                .is_err()
-        );
+        connection
+            .select_row::<u64>("SELECT -1")
+            .and_then(|mut f| f())
+            .unwrap_err();
+        connection
+            .select_row::<u32>("SELECT 5000000000")
+            .and_then(|mut f| f())
+            .unwrap_err();
+        connection
+            .select_row::<u16>("SELECT 70000")
+            .and_then(|mut f| f())
+            .unwrap_err();
+        connection
+            .select_row::<usize>("SELECT -1")
+            .and_then(|mut f| f())
+            .unwrap_err();
     }
 
     #[test]
@@ -537,12 +529,10 @@ mod tests {
         let connection =
             Connection::open_memory(Some("test_null_text_and_blob_require_option_columns"));
 
-        assert!(
-            connection
-                .select_row::<String>("SELECT CAST(NULL AS TEXT)")
-                .and_then(|mut f| f())
-                .is_err()
-        );
+        connection
+            .select_row::<String>("SELECT CAST(NULL AS TEXT)")
+            .and_then(|mut f| f())
+            .unwrap_err();
         assert_eq!(
             connection
                 .select_row::<Option<String>>("SELECT CAST(NULL AS TEXT)")
@@ -557,12 +547,10 @@ mod tests {
                 .unwrap(),
             Some(String::new())
         );
-        assert!(
-            connection
-                .select_row::<Vec<u8>>("SELECT CAST(NULL AS BLOB)")
-                .and_then(|mut f| f())
-                .is_err()
-        );
+        connection
+            .select_row::<Vec<u8>>("SELECT CAST(NULL AS BLOB)")
+            .and_then(|mut f| f())
+            .unwrap_err();
         assert_eq!(
             connection
                 .select_row::<Option<Vec<u8>>>("SELECT CAST(NULL AS BLOB)")

@@ -10,10 +10,10 @@ pub use settings::WorktreeId;
 
 use anyhow::{Context as AnyhowContext, anyhow};
 use async_lock::Mutex;
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use futures::future::LocalBoxFuture;
 use futures::{FutureExt, Stream, StreamExt};
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use gpui::TestAppContext;
 use gpui::{
     App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, EventEmitter, Priority, Task,
@@ -62,6 +62,149 @@ pub struct Worktree {
 }
 
 impl Worktree {
+    pub async fn new(
+        path: impl Into<Arc<Path>>,
+        visible: bool,
+        fs: Arc<dyn Fs>,
+        next_entry_id: Arc<AtomicUsize>,
+        scanning_enabled: bool,
+        worktree_id: WorktreeId,
+        cx: &mut AsyncApp,
+    ) -> anyhow::Result<Entity<Self>> {
+        let opened_abs_path = path.into();
+
+        let metadata = fs
+            .metadata(opened_abs_path.as_ref())
+            .await
+            .context("failed to stat worktree path")?;
+
+        let path_style = PathStyle::local();
+        let fs_case_sensitive = fs.is_case_sensitive().await;
+        let root_name = match opened_abs_path.file_name() {
+            Some(file_name) => {
+                let file_name = file_name
+                    .to_str()
+                    .context("worktree root name should be valid utf-8")?;
+                RelPath::unix(file_name)
+                    .context("failed to parse worktree root name")
+                    .map(Arc::<RelPath>::from)?
+            }
+            None => RelPath::empty().into(),
+        };
+        let root_file_handle = if metadata.as_ref().is_some() {
+            fs.open_handle(opened_abs_path.as_ref())
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to open worktree root at {}",
+                        opened_abs_path.display()
+                    )
+                })
+                .log_err()
+        } else {
+            None
+        };
+
+        Ok(cx.new(move |cx: &mut Context<Self>| {
+            let mut snapshot = WorktreeSnapshot {
+                snapshot: Snapshot::new(
+                    worktree_id,
+                    root_name,
+                    opened_abs_path.clone(),
+                    path_style,
+                ),
+                root_file_handle,
+            };
+            if let Some(metadata) = metadata {
+                let mut root_entry = Entry::new(
+                    Arc::from(RelPath::empty()),
+                    &metadata,
+                    ProjectEntryId::new(next_entry_id.as_ref()),
+                    None,
+                );
+                if metadata.is_dir {
+                    root_entry.kind = if scanning_enabled {
+                        EntryKind::PendingDir
+                    } else {
+                        EntryKind::UnloadedDir
+                    };
+                }
+                snapshot.insert_entry(root_entry);
+            }
+
+            let (scan_requests_tx, scan_requests_rx) = channel::unbounded();
+            let (path_prefixes_to_scan_tx, path_prefixes_to_scan_rx) = channel::unbounded();
+            let mut worktree = Worktree {
+                snapshot,
+                scan_requests_tx,
+                path_prefixes_to_scan_tx,
+                is_scanning: watch::channel(true),
+                background_scanner_tasks: Vec::new(),
+                fs,
+                fs_case_sensitive,
+                visible,
+                next_entry_id,
+                scanning_enabled,
+            };
+            worktree.start_background_scanner(scan_requests_rx, path_prefixes_to_scan_rx, cx);
+            worktree
+        }))
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn is_file_worktree(&self) -> bool {
+        self.root_dir().is_none()
+    }
+
+    pub fn full_path(&self, worktree_relative_path: &RelPath) -> PathBuf {
+        self.root_name()
+            .join(worktree_relative_path)
+            .display(self.path_style())
+            .to_string()
+            .into()
+    }
+
+    pub fn write_request_file(
+        &self,
+        path: Arc<RelPath>,
+        request_file: RequestFile,
+        cx: &Context<Self>,
+    ) -> Task<anyhow::Result<Arc<File>>> {
+        let fs = self.fs().clone();
+        let abs_path = self.absolutize(&path);
+        let write_task = cx.background_spawn(async move {
+            let contents = request::serialize_request_file(&request_file)?;
+            fs.write(&abs_path, contents.as_bytes()).await
+        });
+
+        cx.spawn(async move |this, cx| {
+            write_task.await?;
+            let entry = this
+                .update(cx, |worktree, cx| {
+                    worktree.refresh_entry(path.clone(), None, cx)
+                })?
+                .await?;
+            let worktree = this.upgrade().context("worktree dropped")?;
+            Ok(File::for_entry(&entry, worktree))
+        })
+    }
+
+    fn descendant_entry_ids(&self, path: &RelPath) -> Vec<ProjectEntryId> {
+        fn inner(worktree: &Worktree, path: &RelPath, entry_ids: &mut Vec<ProjectEntryId>) {
+            for entry in worktree.child_entries(path) {
+                entry_ids.push(entry.id);
+                inner(worktree, entry.path.as_ref(), entry_ids);
+            }
+        }
+
+        let mut entry_ids = Vec::new();
+        inner(self, path, &mut entry_ids);
+        entry_ids
+    }
+
     pub fn fs(&self) -> &Arc<dyn Fs> {
         &self.fs
     }
@@ -79,23 +222,25 @@ impl Worktree {
         relative_paths: Vec<Arc<RelPath>>,
     ) -> oneshot::Receiver<()> {
         let (tx, rx) = oneshot::channel();
-        self.scan_requests_tx
-            .try_send(ScanRequest {
-                relative_paths,
-                completion_senders: smallvec![tx],
-            })
-            .ok();
+        let request = ScanRequest {
+            relative_paths,
+            completion_senders: smallvec![tx],
+        };
+        if self.scan_requests_tx.try_send(request).is_err() {
+            log::trace!("Worktree scan request receiver dropped");
+        }
         rx
     }
 
     pub fn add_path_prefix_to_scan(&self, path_prefix: Arc<RelPath>) -> oneshot::Receiver<()> {
         let (tx, rx) = oneshot::channel();
-        self.path_prefixes_to_scan_tx
-            .try_send(PathPrefixScanRequest {
-                path: path_prefix,
-                completion_senders: smallvec![tx],
-            })
-            .ok();
+        let request = PathPrefixScanRequest {
+            path: path_prefix,
+            completion_senders: smallvec![tx],
+        };
+        if self.path_prefixes_to_scan_tx.try_send(request).is_err() {
+            log::trace!("Worktree path prefix scan request receiver dropped");
+        }
         rx
     }
 
@@ -124,9 +269,7 @@ impl Worktree {
         };
         let refresh_task = self.refresh_entries_for_paths(paths);
         cx.spawn(async move |this, cx| {
-            refresh_task
-                .await
-                .map_err(|_| anyhow!("Failed to refresh entry"))?;
+            refresh_task.await.context("Failed to refresh entry")?;
             let new_entry = this.read_with(cx, |this, _| {
                 this.entry_for_path(&path).cloned().ok_or_else(|| {
                     anyhow!("Could not find entry in worktree for {path:?} after refresh")
@@ -197,9 +340,7 @@ impl Worktree {
         let path = self.entry_for_id(entry_id)?.path.clone();
         let refresh_task = self.refresh_entries_for_paths(vec![path]);
         Some(cx.background_spawn(async move {
-            refresh_task
-                .await
-                .map_err(|_| anyhow!("Failed to expand entry"))?;
+            refresh_task.await.context("Failed to expand entry")?;
             Ok(())
         }))
     }
@@ -314,7 +455,7 @@ impl Worktree {
                 this.update(cx, |this, _| this.refresh_entries_for_paths(vec![path]))?;
             refresh_task
                 .await
-                .map_err(|_| anyhow!("Failed to refresh deleted entry"))?;
+                .context("Failed to refresh deleted entry")?;
 
             Ok(())
         }))
@@ -347,13 +488,17 @@ impl Worktree {
         new_path: Arc<SanitizedPath>,
         cx: &Context<Worktree>,
     ) {
-        let root_name = new_path
-            .as_path()
-            .file_name()
-            .and_then(|file_name| file_name.to_str())
-            .map_or(RelPath::empty().into(), |file_name| {
-                RelPath::unix(file_name).unwrap().into()
-            });
+        let root_name = match new_path.as_path().file_name() {
+            Some(file_name) => {
+                let file_name = file_name
+                    .to_str()
+                    .expect("worktree root name should be valid utf-8");
+                RelPath::unix(file_name)
+                    .expect("worktree root name should be a valid relative path")
+                    .into()
+            }
+            None => RelPath::empty().into(),
+        };
 
         self.snapshot.update_abs_path(new_path, root_name);
         self.restart_background_scanners(cx);
@@ -462,7 +607,17 @@ impl Worktree {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+impl Deref for Worktree {
+    type Target = Snapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.snapshot
+    }
+}
+
+impl EventEmitter<WorktreeEvent> for Worktree {}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProjectEntryId(usize);
 
 impl ProjectEntryId {
@@ -481,151 +636,13 @@ impl ProjectEntryId {
     }
 }
 
-impl Worktree {
-    pub async fn new(
-        path: impl Into<Arc<Path>>,
-        visible: bool,
-        fs: Arc<dyn Fs>,
-        next_entry_id: Arc<AtomicUsize>,
-        scanning_enabled: bool,
-        worktree_id: WorktreeId,
-        cx: &mut AsyncApp,
-    ) -> anyhow::Result<Entity<Self>> {
-        let opened_abs_path = path.into();
-
-        let metadata = fs
-            .metadata(opened_abs_path.as_ref())
-            .await
-            .context("failed to stat worktree path")?;
-
-        let path_style = PathStyle::local();
-        let fs_case_sensitive = fs.is_case_sensitive().await;
-        let root_name = opened_abs_path
-            .file_name()
-            .and_then(|file_name| file_name.to_str())
-            .map_or(RelPath::empty().into(), |file_name| {
-                RelPath::unix(file_name).unwrap().into()
-            });
-        let root_file_handle = if metadata.as_ref().is_some() {
-            fs.open_handle(opened_abs_path.as_ref())
-                .await
-                .with_context(|| {
-                    format!(
-                        "failed to open worktree root at {}",
-                        opened_abs_path.display()
-                    )
-                })
-                .log_err()
-        } else {
-            None
-        };
-
-        Ok(cx.new(move |cx: &mut Context<Self>| {
-            let mut snapshot = WorktreeSnapshot {
-                snapshot: Snapshot::new(
-                    worktree_id,
-                    root_name,
-                    opened_abs_path.clone(),
-                    path_style,
-                ),
-                root_file_handle,
-            };
-            if let Some(metadata) = metadata {
-                let mut root_entry = Entry::new(
-                    Arc::from(RelPath::empty()),
-                    &metadata,
-                    ProjectEntryId::new(next_entry_id.as_ref()),
-                    None,
-                );
-                if metadata.is_dir {
-                    root_entry.kind = if scanning_enabled {
-                        EntryKind::PendingDir
-                    } else {
-                        EntryKind::UnloadedDir
-                    };
-                }
-                snapshot.insert_entry(root_entry);
-            }
-
-            let (scan_requests_tx, scan_requests_rx) = channel::unbounded();
-            let (path_prefixes_to_scan_tx, path_prefixes_to_scan_rx) = channel::unbounded();
-            let mut worktree = Worktree {
-                snapshot,
-                scan_requests_tx,
-                path_prefixes_to_scan_tx,
-                is_scanning: watch::channel(true),
-                background_scanner_tasks: Vec::new(),
-                fs,
-                fs_case_sensitive,
-                visible,
-                next_entry_id,
-                scanning_enabled,
-            };
-            worktree.start_background_scanner(scan_requests_rx, path_prefixes_to_scan_rx, cx);
-            worktree
-        }))
+impl<'a> Dimension<'a, PathEntrySummary> for ProjectEntryId {
+    fn zero((): ()) -> Self {
+        Self::default()
     }
 
-    pub fn is_visible(&self) -> bool {
-        self.visible
-    }
-
-    fn is_file_worktree(&self) -> bool {
-        self.root_dir().is_none()
-    }
-
-    pub fn full_path(&self, worktree_relative_path: &RelPath) -> PathBuf {
-        self.root_name()
-            .join(worktree_relative_path)
-            .display(self.path_style())
-            .to_string()
-            .into()
-    }
-
-    pub fn write_request_file(
-        &self,
-        path: Arc<RelPath>,
-        request_file: RequestFile,
-        cx: &Context<Self>,
-    ) -> Task<anyhow::Result<Arc<File>>> {
-        let fs = self.fs().clone();
-        let abs_path = self.absolutize(&path);
-        let write_task = cx.background_spawn(async move {
-            let contents = request::serialize_request_file(&request_file)?;
-            fs.write(&abs_path, contents.as_bytes()).await
-        });
-
-        cx.spawn(async move |this, cx| {
-            write_task.await?;
-            let entry = this
-                .update(cx, |worktree, cx| {
-                    worktree.refresh_entry(path.clone(), None, cx)
-                })?
-                .await?;
-            let worktree = this.upgrade().context("worktree dropped")?;
-            Ok(File::for_entry(&entry, worktree))
-        })
-    }
-
-    fn descendant_entry_ids(&self, path: &RelPath) -> Vec<ProjectEntryId> {
-        fn inner(worktree: &Worktree, path: &RelPath, entry_ids: &mut Vec<ProjectEntryId>) {
-            for entry in worktree.child_entries(path) {
-                entry_ids.push(entry.id);
-                inner(worktree, entry.path.as_ref(), entry_ids);
-            }
-        }
-
-        let mut entry_ids = Vec::new();
-        inner(self, path, &mut entry_ids);
-        entry_ids
-    }
-}
-
-impl Deref for Worktree {
-    type Target = Snapshot;
-
-    fn deref(&self) -> &Self::Target {
-        &self.snapshot
+    fn add_summary(&mut self, summary: &'a PathEntrySummary, (): ()) {
+        *self = summary.max_id;
     }
 }
 
@@ -842,25 +859,27 @@ impl Snapshot {
 }
 
 impl fmt::Debug for Snapshot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         struct EntriesById<'a>(&'a SumTree<PathEntry>);
         struct EntriesByPath<'a>(&'a SumTree<Entry>);
 
         impl fmt::Debug for EntriesByPath<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.debug_map()
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter
+                    .debug_map()
                     .entries(self.0.iter().map(|entry| (&entry.path, entry.id)))
                     .finish()
             }
         }
 
         impl fmt::Debug for EntriesById<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.debug_list().entries(self.0.iter()).finish()
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.debug_list().entries(self.0.iter()).finish()
             }
         }
 
-        f.debug_struct("Snapshot")
+        formatter
+            .debug_struct("Snapshot")
             .field("id", &self.id)
             .field("root_name", &self.root_name)
             .field("entries_by_path", &EntriesByPath(&self.entries_by_path))
@@ -869,26 +888,12 @@ impl fmt::Debug for Snapshot {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Entry {
-    pub id: ProjectEntryId,
-    pub kind: EntryKind,
-    pub path: Arc<RelPath>,
-    pub inode: u64,
-    pub mtime: Option<MTime>,
-    pub canonical_path: Option<Arc<Path>>,
-    pub is_external: bool,
-    pub is_fifo: bool,
-    pub size: u64,
-    pub is_request: bool,
-}
-
 pub struct LoadedFile {
     pub file: Arc<File>,
     pub text: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct File {
     pub worktree: Entity<Worktree>,
     pub path: Arc<RelPath>,
@@ -979,6 +984,20 @@ impl language::File for File {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entry {
+    pub id: ProjectEntryId,
+    pub kind: EntryKind,
+    pub path: Arc<RelPath>,
+    pub inode: u64,
+    pub mtime: Option<MTime>,
+    pub canonical_path: Option<Arc<Path>>,
+    pub is_external: bool,
+    pub is_fifo: bool,
+    pub size: u64,
+    pub is_request: bool,
+}
+
 impl Entry {
     fn new(
         path: Arc<RelPath>,
@@ -1044,7 +1063,7 @@ impl KeyedItem for Entry {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
     UnloadedDir,
     PendingDir,
@@ -1066,7 +1085,7 @@ impl EntryKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathChange {
     Added,
     Removed,
@@ -1077,22 +1096,20 @@ pub enum PathChange {
 
 pub type UpdatedEntriesSet = Arc<[(Arc<RelPath>, ProjectEntryId, PathChange)]>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub enum WorktreeEvent {
     UpdatedEntries(UpdatedEntriesSet),
     DeletedEntry(ProjectEntryId),
     Deleted,
 }
 
-impl EventEmitter<WorktreeEvent> for Worktree {}
-
 pub trait WorktreeModelHandle {
-    #[cfg(feature = "test-support")]
+    #[cfg(feature = "test")]
     fn flush_fs_events<'a>(&self, cx: &'a mut TestAppContext) -> LocalBoxFuture<'a, ()>;
 }
 
 impl WorktreeModelHandle for Entity<Worktree> {
-    #[cfg(feature = "test-support")]
+    #[cfg(feature = "test")]
     fn flush_fs_events<'a>(&self, cx: &'a mut TestAppContext) -> LocalBoxFuture<'a, ()> {
         let file_name = "fs-event-sentinel";
         let worktree = self.clone();
@@ -1103,12 +1120,17 @@ impl WorktreeModelHandle for Entity<Worktree> {
         async move {
             let mut events = cx.events(&worktree);
 
-            fs.write(&root_path.join(file_name), &[]).await.unwrap();
+            fs.write(&root_path.join(file_name), &[])
+                .await
+                .expect("failed to write filesystem event sentinel");
 
             let file_exists = || {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
-                        .entry_for_path(RelPath::unix(file_name).unwrap())
+                        .entry_for_path(
+                            RelPath::unix(file_name)
+                                .expect("test file name should be a valid relative path"),
+                        )
                         .is_some()
                 })
             };
@@ -1122,12 +1144,15 @@ impl WorktreeModelHandle for Entity<Worktree> {
 
             fs.remove_file(&root_path.join(file_name), RemoveOptions::default())
                 .await
-                .unwrap();
+                .expect("failed to remove filesystem event sentinel");
 
             let file_gone = || {
                 worktree.read_with(cx, |worktree, _| {
                     worktree
-                        .entry_for_path(RelPath::unix(file_name).unwrap())
+                        .entry_for_path(
+                            RelPath::unix(file_name)
+                                .expect("test file name should be a valid relative path"),
+                        )
                         .is_none()
                 })
             };
@@ -1169,7 +1194,7 @@ impl WorktreeSnapshot {
         entry
     }
 
-    #[cfg(feature = "test-support")]
+    #[cfg(feature = "test")]
     fn check_invariants(&self) {
         use std::collections::BTreeSet;
 
@@ -1192,7 +1217,10 @@ impl WorktreeSnapshot {
         let mut file_entries = self.snapshot.files(0);
         for entry in self.snapshot.entries_by_path.cursor::<()>(()) {
             if entry.is_file() {
-                assert_eq!(file_entries.next().unwrap().inode, entry.inode);
+                assert_eq!(
+                    file_entries.next().expect("file entry should exist").inode,
+                    entry.inode
+                );
             }
         }
 
@@ -1244,7 +1272,7 @@ impl DerefMut for WorktreeSnapshot {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntrySummary {
     count: usize,
     file_count: usize,
@@ -1273,7 +1301,7 @@ impl ContextLessSummary for EntrySummary {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PathKey(pub Arc<RelPath>);
 
 impl Default for PathKey {
@@ -1292,7 +1320,7 @@ impl<'a> Dimension<'a, EntrySummary> for PathKey {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PathEntry {
     id: ProjectEntryId,
     path: Arc<RelPath>,
@@ -1314,7 +1342,7 @@ impl KeyedItem for PathEntry {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct PathEntrySummary {
     max_id: ProjectEntryId,
 }
@@ -1326,16 +1354,6 @@ impl ContextLessSummary for PathEntrySummary {
 
     fn add_summary(&mut self, summary: &Self) {
         self.max_id = summary.max_id;
-    }
-}
-
-impl<'a> Dimension<'a, PathEntrySummary> for ProjectEntryId {
-    fn zero((): ()) -> Self {
-        Self::default()
-    }
-
-    fn add_summary(&mut self, summary: &'a PathEntrySummary, (): ()) {
-        *self = summary.max_id;
     }
 }
 
@@ -1616,9 +1634,13 @@ impl BackgroundScanner {
                         root_path.as_path().display(),
                         new_path.as_path().display(),
                     );
-                    self.status_updates_tx
+                    if self
+                        .status_updates_tx
                         .unbounded_send(ScanState::RootUpdated { new_path })
-                        .ok();
+                        .is_err()
+                    {
+                        log::trace!("Worktree root update receiver dropped");
+                    }
                 } else {
                     log::error!("Root path could not be canonicalized: {error:#}");
                     if self.is_file_worktree {
@@ -1641,9 +1663,13 @@ impl BackgroundScanner {
                         }
                         self.send_status_update(false, SmallVec::new(), &event_roots)
                             .await;
-                        self.status_updates_tx
+                        if self
+                            .status_updates_tx
                             .unbounded_send(ScanState::RootDeleted)
-                            .ok();
+                            .is_err()
+                        {
+                            log::trace!("Worktree root delete receiver dropped");
+                        }
                     }
                 }
                 return;
@@ -2259,7 +2285,7 @@ impl BackgroundScannerState {
             self.changed_paths.insert(index, Arc::clone(parent_path));
         }
 
-        #[cfg(feature = "test-support")]
+        #[cfg(feature = "test")]
         self.snapshot.check_invariants();
     }
 
@@ -2267,7 +2293,7 @@ impl BackgroundScannerState {
         self.removed_entries.remove(&entry.inode);
         self.snapshot.insert_entry(entry);
 
-        #[cfg(feature = "test-support")]
+        #[cfg(feature = "test")]
         self.snapshot.check_invariants();
     }
 
@@ -2315,12 +2341,12 @@ impl BackgroundScannerState {
             watcher.remove(removed_dir_abs_path.as_path()).log_err();
         }
 
-        #[cfg(feature = "test-support")]
+        #[cfg(feature = "test")]
         self.snapshot.check_invariants();
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct EventRoot {
     path: Arc<RelPath>,
     was_rescanned: bool,
@@ -2334,7 +2360,7 @@ struct ScanJob {
     is_external: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackgroundScannerPhase {
     InitialScan,
     EventsReceivedDuringInitialScan,
@@ -2353,7 +2379,7 @@ impl fs::Watcher for NullWatcher {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 struct TraversalProgress<'a> {
     max_path: &'a RelPath,
     count: usize,

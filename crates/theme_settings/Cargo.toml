@@ -1,16 +1,18 @@
 [package]
 name = "theme_settings"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 name = "theme_settings"
 path = "src/theme_settings.rs"
+
+[lints]
+workspace = true
 
 [dependencies]
 anyhow = { workspace = true }

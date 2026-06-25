@@ -1,6 +1,6 @@
 pub(crate) mod autoscroll;
 
-pub use autoscroll::Autoscroll;
+pub(crate) use autoscroll::Autoscroll;
 
 use gpui::{Axis, Context, Pixels, Point};
 use num_traits::ToPrimitive;
@@ -13,20 +13,20 @@ use crate::{
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
 };
 
-pub type ScrollOffset = f64;
+pub(crate) type ScrollOffset = f64;
 
-pub const SCROLL_EVENT_SEPARATION: Duration = Duration::from_millis(28);
+const SCROLL_EVENT_SEPARATION: Duration = Duration::from_millis(28);
 
-pub struct WasScrolled(pub(crate) bool);
+pub(crate) struct WasScrolled(pub(crate) bool);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ScrollAnchor {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ScrollAnchor {
     pub offset: Point<ScrollOffset>,
     pub anchor: Anchor,
 }
 
 impl ScrollAnchor {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             offset: Point::default(),
             anchor: Anchor::Min,
@@ -47,8 +47,8 @@ impl ScrollAnchor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct OngoingScroll {
+#[derive(Debug, Clone, Copy)]
+struct OngoingScroll {
     last_event: Instant,
     axis: Option<Axis>,
 }
@@ -68,21 +68,25 @@ impl OngoingScroll {
         const UNLOCK_LOWER_BOUND: Pixels = gpui::px(6.0);
         let mut axis = self.axis;
 
-        let x = delta.x.abs();
-        let y = delta.y.abs();
+        let x_delta = delta.x.abs();
+        let y_delta = delta.y.abs();
         let duration = Instant::now().duration_since(self.last_event);
         if duration > SCROLL_EVENT_SEPARATION {
-            axis = if x <= y {
+            axis = if x_delta <= y_delta {
                 Some(Axis::Vertical)
             } else {
                 Some(Axis::Horizontal)
             };
-        } else if x.max(y) >= UNLOCK_LOWER_BOUND {
+        } else if x_delta.max(y_delta) >= UNLOCK_LOWER_BOUND {
             match axis {
-                Some(Axis::Vertical) if x > y && x >= y * UNLOCK_PERCENT => {
+                Some(Axis::Vertical)
+                    if x_delta > y_delta && x_delta >= y_delta * UNLOCK_PERCENT =>
+                {
                     axis = None;
                 }
-                Some(Axis::Horizontal) if y > x && y >= x * UNLOCK_PERCENT => {
+                Some(Axis::Horizontal)
+                    if y_delta > x_delta && y_delta >= x_delta * UNLOCK_PERCENT =>
+                {
                     axis = None;
                 }
                 Some(Axis::Vertical | Axis::Horizontal) | None => {}
@@ -103,7 +107,7 @@ impl OngoingScroll {
     }
 }
 
-pub struct ScrollManager {
+pub(crate) struct ScrollManager {
     pub(crate) vertical_scroll_margin: ScrollOffset,
     scroll_anchor: ScrollAnchor,
     ongoing_scroll: OngoingScroll,
@@ -111,7 +115,7 @@ pub struct ScrollManager {
 }
 
 impl ScrollManager {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             vertical_scroll_margin: 3.0,
             scroll_anchor: ScrollAnchor::new(),
@@ -214,7 +218,9 @@ impl Editor {
     }
 
     pub fn set_vertical_scroll_margin(&mut self, margin_rows: usize, cx: &mut Context<Self>) {
-        self.scroll_manager.vertical_scroll_margin = margin_rows.to_f64().unwrap();
+        self.scroll_manager.vertical_scroll_margin = margin_rows
+            .to_f64()
+            .expect("vertical scroll margin should fit in f64");
         cx.notify();
     }
 }

@@ -1,19 +1,21 @@
 [package]
 name = "db"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
+
+[lib]
+name = "db"
+path = "src/db.rs"
 
 [lints]
 workspace = true
 
 [features]
-test-support = []
-
-[lib]
-name = "db"
-path = "src/db.rs"
+test = []
 
 [dependencies]
 anyhow = { workspace = true }
@@ -26,5 +28,5 @@ sql_macros = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }

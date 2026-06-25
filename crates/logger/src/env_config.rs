@@ -6,7 +6,7 @@ pub struct EnvFilter {
     pub directive_levels: Vec<LevelFilter>,
 }
 
-pub fn parse(filter: &str) -> anyhow::Result<EnvFilter> {
+pub(crate) fn parse(filter: &str) -> anyhow::Result<EnvFilter> {
     let mut max_level = None;
     let mut directive_names = Vec::new();
     let mut directive_levels = Vec::new();

@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::fallback;
 
-#[derive(Refineable, Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Refineable)]
 #[refineable(Debug, Deserialize)]
 pub struct StatusColors {
     pub conflict: Hsla,

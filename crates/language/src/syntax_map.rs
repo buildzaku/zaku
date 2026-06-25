@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 #[cfg(debug_assertions)]
 use std::cmp::Ordering;
 use std::{
@@ -16,7 +17,7 @@ use tree_sitter::{Node, ParseOptions, Query, QueryCapture, QueryCaptures, QueryC
 use crate::LanguageId;
 use crate::{Grammar, Language, QUERY_CURSORS, with_parser};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ParseTimeout;
 
 impl std::error::Error for ParseTimeout {}
@@ -48,39 +49,6 @@ impl ToTreeSitterPoint for Point {
     }
 }
 
-#[derive(Clone)]
-pub struct SyntaxSnapshot {
-    layers: SumTree<SyntaxLayerEntry>,
-    parsed_version: clock::Global,
-    interpolated_version: clock::Global,
-    update_count: usize,
-}
-
-impl Drop for SyntaxSnapshot {
-    fn drop(&mut self) {
-        static DROP_TX: LazyLock<mpsc::Sender<SumTree<SyntaxLayerEntry>>> = LazyLock::new(|| {
-            let (sender, receiver) = mpsc::channel();
-            std::thread::Builder::new()
-                .name("SyntaxSnapshot::drop".into())
-                .spawn(move || while receiver.recv().is_ok() {})
-                .expect("drop thread should spawn");
-            sender
-        });
-
-        let empty_layers = SumTree::from_summary(SyntaxLayerSummary {
-            min_depth: 0,
-            max_depth: 0,
-            range: Anchor::min_min_range_for_buffer(
-                BufferId::new(1).expect("buffer id should be nonzero"),
-            ),
-        });
-        let layers = std::mem::replace(&mut self.layers, empty_layers);
-        if DROP_TX.send(layers).is_err() {
-            log::debug!("Failed to drop syntax snapshot on background thread");
-        }
-    }
-}
-
 #[derive(Default)]
 pub struct SyntaxMapCaptures<'a> {
     layers: Vec<SyntaxMapCapturesLayer<'a>>,
@@ -105,7 +73,7 @@ impl<'a> SyntaxMapCaptures<'a> {
             };
 
             let mut query_cursor = QueryCursorHandle::new();
-            // Safety: `QueryCaptures` stores the cursor pointer and the layer keeps
+            // SAFETY: `QueryCaptures` stores the cursor pointer and the layer keeps
             // `query_cursor` alive until after `captures` is dropped.
             let cursor = unsafe {
                 std::mem::transmute::<&mut QueryCursor, &'static mut QueryCursor>(
@@ -134,8 +102,11 @@ impl<'a> SyntaxMapCaptures<'a> {
             layer.advance();
             if layer.next_capture.is_some() {
                 let key = layer.sort_key();
-                let index = match result.layers[..result.active_layer_count]
-                    .binary_search_by_key(&key, |layer| layer.sort_key())
+                let active_layers = result
+                    .layers
+                    .get(..result.active_layer_count)
+                    .expect("active layer count should be in bounds");
+                let index = match active_layers.binary_search_by_key(&key, |layer| layer.sort_key())
                 {
                     Ok(index) | Err(index) => index,
                 };
@@ -153,7 +124,11 @@ impl<'a> SyntaxMapCaptures<'a> {
     }
 
     pub fn peek(&self) -> Option<SyntaxMapCapture<'a>> {
-        let layer = self.layers[..self.active_layer_count].first()?;
+        let layer = self
+            .layers
+            .get(..self.active_layer_count)
+            .expect("active layer count should be in bounds")
+            .first()?;
         let capture = layer.next_capture?;
         Some(SyntaxMapCapture {
             node: capture.node,
@@ -163,20 +138,37 @@ impl<'a> SyntaxMapCaptures<'a> {
     }
 
     pub fn advance(&mut self) -> bool {
-        let Some(layer) = self.layers[..self.active_layer_count].first_mut() else {
-            return false;
+        let sort_key = {
+            let active_layers = self
+                .layers
+                .get_mut(..self.active_layer_count)
+                .expect("active layer count should be in bounds");
+            let Some(layer) = active_layers.first_mut() else {
+                return false;
+            };
+
+            layer.advance();
+            layer.next_capture.map(|_| layer.sort_key())
         };
 
-        layer.advance();
-        if layer.next_capture.is_some() {
-            let key = layer.sort_key();
-            let index = 1 + self.layers[1..self.active_layer_count]
+        let active_layers = self
+            .layers
+            .get_mut(..self.active_layer_count)
+            .expect("active layer count should be in bounds");
+
+        if let Some(sort_key) = sort_key {
+            let index = 1 + active_layers
+                .get(1..)
+                .expect("active layer tail should be in bounds")
                 .iter()
-                .position(|later_layer| key < later_layer.sort_key())
+                .position(|later_layer| sort_key < later_layer.sort_key())
                 .unwrap_or(self.active_layer_count - 1);
-            self.layers[0..index].rotate_left(1);
+            active_layers
+                .get_mut(..index)
+                .expect("rotation range should be in bounds")
+                .rotate_left(1);
         } else {
-            self.layers[0..self.active_layer_count].rotate_left(1);
+            active_layers.rotate_left(1);
             self.active_layer_count -= 1;
         }
 
@@ -229,10 +221,12 @@ struct SyntaxMapCapturesLayer<'a> {
 
 impl SyntaxMapCapturesLayer<'_> {
     fn advance(&mut self) {
-        self.next_capture = self
-            .captures
-            .next()
-            .map(|(query_match, capture_index)| query_match.captures[*capture_index]);
+        self.next_capture = self.captures.next().map(|(query_match, capture_index)| {
+            *query_match
+                .captures
+                .get(*capture_index)
+                .expect("capture index should be in bounds")
+        });
     }
 
     fn sort_key(&self) -> (usize, Reverse<usize>, usize) {
@@ -268,7 +262,7 @@ impl<'a> Iterator for ByteChunks<'a> {
 pub(crate) struct QueryCursorHandle(Option<QueryCursor>);
 
 impl QueryCursorHandle {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let mut cursor = QUERY_CURSORS.lock().pop().unwrap_or_default();
         cursor.set_match_limit(64);
         Self(Some(cursor))
@@ -279,25 +273,33 @@ impl Deref for QueryCursorHandle {
     type Target = QueryCursor;
 
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref().unwrap()
+        self.0.as_ref().expect("query cursor should be present")
     }
 }
 
 impl DerefMut for QueryCursorHandle {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.as_mut().unwrap()
+        self.0.as_mut().expect("query cursor should be present")
     }
 }
 
 impl Drop for QueryCursorHandle {
     fn drop(&mut self) {
-        let mut cursor = self.0.take().unwrap();
+        let mut cursor = self.0.take().expect("query cursor should be present");
         cursor.set_byte_range(0..usize::MAX);
         cursor.set_point_range(Point::zero().to_ts_point()..Point::MAX.to_ts_point());
         cursor.set_containing_byte_range(0..usize::MAX);
         cursor.set_containing_point_range(Point::zero().to_ts_point()..Point::MAX.to_ts_point());
         QUERY_CURSORS.lock().push(cursor);
     }
+}
+
+#[derive(Clone)]
+pub struct SyntaxSnapshot {
+    layers: SumTree<SyntaxLayerEntry>,
+    parsed_version: clock::Global,
+    interpolated_version: clock::Global,
+    update_count: usize,
 }
 
 impl SyntaxSnapshot {
@@ -369,10 +371,8 @@ impl SyntaxSnapshot {
     }
 
     pub fn reparse(&mut self, text: &text::BufferSnapshot, root_language: Arc<Language>) {
-        match self.reparse_inner(text, root_language, None) {
-            Ok(()) => {}
-            Err(ParseTimeout) => unreachable!("unbounded parse should not time out"),
-        }
+        self.reparse_inner(text, root_language, None)
+            .expect("unbounded parse should not time out");
     }
 
     pub fn reparse_with_timeout(
@@ -414,7 +414,16 @@ impl SyntaxSnapshot {
             return Ok(());
         };
 
-        let tree = parse_text(grammar.as_ref(), text.as_rope(), self.tree(), &mut budget)?;
+        let tree = match parse_text(grammar.as_ref(), text.as_rope(), self.tree(), &mut budget) {
+            Ok(tree) => tree,
+            Err(error) if error.downcast_ref::<ParseTimeout>().is_some() => {
+                return Err(ParseTimeout);
+            }
+            Err(error) => {
+                log::error!("Failed to parse text: {error:?}");
+                return Ok(());
+            }
+        };
         let mut layers = SumTree::new(text);
         layers.push(
             SyntaxLayerEntry {
@@ -450,9 +459,10 @@ impl SyntaxSnapshot {
                                 Ordering::Less => panic!("layers out of order"),
                                 Ordering::Equal => {
                                     let language_id = Some(layer.language.id);
-                                    if language_id < previous_language_id {
-                                        panic!("layers out of order");
-                                    }
+                                    assert!(
+                                        language_id >= previous_language_id,
+                                        "layers out of order"
+                                    )
                                 }
                                 Ordering::Greater => {}
                             },
@@ -510,6 +520,31 @@ impl SyntaxSnapshot {
             cursor.next();
             Some(syntax_layer)
         })
+    }
+}
+
+impl Drop for SyntaxSnapshot {
+    fn drop(&mut self) {
+        static DROP_TX: LazyLock<mpsc::Sender<SumTree<SyntaxLayerEntry>>> = LazyLock::new(|| {
+            let (sender, receiver) = mpsc::channel();
+            std::thread::Builder::new()
+                .name("SyntaxSnapshot::drop".into())
+                .spawn(move || while receiver.recv().is_ok() {})
+                .expect("drop thread should spawn");
+            sender
+        });
+
+        let empty_layers = SumTree::from_summary(SyntaxLayerSummary {
+            min_depth: 0,
+            max_depth: 0,
+            range: Anchor::min_min_range_for_buffer(
+                BufferId::new(1).expect("buffer id should be nonzero"),
+            ),
+        });
+        let layers = std::mem::replace(&mut self.layers, empty_layers);
+        if DROP_TX.send(layers).is_err() {
+            log::debug!("Failed to drop syntax snapshot on background thread");
+        }
     }
 }
 
@@ -664,7 +699,7 @@ fn parse_text(
     text: &Rope,
     old_tree: Option<&Tree>,
     parse_budget: &mut Option<Duration>,
-) -> Result<Tree, ParseTimeout> {
+) -> anyhow::Result<Tree> {
     with_parser(|parser| {
         let mut timed_out = false;
         let now = Instant::now();
@@ -680,9 +715,7 @@ fn parse_text(
             }
         });
 
-        parser
-            .set_language(&grammar.ts_language)
-            .expect("incompatible grammar");
+        parser.set_language(&grammar.ts_language)?;
         let mut chunks = text.chunks_in_range(0..text.len());
         let parsed_tree = parser.parse_with_options(
             &mut move |offset, _| {
@@ -704,8 +737,8 @@ fn parse_text(
                 }
                 Ok(tree)
             }
-            None if timed_out => Err(ParseTimeout),
-            None => panic!("tree-sitter parse should succeed"),
+            None if timed_out => Err(anyhow!(ParseTimeout)),
+            None => Err(anyhow!("parsing failed")),
         }
     })
 }

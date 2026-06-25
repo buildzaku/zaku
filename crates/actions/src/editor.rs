@@ -5,7 +5,7 @@ use serde::Deserialize;
 use util::serde::default_true;
 
 /// Move the cursor to the beginning of the current line.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct MoveToBeginningOfLine {
@@ -16,7 +16,7 @@ pub struct MoveToBeginningOfLine {
 }
 
 /// Select from the cursor to the beginning of the current line.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct SelectToBeginningOfLine {
@@ -27,7 +27,7 @@ pub struct SelectToBeginningOfLine {
 }
 
 /// Delete from the cursor to the beginning of the current line.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct DeleteToBeginningOfLine {
@@ -36,7 +36,7 @@ pub struct DeleteToBeginningOfLine {
 }
 
 /// Move the cursor to the end of the current line.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct MoveToEndOfLine {
@@ -45,7 +45,7 @@ pub struct MoveToEndOfLine {
 }
 
 /// Select from the cursor to the end of the current line.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct SelectToEndOfLine {
@@ -54,13 +54,13 @@ pub struct SelectToEndOfLine {
 }
 
 /// Handle text input in the editor.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 pub struct HandleInput(pub String);
 
 /// Delete from the cursor to the end of the next word.
 /// Stop before the end of the next word if whitespace sequences of length >= 2 are encountered.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct DeleteToNextWordEnd {
@@ -73,7 +73,7 @@ pub struct DeleteToNextWordEnd {
 
 /// Delete from the cursor to the start of the previous word.
 /// Stop before the start of the previous word if whitespace sequences of length >= 2 are encountered.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct DeleteToPreviousWordStart {
@@ -86,7 +86,7 @@ pub struct DeleteToPreviousWordStart {
 
 /// Delete from the cursor to the end of the next subword.
 /// Stop before the end of the next subword if whitespace sequences of length >= 2 are encountered.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct DeleteToNextSubwordEnd {
@@ -99,7 +99,7 @@ pub struct DeleteToNextSubwordEnd {
 
 /// Delete from the cursor to the start of the previous subword.
 /// Stop before the start of the previous subword if whitespace sequences of length >= 2 are encountered.
-#[derive(PartialEq, Clone, Deserialize, Default, JsonSchema, Action)]
+#[derive(Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = editor)]
 #[serde(deny_unknown_fields)]
 pub struct DeleteToPreviousSubwordStart {

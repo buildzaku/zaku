@@ -60,18 +60,20 @@ impl<'conn> SavepointGuard<'conn> {
 
 impl Drop for SavepointGuard<'_> {
     fn drop(&mut self) {
-        let _ = self.finish();
+        if let Err(error) = self.finish() {
+            drop(error);
+        }
     }
 }
 
 impl Connection {
-    pub fn with_savepoint<R, F>(&self, name: impl AsRef<str>, f: F) -> anyhow::Result<R>
+    pub fn with_savepoint<R, F>(&self, name: impl AsRef<str>, operation: F) -> anyhow::Result<R>
     where
         F: FnOnce() -> anyhow::Result<R>,
     {
         let mut savepoint = SavepointGuard::new(self, name.as_ref())?;
 
-        let result = f();
+        let result = operation();
         match result {
             Ok(value) => {
                 savepoint.release()?;
@@ -87,14 +89,14 @@ impl Connection {
     pub fn with_savepoint_rollback<R, F>(
         &self,
         name: impl AsRef<str>,
-        f: F,
+        operation: F,
     ) -> anyhow::Result<Option<R>>
     where
         F: FnOnce() -> anyhow::Result<Option<R>>,
     {
         let mut savepoint = SavepointGuard::new(self, name.as_ref())?;
 
-        let result = f();
+        let result = operation();
         match result {
             Ok(Some(value)) => {
                 savepoint.release()?;
@@ -243,15 +245,17 @@ mod tests {
             .unwrap();
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let _ = connection.with_savepoint("panic_savepoint", || -> anyhow::Result<()> {
-                connection
-                    .exec("INSERT INTO test(value) VALUES (1)")
-                    .and_then(|mut f| f())?;
-                panic!("panic inside savepoint");
-            });
+            connection
+                .with_savepoint("panic_savepoint", || -> anyhow::Result<()> {
+                    connection
+                        .exec("INSERT INTO test(value) VALUES (1)")
+                        .and_then(|mut f| f())?;
+                    panic!("panic inside savepoint");
+                })
+                .unwrap();
         }));
 
-        assert!(result.is_err());
+        result.unwrap_err();
         assert_eq!(
             connection
                 .select::<i32>("SELECT value FROM test")

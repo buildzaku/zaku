@@ -13,14 +13,14 @@ use crate::{
     SerializableItemRegistry, Workspace, WorkspaceId, pane::Pane, persistence::model::ItemId,
 };
 
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ItemEvent {
     CloseItem,
     UpdateTab,
     Edit,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct TabContentParams {
     pub detail: Option<usize>,
     pub selected: bool,
@@ -75,7 +75,7 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         self.tab_tooltip_text(cx).map(TabTooltipContent::Text)
     }
 
-    fn to_item_events(_event: &Self::Event, _f: &mut dyn FnMut(ItemEvent)) {}
+    fn to_item_events(_event: &Self::Event, _emitter: &mut dyn FnMut(ItemEvent)) {}
 
     fn deactivated(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {}
 
@@ -93,7 +93,7 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
     fn for_each_project_item(
         &self,
         _cx: &App,
-        _f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        _visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
     }
 
@@ -228,7 +228,7 @@ pub trait ItemHandle: 'static + Send {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     );
     fn buffer_kind(&self, cx: &App) -> ItemBufferKind;
     fn boxed_clone(&self) -> Box<dyn ItemHandle>;
@@ -337,9 +337,9 @@ impl<T: Item> ItemHandle for Entity<T> {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
-        self.read(cx).for_each_project_item(cx, f);
+        self.read(cx).for_each_project_item(cx, visitor);
     }
 
     fn buffer_kind(&self, cx: &App) -> ItemBufferKind {
@@ -537,16 +537,17 @@ pub mod test {
         pub is_dirty: bool,
     }
 
-    pub struct TestItem {
-        pub workspace_id: Option<WorkspaceId>,
-        pub label: String,
-        pub save_count: usize,
-        pub reload_count: usize,
-        pub is_dirty: bool,
-        pub buffer_kind: ItemBufferKind,
-        pub project_items: Vec<Entity<TestProjectItem>>,
-        serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
-        focus_handle: FocusHandle,
+    impl TestProjectItem {
+        pub fn new_dirty(id: usize, path: &str, cx: &mut App) -> Entity<Self> {
+            cx.new(|_| Self {
+                entry_id: Some(ProjectEntryId::from_usize(id)),
+                project_path: Some(ProjectPath {
+                    worktree_id: WorktreeId::from_usize(0),
+                    path: Arc::from(rel_path(path)),
+                }),
+                is_dirty: true,
+            })
+        }
     }
 
     impl project::ProjectItem for TestProjectItem {
@@ -571,17 +572,16 @@ pub mod test {
         }
     }
 
-    impl TestProjectItem {
-        pub fn new_dirty(id: usize, path: &str, cx: &mut App) -> Entity<Self> {
-            cx.new(|_| Self {
-                entry_id: Some(ProjectEntryId::from_usize(id)),
-                project_path: Some(ProjectPath {
-                    worktree_id: WorktreeId::from_usize(0),
-                    path: Arc::from(rel_path(path)),
-                }),
-                is_dirty: true,
-            })
-        }
+    pub struct TestItem {
+        pub workspace_id: Option<WorkspaceId>,
+        pub label: String,
+        pub save_count: usize,
+        pub reload_count: usize,
+        pub is_dirty: bool,
+        pub buffer_kind: ItemBufferKind,
+        pub project_items: Vec<Entity<TestProjectItem>>,
+        serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
+        focus_handle: FocusHandle,
     }
 
     impl TestItem {
@@ -650,8 +650,8 @@ pub mod test {
             self.label.clone().into()
         }
 
-        fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
-            f(*event);
+        fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
+            emitter(*event);
         }
 
         fn is_dirty(&self, _cx: &App) -> bool {
@@ -661,11 +661,11 @@ pub mod test {
         fn for_each_project_item(
             &self,
             cx: &App,
-            f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+            visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
         ) {
             self.project_items
                 .iter()
-                .for_each(|item| f(item.entity_id(), item.read(cx)));
+                .for_each(|item| visitor(item.entity_id(), item.read(cx)));
         }
 
         fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {

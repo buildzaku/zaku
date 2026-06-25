@@ -49,8 +49,8 @@ impl Render for LogsView {
 impl Item for LogsView {
     type Event = EditorEvent;
 
-    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
-        Editor::to_item_events(event, f);
+    fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
+        Editor::to_item_events(event, emitter);
     }
 
     fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
@@ -85,11 +85,15 @@ impl Item for LogsView {
     }
 }
 
-pub fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
+pub(crate) fn open_log_file(
+    workspace: &mut Workspace,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
     const MAX_LINES: usize = 1000;
     struct OpenLogsErrorNotification;
 
-    let fs = workspace.shared_state().fs.clone();
+    let fs = workspace.app_state().fs.clone();
     cx.spawn_in(window, async move |workspace, cx| {
         let log = {
             let result = futures::join!(fs.load(path::old_log_file()), fs.load(path::log_file()));

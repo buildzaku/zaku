@@ -3,6 +3,8 @@ mod tab_map;
 
 pub use tab_map::{TabMap, TabPoint, TabSnapshot};
 
+#[cfg(test)]
+use gpui::{App, AppContext};
 use gpui::{Context, Entity, HighlightStyle, LineLayout, Pixels, TextRun};
 use serde::Deserialize;
 use std::{
@@ -15,11 +17,16 @@ use std::{
 };
 use text::{Bias, Point, subscription::Subscription as BufferSubscription};
 
+#[cfg(test)]
+use language::Buffer;
 use language::LanguageAwareStyling;
 use multi_buffer::{
     Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferRow, MultiBufferSnapshot,
     RowInfo, ToPoint,
 };
+
+#[cfg(test)]
+use util::test::marked_text_offsets;
 
 use crate::{EditorStyle, movement::TextLayoutDetails};
 
@@ -27,7 +34,7 @@ pub trait ToDisplayPoint {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HighlightKey {
     InputComposition,
 }
@@ -214,7 +221,7 @@ impl DisplaySnapshot {
         self.buffer_snapshot().widest_line_number()
     }
 
-    pub fn layout_row(
+    fn layout_row(
         &self,
         display_row: DisplayRow,
         TextLayoutDetails {
@@ -241,7 +248,11 @@ impl DisplaySnapshot {
         let mut line = String::new();
         for chunk in self.text_chunks(display_row) {
             if let Some(newline_index) = chunk.find('\n') {
-                line.push_str(&chunk[..newline_index]);
+                line.push_str(
+                    chunk
+                        .get(..newline_index)
+                        .expect("newline index should be valid"),
+                );
                 break;
             }
             line.push_str(chunk);
@@ -249,7 +260,7 @@ impl DisplaySnapshot {
         line
     }
 
-    pub fn x_for_display_point(
+    pub(crate) fn x_for_display_point(
         &self,
         display_point: DisplayPoint,
         text_layout_details: &TextLayoutDetails,
@@ -258,82 +269,21 @@ impl DisplaySnapshot {
         line.x_for_index(display_point.column() as usize)
     }
 
-    pub fn display_column_for_x(
+    pub(crate) fn display_column_for_x(
         &self,
         display_row: DisplayRow,
-        x: Pixels,
+        position: Pixels,
         details: &TextLayoutDetails,
     ) -> u32 {
         let layout_line = self.layout_row(display_row, details);
-        u32::try_from(layout_line.closest_index_for_x(x)).expect("display column should fit in u32")
+        u32::try_from(layout_line.closest_index_for_x(position))
+            .expect("display column should fit in u32")
     }
 }
 
 /// A zero-indexed point in a display buffer consisting of a row and column.
-#[derive(Copy, Clone, Default, Eq, Ord, PartialOrd, PartialEq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DisplayPoint(Point);
-
-impl Debug for DisplayPoint {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_fmt(format_args!(
-            "DisplayPoint({}, {})",
-            self.row().0,
-            self.column(),
-        ))
-    }
-}
-
-impl Add for DisplayPoint {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self::Output {
-        DisplayPoint(self.0 + other.0)
-    }
-}
-
-impl Sub for DisplayPoint {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self::Output {
-        DisplayPoint(self.0 - other.0)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Default, Eq, Ord, PartialOrd, PartialEq, Deserialize, Hash)]
-#[serde(transparent)]
-pub struct DisplayRow(pub u32);
-
-impl Add<DisplayRow> for DisplayRow {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self::Output {
-        DisplayRow(self.0 + other.0)
-    }
-}
-
-impl Add<u32> for DisplayRow {
-    type Output = Self;
-
-    fn add(self, other: u32) -> Self::Output {
-        DisplayRow(self.0 + other)
-    }
-}
-
-impl Sub<DisplayRow> for DisplayRow {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self::Output {
-        DisplayRow(self.0 - other.0)
-    }
-}
-
-impl Sub<u32> for DisplayRow {
-    type Output = Self;
-
-    fn sub(self, other: u32) -> Self::Output {
-        DisplayRow(self.0 - other)
-    }
-}
 
 impl DisplayPoint {
     pub fn new(row: DisplayRow, column: u32) -> Self {
@@ -374,6 +324,68 @@ impl DisplayPoint {
     }
 }
 
+impl Debug for DisplayPoint {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_fmt(format_args!(
+            "DisplayPoint({}, {})",
+            self.row().0,
+            self.column(),
+        ))
+    }
+}
+
+impl Add for DisplayPoint {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        DisplayPoint(self.0 + other.0)
+    }
+}
+
+impl Sub for DisplayPoint {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        DisplayPoint(self.0 - other.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
+#[serde(transparent)]
+pub struct DisplayRow(pub u32);
+
+impl Add<DisplayRow> for DisplayRow {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        DisplayRow(self.0 + other.0)
+    }
+}
+
+impl Add<u32> for DisplayRow {
+    type Output = Self;
+
+    fn add(self, other: u32) -> Self::Output {
+        DisplayRow(self.0 + other)
+    }
+}
+
+impl Sub<DisplayRow> for DisplayRow {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        DisplayRow(self.0 - other.0)
+    }
+}
+
+impl Sub<u32> for DisplayRow {
+    type Output = Self;
+
+    fn sub(self, other: u32) -> Self::Output {
+        DisplayRow(self.0 - other)
+    }
+}
+
 impl ToDisplayPoint for usize {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint {
         let offset = map.buffer_snapshot().clip_offset(
@@ -404,6 +416,28 @@ impl ToDisplayPoint for Anchor {
 }
 
 #[cfg(test)]
+pub(crate) fn marked_display_snapshot(
+    marked_text: &str,
+    cx: &mut App,
+) -> (DisplaySnapshot, Vec<DisplayPoint>) {
+    let (text, marker_offsets) = marked_text_offsets(marked_text);
+    let buffer = cx.new(|cx| Buffer::local(text.as_str(), cx));
+    let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
+    let display_map = cx.new(|cx| DisplayMap::new(multibuffer, crate::DEFAULT_TAB_SIZE, cx));
+    let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
+    let display_points = marker_offsets
+        .into_iter()
+        .map(|offset| {
+            snapshot
+                .buffer_snapshot()
+                .offset_to_point(MultiBufferOffset(offset))
+                .to_display_point(&snapshot)
+        })
+        .collect();
+    (snapshot, display_points)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -412,7 +446,7 @@ mod tests {
     use language::Buffer;
     use settings::SettingsStore;
 
-    use crate::{DEFAULT_TAB_SIZE, tests::util::marked_display_snapshot};
+    use crate::DEFAULT_TAB_SIZE;
 
     fn init_test(cx: &mut App) {
         let settings_store = SettingsStore::test_new(cx);

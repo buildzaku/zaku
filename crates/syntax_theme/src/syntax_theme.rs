@@ -1,12 +1,12 @@
 use gpui::HighlightStyle;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use gpui::Hsla;
 use std::{
     collections::{BTreeMap, btree_map::Entry},
     sync::Arc,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SyntaxTheme {
     highlights: Vec<HighlightStyle>,
     capture_name_map: BTreeMap<String, usize>,
@@ -30,7 +30,7 @@ impl SyntaxTheme {
             .collect()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(colors: impl IntoIterator<Item = (&'static str, Hsla)>) -> Self {
         Self::test_new_styles(colors.into_iter().map(|(key, color)| {
             (
@@ -43,7 +43,7 @@ impl SyntaxTheme {
         }))
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new_styles(
         colors: impl IntoIterator<Item = (&'static str, HighlightStyle)>,
     ) -> Self {
@@ -59,9 +59,12 @@ impl SyntaxTheme {
     }
 
     pub fn style_for_name(&self, name: &str) -> Option<HighlightStyle> {
-        self.capture_name_map
-            .get(name)
-            .map(|highlight_index| self.highlights[*highlight_index])
+        self.capture_name_map.get(name).map(|highlight_index| {
+            *self
+                .highlights
+                .get(*highlight_index)
+                .expect("highlight index should be in bounds")
+        })
     }
 
     pub fn get_capture_name(&self, index: impl Into<usize>) -> Option<&str> {
@@ -99,22 +102,24 @@ impl SyntaxTheme {
         for (name, highlight) in user_syntax_styles {
             match base.capture_name_map.entry(name) {
                 Entry::Occupied(entry) => {
-                    if let Some(existing_highlight) = base.highlights.get_mut(*entry.get()) {
-                        existing_highlight.color = highlight.color.or(existing_highlight.color);
-                        existing_highlight.font_weight =
-                            highlight.font_weight.or(existing_highlight.font_weight);
-                        existing_highlight.font_style =
-                            highlight.font_style.or(existing_highlight.font_style);
-                        existing_highlight.background_color = highlight
-                            .background_color
-                            .or(existing_highlight.background_color);
-                        existing_highlight.underline =
-                            highlight.underline.or(existing_highlight.underline);
-                        existing_highlight.strikethrough =
-                            highlight.strikethrough.or(existing_highlight.strikethrough);
-                        existing_highlight.fade_out =
-                            highlight.fade_out.or(existing_highlight.fade_out);
-                    }
+                    let existing_highlight = base
+                        .highlights
+                        .get_mut(*entry.get())
+                        .expect("highlight index should be in bounds");
+                    existing_highlight.color = highlight.color.or(existing_highlight.color);
+                    existing_highlight.font_weight =
+                        highlight.font_weight.or(existing_highlight.font_weight);
+                    existing_highlight.font_style =
+                        highlight.font_style.or(existing_highlight.font_style);
+                    existing_highlight.background_color = highlight
+                        .background_color
+                        .or(existing_highlight.background_color);
+                    existing_highlight.underline =
+                        highlight.underline.or(existing_highlight.underline);
+                    existing_highlight.strikethrough =
+                        highlight.strikethrough.or(existing_highlight.strikethrough);
+                    existing_highlight.fade_out =
+                        highlight.fade_out.or(existing_highlight.fade_out);
                 }
                 Entry::Vacant(vacant) => {
                     vacant.insert(base.highlights.len());

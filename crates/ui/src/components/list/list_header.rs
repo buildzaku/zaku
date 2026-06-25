@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use theme::ThemeSettings;
 
-use crate::{Disclosure, prelude::*};
+use crate::{
+    ActiveTheme, Color, Disclosure, DynamicSpacing, Label, LabelCommon, Toggleable, VisibleOnHover,
+};
 
 #[derive(IntoElement)]
 pub struct ListHeader {
@@ -76,8 +78,10 @@ impl RenderOnce for ListHeader {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let ui_density = ThemeSettings::get_global(cx).ui_density;
 
-        h_flex()
+        gpui::div()
             .id(self.label.clone())
+            .flex()
+            .items_center()
             .w_full()
             .relative()
             .group("list-header")
@@ -98,7 +102,9 @@ impl RenderOnce for ListHeader {
                     .w_full()
                     .gap(DynamicSpacing::Base04.rems(cx))
                     .child(
-                        h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .gap(DynamicSpacing::Base04.rems(cx))
                             .children(self.toggle.map(|is_open| {
                                 Disclosure::new("toggle", is_open)
@@ -119,7 +125,7 @@ impl RenderOnce for ListHeader {
                                     }),
                             ),
                     )
-                    .child(h_flex().children(self.end_slot))
+                    .child(gpui::div().flex().items_center().children(self.end_slot))
                     .when_some(self.end_hover_slot, |this, end_hover_slot| {
                         this.child(
                             gpui::div()

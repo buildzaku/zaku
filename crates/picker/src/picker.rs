@@ -27,7 +27,7 @@ pub enum Direction {
     Down,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollBehavior {
     RevealSelected,
     PreserveOffset,
@@ -38,7 +38,7 @@ struct PendingUpdateMatches {
     _task: Task<anyhow::Result<()>>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum PickerEditorPosition {
     #[default]
     Start,
@@ -158,11 +158,10 @@ pub trait PickerDelegate: Sized + 'static {
             )
             .child(
                 gpui::div()
+                    .flex_none()
                     .flex()
-                    .flex_row()
                     .items_center()
                     .overflow_hidden()
-                    .flex_none()
                     .h_9()
                     .px_2p5()
                     .child(gpui::div().flex_1().child(editor.render(window, cx)))
@@ -194,7 +193,7 @@ pub trait PickerDelegate: Sized + 'static {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum ContainerKind {
     UniformList,
 }
@@ -535,16 +534,14 @@ impl<D: PickerDelegate> Picker<D> {
 
     fn on_input_editor_event(
         &mut self,
+        editor: &dyn ErasedEditor,
         event: ErasedEditorEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Head::Editor(input) = &self.head else {
-            panic!("unexpected call");
-        };
         match event {
             ErasedEditorEvent::BufferEdited => {
-                let query = input.text(cx);
+                let query = editor.text(cx);
                 self.update_matches(query, window, cx);
             }
             ErasedEditorEvent::Blurred => {
@@ -556,9 +553,6 @@ impl<D: PickerDelegate> Picker<D> {
     }
 
     fn on_empty_head_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Head::Empty(_) = &self.head else {
-            panic!("unexpected call");
-        };
         if window.is_window_active() {
             self.cancel(&actions::menu::Cancel, window, cx);
         }

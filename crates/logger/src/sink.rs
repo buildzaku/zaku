@@ -1,9 +1,10 @@
+use anyhow::anyhow;
 use jiff::Zoned;
 use log::Level;
 use std::{
     fmt::{Arguments, Display, Formatter, Write as FmtWrite},
     fs::{File, OpenOptions},
-    io::Write as IoWrite,
+    io::{self, Write as IoWrite},
     path::{Path, PathBuf},
     sync::{
         Mutex, OnceLock,
@@ -48,19 +49,27 @@ pub fn init_output_stderr() {
 pub fn init_output_file(
     path: &'static PathBuf,
     path_rotate: Option<&'static PathBuf>,
-) -> std::io::Result<()> {
-    let mut enabled_sinks_file = ENABLED_SINKS_FILE
-        .try_lock()
-        .expect("Log file lock is available during init");
+) -> io::Result<()> {
+    let mut enabled_sinks_file = ENABLED_SINKS_FILE.try_lock().map_err(|error| {
+        io::Error::other(format!("log file lock unavailable during init: {error}"))
+    })?;
 
-    SINK_FILE_PATH
-        .set(path)
-        .expect("Init file output should only be called once");
+    SINK_FILE_PATH.set(path).map_err(|path| {
+        io::Error::other(format!(
+            "init file output already set at {}",
+            path.display()
+        ))
+    })?;
 
     if let Some(path_rotate) = path_rotate {
         SINK_FILE_PATH_ROTATE
             .set(path_rotate)
-            .expect("Init file output should only be called once");
+            .map_err(|path_rotate| {
+                io::Error::other(format!(
+                    "init file output rotation already set at {}",
+                    path_rotate.display()
+                ))
+            })?;
     }
 
     let file = open_or_create_log_file(path, path_rotate, SINK_FILE_SIZE_BYTES_MAX)?;
@@ -77,7 +86,7 @@ fn open_or_create_log_file(
     path: &PathBuf,
     path_rotate: Option<&PathBuf>,
     sink_file_size_bytes_max: u64,
-) -> std::io::Result<File> {
+) -> io::Result<File> {
     let size_bytes = std::fs::metadata(path).map(|metadata| metadata.len());
 
     match size_bytes {
@@ -86,23 +95,12 @@ fn open_or_create_log_file(
 
             match file {
                 Some(file) => Ok(file),
-                None => Err(std::io::Error::other("rotation did not return a log file")),
+                None => Err(io::Error::other("rotation did not return a log file")),
             }
         }
         _ => OpenOptions::new().create(true).append(true).open(path),
     }
 }
-
-const LEVEL_OUTPUT_STRINGS: [&str; 6] = ["     ", "ERROR", "WARN ", "INFO ", "DEBUG", "TRACE"];
-
-static LEVEL_ANSI_COLORS: [&str; 6] = [
-    "",
-    ANSI_RED,
-    ANSI_YELLOW,
-    ANSI_GREEN,
-    ANSI_BLUE,
-    ANSI_MAGENTA,
-];
 
 pub fn submit(mut record: Record) {
     if record.module_path.is_none_or(|module_path| {
@@ -113,14 +111,22 @@ pub fn submit(mut record: Record) {
         record.line.take();
     }
 
+    let (label, ansi_color) = match record.level {
+        Level::Error => ("ERROR", ANSI_RED),
+        Level::Warn => ("WARN ", ANSI_YELLOW),
+        Level::Info => ("INFO ", ANSI_GREEN),
+        Level::Debug => ("DEBUG", ANSI_BLUE),
+        Level::Trace => ("TRACE", ANSI_MAGENTA),
+    };
+
     if ENABLED_SINKS_STDOUT.load(Ordering::Acquire) {
         let mut stdout = std::io::stdout().lock();
         _ = writeln!(
             &mut stdout,
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
             Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
-            LEVEL_ANSI_COLORS[record.level as usize],
-            LEVEL_OUTPUT_STRINGS[record.level as usize],
+            ansi_color,
+            label,
             SourceFmt {
                 scope: record.scope,
                 module_path: record.module_path,
@@ -135,8 +141,8 @@ pub fn submit(mut record: Record) {
             &mut stdout,
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
             Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
-            LEVEL_ANSI_COLORS[record.level as usize],
-            LEVEL_OUTPUT_STRINGS[record.level as usize],
+            ansi_color,
+            label,
             SourceFmt {
                 scope: record.scope,
                 module_path: record.module_path,
@@ -158,14 +164,14 @@ pub fn submit(mut record: Record) {
             written: u64,
         }
 
-        impl std::io::Write for SizedWriter<'_> {
-            fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        impl io::Write for SizedWriter<'_> {
+            fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
                 self.file.write(buffer)?;
                 self.written += buffer.len() as u64;
                 Ok(buffer.len())
             }
 
-            fn flush(&mut self) -> std::io::Result<()> {
+            fn flush(&mut self) -> io::Result<()> {
                 self.file.flush()
             }
         }
@@ -176,7 +182,7 @@ pub fn submit(mut record: Record) {
                 &mut writer,
                 "{} {} {} {}",
                 Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
-                LEVEL_OUTPUT_STRINGS[record.level as usize],
+                label,
                 SourceFmt {
                     scope: record.scope,
                     module_path: record.module_path,
@@ -239,12 +245,14 @@ impl Display for SourceFmt<'_> {
             formatter.write_str(ANSI_BOLD)?;
         }
 
-        if (self.scope[1].is_empty() && self.module_path.is_some()) || self.scope[0].is_empty() {
+        let [first_scope, second_scope, remaining_scopes @ ..] = self.scope;
+
+        if (second_scope.is_empty() && self.module_path.is_some()) || first_scope.is_empty() {
             formatter.write_str(self.module_path.unwrap_or("?"))?;
         } else {
-            formatter.write_str(self.scope[0])?;
+            formatter.write_str(first_scope)?;
 
-            for subscope in &self.scope[1..] {
+            for subscope in std::iter::once(second_scope).chain(remaining_scopes) {
                 if subscope.is_empty() {
                     break;
                 }
@@ -267,16 +275,13 @@ impl Display for SourceFmt<'_> {
     }
 }
 
-fn rotate_log_file(
-    path: Option<&Path>,
-    path_rotate: Option<&Path>,
-) -> std::io::Result<Option<File>> {
+fn rotate_log_file(path: Option<&Path>, path_rotate: Option<&Path>) -> io::Result<Option<File>> {
     let rotation_error = match (path, path_rotate) {
-        (Some(_), None) => Some(anyhow::anyhow!("No rotation log file path configured")),
-        (None, _) => Some(anyhow::anyhow!("No log file path configured")),
+        (Some(_), None) => Some(anyhow!("No rotation log file path configured")),
+        (None, _) => Some(anyhow!("No log file path configured")),
         (Some(path), Some(path_rotate)) => std::fs::copy(path, path_rotate)
             .err()
-            .map(|error| anyhow::anyhow!(error)),
+            .map(|error| anyhow!(error)),
     };
 
     if let Some(error) = rotation_error {
@@ -332,14 +337,5 @@ mod tests {
         assert_eq!(log_file_path.metadata().unwrap().len(), 13);
         assert!(!old_log_file_path.exists());
         assert_eq!(std::fs::read_to_string(&log_file_path).unwrap(), contents);
-    }
-
-    #[test]
-    fn test_log_level_names() {
-        assert_eq!(LEVEL_OUTPUT_STRINGS[Level::Error as usize], "ERROR");
-        assert_eq!(LEVEL_OUTPUT_STRINGS[Level::Warn as usize], "WARN ");
-        assert_eq!(LEVEL_OUTPUT_STRINGS[Level::Info as usize], "INFO ");
-        assert_eq!(LEVEL_OUTPUT_STRINGS[Level::Debug as usize], "DEBUG");
-        assert_eq!(LEVEL_OUTPUT_STRINGS[Level::Trace as usize], "TRACE");
     }
 }

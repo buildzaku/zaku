@@ -9,19 +9,19 @@ use crate::{
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FindRange {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FindRange {
     SingleLine,
     MultiLine,
 }
 
-pub struct TextLayoutDetails {
+pub(crate) struct TextLayoutDetails {
     pub(crate) text_system: Arc<WindowTextSystem>,
     pub(crate) editor_style: EditorStyle,
     pub(crate) rem_size: Pixels,
 }
 
-pub fn left(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn left(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
     if point.column() > 0 {
         *point.column_mut() -= 1;
     } else if point.row().0 > 0 {
@@ -32,7 +32,7 @@ pub fn left(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
     map.clip_point(point, Bias::Left)
 }
 
-pub fn right(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn right(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
     if point.column() < map.line_len(point.row()) {
         *point.column_mut() += 1;
     } else if point.row().0 < map.buffer_snapshot().max_point().row {
@@ -43,7 +43,7 @@ pub fn right(map: &DisplaySnapshot, mut point: DisplayPoint) -> DisplayPoint {
     map.clip_point(point, Bias::Right)
 }
 
-pub fn up(
+pub(crate) fn up(
     map: &DisplaySnapshot,
     start: DisplayPoint,
     goal: SelectionGoal,
@@ -60,7 +60,7 @@ pub fn up(
     )
 }
 
-pub fn down(
+pub(crate) fn down(
     map: &DisplaySnapshot,
     start: DisplayPoint,
     goal: SelectionGoal,
@@ -86,7 +86,7 @@ pub(crate) fn up_by_rows(
     text_layout_details: &TextLayoutDetails,
 ) -> (DisplayPoint, SelectionGoal) {
     let goal_x: Pixels = match goal {
-        SelectionGoal::HorizontalPosition(x) => x.into(),
+        SelectionGoal::HorizontalPosition(position) => position.into(),
         SelectionGoal::HorizontalRange { end, .. } => end.into(),
         _ => map.x_for_display_point(start, text_layout_details),
     };
@@ -124,7 +124,7 @@ pub(crate) fn down_by_rows(
     text_layout_details: &TextLayoutDetails,
 ) -> (DisplayPoint, SelectionGoal) {
     let goal_x: Pixels = match goal {
-        SelectionGoal::HorizontalPosition(x) => x.into(),
+        SelectionGoal::HorizontalPosition(position) => position.into(),
         SelectionGoal::HorizontalRange { end, .. } => end.into(),
         _ => map.x_for_display_point(start, text_layout_details),
     };
@@ -150,7 +150,7 @@ pub(crate) fn down_by_rows(
     )
 }
 
-pub fn previous_word_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn previous_word_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
     let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
@@ -171,7 +171,10 @@ pub fn previous_word_start(map: &DisplaySnapshot, point: DisplayPoint) -> Displa
     })
 }
 
-pub fn previous_word_start_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn previous_word_start_or_newline(
+    map: &DisplaySnapshot,
+    point: DisplayPoint,
+) -> DisplayPoint {
     let raw_point = point.to_point(map);
     let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
@@ -182,7 +185,7 @@ pub fn previous_word_start_or_newline(map: &DisplaySnapshot, point: DisplayPoint
     })
 }
 
-pub fn next_word_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn next_word_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
     let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
@@ -203,7 +206,7 @@ pub fn next_word_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint
     })
 }
 
-pub fn next_word_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn next_word_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
     let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
@@ -219,7 +222,7 @@ pub fn next_word_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> D
     })
 }
 
-pub fn previous_subword_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn previous_subword_start(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
     let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
@@ -228,7 +231,7 @@ pub fn previous_subword_start(map: &DisplaySnapshot, point: DisplayPoint) -> Dis
     })
 }
 
-pub fn previous_subword_start_or_newline(
+pub(crate) fn previous_subword_start_or_newline(
     map: &DisplaySnapshot,
     point: DisplayPoint,
 ) -> DisplayPoint {
@@ -240,7 +243,7 @@ pub fn previous_subword_start_or_newline(
     })
 }
 
-pub fn next_subword_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn next_subword_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
     let raw_point = point.to_point(map);
     let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
@@ -249,7 +252,10 @@ pub fn next_subword_end(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPo
     })
 }
 
-pub fn next_subword_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -> DisplayPoint {
+pub(crate) fn next_subword_end_or_newline(
+    map: &DisplaySnapshot,
+    point: DisplayPoint,
+) -> DisplayPoint {
     let raw_point = point.to_point(map);
     let classifier = map.buffer_snapshot().char_classifier_at(&raw_point);
 
@@ -266,7 +272,7 @@ pub fn next_subword_end_or_newline(map: &DisplaySnapshot, point: DisplayPoint) -
     })
 }
 
-pub fn adjust_greedy_deletion(
+pub(crate) fn adjust_greedy_deletion(
     map: &DisplaySnapshot,
     delete_from: DisplayPoint,
     delete_until: DisplayPoint,
@@ -330,7 +336,7 @@ pub fn adjust_greedy_deletion(
         .to_display_point(map)
 }
 
-pub fn is_subword_start(left: char, right: char, classifier: &CharClassifier) -> bool {
+pub(crate) fn is_subword_start(left: char, right: char, classifier: &CharClassifier) -> bool {
     let is_word_start = classifier.kind(left) != classifier.kind(right) && !right.is_whitespace();
     let is_subword_start = classifier.is_word('-') && left == '-' && right != '-'
         || left == '_' && right != '_'
@@ -338,7 +344,7 @@ pub fn is_subword_start(left: char, right: char, classifier: &CharClassifier) ->
     is_word_start || is_subword_start
 }
 
-pub fn is_subword_end(left: char, right: char, classifier: &CharClassifier) -> bool {
+pub(crate) fn is_subword_end(left: char, right: char, classifier: &CharClassifier) -> bool {
     let is_word_end =
         classifier.kind(left) != classifier.kind(right) && !classifier.is_whitespace(left);
     is_word_end || is_subword_boundary_end(left, right, classifier)
@@ -350,7 +356,7 @@ fn is_subword_boundary_end(left: char, right: char, classifier: &CharClassifier)
         || left.is_lowercase() && right.is_uppercase()
 }
 
-pub fn find_preceding_boundary_point(
+pub(crate) fn find_preceding_boundary_point(
     buffer_snapshot: &MultiBufferSnapshot,
     from: Point,
     find_range: FindRange,
@@ -377,7 +383,7 @@ pub fn find_preceding_boundary_point(
     buffer_snapshot.offset_to_point(offset)
 }
 
-pub fn find_preceding_boundary_display_point(
+pub(crate) fn find_preceding_boundary_display_point(
     map: &DisplaySnapshot,
     from: DisplayPoint,
     find_range: FindRange,
@@ -393,7 +399,7 @@ pub fn find_preceding_boundary_display_point(
     map.clip_point(result.to_display_point(map), Bias::Left)
 }
 
-pub fn find_boundary_point(
+pub(crate) fn find_boundary_point(
     map: &DisplaySnapshot,
     from: DisplayPoint,
     find_range: FindRange,
@@ -426,7 +432,7 @@ pub fn find_boundary_point(
     map.clip_point(offset.to_display_point(map), Bias::Right)
 }
 
-pub fn find_boundary(
+pub(crate) fn find_boundary(
     map: &DisplaySnapshot,
     from: DisplayPoint,
     find_range: FindRange,
@@ -444,7 +450,7 @@ mod tests {
 
     use settings::SettingsStore;
 
-    use crate::tests::util::marked_display_snapshot;
+    use crate::display_map::marked_display_snapshot;
 
     fn init_test(cx: &mut App) {
         let settings_store = SettingsStore::test_new(cx);

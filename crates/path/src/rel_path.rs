@@ -15,9 +15,6 @@ use crate::{PathStyle, is_absolute};
 #[derive(PartialEq, Eq, Hash, Serialize)]
 pub struct RelPath(str);
 
-#[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct RelPathBuf(String);
-
 impl RelPath {
     pub fn empty() -> &'static Self {
         Self::new_unchecked("")
@@ -32,8 +29,9 @@ impl RelPath {
             PathStyle::Windows => (&["./", ".\\"], &['/', '\\']),
         };
 
-        while prefixes.iter().any(|prefix| path.starts_with(prefix)) {
-            path = &path[prefixes[0].len()..];
+        while let Some(stripped_path) = prefixes.iter().find_map(|prefix| path.strip_prefix(prefix))
+        {
+            path = stripped_path;
         }
         while let Some(prefix) = path.strip_suffix(suffixes)
             && !prefix.is_empty()
@@ -87,7 +85,7 @@ impl RelPath {
     }
 
     fn new_unchecked(value: &str) -> &Self {
-        // Safety: `RelPath` is a transparent wrapper around `str` and adds no
+        // SAFETY: `RelPath` is a transparent wrapper around `str` and adds no
         // extra invariants, so this shared reference cast is valid.
         unsafe { &*(std::ptr::from_ref::<str>(value) as *const Self) }
     }
@@ -109,11 +107,11 @@ impl RelPath {
     }
 
     pub fn file_stem(&self) -> Option<&str> {
-        Some(self.as_std_path().file_stem()?.to_str().unwrap())
+        self.as_std_path().file_stem()?.to_str()
     }
 
     pub fn extension(&self) -> Option<&str> {
-        Some(self.as_std_path().extension()?.to_str().unwrap())
+        self.as_std_path().extension()?.to_str()
     }
 
     pub fn parent(&self) -> Option<&Self> {
@@ -187,9 +185,6 @@ impl ToOwned for RelPath {
     }
 }
 
-#[derive(Debug)]
-pub struct StripPrefixError;
-
 impl PartialOrd for RelPath {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
@@ -208,17 +203,23 @@ impl fmt::Debug for RelPath {
     }
 }
 
-impl fmt::Debug for RelPathBuf {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, formatter)
+impl AsRef<RelPath> for RelPath {
+    fn as_ref(&self) -> &RelPath {
+        self
     }
 }
 
-impl Default for RelPathBuf {
-    fn default() -> Self {
-        Self::new()
+impl PartialEq<str> for RelPath {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == *other
     }
 }
+
+#[derive(Debug)]
+pub struct StripPrefixError;
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelPathBuf(String);
 
 impl RelPathBuf {
     pub fn new() -> Self {
@@ -249,9 +250,27 @@ impl RelPathBuf {
     }
 }
 
+impl Default for RelPathBuf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Debug for RelPathBuf {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, formatter)
+    }
+}
+
 impl Borrow<RelPath> for RelPathBuf {
     fn borrow(&self) -> &RelPath {
         self.as_rel_path()
+    }
+}
+
+impl From<Arc<RelPath>> for RelPathBuf {
+    fn from(value: Arc<RelPath>) -> Self {
+        value.to_rel_path_buf()
     }
 }
 
@@ -261,31 +280,9 @@ impl From<RelPathBuf> for Arc<RelPath> {
     }
 }
 
-impl From<&RelPath> for Arc<RelPath> {
-    fn from(value: &RelPath) -> Self {
-        let bytes: Arc<str> = Arc::from(value.as_unix_str());
-
-        // Safety: `RelPath` is a transparent wrapper around `str` and adds no
-        // extra invariants, so this `Arc` cast is valid.
-        unsafe { Arc::from_raw(Arc::into_raw(bytes) as *const RelPath) }
-    }
-}
-
 impl AsRef<RelPath> for RelPathBuf {
     fn as_ref(&self) -> &RelPath {
         self.as_rel_path()
-    }
-}
-
-impl AsRef<RelPath> for RelPath {
-    fn as_ref(&self) -> &RelPath {
-        self
-    }
-}
-
-impl<'a> From<&'a RelPath> for Cow<'a, RelPath> {
-    fn from(value: &'a RelPath) -> Self {
-        Self::Borrowed(value)
     }
 }
 
@@ -297,24 +294,34 @@ impl Deref for RelPathBuf {
     }
 }
 
-impl PartialEq<str> for RelPath {
-    fn eq(&self, other: &str) -> bool {
-        self.0 == *other
+impl From<&RelPath> for Arc<RelPath> {
+    fn from(value: &RelPath) -> Self {
+        let bytes: Arc<str> = Arc::from(value.as_unix_str());
+
+        // SAFETY: `RelPath` is a transparent wrapper around `str` and adds no
+        // extra invariants, so this `Arc` cast is valid.
+        unsafe { Arc::from_raw(Arc::into_raw(bytes) as *const RelPath) }
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
-#[track_caller]
-pub fn rel_path(path: &str) -> &RelPath {
-    RelPath::unix(path).unwrap()
+impl<'a> From<&'a RelPath> for Cow<'a, RelPath> {
+    fn from(value: &'a RelPath) -> Self {
+        Self::Borrowed(value)
+    }
 }
 
-#[derive(Default)]
-pub struct RelPathComponents<'a>(&'a str);
+#[cfg(any(test, feature = "test"))]
+#[track_caller]
+pub fn rel_path(path: &str) -> &RelPath {
+    RelPath::unix(path).expect("test path should be relative")
+}
 
 pub struct RelPathAncestors<'a>(Option<&'a str>);
 
 const SEPARATOR: char = '/';
+
+#[derive(Default)]
+pub struct RelPathComponents<'a>(&'a str);
 
 impl<'a> RelPathComponents<'a> {
     pub fn rest(&self) -> &'a RelPath {
@@ -326,9 +333,8 @@ impl<'a> Iterator for RelPathComponents<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(index) = self.0.find(SEPARATOR) {
-            let (head, tail) = self.0.split_at(index);
-            self.0 = &tail[1..];
+        if let Some((head, tail)) = self.0.split_once(SEPARATOR) {
+            self.0 = tail;
             Some(head)
         } else if self.0.is_empty() {
             None
@@ -342,10 +348,9 @@ impl<'a> Iterator for RelPathComponents<'a> {
 
 impl DoubleEndedIterator for RelPathComponents<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
-        if let Some(index) = self.0.rfind(SEPARATOR) {
-            let (head, tail) = self.0.split_at(index);
+        if let Some((head, tail)) = self.0.rsplit_once(SEPARATOR) {
             self.0 = head;
-            Some(&tail[1..])
+            Some(tail)
         } else if self.0.is_empty() {
             None
         } else {
@@ -361,8 +366,8 @@ impl<'a> Iterator for RelPathAncestors<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.0?;
-        if let Some(index) = result.rfind(SEPARATOR) {
-            self.0 = Some(&result[..index]);
+        if let Some((ancestor, _)) = result.rsplit_once(SEPARATOR) {
+            self.0 = Some(ancestor);
         } else if !result.is_empty() {
             self.0 = Some("");
         } else {
@@ -379,9 +384,9 @@ mod tests {
 
     #[test]
     fn test_rel_path() {
-        assert!(RelPath::new(Path::new("/"), PathStyle::local()).is_err());
-        assert!(RelPath::new(Path::new("//"), PathStyle::local()).is_err());
-        assert!(RelPath::new(Path::new("/foo/"), PathStyle::local()).is_err());
+        RelPath::new(Path::new("/"), PathStyle::local()).unwrap_err();
+        RelPath::new(Path::new("//"), PathStyle::local()).unwrap_err();
+        RelPath::new(Path::new("/foo/"), PathStyle::local()).unwrap_err();
 
         let path = RelPath::new("foo/".as_ref(), PathStyle::local()).unwrap();
         assert_eq!(path, rel_path("foo").into());
@@ -473,7 +478,7 @@ mod tests {
     fn test_rel_path_partial_ord_is_compatible_with_std() {
         let test_cases = ["a/b/c", "relative/path/with/dot.", "relative/path/with.dot"];
         for (index, lhs) in test_cases.iter().enumerate() {
-            for rhs in &test_cases[index + 1..] {
+            for rhs in test_cases.iter().skip(index + 1) {
                 assert_eq!(
                     Path::new(lhs).cmp(Path::new(rhs)),
                     RelPath::unix(lhs)
@@ -499,12 +504,12 @@ mod tests {
 
     #[test]
     fn test_rel_path_constructors_absolute_path() {
-        assert!(RelPath::new(Path::new("/a/b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("\\a\\b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("/a/b"), PathStyle::Posix).is_err());
-        assert!(RelPath::new(Path::new("C:/a/b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("C:\\a\\b"), PathStyle::Windows).is_err());
-        assert!(RelPath::new(Path::new("C:/a/b"), PathStyle::Posix).is_ok());
+        RelPath::new(Path::new("/a/b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("\\a\\b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("/a/b"), PathStyle::Posix).unwrap_err();
+        RelPath::new(Path::new("C:/a/b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("C:\\a\\b"), PathStyle::Windows).unwrap_err();
+        RelPath::new(Path::new("C:/a/b"), PathStyle::Posix).unwrap();
     }
 
     #[test]

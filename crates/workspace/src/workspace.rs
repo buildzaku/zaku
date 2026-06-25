@@ -21,6 +21,7 @@ pub use persistence::{
     },
 };
 
+use anyhow::anyhow;
 use futures::{
     StreamExt,
     channel::{
@@ -37,7 +38,7 @@ use gpui::{
     PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions,
     WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
 };
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use gpui::{TestAppContext, VisualTestContext};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -50,23 +51,22 @@ use std::{
 };
 use uuid::Uuid;
 
-#[cfg(any(test, feature = "test-support"))]
-use fs::TempFs;
-
 use db::{Bind, Column, Row, Statement, StaticColumnCount, kv::KeyValueStore};
 use http_client::HttpClient;
+#[cfg(any(test, feature = "test"))]
+use http_client::{FakeHttpClient, StatusCode};
 use language::LanguageRegistry;
 use metadata::ZAKU_IDENTIFIER;
 use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
 use settings::{SettingsStore, ThemeAppearanceMode};
 use theme::{ActiveTheme, Appearance, SystemAppearance};
+use ui::StyledTypography;
 #[cfg(target_os = "macos")]
 use ui::utils;
-use ui::{StyledTypography, h_flex};
 use util::ResultExt;
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use session::Session;
 
 use crate::{
@@ -82,7 +82,7 @@ const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
 pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceId(i64);
 
 impl From<i64> for WorkspaceId {
@@ -115,14 +115,14 @@ impl Column for WorkspaceId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OpenMode {
     NewWindow,
     #[default]
     Activate,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CloseIntent {
     Quit,
     CloseWindow,
@@ -176,18 +176,14 @@ pub struct OpenResult {
 }
 
 #[derive(Clone)]
-pub struct SharedState {
+pub struct AppState {
     pub fs: Arc<dyn fs::Fs>,
     pub http_client: Arc<dyn HttpClient>,
     pub languages: Arc<LanguageRegistry>,
     pub session: Entity<AppSession>,
 }
 
-struct GlobalSharedState(Arc<SharedState>);
-
-impl Global for GlobalSharedState {}
-
-impl SharedState {
+impl AppState {
     pub fn new(
         fs: Arc<dyn fs::Fs>,
         http_client: Arc<dyn HttpClient>,
@@ -202,13 +198,15 @@ impl SharedState {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn test(cx: &mut App) -> Arc<Self> {
-        use http_client::FakeHttpClient;
-
-        let fs = TempFs::new(cx.background_executor().clone());
-        let http_client = FakeHttpClient::with_404_response();
-        let languages = Arc::new(LanguageRegistry::new(cx.background_executor().clone()));
+    #[cfg(any(test, feature = "test"))]
+    pub fn test_new(
+        fs: Arc<dyn fs::Fs>,
+        http_client: Option<Arc<dyn HttpClient>>,
+        cx: &mut App,
+    ) -> Arc<Self> {
+        let http_client =
+            http_client.unwrap_or_else(|| FakeHttpClient::with_response(StatusCode::NOT_FOUND));
+        let languages = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
         let session = cx.new(|cx| AppSession::new(Session::test_new(), cx));
 
         Arc::new(Self {
@@ -221,21 +219,25 @@ impl SharedState {
 
     #[track_caller]
     pub fn global(cx: &App) -> Arc<Self> {
-        cx.global::<GlobalSharedState>().0.clone()
+        cx.global::<GlobalAppState>().0.clone()
     }
 
     pub fn try_global(cx: &App) -> Option<Arc<Self>> {
-        cx.try_global::<GlobalSharedState>()
-            .map(|shared_state| shared_state.0.clone())
+        cx.try_global::<GlobalAppState>()
+            .map(|app_state| app_state.0.clone())
     }
 
-    pub fn set_global(shared_state: Arc<SharedState>, cx: &mut App) {
-        cx.set_global(GlobalSharedState(shared_state));
+    pub fn set_global(app_state: Arc<AppState>, cx: &mut App) {
+        cx.set_global(GlobalAppState(app_state));
     }
 }
 
-pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
-    SharedState::set_global(shared_state.clone(), cx);
+struct GlobalAppState(Arc<AppState>);
+
+impl Global for GlobalAppState {}
+
+pub fn init(app_state: Arc<AppState>, cx: &mut App) {
+    AppState::set_global(app_state.clone(), cx);
     smol::block_on(WorkspaceDb::global(cx).initialize_schema())
         .expect("workspace persistence schema should initialize");
 
@@ -244,7 +246,7 @@ pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
             let Some(window) = window else {
                 return;
             };
-            register_actions(shared_state.clone(), workspace, window, cx);
+            register_actions(app_state.clone(), workspace, window, cx);
         }
     })
     .detach();
@@ -309,7 +311,7 @@ impl ProjectItemRegistry {
             .rev()
             .find_map(|open_project_item| open_project_item(project, path, window, cx))
         else {
-            return Task::ready(Err(anyhow::anyhow!("cannot open file {:?}", path.path)));
+            return Task::ready(Err(anyhow!("cannot open file {:?}", path.path)));
         };
 
         open_project_item
@@ -322,7 +324,7 @@ pub fn register_project_item<I: ProjectItem>(cx: &mut App) {
     cx.default_global::<ProjectItemRegistry>().register::<I>();
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy)]
 struct SerializableItemDescriptor {
     deserialize: fn(
         Entity<Project>,
@@ -342,8 +344,6 @@ pub(crate) struct SerializableItemRegistry {
     descriptors_by_type: HashMap<TypeId, SerializableItemDescriptor>,
 }
 
-impl Global for SerializableItemRegistry {}
-
 impl SerializableItemRegistry {
     pub(crate) fn deserialize(
         item_kind: &str,
@@ -355,7 +355,7 @@ impl SerializableItemRegistry {
         cx: &mut Context<Pane>,
     ) -> Task<anyhow::Result<Box<dyn ItemHandle>>> {
         let Some(descriptor) = Self::descriptor(item_kind, cx) else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "cannot deserialize {item_kind}, descriptor not found"
             )));
         };
@@ -371,7 +371,7 @@ impl SerializableItemRegistry {
         cx: &mut App,
     ) -> Task<anyhow::Result<()>> {
         let Some(descriptor) = Self::descriptor(item_kind, cx) else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "cannot cleanup {item_kind}, descriptor not found"
             )));
         };
@@ -394,6 +394,8 @@ impl SerializableItemRegistry {
     }
 }
 
+impl Global for SerializableItemRegistry {}
+
 pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
     let serialized_item_kind = I::serialized_item_kind();
 
@@ -407,7 +409,12 @@ pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
         cleanup: |workspace_id, loaded_items, window, cx| {
             I::cleanup(workspace_id, loaded_items, window, cx)
         },
-        view_to_serializable_item: |view| Box::new(view.downcast::<I>().unwrap()),
+        view_to_serializable_item: |view| {
+            Box::new(
+                view.downcast::<I>()
+                    .expect("serializable item descriptor should match view type"),
+            )
+        },
     };
     registry
         .descriptors_by_kind
@@ -424,7 +431,7 @@ pub fn create_and_open_file(
     default_content: impl FnOnce() -> Cow<'static, str> + Send + 'static,
 ) -> Task<anyhow::Result<Box<dyn ItemHandle>>> {
     cx.spawn_in(window, async move |workspace, cx| {
-        let fs = workspace.read_with(cx, |workspace, _| workspace.shared_state.fs.clone())?;
+        let fs = workspace.read_with(cx, |workspace, _| workspace.app_state.fs.clone())?;
 
         match fs.metadata(path).await? {
             Some(metadata) if metadata.is_dir => {
@@ -459,7 +466,7 @@ pub fn create_and_open_file(
 }
 
 fn register_actions(
-    shared_state: Arc<SharedState>,
+    app_state: Arc<AppState>,
     workspace: &mut Workspace,
     _: &mut Window,
     _: &mut Context<Workspace>,
@@ -481,7 +488,7 @@ fn register_actions(
         })
         .register_action({
             move |_, _: &actions::workspace::NewWindow, _, cx| {
-                open_new(shared_state.clone(), cx).detach_and_log_err(cx);
+                open_new(app_state.clone(), cx).detach_and_log_err(cx);
             }
         })
         .register_action(|_, _: &actions::zaku::Minimize, window, _| {
@@ -540,14 +547,14 @@ fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptio
         }
     };
     let traffic_light_position = {
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
+            None
+        }
         #[cfg(target_os = "macos")]
         {
             let (x_inset, y_inset) = utils::traffic_light_inset(gpui::px(32.0), cx);
             Some(gpui::point(x_inset, y_inset))
-        }
-        #[cfg(any(target_os = "linux", target_os = "windows"))]
-        {
-            None
         }
     };
 
@@ -565,7 +572,7 @@ fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptio
     }
 }
 
-pub fn open_new(shared_state: Arc<SharedState>, cx: &mut App) -> Task<anyhow::Result<()>> {
+pub fn open_new(app_state: Arc<AppState>, cx: &mut App) -> Task<anyhow::Result<()>> {
     let workspace_db = WorkspaceDb::global(cx);
 
     cx.spawn(async move |cx| {
@@ -578,7 +585,7 @@ pub fn open_new(shared_state: Arc<SharedState>, cx: &mut App) -> Task<anyhow::Re
         cx.open_window(window_options, move |window, cx| {
             window.activate_window();
 
-            cx.new(|cx| Root::new(Workspace::create(workspace_id, shared_state, window, cx)))
+            cx.new(|cx| Root::new(Workspace::create(workspace_id, app_state, window, cx)))
         })?;
 
         anyhow::Ok(())
@@ -587,7 +594,7 @@ pub fn open_new(shared_state: Arc<SharedState>, cx: &mut App) -> Task<anyhow::Re
 
 pub fn with_active_or_new_workspace(
     cx: &mut App,
-    f: impl FnOnce(&mut Workspace, &mut Window, &mut Context<Workspace>) + Send + 'static,
+    updater: impl FnOnce(&mut Workspace, &mut Window, &mut Context<Workspace>) + Send + 'static,
 ) {
     if let Some(root) = cx
         .active_window()
@@ -596,12 +603,14 @@ pub fn with_active_or_new_workspace(
         cx.defer(move |cx| {
             root.update(cx, |root, window, cx| {
                 let workspace = root.workspace().clone();
-                workspace.update(cx, |workspace, cx| f(workspace, window, cx));
+                workspace.update(cx, |workspace, cx| {
+                    updater(workspace, window, cx);
+                });
             })
             .log_err();
         });
     } else {
-        let shared_state = SharedState::global(cx);
+        let app_state = AppState::global(cx);
         let workspace_db = WorkspaceDb::global(cx);
         cx.spawn(async move |cx| {
             let workspace_id = workspace_db.next_id().await?;
@@ -613,8 +622,10 @@ pub fn with_active_or_new_workspace(
             cx.open_window(window_options, move |window, cx| {
                 window.activate_window();
                 cx.new(|cx| {
-                    let workspace = Workspace::create(workspace_id, shared_state, window, cx);
-                    workspace.update(cx, |workspace, cx| f(workspace, window, cx));
+                    let workspace = Workspace::create(workspace_id, app_state, window, cx);
+                    workspace.update(cx, |workspace, cx| {
+                        updater(workspace, window, cx);
+                    });
                     Root::new(workspace)
                 })
             })?;
@@ -708,7 +719,7 @@ impl Root {
 
     pub fn replace_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let workspace = self.workspace.clone();
-        let shared_state = workspace.read(cx).shared_state().clone();
+        let app_state = workspace.read(cx).app_state().clone();
         let workspace_db = WorkspaceDb::global(cx);
 
         cx.spawn_in(window, async move |this, cx| {
@@ -721,7 +732,7 @@ impl Root {
             if should_replace {
                 let workspace_id = workspace_db.next_id().await?;
                 this.update_in(cx, |root, window, cx| {
-                    root.workspace = Workspace::create(workspace_id, shared_state, window, cx);
+                    root.workspace = Workspace::create(workspace_id, app_state, window, cx);
                     cx.notify();
                 })?;
             }
@@ -766,7 +777,44 @@ impl Root {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+impl Focusable for Root {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.workspace.read(cx).focus_handle(cx)
+    }
+}
+
+impl Render for Root {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let workspace = self.workspace().clone();
+        let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
+        let root = workspace.update(cx, |workspace, cx| {
+            workspace.actions(gpui::div().flex().items_center(), window, cx)
+        });
+        let modal_layer = workspace.read(cx).modal_layer.clone();
+
+        client_side_decorations(
+            root.key_context(workspace_key_context)
+                .relative()
+                .size_full()
+                .on_action(cx.listener(Self::close_project))
+                .on_action(cx.listener(Self::close_window))
+                .child(
+                    gpui::div()
+                        .flex()
+                        .flex_1()
+                        .size_full()
+                        .overflow_hidden()
+                        .child(self.workspace().clone()),
+                )
+                .child(modal_layer),
+            window,
+            cx,
+            Tiling::default(),
+        )
+    }
+}
+
+#[cfg(any(test, feature = "test"))]
 pub fn build_workspace<'a>(
     project: &Entity<Project>,
     cx: &'a mut TestAppContext,
@@ -781,15 +829,66 @@ pub fn build_workspace<'a>(
     (workspace, cx)
 }
 
-impl Focusable for Root {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.workspace.read(cx).focus_handle(cx)
-    }
-}
-
 struct GlobalResizeEdge(ResizeEdge);
 
 impl Global for GlobalResizeEdge {}
+
+fn resize_edge(
+    position: Point<Pixels>,
+    shadow_size: Pixels,
+    window_size: Size<Pixels>,
+    tiling: Tiling,
+) -> Option<ResizeEdge> {
+    let bounds = Bounds::new(Point::default(), window_size).inset(shadow_size * 1.5);
+    if bounds.contains(&position) {
+        return None;
+    }
+
+    let corner_size = gpui::size(shadow_size * 1.5, shadow_size * 1.5);
+    let top_left_bounds = Bounds::new(Point::new(gpui::px(0.0), gpui::px(0.0)), corner_size);
+    if !tiling.top && top_left_bounds.contains(&position) {
+        return Some(ResizeEdge::TopLeft);
+    }
+
+    let top_right_bounds = Bounds::new(
+        Point::new(window_size.width - corner_size.width, gpui::px(0.0)),
+        corner_size,
+    );
+    if !tiling.top && top_right_bounds.contains(&position) {
+        return Some(ResizeEdge::TopRight);
+    }
+
+    let bottom_left_bounds = Bounds::new(
+        Point::new(gpui::px(0.0), window_size.height - corner_size.height),
+        corner_size,
+    );
+    if !tiling.bottom && bottom_left_bounds.contains(&position) {
+        return Some(ResizeEdge::BottomLeft);
+    }
+
+    let bottom_right_bounds = Bounds::new(
+        Point::new(
+            window_size.width - corner_size.width,
+            window_size.height - corner_size.height,
+        ),
+        corner_size,
+    );
+    if !tiling.bottom && bottom_right_bounds.contains(&position) {
+        return Some(ResizeEdge::BottomRight);
+    }
+
+    if !tiling.top && position.y < shadow_size {
+        Some(ResizeEdge::Top)
+    } else if !tiling.bottom && position.y > window_size.height - shadow_size {
+        Some(ResizeEdge::Bottom)
+    } else if !tiling.left && position.x < shadow_size {
+        Some(ResizeEdge::Left)
+    } else if !tiling.right && position.x > window_size.width - shadow_size {
+        Some(ResizeEdge::Right)
+    } else {
+        None
+    }
+}
 
 pub fn client_side_decorations(
     element: impl IntoElement,
@@ -994,94 +1093,8 @@ pub fn client_side_decorations(
         })
 }
 
-fn resize_edge(
-    position: Point<Pixels>,
-    shadow_size: Pixels,
-    window_size: Size<Pixels>,
-    tiling: Tiling,
-) -> Option<ResizeEdge> {
-    let bounds = Bounds::new(Point::default(), window_size).inset(shadow_size * 1.5);
-    if bounds.contains(&position) {
-        return None;
-    }
-
-    let corner_size = gpui::size(shadow_size * 1.5, shadow_size * 1.5);
-    let top_left_bounds = Bounds::new(Point::new(gpui::px(0.0), gpui::px(0.0)), corner_size);
-    if !tiling.top && top_left_bounds.contains(&position) {
-        return Some(ResizeEdge::TopLeft);
-    }
-
-    let top_right_bounds = Bounds::new(
-        Point::new(window_size.width - corner_size.width, gpui::px(0.0)),
-        corner_size,
-    );
-    if !tiling.top && top_right_bounds.contains(&position) {
-        return Some(ResizeEdge::TopRight);
-    }
-
-    let bottom_left_bounds = Bounds::new(
-        Point::new(gpui::px(0.0), window_size.height - corner_size.height),
-        corner_size,
-    );
-    if !tiling.bottom && bottom_left_bounds.contains(&position) {
-        return Some(ResizeEdge::BottomLeft);
-    }
-
-    let bottom_right_bounds = Bounds::new(
-        Point::new(
-            window_size.width - corner_size.width,
-            window_size.height - corner_size.height,
-        ),
-        corner_size,
-    );
-    if !tiling.bottom && bottom_right_bounds.contains(&position) {
-        return Some(ResizeEdge::BottomRight);
-    }
-
-    if !tiling.top && position.y < shadow_size {
-        Some(ResizeEdge::Top)
-    } else if !tiling.bottom && position.y > window_size.height - shadow_size {
-        Some(ResizeEdge::Bottom)
-    } else if !tiling.left && position.x < shadow_size {
-        Some(ResizeEdge::Left)
-    } else if !tiling.right && position.x > window_size.width - shadow_size {
-        Some(ResizeEdge::Right)
-    } else {
-        None
-    }
-}
-
-impl Render for Root {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let workspace = self.workspace().clone();
-        let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
-        let root = workspace.update(cx, |workspace, cx| workspace.actions(h_flex(), window, cx));
-        let modal_layer = workspace.read(cx).modal_layer.clone();
-
-        client_side_decorations(
-            root.key_context(workspace_key_context)
-                .relative()
-                .size_full()
-                .on_action(cx.listener(Self::close_project))
-                .on_action(cx.listener(Self::close_window))
-                .child(
-                    gpui::div()
-                        .flex()
-                        .flex_1()
-                        .size_full()
-                        .overflow_hidden()
-                        .child(self.workspace().clone()),
-                )
-                .child(modal_layer),
-            window,
-            cx,
-            Tiling::default(),
-        )
-    }
-}
-
 pub struct Workspace {
-    shared_state: Arc<SharedState>,
+    app_state: Arc<AppState>,
     weak_self: WeakEntity<Self>,
     registered_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
@@ -1112,7 +1125,7 @@ pub struct Workspace {
 impl Workspace {
     pub fn create<V>(
         workspace_id: WorkspaceId,
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Entity<Self>
@@ -1120,16 +1133,16 @@ impl Workspace {
         V: 'static,
     {
         let project = cx.new({
-            let fs = shared_state.fs.clone();
-            let languages = shared_state.languages.clone();
+            let fs = app_state.fs.clone();
+            let languages = app_state.languages.clone();
             move |cx| Project::new(fs.clone(), languages.clone(), cx)
         });
 
         cx.new(|cx| {
             Self::new(
                 Some(workspace_id),
-                Some(shared_state.session.read(cx).id().to_string()),
-                shared_state,
+                Some(app_state.session.read(cx).id().to_string()),
+                app_state,
                 project,
                 window,
                 cx,
@@ -1180,8 +1193,8 @@ impl Workspace {
         }
     }
 
-    pub fn shared_state(&self) -> &Arc<SharedState> {
-        &self.shared_state
+    pub fn app_state(&self) -> &Arc<AppState> {
+        &self.app_state
     }
 
     pub fn database_id(&self) -> Option<WorkspaceId> {
@@ -1246,7 +1259,7 @@ impl Workspace {
 
     pub fn open(
         path: PathBuf,
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         requesting_window: Option<WindowHandle<Root>>,
         open_mode: OpenMode,
         cx: &mut App,
@@ -1261,8 +1274,8 @@ impl Workspace {
             let project = cx
                 .update(|cx| {
                     Project::open(
-                        shared_state.fs.clone(),
-                        shared_state.languages.clone(),
+                        app_state.fs.clone(),
+                        app_state.languages.clone(),
                         path.clone(),
                         cx,
                     )
@@ -1277,14 +1290,14 @@ impl Workspace {
 
             let (window, workspace) = if let Some(window) = window_to_replace {
                 let workspace = window.update(cx, |root: &mut Root, window, cx| {
-                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let session_id = app_state.session.read(cx).id().to_string();
                     let project = project.clone();
-                    let shared_state = shared_state.clone();
+                    let app_state = app_state.clone();
                     let workspace = cx.new(|cx| {
                         Workspace::new(
                             Some(workspace_id),
                             Some(session_id),
-                            shared_state,
+                            app_state,
                             project,
                             window,
                             cx,
@@ -1339,12 +1352,12 @@ impl Workspace {
                     options
                 });
                 let window = cx.open_window(window_options, move |window, cx| {
-                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let session_id = app_state.session.read(cx).id().to_string();
                     let workspace = cx.new(|cx| {
                         Workspace::new(
                             Some(workspace_id),
                             Some(session_id),
-                            shared_state,
+                            app_state,
                             project,
                             window,
                             cx,
@@ -1484,10 +1497,10 @@ impl Workspace {
             open_mode = OpenMode::Activate;
         }
 
-        let shared_state = self.shared_state().clone();
+        let app_state = self.app_state().clone();
 
         cx.spawn_in(window, async move |workspace, cx| {
-            let path = shared_state.fs.canonicalize(&path).await.unwrap_or(path);
+            let path = app_state.fs.canonicalize(&path).await.unwrap_or(path);
             let existing = cx.update(|_, cx| find_existing_workspace_window(path.as_path(), cx))?;
 
             if let Some((window, workspace)) = existing {
@@ -1518,9 +1531,7 @@ impl Workspace {
             }
 
             let OpenResult { window, workspace } = cx
-                .update(|_, cx| {
-                    Workspace::open(path, shared_state, requesting_window, open_mode, cx)
-                })?
+                .update(|_, cx| Workspace::open(path, app_state, requesting_window, open_mode, cx))?
                 .await?;
 
             window
@@ -2005,7 +2016,7 @@ impl Workspace {
     ) -> anyhow::Result<()> {
         self.serializable_items_tx
             .unbounded_send(item)
-            .map_err(|err| anyhow::anyhow!("failed to send serializable item over channel: {err}"))
+            .map_err(|err| anyhow!("failed to send serializable item over channel: {err}"))
     }
 
     fn toggle_dock(&mut self, position: DockPosition, window: &mut Window, cx: &mut Context<Self>) {
@@ -2063,7 +2074,7 @@ impl Workspace {
     pub fn new(
         database_id: Option<WorkspaceId>,
         session_id: Option<String>,
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -2186,7 +2197,7 @@ impl Workspace {
         });
 
         let this = Self {
-            shared_state,
+            app_state,
             weak_self: weak_handle,
             registered_actions: Vec::default(),
             database_id,
@@ -2224,14 +2235,14 @@ impl Workspace {
         this
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(project: Entity<Project>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let shared_state = SharedState::global(cx);
+        let app_state = AppState::global(cx);
         window.activate_window();
         let workspace = Self::new(
             None,
-            Some(shared_state.session.read(cx).id().to_string()),
-            shared_state,
+            Some(app_state.session.read(cx).id().to_string()),
+            app_state,
             project,
             window,
             cx,
@@ -2303,7 +2314,7 @@ impl Workspace {
             },
         };
 
-        let fs = self.shared_state.fs.clone();
+        let fs = self.app_state.fs.clone();
         settings::update_settings_file(fs, cx, move |settings, _| {
             theme_settings::set_mode(settings, new_mode);
         });
@@ -2581,7 +2592,6 @@ impl Render for Workspace {
                     .bg(theme_colors.background)
                     .relative()
                     .flex()
-                    .flex_row()
                     .flex_1()
                     .overflow_hidden()
                     .border_y_1()
@@ -2658,9 +2668,9 @@ mod tests {
     use serde_json::{Value, json};
     use std::sync::Arc;
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use fs::Fs;
-
+    use fs::TempFs;
     use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
@@ -2676,17 +2686,17 @@ mod tests {
         },
     };
 
-    pub fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    pub(crate) fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            crate::init(shared_state, cx);
+            crate::init(app_state, cx);
         });
     }
 
     async fn init_default_window_bounds(
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         cx: &mut TestAppContext,
     ) -> Bounds<Pixels> {
         let bounds = Bounds::new(
@@ -2704,7 +2714,7 @@ mod tests {
                     },
                     move |window, cx| {
                         cx.new(|cx| {
-                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                            Root::new(Workspace::create(workspace_id, app_state, window, cx))
                         })
                     },
                 )
@@ -2729,9 +2739,9 @@ mod tests {
     async fn test_tracking_active_path(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2827,12 +2837,11 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
         });
@@ -2918,11 +2927,10 @@ mod tests {
     async fn test_remove_worktree_invalidates_pending_direct_project_open(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
@@ -2991,11 +2999,10 @@ mod tests {
 
     #[gpui::test]
     fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         workspace.update_in(cx, |workspace, window, cx| {
@@ -3015,11 +3022,10 @@ mod tests {
     async fn test_open_workspace_hides_welcome_page(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
@@ -3077,12 +3083,11 @@ mod tests {
 
     #[gpui::test]
     fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
@@ -3157,12 +3162,11 @@ mod tests {
     fn test_panel_size_state_persistence(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         let workspace_id = workspace.update(cx, |workspace, _| {
@@ -3194,7 +3198,7 @@ mod tests {
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(Workspace::create(
                 workspace_id,
-                shared_state.clone(),
+                app_state.clone(),
                 window,
                 cx,
             ))
@@ -3218,12 +3222,11 @@ mod tests {
 
     #[gpui::test]
     fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         let item = cx.new(TestItem::new);
@@ -3250,9 +3253,9 @@ mod tests {
     async fn test_close_all_items(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3348,9 +3351,9 @@ mod tests {
     async fn test_discard_all_reloads_from_disk(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3407,9 +3410,9 @@ mod tests {
     async fn test_dont_save_single_file_reloads_from_disk(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3447,9 +3450,9 @@ mod tests {
     async fn test_close_with_save_intent(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3494,9 +3497,9 @@ mod tests {
     async fn test_drag_first_tab_to_last_position(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3528,9 +3531,9 @@ mod tests {
     async fn test_drag_last_tab_to_first_position(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3562,9 +3565,9 @@ mod tests {
     async fn test_drag_tab_to_middle_tab_with_mouse_events(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3612,9 +3615,9 @@ mod tests {
     async fn test_opening_same_workspace_reuses_current_worktree(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3675,9 +3678,9 @@ mod tests {
     async fn test_opening_same_workspace_in_new_window_with_activate(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3695,7 +3698,7 @@ mod tests {
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
@@ -3717,9 +3720,9 @@ mod tests {
 
         let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
-        let shared_state = cx.update(|_, cx| SharedState::global(cx));
+        let app_state = cx.update(|_, cx| AppState::global(cx));
         let (empty_root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let empty_workspace = empty_root.update_in(cx, |root, _, _| root.workspace().clone());
         assert_eq!(cx.windows().len(), 2);
@@ -3748,9 +3751,9 @@ mod tests {
     async fn test_opening_same_workspace_in_new_window(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3768,7 +3771,7 @@ mod tests {
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
@@ -3822,9 +3825,9 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3887,16 +3890,16 @@ mod tests {
         assert_eq!(current_root, Some(canonical_project_path));
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[gpui::test]
     async fn test_opening_symlinked_workspace_path_reuses_current_worktree(
         cx: &mut TestAppContext,
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -4005,9 +4008,9 @@ mod tests {
     async fn test_opening_different_workspace_replaces_current_worktree(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("first"),
@@ -4080,14 +4083,14 @@ mod tests {
     async fn test_window_bounds_on_initial_launch(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
         let project_path = temp_fs.path().join(path!("project"));
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4106,15 +4109,15 @@ mod tests {
     async fn test_window_bounds_restore_saved_default(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
         temp_fs.insert_tree(path!("project"), json!(null));
 
-        let default_bounds = init_default_window_bounds(shared_state.clone(), cx).await;
+        let default_bounds = init_default_window_bounds(app_state.clone(), cx).await;
         let project_path = temp_fs.path().join(path!("project"));
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4131,11 +4134,12 @@ mod tests {
     async fn test_window_bounds_cascade_on_new_window(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
-        init_default_window_bounds(shared_state.clone(), cx).await;
+        init_default_window_bounds(app_state.clone(), cx).await;
 
         let workspace_id = workspace_db.next_id().await.unwrap();
         let active_bounds = Bounds::new(
@@ -4149,11 +4153,11 @@ mod tests {
                     ..WindowOptions::default()
                 },
                 {
-                    let shared_state = shared_state.clone();
+                    let app_state = app_state.clone();
                     move |window, cx| {
                         window.activate_window();
                         cx.new(|cx| {
-                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                            Root::new(Workspace::create(workspace_id, app_state, window, cx))
                         })
                     }
                 },
@@ -4161,7 +4165,7 @@ mod tests {
         })
         .unwrap();
 
-        cx.update(|cx| open_new(shared_state, cx)).await.unwrap();
+        cx.update(|cx| open_new(app_state, cx)).await.unwrap();
 
         let new_window = cx.update(|cx| cx.active_window().unwrap().downcast::<Root>().unwrap());
         let cascade_offset = gpui::point(gpui::px(25.0), gpui::px(25.0));
@@ -4180,14 +4184,14 @@ mod tests {
     async fn test_window_bounds_cascade_on_new_project_window(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
         let project_path = temp_fs.path().join(path!("project"));
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
-        init_default_window_bounds(shared_state.clone(), cx).await;
+        init_default_window_bounds(app_state.clone(), cx).await;
 
         let active_bounds = Bounds::new(
             gpui::point(gpui::px(100.0), gpui::px(100.0)),
@@ -4201,13 +4205,13 @@ mod tests {
                     ..WindowOptions::default()
                 },
                 {
-                    let shared_state = shared_state.clone();
+                    let app_state = app_state.clone();
                     move |window, cx| {
                         window.activate_window();
                         cx.new(|cx| {
                             Root::new(Workspace::create(
                                 active_workspace_id,
-                                shared_state,
+                                app_state,
                                 window,
                                 cx,
                             ))
@@ -4219,7 +4223,7 @@ mod tests {
         .unwrap();
 
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4239,13 +4243,13 @@ mod tests {
     async fn test_window_bounds_restore_saved_workspace(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
         let project_path = temp_fs.path().join(path!("project"));
-        init_default_window_bounds(shared_state.clone(), cx).await;
+        init_default_window_bounds(app_state.clone(), cx).await;
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
 
         let active_bounds = Bounds::new(
@@ -4261,13 +4265,13 @@ mod tests {
                         ..WindowOptions::default()
                     },
                     {
-                        let shared_state = shared_state.clone();
+                        let app_state = app_state.clone();
                         move |window, cx| {
                             window.activate_window();
                             cx.new(|cx| {
                                 Root::new(Workspace::create(
                                     active_workspace_id,
-                                    shared_state,
+                                    app_state,
                                     window,
                                     cx,
                                 ))
@@ -4311,7 +4315,7 @@ mod tests {
             .unwrap();
 
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4328,9 +4332,9 @@ mod tests {
     async fn test_center_pane_deserialization_preserves_item_order(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
         cx.update(register_serializable_item::<TestItem>);
 
         temp_fs.insert_tree(path!("project"), Value::default());

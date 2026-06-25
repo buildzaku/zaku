@@ -9,8 +9,9 @@ pub use worktree::{
     RequestFileState, Snapshot, UpdatedEntriesSet, Worktree, WorktreeId, request_method_label,
 };
 
+use anyhow::anyhow;
 use futures::{FutureExt, StreamExt};
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use gpui::TestAppContext;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
 use std::{
@@ -44,7 +45,7 @@ pub trait ProjectItem: 'static {
     fn is_dirty(&self) -> bool;
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProjectPath {
     pub worktree_id: WorktreeId,
     pub path: Arc<RelPath>,
@@ -72,13 +73,13 @@ impl<P: Into<Arc<RelPath>>> From<(WorktreeId, P)> for ProjectPath {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryMetadata {
     pub prefix_label: Option<String>,
     pub is_invalid: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct EntryMetadataVersion {
     path: Arc<RelPath>,
     inode: u64,
@@ -196,16 +197,6 @@ impl ProjectItem for Buffer {
     }
 }
 
-pub struct Project {
-    worktree_store: Entity<WorktreeStore>,
-    buffer_store: Entity<BufferStore>,
-    request_buffer_store: Entity<RequestBufferStore>,
-    languages: Arc<LanguageRegistry>,
-    active_entry: Option<ProjectEntryId>,
-    metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
-    _maintain_buffer_languages: Task<()>,
-}
-
 pub enum ProjectEvent {
     ActiveEntryChanged(Option<ProjectEntryId>),
     WorktreeAdded(WorktreeId),
@@ -215,7 +206,15 @@ pub enum ProjectEvent {
     EntryMetadataUpdated(ProjectEntryId),
 }
 
-impl EventEmitter<ProjectEvent> for Project {}
+pub struct Project {
+    worktree_store: Entity<WorktreeStore>,
+    buffer_store: Entity<BufferStore>,
+    request_buffer_store: Entity<RequestBufferStore>,
+    languages: Arc<LanguageRegistry>,
+    active_entry: Option<ProjectEntryId>,
+    metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
+    _maintain_buffer_languages: Task<()>,
+}
 
 impl Project {
     pub fn new(fs: Arc<dyn Fs>, languages: Arc<LanguageRegistry>, cx: &mut Context<Self>) -> Self {
@@ -271,13 +270,13 @@ impl Project {
         })
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub async fn test_new(
         fs: Arc<dyn Fs>,
         root_path: &Path,
         cx: &mut TestAppContext,
     ) -> Entity<Project> {
-        let languages = Arc::new(LanguageRegistry::test(cx.executor()));
+        let languages = Arc::new(LanguageRegistry::test_new(cx.executor()));
         let project = cx.update(|cx| {
             cx.new({
                 let fs = fs.clone();
@@ -291,7 +290,7 @@ impl Project {
                 project.find_or_create_worktree(root_path, true, cx)
             })
             .await
-            .unwrap();
+            .expect("test project should create root worktree");
 
         worktree
             .read_with(cx, |worktree, _| worktree.scan_complete())
@@ -711,7 +710,7 @@ impl Project {
     ) -> Task<anyhow::Result<Entry>> {
         let project_path = project_path.into();
         let Some(worktree) = self.worktree_for_id(project_path.worktree_id, cx) else {
-            return Task::ready(Err(anyhow::anyhow!(format!(
+            return Task::ready(Err(anyhow!(format!(
                 "No worktree for path {project_path:?}"
             ))));
         };
@@ -879,3 +878,5 @@ impl Project {
             .update(cx, |store, cx| store.reload_request_buffer(buffer, cx))
     }
 }
+
+impl EventEmitter<ProjectEvent> for Project {}

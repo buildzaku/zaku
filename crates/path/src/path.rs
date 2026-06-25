@@ -1,6 +1,6 @@
 mod rel_path;
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub use rel_path::rel_path;
 pub use rel_path::{RelPath, RelPathAncestors, RelPathBuf, RelPathComponents};
 
@@ -16,7 +16,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::ffi::OsStrExt;
 
 #[cfg(target_os = "windows")]
@@ -35,21 +35,21 @@ pub trait PathExt {
         Self: From<&'a Path>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PathStyle {
     Posix,
     Windows,
 }
 
 impl PathStyle {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    pub const fn local() -> Self {
+        Self::Posix
+    }
+
     #[cfg(target_os = "windows")]
     pub const fn local() -> Self {
         Self::Windows
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    pub const fn local() -> Self {
-        Self::Posix
     }
 
     pub fn primary_separator(self) -> &'static str {
@@ -83,12 +83,19 @@ impl PathStyle {
             .unwrap_or(parent);
         let child = child.to_str()?;
 
-        let stripped = if self.is_windows()
-            && child.as_bytes().get(1) == Some(&b':')
-            && parent.as_bytes().get(1) == Some(&b':')
-            && child.as_bytes()[0].eq_ignore_ascii_case(&parent.as_bytes()[0])
-        {
-            child[2..].strip_prefix(&parent[2..])?
+        let child_bytes = child.as_bytes();
+        let parent_bytes = parent.as_bytes();
+        let has_same_windows_drive = self.is_windows()
+            && child_bytes.get(1) == Some(&b':')
+            && parent_bytes.get(1) == Some(&b':')
+            && child_bytes.first().zip(parent_bytes.first()).is_some_and(
+                |(child_drive, parent_drive)| child_drive.eq_ignore_ascii_case(parent_drive),
+            );
+
+        let stripped_path = if has_same_windows_drive {
+            let child_without_drive = child.get(2..)?;
+            let parent_without_drive = parent.get(2..)?;
+            child_without_drive.strip_prefix(parent_without_drive)?
         } else {
             child.strip_prefix(parent)?
         };
@@ -96,10 +103,10 @@ impl PathStyle {
         if let Some(relative_path) = self
             .separators()
             .iter()
-            .find_map(|separator| stripped.strip_prefix(separator))
+            .find_map(|separator| stripped_path.strip_prefix(separator))
         {
             RelPath::new(relative_path.as_ref(), self).ok()
-        } else if stripped.is_empty() {
+        } else if stripped_path.is_empty() {
             Some(Cow::Borrowed(RelPath::empty()))
         } else {
             None
@@ -108,19 +115,21 @@ impl PathStyle {
 }
 
 pub fn is_absolute(path: &str, path_style: PathStyle) -> bool {
+    let path_bytes = path.as_bytes();
+
     path.starts_with('/')
         || path_style == PathStyle::Windows
             && (path.starts_with('\\')
-                || path
-                    .chars()
-                    .next()
-                    .is_some_and(|ch| ch.is_ascii_alphabetic())
-                    && path[1..]
-                        .strip_prefix(':')
-                        .is_some_and(|suffix| suffix.starts_with('/') || suffix.starts_with('\\')))
+                || path_bytes
+                    .first()
+                    .is_some_and(|drive_letter| drive_letter.is_ascii_alphabetic())
+                    && path_bytes.get(1) == Some(&b':')
+                    && path_bytes
+                        .get(2)
+                        .is_some_and(|separator| matches!(*separator, b'/' | b'\\')))
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortOrder {
     #[default]
     Default,
@@ -129,7 +138,7 @@ pub enum SortOrder {
     Unicode,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortMode {
     #[default]
     DirectoriesFirst,
@@ -421,7 +430,7 @@ impl<T: AsRef<Path>> PathExt for T {
     where
         Self: From<&'a Path>,
     {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             Ok(Self::from(Path::new(OsStr::from_bytes(bytes))))
         }
@@ -431,7 +440,7 @@ impl<T: AsRef<Path>> PathExt for T {
             WTF8::validate(bytes)
                 .then(|| {
                     Self::from(Path::new(
-                        // Safety: `WTF8::validate(bytes)` above guarantees that bytes are valid WTF-8
+                        // SAFETY: `WTF8::validate(bytes)` above guarantees that bytes are valid WTF-8
                         // for `OsStr::from_encoded_bytes_unchecked` on Windows.
                         unsafe { OsStr::from_encoded_bytes_unchecked(bytes) },
                     ))
@@ -443,75 +452,87 @@ impl<T: AsRef<Path>> PathExt for T {
 
 /// Returns the path to the configuration directory.
 ///
-/// - macOS: `~/.config/zaku`
 /// - Linux: `$XDG_CONFIG_HOME/zaku` (or `~/.config/zaku`), with Flatpak override.
+/// - macOS: `~/.config/zaku`
 /// - Windows: `%APPDATA%\\Zaku`
 pub fn config_dir() -> &'static PathBuf {
     static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
     CONFIG_DIR.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            home_dir().join(".config").join("zaku")
-        } else if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             if let Ok(flatpak_xdg_config) = std::env::var("FLATPAK_XDG_CONFIG_HOME") {
                 PathBuf::from(flatpak_xdg_config)
             } else {
                 dirs::config_dir().expect("failed to determine XDG_CONFIG_HOME directory")
             }
             .join("zaku")
-        } else if cfg!(target_os = "windows") {
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            home_dir().join(".config").join("zaku")
+        }
+
+        #[cfg(target_os = "windows")]
+        {
             dirs::config_dir()
                 .expect("failed to determine RoamingAppData directory")
                 .join("Zaku")
-        } else {
-            unreachable!("Unsupported platform")
         }
     })
 }
 
 /// Returns the path to the data directory.
 ///
-/// - macOS: `~/Library/Application Support/Zaku`
 /// - Linux: `$XDG_DATA_HOME/zaku` (or `~/.local/share/zaku`), with Flatpak override.
+/// - macOS: `~/Library/Application Support/Zaku`
 /// - Windows: `%LOCALAPPDATA%\\Zaku`
 pub fn data_dir() -> &'static PathBuf {
     static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
     DATA_DIR.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            home_dir()
-                .join("Library")
-                .join("Application Support")
-                .join("Zaku")
-        } else if cfg!(target_os = "linux") {
+        #[cfg(target_os = "linux")]
+        {
             if let Ok(flatpak_xdg_data) = std::env::var("FLATPAK_XDG_DATA_HOME") {
                 PathBuf::from(flatpak_xdg_data)
             } else {
                 dirs::data_local_dir().expect("failed to determine XDG_DATA_HOME directory")
             }
             .join("zaku")
-        } else if cfg!(target_os = "windows") {
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            home_dir()
+                .join("Library")
+                .join("Application Support")
+                .join("Zaku")
+        }
+
+        #[cfg(target_os = "windows")]
+        {
             dirs::data_local_dir()
                 .expect("failed to determine LocalAppData directory")
                 .join("Zaku")
-        } else {
-            unreachable!("Unsupported platform")
         }
     })
 }
 
 /// Returns the path to the logs directory.
 ///
-/// - macOS: `~/Library/Logs/Zaku`
 /// - Linux: `$XDG_DATA_HOME/zaku/logs` (or `~/.local/share/zaku/logs`), with Flatpak override.
+/// - macOS: `~/Library/Logs/Zaku`
 /// - Windows: `%LOCALAPPDATA%\\Zaku\\logs`
 pub fn logs_dir() -> &'static PathBuf {
     static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
     LOGS_DIR.get_or_init(|| {
-        if cfg!(target_os = "macos") {
-            home_dir().join("Library/Logs/Zaku")
-        } else if cfg!(target_os = "linux") || cfg!(target_os = "windows") {
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        {
             data_dir().join("logs")
-        } else {
-            unreachable!("Unsupported platform")
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            home_dir().join("Library/Logs/Zaku")
         }
     })
 }
@@ -543,13 +564,13 @@ pub fn keymap_file() -> &'static PathBuf {
 /// In memory, this is identical to `Path`. On non-Windows conversions to this
 /// type are no-ops. On Windows, these conversions sanitize UNC paths by
 /// removing the `\\?\` prefix.
-#[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct SanitizedPath(Path);
 
 impl SanitizedPath {
     pub fn new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         return Self::unchecked_new(path.as_ref());
 
         #[cfg(target_os = "windows")]
@@ -557,14 +578,14 @@ impl SanitizedPath {
     }
 
     pub fn unchecked_new<T: AsRef<Path> + ?Sized>(path: &T) -> &Self {
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this shared reference cast is valid.
         unsafe { &*(std::ptr::from_ref::<Path>(path.as_ref()) as *const Self) }
     }
 
     pub fn from_arc(path: Arc<Path>) -> Arc<Self> {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         return unsafe { Arc::from_raw(Arc::into_raw(path) as *const Self) };
 
@@ -572,7 +593,7 @@ impl SanitizedPath {
         {
             let simplified = dunce::simplified(path.as_ref());
             if simplified == path.as_ref() {
-                // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+                // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
                 // extra invariants, so this `Arc` cast is valid.
                 unsafe { Arc::from_raw(Arc::into_raw(path) as *const Self) }
             } else {
@@ -586,13 +607,13 @@ impl SanitizedPath {
     }
 
     pub fn cast_arc(path: Arc<Self>) -> Arc<Path> {
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         unsafe { Arc::from_raw(Arc::into_raw(path) as *const Path) }
     }
 
     pub fn cast_arc_ref(path: &Arc<Self>) -> &Arc<Path> {
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this reference to `Arc` cast is valid.
         unsafe { &*std::ptr::from_ref::<Arc<Self>>(path).cast::<Arc<Path>>() }
     }
@@ -618,19 +639,19 @@ impl Display for SanitizedPath {
     }
 }
 
+impl AsRef<Path> for SanitizedPath {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
 impl From<&SanitizedPath> for Arc<SanitizedPath> {
     fn from(sanitized_path: &SanitizedPath) -> Self {
         let path: Arc<Path> = sanitized_path.0.into();
 
-        // Safety: `SanitizedPath` is a transparent wrapper around `Path` and adds no
+        // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         unsafe { Arc::from_raw(Arc::into_raw(path) as *const SanitizedPath) }
-    }
-}
-
-impl AsRef<Path> for SanitizedPath {
-    fn as_ref(&self) -> &Path {
-        &self.0
     }
 }
 

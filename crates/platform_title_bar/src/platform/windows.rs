@@ -2,7 +2,7 @@ use gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, Window, WindowControlArea
 #[cfg(target_os = "windows")]
 use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSVERSIONINFOW};
 
-use ui::prelude::*;
+use ui::ActiveTheme;
 
 #[derive(IntoElement)]
 pub struct WindowsWindowControls {
@@ -14,7 +14,7 @@ impl WindowsWindowControls {
         Self { button_height }
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn get_font() -> &'static str {
         "Segoe Fluent Icons"
     }
@@ -25,7 +25,7 @@ impl WindowsWindowControls {
         version.dwOSVersionInfoSize = u32::try_from(std::mem::size_of_val(&version))
             .expect("OSVERSIONINFOW size should fit in u32");
 
-        // Safety: RtlGetVersion writes to the provided output buffer, and `version`
+        // SAFETY: RtlGetVersion writes to the provided output buffer, and `version`
         // remains valid for the duration of the call.
         let status = unsafe { SystemServices::RtlGetVersion(&raw mut version) };
 
@@ -43,7 +43,6 @@ impl RenderOnce for WindowsWindowControls {
             .id("windows-window-controls")
             .font_family(Self::get_font())
             .flex()
-            .flex_row()
             .justify_center()
             .content_stretch()
             .max_h(self.button_height)
@@ -126,8 +125,9 @@ impl RenderOnce for WindowsCaptionButton {
         };
 
         gpui::div()
-            .h_flex()
             .id(self.id())
+            .flex()
+            .items_center()
             .justify_center()
             .content_center()
             .occlude()

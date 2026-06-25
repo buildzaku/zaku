@@ -88,7 +88,6 @@ impl StatusBar {
     fn render_left_tools(&self) -> impl IntoElement {
         gpui::div()
             .flex()
-            .flex_row()
             .items_center()
             .gap_1()
             .min_w_0()
@@ -99,7 +98,6 @@ impl StatusBar {
     fn render_right_tools(&self) -> impl IntoElement {
         gpui::div()
             .flex()
-            .flex_row()
             .items_center()
             .gap_1()
             .flex_shrink_0()
@@ -120,7 +118,6 @@ impl Render for StatusBar {
 
         gpui::div()
             .flex()
-            .flex_row()
             .items_center()
             .w_full()
             .gap(DynamicSpacing::Base08.rems(cx))

@@ -10,36 +10,9 @@ use crate::{
     ToPoint,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExcerptAnchor {
     pub(crate) text_anchor: text::Anchor,
-}
-
-/// A stable reference to a position within a [`MultiBuffer`].
-///
-/// Unlike simple offsets, anchors remain valid as the text is edited, automatically
-/// adjusting to reflect insertions and deletions around them.
-#[derive(Clone, Copy, Eq, PartialEq, Hash)]
-pub enum Anchor {
-    Min,
-    Excerpt(ExcerptAnchor),
-    Max,
-}
-
-impl fmt::Debug for Anchor {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Anchor::Min => write!(f, "Anchor::Min"),
-            Anchor::Max => write!(f, "Anchor::Max"),
-            Anchor::Excerpt(excerpt_anchor) => write!(f, "{excerpt_anchor:?}"),
-        }
-    }
-}
-
-impl From<ExcerptAnchor> for Anchor {
-    fn from(anchor: ExcerptAnchor) -> Self {
-        Anchor::Excerpt(anchor)
-    }
 }
 
 impl ExcerptAnchor {
@@ -107,6 +80,17 @@ impl ToPoint for ExcerptAnchor {
     fn to_point_utf16(&self, snapshot: &MultiBufferSnapshot) -> PointUtf16 {
         Anchor::from(*self).to_point_utf16(snapshot)
     }
+}
+
+/// A stable reference to a position within a [`MultiBuffer`].
+///
+/// Unlike simple offsets, anchors remain valid as the text is edited, automatically
+/// adjusting to reflect insertions and deletions around them.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Anchor {
+    Min,
+    Excerpt(ExcerptAnchor),
+    Max,
 }
 
 impl Anchor {
@@ -212,6 +196,22 @@ impl Anchor {
             }
             Anchor::Max => text::Anchor::max_for_buffer(buffer.remote_id()),
         }
+    }
+}
+
+impl fmt::Debug for Anchor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Anchor::Min => write!(formatter, "Anchor::Min"),
+            Anchor::Max => write!(formatter, "Anchor::Max"),
+            Anchor::Excerpt(excerpt_anchor) => write!(formatter, "{excerpt_anchor:?}"),
+        }
+    }
+}
+
+impl From<ExcerptAnchor> for Anchor {
+    fn from(anchor: ExcerptAnchor) -> Self {
+        Anchor::Excerpt(anchor)
     }
 }
 

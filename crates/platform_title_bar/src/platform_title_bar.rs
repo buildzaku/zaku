@@ -9,68 +9,9 @@ use smallvec::SmallVec;
 use std::mem;
 
 use actions::workspace::CloseWindow;
-use ui::prelude::*;
+use ui::{ActiveTheme, PlatformStyle};
 
 use crate::platform::{linux, windows};
-
-pub struct PlatformTitleBar {
-    id: ElementId,
-    platform_style: PlatformStyle,
-    children: SmallVec<[AnyElement; 2]>,
-    should_move: bool,
-    button_layout: Option<WindowButtonLayout>,
-}
-
-impl PlatformTitleBar {
-    pub fn new(id: impl Into<ElementId>, _: &mut Context<Self>) -> Self {
-        let platform_style = PlatformStyle::platform();
-
-        Self {
-            id: id.into(),
-            platform_style,
-            children: SmallVec::new(),
-            should_move: false,
-            button_layout: None,
-        }
-    }
-
-    pub fn title_bar_color(&self, window: &mut Window, cx: &mut Context<Self>) -> Hsla {
-        if cfg!(target_os = "linux") {
-            if window.is_window_active() && !self.should_move {
-                cx.theme().colors().title_bar_background
-            } else {
-                cx.theme().colors().title_bar_inactive_background
-            }
-        } else {
-            cx.theme().colors().title_bar_background
-        }
-    }
-
-    pub fn set_children<T>(&mut self, children: T)
-    where
-        T: IntoIterator<Item = AnyElement>,
-    {
-        self.children = children.into_iter().collect();
-    }
-
-    pub fn set_button_layout(&mut self, button_layout: Option<WindowButtonLayout>) {
-        self.button_layout = button_layout;
-    }
-
-    fn effective_button_layout(
-        &self,
-        decorations: Decorations,
-        cx: &App,
-    ) -> Option<WindowButtonLayout> {
-        if self.platform_style == PlatformStyle::Linux
-            && matches!(decorations, Decorations::Client { .. })
-        {
-            self.button_layout.or_else(|| cx.button_layout())
-        } else {
-            None
-        }
-    }
-}
 
 pub fn render_left_window_controls(
     button_layout: Option<WindowButtonLayout>,
@@ -132,6 +73,65 @@ pub fn render_right_window_controls(
     }
 }
 
+pub struct PlatformTitleBar {
+    id: ElementId,
+    platform_style: PlatformStyle,
+    children: SmallVec<[AnyElement; 2]>,
+    should_move: bool,
+    button_layout: Option<WindowButtonLayout>,
+}
+
+impl PlatformTitleBar {
+    pub fn new(id: impl Into<ElementId>, _: &mut Context<Self>) -> Self {
+        let platform_style = PlatformStyle::platform();
+
+        Self {
+            id: id.into(),
+            platform_style,
+            children: SmallVec::new(),
+            should_move: false,
+            button_layout: None,
+        }
+    }
+
+    pub fn title_bar_color(&self, window: &mut Window, cx: &mut Context<Self>) -> Hsla {
+        if cfg!(target_os = "linux") {
+            if window.is_window_active() && !self.should_move {
+                cx.theme().colors().title_bar_background
+            } else {
+                cx.theme().colors().title_bar_inactive_background
+            }
+        } else {
+            cx.theme().colors().title_bar_background
+        }
+    }
+
+    pub fn set_children<T>(&mut self, children: T)
+    where
+        T: IntoIterator<Item = AnyElement>,
+    {
+        self.children = children.into_iter().collect();
+    }
+
+    pub fn set_button_layout(&mut self, button_layout: Option<WindowButtonLayout>) {
+        self.button_layout = button_layout;
+    }
+
+    fn effective_button_layout(
+        &self,
+        decorations: Decorations,
+        cx: &App,
+    ) -> Option<WindowButtonLayout> {
+        if self.platform_style == PlatformStyle::Linux
+            && matches!(decorations, Decorations::Client { .. })
+        {
+            self.button_layout.or_else(|| cx.button_layout())
+        } else {
+            None
+        }
+    }
+}
+
 impl Render for PlatformTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let height = ui::utils::title_bar_height(window.rem_size());
@@ -141,13 +141,13 @@ impl Render for PlatformTitleBar {
         let button_layout = self.effective_button_layout(decorations, cx);
         let close_action = Box::new(CloseWindow);
         let traffic_light_padding: Option<Pixels> = {
-            #[cfg(target_os = "macos")]
-            {
-                Some(ui::utils::traffic_light_padding(height, cx))
-            }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {
                 None
+            }
+            #[cfg(target_os = "macos")]
+            {
+                Some(ui::utils::traffic_light_padding(height, cx))
             }
         };
 
@@ -157,7 +157,9 @@ impl Render for PlatformTitleBar {
             window.set_traffic_light_position(gpui::point(x_inset, y_inset));
         }
 
-        h_flex()
+        gpui::div()
+            .flex()
+            .items_center()
             .window_control_area(WindowControlArea::Drag)
             .w_full()
             .h(height)
@@ -236,7 +238,6 @@ impl Render for PlatformTitleBar {
                 gpui::div()
                     .id(self.id.clone())
                     .flex()
-                    .flex_row()
                     .items_center()
                     .justify_between()
                     .overflow_x_hidden()

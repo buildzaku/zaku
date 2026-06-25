@@ -1,20 +1,20 @@
 use std::{
-    io::{Cursor, Read},
+    io::{self, Cursor, Read},
     pin::Pin,
-    task::Poll,
+    task,
 };
 
 use bytes::Bytes;
 use futures::AsyncRead;
 use http_body::{Body, Frame};
 
-pub struct AsyncBody(pub Inner);
-
 pub enum Inner {
     Empty,
-    Bytes(std::io::Cursor<Bytes>),
+    Bytes(io::Cursor<Bytes>),
     AsyncReader(Pin<Box<dyn futures::AsyncRead + Send + Sync>>),
 }
+
+pub struct AsyncBody(pub Inner);
 
 impl AsyncBody {
     pub fn empty() -> Self {
@@ -89,14 +89,14 @@ impl<T: Into<Self>> From<Option<T>> for AsyncBody {
 impl futures::AsyncRead for AsyncBody {
     fn poll_read(
         self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
+        cx: &mut task::Context<'_>,
         buffer: &mut [u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
-        // Safety: Pinned enum projection; we never move the inner value.
+    ) -> task::Poll<io::Result<usize>> {
+        // SAFETY: Pinned enum projection; we never move the inner value.
         let inner = unsafe { &mut self.get_unchecked_mut().0 };
         match inner {
-            Inner::Empty => Poll::Ready(Ok(0)),
-            Inner::Bytes(cursor) => Poll::Ready(cursor.read(buffer)),
+            Inner::Empty => task::Poll::Ready(Ok(0)),
+            Inner::Bytes(cursor) => task::Poll::Ready(cursor.read(buffer)),
             Inner::AsyncReader(async_reader) => {
                 AsyncRead::poll_read(async_reader.as_mut(), cx, buffer)
             }
@@ -106,21 +106,21 @@ impl futures::AsyncRead for AsyncBody {
 
 impl Body for AsyncBody {
     type Data = Bytes;
-    type Error = std::io::Error;
+    type Error = io::Error;
 
     fn poll_frame(
         mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let mut buffer = vec![0; 8192];
         match AsyncRead::poll_read(self.as_mut(), cx, &mut buffer) {
-            Poll::Ready(Ok(0)) => Poll::Ready(None),
-            Poll::Ready(Ok(size)) => {
-                let data = Bytes::copy_from_slice(&buffer[..size]);
-                Poll::Ready(Some(Ok(Frame::data(data))))
+            task::Poll::Ready(Ok(0)) => task::Poll::Ready(None),
+            task::Poll::Ready(Ok(size)) => {
+                buffer.truncate(size);
+                task::Poll::Ready(Some(Ok(Frame::data(Bytes::from(buffer)))))
             }
-            Poll::Ready(Err(error)) => Poll::Ready(Some(Err(error))),
-            Poll::Pending => Poll::Pending,
+            task::Poll::Ready(Err(error)) => task::Poll::Ready(Some(Err(error))),
+            task::Poll::Pending => task::Poll::Pending,
         }
     }
 }

@@ -53,7 +53,7 @@ impl Column for SerializedCommandInvocation {
     }
 }
 
-pub struct CommandPaletteDB(ThreadSafeConnection);
+pub(crate) struct CommandPaletteDB(ThreadSafeConnection);
 
 impl CommandPaletteDB {
     pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {

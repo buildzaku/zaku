@@ -1,19 +1,26 @@
 [package]
 name = "editor"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
-
-[features]
-test-support = ["db/test-support"]
 
 [lib]
 name = "editor"
 path = "src/editor.rs"
+
+[lints]
+workspace = true
+
+[[test]]
+name = "editor_tests"
+path = "tests/integration/editor_tests.rs"
+required-features = ["test"]
+
+[features]
+test = ["db/test"]
 
 [dependencies]
 actions = { workspace = true }
@@ -40,14 +47,15 @@ util = { workspace = true }
 workspace = { workspace = true }
 
 [dev-dependencies]
-db = { workspace = true, features = ["test-support"] }
-fs = { workspace = true, features = ["test-support"] }
+db = { workspace = true, features = ["test"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
 pretty_assertions = { workspace = true }
-project = { workspace = true, features = ["test-support"] }
+project = { workspace = true, features = ["test"] }
 serde_json = { workspace = true }
-settings = { workspace = true, features = ["test-support"] }
-util = { workspace = true, features = ["test-support"] }
+settings = { workspace = true, features = ["test"] }
+text = { workspace = true, features = ["test-support"] }
+util = { workspace = true, features = ["test"] }
 util_macros = { workspace = true }
-workspace = { workspace = true, features = ["test-support"] }
+workspace = { workspace = true, features = ["test"] }

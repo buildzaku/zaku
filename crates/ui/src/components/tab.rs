@@ -1,24 +1,24 @@
 use gpui::{
-    AnyElement, App, Div, ElementId, InteractiveElement, Interactivity, IntoElement, ParentElement,
-    Pixels, RenderOnce, Stateful, StatefulInteractiveElement, Window, prelude::*,
+    AnyElement, App, Div, ElementId, Font, InteractiveElement, Interactivity, IntoElement,
+    ParentElement, Pixels, RenderOnce, Stateful, StatefulInteractiveElement, Window, prelude::*,
 };
 use smallvec::SmallVec;
 use std::cmp::Ordering;
 
 use theme::ActiveTheme;
 
-use crate::{DynamicSpacing, Toggleable, h_flex};
+use crate::{DynamicSpacing, Toggleable};
 
 const TAB_SLOT_SIZE: Pixels = gpui::px(14.0);
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TabPosition {
     First,
     Middle(Ordering),
     Last,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TabCloseSide {
     Start,
     End,
@@ -32,6 +32,7 @@ pub struct Tab {
     close_side: TabCloseSide,
     start_slot: Option<AnyElement>,
     end_slot: Option<AnyElement>,
+    font: Option<Font>,
     children: SmallVec<[AnyElement; 2]>,
 }
 
@@ -48,6 +49,7 @@ impl Tab {
             close_side: TabCloseSide::End,
             start_slot: None,
             end_slot: None,
+            font: None,
             children: SmallVec::new(),
         }
     }
@@ -69,6 +71,11 @@ impl Tab {
 
     pub fn end_slot<E: IntoElement>(mut self, element: impl Into<Option<E>>) -> Self {
         self.end_slot = element.into().map(IntoElement::into_any_element);
+        self
+    }
+
+    pub fn font(mut self, font: Font) -> Self {
+        self.font = Some(font);
         self
     }
 
@@ -103,8 +110,7 @@ impl ParentElement for Tab {
 }
 
 impl RenderOnce for Tab {
-    #[allow(refining_impl_trait)]
-    fn render(self, _: &mut Window, cx: &mut App) -> Stateful<Div> {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let colors = cx.theme().colors();
         let text_color = colors.text_muted;
         let background_color = if self.selected {
@@ -114,14 +120,18 @@ impl RenderOnce for Tab {
         };
 
         let start_slot = self.start_slot.map(|start_slot| {
-            h_flex()
+            gpui::div()
+                .flex()
+                .items_center()
                 .size(TAB_SLOT_SIZE)
                 .justify_center()
                 .child(start_slot)
                 .into_any_element()
         });
         let end_slot = self.end_slot.map(|end_slot| {
-            h_flex()
+            gpui::div()
+                .flex()
+                .items_center()
                 .size(TAB_SLOT_SIZE)
                 .justify_center()
                 .child(end_slot)
@@ -135,6 +145,7 @@ impl RenderOnce for Tab {
         self.div
             .h(Self::container_height(cx))
             .bg(background_color)
+            .when_some(self.font, |this, font| this.font(font))
             .border_color(colors.border)
             .map(|this| match self.position {
                 TabPosition::First => {
@@ -168,7 +179,9 @@ impl RenderOnce for Tab {
                 )
             })
             .child(
-                h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .group("tab")
                     .relative()
                     .h(Self::content_height(cx))

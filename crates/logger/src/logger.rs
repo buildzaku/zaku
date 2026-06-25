@@ -221,50 +221,62 @@ pub mod private {
         let mut byte_index = 0;
 
         while byte_index + 1 < module_path_bytes.len() {
-            if module_path_bytes[byte_index] == b':' && module_path_bytes[byte_index + 1] == b':' {
+            let (_, module_path_suffix) = module_path_bytes
+                .split_at_checked(byte_index)
+                .expect("byte index should be in bounds");
+
+            if matches!(module_path_suffix, [b':', b':', ..]) {
                 index = byte_index;
                 break;
             }
             byte_index += 1;
         }
 
-        let Some((crate_name, _)) = module_path.split_at_checked(index) else {
-            return module_path;
-        };
+        let (crate_name, _) = module_path
+            .split_at_checked(index)
+            .expect("crate name split index should be in bounds");
 
         crate_name
     }
 
-    pub const fn scoped_logger(parent: Logger, name: &'static str) -> Logger {
+    pub fn scoped_logger(parent: Logger, name: &'static str) -> Logger {
         let mut scope = parent.scope;
         let mut index = 1;
 
-        while index < scope.len() && !scope[index].is_empty() {
+        while index < scope.len() {
+            let scope_name = scope.get(index).expect("scope index should be in bounds");
+
+            if scope_name.is_empty() {
+                break;
+            }
+
             index += 1;
         }
 
-        if index >= scope.len() {
-            #[cfg(debug_assertions)]
-            {
-                panic!("Scope overflow trying to add scope... ignoring scope");
-            }
-        }
+        let scope_entry = scope
+            .get_mut(index)
+            .expect("scope should have room for child scope");
+        *scope_entry = name;
 
-        scope[index] = name;
         Logger { scope }
     }
 
-    pub const fn scope_new(scopes: &[&'static str]) -> Scope {
+    pub fn scope_new(scopes: &[&'static str]) -> Scope {
         scope_ref_new(scopes)
     }
 
-    pub const fn scope_ref_new<'a>(scopes: &[&'a str]) -> ScopeRef<'a> {
+    pub fn scope_ref_new<'a>(scopes: &[&'a str]) -> ScopeRef<'a> {
         assert!(scopes.len() <= SCOPE_DEPTH_MAX);
         let mut scope = [""; SCOPE_DEPTH_MAX];
         let mut index = 0;
 
         while index < scopes.len() {
-            scope[index] = scopes[index];
+            let scope_name = scopes.get(index).expect("scope index should be in bounds");
+            let scope_entry = scope
+                .get_mut(index)
+                .expect("scope index should be in bounds");
+
+            *scope_entry = *scope_name;
             index += 1;
         }
 
@@ -274,7 +286,11 @@ pub mod private {
     pub fn scope_alloc_new(scopes: &[&str]) -> ScopeAlloc {
         assert!(scopes.len() <= SCOPE_DEPTH_MAX);
         let mut scope = [""; SCOPE_DEPTH_MAX];
-        scope[0..scopes.len()].copy_from_slice(scopes);
+
+        for (scope_entry, scope_name) in scope.iter_mut().zip(scopes.iter().copied()) {
+            *scope_entry = scope_name;
+        }
+
         scope.map(ToString::to_string)
     }
 
@@ -289,7 +305,7 @@ pub type ScopeAlloc = [String; SCOPE_DEPTH_MAX];
 const SCOPE_STRING_SEP_STR: &str = ".";
 const SCOPE_STRING_SEP_CHAR: char = '.';
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Logger {
     pub scope: Scope,
 }
@@ -330,12 +346,6 @@ pub struct Timer {
     pub name: &'static str,
     pub warn_if_longer_than: Option<Duration>,
     pub done: bool,
-}
-
-impl Drop for Timer {
-    fn drop(&mut self) {
-        self.finish();
-    }
 }
 
 impl Timer {
@@ -387,6 +397,12 @@ impl Timer {
             elapsed
         );
         self.done = true;
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 

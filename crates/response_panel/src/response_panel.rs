@@ -30,7 +30,9 @@ fn format_bytes_received(bytes_received: u64) -> SharedString {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB"];
     const DECIMAL_BYTE_UNIT: f64 = 1000.0;
 
-    let mut value = bytes_received.to_f64().unwrap();
+    let mut value = bytes_received
+        .to_f64()
+        .expect("bytes received should fit in f64");
     let mut unit_index = 0;
 
     while value >= DECIMAL_BYTE_UNIT && unit_index < UNITS.len() - 1 {
@@ -38,10 +40,13 @@ fn format_bytes_received(bytes_received: u64) -> SharedString {
         unit_index += 1;
     }
 
+    let unit = UNITS
+        .get(unit_index)
+        .expect("bytes received unit should exist");
     if unit_index == 0 {
-        format!("{bytes_received} {}", UNITS[unit_index]).into()
+        format!("{bytes_received} {unit}").into()
     } else {
-        format!("{value:.2} {}", UNITS[unit_index]).into()
+        format!("{value:.2} {unit}").into()
     }
 }
 
@@ -372,7 +377,6 @@ impl Render for ResponsePanel {
                         header.child(
                             gpui::div()
                                 .flex()
-                                .flex_row()
                                 .items_center()
                                 .gap_1()
                                 .child(

@@ -16,9 +16,7 @@ use std::{
 
 use command_palette_hooks::CommandPaletteFilter;
 use picker::{Direction, Picker, PickerDelegate};
-use ui::{
-    HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, Toggleable, prelude::ActiveTheme,
-};
+use ui::{ActiveTheme, HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, Toggleable};
 use workspace::{ModalView, Workspace};
 
 use crate::persistence::CommandPaletteDB;
@@ -152,69 +150,6 @@ pub fn normalize_action_query(input: &str) -> String {
     result
 }
 
-pub struct CommandPaletteDelegate {
-    latest_query: String,
-    command_palette: WeakEntity<CommandPalette>,
-    all_commands: Vec<Command>,
-    commands: Vec<Command>,
-    matches: Vec<StringMatch>,
-    selected_index: usize,
-    previous_focus_handle: FocusHandle,
-    updating_matches: Option<(Task<()>, Receiver<(Vec<Command>, Vec<StringMatch>)>)>,
-    query_history: QueryHistory,
-}
-
-impl CommandPaletteDelegate {
-    fn new(
-        command_palette: WeakEntity<CommandPalette>,
-        commands: Vec<Command>,
-        previous_focus_handle: FocusHandle,
-    ) -> Self {
-        Self {
-            latest_query: String::new(),
-            command_palette,
-            all_commands: commands.clone(),
-            commands,
-            matches: Vec::new(),
-            selected_index: 0,
-            previous_focus_handle,
-            updating_matches: None,
-            query_history: QueryHistory::default(),
-        }
-    }
-
-    fn matches_updated(
-        &mut self,
-        query: String,
-        commands: Vec<Command>,
-        matches: Vec<StringMatch>,
-        _: &mut Context<Picker<Self>>,
-    ) {
-        drop(self.updating_matches.take());
-        self.latest_query = query;
-        self.commands = commands;
-        self.matches = matches;
-        if self.matches.is_empty() {
-            self.selected_index = 0;
-        } else {
-            self.selected_index = cmp::min(self.selected_index, self.matches.len() - 1);
-        }
-    }
-
-    fn hit_counts(cx: &App) -> HashMap<String, u16> {
-        match CommandPaletteDB::global(cx).list_commands_used() {
-            Ok(commands) => commands
-                .into_iter()
-                .map(|command| (command.command_name, command.invocations))
-                .collect(),
-            Err(error) => {
-                log::debug!("Failed to load command palette usage history: {error:?}");
-                HashMap::new()
-            }
-        }
-    }
-}
-
 #[derive(Default)]
 struct QueryHistory {
     history: Option<VecDeque<String>>,
@@ -303,6 +238,69 @@ impl QueryHistory {
 
     fn is_navigating(&self) -> bool {
         self.cursor.is_some()
+    }
+}
+
+pub struct CommandPaletteDelegate {
+    latest_query: String,
+    command_palette: WeakEntity<CommandPalette>,
+    all_commands: Vec<Command>,
+    commands: Vec<Command>,
+    matches: Vec<StringMatch>,
+    selected_index: usize,
+    previous_focus_handle: FocusHandle,
+    updating_matches: Option<(Task<()>, Receiver<(Vec<Command>, Vec<StringMatch>)>)>,
+    query_history: QueryHistory,
+}
+
+impl CommandPaletteDelegate {
+    fn new(
+        command_palette: WeakEntity<CommandPalette>,
+        commands: Vec<Command>,
+        previous_focus_handle: FocusHandle,
+    ) -> Self {
+        Self {
+            latest_query: String::new(),
+            command_palette,
+            all_commands: commands.clone(),
+            commands,
+            matches: Vec::new(),
+            selected_index: 0,
+            previous_focus_handle,
+            updating_matches: None,
+            query_history: QueryHistory::default(),
+        }
+    }
+
+    fn matches_updated(
+        &mut self,
+        query: String,
+        commands: Vec<Command>,
+        matches: Vec<StringMatch>,
+        _: &mut Context<Picker<Self>>,
+    ) {
+        drop(self.updating_matches.take());
+        self.latest_query = query;
+        self.commands = commands;
+        self.matches = matches;
+        if self.matches.is_empty() {
+            self.selected_index = 0;
+        } else {
+            self.selected_index = cmp::min(self.selected_index, self.matches.len() - 1);
+        }
+    }
+
+    fn hit_counts(cx: &App) -> HashMap<String, u16> {
+        match CommandPaletteDB::global(cx).list_commands_used() {
+            Ok(commands) => commands
+                .into_iter()
+                .map(|command| (command.command_name, command.invocations))
+                .collect(),
+            Err(error) => {
+                log::debug!("Failed to load command palette usage history: {error:?}");
+                HashMap::new()
+            }
+        }
     }
 }
 
@@ -538,7 +536,6 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .child(
                     gpui::div()
                         .flex()
-                        .flex_row()
                         .items_center()
                         .w_full()
                         .py_px()
@@ -581,8 +578,7 @@ pub fn humanize_action_name(name: &str) -> String {
     let mut result = String::with_capacity(capacity);
     let mut index = 0;
 
-    while index < characters.len() {
-        let character = characters[index];
+    while let Some(&character) = characters.get(index) {
         if character == ':' {
             if result.ends_with(':') {
                 result.push(' ');
@@ -603,7 +599,9 @@ pub fn humanize_action_name(name: &str) -> String {
                 index += 1;
             }
 
-            let uppercase_run = &characters[start..index];
+            let uppercase_run = characters
+                .get(start..index)
+                .expect("uppercase run should be in bounds");
             if uppercase_run.len() > 1 {
                 let split_before_last = characters
                     .get(index)
@@ -618,14 +616,21 @@ pub fn humanize_action_name(name: &str) -> String {
                     if !result.ends_with(' ') {
                         result.push(' ');
                     }
-                    result.extend(&uppercase_run[..acronym_end]);
+                    result.extend(
+                        uppercase_run
+                            .get(..acronym_end)
+                            .expect("acronym range should be in bounds"),
+                    );
                 }
 
                 if split_before_last {
                     if !result.ends_with(' ') {
                         result.push(' ');
                     }
-                    result.extend(uppercase_run[acronym_end].to_lowercase());
+                    let character = uppercase_run
+                        .get(acronym_end)
+                        .expect("acronym character should be in bounds");
+                    result.extend(character.to_lowercase());
                 }
             } else {
                 if !result.ends_with(' ') {

@@ -29,7 +29,7 @@ pub fn default_theme(appearance: Appearance) -> &'static str {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum Appearance {
     Light,
     Dark,
@@ -47,17 +47,6 @@ impl From<WindowAppearance> for Appearance {
 #[derive(Debug, Clone, Copy)]
 pub struct SystemAppearance(pub Appearance);
 
-impl Default for SystemAppearance {
-    fn default() -> Self {
-        Self(Appearance::Dark)
-    }
-}
-
-#[derive(Default)]
-struct GlobalSystemAppearance(SystemAppearance);
-
-impl Global for GlobalSystemAppearance {}
-
 impl SystemAppearance {
     pub fn init(cx: &mut App) {
         *cx.default_global::<GlobalSystemAppearance>() =
@@ -72,6 +61,17 @@ impl SystemAppearance {
         &mut cx.global_mut::<GlobalSystemAppearance>().0
     }
 }
+
+impl Default for SystemAppearance {
+    fn default() -> Self {
+        Self(Appearance::Dark)
+    }
+}
+
+#[derive(Default)]
+struct GlobalSystemAppearance(SystemAppearance);
+
+impl Global for GlobalSystemAppearance {}
 
 pub trait ActiveTheme {
     fn theme(&self) -> &Arc<Theme>;
@@ -105,7 +105,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     cx.set_global(GlobalTheme::new(theme));
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
     pub id: String,
     pub name: SharedString,
@@ -179,10 +179,6 @@ pub struct ThemeRegistry {
     assets: Box<dyn AssetSource>,
 }
 
-struct GlobalThemeRegistry(Arc<ThemeRegistry>);
-
-impl Global for GlobalThemeRegistry {}
-
 impl ThemeRegistry {
     pub fn global(cx: &App) -> Arc<Self> {
         cx.global::<GlobalThemeRegistry>().0.clone()
@@ -232,11 +228,13 @@ impl ThemeRegistry {
     }
 }
 
+struct GlobalThemeRegistry(Arc<ThemeRegistry>);
+
+impl Global for GlobalThemeRegistry {}
+
 pub struct GlobalTheme {
     theme: Arc<Theme>,
 }
-
-impl Global for GlobalTheme {}
 
 impl GlobalTheme {
     pub fn new(theme: Arc<Theme>) -> Self {
@@ -251,3 +249,5 @@ impl GlobalTheme {
         &cx.global::<Self>().theme
     }
 }
+
+impl Global for GlobalTheme {}

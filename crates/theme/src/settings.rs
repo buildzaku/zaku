@@ -6,7 +6,7 @@ use settings::{IntoGpui, RegisterSetting};
 const MIN_FONT_SIZE: Pixels = gpui::px(10.0);
 const MAX_FONT_SIZE: Pixels = gpui::px(64.0);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UiDensity {
     #[default]
     Default,
@@ -34,50 +34,6 @@ pub struct ThemeSettings {
     pub buffer_line_height: BufferLineHeight,
 }
 
-impl Default for ThemeSettings {
-    fn default() -> Self {
-        let ui_font_size = gpui::px(14.);
-        Self {
-            ui_density: UiDensity::Default,
-            ui_font_size,
-            ui_font: Font::default(),
-            buffer_font_size: ui_font_size,
-            buffer_font: Font::default(),
-            buffer_line_height: BufferLineHeight::default(),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub enum BufferLineHeight {
-    #[default]
-    Comfortable,
-    Standard,
-    Custom(f32),
-}
-
-impl From<settings::BufferLineHeight> for BufferLineHeight {
-    fn from(value: settings::BufferLineHeight) -> Self {
-        match value {
-            settings::BufferLineHeight::Comfortable => BufferLineHeight::Comfortable,
-            settings::BufferLineHeight::Standard => BufferLineHeight::Standard,
-            settings::BufferLineHeight::Custom(line_height) => {
-                BufferLineHeight::Custom(line_height)
-            }
-        }
-    }
-}
-
-impl BufferLineHeight {
-    pub fn value(&self) -> f32 {
-        match self {
-            BufferLineHeight::Comfortable => 1.618,
-            BufferLineHeight::Standard => 1.3,
-            BufferLineHeight::Custom(line_height) => *line_height,
-        }
-    }
-}
-
 impl ThemeSettings {
     pub fn get_global(cx: &App) -> &Self {
         <Self as settings::Settings>::get_global(cx)
@@ -101,41 +57,18 @@ impl ThemeSettings {
     }
 }
 
-pub fn clamp_font_size(size: Pixels) -> Pixels {
-    if size < MIN_FONT_SIZE {
-        MIN_FONT_SIZE
-    } else if size > MAX_FONT_SIZE {
-        MAX_FONT_SIZE
-    } else {
-        size
+impl Default for ThemeSettings {
+    fn default() -> Self {
+        let ui_font_size = gpui::px(14.);
+        Self {
+            ui_density: UiDensity::Default,
+            ui_font_size,
+            ui_font: Font::default(),
+            buffer_font_size: ui_font_size,
+            buffer_font: Font::default(),
+            buffer_line_height: BufferLineHeight::default(),
+        }
     }
-}
-
-pub fn setup_ui_font(window: &mut Window, cx: &mut App) -> Font {
-    let (ui_font, ui_font_size) = {
-        let settings = ThemeSettings::get_global(cx);
-        (settings.ui_font.clone(), settings.ui_font_size(cx))
-    };
-    window.set_rem_size(ui_font_size);
-    ui_font
-}
-
-fn font_fallbacks_from_settings(
-    fallbacks: Option<&[settings::FontFamilyName]>,
-) -> Option<FontFallbacks> {
-    fallbacks.map(|fallbacks| {
-        FontFallbacks::from_fonts(fallbacks.iter().cloned().map(String::from).collect())
-    })
-}
-
-fn font_features_from_settings(features: Option<&settings::FontFeaturesContent>) -> FontFeatures {
-    features
-        .cloned()
-        .map_or_else(|| FontFeatures(Arc::new(Vec::new())), IntoGpui::into_gpui)
-}
-
-fn font_weight_from_settings(weight: Option<settings::FontWeightContent>) -> FontWeight {
-    weight.unwrap_or_default().into_gpui()
 }
 
 impl settings::Settings for ThemeSettings {
@@ -184,4 +117,71 @@ impl settings::Settings for ThemeSettings {
                 .into(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum BufferLineHeight {
+    #[default]
+    Comfortable,
+    Standard,
+    Custom(f32),
+}
+
+impl BufferLineHeight {
+    pub fn value(&self) -> f32 {
+        match self {
+            BufferLineHeight::Comfortable => 1.618,
+            BufferLineHeight::Standard => 1.3,
+            BufferLineHeight::Custom(line_height) => *line_height,
+        }
+    }
+}
+
+impl From<settings::BufferLineHeight> for BufferLineHeight {
+    fn from(value: settings::BufferLineHeight) -> Self {
+        match value {
+            settings::BufferLineHeight::Comfortable => BufferLineHeight::Comfortable,
+            settings::BufferLineHeight::Standard => BufferLineHeight::Standard,
+            settings::BufferLineHeight::Custom(line_height) => {
+                BufferLineHeight::Custom(line_height)
+            }
+        }
+    }
+}
+
+pub fn clamp_font_size(size: Pixels) -> Pixels {
+    if size < MIN_FONT_SIZE {
+        MIN_FONT_SIZE
+    } else if size > MAX_FONT_SIZE {
+        MAX_FONT_SIZE
+    } else {
+        size
+    }
+}
+
+pub fn setup_ui_font(window: &mut Window, cx: &mut App) -> Font {
+    let (ui_font, ui_font_size) = {
+        let settings = ThemeSettings::get_global(cx);
+        (settings.ui_font.clone(), settings.ui_font_size(cx))
+    };
+    window.set_rem_size(ui_font_size);
+    ui_font
+}
+
+fn font_fallbacks_from_settings(
+    fallbacks: Option<&[settings::FontFamilyName]>,
+) -> Option<FontFallbacks> {
+    fallbacks.map(|fallbacks| {
+        FontFallbacks::from_fonts(fallbacks.iter().cloned().map(String::from).collect())
+    })
+}
+
+fn font_features_from_settings(features: Option<&settings::FontFeaturesContent>) -> FontFeatures {
+    features
+        .cloned()
+        .map_or_else(|| FontFeatures(Arc::new(Vec::new())), IntoGpui::into_gpui)
+}
+
+fn font_weight_from_settings(weight: Option<settings::FontWeightContent>) -> FontWeight {
+    weight.unwrap_or_default().into_gpui()
 }

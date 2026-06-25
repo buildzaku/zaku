@@ -84,64 +84,71 @@ pub fn marked_text_ranges(
 ) -> (String, Vec<Range<usize>>) {
     let mut unmarked_text = String::with_capacity(marked_text.len());
     let mut ranges = Vec::new();
-    let mut prev_marked_index = 0;
-    let mut current_range_start = None;
-    let mut current_range_cursor = None;
+    let mut is_range_open = false;
+    let mut range_start = 0;
+    let mut range_cursor = None;
 
     let marked_text = marked_text.replace('•', " ");
-    for (marked_index, marker) in marked_text.match_indices(&['«', '»', 'ˇ']) {
-        unmarked_text.push_str(&marked_text[prev_marked_index..marked_index]);
+    for (marked_index, marker) in marked_text.char_indices() {
         let unmarked_len = unmarked_text.len();
-        let len = marker.len();
-        prev_marked_index = marked_index + len;
 
         match marker {
-            "ˇ" => {
-                if current_range_start.is_some() {
+            'ˇ' => {
+                if is_range_open {
                     assert!(
-                        current_range_cursor.is_none(),
+                        range_cursor.is_none(),
                         "duplicate point marker 'ˇ' at index {marked_index}"
                     );
 
-                    current_range_cursor = Some(unmarked_len);
+                    range_cursor = Some(unmarked_len);
                 } else {
                     ranges.push(unmarked_len..unmarked_len);
                 }
             }
-            "«" => {
+            '«' => {
                 assert!(
-                    current_range_start.is_none(),
+                    !is_range_open,
                     "unexpected range start marker '«' at index {marked_index}"
                 );
-                current_range_start = Some(unmarked_len);
-            }
-            "»" => {
-                let Some(current_range_start) = current_range_start.take() else {
-                    panic!("unexpected range end marker '»' at index {marked_index}");
-                };
 
+                is_range_open = true;
+                range_start = unmarked_len;
+                range_cursor = None;
+            }
+            '»' => {
+                assert!(
+                    is_range_open,
+                    "unexpected range end marker '»' at index {marked_index}"
+                );
+
+                is_range_open = false;
                 let mut reversed = false;
-                if let Some(current_range_cursor) = current_range_cursor.take() {
-                    if current_range_cursor == current_range_start {
+                if let Some(range_cursor) = range_cursor.take() {
+                    if range_cursor == range_start {
                         reversed = true;
-                    } else if current_range_cursor != unmarked_len {
-                        panic!("unexpected 'ˇ' marker in the middle of a range");
+                    } else {
+                        assert_eq!(
+                            range_cursor, unmarked_len,
+                            "unexpected 'ˇ' marker in the middle of a range"
+                        );
                     }
-                } else if ranges_are_directed {
-                    panic!("missing 'ˇ' marker to indicate range direction");
+                } else {
+                    assert!(
+                        !ranges_are_directed,
+                        "missing 'ˇ' marker to indicate range direction"
+                    );
                 }
 
                 ranges.push(if reversed {
-                    unmarked_len..current_range_start
+                    unmarked_len..range_start
                 } else {
-                    current_range_start..unmarked_len
+                    range_start..unmarked_len
                 });
             }
-            _ => unreachable!(),
+            _ => unmarked_text.push(marker),
         }
     }
 
-    unmarked_text.push_str(&marked_text[prev_marked_index..]);
     (unmarked_text, ranges)
 }
 
@@ -193,7 +200,7 @@ pub fn generate_marked_text(
     marked_text
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum TextRangeMarker {
     Empty(char),
     Range(char, char),
@@ -228,17 +235,16 @@ impl From<(char, char)> for TextRangeMarker {
 mod tests {
     use super::{generate_marked_text, marked_text_ranges};
 
-    #[allow(clippy::reversed_empty_ranges)]
     #[test]
     fn test_marked_text() {
         let (text, ranges) = marked_text_ranges("one «ˇtwo» «threeˇ» «ˇfour» fiveˇ six", true);
+        let range_bounds = ranges
+            .iter()
+            .map(|range| (range.start, range.end))
+            .collect::<Vec<_>>();
 
         assert_eq!(text, "one two three four five six");
-        assert_eq!(ranges.len(), 4);
-        assert_eq!(ranges[0], 7..4);
-        assert_eq!(ranges[1], 8..13);
-        assert_eq!(ranges[2], 18..14);
-        assert_eq!(ranges[3], 23..23);
+        assert_eq!(range_bounds, [(7, 4), (8, 13), (18, 14), (23, 23)]);
 
         assert_eq!(
             generate_marked_text(&text, &ranges, true),

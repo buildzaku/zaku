@@ -3,7 +3,7 @@ use futures::{FutureExt, future};
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Task, WeakEntity};
 use std::{
     collections::HashMap,
-    mem,
+    io, mem,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -23,12 +23,6 @@ use crate::ProjectPath;
 #[derive(Clone)]
 pub struct WorktreeIdCounter(Arc<AtomicUsize>);
 
-impl Default for WorktreeIdCounter {
-    fn default() -> Self {
-        Self(Arc::new(AtomicUsize::new(1)))
-    }
-}
-
 impl WorktreeIdCounter {
     pub fn get(cx: &mut App) -> Self {
         cx.default_global::<Self>().clone()
@@ -39,24 +33,15 @@ impl WorktreeIdCounter {
     }
 }
 
-impl Global for WorktreeIdCounter {}
-
-pub struct WorktreeStore {
-    next_entry_id: Arc<AtomicUsize>,
-    next_worktree_id: WorktreeIdCounter,
-    worktrees: Vec<WorktreeHandle>,
-    initial_scan_complete: (watch::Sender<bool>, watch::Receiver<bool>),
-    worktree_path_to_open: Option<Arc<SanitizedPath>>,
-    worktree_open_epoch: usize,
-    scanning_enabled: bool,
-    pending_worktree_tasks: HashMap<
-        Arc<SanitizedPath>,
-        future::Shared<Task<Result<Entity<Worktree>, Arc<anyhow::Error>>>>,
-    >,
-    fs: Arc<dyn Fs>,
+impl Default for WorktreeIdCounter {
+    fn default() -> Self {
+        Self(Arc::new(AtomicUsize::new(1)))
+    }
 }
 
-#[derive(Clone, Debug)]
+impl Global for WorktreeIdCounter {}
+
+#[derive(Debug, Clone)]
 enum WorktreeHandle {
     Strong(Entity<Worktree>),
     Weak(WeakEntity<Worktree>),
@@ -79,7 +64,20 @@ pub enum WorktreeStoreEvent {
     WorktreeDeletedEntry(WorktreeId, ProjectEntryId),
 }
 
-impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
+pub struct WorktreeStore {
+    next_entry_id: Arc<AtomicUsize>,
+    next_worktree_id: WorktreeIdCounter,
+    worktrees: Vec<WorktreeHandle>,
+    initial_scan_complete: (watch::Sender<bool>, watch::Receiver<bool>),
+    worktree_path_to_open: Option<Arc<SanitizedPath>>,
+    worktree_open_epoch: usize,
+    scanning_enabled: bool,
+    pending_worktree_tasks: HashMap<
+        Arc<SanitizedPath>,
+        future::Shared<Task<Result<Entity<Worktree>, Arc<anyhow::Error>>>>,
+    >,
+    fs: Arc<dyn Fs>,
+}
 
 impl WorktreeStore {
     pub fn new(fs: Arc<dyn Fs>, next_worktree_id: WorktreeIdCounter) -> Self {
@@ -120,7 +118,8 @@ impl WorktreeStore {
     pub fn root_worktree(&self, cx: &App) -> Option<Entity<Worktree>> {
         let mut visible_worktrees = self.visible_worktrees(cx);
         let root_worktree = visible_worktrees.next();
-        debug_assert!(visible_worktrees.next().is_none());
+        let has_multiple_visible_worktrees = visible_worktrees.next().is_some();
+        debug_assert!(!has_multiple_visible_worktrees);
         root_worktree
     }
 
@@ -168,10 +167,11 @@ impl WorktreeStore {
         let scan_complete = worktree.read(cx).scan_complete();
         cx.spawn(async move |this, cx| {
             scan_complete.await;
-            this.update(cx, |this, cx| {
+            if let Err(error) = this.update(cx, |this, cx| {
                 this.update_initial_scan_state(cx);
-            })
-            .ok();
+            }) {
+                log::trace!("Failed to update worktree store after scan completion: {error:?}");
+            }
             anyhow::Ok(())
         })
         .detach();
@@ -349,8 +349,8 @@ impl WorktreeStore {
                 if let Err(error) =
                     do_rename(fs.as_ref(), &old_abs_path, &new_abs_path, overwrite).await
                 {
-                    if let Some(error) = error.downcast_ref::<std::io::Error>()
-                        && error.kind() == std::io::ErrorKind::NotFound
+                    if let Some(error) = error.downcast_ref::<io::Error>()
+                        && error.kind() == io::ErrorKind::NotFound
                         && let Some(parent) = new_abs_path.parent()
                     {
                         fs.create_dir(parent).await.with_context(|| {
@@ -608,3 +608,5 @@ impl WorktreeStore {
         self.update_initial_scan_state(cx);
     }
 }
+
+impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}

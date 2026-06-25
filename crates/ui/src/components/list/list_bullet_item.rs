@@ -1,6 +1,6 @@
 use gpui::{AnyElement, App, IntoElement, ParentElement, SharedString, Window, prelude::*};
 
-use crate::{ListItem, prelude::*};
+use crate::{Color, Icon, IconName, IconSize, Label, LabelCommon, ListItem};
 
 #[derive(IntoElement)]
 pub struct ListBulletItem {
@@ -37,17 +37,24 @@ impl RenderOnce for ListBulletItem {
         ListItem::new("list-item")
             .selectable(false)
             .child(
-                h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .w_full()
                     .min_w_0()
                     .gap_1()
                     .items_start()
                     .child(
-                        h_flex().h(line_height).justify_center().child(
-                            Icon::new(IconName::Dash)
-                                .size(IconSize::XSmall)
-                                .color(Color::Hidden),
-                        ),
+                        gpui::div()
+                            .flex()
+                            .items_center()
+                            .h(line_height)
+                            .justify_center()
+                            .child(
+                                Icon::new(IconName::Dash)
+                                    .size(IconSize::XSmall)
+                                    .color(Color::Hidden),
+                            ),
                     )
                     .map(|this| {
                         if self.children.is_empty() {
@@ -58,7 +65,14 @@ impl RenderOnce for ListBulletItem {
                                 ),
                             )
                         } else {
-                            this.child(h_flex().gap_0p5().flex_wrap().children(self.children))
+                            this.child(
+                                gpui::div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_0p5()
+                                    .flex_wrap()
+                                    .children(self.children),
+                            )
                         }
                     }),
             )

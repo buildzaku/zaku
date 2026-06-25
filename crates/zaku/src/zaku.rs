@@ -16,7 +16,7 @@ use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use system_specs::SystemSpecs;
 use workspace::{
-    CloseIntent, DockPosition, OpenMode, Root, SessionWorkspace, SharedState, Toast, Workspace,
+    AppState, CloseIntent, DockPosition, OpenMode, Root, SessionWorkspace, Toast, Workspace,
     WorkspaceDb, create_and_open_file,
     notifications::{
         NotificationId, dismiss_app_notification, show_app_notification,
@@ -214,7 +214,7 @@ pub fn handle_settings_file_changes(
     let user_content = cx
         .foreground_executor()
         .block_on(user_settings_file_rx.next())
-        .unwrap();
+        .expect("user settings file should be loaded");
 
     cx.update_global::<SettingsStore, _>(|store, cx| {
         let result = store.set_user_settings(&user_content, cx);
@@ -243,6 +243,21 @@ pub fn handle_keymap_file_changes(
 
     let (keyboard_layout_tx, mut keyboard_layout_rx) = futures::channel::mpsc::unbounded();
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        let mut current_mapping = cx.keyboard_mapper().get_key_equivalents().cloned();
+        cx.on_keyboard_layout_change(move |cx| {
+            let next_mapping = cx.keyboard_mapper().get_key_equivalents();
+            if current_mapping.as_ref() != next_mapping {
+                current_mapping = next_mapping.cloned();
+                if keyboard_layout_tx.unbounded_send(()).is_err() {
+                    log::trace!("Keyboard layout update receiver dropped");
+                }
+            }
+        })
+        .detach();
+    }
+
     #[cfg(target_os = "windows")]
     {
         let mut current_layout_id = cx.keyboard_layout().id().to_string();
@@ -250,20 +265,9 @@ pub fn handle_keymap_file_changes(
             let next_layout_id = cx.keyboard_layout().id();
             if next_layout_id != current_layout_id {
                 current_layout_id = next_layout_id.to_string();
-                keyboard_layout_tx.unbounded_send(()).ok();
-            }
-        })
-        .detach();
-    }
-
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        let mut current_mapping = cx.keyboard_mapper().get_key_equivalents().cloned();
-        cx.on_keyboard_layout_change(move |cx| {
-            let next_mapping = cx.keyboard_mapper().get_key_equivalents();
-            if current_mapping.as_ref() != next_mapping {
-                current_mapping = next_mapping.cloned();
-                keyboard_layout_tx.unbounded_send(()).ok();
+                if keyboard_layout_tx.unbounded_send(()).is_err() {
+                    log::trace!("Keyboard layout update receiver dropped");
+                }
             }
         })
         .detach();
@@ -322,19 +326,16 @@ fn reload_keymaps(cx: &mut App, user_key_bindings: Vec<KeyBinding>) {
 }
 
 fn load_default_keymap(cx: &mut App) {
+    #[cfg(target_os = "linux")]
+    let asset_path = "keymaps/default_linux.json";
+
     #[cfg(target_os = "macos")]
     let asset_path = "keymaps/default_macos.json";
 
     #[cfg(target_os = "windows")]
     let asset_path = "keymaps/default_windows.json";
 
-    #[cfg(target_os = "linux")]
-    let asset_path = "keymaps/default_linux.json";
-
-    let key_bindings = match KeymapFile::load_asset(asset_path, cx) {
-        Ok(key_bindings) => key_bindings,
-        Err(error) => panic!("Failed to load default keymap: {error}"),
-    };
+    let key_bindings = KeymapFile::load_asset(asset_path, cx).expect("default keymap should load");
     cx.bind_keys(key_bindings);
 }
 
@@ -399,10 +400,10 @@ fn show_keymap_file_load_error(notification_id: NotificationId, error_message: &
 }
 
 pub async fn restore_or_create_workspace(
-    shared_state: Arc<SharedState>,
+    app_state: Arc<AppState>,
     cx: &mut AsyncApp,
 ) -> anyhow::Result<()> {
-    if let Some(workspaces) = restorable_workspace_locations(cx, &shared_state).await {
+    if let Some(workspaces) = restorable_workspace_locations(cx, &app_state).await {
         let mut error_count = 0;
 
         for session_workspace in workspaces {
@@ -410,7 +411,7 @@ pub async fn restore_or_create_workspace(
                 .update(|cx| {
                     Workspace::open(
                         session_workspace.location,
-                        shared_state.clone(),
+                        app_state.clone(),
                         None,
                         OpenMode::NewWindow,
                         cx,
@@ -435,15 +436,16 @@ pub async fn restore_or_create_workspace(
                 if let Some(window) = cx.active_window()
                     && let Some(root) = window.downcast::<Root>()
                 {
-                    root.update(cx, |root, _, cx| {
+                    if let Err(error) = root.update(cx, |root, _, cx| {
                         root.workspace().update(cx, |workspace, cx| {
                             workspace.show_toast(
                                 Toast::new(NotificationId::unique::<()>(), message.clone()),
                                 cx,
                             );
                         });
-                    })
-                    .ok();
+                    }) {
+                        log::trace!("Failed to show workspace restore toast: {error:?}");
+                    }
                     return true;
                 }
 
@@ -455,13 +457,12 @@ pub async fn restore_or_create_workspace(
 
                 let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
                 let workspace_id = workspace_db.next_id().await?;
-                let shared_state = shared_state.clone();
+                let app_state = app_state.clone();
                 cx.update(|cx| {
                     let window_options = workspace::default_window_options(cx);
                     cx.open_window(window_options, move |window, cx| {
                         cx.new(|cx| {
-                            let workspace =
-                                Workspace::create(workspace_id, shared_state, window, cx);
+                            let workspace = Workspace::create(workspace_id, app_state, window, cx);
 
                             workspace.update(cx, |workspace, cx| {
                                 workspace.show_toast(
@@ -485,7 +486,7 @@ pub async fn restore_or_create_workspace(
     cx.update(|cx| {
         let window_options = workspace::default_window_options(cx);
         cx.open_window(window_options, move |window, cx| {
-            cx.new(|cx| Root::new(Workspace::create(workspace_id, shared_state, window, cx)))
+            cx.new(|cx| Root::new(Workspace::create(workspace_id, app_state, window, cx)))
         })
     })?;
 
@@ -494,9 +495,9 @@ pub async fn restore_or_create_workspace(
 
 async fn restorable_workspace_locations(
     cx: &mut AsyncApp,
-    shared_state: &Arc<SharedState>,
+    app_state: &Arc<AppState>,
 ) -> Option<Vec<SessionWorkspace>> {
-    let session_handle = shared_state.session.clone();
+    let session_handle = app_state.session.clone();
     let (last_session_id, last_session_window_stack) = cx.update(|cx| {
         let session = session_handle.read(cx);
 
@@ -514,7 +515,7 @@ async fn restorable_workspace_locations(
         &workspace_db,
         &last_session_id,
         last_session_window_stack,
-        shared_state.fs.as_ref(),
+        app_state.fs.as_ref(),
     )
     .await
     .filter(|locations| !locations.is_empty())?;

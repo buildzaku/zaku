@@ -60,7 +60,7 @@ pub mod welcome {
     use serde::{Deserialize, Serialize};
 
     /// Open the recent project at the given index.
-    #[derive(PartialEq, Clone, Debug, Deserialize, Serialize, JsonSchema, Action)]
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Action)]
     #[action(namespace = welcome)]
     #[serde(transparent)]
     pub struct OpenRecentProject {

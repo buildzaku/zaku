@@ -6,8 +6,6 @@ use crate::{ThreadSafeConnection, query};
 
 pub struct KeyValueStore(ThreadSafeConnection);
 
-crate::static_connection!(KeyValueStore, []);
-
 impl KeyValueStore {
     query! {
         pub fn read_kv(key: &str) -> anyhow::Result<Option<String>> {
@@ -67,6 +65,8 @@ impl KeyValueStore {
         .await
     }
 }
+
+crate::static_connection!(KeyValueStore, []);
 
 pub struct ScopedKeyValueStore<'a> {
     store: &'a KeyValueStore,

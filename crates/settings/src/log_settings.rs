@@ -11,7 +11,7 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-#[derive(Clone, Debug, RegisterSetting)]
+#[derive(Debug, Clone, RegisterSetting)]
 pub struct LogSettings {
     /// A map of log scopes to the desired log level.
     /// Useful for filtering out noisy logs or enabling more verbose logging.
@@ -23,7 +23,10 @@ pub struct LogSettings {
 impl Settings for LogSettings {
     fn from_settings(content: &SettingsContent) -> Self {
         LogSettings {
-            scopes: content.log.clone().unwrap(),
+            scopes: content
+                .log
+                .clone()
+                .expect("merged settings should include log settings"),
         }
     }
 }

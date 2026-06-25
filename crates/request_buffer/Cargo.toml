@@ -1,16 +1,18 @@
 [package]
 name = "request_buffer"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 name = "request_buffer"
 path = "src/request_buffer.rs"
+
+[lints]
+workspace = true
 
 [dependencies]
 anyhow = { workspace = true }

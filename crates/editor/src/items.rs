@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use gpui::{App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
@@ -21,12 +22,12 @@ use crate::{
 impl Item for Editor {
     type Event = EditorEvent;
 
-    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+    fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
         match event {
             EditorEvent::Saved | EditorEvent::TitleChanged | EditorEvent::DirtyChanged => {
-                f(ItemEvent::UpdateTab);
+                emitter(ItemEvent::UpdateTab);
             }
-            EditorEvent::BufferEdited => f(ItemEvent::Edit),
+            EditorEvent::BufferEdited => emitter(ItemEvent::Edit),
             EditorEvent::Blurred | EditorEvent::FileHandleChanged => {}
         }
     }
@@ -70,10 +71,10 @@ impl Item for Editor {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
         if let Some(buffer) = self.buffer.read(cx).as_singleton() {
-            f(buffer.entity_id(), buffer.read(cx));
+            visitor(buffer.entity_id(), buffer.read(cx));
         }
     }
 
@@ -108,7 +109,7 @@ impl Item for Editor {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
         let Some(buffer) = self.buffer.read(cx).as_singleton() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot save multi-buffer editor")));
+            return Task::ready(Err(anyhow!("Cannot save multi-buffer editor")));
         };
         let save = project.update(cx, |project, cx| project.save_buffer(buffer, cx));
 
@@ -125,7 +126,7 @@ impl Item for Editor {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
         let Some(buffer) = self.buffer.read(cx).as_singleton() else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot reload multi-buffer editor")));
+            return Task::ready(Err(anyhow!("Cannot reload multi-buffer editor")));
         };
         let reload = project.update(cx, |project, cx| project.reload_buffer(&buffer, cx));
 
@@ -235,7 +236,7 @@ impl SerializableItem for Editor {
         {
             Ok(Some(serialized_editor)) => serialized_editor,
             Ok(None) => {
-                return Task::ready(Err(anyhow::anyhow!(
+                return Task::ready(Err(anyhow!(
                     "Unable to deserialize editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
                 )));
             }
@@ -298,17 +299,18 @@ mod tests {
     use gpui::TestAppContext;
     use serde_json::json;
 
+    use fs::TempFs;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{SharedState, WorkspaceDb, build_workspace};
+    use workspace::{AppState, WorkspaceDb, build_workspace};
 
-    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            workspace::init(shared_state, cx);
+            workspace::init(app_state, cx);
             crate::init(cx);
         });
     }
@@ -317,9 +319,9 @@ mod tests {
     async fn test_deserialize(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -372,9 +374,9 @@ mod tests {
     async fn test_deserialize_non_worktree_file_does_not_add_to_pane(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
         temp_fs.insert_tree(

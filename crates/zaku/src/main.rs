@@ -1,10 +1,11 @@
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 
+use anyhow::anyhow;
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
 use indoc::formatdoc;
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
 
 use std::{
@@ -22,7 +23,7 @@ use language::LanguageRegistry;
 use reqwest_client::ReqwestClient;
 use session::{AppSession, Session};
 use theme::{ActiveTheme, GlobalTheme, LoadThemes};
-use workspace::SharedState;
+use workspace::AppState;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -86,8 +87,8 @@ fn main() {
             }
         })
         .detach();
-        let shared_state = Arc::new(SharedState::new(fs, http_client, app_session, languages));
-        workspace::init(shared_state.clone(), cx);
+        let app_state = Arc::new(AppState::new(fs, http_client, app_session, languages));
+        workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
@@ -100,7 +101,7 @@ fn main() {
 
         cx.activate(true);
         cx.spawn(async move |cx| {
-            if let Err(error) = zaku::restore_or_create_workspace(shared_state, cx).await {
+            if let Err(error) = zaku::restore_or_create_workspace(app_state, cx).await {
                 log::error!("Failed to restore or create workspace: {error:#}");
             }
         })
@@ -159,8 +160,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     let error_details = errors
         .into_iter()
         .filter_map(|(kind, paths)| {
-            #[allow(unused_mut)]
-            let mut error_kind_details = match paths.as_slice() {
+            let error_kind_details = match paths.as_slice() {
                 [] => return None,
                 [path] => format!(
                     "{kind} when creating directory {}",
@@ -169,15 +169,16 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                 [_, ..] => format!("{kind} when creating directories {paths:?}"),
             };
 
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             {
                 if kind == ErrorKind::PermissionDenied {
-                    error_kind_details.push_str("\n\n");
-                    error_kind_details.push_str(indoc! {"
+                    let permission_hint = indoc! {"
                         Consider using chown and chmod tools for altering the directories permissions if your user has corresponding rights.
 
                         For example, `sudo chown $(whoami):staff ~/.config` and `chmod +uwrx ~/.config`
-                    "});
+                    "};
+
+                    return Some(format!("{error_kind_details}\n\n{permission_hint}"));
                 }
             }
 
@@ -207,7 +208,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                     })
                     .detach_and_log_err(cx);
                 }) {
-                    let error = anyhow::anyhow!(formatdoc! {"
+                    let error = anyhow!(formatdoc! {"
                             {message}: {error_details}
 
                             Failed to show launch failure prompt: {error:?}
@@ -215,16 +216,10 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
                     fail_to_open_window(&error, cx);
                 }
             } else {
-                let error = anyhow::anyhow!("{message}: {error_details}");
+                let error = anyhow!("{message}: {error_details}");
                 fail_to_open_window(&error, cx);
             }
         });
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
-    eprintln!("Zaku failed to open a window: {error:?}.");
-    std::process::exit(1);
 }
 
 #[cfg(target_os = "linux")]
@@ -238,7 +233,7 @@ fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
         };
 
         let notification_id = "dev.zaku.Oops";
-        proxy
+        if let Err(error) = proxy
             .add_notification(
                 notification_id,
                 Notification::new("Zaku failed to launch")
@@ -249,9 +244,17 @@ fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
                     ])),
             )
             .await
-            .ok();
+        {
+            eprintln!("Failed to show launch failure notification: {error:?}.");
+        }
 
         std::process::exit(1);
     })
     .detach();
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
+    eprintln!("Zaku failed to open a window: {error:?}.");
+    std::process::exit(1);
 }

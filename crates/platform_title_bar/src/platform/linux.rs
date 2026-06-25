@@ -48,7 +48,6 @@ impl RenderOnce for LinuxWindowControls {
         gpui::div()
             .id(self.id)
             .flex()
-            .flex_row()
             .items_center()
             .when(!button_elements.is_empty(), |this| {
                 this.gap_1p5()
@@ -86,7 +85,7 @@ fn create_window_button(
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum WindowControlType {
     Minimize,
     Restore,
@@ -194,11 +193,11 @@ impl RenderOnce for WindowControl {
         gpui::div()
             .id(button_id)
             .group(group_name)
+            .flex_none()
             .flex()
             .items_center()
             .justify_center()
             .content_center()
-            .flex_none()
             .min_w_6()
             .p_0()
             .cursor_pointer()

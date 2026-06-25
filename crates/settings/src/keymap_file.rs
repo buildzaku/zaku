@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use gpui::{
     Action, ActionBuildError, App, InvalidKeystrokeError, KEYSTROKE_PARSE_EXPECTED_MESSAGE,
     KeyBinding, KeyBindingContextPredicate, NoAction, SharedString, Unbind,
@@ -26,7 +27,7 @@ impl ActionSequence {
                             Ok((action, _)) => Ok(action),
                             Err(error) => Err(ActionBuildError::BuildError {
                                 name: Self::name_for_type().to_string(),
-                                error: anyhow::anyhow!("Error at sequence index {index}: {error}"),
+                                error: anyhow!("Error at sequence index {index}: {error}"),
                             }),
                         }
                     })
@@ -40,7 +41,7 @@ impl ActionSequence {
     fn expected_array_error() -> ActionBuildError {
         ActionBuildError::BuildError {
             name: Self::name_for_type().to_string(),
-            error: anyhow::anyhow!("expected array of actions"),
+            error: anyhow!("expected array of actions"),
         }
     }
 }
@@ -78,15 +79,15 @@ impl Action for ActionSequence {
     }
 
     fn build(_value: Value) -> anyhow::Result<Box<dyn Action>> {
-        Err(anyhow::anyhow!(
+        Err(anyhow!(
             "{} cannot be built directly",
             Self::name_for_type()
         ))
     }
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
-pub struct KeymapSection {
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct KeymapSection {
     #[serde(default)]
     pub context: String,
     #[serde(default)]
@@ -99,13 +100,13 @@ pub struct KeymapSection {
     unrecognized_fields: IndexMap<String, Value>,
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
-pub struct KeymapAction(Value);
+pub(crate) struct KeymapAction(Value);
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
-pub struct UnbindTargetAction(Value);
+pub(crate) struct UnbindTargetAction(Value);
 
 #[derive(Debug)]
 #[must_use]
@@ -122,7 +123,7 @@ pub enum KeymapFileLoadResult {
     },
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
 pub struct KeymapFile(Vec<KeymapSection>);
 
@@ -184,7 +185,8 @@ impl KeymapFile {
                     .map(|field| format!("{field:?}"))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let _ = write!(section_errors, "\n- Unrecognized fields: {field_names}");
+                write!(section_errors, "\n- Unrecognized fields: {field_names}")
+                    .expect("writing to string should not fail");
             }
 
             if let Some(unbind) = &section.unbind {
@@ -198,7 +200,8 @@ impl KeymapFile {
                     ) {
                         Ok(key_binding) => key_bindings.push(key_binding),
                         Err(error) => {
-                            let _ = write!(section_errors, "\n- In unbind {keystrokes:?}, {error}");
+                            write!(section_errors, "\n- In unbind {keystrokes:?}, {error}")
+                                .expect("writing to string should not fail");
                         }
                     }
                 }
@@ -215,8 +218,8 @@ impl KeymapFile {
                     ) {
                         Ok(key_binding) => key_bindings.push(key_binding),
                         Err(error) => {
-                            let _ =
-                                write!(section_errors, "\n- In binding {keystrokes:?}, {error}");
+                            write!(section_errors, "\n- In binding {keystrokes:?}, {error}")
+                                .expect("writing to string should not fail");
                         }
                     }
                 }
@@ -234,11 +237,14 @@ impl KeymapFile {
 
             for (context, section_errors) in errors {
                 if context.is_empty() {
-                    let _ = write!(error_message, "\nIn section without context predicate:");
+                    write!(error_message, "\nIn section without context predicate:")
+                        .expect("writing to string should not fail");
                 } else {
-                    let _ = write!(error_message, "\nIn section with context = {context:?}:");
+                    write!(error_message, "\nIn section with context = {context:?}:")
+                        .expect("writing to string should not fail");
                 }
-                let _ = write!(error_message, "{section_errors}");
+                write!(error_message, "{section_errors}")
+                    .expect("writing to string should not fail");
             }
 
             KeymapFileLoadResult::SomeFailedToLoad {
@@ -313,21 +319,15 @@ impl KeymapFile {
 
     fn parse_action_value(action: &Value) -> Result<Option<(&String, Option<&Value>)>, String> {
         match action {
-            Value::Array(items) => {
-                if items.len() != 2 {
-                    return Err(format!(
-                        "Expected two-element array of [name, input]. Instead found {action}."
-                    ));
-                }
-
-                let Value::String(name) = &items[0] else {
-                    return Err(format!(
-                        "Expected [name, input] array with a string action name. Instead found {action}."
-                    ));
-                };
-
-                Ok(Some((name, Some(&items[1]))))
-            }
+            Value::Array(items) => match items.as_slice() {
+                [Value::String(name), input] => Ok(Some((name, Some(input)))),
+                [_, _] => Err(format!(
+                    "Expected [name, input] array with a string action name. Instead found {action}."
+                )),
+                _ => Err(format!(
+                    "Expected two-element array of [name, input]. Instead found {action}."
+                )),
+            },
             Value::String(name) => Ok(Some((name, None))),
             Value::Null => Ok(None),
             _ => Err(format!(
@@ -387,7 +387,7 @@ mod tests {
 
     use indoc::indoc;
 
-    gpui::actions!(test_keymap_file, [StringAction, InputAction]);
+    gpui::actions!(test_only, [StringAction, InputAction]);
 
     #[gpui::test]
     fn test_keymap_section_unbinds_are_loaded_before_bindings(cx: &mut App) {
@@ -396,11 +396,11 @@ mod tests {
                 [
                     {
                         "unbind": {
-                            "ctrl-a": "test_keymap_file::StringAction",
-                            "ctrl-b": ["test_keymap_file::InputAction", {}]
+                            "ctrl-a": "test_only::StringAction",
+                            "ctrl-b": ["test_only::InputAction", {}]
                         },
                         "bindings": {
-                            "ctrl-c": "test_keymap_file::StringAction"
+                            "ctrl-c": "test_only::StringAction"
                         }
                     }
                 ]
@@ -420,13 +420,13 @@ mod tests {
         assert!(
             key_bindings[0]
                 .action()
-                .partial_eq(&Unbind("test_keymap_file::StringAction".into()))
+                .partial_eq(&Unbind("test_only::StringAction".into()))
         );
         assert_eq!(key_bindings[0].action_input(), None);
         assert!(
             key_bindings[1]
                 .action()
-                .partial_eq(&Unbind("test_keymap_file::InputAction".into()))
+                .partial_eq(&Unbind("test_only::InputAction".into()))
         );
         assert_eq!(
             key_bindings[1]
@@ -435,10 +435,7 @@ mod tests {
                 .map(ToString::to_string),
             Some("{}".to_string())
         );
-        assert_eq!(
-            key_bindings[2].action().name(),
-            "test_keymap_file::StringAction"
-        );
+        assert_eq!(key_bindings[2].action().name(), "test_only::StringAction");
     }
 
     #[gpui::test]
@@ -448,7 +445,7 @@ mod tests {
                 [
                     {
                         "unbind": {
-                            "ctrl-a": ["test_keymap_file::InputAction", {}]
+                            "ctrl-a": ["test_only::InputAction", {}]
                         }
                     }
                 ]
@@ -463,7 +460,7 @@ mod tests {
         assert!(
             key_bindings[0]
                 .action()
-                .partial_eq(&Unbind("test_keymap_file::InputAction".into()))
+                .partial_eq(&Unbind("test_only::InputAction".into()))
         );
         assert_eq!(
             key_bindings[0]
@@ -507,7 +504,7 @@ mod tests {
             [
                 {
                     "unbind": {
-                        "ctrl-a": ["__UNBIND__", "test_keymap_file::StringAction"]
+                        "ctrl-a": ["__UNBIND__", "test_only::StringAction"]
                     }
                 }
             ]

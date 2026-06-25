@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::{StatusColors, StatusColorsRefinement, SyntaxTheme, fallback};
 
-#[derive(Refineable, Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Refineable)]
 pub struct ThemeStyles {
     pub window_background_appearance: WindowBackgroundAppearance,
 
@@ -18,7 +18,7 @@ pub struct ThemeStyles {
     pub syntax: Arc<SyntaxTheme>,
 }
 
-#[derive(Refineable, Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Refineable)]
 #[refineable(Debug, Deserialize)]
 pub struct ThemeColors {
     pub background: Hsla,

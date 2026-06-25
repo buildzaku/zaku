@@ -109,7 +109,7 @@ impl From<&dyn PanelHandle> for AnyView {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DockPosition {
     Left,
     Bottom,
@@ -140,7 +140,7 @@ impl Render for DraggedDock {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct PanelSizeState {
     pub size: Option<Pixels>,
 }
@@ -175,7 +175,6 @@ pub struct Dock {
     panel_entries: Vec<PanelEntry>,
     is_open: bool,
     active_panel_index: Option<usize>,
-    #[allow(clippy::struct_field_names)]
     pub(crate) serialized_dock: Option<DockData>,
     focus_handle: FocusHandle,
     _focus_subscription: Subscription,
@@ -627,7 +626,6 @@ impl Render for PanelButtons {
 
         gpui::div()
             .flex()
-            .flex_row()
             .gap_1()
             .children(buttons)
             .font_ui(cx)
@@ -645,9 +643,11 @@ impl StatusItemView for PanelButtons {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub mod test {
     use super::*;
+
+    gpui::actions!(test_only, [ToggleTestPanel]);
 
     pub struct TestPanel {
         pub active: bool,
@@ -655,8 +655,6 @@ pub mod test {
         pub default_size: Pixels,
         pub activation_priority: u32,
     }
-
-    gpui::actions!(test_only, [ToggleTestPanel]);
 
     impl TestPanel {
         pub fn new(activation_priority: u32, cx: &mut App) -> Self {

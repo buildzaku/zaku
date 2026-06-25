@@ -25,6 +25,26 @@ impl IndentGuideColors {
     }
 }
 
+pub struct RenderIndentGuideParams {
+    pub indent_guides: SmallVec<[IndentGuideLayout; 12]>,
+    pub indent_size: Pixels,
+    pub item_height: Pixels,
+}
+
+pub struct RenderedIndentGuide {
+    pub bounds: Bounds<Pixels>,
+    pub layout: IndentGuideLayout,
+    pub is_active: bool,
+    pub hitbox: Option<Bounds<Pixels>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct IndentGuideLayout {
+    pub offset: Point<usize>,
+    pub length: usize,
+    pub continues_offscreen: bool,
+}
+
 pub struct IndentGuides {
     colors: IndentGuideColors,
     indent_size: Pixels,
@@ -40,16 +60,6 @@ pub struct IndentGuides {
         >,
     >,
     on_click: Option<Rc<dyn Fn(&IndentGuideLayout, &mut Window, &mut App)>>,
-}
-
-pub fn indent_guides(indent_size: Pixels, colors: IndentGuideColors) -> IndentGuides {
-    IndentGuides {
-        colors,
-        indent_size,
-        compute_indents_fn: None,
-        render_fn: None,
-        on_click: None,
-    }
 }
 
 impl IndentGuides {
@@ -146,26 +156,6 @@ impl IndentGuides {
         }
         .into_any_element()
     }
-}
-
-pub struct RenderIndentGuideParams {
-    pub indent_guides: SmallVec<[IndentGuideLayout; 12]>,
-    pub indent_size: Pixels,
-    pub item_height: Pixels,
-}
-
-pub struct RenderedIndentGuide {
-    pub bounds: Bounds<Pixels>,
-    pub layout: IndentGuideLayout,
-    pub is_active: bool,
-    pub hitbox: Option<Bounds<Pixels>>,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct IndentGuideLayout {
-    pub offset: Point<usize>,
-    pub length: usize,
-    pub continues_offscreen: bool,
 }
 
 impl UniformListDecoration for IndentGuides {
@@ -305,7 +295,10 @@ impl Element for IndentGuidesElement {
                             return;
                         };
 
-                        let active_layout = &guides[active_hitbox].layout;
+                        let active_layout = &guides
+                            .get(active_hitbox)
+                            .expect("active hitbox should have indent guide")
+                            .layout;
                         on_hovered_indent_guide_click(active_layout, window, cx);
 
                         cx.stop_propagation();
@@ -316,7 +309,10 @@ impl Element for IndentGuidesElement {
                 let mut hovered_region = None;
                 for (index, region) in hitbox_list.iter().enumerate() {
                     window.set_cursor_style(CursorStyle::PointingHand, region);
-                    let guide = &self.indent_guides[index];
+                    let guide = self
+                        .indent_guides
+                        .get(index)
+                        .expect("hitbox should have indent guide");
                     let fill_color = if region.is_hovered(window) {
                         hovered_region = Some(region.id);
                         self.colors.hover
@@ -366,6 +362,16 @@ impl IntoElement for IndentGuidesElement {
 
     fn into_element(self) -> Self::Element {
         self
+    }
+}
+
+pub fn indent_guides(indent_size: Pixels, colors: IndentGuideColors) -> IndentGuides {
+    IndentGuides {
+        colors,
+        indent_size,
+        compute_indents_fn: None,
+        render_fn: None,
+        on_click: None,
     }
 }
 

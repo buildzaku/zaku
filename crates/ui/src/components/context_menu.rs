@@ -7,8 +7,10 @@ use std::{rc::Rc, time::Duration};
 use theme::ThemeSettings;
 
 use crate::{
-    IconButtonShape, KeyBinding, List, ListItem, ListSeparator, ListSubHeader, Tooltip, prelude::*,
-    utils::WithRemSize,
+    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, Disableable, Icon,
+    IconButton, IconButtonShape, IconName, IconPosition, IconSize, KeyBinding, Label, LabelCommon,
+    LabelSize, List, ListItem, ListSeparator, ListSubHeader, StyledExt, Toggleable, Tooltip,
+    VisibleOnHover, utils::WithRemSize,
 };
 
 pub enum ContextMenuItem {
@@ -17,6 +19,24 @@ pub enum ContextMenuItem {
     HeaderWithLink(SharedString, SharedString, SharedString),
     Label(SharedString),
     Entry(ContextMenuEntry),
+}
+
+impl ContextMenuItem {
+    fn is_selectable(&self) -> bool {
+        match self {
+            ContextMenuItem::Header(_)
+            | ContextMenuItem::HeaderWithLink(_, _, _)
+            | ContextMenuItem::Separator
+            | ContextMenuItem::Label(_) => false,
+            ContextMenuItem::Entry(ContextMenuEntry { disabled, .. }) => !disabled,
+        }
+    }
+}
+
+impl From<ContextMenuEntry> for ContextMenuItem {
+    fn from(entry: ContextMenuEntry) -> Self {
+        ContextMenuItem::Entry(entry)
+    }
 }
 
 pub struct ContextMenuEntry {
@@ -109,12 +129,6 @@ impl ContextMenuEntry {
 
 impl FluentBuilder for ContextMenuEntry {}
 
-impl From<ContextMenuEntry> for ContextMenuItem {
-    fn from(entry: ContextMenuEntry) -> Self {
-        ContextMenuItem::Entry(entry)
-    }
-}
-
 pub struct ContextMenu {
     builder: Option<Rc<dyn Fn(Self, &mut Window, &mut Context<Self>) -> Self>>,
     items: Vec<ContextMenuItem>,
@@ -129,16 +143,6 @@ pub struct ContextMenu {
     keep_open_on_confirm: bool,
     fixed_width: Option<DefiniteLength>,
 }
-
-impl Focusable for ContextMenu {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
-
-impl EventEmitter<DismissEvent> for ContextMenu {}
-
-impl FluentBuilder for ContextMenu {}
 
 impl ContextMenu {
     pub fn new(
@@ -864,7 +868,9 @@ impl ContextMenu {
         };
 
         let label_element = if let Some(icon_name) = icon {
-            h_flex()
+            gpui::div()
+                .flex()
+                .items_center()
                 .gap_1p5()
                 .when(
                     *icon_position == IconPosition::Start && toggle.is_none(),
@@ -914,7 +920,9 @@ impl ContextMenu {
                         }
                     })
                     .child(
-                        h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .w_full()
                             .justify_between()
                             .child(label_element)
@@ -934,8 +942,8 @@ impl ContextMenu {
                             .zip(self.end_slot_action.as_ref())
                             .zip(end_slot_title.as_ref())
                             .zip(end_slot_handler.as_ref()),
-                        |el, (((icon, action), title), handler)| {
-                            el.end_slot({
+                        |element, (((icon, action), title), handler)| {
+                            element.end_slot({
                                 let icon_button = IconButton::new("end-slot-icon", *icon)
                                     .shape(IconButtonShape::Square)
                                     .tooltip({
@@ -959,11 +967,14 @@ impl ContextMenu {
                                         let handler = handler.clone();
                                         move |_, window, cx| {
                                             handler(None, window, cx);
-                                            this.update(cx, |this, cx| {
+                                            if let Err(error) = this.update(cx, |this, cx| {
                                                 this.rebuild(window, cx);
                                                 cx.notify();
-                                            })
-                                            .ok();
+                                            }) {
+                                                log::trace!(
+                                                    "Failed to rebuild context menu after slot click: {error:?}"
+                                                );
+                                            }
                                         }
                                     });
 
@@ -983,15 +994,18 @@ impl ContextMenu {
                         let keep_open_on_confirm = self.keep_open_on_confirm;
                         move |_, window, cx| {
                             handler(context.as_ref(), window, cx);
-                            menu.update(cx, |menu, cx| {
+                            if let Err(error) = menu.update(cx, |menu, cx| {
                                 menu.clicked = true;
                                 if keep_open_on_confirm {
                                     menu.rebuild(window, cx);
                                 } else {
                                     cx.emit(DismissEvent);
                                 }
-                            })
-                            .ok();
+                            }) {
+                                log::trace!(
+                                    "Failed to update context menu after item click: {error:?}"
+                                );
+                            }
                         }
                     }),
             )
@@ -999,17 +1013,15 @@ impl ContextMenu {
     }
 }
 
-impl ContextMenuItem {
-    fn is_selectable(&self) -> bool {
-        match self {
-            ContextMenuItem::Header(_)
-            | ContextMenuItem::HeaderWithLink(_, _, _)
-            | ContextMenuItem::Separator
-            | ContextMenuItem::Label(_) => false,
-            ContextMenuItem::Entry(ContextMenuEntry { disabled, .. }) => !disabled,
-        }
+impl Focusable for ContextMenu {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
     }
 }
+
+impl EventEmitter<DismissEvent> for ContextMenu {}
+
+impl FluentBuilder for ContextMenu {}
 
 impl Render for ContextMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1018,12 +1030,13 @@ impl Render for ContextMenu {
             .occlude()
             .elevation_2(cx)
             .flex()
-            .flex_row()
             .flex_shrink_0()
             .child(
-                v_flex()
+                gpui::div()
                     .id("context-menu")
-                    .max_h(vh(0.75, window))
+                    .flex()
+                    .flex_col()
+                    .max_h(crate::vh(0.75, window))
                     .flex_shrink_0()
                     .when_some(self.fixed_width, |this, width| {
                         this.w(width).overflow_x_hidden()
@@ -1044,10 +1057,10 @@ impl Render for ContextMenu {
                     .on_mouse_down_out(cx.listener(|this, _event: &MouseDownEvent, window, cx| {
                         this.cancel(&actions::menu::Cancel, window, cx);
                     }))
-                    .when_some(self.end_slot_action.as_ref(), |el, action| {
-                        el.on_boxed_action(action.as_ref(), cx.listener(ContextMenu::end_slot))
+                    .when_some(self.end_slot_action.as_ref(), |element, action| {
+                        element.on_boxed_action(action.as_ref(), cx.listener(ContextMenu::end_slot))
                     })
-                    .when(!self.delayed, |mut el| {
+                    .when(!self.delayed, |mut element| {
                         for item in &self.items {
                             if let ContextMenuItem::Entry(ContextMenuEntry {
                                 action: Some(action),
@@ -1055,13 +1068,13 @@ impl Render for ContextMenu {
                                 ..
                             }) = item
                             {
-                                el = el.on_boxed_action(
+                                element = element.on_boxed_action(
                                     action.as_ref(),
                                     cx.listener(ContextMenu::on_action_dispatch),
                                 );
                             }
                         }
-                        el
+                        element
                     })
                     .child(
                         List::new().children(

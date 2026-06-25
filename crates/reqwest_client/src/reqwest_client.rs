@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::{FutureExt, TryStreamExt};
 use reqwest::redirect;
-use std::{mem, pin::Pin, sync::OnceLock, task::Poll, time::Duration};
+use std::{io, mem, pin::Pin, sync::OnceLock, task, time::Duration};
 
 use http_client::{AsyncBody, HttpClient, Inner, RedirectPolicy, Url, http};
 
@@ -13,12 +13,6 @@ pub struct ReqwestClient {
     client: reqwest::Client,
     no_redirect_client: reqwest::Client,
     handle: tokio::runtime::Handle,
-}
-
-impl Default for ReqwestClient {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl ReqwestClient {
@@ -46,103 +40,10 @@ impl ReqwestClient {
     }
 }
 
-pub fn runtime() -> &'static tokio::runtime::Runtime {
-    RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .build()
-            .expect("Failed to initialize HTTP client")
-    })
-}
-
-struct StreamReader {
-    reader: Option<Pin<Box<dyn futures::AsyncRead + Send + Sync>>>,
-    buffer: BytesMut,
-    capacity: usize,
-}
-
-impl StreamReader {
-    fn new(reader: Pin<Box<dyn futures::AsyncRead + Send + Sync>>) -> Self {
-        Self {
-            reader: Some(reader),
-            buffer: BytesMut::new(),
-            capacity: DEFAULT_CAPACITY,
-        }
+impl Default for ReqwestClient {
+    fn default() -> Self {
+        Self::new()
     }
-}
-
-impl futures::Stream for StreamReader {
-    type Item = std::io::Result<Bytes>;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        let mut this = self.as_mut();
-
-        let Some(mut reader) = this.reader.take() else {
-            return Poll::Ready(None);
-        };
-
-        if this.buffer.capacity() == 0 {
-            let capacity = this.capacity;
-            this.buffer.reserve(capacity);
-        }
-
-        match poll_read_buffer(reader.as_mut(), cx, &mut this.buffer) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(Err(error)) => {
-                self.reader = None;
-                Poll::Ready(Some(Err(error)))
-            }
-            Poll::Ready(Ok(0)) => {
-                self.reader = None;
-                Poll::Ready(None)
-            }
-            Poll::Ready(Ok(_)) => {
-                let chunk = this.buffer.split();
-                self.reader = Some(reader);
-                Poll::Ready(Some(Ok(chunk.freeze())))
-            }
-        }
-    }
-}
-
-// Taken from <https://docs.rs/tokio-util/0.7.18/src/tokio_util/util/poll_buf.rs.html#47>
-fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
-    reader: Pin<&mut T>,
-    cx: &mut std::task::Context<'_>,
-    buffer: &mut B,
-) -> Poll<std::io::Result<usize>> {
-    if !buffer.has_remaining_mut() {
-        return Poll::Ready(Ok(0));
-    }
-
-    let size = {
-        let destination = buffer.chunk_mut();
-
-        // Safety: `chunk_mut()` returns a `&mut UninitSlice`, and `UninitSlice` is a
-        // transparent wrapper around `[MaybeUninit<u8>]`.
-        let destination = unsafe { destination.as_uninit_slice_mut() };
-        let mut buffer = tokio::io::ReadBuf::uninit(destination);
-
-        let pointer = buffer.filled().as_ptr();
-        let unfilled_portion = buffer.initialize_unfilled();
-        std::task::ready!(reader.poll_read(cx, unfilled_portion)?);
-
-        // Ensure the pointer does not change from under us
-        assert_eq!(pointer, buffer.filled().as_ptr());
-        buffer.filled().len()
-    };
-
-    // Safety: This is guaranteed to be the number of initialized (and read)
-    // bytes due to the invariants provided by `ReadBuf::filled`.
-    unsafe {
-        buffer.advance_mut(size);
-    }
-
-    Poll::Ready(Ok(size))
 }
 
 impl HttpClient for ReqwestClient {
@@ -214,4 +115,102 @@ impl HttpClient for ReqwestClient {
     fn proxy(&self) -> Option<&Url> {
         None
     }
+}
+
+pub fn runtime() -> &'static tokio::runtime::Runtime {
+    RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .expect("Failed to initialize HTTP client")
+    })
+}
+
+struct StreamReader {
+    reader: Option<Pin<Box<dyn futures::AsyncRead + Send + Sync>>>,
+    buffer: BytesMut,
+    capacity: usize,
+}
+
+impl StreamReader {
+    fn new(reader: Pin<Box<dyn futures::AsyncRead + Send + Sync>>) -> Self {
+        Self {
+            reader: Some(reader),
+            buffer: BytesMut::new(),
+            capacity: DEFAULT_CAPACITY,
+        }
+    }
+}
+
+impl futures::Stream for StreamReader {
+    type Item = io::Result<Bytes>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut task::Context<'_>,
+    ) -> task::Poll<Option<Self::Item>> {
+        let mut this = self.as_mut();
+
+        let Some(mut reader) = this.reader.take() else {
+            return task::Poll::Ready(None);
+        };
+
+        if this.buffer.capacity() == 0 {
+            let capacity = this.capacity;
+            this.buffer.reserve(capacity);
+        }
+
+        match poll_read_buffer(reader.as_mut(), cx, &mut this.buffer) {
+            task::Poll::Pending => task::Poll::Pending,
+            task::Poll::Ready(Err(error)) => {
+                self.reader = None;
+                task::Poll::Ready(Some(Err(error)))
+            }
+            task::Poll::Ready(Ok(0)) => {
+                self.reader = None;
+                task::Poll::Ready(None)
+            }
+            task::Poll::Ready(Ok(_)) => {
+                let chunk = this.buffer.split();
+                self.reader = Some(reader);
+                task::Poll::Ready(Some(Ok(chunk.freeze())))
+            }
+        }
+    }
+}
+
+fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
+    reader: Pin<&mut T>,
+    cx: &mut task::Context<'_>,
+    buffer: &mut B,
+) -> task::Poll<io::Result<usize>> {
+    if !buffer.has_remaining_mut() {
+        return task::Poll::Ready(Ok(0));
+    }
+
+    let size = {
+        let destination = buffer.chunk_mut();
+
+        // SAFETY: `chunk_mut()` returns a `&mut UninitSlice`, and `UninitSlice` is a
+        // transparent wrapper around `[MaybeUninit<u8>]`.
+        let destination = unsafe { destination.as_uninit_slice_mut() };
+        let mut buffer = tokio::io::ReadBuf::uninit(destination);
+
+        let pointer = buffer.filled().as_ptr();
+        let unfilled_portion = buffer.initialize_unfilled();
+        task::ready!(reader.poll_read(cx, unfilled_portion)?);
+
+        // Ensure the pointer does not change from under us
+        assert_eq!(pointer, buffer.filled().as_ptr());
+        buffer.filled().len()
+    };
+
+    // SAFETY: This is guaranteed to be the number of initialized (and read)
+    // bytes due to the invariants provided by `ReadBuf::filled`.
+    unsafe {
+        buffer.advance_mut(size);
+    }
+
+    task::Poll::Ready(Ok(size))
 }

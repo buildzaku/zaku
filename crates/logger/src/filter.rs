@@ -116,21 +116,22 @@ fn level_filter_from_str(level_str: &str) -> Option<LevelFilter> {
 
 fn scope_alloc_from_scope_str(scope_str: &str) -> Option<ScopeAlloc> {
     let mut scope_buffer = [""; SCOPE_DEPTH_MAX];
-    let mut index = 0;
+    let mut scope_count = 0;
     let mut scope_iter = scope_str.split(SCOPE_STRING_SEP_STR);
 
-    while index < SCOPE_DEPTH_MAX {
-        let Some(scope_name) = scope_iter.next() else {
-            break;
-        };
-        if scope_name.is_empty() {
-            continue;
+    'scope_buffer: for entry in &mut scope_buffer {
+        for scope_name in scope_iter.by_ref() {
+            if scope_name.is_empty() {
+                continue;
+            }
+            *entry = scope_name;
+            scope_count += 1;
+            continue 'scope_buffer;
         }
-        scope_buffer[index] = scope_name;
-        index += 1;
+        break;
     }
 
-    if index == 0 {
+    if scope_count == 0 {
         return None;
     }
 
@@ -143,13 +144,6 @@ fn scope_alloc_from_scope_str(scope_str: &str) -> Option<ScopeAlloc> {
 
     let scope = scope_buffer.map(ToString::to_string);
     Some(scope)
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ScopeMap {
-    entries: Vec<ScopeMapEntry>,
-    modules: Vec<(String, LevelFilter)>,
-    root_count: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -170,6 +164,13 @@ pub enum EnabledStatus {
     Enabled,
     Disabled,
     NotConfigured,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ScopeMap {
+    entries: Vec<ScopeMapEntry>,
+    modules: Vec<(String, LevelFilter)>,
+    root_count: usize,
 }
 
 impl ScopeMap {
@@ -206,8 +207,10 @@ impl ScopeMap {
 
         for (scope_str, level_filter) in all_filters {
             if scope_str.contains("::") {
-                if let Some(index) = modules.iter().position(|(module, _)| module == scope_str) {
-                    modules[index].1 = level_filter;
+                if let Some((_, module_level_filter)) =
+                    modules.iter_mut().find(|(module, _)| module == scope_str)
+                {
+                    *module_level_filter = level_filter;
                 } else {
                     modules.push((scope_str.to_string(), level_filter));
                 }
@@ -216,11 +219,11 @@ impl ScopeMap {
             let Some(scope) = scope_alloc_from_scope_str(scope_str) else {
                 continue;
             };
-            if let Some(index) = items
-                .iter()
-                .position(|(scope_existing, _)| scope_existing == &scope)
+            if let Some((_, item_level_filter)) = items
+                .iter_mut()
+                .find(|(scope_existing, _)| scope_existing == &scope)
             {
-                items[index].1 = level_filter;
+                *item_level_filter = level_filter;
             } else {
                 items.push((scope, level_filter));
             }
@@ -258,9 +261,21 @@ impl ScopeMap {
             while cursor < items_range.end {
                 let sub_items_start = cursor;
                 cursor += 1;
-                let scope_name = &items[sub_items_start].0[depth];
+                let (scope, level_filter) = items
+                    .get(sub_items_start)
+                    .expect("scope item should be in bounds");
+                let scope_name = scope.get(depth).expect("scope depth should be in bounds");
 
-                while cursor < items_range.end && &items[cursor].0[depth] == scope_name {
+                while cursor < items_range.end {
+                    let cursor_scope_name = items
+                        .get(cursor)
+                        .expect("scope item should be in bounds")
+                        .0
+                        .get(depth)
+                        .expect("scope depth should be in bounds");
+                    if cursor_scope_name != scope_name {
+                        break;
+                    }
                     cursor += 1;
                 }
 
@@ -269,22 +284,27 @@ impl ScopeMap {
                     assert_eq!(sub_items_start + 1, sub_items_end);
                     assert_ne!(depth, 0);
                     assert_ne!(parent_index, usize::MAX);
-                    assert!(this.entries[parent_index].enabled.is_none());
-                    this.entries[parent_index].enabled = Some(items[sub_items_start].1);
+                    let parent_entry = this
+                        .entries
+                        .get_mut(parent_index)
+                        .expect("parent entry should be in bounds");
+                    assert!(parent_entry.enabled.is_none());
+                    parent_entry.enabled = Some(*level_filter);
                     continue;
                 }
-                let is_valid_scope = !scope_name.is_empty();
-                let is_last = depth + 1 == SCOPE_DEPTH_MAX || !is_valid_scope;
+                let is_last = depth + 1 == SCOPE_DEPTH_MAX;
                 let mut enabled = None;
 
                 if is_last {
+                    let items_in_range = items
+                        .get(items_range.clone())
+                        .expect("items range should be in bounds");
                     assert_eq!(
                         sub_items_start + 1,
                         sub_items_end,
-                        "Expected one item: got: {:?}",
-                        &items[items_range.clone()]
+                        "expected one item: got {items_in_range:?}",
                     );
-                    enabled = Some(items[sub_items_start].1);
+                    enabled = Some(*level_filter);
                 } else {
                     let entry_index = this.entries.len();
                     process_queue.push_back(ProcessQueueEntry {
@@ -306,7 +326,11 @@ impl ScopeMap {
             if parent_index == usize::MAX {
                 this.root_count = result_entries_end;
             } else {
-                this.entries[parent_index].descendants = result_entries_start..result_entries_end;
+                let parent_entry = this
+                    .entries
+                    .get_mut(parent_index)
+                    .expect("parent entry should be in bounds");
+                parent_entry.descendants = result_entries_start..result_entries_end;
             }
         }
 
@@ -331,17 +355,20 @@ impl ScopeMap {
             S: AsRef<str>,
         {
             let mut enabled = None;
-            let mut current_range = &map.entries[0..map.root_count];
-            let mut depth = 0;
-            'search: while !current_range.is_empty()
-                && depth < SCOPE_DEPTH_MAX
-                && scope[depth].as_ref() != ""
-            {
+            let mut current_range = map.entries.get(..map.root_count)?;
+            let mut scope_names = scope.iter().map(AsRef::as_ref);
+            'search: while !current_range.is_empty() {
+                let Some(scope_name) = scope_names.next() else {
+                    break 'search;
+                };
+                if scope_name.is_empty() {
+                    break 'search;
+                }
+
                 for entry in current_range {
-                    if entry.scope == scope[depth].as_ref() {
+                    if entry.scope == scope_name {
                         enabled = entry.enabled.or(enabled);
-                        current_range = &map.entries[entry.descendants.clone()];
-                        depth += 1;
+                        current_range = map.entries.get(entry.descendants.clone())?;
                         continue 'search;
                     }
                 }
@@ -353,19 +380,29 @@ impl ScopeMap {
         let mut enabled = search(self, scope);
 
         if let Some(module_path) = module_path {
-            let scope_is_empty = scope[0].as_ref().is_empty();
+            let scope_name = scope
+                .first()
+                .expect("scope should have first entry")
+                .as_ref();
 
-            if enabled.is_none() && scope_is_empty {
+            if enabled.is_none() && scope_name.is_empty() {
                 let crate_name = crate::private::extract_crate_name_from_module_path(module_path);
                 let mut crate_name_scope = [""; SCOPE_DEPTH_MAX];
-                crate_name_scope[0] = crate_name;
+                let crate_name_entry = crate_name_scope
+                    .first_mut()
+                    .expect("scope should have first entry");
+                *crate_name_entry = crate_name;
                 enabled = search(self, &crate_name_scope);
             }
 
             if !self.modules.is_empty() {
                 let crate_name = crate::private::extract_crate_name_from_module_path(module_path);
+                let scope_next_name = scope
+                    .get(1)
+                    .expect("scope should have second entry")
+                    .as_ref();
                 let is_scope_just_crate_name =
-                    scope[0].as_ref() == crate_name && scope[1].as_ref() == "";
+                    scope_name == crate_name && scope_next_name.is_empty();
                 if enabled.is_none() || is_scope_just_crate_name {
                     for (module, filter) in &self.modules {
                         if module == module_path {
@@ -433,7 +470,10 @@ mod tests {
             if scope_name.is_empty() {
                 continue;
             }
-            scope_buffer[index] = scope_name;
+            let scope_entry = scope_buffer
+                .get_mut(index)
+                .expect("scope index should be in bounds");
+            *scope_entry = scope_name;
             index += 1;
         }
 
@@ -492,11 +532,13 @@ mod tests {
         ]);
         assert_eq!(map.root_count, 5);
         assert_eq!(map.entries.len(), 20);
-        assert_eq!(map.entries[0].scope, "a");
-        assert_eq!(map.entries[1].scope, "e");
-        assert_eq!(map.entries[2].scope, "i");
-        assert_eq!(map.entries[3].scope, "m");
-        assert_eq!(map.entries[4].scope, "q");
+        let root_scopes = map
+            .entries
+            .iter()
+            .take(map.root_count)
+            .map(|entry| entry.scope.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(root_scopes, ["a", "e", "i", "m", "q"]);
     }
 
     #[test]
@@ -650,12 +692,13 @@ mod tests {
 
         assert_eq!(map.root_count, 6);
         assert_eq!(map.entries.len(), 21);
-        assert_eq!(map.entries[0].scope, "a");
-        assert_eq!(map.entries[1].scope, "e");
-        assert_eq!(map.entries[2].scope, "i");
-        assert_eq!(map.entries[3].scope, "m");
-        assert_eq!(map.entries[4].scope, "q");
-        assert_eq!(map.entries[5].scope, "u");
+        let root_scopes = map
+            .entries
+            .iter()
+            .take(map.root_count)
+            .map(|entry| entry.scope.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(root_scopes, ["a", "e", "i", "m", "q", "u"]);
         assert_eq!(
             map.is_enabled(&scope_new(&["a", "b", "c", "d"]), None, Level::Trace),
             EnabledStatus::Enabled

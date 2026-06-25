@@ -15,17 +15,22 @@ where
     loop {
         let mut any_collisions = false;
 
-        for (index, (item, &detail)) in items.iter().zip(&details).enumerate() {
+        for (index, ((item, &detail), current_description)) in items
+            .iter()
+            .zip(&details)
+            .zip(&mut current_descriptions)
+            .enumerate()
+        {
             if detail > 0 {
                 let new_description = get_description(item, detail);
-                if new_description == current_descriptions[index] {
+                if new_description == *current_description {
                     continue;
                 }
-                current_descriptions[index] = new_description;
+                *current_description = new_description;
             }
 
             descriptions
-                .entry(current_descriptions[index].clone())
+                .entry(current_description.clone())
                 .or_default()
                 .push(index);
         }
@@ -34,7 +39,10 @@ where
             if indices.len() > 1 {
                 any_collisions = true;
                 for index in indices {
-                    details[index] += 1;
+                    let detail = details
+                        .get_mut(index)
+                        .expect("collision index should be in bounds");
+                    *detail += 1;
                 }
             }
         }
@@ -91,7 +99,9 @@ mod tests {
         ];
         let details = compute_disambiguation_details(&items, |item, detail| {
             let clamped = detail.min(item.len() - 1);
-            item[clamped].to_string()
+            item.get(clamped)
+                .expect("clamped detail should be in bounds")
+                .to_string()
         });
         assert_eq!(details, vec![2, 2, 1]);
     }

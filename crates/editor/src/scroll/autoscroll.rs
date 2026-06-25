@@ -2,79 +2,35 @@ use gpui::{Bounds, Context, Pixels, Point, Window};
 use num_traits::ToPrimitive;
 use std::cmp;
 
-use multi_buffer::{Anchor, MultiBufferOffset};
+use multi_buffer::MultiBufferOffset;
 
 use crate::{
     Editor, EditorMode,
-    display_map::{DisplayPoint, DisplayRow, ToDisplayPoint},
+    display_map::{DisplayPoint, DisplayRow},
     element::LineWithInvisibles,
     scroll::{ScrollOffset, WasScrolled},
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum Autoscroll {
-    Next,
-    Strategy(AutoscrollStrategy, Option<Anchor>),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Autoscroll {
+    Fit,
+    Newest,
 }
 
 impl Autoscroll {
-    pub fn fit() -> Self {
-        Self::Strategy(AutoscrollStrategy::Fit, None)
+    pub(crate) fn fit() -> Self {
+        Self::Fit
     }
 
-    pub fn newest() -> Self {
-        Self::Strategy(AutoscrollStrategy::Newest, None)
+    pub(crate) fn newest() -> Self {
+        Self::Newest
     }
-
-    pub fn center() -> Self {
-        Self::Strategy(AutoscrollStrategy::Center, None)
-    }
-
-    pub fn focused() -> Self {
-        Self::Strategy(AutoscrollStrategy::Focused, None)
-    }
-
-    pub fn top_relative(n: usize) -> Self {
-        Self::Strategy(AutoscrollStrategy::TopRelative(n), None)
-    }
-
-    pub fn top() -> Self {
-        Self::Strategy(AutoscrollStrategy::Top, None)
-    }
-
-    pub fn bottom_relative(n: usize) -> Self {
-        Self::Strategy(AutoscrollStrategy::BottomRelative(n), None)
-    }
-
-    pub fn bottom() -> Self {
-        Self::Strategy(AutoscrollStrategy::Bottom, None)
-    }
-
-    pub fn for_anchor(self, anchor: Anchor) -> Self {
-        match self {
-            Autoscroll::Next => self,
-            Autoscroll::Strategy(strategy, _) => Autoscroll::Strategy(strategy, Some(anchor)),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Default, Clone, Copy)]
-pub enum AutoscrollStrategy {
-    Fit,
-    Newest,
-    #[default]
-    Center,
-    Focused,
-    Top,
-    Bottom,
-    TopRelative(usize),
-    BottomRelative(usize),
 }
 
 pub(crate) struct NeedsHorizontalAutoscroll(pub(crate) bool);
 
 impl Editor {
-    pub fn request_autoscroll(&mut self, autoscroll: Autoscroll, cx: &mut Context<Self>) {
+    pub(crate) fn request_autoscroll(&mut self, autoscroll: Autoscroll, cx: &mut Context<Self>) {
         self.scroll_manager.autoscroll_request = Some((autoscroll, true));
         cx.notify();
     }
@@ -113,20 +69,13 @@ impl Editor {
             return (NeedsHorizontalAutoscroll(false), editor_was_scrolled);
         };
 
-        let target_top;
-        let target_bottom;
-        if let Autoscroll::Strategy(_, Some(anchor)) = autoscroll {
-            target_top = f64::from(anchor.to_display_point(&display_snapshot).row().0);
-            target_bottom = target_top + 1.0;
-        } else {
-            let snapshot = display_snapshot.buffer_snapshot();
-            let cursor_offset = self.cursor_offset(cx).min(snapshot.len().0);
-            let cursor_row = snapshot
-                .offset_to_point(MultiBufferOffset(cursor_offset))
-                .row;
-            target_top = f64::from(cursor_row);
-            target_bottom = target_top + 1.0;
-        }
+        let snapshot = display_snapshot.buffer_snapshot();
+        let cursor_offset = self.cursor_offset(cx).min(snapshot.len().0);
+        let cursor_row = snapshot
+            .offset_to_point(MultiBufferOffset(cursor_offset))
+            .row;
+        let target_top = f64::from(cursor_row);
+        let target_bottom = target_top + 1.0;
 
         let margin = if matches!(self.mode, EditorMode::AutoHeight { .. }) {
             0.0
@@ -136,13 +85,8 @@ impl Editor {
                 .max(0.0)
         };
 
-        let strategy = match autoscroll {
-            Autoscroll::Strategy(strategy, _) => strategy,
-            Autoscroll::Next => AutoscrollStrategy::default(),
-        };
-
-        let was_autoscrolled = match strategy {
-            AutoscrollStrategy::Fit | AutoscrollStrategy::Newest => {
+        let was_autoscrolled = match autoscroll {
+            Autoscroll::Fit | Autoscroll::Newest => {
                 let margin = margin.min(self.scroll_manager.vertical_scroll_margin);
                 let target_top = (target_top - margin).max(0.0);
                 let target_bottom = target_bottom + margin;
@@ -170,63 +114,6 @@ impl Editor {
                 } else {
                     WasScrolled(false)
                 }
-            }
-            AutoscrollStrategy::Center => {
-                scroll_position.y = (target_top - margin).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::Focused => {
-                let margin = margin.min(self.scroll_manager.vertical_scroll_margin);
-                scroll_position.y = (target_top - margin).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::Top => {
-                scroll_position.y = target_top.clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::Bottom => {
-                scroll_position.y = (target_bottom - visible_lines).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::TopRelative(lines) => {
-                scroll_position.y =
-                    (target_top - lines.to_f64().unwrap()).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
-            }
-            AutoscrollStrategy::BottomRelative(lines) => {
-                scroll_position.y =
-                    (target_bottom + lines.to_f64().unwrap()).clamp(0.0, max_scroll_top);
-                self.scroll_manager
-                    .set_scroll_position(&display_snapshot, scroll_position);
-                if local {
-                    cx.notify();
-                }
-                WasScrolled(true)
             }
         };
 
@@ -288,12 +175,18 @@ impl Editor {
                 )
                 .column() as usize;
 
-            let prefix_width = em_advance * line_display_column_start.to_f64().unwrap();
+            let prefix_width = em_advance
+                * line_display_column_start
+                    .to_f64()
+                    .expect("line display column start should fit in f64");
             let line_display_column_end = line_display_column_start.saturating_add(layout.len);
 
             let column_x = |display_column: usize| -> ScrollOffset {
                 if display_column < line_display_column_start {
-                    em_advance * display_column.to_f64().unwrap()
+                    em_advance
+                        * display_column
+                            .to_f64()
+                            .expect("display column should fit in f64")
                 } else if display_column <= line_display_column_end {
                     let local_column = display_column - line_display_column_start;
                     prefix_width + ScrollOffset::from(layout.x_for_index(local_column))
@@ -301,7 +194,10 @@ impl Editor {
                     let tail_columns = display_column - line_display_column_end;
                     prefix_width
                         + ScrollOffset::from(layout.x_for_index(layout.len))
-                        + em_advance * tail_columns.to_f64().unwrap()
+                        + em_advance
+                            * tail_columns
+                                .to_f64()
+                                .expect("tail column count should fit in f64")
                 }
             };
 

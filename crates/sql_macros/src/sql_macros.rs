@@ -1,4 +1,4 @@
-use proc_macro::{Delimiter, Span, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Literal, Span, TokenStream, TokenTree};
 use sqlformat::{FormatOptions, QueryParams};
 use std::sync::LazyLock;
 use syn::Error;
@@ -27,7 +27,7 @@ pub fn sql(tokens: TokenStream) -> TokenStream {
     if let Some((error, error_offset)) = error {
         create_error(spans, error_offset, &error, &formatted_sql)
     } else {
-        format!("r#\"{}\"#", sql.trim()).parse().unwrap()
+        TokenStream::from(TokenTree::Literal(Literal::string(sql.trim())))
     }
 }
 

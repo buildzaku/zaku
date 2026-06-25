@@ -20,22 +20,6 @@ use crate::{
     LanguageQueries, PLAIN_TEXT, Point, Rope,
 };
 
-pub struct LanguageRegistry {
-    state: RwLock<LanguageRegistryState>,
-    executor: BackgroundExecutor,
-}
-
-struct LanguageRegistryState {
-    languages: Vec<Arc<Language>>,
-    available_languages: Vec<AvailableLanguage>,
-    grammars: HashMap<Arc<str>, tree_sitter::Language>,
-    loading_languages: HashMap<LanguageId, Vec<oneshot::Sender<anyhow::Result<Arc<Language>>>>>,
-    subscriptions: Vec<mpsc::UnboundedSender<()>>,
-    theme: Option<Arc<Theme>>,
-    version: usize,
-    reload_count: usize,
-}
-
 #[derive(Clone)]
 pub struct AvailableLanguage {
     id: LanguageId,
@@ -56,7 +40,7 @@ impl AvailableLanguage {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 enum LanguageMatchPrecedence {
     #[default]
     Undetermined,
@@ -75,6 +59,11 @@ impl fmt::Display for LanguageNotFound {
 pub struct LoadedLanguage {
     pub config: LanguageConfig,
     pub queries: LanguageQueries,
+}
+
+pub struct LanguageRegistry {
+    state: RwLock<LanguageRegistryState>,
+    executor: BackgroundExecutor,
 }
 
 impl LanguageRegistry {
@@ -96,8 +85,8 @@ impl LanguageRegistry {
         registry
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn test(executor: BackgroundExecutor) -> Self {
+    #[cfg(any(test, feature = "test"))]
+    pub fn test_new(executor: BackgroundExecutor) -> Self {
         Self::new(executor)
     }
 
@@ -136,7 +125,7 @@ impl LanguageRegistry {
         state.notify_subscribers();
     }
 
-    #[cfg(any(feature = "test-support", test))]
+    #[cfg(any(test, feature = "test"))]
     pub fn register_test_language(&self, config: LanguageConfig) {
         self.register_language(
             config.name.clone(),
@@ -490,6 +479,17 @@ impl LanguageRegistry {
     }
 }
 
+struct LanguageRegistryState {
+    languages: Vec<Arc<Language>>,
+    available_languages: Vec<AvailableLanguage>,
+    grammars: HashMap<Arc<str>, tree_sitter::Language>,
+    loading_languages: HashMap<LanguageId, Vec<oneshot::Sender<anyhow::Result<Arc<Language>>>>>,
+    subscriptions: Vec<mpsc::UnboundedSender<()>>,
+    theme: Option<Arc<Theme>>,
+    version: usize,
+    reload_count: usize,
+}
+
 impl LanguageRegistryState {
     fn add(&mut self, language: Arc<Language>) {
         if let Some(theme) = self.theme.as_ref() {
@@ -549,7 +549,7 @@ mod tests {
 
     #[gpui::test]
     fn test_select_language(cx: &mut App) {
-        let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+        let registry = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
         registry.add(Arc::new(Language::new(
             LanguageConfig {
                 name: LanguageName::new_static("JSON"),
@@ -607,7 +607,7 @@ mod tests {
 
     #[gpui::test]
     fn test_first_line_pattern(cx: &mut App) {
-        let registry = Arc::new(LanguageRegistry::test(cx.background_executor().clone()));
+        let registry = Arc::new(LanguageRegistry::test_new(cx.background_executor().clone()));
 
         registry.register_test_language(LanguageConfig {
             name: "XML".into(),

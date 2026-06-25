@@ -1,13 +1,108 @@
-mod list;
 mod list_bullet_item;
 mod list_header;
 mod list_item;
 mod list_separator;
 mod list_sub_header;
 
-pub use list::*;
 pub use list_bullet_item::*;
 pub use list_header::*;
 pub use list_item::*;
 pub use list_separator::*;
 pub use list_sub_header::*;
+
+use gpui::{AnyElement, App, SharedString, Window, prelude::*};
+use smallvec::SmallVec;
+
+use super::label::{Label, LabelCommon};
+
+use crate::{Color, DynamicSpacing};
+
+pub enum EmptyMessage {
+    Text(SharedString),
+    Element(AnyElement),
+}
+
+#[derive(IntoElement)]
+pub struct List {
+    empty_message: EmptyMessage,
+    header: Option<ListHeader>,
+    toggle: Option<bool>,
+    children: SmallVec<[AnyElement; 2]>,
+}
+
+impl List {
+    pub fn new() -> Self {
+        Self {
+            empty_message: EmptyMessage::Text("No items".into()),
+            header: None,
+            toggle: None,
+            children: SmallVec::new(),
+        }
+    }
+
+    pub fn empty_message(mut self, message: impl Into<EmptyMessage>) -> Self {
+        self.empty_message = message.into();
+        self
+    }
+
+    pub fn header(mut self, header: impl Into<Option<ListHeader>>) -> Self {
+        self.header = header.into();
+        self
+    }
+
+    pub fn toggle(mut self, toggle: impl Into<Option<bool>>) -> Self {
+        self.toggle = toggle.into();
+        self
+    }
+}
+
+impl Default for List {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ParentElement for List {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+impl From<String> for EmptyMessage {
+    fn from(text: String) -> Self {
+        EmptyMessage::Text(SharedString::from(text))
+    }
+}
+
+impl From<&str> for EmptyMessage {
+    fn from(text: &str) -> Self {
+        EmptyMessage::Text(SharedString::from(text.to_owned()))
+    }
+}
+
+impl From<AnyElement> for EmptyMessage {
+    fn from(element: AnyElement) -> Self {
+        EmptyMessage::Element(element)
+    }
+}
+
+impl RenderOnce for List {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        gpui::div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .py(DynamicSpacing::Base04.rems(cx))
+            .children(self.header)
+            .map(|this| match (self.children.is_empty(), self.toggle) {
+                (false, _) => this.children(self.children),
+                (true, Some(false)) => this,
+                (true, _) => match self.empty_message {
+                    EmptyMessage::Text(text) => {
+                        this.px_2().child(Label::new(text).color(Color::Muted))
+                    }
+                    EmptyMessage::Element(element) => this.child(element),
+                },
+            })
+    }
+}

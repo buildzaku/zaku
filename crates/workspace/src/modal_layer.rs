@@ -65,8 +65,6 @@ pub struct ModalLayer {
     dismiss_on_focus_lost: bool,
 }
 
-impl EventEmitter<ModalOpenedEvent> for ModalLayer {}
-
 impl ModalLayer {
     pub fn new() -> Self {
         Self {
@@ -168,6 +166,8 @@ impl ModalLayer {
     }
 }
 
+impl EventEmitter<ModalOpenedEvent> for ModalLayer {}
+
 impl Default for ModalLayer {
     fn default() -> Self {
         Self::new()
@@ -211,7 +211,6 @@ impl Render for ModalLayer {
                     .child(
                         gpui::div()
                             .flex()
-                            .flex_row()
                             .items_center()
                             .occlude()
                             .child(active_modal.modal.view())

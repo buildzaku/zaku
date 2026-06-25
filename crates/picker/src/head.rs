@@ -9,9 +9,15 @@ pub(crate) enum Head {
 }
 
 impl Head {
-    pub fn editor<V: 'static>(
+    pub(crate) fn editor<V: 'static>(
         placeholder_text: &str,
-        mut edit_handler: impl FnMut(&mut V, ErasedEditorEvent, &mut Window, &mut Context<V>) + 'static,
+        mut edit_handler: impl FnMut(
+            &mut V,
+            &dyn ErasedEditor,
+            ErasedEditorEvent,
+            &mut Window,
+            &mut Context<V>,
+        ) + 'static,
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Self {
@@ -22,11 +28,12 @@ impl Head {
 
         editor.set_placeholder_text(placeholder_text, window, cx);
         let this = cx.weak_entity();
+        let editor_handle = editor.clone();
         editor
             .subscribe(
                 Box::new(move |event, window, cx| {
                     if let Err(error) = this.update(cx, |this, cx| {
-                        edit_handler(this, event, window, cx);
+                        edit_handler(this, editor_handle.as_ref(), event, window, cx);
                     }) {
                         log::debug!("Failed to update picker editor state: {error:?}");
                     }
@@ -38,7 +45,7 @@ impl Head {
         Self::Editor(editor)
     }
 
-    pub fn empty<V: 'static>(
+    pub(crate) fn empty<V: 'static>(
         blur_handler: impl FnMut(&mut V, &mut Window, &mut Context<V>) + 'static,
         window: &mut Window,
         cx: &mut Context<V>,

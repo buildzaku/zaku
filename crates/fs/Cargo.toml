@@ -1,23 +1,25 @@
 [package]
 name = "fs"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 name = "fs"
 path = "src/fs.rs"
 
+[lints]
+workspace = true
+
 [[test]]
-name = "integration"
+name = "fs_tests"
 path = "tests/integration/fs_tests.rs"
 
 [features]
-test-support = []
+test = []
 
 [dependencies]
 anyhow = { workspace = true }

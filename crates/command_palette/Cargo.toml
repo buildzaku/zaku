@@ -1,19 +1,21 @@
 [package]
 name = "command_palette"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 name = "command_palette"
 path = "src/command_palette.rs"
 
+[lints]
+workspace = true
+
 [features]
-test-support = ["db/test-support"]
+test = ["db/test"]
 
 [dependencies]
 actions = { workspace = true }
@@ -30,5 +32,5 @@ ui = { workspace = true }
 workspace = { workspace = true }
 
 [dev-dependencies]
-db = { workspace = true, features = ["test-support"] }
+db = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }

@@ -1,19 +1,21 @@
 [package]
 name = "request_editor"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
+
+[lib]
+name = "request_editor"
+path = "src/request_editor.rs"
 
 [lints]
 workspace = true
 
 [features]
-test-support = ["db/test-support"]
-
-[lib]
-name = "request_editor"
-path = "src/request_editor.rs"
+test = ["db/test"]
 
 [dependencies]
 actions = { workspace = true }
@@ -37,15 +39,15 @@ util = { workspace = true }
 workspace = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
-http_client = { workspace = true, features = ["test-support"] }
+http_client = { workspace = true, features = ["test"] }
 indoc = { workspace = true }
 parking_lot = { workspace = true }
-path = { workspace = true, features = ["test-support"] }
-project = { workspace = true, features = ["test-support"] }
+path = { workspace = true, features = ["test"] }
+project = { workspace = true, features = ["test"] }
 serde_json = { workspace = true }
-settings = { workspace = true, features = ["test-support"] }
+settings = { workspace = true, features = ["test"] }
 toml = { workspace = true }
 util_macros = { workspace = true }
-workspace = { workspace = true, features = ["test-support"] }
+workspace = { workspace = true, features = ["test"] }

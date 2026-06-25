@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use gpui::{
     AnyElement, App, AppContext, Context, Entity, EntityId, FontWeight, SharedString, Task,
     WeakEntity, Window, prelude::*,
@@ -22,14 +23,14 @@ const MAX_TAB_TITLE_LEN: usize = 24;
 impl Item for RequestEditor {
     type Event = RequestEditorEvent;
 
-    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+    fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
         match event {
             RequestEditorEvent::Saved
             | RequestEditorEvent::TitleChanged
             | RequestEditorEvent::DirtyChanged => {
-                f(ItemEvent::UpdateTab);
+                emitter(ItemEvent::UpdateTab);
             }
-            RequestEditorEvent::RequestBufferEdited => f(ItemEvent::Edit),
+            RequestEditorEvent::RequestBufferEdited => emitter(ItemEvent::Edit),
             RequestEditorEvent::FileHandleChanged => {}
         }
     }
@@ -60,14 +61,16 @@ impl Item for RequestEditor {
             Some(truncate_and_trailoff(description, MAX_TAB_TITLE_LEN))
         });
 
-        ui::h_flex()
+        gpui::div()
+            .flex()
+            .items_center()
             .min_w_0()
             .gap_2()
             .when(
                 matches!(&self.request, RequestEditorState::Invalid { .. }),
                 |this| {
                     this.child(
-                        ui::h_flex().flex_none().items_center().child(
+                        gpui::div().flex_none().flex().items_center().child(
                             Icon::new(IconName::WarningCircle)
                                 .size(IconSize::Small)
                                 .color(Color::Error),
@@ -77,7 +80,7 @@ impl Item for RequestEditor {
             )
             .when_some(selected_method_label, |this, method| {
                 this.child(
-                    ui::h_flex().flex_none().items_center().child(
+                    gpui::div().flex_none().flex().items_center().child(
                         Label::new(method)
                             .size(LabelSize::Small)
                             .weight(FontWeight::MEDIUM)
@@ -109,9 +112,9 @@ impl Item for RequestEditor {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
-        f(Entity::entity_id(&self.buffer), self.buffer.read(cx));
+        visitor(Entity::entity_id(&self.buffer), self.buffer.read(cx));
     }
 
     fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {
@@ -134,7 +137,7 @@ impl Item for RequestEditor {
     ) -> Task<anyhow::Result<()>> {
         let buffer = self.buffer.clone();
         let RequestEditorState::Ready(request) = &self.request else {
-            return Task::ready(Err(anyhow::anyhow!("Cannot save invalid request")));
+            return Task::ready(Err(anyhow!("Cannot save invalid request")));
         };
         let request_snapshot = RequestSnapshot::from_request(request, cx);
         buffer.update(cx, |buffer, cx| {
@@ -220,7 +223,7 @@ impl SerializableItem for RequestEditor {
         {
             Ok(Some(serialized_request_editor)) => serialized_request_editor,
             Ok(None) => {
-                return Task::ready(Err(anyhow::anyhow!(
+                return Task::ready(Err(anyhow!(
                     "Unable to deserialize request editor: No entry in database for item_id: {item_id} and workspace_id {workspace_id:?}"
                 )));
             }
@@ -232,7 +235,7 @@ impl SerializableItem for RequestEditor {
             .read(cx)
             .project_path_for_absolute_path(path.as_path(), cx)
         else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "Unable to deserialize request editor: path is not in project: {}",
                 path.display()
             )));
@@ -241,7 +244,7 @@ impl SerializableItem for RequestEditor {
         let Some(open_buffer) =
             <RequestBuffer as project::ProjectItem>::try_open(&project, &project_path, cx)
         else {
-            return Task::ready(Err(anyhow::anyhow!(
+            return Task::ready(Err(anyhow!(
                 "Unable to deserialize request editor: cannot open path: {}",
                 path.display()
             )));
@@ -301,18 +304,19 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
+    use fs::TempFs;
     use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{SharedState, WorkspaceDb, build_workspace};
+    use workspace::{AppState, WorkspaceDb, build_workspace};
 
-    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            workspace::init(shared_state, cx);
+            workspace::init(app_state, cx);
             editor::init(cx);
             crate::init(cx);
             response_panel::init(cx);
@@ -323,9 +327,9 @@ mod tests {
     async fn test_deserialize(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),

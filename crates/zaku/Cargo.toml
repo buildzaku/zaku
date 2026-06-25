@@ -1,8 +1,10 @@
 [package]
 name = "zaku"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
 
 [package.metadata.bundle]
@@ -13,16 +15,12 @@ repository = "https://github.com/buildzaku/zaku"
 identifier = "dev.zaku.Zaku"
 icon = ["resources/app-icon.png", "resources/app-icon@2x.png"]
 
-[lints]
-workspace = true
-
 [lib]
 name = "zaku"
 path = "src/zaku.rs"
 
-[features]
-default = ["mimalloc"]
-mimalloc = ["dep:mimalloc"]
+[lints]
+workspace = true
 
 [[test]]
 name = "keymap_tests"
@@ -31,6 +29,10 @@ path = "tests/integration/keymap_tests.rs"
 [[test]]
 name = "workspace_tests"
 path = "tests/integration/workspace_tests.rs"
+
+[features]
+default = ["mimalloc"]
+mimalloc = ["dep:mimalloc"]
 
 [dependencies]
 actions = { workspace = true }
@@ -76,8 +78,8 @@ gpui_platform = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 serde_json = { workspace = true }
-workspace = { workspace = true, features = ["test-support"] }
-worktree = { workspace = true, features = ["test-support"] }
+workspace = { workspace = true, features = ["test"] }
+worktree = { workspace = true, features = ["test"] }

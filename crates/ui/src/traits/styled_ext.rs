@@ -18,14 +18,6 @@ fn elevated_borderless<E: Styled>(this: E, cx: &mut App, index: ElevationIndex) 
 }
 
 pub trait StyledExt: Styled + Sized {
-    fn h_flex(self) -> Self {
-        self.flex().flex_row().items_center()
-    }
-
-    fn v_flex(self) -> Self {
-        self.flex().flex_col()
-    }
-
     /// Located above the app background, is the standard level for all elements
     ///
     /// Example Elements: Title Bar, Panel, Tab Bar, Editor

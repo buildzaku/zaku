@@ -1,9 +1,10 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use futures::{FutureExt, StreamExt, channel::mpsc, future::LocalBoxFuture};
 use gpui::{App, AsyncApp, Global, Task};
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
+    io,
     sync::Arc,
 };
 
@@ -41,7 +42,7 @@ pub struct SettingsStore {
     default_settings: SettingsContent,
     user_settings: Option<SettingsContent>,
     merged_settings: SettingsContent,
-    setting_factories: HashMap<TypeId, fn(&SettingsContent) -> Box<dyn Any + Send + Sync>>,
+    setting_builders: HashMap<TypeId, fn(&SettingsContent) -> Box<dyn Any + Send + Sync>>,
     settings: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
     setting_file_updates_tx: mpsc::UnboundedSender<
         Box<dyn FnOnce(AsyncApp) -> LocalBoxFuture<'static, anyhow::Result<()>>>,
@@ -49,24 +50,23 @@ pub struct SettingsStore {
     _setting_file_updates: Task<()>,
 }
 
-impl Global for SettingsStore {}
-
 impl SettingsStore {
     pub fn new(cx: &mut App, default_settings_json: impl AsRef<str>) -> Self {
         let (default_settings, parse_status) =
             parse_json::<SettingsContent>(default_settings_json.as_ref());
         let default_settings = match (default_settings, parse_status) {
-            (Some(default_settings), ParseStatus::Success) => default_settings,
+            (Some(default_settings), ParseStatus::Success) => Ok(default_settings),
             (Some(_), ParseStatus::Failed { error }) => {
-                panic!("invalid default settings: {error}");
+                Err(anyhow!("invalid default settings: {error}"))
             }
             (None, ParseStatus::Failed { error }) => {
-                panic!("failed to parse default settings: {error}")
+                Err(anyhow!("failed to parse default settings: {error}"))
             }
-            (None, ParseStatus::Success) => {
-                panic!("failed to parse default settings: missing parsed value")
-            }
-        };
+            (None, ParseStatus::Success) => Err(anyhow!(
+                "failed to parse default settings: missing parsed value"
+            )),
+        }
+        .expect("failed to load default settings");
 
         let merged_settings = default_settings.clone();
         let (setting_file_updates_tx, mut setting_file_updates_rx) = mpsc::unbounded();
@@ -75,7 +75,7 @@ impl SettingsStore {
             default_settings,
             user_settings: None,
             merged_settings,
-            setting_factories: HashMap::new(),
+            setting_builders: HashMap::new(),
             settings: HashMap::new(),
             setting_file_updates_tx,
             _setting_file_updates: cx.spawn(async move |cx| {
@@ -133,7 +133,7 @@ impl SettingsStore {
         parse_status
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new(cx: &mut App) -> Self {
         Self::new(cx, crate::default_settings())
     }
@@ -142,8 +142,8 @@ impl SettingsStore {
         match fs.load(path::settings_file()).await {
             result @ Ok(_) => result,
             Err(error) => {
-                if let Some(error) = error.downcast_ref::<std::io::Error>()
-                    && error.kind() == std::io::ErrorKind::NotFound
+                if let Some(error) = error.downcast_ref::<io::Error>()
+                    && error.kind() == io::ErrorKind::NotFound
                 {
                     return Ok(crate::initial_user_settings().to_string());
                 }
@@ -233,7 +233,7 @@ impl SettingsStore {
         }
 
         let from_settings = registered_setting.from_settings;
-        self.setting_factories.insert(type_id, from_settings);
+        self.setting_builders.insert(type_id, from_settings);
         self.settings.insert(type_id, from_settings(self.content()));
     }
 
@@ -245,10 +245,7 @@ impl SettingsStore {
     }
 
     pub fn override_setting<T: Settings>(&mut self, value: T) {
-        self.settings.insert(
-            TypeId::of::<T>(),
-            Box::new(value) as Box<dyn Any + Send + Sync>,
-        );
+        self.settings.insert(TypeId::of::<T>(), Box::new(value));
     }
 
     fn recompute_values(&mut self, _cx: &mut App) {
@@ -258,18 +255,20 @@ impl SettingsStore {
         }
         self.merged_settings = merged_settings;
 
-        let factories = self
-            .setting_factories
+        let builders = self
+            .setting_builders
             .iter()
-            .map(|(type_id, factory)| (*type_id, *factory))
+            .map(|(type_id, builder)| (*type_id, *builder))
             .collect::<Vec<_>>();
 
-        for (type_id, factory) in factories {
-            let value = factory(self.content());
+        for (type_id, builder) in builders {
+            let value = builder(self.content());
             self.settings.insert(type_id, value);
         }
     }
 }
+
+impl Global for SettingsStore {}
 
 #[cfg(test)]
 mod tests {

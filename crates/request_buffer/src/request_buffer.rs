@@ -3,13 +3,7 @@ use std::sync::Arc;
 
 use worktree::{DiskState, File, RequestFileState};
 
-pub struct RequestBuffer {
-    file: Arc<File>,
-    request_file: RequestFileState,
-    is_dirty: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestBufferEvent {
     DirtyChanged,
     Saved,
@@ -18,7 +12,11 @@ pub enum RequestBufferEvent {
     ReloadNeeded,
 }
 
-impl EventEmitter<RequestBufferEvent> for RequestBuffer {}
+pub struct RequestBuffer {
+    file: Arc<File>,
+    request_file: RequestFileState,
+    is_dirty: bool,
+}
 
 impl RequestBuffer {
     pub fn new(file: Arc<File>, request_file: RequestFileState) -> Self {
@@ -120,3 +118,5 @@ impl RequestBuffer {
         cx.notify();
     }
 }
+
+impl EventEmitter<RequestBufferEvent> for RequestBuffer {}

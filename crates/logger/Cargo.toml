@@ -1,15 +1,18 @@
 [package]
 name = "logger"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
+
+[lib]
+name = "logger"
+path = "src/logger.rs"
 
 [lints]
 workspace = true
-
-[lib]
-path = "src/logger.rs"
 
 [features]
 default = []
@@ -20,5 +23,5 @@ jiff = { workspace = true }
 log = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }

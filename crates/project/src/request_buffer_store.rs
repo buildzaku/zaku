@@ -20,16 +20,6 @@ use crate::{
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
 
-pub struct RequestBufferStore {
-    buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
-    pending_buffer_opens:
-        HashMap<ProjectPath, Shared<Task<Result<Entity<RequestBuffer>, Arc<anyhow::Error>>>>>,
-    worktree_store: Entity<WorktreeStore>,
-    opened_buffers: HashMap<BufferId, WeakEntity<RequestBuffer>>,
-    path_to_buffer_id: HashMap<ProjectPath, BufferId>,
-    _worktree_store_subscription: Subscription,
-}
-
 pub enum RequestBufferStoreEvent {
     BufferAdded(Entity<RequestBuffer>),
     BufferDropped(BufferId),
@@ -39,7 +29,15 @@ pub enum RequestBufferStoreEvent {
     },
 }
 
-impl EventEmitter<RequestBufferStoreEvent> for RequestBufferStore {}
+pub struct RequestBufferStore {
+    buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
+    pending_buffer_opens:
+        HashMap<ProjectPath, Shared<Task<Result<Entity<RequestBuffer>, Arc<anyhow::Error>>>>>,
+    worktree_store: Entity<WorktreeStore>,
+    opened_buffers: HashMap<BufferId, WeakEntity<RequestBuffer>>,
+    path_to_buffer_id: HashMap<ProjectPath, BufferId>,
+    _worktree_store_subscription: Subscription,
+}
 
 impl RequestBufferStore {
     pub fn new(worktree_store: Entity<WorktreeStore>, cx: &mut Context<Self>) -> Self {
@@ -162,11 +160,13 @@ impl RequestBufferStore {
         let handle = cx.entity().downgrade();
         buffer_entity.update(cx, move |_, cx| {
             cx.on_release(move |_, cx| {
-                handle
-                    .update(cx, |_, cx| {
-                        cx.emit(RequestBufferStoreEvent::BufferDropped(buffer_id));
-                    })
-                    .ok();
+                if let Err(error) = handle.update(cx, |_, cx| {
+                    cx.emit(RequestBufferStoreEvent::BufferDropped(buffer_id));
+                }) {
+                    log::trace!(
+                        "Failed to update request buffer store after buffer drop: {error:?}"
+                    );
+                }
             })
             .detach();
         });
@@ -367,3 +367,5 @@ impl RequestBufferStore {
         }
     }
 }
+
+impl EventEmitter<RequestBufferStoreEvent> for RequestBufferStore {}

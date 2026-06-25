@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use serde::Deserialize;
 use std::cell::RefCell;
 
@@ -60,7 +61,7 @@ where
         Ok(value) => Ok(value),
         Err(error) => ERRORS.with_borrow_mut(|errors| {
             if let Some(errors) = errors {
-                errors.push(anyhow::anyhow!("{error}"));
+                errors.push(anyhow!("{error}"));
                 Ok(Default::default())
             } else {
                 Err(error)
@@ -80,7 +81,7 @@ mod tests {
     use settings_macros::with_fallible_options;
 
     #[with_fallible_options]
-    #[derive(Debug, Deserialize, PartialEq)]
+    #[derive(Debug, PartialEq, Deserialize)]
     struct FooSettings {
         foo: Option<String>,
         bar: Option<usize>,

@@ -51,28 +51,12 @@ members = [
 ]
 
 [workspace.package]
+version = "0.0.0"
 license = "AGPL-3.0-or-later"
-authors = ["Mayank Verma <errmayank@gmail.com>"]
+repository = "https://github.com/buildzaku/zaku"
 edition = "2024"
+rust-version = "1.95.0"
 publish = false
-
-[workspace.lints.clippy]
-pedantic = { level = "deny", priority = -1 }
-dbg_macro = { level = "deny" }
-todo = { level = "deny" }
-missing_errors_doc = { level = "allow" }
-missing_panics_doc = { level = "allow" }
-module_inception = { level = "allow" }
-module_name_repetitions = { level = "allow" }
-must_use_candidate = { level = "allow" }
-redundant_closure_for_method_calls = { level = "allow" }
-return_self_not_must_use = { level = "allow" }
-struct_excessive_bools = { level = "allow" }
-too_many_lines = { level = "allow" }
-too_many_arguments = { level = "allow" }
-type_complexity = { level = "allow" }
-unreadable_literal = { level = "allow" }
-unsafe_derive_deserialize = { level = "allow" }
 
 [workspace.dependencies]
 ##################################################
@@ -214,3 +198,207 @@ worktree = { path = "crates/worktree" }
 [patch.crates-io]
 async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d671357" }
 async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e" }
+
+[workspace.lints.rust]
+# Visibility.
+unreachable_pub = "warn"
+
+[workspace.lints.rustdoc]
+# Docs.
+bare_urls = "warn"
+broken_intra_doc_links = "warn"
+
+[workspace.lints.clippy]
+# Suppressions.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+ignore_without_reason = "warn"
+
+# Docs.
+doc_comment_double_space_linebreaks = "warn"
+doc_link_with_quotes = "warn"
+
+# Panics and placeholders.
+get_unwrap = "warn"
+index_refutable_slice = "warn"
+indexing_slicing = "warn"
+panic = "warn"
+panic_in_result_fn = "warn"
+string_slice = "warn"
+todo = "warn"
+unreachable = "warn"
+unwrap_used = "warn"
+
+# Discarded errors and futures.
+assertions_on_result_states = "warn"
+let_underscore_future = "warn"
+let_underscore_must_use = "warn"
+map_err_ignore = "warn"
+unused_result_ok = "warn"
+
+# Numeric conversions.
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+cast_precision_loss = "warn"
+cast_ptr_alignment = "warn"
+cast_sign_loss = "warn"
+checked_conversions = "warn"
+decimal_bitwise_operands = "warn"
+float_cmp = "warn"
+float_cmp_const = "warn"
+invalid_upcast_comparisons = "warn"
+large_digit_groups = "warn"
+lossy_float_literal = "warn"
+
+# Unsafe and FFI.
+mem_forget = "warn"
+multiple_unsafe_ops_per_block = "warn"
+no_mangle_with_rust_abi = "warn"
+ptr_cast_constness = "warn"
+ptr_offset_by_literal = "warn"
+ref_as_ptr = "warn"
+ref_binding_to_reference = "warn"
+transmute_ptr_to_ptr = "warn"
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+
+# Cargo metadata.
+cargo_common_metadata = "warn"
+negative_feature_names = "warn"
+redundant_feature_names = "warn"
+wildcard_dependencies = "warn"
+
+# Debug.
+dbg_macro = "warn"
+debug_assert_with_mut_call = "warn"
+missing_fields_in_debug = "warn"
+
+# API.
+empty_enums = "warn"
+fn_params_excessive_bools = "warn"
+implicit_hasher = "warn"
+inconsistent_struct_constructor = "warn"
+into_iter_without_iter = "warn"
+iter_not_returning_iterator = "warn"
+iter_without_into_iter = "warn"
+option_option = "warn"
+pub_underscore_fields = "warn"
+ref_option = "warn"
+ref_option_ref = "warn"
+self_only_used_in_recursion = "warn"
+too_many_arguments = "allow"
+type_complexity = "allow"
+unnecessary_box_returns = "warn"
+unused_async = "warn"
+
+# Ownership.
+assigning_clones = "warn"
+cloned_instead_of_copied = "warn"
+expl_impl_clone_on_copy = "warn"
+implicit_clone = "warn"
+infallible_try_from = "warn"
+large_types_passed_by_value = "warn"
+mut_mut = "warn"
+needless_pass_by_value = "warn"
+option_as_ref_cloned = "warn"
+
+# Iterators and collections.
+copy_iterator = "warn"
+filter_map_next = "warn"
+flat_map_option = "warn"
+from_iter_instead_of_collect = "warn"
+iter_filter_is_ok = "warn"
+iter_filter_is_some = "warn"
+linkedlist = "warn"
+stable_sort_primitive = "warn"
+zero_sized_map_values = "warn"
+
+# Async and concurrency.
+await_holding_lock = "warn"
+await_holding_refcell_ref = "warn"
+large_futures = "warn"
+rc_mutex = "warn"
+
+# String formatting.
+case_sensitive_file_extension_comparisons = "warn"
+format_collect = "warn"
+format_push_string = "warn"
+inefficient_to_string = "warn"
+single_char_pattern = "warn"
+str_split_at_newline = "warn"
+string_add_assign = "warn"
+unicode_not_nfc = "warn"
+
+# Expression.
+bool_to_int_with_if = "warn"
+borrow_as_ptr = "warn"
+collapsible_else_if = "warn"
+comparison_chain = "warn"
+default_trait_access = "warn"
+duration_suboptimal_units = "warn"
+elidable_lifetime_names = "warn"
+enum_glob_use = "warn"
+explicit_deref_methods = "warn"
+explicit_into_iter_loop = "warn"
+explicit_iter_loop = "warn"
+if_not_else = "warn"
+ignored_unit_patterns = "warn"
+inline_always = "warn"
+ip_constant = "warn"
+items_after_statements = "warn"
+manual_assert = "warn"
+manual_ilog2 = "warn"
+manual_instant_elapsed = "warn"
+manual_is_power_of_two = "warn"
+manual_is_variant_and = "warn"
+manual_let_else = "warn"
+manual_midpoint = "warn"
+manual_string_new = "warn"
+map_unwrap_or = "warn"
+match_bool = "warn"
+match_same_arms = "warn"
+match_wild_err_arm = "warn"
+match_wildcard_for_single_variants = "warn"
+maybe_infinite_iter = "warn"
+naive_bytecount = "warn"
+needless_bitwise_bool = "warn"
+needless_continue = "warn"
+needless_for_each = "warn"
+needless_raw_string_hashes = "warn"
+ptr_as_ptr = "warn"
+range_minus_one = "warn"
+range_plus_one = "warn"
+redundant_else = "warn"
+same_functions_in_if_condition = "warn"
+same_length_and_capacity = "warn"
+semicolon_if_nothing_returned = "warn"
+single_match_else = "warn"
+uninlined_format_args = "warn"
+unnecessary_debug_formatting = "warn"
+unnecessary_join = "warn"
+unnecessary_literal_bound = "warn"
+unnecessary_semicolon = "warn"
+unnecessary_trailing_comma = "warn"
+unnecessary_wraps = "warn"
+unnested_or_patterns = "warn"
+verbose_bit_mask = "warn"
+
+# Runtime safety.
+large_stack_arrays = "warn"
+unchecked_time_subtraction = "warn"
+
+# Standard library.
+non_std_lazy_statics = "warn"
+
+# Tests.
+should_panic_without_expect = "warn"
+
+# Imports and naming.
+macro_use_imports = "warn"
+many_single_char_names = "warn"
+mismatching_type_param_order = "warn"
+no_effect_underscore_binding = "warn"
+used_underscore_binding = "warn"
+used_underscore_items = "warn"

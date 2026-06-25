@@ -2,10 +2,9 @@ use gpui::{AnyView, App, ClickEvent, ElementId, Hsla, Pixels, SharedString, Wind
 
 use theme::ActiveTheme;
 
-use crate::{
-    Color, DynamicSpacing, Icon, IconName, IconSize, Label, LabelCommon, LabelSize,
-    TOOLTIP_SHOW_DELAY, ToggleState, h_flex,
-};
+use super::label::{Label, LabelCommon, LabelSize};
+
+use crate::{Color, DynamicSpacing, Icon, IconName, IconSize, TOOLTIP_SHOW_DELAY, ToggleState};
 
 pub fn checkbox(id: impl Into<ElementId>, toggle_state: ToggleState) -> Checkbox {
     Checkbox::new(id, toggle_state)
@@ -131,14 +130,16 @@ impl RenderOnce for Checkbox {
         let border_color = self.border_color(cx);
         let size = Self::container_size();
 
-        let checkbox = h_flex()
+        let checkbox = gpui::div()
             .id(self.id.clone())
+            .flex()
+            .items_center()
             .size(size)
             .justify_center()
             .child(
                 gpui::div()
-                    .flex()
                     .flex_none()
+                    .flex()
                     .justify_center()
                     .items_center()
                     .m_1()
@@ -151,8 +152,10 @@ impl RenderOnce for Checkbox {
                     .children(icon),
             );
 
-        h_flex()
+        gpui::div()
             .id(self.id)
+            .flex()
+            .items_center()
             .map(|this| {
                 if self.disabled {
                     this.cursor_not_allowed()

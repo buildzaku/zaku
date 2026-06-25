@@ -1,15 +1,18 @@
 [package]
 name = "sql"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
+
+[lib]
+name = "sql"
+path = "src/sql.rs"
 
 [lints]
 workspace = true
-
-[lib]
-path = "src/sql.rs"
 
 [dependencies]
 anyhow = { workspace = true }

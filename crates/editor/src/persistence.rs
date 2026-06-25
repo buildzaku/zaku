@@ -6,7 +6,7 @@ use db::{
 };
 use workspace::{ItemId, WorkspaceId};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SerializedEditor {
     pub(crate) absolute_path: PathBuf,
 }
@@ -27,8 +27,6 @@ impl Column for SerializedEditor {
 }
 
 pub(crate) struct EditorDb(ThreadSafeConnection);
-
-db::static_connection!(EditorDb, [workspace::WorkspaceDb]);
 
 impl EditorDb {
     pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
@@ -86,3 +84,5 @@ impl EditorDb {
         }
     }
 }
+
+db::static_connection!(EditorDb, [workspace::WorkspaceDb]);

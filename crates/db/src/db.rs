@@ -22,7 +22,7 @@ use std::{
     },
 };
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use sql::thread_safe_connection;
 use sql::thread_safe_connection::ConnectionTarget;
 use sql_macros::sql;
@@ -41,7 +41,7 @@ const DB_INIT_QUERY: &str = sql!(
 const FALLBACK_MEMORY_DB_NAME: &str = "FALLBACK_MEMORY_DB";
 const DB_NAME: &str = "db.sqlite";
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 static TEST_APP_DATABASE: LazyLock<AppDatabase> = LazyLock::new(AppDatabase::test_new);
 
 static FILE_DB_FAILED: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
@@ -102,7 +102,7 @@ async fn open_fallback_db() -> ThreadSafeConnection {
         .expect("fallback in-memory database should open")
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub async fn open_test_db(db_name: &str) -> ThreadSafeConnection {
     ThreadSafeConnection::builder(ConnectionTarget::memory(db_name))
         .with_db_init_query(DB_INIT_QUERY)
@@ -133,14 +133,6 @@ pub fn database_dir() -> PathBuf {
 
 pub struct AppDatabase(pub ThreadSafeConnection);
 
-impl Global for AppDatabase {}
-
-impl Default for AppDatabase {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl AppDatabase {
     pub fn new() -> Self {
         let db_dir = database_dir();
@@ -151,7 +143,7 @@ impl AppDatabase {
         app_db
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new() -> Self {
         let name = format!("test-db-{}", uuid::Uuid::new_v4());
         let connection = smol::block_on(open_test_db(&name));
@@ -162,19 +154,27 @@ impl AppDatabase {
     }
 
     pub fn global(cx: &App) -> &ThreadSafeConnection {
-        if let Some(db) = cx.try_global::<Self>() {
-            &db.0
-        } else {
-            #[cfg(any(test, feature = "test-support"))]
-            {
+        #[cfg(any(test, feature = "test"))]
+        {
+            if let Some(db) = cx.try_global::<Self>() {
+                &db.0
+            } else {
                 &TEST_APP_DATABASE.0
             }
-
-            #[cfg(not(any(test, feature = "test-support")))]
-            {
-                panic!("database not initialized")
-            }
         }
+
+        #[cfg(not(any(test, feature = "test")))]
+        {
+            &cx.global::<Self>().0
+        }
+    }
+}
+
+impl Global for AppDatabase {}
+
+impl Default for AppDatabase {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -204,7 +204,7 @@ macro_rules! static_connection {
                 $t($crate::AppDatabase::global(cx).clone())
             }
 
-            #[cfg(any(test, feature = "test-support"))]
+            #[cfg(any(test, feature = "test"))]
             pub async fn test_open(name: &'static str) -> Self {
                 let connection = $t($crate::open_test_db(name).await);
                 connection

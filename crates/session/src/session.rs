@@ -1,6 +1,6 @@
 use gpui::{App, Subscription, Task, WindowId, prelude::*};
 
-#[cfg(not(any(test, feature = "test-support")))]
+#[cfg(not(any(test, feature = "test")))]
 use std::time::Duration;
 
 use db::kv::KeyValueStore;
@@ -31,7 +31,7 @@ impl Session {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn test_new() -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
@@ -55,7 +55,7 @@ impl AppSession {
     pub fn new(session: Session, cx: &Context<Self>) -> Self {
         let subscriptions = vec![cx.on_app_quit(|_, cx| Self::before_quit(cx))];
 
-        #[cfg(not(any(test, feature = "test-support")))]
+        #[cfg(not(any(test, feature = "test")))]
         let serialization_task = {
             let kv_store = KeyValueStore::global(cx);
             cx.spawn(async move |_, cx| {
@@ -75,7 +75,7 @@ impl AppSession {
             })
         };
 
-        #[cfg(any(test, feature = "test-support"))]
+        #[cfg(any(test, feature = "test"))]
         let serialization_task = Task::ready(());
 
         Self {
@@ -102,7 +102,7 @@ impl AppSession {
         self.session.old_session_id.as_deref()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn replace_session(&mut self, session: Session) {
         self.session = session;
     }

@@ -40,8 +40,6 @@ pub enum PaneEvent {
     },
 }
 
-impl EventEmitter<PaneEvent> for Pane {}
-
 #[derive(Clone)]
 pub struct DraggedTab {
     pub pane: Entity<Pane>,
@@ -893,14 +891,18 @@ impl Pane {
                     .detach_and_log_err(cx);
             }));
         let tab_control = if is_dirty {
-            ui::h_flex()
+            gpui::div()
+                .flex()
+                .items_center()
                 .group(tab_control_group_name.clone())
                 .relative()
                 .size(IconSize::Small.square(window, cx))
                 .justify_center()
                 .child(render_item_indicator(tab_control_group_name.clone(), cx))
                 .child(
-                    ui::h_flex()
+                    gpui::div()
+                        .flex()
+                        .items_center()
                         .absolute()
                         .top_0()
                         .left_0()
@@ -986,8 +988,10 @@ impl Pane {
             )
             .end_slot(tab_control)
             .child(
-                ui::h_flex()
+                gpui::div()
                     .id(("pane-tab-content", item_index))
+                    .flex()
+                    .items_center()
                     .gap_2()
                     .when_some(icon, |this, icon| this.child(icon))
                     .child(label),
@@ -1078,6 +1082,8 @@ impl Pane {
     }
 }
 
+impl EventEmitter<PaneEvent> for Pane {}
+
 impl Focusable for Pane {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -1100,9 +1106,9 @@ impl Render for DraggedTab {
 
         Tab::new("dragged-tab")
             .toggle_state(self.is_active)
+            .font(ui_font)
             .child(label)
             .render(window, cx)
-            .font(ui_font)
     }
 }
 
@@ -1157,9 +1163,11 @@ impl Render for Pane {
                     placeholder.child(active_item.to_any_view())
                 } else if let Some(welcome_page) = welcome_page {
                     placeholder.child(
-                        ui::h_flex()
-                            .size_full()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .justify_center()
+                            .size_full()
                             .child(welcome_page),
                     )
                 } else {

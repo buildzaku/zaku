@@ -90,19 +90,17 @@ pub enum ProjectPanelEvent {
     },
 }
 
-impl EventEmitter<ProjectPanelEvent> for ProjectPanel {}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SelectedEntry(ProjectEntryId);
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 enum ValidationState {
     None,
     Warning(String),
     Error(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 struct EditState {
     worktree_id: WorktreeId,
     entry_id: ProjectEntryId,
@@ -119,19 +117,10 @@ impl EditState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 enum ClipboardEntry {
     Copied(BTreeSet<SelectedEntry>),
     Cut(BTreeSet<SelectedEntry>),
-}
-
-enum PasteTask {
-    Rename {
-        task: Task<anyhow::Result<Entry>>,
-    },
-    Copy {
-        task: Task<anyhow::Result<Option<Entry>>>,
-    },
 }
 
 impl ClipboardEntry {
@@ -151,6 +140,15 @@ impl ClipboardEntry {
             Self::Cut(entries) => Self::Copied(entries),
         }
     }
+}
+
+enum PasteTask {
+    Rename {
+        task: Task<anyhow::Result<Entry>>,
+    },
+    Copy {
+        task: Task<anyhow::Result<Option<Entry>>>,
+    },
 }
 
 pub struct ProjectPanel {
@@ -399,7 +397,12 @@ impl ProjectPanel {
     fn load_entry_metadata_for_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
         let end_index = range.end.min(self.tree_state.visible_entries.len());
         let entry_range = range.start.min(end_index)..end_index;
-        let entries = self.tree_state.visible_entries[entry_range].to_vec();
+        let entries = self
+            .tree_state
+            .visible_entries
+            .get(entry_range)
+            .expect("visible entry range should be valid")
+            .to_vec();
 
         for entry in entries {
             self.project
@@ -503,7 +506,7 @@ impl ProjectPanel {
                 })
                 .await;
 
-            this.update_in(cx, |this, window, cx| {
+            if let Err(error) = this.update_in(cx, |this, window, cx| {
                 let (visible_entries, max_width_item_index) = visible_entries;
                 this.tree_state.visible_entries = visible_entries;
                 this.tree_state.max_width_item_index = max_width_item_index;
@@ -521,8 +524,9 @@ impl ProjectPanel {
                     this.autoscroll(cx);
                 }
                 cx.notify();
-            })
-            .ok();
+            }) {
+                log::trace!("Failed to update visible project entries: {error:?}");
+            }
         });
 
         self.update_visible_entries_task = UpdateVisibleEntriesTask {
@@ -1647,12 +1651,16 @@ impl ProjectPanel {
 
             match new_entry {
                 Err(error) => {
-                    project_panel
-                        .update_in(cx, |project_panel, window, cx| {
+                    if let Err(update_error) =
+                        project_panel.update_in(cx, |project_panel, window, cx| {
                             project_panel.marked_entries.clear();
                             project_panel.update_visible_entries(None, false, false, window, cx);
                         })
-                        .ok();
+                    {
+                        log::trace!(
+                            "Failed to update project panel after entry edit failed: {update_error:?}"
+                        );
+                    }
                     Err(error)?;
                 }
                 Ok(new_entry) => {
@@ -1749,7 +1757,9 @@ impl ProjectPanel {
         Entry {
             id: Self::NEW_ENTRY_ID,
             kind: new_entry_kind,
-            path: parent_entry.path.join(RelPath::unix("\0").unwrap()),
+            path: parent_entry
+                .path
+                .join(RelPath::unix("\0").expect("new entry placeholder path should be valid")),
             inode: 0,
             mtime: parent_entry.mtime,
             canonical_path: parent_entry.canonical_path.clone(),
@@ -1778,7 +1788,12 @@ impl ProjectPanel {
 
         let end_index = range.end.min(self.tree_state.visible_entries.len());
         let entry_range = range.start.min(end_index)..end_index;
-        for entry in &self.tree_state.visible_entries[entry_range] {
+        for entry in self
+            .tree_state
+            .visible_entries
+            .get(entry_range)
+            .expect("visible entry range should be valid")
+        {
             let mut details = self.details_for_entry(&snapshot, entry, cx);
 
             if let Some(edit_state) = &self.tree_state.edit_state {
@@ -2165,7 +2180,9 @@ impl ProjectPanel {
             && expanded_dir_ids.binary_search(&selected_entry.id).is_ok();
         if !is_expanded_dir {
             depth = depth.checked_sub(1)?;
-            parent_row = self.tree_state.visible_entries[..selection_row]
+            let (entries_before_selection, _) =
+                self.tree_state.visible_entries.split_at(selection_row);
+            parent_row = entries_before_selection
                 .iter()
                 .enumerate()
                 .rev()
@@ -2173,7 +2190,8 @@ impl ProjectPanel {
         }
 
         let start = parent_row.checked_add(1)?;
-        let end = self.tree_state.visible_entries[start..]
+        let (_, entries_after_start) = self.tree_state.visible_entries.split_at(start);
+        let end = entries_after_start
             .iter()
             .position(|entry| display_depth(entry) <= depth)
             .map_or(self.tree_state.visible_entries.len(), |offset| {
@@ -2196,8 +2214,10 @@ impl ProjectPanel {
     fn render_root_header(root_name: String, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors();
 
-        ui::h_flex()
+        gpui::div()
             .flex_none()
+            .flex()
+            .items_center()
             .h(DynamicSpacing::Base36.px(cx))
             .w_full()
             .px(DynamicSpacing::Base12.px(cx))
@@ -2224,14 +2244,16 @@ impl ProjectPanel {
                 IconName::CaretRight
             };
 
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(
                     gpui::div()
                         .w(Self::DISCLOSURE_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_center()
                         .child(
@@ -2243,15 +2265,17 @@ impl ProjectPanel {
                 .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
                 .into_any_element()
         } else if details.is_invalid {
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
-                    ui::h_flex()
+                    gpui::div()
                         .w(Self::PREFIX_LABEL_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_end()
                         .child(
@@ -2262,15 +2286,17 @@ impl ProjectPanel {
                 )
                 .into_any_element()
         } else if let Some(prefix_label) = details.prefix_label.as_ref() {
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
-                    ui::h_flex()
+                    gpui::div()
                         .w(Self::PREFIX_LABEL_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_end()
                         .child(
@@ -2284,15 +2310,17 @@ impl ProjectPanel {
                 )
                 .into_any_element()
         } else {
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
-                    ui::h_flex()
+                    gpui::div()
                         .w(Self::PREFIX_LABEL_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_end()
                         .child(
@@ -2402,7 +2430,9 @@ impl ProjectPanel {
                     .selectable(false)
                     .child(Self::render_entry_prefix(details))
                     .child(if show_editor {
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .h_6()
                             .w_full()
                             .mr(Pixels::ZERO - DynamicSpacing::Base06.px(cx) - gpui::px(1.0))
@@ -2416,7 +2446,9 @@ impl ProjectPanel {
                             )
                             .child(self.file_name_editor.clone())
                     } else {
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .h_6()
                             .child(Label::new(details.file_name.clone()).single_line())
                     })
@@ -2454,91 +2486,7 @@ impl ProjectPanel {
     }
 }
 
-#[inline]
-fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) -> cmp::Ordering {
-    let a = (a.path.as_ref(), a.is_file());
-    let b = (b.path.as_ref(), b.is_file());
-    path::compare_rel_paths_by(a, b, mode, order)
-}
-
-fn display_depth(entry: &Entry) -> usize {
-    entry.path.components().count().saturating_sub(1)
-}
-
-fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
-    match entry.kind {
-        EntryKind::File => file_stem_for_entry(entry).to_string(),
-        EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
-            entry.path.file_name().map_or_else(
-                || snapshot.root_name().as_unix_str().to_string(),
-                ToString::to_string,
-            )
-        }
-    }
-}
-
-fn file_stem_for_entry(entry: &Entry) -> &str {
-    let file_name = entry.path.file_name().unwrap_or_default();
-    file_name.strip_suffix(".toml").unwrap_or(file_name)
-}
-
-fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {
-    let Ok(file_name) = RelPath::new(Path::new(file_name), path_style) else {
-        return false;
-    };
-    let Some(last_component) = file_name.file_name() else {
-        return true;
-    };
-
-    if is_dir {
-        return last_component.trim().is_empty();
-    }
-
-    let path = Path::new(last_component);
-    let file_stem = if path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
-    {
-        path.file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or(last_component)
-    } else {
-        last_component
-    };
-
-    file_stem.trim().is_empty()
-}
-
-fn file_name_for_new_entry(file_name: &str, is_dir: bool, path_style: PathStyle) -> String {
-    if is_dir {
-        return file_name.to_string();
-    }
-
-    let last_component = if path_style.is_windows() {
-        file_name.rsplit(['/', '\\']).next().unwrap_or(file_name)
-    } else {
-        file_name.rsplit('/').next().unwrap_or(file_name)
-    };
-    if Path::new(last_component)
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
-    {
-        return file_name.to_string();
-    }
-
-    let mut file_name = file_name.to_string();
-    file_name.push_str(".toml");
-    file_name
-}
-
-fn item_width_estimate(depth: usize, item_text_chars: usize, is_symlink: bool) -> usize {
-    const ICON_SIZE_FACTOR: usize = 2;
-    let mut item_width = depth * ICON_SIZE_FACTOR + item_text_chars;
-    if is_symlink {
-        item_width += ICON_SIZE_FACTOR;
-    }
-    item_width
-}
+impl EventEmitter<ProjectPanelEvent> for ProjectPanel {}
 
 impl Focusable for ProjectPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -2811,6 +2759,97 @@ impl Render for ProjectPanel {
     }
 }
 
+#[inline]
+fn cmp_worktree_entries(
+    left: &Entry,
+    right: &Entry,
+    mode: SortMode,
+    order: SortOrder,
+) -> cmp::Ordering {
+    let left = (left.path.as_ref(), left.is_file());
+    let right = (right.path.as_ref(), right.is_file());
+    path::compare_rel_paths_by(left, right, mode, order)
+}
+
+fn display_depth(entry: &Entry) -> usize {
+    entry.path.components().count().saturating_sub(1)
+}
+
+fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
+    match entry.kind {
+        EntryKind::File => file_stem_for_entry(entry).to_string(),
+        EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
+            entry.path.file_name().map_or_else(
+                || snapshot.root_name().as_unix_str().to_string(),
+                ToString::to_string,
+            )
+        }
+    }
+}
+
+fn file_stem_for_entry(entry: &Entry) -> &str {
+    let file_name = entry.path.file_name().unwrap_or_default();
+    file_name.strip_suffix(".toml").unwrap_or(file_name)
+}
+
+fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {
+    let Ok(file_name) = RelPath::new(Path::new(file_name), path_style) else {
+        return false;
+    };
+    let Some(last_component) = file_name.file_name() else {
+        return true;
+    };
+
+    if is_dir {
+        return last_component.trim().is_empty();
+    }
+
+    let path = Path::new(last_component);
+    let file_stem = if path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+    {
+        path.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(last_component)
+    } else {
+        last_component
+    };
+
+    file_stem.trim().is_empty()
+}
+
+fn file_name_for_new_entry(file_name: &str, is_dir: bool, path_style: PathStyle) -> String {
+    if is_dir {
+        return file_name.to_string();
+    }
+
+    let last_component = if path_style.is_windows() {
+        file_name.rsplit(['/', '\\']).next().unwrap_or(file_name)
+    } else {
+        file_name.rsplit('/').next().unwrap_or(file_name)
+    };
+    if Path::new(last_component)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+    {
+        return file_name.to_string();
+    }
+
+    let mut file_name = file_name.to_string();
+    file_name.push_str(".toml");
+    file_name
+}
+
+fn item_width_estimate(depth: usize, item_text_chars: usize, is_symlink: bool) -> usize {
+    const ICON_SIZE_FACTOR: usize = 2;
+    let mut item_width = depth * ICON_SIZE_FACTOR + item_text_chars;
+    if is_symlink {
+        item_width += ICON_SIZE_FACTOR;
+    }
+    item_width
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2820,21 +2859,21 @@ mod tests {
     use serde_json::json;
     use std::{collections::HashSet, ops::Range, sync::Arc};
 
-    use fs::Fs;
+    use fs::{Fs, TempFs};
     use path::rel_path;
     use project::{Project, ProjectEvent, ProjectPath};
     use request_editor::RequestEditor;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{SharedState, Workspace, build_workspace, pane::PaneEvent};
+    use workspace::{AppState, Workspace, build_workspace, pane::PaneEvent};
 
-    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            workspace::init(shared_state, cx);
+            workspace::init(app_state, cx);
             crate::init(cx);
             editor::init(cx);
             request_editor::init(cx);
@@ -2928,11 +2967,11 @@ mod tests {
                     "  "
                 };
 
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                let file_name = details.file_name;
+
                 #[cfg(target_os = "windows")]
                 let file_name = details.file_name.replace('\\', "/");
-
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
-                let file_name = details.file_name;
 
                 let name = if details.is_editing {
                     format!("[EDITOR: '{file_name}']")
@@ -3015,9 +3054,9 @@ mod tests {
     async fn test_sort_mode_directories_first(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3054,9 +3093,9 @@ mod tests {
     async fn test_new_file(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3124,9 +3163,9 @@ mod tests {
     async fn test_new_directory(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3188,9 +3227,9 @@ mod tests {
     async fn test_file_open_in_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3294,9 +3333,9 @@ mod tests {
     async fn test_autoreveal_active_entry(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3386,9 +3425,9 @@ mod tests {
     async fn test_new_entry_validation(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3515,9 +3554,9 @@ mod tests {
     async fn test_copy_paste(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3628,9 +3667,9 @@ mod tests {
     async fn test_cut_paste(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3739,9 +3778,9 @@ mod tests {
     async fn test_duplicate(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3802,9 +3841,9 @@ mod tests {
     async fn test_rename(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3892,9 +3931,9 @@ mod tests {
     async fn test_rename_conflict(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3976,9 +4015,9 @@ mod tests {
     async fn test_trash(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -4067,9 +4106,9 @@ mod tests {
     async fn test_delete(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -4172,9 +4211,9 @@ mod tests {
     async fn test_non_request_files_are_hidden(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state, cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),

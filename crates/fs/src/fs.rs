@@ -1,6 +1,6 @@
 pub mod fs_watcher;
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use futures::{FutureExt, Stream, StreamExt, channel::oneshot, future::BoxFuture};
 use gpui::BackgroundExecutor;
@@ -9,23 +9,22 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 use serde_json::Value;
 
 use std::{
+    io,
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
         Arc,
         atomic::{AtomicU8, Ordering},
     },
+    task,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[cfg(feature = "test-support")]
-use std::sync::Weak;
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::ffi::CString;
 
 #[cfg(target_os = "windows")]
@@ -34,16 +33,16 @@ use util::command::new_command;
 use path::SanitizedPath;
 use util::ResultExt;
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::fd::{AsFd, AsRawFd};
 
 #[cfg(target_os = "macos")]
 use std::ffi::{CStr, OsStr};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::os::unix::ffi::OsStrExt;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -82,7 +81,35 @@ pub trait Watcher: Send + Sync {
     fn remove(&self, path: &Path) -> anyhow::Result<()>;
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct WatchStream {
+    stream: Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>>,
+    _watcher: Arc<dyn Watcher>,
+}
+
+impl WatchStream {
+    fn new(
+        stream: Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>>,
+        watcher: Arc<dyn Watcher>,
+    ) -> Self {
+        Self {
+            stream,
+            _watcher: watcher,
+        }
+    }
+}
+
+impl Stream for WatchStream {
+    type Item = Vec<PathEvent>;
+
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        context: &mut task::Context<'_>,
+    ) -> task::Poll<Option<Self::Item>> {
+        self.stream.as_mut().poll_next(context)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PathEventKind {
     Removed,
     Created,
@@ -90,7 +117,7 @@ pub enum PathEventKind {
     Rescan,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PathEvent {
     pub path: PathBuf,
     pub kind: Option<PathEventKind>,
@@ -102,20 +129,20 @@ impl From<PathEvent> for PathBuf {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct RenameOptions {
     pub overwrite: bool,
     pub ignore_if_exists: bool,
     pub create_parents: bool,
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct RemoveOptions {
     pub recursive: bool,
     pub ignore_if_not_exists: bool,
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct CopyOptions {
     pub overwrite: bool,
     pub ignore_if_exists: bool,
@@ -160,10 +187,6 @@ pub trait Fs: Send + Sync {
     );
     async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()>;
     async fn is_case_sensitive(&self) -> bool;
-    #[cfg(feature = "test-support")]
-    fn as_temp(&self) -> Arc<TempFs> {
-        panic!("as_temp should only be called for TempFs");
-    }
 }
 
 pub trait FileHandle: Send + Sync + std::fmt::Debug {
@@ -171,28 +194,6 @@ pub trait FileHandle: Send + Sync + std::fmt::Debug {
 }
 
 impl FileHandle for std::fs::File {
-    #[cfg(target_os = "macos")]
-    fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
-        let fd = self.as_fd();
-        let mut path_buf = MaybeUninit::<[u8; libc::PATH_MAX as usize]>::uninit();
-
-        // Safety: `fd` remains valid for the duration of this call and `path_buf`
-        // provides writable `PATH_MAX`-sized storage for the kernel to fill.
-        let result = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETPATH, path_buf.as_mut_ptr()) };
-
-        anyhow::ensure!(result != -1, "fcntl returned -1");
-
-        // Safety: Successful `libc::fcntl()` call above populates `path_buf` with
-        // a valid C string.
-        let c_str = unsafe { CStr::from_ptr(path_buf.as_ptr().cast()) };
-
-        anyhow::ensure!(
-            !c_str.is_empty(),
-            "could not find a path for the file handle"
-        );
-        Ok(PathBuf::from(OsStr::from_bytes(c_str.to_bytes())))
-    }
-
     #[cfg(target_os = "linux")]
     fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
         let fd = self.as_fd();
@@ -208,11 +209,33 @@ impl FileHandle for std::fs::File {
         Ok(new_path)
     }
 
+    #[cfg(target_os = "macos")]
+    fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
+        let fd = self.as_fd();
+        let mut path_buf = MaybeUninit::<[u8; libc::PATH_MAX as usize]>::uninit();
+
+        // SAFETY: `fd` remains valid for the duration of this call and `path_buf`
+        // provides writable `PATH_MAX`-sized storage for the kernel to fill.
+        let result = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETPATH, path_buf.as_mut_ptr()) };
+
+        anyhow::ensure!(result != -1, "fcntl returned -1");
+
+        // SAFETY: Successful `libc::fcntl()` call above populates `path_buf` with
+        // a valid C string.
+        let c_str = unsafe { CStr::from_ptr(path_buf.as_ptr().cast()) };
+
+        anyhow::ensure!(
+            !c_str.is_empty(),
+            "could not find a path for the file handle"
+        );
+        Ok(PathBuf::from(OsStr::from_bytes(c_str.to_bytes())))
+    }
+
     #[cfg(target_os = "windows")]
     fn current_path(&self, _: &Arc<dyn Fs>) -> anyhow::Result<PathBuf> {
         let handle = HANDLE(self.as_raw_handle());
 
-        // Safety: `handle` remains valid for the duration of this call and the empty
+        // SAFETY: `handle` remains valid for the duration of this call and the empty
         // buffer is used to query the required path length.
         let required_len =
             unsafe { GetFinalPathNameByHandleW(handle, &mut [], FILE_NAME_NORMALIZED) };
@@ -222,9 +245,14 @@ impl FileHandle for std::fs::File {
             "GetFinalPathNameByHandleW returned 0 length"
         );
 
-        let mut buf = vec![0u16; required_len as usize + 1];
+        let required_len =
+            usize::try_from(required_len).context("required path length should fit in usize")?;
+        let buffer_len = required_len
+            .checked_add(1)
+            .context("required path length should leave room for terminator")?;
+        let mut buf = vec![0u16; buffer_len];
 
-        // Safety: `handle` remains valid for the duration of this call and `buf`
+        // SAFETY: `handle` remains valid for the duration of this call and `buf`
         // provides writable storage for the returned UTF-16 path.
         let written = unsafe { GetFinalPathNameByHandleW(handle, &mut buf, FILE_NAME_NORMALIZED) };
 
@@ -233,7 +261,12 @@ impl FileHandle for std::fs::File {
             "GetFinalPathNameByHandleW failed to write path"
         );
 
-        let os_str = OsString::from_wide(&buf[..written as usize]);
+        let written =
+            usize::try_from(written).context("written path length should fit in usize")?;
+        let path = buf
+            .get(..written)
+            .context("written path length should be in bounds")?;
+        let os_str = OsString::from_wide(path);
         anyhow::ensure!(
             !os_str.is_empty(),
             "could not find a path for the file handle"
@@ -242,7 +275,7 @@ impl FileHandle for std::fs::File {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct MTime(SystemTime);
 
@@ -267,7 +300,7 @@ impl MTime {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Metadata {
     pub inode: u64,
     pub mtime: MTime,
@@ -276,6 +309,79 @@ pub struct Metadata {
     pub len: u64,
     pub is_fifo: bool,
     pub is_executable: bool,
+}
+
+#[cfg(target_os = "linux")]
+fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
+    let source = path_to_c_string(source)?;
+    let target = path_to_c_string(target)?;
+
+    // SAFETY: `source` and `target` remain valid NUL-terminated C strings for the
+    // duration of this call.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            source.as_ptr(),
+            libc::AT_FDCWD,
+            target.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
+    let source = path_to_c_string(source)?;
+    let target = path_to_c_string(target)?;
+
+    // SAFETY: `source` and `target` remain valid NUL-terminated C strings for the
+    // duration of this call.
+    let result = unsafe { libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL) };
+
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+
+    // SAFETY: `source` and `target` remain valid NUL-terminated UTF-16 strings for
+    // the duration of this call.
+    let result = unsafe {
+        MoveFileExW(
+            PCWSTR(source.as_ptr()),
+            PCWSTR(target.as_ptr()),
+            MOVE_FILE_FLAGS::default(),
+        )
+    };
+
+    if let Err(_error) = result {
+        return Err(io::Error::last_os_error());
+    }
+
+    Ok(())
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn path_to_c_string(path: &Path) -> io::Result<CString> {
+    CString::new(path.as_os_str().as_bytes()).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("path contains interior NUL: {}: {error}", path.display()),
+        )
+    })
 }
 
 pub struct NativeFs {
@@ -292,7 +398,7 @@ impl NativeFs {
     }
 
     fn canonicalize(path: &Path) -> anyhow::Result<PathBuf> {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             std::fs::canonicalize(path).map_err(Into::into)
         }
@@ -308,7 +414,7 @@ impl NativeFs {
             let path_hstring = HSTRING::from(abs_path.as_os_str());
             let mut volume_buffer = vec![0u16; abs_path.as_os_str().len() + 2];
 
-            // Safety: `path_hstring` remains valid for the duration of this call and
+            // SAFETY: `path_hstring` remains valid for the duration of this call and
             // `volume_buffer` provides writable storage for the returned UTF-16 volume root.
             unsafe { GetVolumePathNameW(&path_hstring, &mut volume_buffer)? };
 
@@ -317,7 +423,10 @@ impl NativeFs {
                     .iter()
                     .position(|&character| character == 0)
                     .unwrap_or(volume_buffer.len());
-                PathBuf::from(OsString::from_wide(&volume_buffer[..len]))
+                let volume = volume_buffer
+                    .get(..len)
+                    .context("volume path length should be in bounds")?;
+                PathBuf::from(OsString::from_wide(volume))
             };
 
             let resolved_path = dunce::canonicalize(&abs_path)?;
@@ -334,74 +443,6 @@ impl NativeFs {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
-    let source = path_to_c_string(source)?;
-    let target = path_to_c_string(target)?;
-
-    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
-    // duration of this call.
-    let result = unsafe { libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL) };
-
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
-    let source = path_to_c_string(source)?;
-    let target = path_to_c_string(target)?;
-
-    // Safety: `source` and `target` remain valid NUL-terminated C strings for the
-    // duration of this call.
-    let result = unsafe {
-        libc::syscall(
-            libc::SYS_renameat2,
-            libc::AT_FDCWD,
-            source.as_ptr(),
-            libc::AT_FDCWD,
-            target.as_ptr(),
-            libc::RENAME_NOREPLACE,
-        )
-    };
-
-    if result == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
-    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
-    let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
-
-    // Safety: `source` and `target` remain valid NUL-terminated UTF-16 strings for
-    // the duration of this call.
-    unsafe {
-        MoveFileExW(
-            PCWSTR(source.as_ptr()),
-            PCWSTR(target.as_ptr()),
-            MOVE_FILE_FLAGS::default(),
-        )
-    }
-    .map_err(|_| std::io::Error::last_os_error())
-}
-
-#[cfg(any(target_os = "macos", target_os = "linux"))]
-fn path_to_c_string(path: &Path) -> std::io::Result<CString> {
-    CString::new(path.as_os_str().as_bytes()).map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("path contains interior NUL: {}", path.display()),
-        )
-    })
-}
-
 #[async_trait]
 impl Fs for NativeFs {
     async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
@@ -409,7 +450,7 @@ impl Fs for NativeFs {
     }
 
     async fn create_symlink(&self, path: &Path, target: PathBuf) -> anyhow::Result<()> {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             smol::fs::unix::symlink(target, path).await?;
         }
@@ -433,7 +474,7 @@ impl Fs for NativeFs {
                     .await?;
 
                 if !status.success() {
-                    return Err(anyhow::anyhow!(
+                    return Err(anyhow!(
                         "Failed to create junction from {} to {}",
                         path.display(),
                         target.display()
@@ -471,13 +512,13 @@ impl Fs for NativeFs {
             return Ok(None);
         };
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let inode = metadata.ino();
 
         #[cfg(target_os = "windows")]
         let inode = file_id(&path).await?;
 
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let is_fifo = metadata.file_type().is_fifo();
 
         #[cfg(target_os = "windows")]
@@ -545,7 +586,7 @@ impl Fs for NativeFs {
         )
         .map(|entry| match entry {
             Ok(entry) => Ok(entry.path()),
-            Err(error) => Err(anyhow::anyhow!("failed to read dir entry {error:?}")),
+            Err(error) => Err(anyhow!("failed to read dir entry {error:?}")),
         });
         Ok(Box::pin(result))
     }
@@ -597,34 +638,31 @@ impl Fs for NativeFs {
         }
 
         let use_metadata_fallback = {
-            #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+            let source = source.to_path_buf();
+            let target = target.to_path_buf();
+            match self
+                .executor
+                .spawn(async move { rename_without_replace(&source, &target) })
+                .await
             {
-                let source = source.to_path_buf();
-                let target = target.to_path_buf();
-                match self
-                    .executor
-                    .spawn(async move { rename_without_replace(&source, &target) })
-                    .await
-                {
-                    Ok(()) => return Ok(()),
-                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                        if options.ignore_if_exists {
-                            return Ok(());
-                        }
-                        return Err(error.into());
+                Ok(()) => return Ok(()),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    if options.ignore_if_exists {
+                        return Ok(());
                     }
-                    Err(error)
-                        if error.raw_os_error().is_some_and(|code| {
-                            code == libc::ENOSYS
-                                || code == libc::ENOTSUP
-                                || code == libc::EOPNOTSUPP
-                                || code == libc::EINVAL
-                        }) =>
-                    {
-                        true
-                    }
-                    Err(error) => return Err(error.into()),
+                    return Err(error.into());
                 }
+                Err(error)
+                    if error.raw_os_error().is_some_and(|code| {
+                        code == libc::ENOSYS
+                            || code == libc::ENOTSUP
+                            || code == libc::EOPNOTSUPP
+                            || code == libc::EINVAL
+                    }) =>
+                {
+                    true
+                }
+                Err(error) => return Err(error.into()),
             }
         };
 
@@ -670,7 +708,7 @@ impl Fs for NativeFs {
         match result {
             Ok(()) => Ok(()),
             Err(error)
-                if error.kind() == std::io::ErrorKind::NotFound && options.ignore_if_not_exists =>
+                if error.kind() == io::ErrorKind::NotFound && options.ignore_if_not_exists =>
             {
                 Ok(())
             }
@@ -698,7 +736,7 @@ impl Fs for NativeFs {
         match smol::fs::remove_file(path).await {
             Ok(()) => Ok(()),
             Err(error)
-                if error.kind() == std::io::ErrorKind::NotFound && options.ignore_if_not_exists =>
+                if error.kind() == io::ErrorKind::NotFound && options.ignore_if_not_exists =>
             {
                 Ok(())
             }
@@ -747,32 +785,29 @@ impl Fs for NativeFs {
                 }
             }
 
-            watcher.add(&target).ok();
+            watcher.add(&target).log_err();
 
             if let Some(parent) = target.parent() {
                 watcher.add(parent).log_err();
             }
         }
 
-        (
-            Box::pin(rx.filter_map({
-                let watcher = watcher.clone();
+        let stream: Pin<Box<dyn Send + Stream<Item = Vec<PathEvent>>>> = Box::pin(rx.filter_map({
+            let executor = executor.clone();
+
+            move |()| {
+                let pending_paths = pending_paths.clone();
                 let executor = executor.clone();
 
-                move |()| {
-                    let _ = watcher.clone();
-                    let pending_paths = pending_paths.clone();
-                    let executor = executor.clone();
-
-                    async move {
-                        executor.timer(latency).await;
-                        let paths = std::mem::take(&mut *pending_paths.lock());
-                        (!paths.is_empty()).then_some(paths)
-                    }
+                async move {
+                    executor.timer(latency).await;
+                    let paths = std::mem::take(&mut *pending_paths.lock());
+                    (!paths.is_empty()).then_some(paths)
                 }
-            })),
-            watcher,
-        )
+            }
+        }));
+
+        (Box::pin(WatchStream::new(stream, watcher.clone())), watcher)
     }
 
     async fn write(&self, path: &Path, content: &[u8]) -> anyhow::Result<()> {
@@ -826,27 +861,24 @@ impl Fs for NativeFs {
     }
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 pub struct TempFs {
-    this: Weak<Self>,
     path: PathBuf,
     executor: BackgroundExecutor,
     _temp_dir: TempDir,
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 impl TempFs {
     pub fn new(executor: BackgroundExecutor) -> Arc<Self> {
-        Arc::new_cyclic(|this| {
-            let temp_dir = TempDir::new().unwrap();
-            let path = NativeFs::canonicalize(temp_dir.path()).unwrap();
+        let temp_dir = TempDir::new().expect("failed to create temporary filesystem");
+        let path = NativeFs::canonicalize(temp_dir.path())
+            .expect("failed to canonicalize temporary filesystem path");
 
-            Self {
-                this: this.clone(),
-                path,
-                executor,
-                _temp_dir: temp_dir,
-            }
+        Arc::new(Self {
+            path,
+            executor,
+            _temp_dir: temp_dir,
         })
     }
 
@@ -855,39 +887,47 @@ impl TempFs {
     }
 
     pub fn insert_tree(&self, path: impl AsRef<Path>, tree: Value) {
-        fn inner(directory: &Path, path: &Path, tree: Value) {
+        fn inner(directory: &Path, path: &Path, tree: Value) -> anyhow::Result<()> {
             match tree {
                 Value::Object(map) => {
                     let absolute_path = resolve_path(directory, path);
-                    std::fs::create_dir_all(&absolute_path).unwrap();
+                    std::fs::create_dir_all(&absolute_path)
+                        .context("failed to create test directory")?;
+
                     for (name, contents) in map {
                         let mut new_path = PathBuf::from(path);
                         new_path.push(name);
-                        inner(directory, &new_path, contents);
+                        inner(directory, &new_path, contents)?;
                     }
                 }
                 Value::Null => {
                     let absolute_path = resolve_path(directory, path);
-                    std::fs::create_dir_all(&absolute_path).unwrap();
+                    std::fs::create_dir_all(&absolute_path)
+                        .context("failed to create test directory")?;
                 }
                 Value::String(contents) => {
                     let absolute_path = resolve_path(directory, path);
                     if let Some(parent) = absolute_path.parent() {
-                        std::fs::create_dir_all(parent).unwrap();
+                        std::fs::create_dir_all(parent)
+                            .context("failed to create test file parent directory")?;
                     }
-                    std::fs::write(&absolute_path, contents.as_bytes()).unwrap();
+
+                    std::fs::write(&absolute_path, contents.as_bytes())
+                        .context("failed to write test file")?;
                 }
                 _ => {
-                    panic!("JSON object must contain only objects, strings, or null");
+                    anyhow::bail!("JSON object must contain only objects, strings, or null");
                 }
             }
+
+            Ok(())
         }
 
-        inner(self.path(), path.as_ref(), tree);
+        inner(self.path(), path.as_ref(), tree).expect("failed to insert test filesystem tree");
     }
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 #[async_trait]
 impl Fs for TempFs {
     async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
@@ -1055,18 +1095,14 @@ impl Fs for TempFs {
             })
             .await
     }
-
-    fn as_temp(&self) -> Arc<TempFs> {
-        self.this.upgrade().unwrap()
-    }
 }
 
 fn metadata_for_path(path: &Path) -> anyhow::Result<Option<(std::fs::Metadata, bool)>> {
     let symlink_metadata = match std::fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error)
-            if error.kind() == std::io::ErrorKind::NotFound
-                || error.kind() == std::io::ErrorKind::NotADirectory =>
+            if error.kind() == io::ErrorKind::NotFound
+                || error.kind() == io::ErrorKind::NotADirectory =>
         {
             return Ok(None);
         }
@@ -1080,7 +1116,7 @@ fn metadata_for_path(path: &Path) -> anyhow::Result<Option<(std::fs::Metadata, b
     let metadata = if is_symlink {
         match std::fs::metadata(path) {
             Ok(target_metadata) => target_metadata,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => symlink_metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => symlink_metadata,
             Err(error) => {
                 log::warn!(
                     "Failed to read symlink target metadata for path {}: {error}",
@@ -1202,7 +1238,7 @@ fn is_filesystem_case_sensitive() -> anyhow::Result<bool> {
         .open(&test_file_2)
     {
         Ok(_) => true,
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => false,
         Err(error) => {
             return Err(error)
                 .with_context(|| format!("failed to create {}", test_file_2.display()));
@@ -1212,7 +1248,7 @@ fn is_filesystem_case_sensitive() -> anyhow::Result<bool> {
     Ok(case_sensitive)
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(feature = "test")]
 fn resolve_path(root: &Path, path: &Path) -> PathBuf {
     if !path.is_absolute() {
         return root.join(path);
@@ -1232,11 +1268,11 @@ async fn file_id(path: impl AsRef<Path>) -> anyhow::Result<u64> {
     smol::unblock(move || {
         let mut info = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
 
-        // Safety: `file` remains valid for the duration of this call, so the raw handle remains valid,
+        // SAFETY: `file` remains valid for the duration of this call, so the raw handle remains valid,
         // and `info.as_mut_ptr()` points to writable storage for `BY_HANDLE_FILE_INFORMATION`.
         unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), info.as_mut_ptr())? };
 
-        // Safety: A successful `GetFileInformationByHandle` call above guarantees
+        // SAFETY: A successful `GetFileInformationByHandle` call above guarantees
         // that the output buffer was filled.
         let info = unsafe { info.assume_init() };
 

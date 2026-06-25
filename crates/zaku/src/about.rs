@@ -7,8 +7,10 @@ use std::sync::Arc;
 use metadata::{
     ZAKU_COMMIT_SHA, ZAKU_DESCRIPTION, ZAKU_IDENTIFIER, ZAKU_NAME, ZAKU_REPOSITORY, ZAKU_VERSION,
 };
-use theme::ActiveTheme;
-use ui::{Headline, Label, LabelCommon, LabelSize, Link, TextSize, prelude::*};
+use ui::{
+    ActiveTheme, Button, ButtonCommon, ButtonVariant, Clickable, Headline, Label, LabelCommon,
+    LabelSize, Link, StyledTypography, TextSize,
+};
 
 struct AboutWindow {
     focus_handle: FocusHandle,
@@ -31,8 +33,10 @@ impl AboutWindow {
 
 impl Render for AboutWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
+        gpui::div()
             .id("about-window")
+            .flex()
+            .flex_col()
             .track_focus(&self.focus_handle)
             .on_action(
                 cx.listener(|_, _: &actions::menu::Cancel, window, _cx| window.remove_window()),
@@ -45,7 +49,9 @@ impl Render for AboutWindow {
             .gap_3()
             .justify_center()
             .child(
-                v_flex()
+                gpui::div()
+                    .flex()
+                    .flex_col()
                     .w_full()
                     .gap_1()
                     .items_center()
@@ -88,12 +94,18 @@ impl Render for AboutWindow {
                     )
                     .child(gpui::div().h_5())
                     .child(
-                        h_flex().w_full().justify_center().px_6().child(
-                            Button::new("about-github-repository", "GitHub")
-                                .variant(ButtonVariant::Solid)
-                                .label_size(LabelSize::Small)
-                                .on_click(|_, _, cx| cx.open_url(ZAKU_REPOSITORY)),
-                        ),
+                        gpui::div()
+                            .flex()
+                            .items_center()
+                            .w_full()
+                            .justify_center()
+                            .px_6()
+                            .child(
+                                Button::new("about-github-repository", "GitHub")
+                                    .variant(ButtonVariant::Solid)
+                                    .label_size(LabelSize::Small)
+                                    .on_click(|_, _, cx| cx.open_url(ZAKU_REPOSITORY)),
+                            ),
                     ),
             )
     }

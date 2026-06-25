@@ -130,7 +130,7 @@ impl Column for f32 {
             .column_double(start_index)
             .with_context(|| format!("failed to parse f32 at index {start_index}"))?
             .to_f32()
-            .unwrap();
+            .with_context(|| format!("failed to convert f64 to f32 at index {start_index}"))?;
 
         Ok((result, start_index + 1))
     }

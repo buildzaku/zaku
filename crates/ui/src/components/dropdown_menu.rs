@@ -3,11 +3,17 @@ use gpui::{
     prelude::*,
 };
 
-use crate::{ButtonLike, ContextMenu, PopoverMenu, prelude::*};
+use super::{
+    PopoverMenuHandle,
+    button::{ButtonLike, ButtonSize, ButtonVariant},
+};
 
-use super::PopoverMenuHandle;
+use crate::{
+    Button, ButtonCommon, Color, ContextMenu, Disableable, FixedWidth, Icon, IconName,
+    IconPosition, IconSize, PopoverMenu,
+};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum DropdownVariant {
     #[default]
     Solid,

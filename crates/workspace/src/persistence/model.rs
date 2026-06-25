@@ -11,7 +11,7 @@ use util::ResultExt;
 use super::SerializedWindowBounds;
 use crate::{ItemHandle, SerializableItemRegistry, Workspace, WorkspaceId, pane::Pane};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SerializedWorkspace {
     pub id: WorkspaceId,
     pub location: PathBuf,
@@ -23,7 +23,7 @@ pub struct SerializedWorkspace {
     pub window_id: Option<u64>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DockStructure {
     pub left: DockData,
     pub bottom: DockData,
@@ -44,7 +44,7 @@ impl Column for DockStructure {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DockData {
     pub visible: bool,
     pub active_panel: Option<String>,
@@ -71,13 +71,13 @@ impl Column for DockData {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionWorkspace {
     pub location: PathBuf,
     pub window_id: Option<WindowId>,
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SerializedPane {
     pub(crate) active: bool,
     pub(crate) children: Vec<SerializedItem>,
@@ -166,10 +166,10 @@ impl SerializedPane {
     }
 }
 
-pub type PaneId = i64;
+pub(crate) type PaneId = i64;
 pub type ItemId = u64;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SerializedItem {
     pub kind: Arc<str>,
     pub item_id: ItemId,
@@ -194,15 +194,6 @@ impl StaticColumnCount for SerializedItem {
     }
 }
 
-impl Bind for &SerializedItem {
-    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
-        let next_index = statement.bind(&self.kind, start_index)?;
-        let next_index = statement.bind(&self.item_id, next_index)?;
-        let next_index = statement.bind(&self.active, next_index)?;
-        statement.bind(&self.preview, next_index)
-    }
-}
-
 impl Column for SerializedItem {
     fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let (kind, next_index) = Arc::<str>::column(row, start_index)?;
@@ -218,5 +209,14 @@ impl Column for SerializedItem {
             },
             next_index,
         ))
+    }
+}
+
+impl Bind for &SerializedItem {
+    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
+        let next_index = statement.bind(&self.kind, start_index)?;
+        let next_index = statement.bind(&self.item_id, next_index)?;
+        let next_index = statement.bind(&self.active, next_index)?;
+        statement.bind(&self.preview, next_index)
     }
 }

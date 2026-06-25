@@ -18,15 +18,6 @@ use crate::{
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
 
-pub struct BufferStore {
-    buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
-    loading_buffers: HashMap<ProjectPath, Shared<Task<Result<Entity<Buffer>, Arc<anyhow::Error>>>>>,
-    worktree_store: Entity<WorktreeStore>,
-    opened_buffers: HashMap<BufferId, WeakEntity<Buffer>>,
-    path_to_buffer_id: HashMap<ProjectPath, BufferId>,
-    _worktree_store_subscription: Subscription,
-}
-
 pub enum BufferStoreEvent {
     BufferAdded(Entity<Buffer>),
     BufferDropped(BufferId),
@@ -36,7 +27,14 @@ pub enum BufferStoreEvent {
     },
 }
 
-impl EventEmitter<BufferStoreEvent> for BufferStore {}
+pub struct BufferStore {
+    buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
+    loading_buffers: HashMap<ProjectPath, Shared<Task<Result<Entity<Buffer>, Arc<anyhow::Error>>>>>,
+    worktree_store: Entity<WorktreeStore>,
+    opened_buffers: HashMap<BufferId, WeakEntity<Buffer>>,
+    path_to_buffer_id: HashMap<ProjectPath, BufferId>,
+    _worktree_store_subscription: Subscription,
+}
 
 impl BufferStore {
     pub fn new(worktree_store: &Entity<WorktreeStore>, cx: &mut Context<Self>) -> Self {
@@ -127,7 +125,9 @@ impl BufferStore {
     ) -> Task<anyhow::Result<()>> {
         let reload = buffer.update(cx, |buffer, cx| buffer.reload(cx));
         cx.spawn(async move |_, _| {
-            reload.await.map_err(|_| anyhow!("reload canceled"))?;
+            reload
+                .await
+                .map_err(|error| anyhow!("reload canceled: {error}"))?;
             Ok(())
         })
     }
@@ -166,11 +166,11 @@ impl BufferStore {
         let handle = cx.entity().downgrade();
         buffer_entity.update(cx, move |_, cx| {
             cx.on_release(move |buffer, cx| {
-                handle
-                    .update(cx, |_, cx| {
-                        cx.emit(BufferStoreEvent::BufferDropped(buffer.remote_id()));
-                    })
-                    .ok();
+                if let Err(error) = handle.update(cx, |_, cx| {
+                    cx.emit(BufferStoreEvent::BufferDropped(buffer.remote_id()));
+                }) {
+                    log::trace!("Failed to update buffer store after buffer drop: {error:?}");
+                }
             })
             .detach();
         });
@@ -454,6 +454,8 @@ impl BufferStore {
         })
     }
 }
+
+impl EventEmitter<BufferStoreEvent> for BufferStore {}
 
 fn is_not_found_error(error: &anyhow::Error) -> bool {
     error

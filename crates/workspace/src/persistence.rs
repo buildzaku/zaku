@@ -1,4 +1,4 @@
-pub mod model;
+pub(crate) mod model;
 
 use anyhow::Context;
 use gpui::{App, Bounds, Task, WindowBounds, WindowId};
@@ -19,7 +19,7 @@ use self::model::{
 };
 use crate::{ItemId, WorkspaceId};
 
-#[derive(Copy, Clone, Debug, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct SerializedWindowBounds(pub WindowBounds);
 
 impl StaticColumnCount for SerializedWindowBounds {
@@ -74,10 +74,10 @@ impl Bind for SerializedWindowBounds {
 impl Column for SerializedWindowBounds {
     fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let (window_state, next_index) = String::column(row, start_index)?;
-        let ((x, y, width, height), _): ((f32, f32, f32, f32), _) =
+        let ((origin_x, origin_y, width, height), _): ((f32, f32, f32, f32), _) =
             Column::column(row, next_index)?;
         let bounds = Bounds {
-            origin: gpui::point(gpui::px(x), gpui::px(y)),
+            origin: gpui::point(gpui::px(origin_x), gpui::px(origin_y)),
             size: gpui::size(gpui::px(width), gpui::px(height)),
         };
 
@@ -94,7 +94,7 @@ impl Column for SerializedWindowBounds {
 
 const DEFAULT_WINDOW_BOUNDS_KEY: &str = "default_window_bounds";
 
-pub fn read_default_window_bounds(kv_store: &KeyValueStore) -> Option<(Uuid, WindowBounds)> {
+pub(crate) fn read_default_window_bounds(kv_store: &KeyValueStore) -> Option<(Uuid, WindowBounds)> {
     let json_str = kv_store
         .read_kv(DEFAULT_WINDOW_BOUNDS_KEY)
         .log_err()
@@ -105,7 +105,7 @@ pub fn read_default_window_bounds(kv_store: &KeyValueStore) -> Option<(Uuid, Win
     Some((display_uuid, persisted.into()))
 }
 
-pub async fn write_default_window_bounds(
+pub(crate) async fn write_default_window_bounds(
     kv_store: &KeyValueStore,
     bounds: WindowBounds,
     display_uuid: Uuid,
@@ -120,7 +120,7 @@ pub async fn write_default_window_bounds(
 
 const DEFAULT_DOCK_STATE_KEY: &str = "default_dock_state";
 
-pub fn read_default_dock_state(kv_store: &KeyValueStore) -> Option<DockStructure> {
+pub(crate) fn read_default_dock_state(kv_store: &KeyValueStore) -> Option<DockStructure> {
     let json_str = kv_store
         .read_kv(DEFAULT_DOCK_STATE_KEY)
         .log_err()
@@ -129,7 +129,7 @@ pub fn read_default_dock_state(kv_store: &KeyValueStore) -> Option<DockStructure
     serde_json::from_str::<DockStructure>(&json_str).ok()
 }
 
-pub async fn write_default_dock_state(
+pub(crate) async fn write_default_dock_state(
     kv_store: &KeyValueStore,
     docks: DockStructure,
 ) -> anyhow::Result<()> {
@@ -234,8 +234,6 @@ impl From<WindowBoundsJson> for WindowBounds {
 }
 
 pub struct WorkspaceDb(ThreadSafeConnection);
-
-db::static_connection!(WorkspaceDb, []);
 
 impl WorkspaceDb {
     query! {
@@ -728,6 +726,8 @@ impl WorkspaceDb {
     }
 }
 
+db::static_connection!(WorkspaceDb, []);
+
 pub fn delete_unloaded_items(
     alive_items: Vec<ItemId>,
     workspace_id: WorkspaceId,
@@ -772,14 +772,14 @@ mod tests {
     use indoc::indoc;
     use serde_json::json;
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
     use fs::TempFs;
     use util_macros::path;
     use worktree::WorktreeModelHandle;
 
-    use crate::{OpenMode, Root, SharedState, Workspace, tests::init_test};
+    use crate::{AppState, OpenMode, Root, Workspace, tests::init_test};
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
@@ -867,7 +867,7 @@ mod tests {
         assert!(workspace_db.recent_workspaces().unwrap().is_empty());
     }
 
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[gpui::test]
     async fn test_save_workspace_preserves_non_utf8_paths(_cx: &mut TestAppContext) {
         let workspace_db =
@@ -896,9 +896,9 @@ mod tests {
     async fn test_create_workspace_serialization(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -918,7 +918,7 @@ mod tests {
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
@@ -1081,16 +1081,16 @@ mod tests {
     ) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));
@@ -1141,16 +1141,16 @@ mod tests {
     async fn test_close_window_removes_workspace_from_current_session(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        init_test(shared_state.clone(), cx);
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));

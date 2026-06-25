@@ -6,7 +6,7 @@ use smallvec::SmallVec;
 
 use theme::ActiveTheme;
 
-use crate::{DynamicSpacing, Tab, h_flex};
+use crate::{DynamicSpacing, Tab};
 
 #[derive(IntoElement)]
 pub struct TabBar {
@@ -96,15 +96,17 @@ impl RenderOnce for TabBar {
         gpui::div()
             .id(self.id)
             .group("tab-bar")
-            .flex()
             .flex_none()
+            .flex()
             .w_full()
             .h(Tab::container_height(cx))
             .bg(colors.tab_bar_background)
             .when(!self.start_children.is_empty(), |this| {
                 this.child(
-                    h_flex()
+                    gpui::div()
                         .flex_none()
+                        .flex()
+                        .items_center()
                         .gap(DynamicSpacing::Base04.rems(cx))
                         .px(DynamicSpacing::Base06.rems(cx))
                         .border_b_1()
@@ -129,8 +131,10 @@ impl RenderOnce for TabBar {
                             .border_color(colors.border),
                     )
                     .child(
-                        h_flex()
+                        gpui::div()
                             .id("tabs")
+                            .flex()
+                            .items_center()
                             .flex_grow_1()
                             .overflow_x_scroll()
                             .when_some(self.scroll_handle, |this, scroll_handle| {
@@ -141,8 +145,10 @@ impl RenderOnce for TabBar {
             )
             .when(!self.end_children.is_empty(), |this| {
                 this.child(
-                    h_flex()
+                    gpui::div()
                         .flex_none()
+                        .flex()
+                        .items_center()
                         .gap(DynamicSpacing::Base04.rems(cx))
                         .px(DynamicSpacing::Base06.rems(cx))
                         .border_color(colors.border)

@@ -26,8 +26,9 @@ pub use text::{
     ToPoint, ToPointUtf16, Transaction, TransactionId, Unclipped,
 };
 
+use anyhow::anyhow;
 use parking_lot::Mutex;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 use std::borrow::Cow;
 use std::{
     fmt,
@@ -124,8 +125,7 @@ impl Language {
 
     pub fn with_queries(mut self, queries: LanguageQueries) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             let grammar = grammar.with_queries(queries, &mut self.config)?;
             self.grammar = Some(Arc::new(grammar));
         }
@@ -150,8 +150,7 @@ impl Language {
 
     pub fn with_override_query(mut self, source: &str) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             let grammar = grammar.with_override_query(
                 source,
                 &self.config.name,
@@ -172,8 +171,7 @@ impl Language {
         build: impl FnOnce(Grammar) -> anyhow::Result<Grammar>,
     ) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             self.grammar = Some(Arc::new(build(grammar)?));
         }
         Ok(self)
@@ -184,8 +182,7 @@ impl Language {
         build: impl FnOnce(Grammar, &LanguageName) -> anyhow::Result<Grammar>,
     ) -> anyhow::Result<Self> {
         if let Some(grammar) = self.grammar.take() {
-            let grammar =
-                Arc::try_unwrap(grammar).map_err(|_| anyhow::anyhow!("cannot mutate grammar"))?;
+            let grammar = into_grammar(grammar)?;
             self.grammar = Some(Arc::new(build(grammar, &self.config.name)?));
         }
         Ok(self)
@@ -240,6 +237,13 @@ impl fmt::Debug for Language {
     }
 }
 
+fn into_grammar(grammar: Arc<Grammar>) -> anyhow::Result<Grammar> {
+    Arc::try_unwrap(grammar).map_err(|grammar| {
+        let reference_count = Arc::strong_count(&grammar);
+        anyhow!("cannot mutate shared grammar with {reference_count} references")
+    })
+}
+
 #[inline]
 pub fn build_highlight_map(capture_names: &[&str], theme: &SyntaxTheme) -> HighlightMap {
     HighlightMap::from_ids(
@@ -263,7 +267,7 @@ where
     result
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn html_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/html/config.toml"))
@@ -292,7 +296,7 @@ pub fn html_lang() -> Arc<Language> {
     Arc::new(language)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn json_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/json/config.toml"))
@@ -321,7 +325,7 @@ pub fn json_lang() -> Arc<Language> {
     Arc::new(language)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn jsonc_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/jsonc/config.toml"))
@@ -352,7 +356,7 @@ pub fn jsonc_lang() -> Arc<Language> {
     Arc::new(language)
 }
 
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(any(test, feature = "test"))]
 pub fn xml_lang() -> Arc<Language> {
     let language = Language::new(
         toml::from_str(include_str!("../../grammars/src/xml/config.toml"))

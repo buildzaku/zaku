@@ -1,21 +1,24 @@
 [package]
 name = "ui"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 name = "ui"
 path = "src/ui.rs"
 
+[lints]
+workspace = true
+
 [dependencies]
 actions = { workspace = true }
 gpui = { workspace = true }
 icons = { workspace = true }
+log = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 settings = { workspace = true }

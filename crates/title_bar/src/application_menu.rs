@@ -1,16 +1,16 @@
 use gpui::{Action, App, Context, Entity, Window, prelude::*};
 
 use ui::{
-    ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu,
-    PopoverMenuHandle, Tooltip, prelude::*,
+    ButtonCommon, ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize,
+    PopoverMenu, PopoverMenuHandle, Tooltip,
 };
 
-pub struct ApplicationMenu {
+pub(crate) struct ApplicationMenu {
     handle: PopoverMenuHandle<ContextMenu>,
 }
 
 impl ApplicationMenu {
-    pub fn new(_: &mut Window, _: &mut Context<Self>) -> Self {
+    pub(crate) fn new(_: &mut Window, _: &mut Context<Self>) -> Self {
         Self {
             handle: PopoverMenuHandle::default(),
         }

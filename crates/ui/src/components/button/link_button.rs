@@ -1,6 +1,8 @@
 use gpui::{App, IntoElement, SharedString, Window, prelude::*};
 
-use crate::{ButtonLike, prelude::*};
+use super::{ButtonCommon, ButtonLike, ButtonSize};
+
+use crate::{Clickable, Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
 
 #[derive(IntoElement)]
 pub struct LinkButton {
@@ -45,7 +47,9 @@ impl RenderOnce for LinkButton {
         ButtonLike::new(id)
             .size(ButtonSize::None)
             .child(
-                h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .gap_0p5()
                     .child(
                         Label::new(self.label)

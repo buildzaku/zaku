@@ -21,7 +21,7 @@ use crate::{
     SyntaxMapCaptures, SyntaxSnapshot, text_diff::text_diff,
 };
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Capability {
     ReadWrite,
     Read,
@@ -34,7 +34,7 @@ impl Capability {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BufferEvent {
     Edited,
     DirtyChanged,
@@ -54,27 +54,6 @@ pub struct BufferSnapshot {
     file: Option<Arc<dyn File>>,
     non_text_state_update_count: usize,
     pub capability: Capability,
-}
-
-impl Clone for BufferSnapshot {
-    fn clone(&self) -> Self {
-        Self {
-            text: self.text.clone(),
-            syntax: self.syntax.clone(),
-            language: self.language.clone(),
-            file: self.file.clone(),
-            non_text_state_update_count: self.non_text_state_update_count,
-            capability: self.capability,
-        }
-    }
-}
-
-impl Deref for BufferSnapshot {
-    type Target = text::BufferSnapshot;
-
-    fn deref(&self) -> &Self::Target {
-        &self.text
-    }
 }
 
 impl BufferSnapshot {
@@ -116,6 +95,27 @@ impl BufferSnapshot {
             syntax = Some(self.get_highlights(range.clone()));
         }
         BufferChunks::new(self.text.as_rope(), range, syntax)
+    }
+}
+
+impl Clone for BufferSnapshot {
+    fn clone(&self) -> Self {
+        Self {
+            text: self.text.clone(),
+            syntax: self.syntax.clone(),
+            language: self.language.clone(),
+            file: self.file.clone(),
+            non_text_state_update_count: self.non_text_state_update_count,
+            capability: self.capability,
+        }
+    }
+}
+
+impl Deref for BufferSnapshot {
+    type Target = text::BufferSnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text
     }
 }
 
@@ -183,8 +183,10 @@ impl<'a> Iterator for BufferChunks<'a> {
 
                 let capture_end = capture.node.end_byte();
                 if capture_end > self.range.start
-                    && let Some(highlight_id) =
-                        highlights.highlight_maps[capture.grammar_index].get(capture.index)
+                    && let Some(highlight_id) = highlights
+                        .highlight_maps
+                        .get(capture.grammar_index)
+                        .and_then(|highlight_map| highlight_map.get(capture.index))
                 {
                     highlights.stack.push((capture_end, highlight_id));
                 }
@@ -217,7 +219,9 @@ impl<'a> Iterator for BufferChunks<'a> {
             let bit_start = chunk_start - self.chunks.offset();
             let split_index = chunk_end - self.chunks.offset();
             let bit_end = split_index;
-            let slice = &chunk[bit_start..bit_end];
+            let slice = chunk
+                .get(bit_start..bit_end)
+                .expect("chunk byte range should be valid");
 
             let shift = u32::try_from(bit_start).expect("chunk bit start should fit in u32");
             let mask_len =
@@ -229,7 +233,9 @@ impl<'a> Iterator for BufferChunks<'a> {
 
             self.range.start = self.chunks.offset() + split_index;
             if self.range.start == self.chunks.offset() + chunk.len() {
-                self.chunks.next().unwrap();
+                self.chunks
+                    .next()
+                    .expect("peeked chunk should still be present");
             }
 
             Some(Chunk {
@@ -245,7 +251,7 @@ impl<'a> Iterator for BufferChunks<'a> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Chunk<'a> {
     pub text: &'a str,
     pub syntax_highlight_id: Option<HighlightId>,
@@ -280,7 +286,7 @@ pub trait File: Send + Sync + Any {
     fn worktree_id(&self, cx: &App) -> WorktreeId;
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DiskState {
     New,
     Present { mtime: MTime, size: u64 },
@@ -325,8 +331,6 @@ pub struct Buffer {
     sync_parse_timeout: Option<Duration>,
 }
 
-impl EventEmitter<BufferEvent> for Buffer {}
-
 impl Buffer {
     pub fn local<T: Into<String>>(base_text: T, cx: &Context<Self>) -> Self {
         Self::build(
@@ -364,7 +368,7 @@ impl Buffer {
             has_unsaved_edits: Cell::new((saved_version, false)),
             reload_task: None,
             reparse: None,
-            sync_parse_timeout: if cfg!(any(test, feature = "test-support")) {
+            sync_parse_timeout: if cfg!(any(test, feature = "test")) {
                 Some(Duration::from_millis(10))
             } else {
                 Some(Duration::from_millis(1))
@@ -437,7 +441,7 @@ impl Buffer {
     }
 
     pub fn set_language_async(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
-        self.set_language_inner(language, cfg!(any(test, feature = "test-support")), cx);
+        self.set_language_inner(language, cfg!(any(test, feature = "test")), cx);
     }
 
     pub fn set_language(&mut self, language: Option<Arc<Language>>, cx: &mut Context<Self>) {
@@ -463,7 +467,7 @@ impl Buffer {
         cx.emit(BufferEvent::LanguageChanged(has_fresh_language));
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(any(test, feature = "test"))]
     pub fn is_parsing(&self) -> bool {
         self.reparse.is_some()
     }
@@ -664,7 +668,9 @@ impl Buffer {
         assert!(self.transaction_depth > 0);
         self.transaction_depth -= 1;
         let was_dirty = if self.transaction_depth == 0 {
-            self.was_dirty_before_starting_transaction.take().unwrap()
+            self.was_dirty_before_starting_transaction
+                .take()
+                .expect("transaction should have initial dirty state")
         } else {
             false
         };
@@ -733,7 +739,9 @@ impl Buffer {
                     this.finalize_last_transaction();
                     this.apply_diff(diff, cx);
                     let transaction = this.finalize_last_transaction().cloned();
-                    tx.send(transaction).ok();
+                    if tx.send(transaction).is_err() {
+                        log::trace!("Buffer reload receiver dropped");
+                    }
                     this.has_conflict = false;
                     this.did_reload(this.version(), this.line_ending(), new_mtime, cx);
                 } else {
@@ -883,6 +891,8 @@ impl Buffer {
         cx.notify();
     }
 }
+
+impl EventEmitter<BufferEvent> for Buffer {}
 
 impl Deref for Buffer {
     type Target = text::Buffer;

@@ -3,7 +3,7 @@ use gpui::{BackgroundExecutor, TestAppContext};
 use std::{collections::BTreeSet, time::Duration};
 use tempfile::TempDir;
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
 
 use fs::{Fs, NativeFs, PathEventKind, RenameOptions};
@@ -61,7 +61,7 @@ async fn test_native_fs_rename_ignore_if_exists_leaves_source_and_target_unchang
         )
         .await;
 
-    assert!(result.is_ok());
+    result.unwrap();
     assert_eq!(std::fs::read_to_string(&source).unwrap(), "from source");
     assert_eq!(std::fs::read_to_string(&target).unwrap(), "from target");
 }
@@ -112,7 +112,7 @@ async fn test_native_fs_rename_respects_create_parents(
         )
         .await;
 
-    assert!(result.is_err());
+    result.unwrap_err();
     assert_eq!(std::fs::read_to_string(&source_b).unwrap(), "content b");
     assert!(!missing_parent_target.exists());
 }
@@ -127,11 +127,10 @@ async fn test_native_fs_canonicalize(executor: BackgroundExecutor) {
 
     std::fs::write(file, "test").unwrap();
 
-    let canonicalized = fs.canonicalize(file.as_path()).await;
-    assert!(canonicalized.is_ok());
+    fs.canonicalize(file.as_path()).await.unwrap();
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[gpui::test]
 async fn test_native_fs_broken_symlink_metadata(executor: BackgroundExecutor) {
     let tempdir = TempDir::new().unwrap();
@@ -149,7 +148,7 @@ async fn test_native_fs_broken_symlink_metadata(executor: BackgroundExecutor) {
     assert!(!metadata.is_executable);
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[gpui::test]
 async fn test_native_fs_self_referential_symlink_metadata(executor: BackgroundExecutor) {
     let tempdir = TempDir::new().unwrap();

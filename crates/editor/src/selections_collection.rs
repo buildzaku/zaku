@@ -16,12 +16,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct PendingSelection {
+pub(crate) struct PendingSelection {
     selection: Selection<Anchor>,
     mode: SelectMode,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct SelectionsCollection {
     next_selection_id: usize,
     disjoint: Arc<[Selection<Anchor>]>,
@@ -207,16 +207,6 @@ pub struct MutableSelectionsCollection<'snap, 'a> {
     selections_changed: bool,
 }
 
-impl fmt::Debug for MutableSelectionsCollection<'_, '_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("MutableSelectionsCollection")
-            .field("collection", &self.collection)
-            .field("selections_changed", &self.selections_changed)
-            .finish()
-    }
-}
-
 impl MutableSelectionsCollection<'_, '_> {
     pub fn display_snapshot(&self) -> DisplaySnapshot {
         self.snapshot.clone()
@@ -287,31 +277,26 @@ impl MutableSelectionsCollection<'_, '_> {
 
         selections.sort_unstable_by_key(|selection| selection.start);
 
-        let mut index = 1;
-        while index < selections.len() {
-            let previous = &selections[index - 1];
-            let current = &selections[index];
-
-            if should_merge(
-                previous.start,
-                previous.end,
-                current.start,
-                current.end,
-                true,
-            ) {
-                let removed = selections.remove(index);
-                if removed.start < selections[index - 1].start {
-                    selections[index - 1].start = removed.start;
-                }
-                if selections[index - 1].end < removed.end {
-                    selections[index - 1].end = removed.end;
-                }
+        let mut merged_selections: Vec<Selection<MultiBufferOffset>> =
+            Vec::with_capacity(selections.len());
+        for selection in selections {
+            if let Some(previous) = merged_selections.last_mut()
+                && should_merge(
+                    previous.start,
+                    previous.end,
+                    selection.start,
+                    selection.end,
+                    true,
+                )
+            {
+                previous.start = previous.start.min(selection.start);
+                previous.end = previous.end.max(selection.end);
             } else {
-                index += 1;
+                merged_selections.push(selection);
             }
         }
 
-        let new_disjoint = selections
+        let new_disjoint = merged_selections
             .into_iter()
             .map(|selection| {
                 selection_to_anchor_selection(&selection, self.snapshot.buffer_snapshot())
@@ -437,6 +422,16 @@ impl MutableSelectionsCollection<'_, '_> {
             let (cursor, new_goal) = update_cursor_position(map, selection.head(), selection.goal);
             selection.collapse_to(cursor, new_goal);
         });
+    }
+}
+
+impl fmt::Debug for MutableSelectionsCollection<'_, '_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MutableSelectionsCollection")
+            .field("collection", &self.collection)
+            .field("selections_changed", &self.selections_changed)
+            .finish()
     }
 }
 

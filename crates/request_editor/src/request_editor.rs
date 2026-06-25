@@ -32,7 +32,7 @@ use ui::{
     IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
-use workspace::{SharedState, Workspace, pane::Pane};
+use workspace::{AppState, Workspace, pane::Pane};
 
 use crate::persistence::RequestEditorDb;
 
@@ -137,18 +137,13 @@ enum RequestEditorTab {
     Body,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestEditorEvent {
     RequestBufferEdited,
     DirtyChanged,
     Saved,
     TitleChanged,
     FileHandleChanged,
-}
-
-struct Request {
-    meta: RequestMeta,
-    http: RequestHttp,
 }
 
 type RequestMeta = RequestFileMeta;
@@ -162,6 +157,11 @@ struct RequestHttp {
     headers: Vec<RequestHeader>,
     body_type: Option<RequestBodyType>,
     body: Option<RequestBody>,
+}
+
+struct Request {
+    meta: RequestMeta,
+    http: RequestHttp,
 }
 
 impl Request {
@@ -463,7 +463,7 @@ impl RequestEditor {
             request_snapshot,
             active_tab: RequestEditorTab::Parameters,
             response: None,
-            http_client: SharedState::global(cx).http_client.clone(),
+            http_client: AppState::global(cx).http_client.clone(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
             input_subscriptions,
@@ -634,7 +634,7 @@ impl RequestEditor {
         };
 
         let payload_id = payload.entity_id();
-        let languages = SharedState::global(cx).languages.clone();
+        let languages = AppState::global(cx).languages.clone();
         cx.spawn(async move |this, cx| {
             let language = match languages.language_for_name(language_name).await {
                 Ok(language) => language,
@@ -905,7 +905,7 @@ impl RequestEditor {
 
         let request_started_at = Instant::now();
         let http_client = self.http_client.clone();
-        let languages = SharedState::global(cx).languages.clone();
+        let languages = AppState::global(cx).languages.clone();
 
         window
             .spawn(cx, {
@@ -1086,7 +1086,11 @@ impl RequestEditor {
                                         } else {
                                             bytes_received = u64::MAX;
                                         }
-                                        payload.extend_from_slice(&buffer[..chunk]);
+                                        payload.extend_from_slice(
+                                            buffer
+                                                .get(..chunk)
+                                                .expect("read chunk should fit in buffer"),
+                                        );
                                     }
                                     Err(error) => {
                                         read_error = Some(error);
@@ -1156,7 +1160,9 @@ impl RequestEditor {
     }
 
     fn render_invalid(&self, error: &str, cx: &mut Context<Self>) -> Div {
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .track_focus(&self.focus_handle)
             .size_full()
             .gap_2()
@@ -1181,10 +1187,10 @@ impl RequestEditor {
                     .id(id)
                     .relative()
                     .flex_none()
-                    .h(DynamicSpacing::Base24.px(cx))
-                    .px(DynamicSpacing::Base08.px(cx))
                     .flex()
                     .items_center()
+                    .h(DynamicSpacing::Base24.px(cx))
+                    .px(DynamicSpacing::Base08.px(cx))
                     .rounded_sm()
                     .border_1()
                     .when(active, |this| {
@@ -1219,8 +1225,10 @@ impl RequestEditor {
 
         let colors = cx.theme().colors();
 
-        ui::h_flex()
+        gpui::div()
             .id("request-editor-tabs")
+            .flex()
+            .items_center()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
             .gap_1()
@@ -1308,12 +1316,16 @@ impl RequestEditor {
                 }));
 
             rows.push(
-                ui::h_flex()
+                gpui::div()
                     .id(("param-row", index))
+                    .flex()
+                    .items_center()
                     .w_full()
                     .child(gpui::div().pr_1p5().child(checkbox))
                     .child(
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .flex_1()
                             .gap_2p5()
                             .child(gpui::div().flex_1().child(param.name.clone()))
@@ -1335,13 +1347,17 @@ impl RequestEditor {
             }));
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .w_full()
             .flex_1()
             .min_h_0()
             .child(
-                ui::v_flex()
+                gpui::div()
                     .id("parameters")
+                    .flex()
+                    .flex_col()
                     .track_scroll(&self.params_scroll_handle)
                     .size_full()
                     .min_w_0()
@@ -1351,7 +1367,7 @@ impl RequestEditor {
                     .gap_2()
                     .py_3()
                     .children(rows)
-                    .child(ui::h_flex().pl_1().child(add_button)),
+                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
             )
             .custom_scrollbars(
                 Scrollbars::new(ScrollAxes::Vertical)
@@ -1414,12 +1430,16 @@ impl RequestEditor {
                 }));
 
             rows.push(
-                ui::h_flex()
+                gpui::div()
                     .id(("header-row", index))
+                    .flex()
+                    .items_center()
                     .w_full()
                     .child(gpui::div().pr_1p5().child(checkbox))
                     .child(
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .flex_1()
                             .gap_2p5()
                             .child(gpui::div().flex_1().child(header.name.clone()))
@@ -1441,13 +1461,17 @@ impl RequestEditor {
             }));
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .w_full()
             .flex_1()
             .min_h_0()
             .child(
-                ui::v_flex()
+                gpui::div()
                     .id("headers")
+                    .flex()
+                    .flex_col()
                     .track_scroll(&self.headers_scroll_handle)
                     .size_full()
                     .min_w_0()
@@ -1457,7 +1481,7 @@ impl RequestEditor {
                     .gap_2()
                     .py_3()
                     .children(rows)
-                    .child(ui::h_flex().pl_1().child(add_button)),
+                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
             )
             .custom_scrollbars(
                 Scrollbars::new(ScrollAxes::Vertical)
@@ -1507,14 +1531,18 @@ impl RequestEditor {
         });
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
             .id("body")
+            .flex()
+            .flex_col()
             .w_full()
             .flex_1()
             .min_h_0()
             .bg(colors.panel_background)
             .child(
-                ui::h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .w_full()
                     .h(DynamicSpacing::Base36.px(cx))
                     .px_3()
@@ -1608,13 +1636,17 @@ impl RequestEditor {
         };
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(colors.panel_background)
             .when_some(request_relative_path, |this, request_relative_path| {
                 this.child(
-                    ui::h_flex()
+                    gpui::div()
+                        .flex()
+                        .items_center()
                         .w_full()
                         .px_3()
                         .pt_2()
@@ -1622,7 +1654,9 @@ impl RequestEditor {
                 )
             })
             .child(
-                ui::h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .w_full()
                     .px_3()
                     .py_3()
@@ -1691,20 +1725,20 @@ mod tests {
     use serde_json::json;
     use std::{cell::RefCell, rc::Rc};
 
-    use fs::Fs;
-    use http_client::{Response, StatusCode};
+    use fs::{Fs, TempFs};
+    use http_client::{FakeHttpClient, Response, StatusCode};
     use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{DockPosition, Item, Root, SharedState};
+    use workspace::{AppState, DockPosition, Item, Root};
 
-    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            workspace::init(shared_state, cx);
+            workspace::init(app_state, cx);
             editor::init(cx);
             crate::init(cx);
             response_panel::init(cx);
@@ -1738,9 +1772,10 @@ mod tests {
     async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        let http_client = shared_state.http_client.as_fake();
+        let temp_fs = TempFs::new(cx.executor());
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
 
@@ -1749,14 +1784,11 @@ mod tests {
                 assert_eq!(request.uri().path(), "/me");
                 let rx = rx.lock().take().unwrap();
 
-                async move {
-                    rx.await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
-                }
+                async move { Ok(rx.await.unwrap()) }
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1815,16 +1847,20 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("response"))
             .unwrap();
-        assert!(tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
     }
 
     #[gpui::test]
     async fn test_send_request_respects_disabled(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        let http_client = shared_state.http_client.as_fake();
+        let temp_fs = TempFs::new(cx.executor());
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
 
@@ -1855,13 +1891,12 @@ mod tests {
                         "#}
                     );
 
-                    rx.await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
+                    Ok(rx.await.unwrap())
                 }
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1921,16 +1956,20 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::empty())
             .unwrap();
-        assert!(tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
     }
 
     #[gpui::test]
     async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        let http_client = shared_state.http_client.as_fake();
+        let temp_fs = TempFs::new(cx.executor());
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         let first_rx = Arc::new(Mutex::new(Some(first_rx)));
@@ -1949,16 +1988,14 @@ mod tests {
                 let executor = executor.clone();
 
                 async move {
-                    let response = rx
-                        .await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?;
+                    let response = rx.await.unwrap();
                     executor.timer(response_delay).await;
-                    response
+                    Ok(response)
                 }
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2028,7 +2065,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("first response"))
             .unwrap();
-        assert!(first_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(first_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.executor().advance_clock(first_response_delay);
         cx.run_until_parked();
@@ -2042,7 +2082,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("second response"))
             .unwrap();
-        assert!(second_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(second_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.executor().advance_clock(second_response_delay);
         cx.run_until_parked();
@@ -2086,9 +2129,10 @@ mod tests {
     async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
-        let http_client = shared_state.http_client.as_fake();
+        let temp_fs = TempFs::new(cx.executor());
+        let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         let first_rx = Arc::new(Mutex::new(Some(first_rx)));
@@ -2101,14 +2145,11 @@ mod tests {
                     "/second" => second_rx.lock().take().unwrap(),
                     path => panic!("Unexpected request path: {path}"),
                 };
-                async move {
-                    rx.await
-                        .map_err(|_| anyhow::anyhow!("Response sender dropped"))?
-                }
+                async move { Ok(rx.await.unwrap()) }
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2184,7 +2225,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("first response"))
             .unwrap();
-        assert!(first_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(first_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.run_until_parked();
 
@@ -2197,7 +2241,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("second response"))
             .unwrap();
-        assert!(second_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(second_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.run_until_parked();
 
@@ -2239,10 +2286,10 @@ mod tests {
     async fn test_save_from_request_editor(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2368,10 +2415,10 @@ mod tests {
     async fn test_file_handle_changed_on_rename(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
-        let shared_state = cx.update(SharedState::test);
-        let temp_fs = shared_state.fs.as_temp();
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),

@@ -30,7 +30,7 @@ pub mod scrollbars {
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
 
-    #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
     #[serde(rename_all = "snake_case")]
     pub enum ShowScrollbar {
         #[default]
@@ -204,7 +204,7 @@ impl<T: ScrollableHandle> UniformListDecoration for ScrollbarStateWrapper<T> {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ShowBehavior {
     Always,
     Autohide,
@@ -247,13 +247,13 @@ impl ScrollAxes {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrackLayout {
     Classic,
     Overlay,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 enum ReservedSpace {
     #[default]
     None,
@@ -282,7 +282,7 @@ impl ReservedSpace {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 enum ScrollbarWidth {
     #[default]
     Normal,
@@ -324,22 +324,23 @@ pub struct Scrollbars<T: ScrollableHandle = ScrollHandle> {
 }
 
 impl Scrollbars {
-    pub fn new(show_along: ScrollAxes) -> Self {
+    pub fn new(show_along: ScrollAxes) -> Scrollbars {
         Self::new_with_setting(show_along, |_| ShowScrollbar::default())
     }
 
-    pub fn always_visible(show_along: ScrollAxes) -> Self {
+    pub fn always_visible(show_along: ScrollAxes) -> Scrollbars {
         Self::new_with_setting(show_along, |_| ShowScrollbar::Always)
     }
 
     pub fn for_settings<S: ScrollbarVisibility + Default>() -> Scrollbars {
-        Scrollbars::new_with_setting(ScrollAxes::Both, |cx| S::default().visibility(cx))
+        Self::new_with_setting(ScrollAxes::Both, |cx| S::default().visibility(cx))
     }
-}
 
-impl Scrollbars {
-    fn new_with_setting(show_along: ScrollAxes, get_visibility: fn(&App) -> ShowScrollbar) -> Self {
-        Self {
+    fn new_with_setting(
+        show_along: ScrollAxes,
+        get_visibility: fn(&App) -> ShowScrollbar,
+    ) -> Scrollbars {
+        Scrollbars {
             id: None,
             get_visibility,
             scrollable_handle: Handle::Untracked(ScrollHandle::new),
@@ -351,7 +352,7 @@ impl Scrollbars {
     }
 }
 
-impl<ScrollHandle: ScrollableHandle> Scrollbars<ScrollHandle> {
+impl<T: ScrollableHandle> Scrollbars<T> {
     pub fn id(mut self, id: impl Into<ElementId>) -> Self {
         self.id = Some(id.into());
         self
@@ -426,15 +427,15 @@ impl<ScrollHandle: ScrollableHandle> Scrollbars<ScrollHandle> {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
+const DELTA_MAX: f32 = 1.0;
+
+#[derive(Debug, Clone, PartialEq)]
 enum VisibilityState {
     Visible,
     Animating { showing: bool, delta: f32 },
     Hidden,
     Disabled,
 }
-
-const DELTA_MAX: f32 = 1.0;
 
 impl VisibilityState {
     fn from_behavior(behavior: ShowBehavior) -> Self {
@@ -842,7 +843,7 @@ struct ScrollbarElement<T: ScrollableHandle> {
     state: Entity<ScrollbarState<T>>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 enum ThumbState {
     #[default]
     Inactive,

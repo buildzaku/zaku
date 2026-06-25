@@ -12,7 +12,7 @@ use util::serde::default_true;
 
 use crate::LanguageName;
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SoftWrap {
     None,
@@ -20,7 +20,7 @@ pub enum SoftWrap {
     Bounded,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct LanguageConfig {
     pub name: LanguageName,
     pub grammar: Option<Arc<str>>,
@@ -101,7 +101,7 @@ impl Default for LanguageConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Default, JsonSchema)]
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct DecreaseIndentConfig {
     #[serde(default, deserialize_with = "deserialize_regex")]
     #[schemars(schema_with = "regex_json_schema")]
@@ -110,7 +110,7 @@ pub struct DecreaseIndentConfig {
     pub valid_after: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct LanguageMatcher {
     #[serde(default)]
     pub path_suffixes: Vec<String>,
@@ -150,7 +150,7 @@ impl PartialEq for LanguageMatcher {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize, JsonSchema)]
 pub struct BlockCommentConfig {
     pub start: Arc<str>,
     pub end: Arc<str>,
@@ -159,7 +159,7 @@ pub struct BlockCommentConfig {
     pub tab_size: u32,
 }
 
-#[derive(Clone, Deserialize, Default, Debug, JsonSchema)]
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct LanguageConfigOverride {
     #[serde(default)]
     pub line_comments: Override<Vec<Arc<str>>>,
@@ -175,17 +175,11 @@ pub struct LanguageConfigOverride {
     pub linked_edit_characters: Override<HashSet<char>>,
 }
 
-#[derive(Clone, Deserialize, Debug, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum Override<T> {
     Remove { remove: bool },
     Set(T),
-}
-
-impl<T> Default for Override<T> {
-    fn default() -> Self {
-        Override::Remove { remove: false }
-    }
 }
 
 impl<T> Override<T> {
@@ -198,7 +192,13 @@ impl<T> Override<T> {
     }
 }
 
-#[derive(Clone, Debug, Default, JsonSchema)]
+impl<T> Default for Override<T> {
+    fn default() -> Self {
+        Override::Remove { remove: false }
+    }
+}
+
+#[derive(Debug, Clone, Default, JsonSchema)]
 #[schemars(with = "Vec::<BracketPairContent>")]
 pub struct BracketPairConfig {
     pub pairs: Vec<BracketPair>,
@@ -211,14 +211,6 @@ impl BracketPairConfig {
             .iter()
             .any(|pair| pair.end.starts_with(character))
     }
-}
-
-#[derive(Deserialize, JsonSchema)]
-pub struct BracketPairContent {
-    #[serde(flatten)]
-    pub bracket_pair: BracketPair,
-    #[serde(default)]
-    pub not_in: Vec<String>,
 }
 
 impl<'de> Deserialize<'de> for BracketPairConfig {
@@ -239,7 +231,15 @@ impl<'de> Deserialize<'de> for BracketPairConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, JsonSchema)]
+#[derive(Deserialize, JsonSchema)]
+pub struct BracketPairContent {
+    #[serde(flatten)]
+    pub bracket_pair: BracketPair,
+    #[serde(default)]
+    pub not_in: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema)]
 pub struct BracketPair {
     pub start: String,
     pub end: String,
@@ -249,7 +249,7 @@ pub struct BracketPair {
     pub newline: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct WrapCharactersConfig {
     pub start_prefix: String,
     pub start_suffix: String,

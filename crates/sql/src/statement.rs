@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use libsqlite3_sys::{
     self as sqlite3, SQLITE_BLOB, SQLITE_DONE, SQLITE_FLOAT, SQLITE_INTEGER, SQLITE_MISUSE,
     SQLITE_NULL, SQLITE_ROW, SQLITE_TEXT, SQLITE_TRANSIENT,
@@ -18,25 +18,6 @@ pub struct Statement<'conn> {
     current_statement_idx: usize,
     connection: &'conn Connection,
     _marker: PhantomData<sqlite3::sqlite3_stmt>,
-}
-
-pub struct Row<'stmt, 'conn> {
-    statement: &'stmt mut Statement<'conn>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum StepResult {
-    Row,
-    Done,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum SqlType {
-    Text,
-    Integer,
-    Blob,
-    Float,
-    Null,
 }
 
 impl<'conn> Statement<'conn> {
@@ -59,7 +40,7 @@ impl<'conn> Statement<'conn> {
             let mut raw_statement_ptr = std::ptr::null_mut::<sqlite3::sqlite3_stmt>();
             let mut remaining_sql_ptr = std::ptr::null();
 
-            // Safety: connection.sqlite3 is a valid SQLite handle, remaining_sql is a
+            // SAFETY: connection.sqlite3 is a valid SQLite handle, remaining_sql is a
             // NUL-terminated string, raw_statement_ptr and remaining_sql_ptr are
             // valid out-pointers for SQLite to write.
             let result_code = unsafe {
@@ -76,7 +57,7 @@ impl<'conn> Statement<'conn> {
                 .ensure_ok(result_code)
                 .with_context(|| format!("prepare call failed for query:\n{}", query.as_ref()))?;
 
-            // Safety: sqlite3_prepare_v2 writes remaining_sql_ptr to point at the unused
+            // SAFETY: sqlite3_prepare_v2 writes remaining_sql_ptr to point at the unused
             // tail of sql, which stays NUL-terminated and alive for this borrow.
             remaining_sql = unsafe { CStr::from_ptr(remaining_sql_ptr) };
 
@@ -86,15 +67,18 @@ impl<'conn> Statement<'conn> {
 
             statement.raw_statement_ptrs.push(raw_statement_ptr);
 
-            // Safety: raw_statement_ptr comes from the successful prepare call above and
+            // SAFETY: raw_statement_ptr comes from the successful prepare call above and
             // remains valid until sqlite3_finalize in Drop.
             let is_statement_readonly =
                 unsafe { sqlite3::sqlite3_stmt_readonly(raw_statement_ptr) != 0 };
 
             if !connection.can_write() && !is_statement_readonly {
-                // Safety: raw_statement_ptr comes from the successful prepare call above and
-                // remains valid here. sqlite3_sql returns its NUL-terminated SQL text.
-                let sql = unsafe { CStr::from_ptr(sqlite3::sqlite3_sql(raw_statement_ptr)) };
+                // SAFETY: raw_statement_ptr comes from the successful prepare call above and
+                // remains valid here.
+                let sql_ptr = unsafe { sqlite3::sqlite3_sql(raw_statement_ptr) };
+
+                // SAFETY: sqlite3_sql returns a valid NUL-terminated string for this statement.
+                let sql = unsafe { CStr::from_ptr(sql_ptr) };
 
                 anyhow::bail!(
                     "write statement prepared with connection that is not write capable. sql:\n{}",
@@ -107,17 +91,19 @@ impl<'conn> Statement<'conn> {
     }
 
     fn current_statement_ptr(&self) -> *mut sqlite3::sqlite3_stmt {
-        *self
+        let raw_statement_ptr = self
             .raw_statement_ptrs
             .get(self.current_statement_idx)
-            .unwrap()
+            .expect("current statement index should be in bounds");
+
+        *raw_statement_ptr
     }
 
     pub fn reset(&mut self) -> anyhow::Result<()> {
         let mut reset_error = None;
 
         for raw_statement_ptr in &self.raw_statement_ptrs {
-            // Safety: raw_statement_ptr comes from a successful prepare call and remains
+            // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
             // valid until sqlite3_finalize in Drop.
             let result_code = unsafe { sqlite3::sqlite3_reset(*raw_statement_ptr) };
 
@@ -147,7 +133,7 @@ impl<'conn> Statement<'conn> {
         let mut any_succeed = false;
 
         for raw_statement_ptr in &self.raw_statement_ptrs {
-            // Safety: raw_statement_ptr comes from a successful prepare call and remains
+            // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
             // valid until sqlite3_finalize in Drop.
             let parameter_count =
                 unsafe { sqlite3::sqlite3_bind_parameter_count(*raw_statement_ptr) };
@@ -175,13 +161,15 @@ impl<'conn> Statement<'conn> {
             .context("blob length exceeds sqlite3_uint64 range")?;
 
         self.bind_index_with(index, &|raw_statement_ptr| {
-            // Safety: raw_statement_ptr comes from a successful prepare call, blob_ptr
-            // and blob_len were derived from blob. SQLITE_TRANSIENT avoids borrowing blob after
-            // the bind call returns.
-            unsafe {
-                if blob_len == 0 {
-                    sqlite3::sqlite3_bind_zeroblob(raw_statement_ptr, index, 0)
-                } else {
+            if blob_len == 0 {
+                // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
+                // valid until sqlite3_finalize in Drop.
+                unsafe { sqlite3::sqlite3_bind_zeroblob(raw_statement_ptr, index, 0) }
+            } else {
+                // SAFETY: raw_statement_ptr comes from a successful prepare call, blob_ptr
+                // and blob_len were derived from blob. SQLITE_TRANSIENT avoids borrowing blob after
+                // the bind call returns.
+                unsafe {
                     sqlite3::sqlite3_bind_blob64(
                         raw_statement_ptr,
                         index,
@@ -198,7 +186,7 @@ impl<'conn> Statement<'conn> {
         let index = index as std::ffi::c_int;
 
         self.bind_index_with(index, &|raw_statement_ptr| {
-            // Safety: raw_statement_ptr comes from a successful prepare call and remains
+            // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
             // valid until sqlite3_finalize in Drop.
             unsafe { sqlite3::sqlite3_bind_double(raw_statement_ptr, index, double) }
         })
@@ -207,7 +195,7 @@ impl<'conn> Statement<'conn> {
     pub fn bind_int(&self, index: i32, int: i32) -> anyhow::Result<()> {
         let index = index as std::ffi::c_int;
         self.bind_index_with(index, &|raw_statement_ptr| {
-            // Safety: raw_statement_ptr comes from a successful prepare call and remains
+            // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
             // valid until sqlite3_finalize in Drop.
             unsafe { sqlite3::sqlite3_bind_int(raw_statement_ptr, index, int) }
         })
@@ -216,7 +204,7 @@ impl<'conn> Statement<'conn> {
     pub fn bind_int64(&self, index: i32, int: i64) -> anyhow::Result<()> {
         let index = index as std::ffi::c_int;
         self.bind_index_with(index, &|raw_statement_ptr| {
-            // Safety: raw_statement_ptr comes from a successful prepare call and remains
+            // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
             // valid until sqlite3_finalize in Drop.
             unsafe { sqlite3::sqlite3_bind_int64(raw_statement_ptr, index, int) }
         })
@@ -225,7 +213,7 @@ impl<'conn> Statement<'conn> {
     pub fn bind_null(&self, index: i32) -> anyhow::Result<()> {
         let index = index as std::ffi::c_int;
         self.bind_index_with(index, &|raw_statement_ptr| {
-            // Safety: raw_statement_ptr comes from a successful prepare call and remains
+            // SAFETY: raw_statement_ptr comes from a successful prepare call and remains
             // valid until sqlite3_finalize in Drop.
             unsafe { sqlite3::sqlite3_bind_null(raw_statement_ptr, index) }
         })
@@ -240,7 +228,7 @@ impl<'conn> Statement<'conn> {
             .context("SQLITE_UTF8 exceeds c_uchar range")?;
 
         self.bind_index_with(index, &|raw_statement_ptr| {
-            // Safety: raw_statement_ptr comes from a successful prepare call, text_ptr
+            // SAFETY: raw_statement_ptr comes from a successful prepare call, text_ptr
             // and text_len were derived from text. SQLITE_TRANSIENT avoids borrowing text after
             // the bind call returns.
             unsafe {
@@ -288,7 +276,7 @@ impl<'conn> Statement<'conn> {
             return Ok(StepResult::Done);
         }
 
-        // Safety: current_statement_ptr() returns a SQLite statement handle from
+        // SAFETY: current_statement_ptr() returns a SQLite statement handle from
         // raw_statement_ptrs and that handle remains valid until sqlite3_finalize in Drop.
         let result_code = unsafe { sqlite3::sqlite3_step(self.current_statement_ptr()) };
         match result_code {
@@ -306,7 +294,7 @@ impl<'conn> Statement<'conn> {
                 self.connection
                     .ensure_ok(result_code)
                     .with_context(|| "failed to step sqlite statement".to_string())?;
-                unreachable!("ensure_ok returned Ok for a failing sqlite3_step result code");
+                anyhow::bail!("sqlite3_step returned unexpected result code {result_code}");
             }
         }
     }
@@ -330,20 +318,20 @@ impl<'conn> Statement<'conn> {
 
     pub fn map<R>(
         &mut self,
-        f: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+        map_row: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
     ) -> anyhow::Result<Vec<R>> {
         fn inner<'conn, R>(
             statement: &mut Statement<'conn>,
-            mut f: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+            mut map_row: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
         ) -> anyhow::Result<Vec<R>> {
             let mut mapped_rows = Vec::new();
             while let Some(mut row) = statement.next_row()? {
-                mapped_rows.push(f(&mut row)?);
+                mapped_rows.push(map_row(&mut row)?);
             }
             Ok(mapped_rows)
         }
 
-        let result = inner(self, f);
+        let result = inner(self, map_row);
         self.with_reset(result)
     }
 
@@ -353,16 +341,16 @@ impl<'conn> Statement<'conn> {
 
     pub fn single<R>(
         &mut self,
-        f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+        map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
     ) -> anyhow::Result<R> {
         fn inner<'conn, R>(
             statement: &mut Statement<'conn>,
-            f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+            map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
         ) -> anyhow::Result<R> {
             let mut row = statement
                 .next_row()?
-                .ok_or_else(|| anyhow::anyhow!("single called with query that returns no rows"))?;
-            let result = f(&mut row)?;
+                .ok_or_else(|| anyhow!("single called with query that returns no rows"))?;
+            let result = map_row(&mut row)?;
             anyhow::ensure!(
                 statement.next_row()?.is_none(),
                 "single called with a query that returns more than one row"
@@ -371,7 +359,7 @@ impl<'conn> Statement<'conn> {
             Ok(result)
         }
 
-        let result = inner(self, f);
+        let result = inner(self, map_row);
         self.with_reset(result)
     }
 
@@ -381,16 +369,16 @@ impl<'conn> Statement<'conn> {
 
     pub fn maybe<R>(
         &mut self,
-        f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+        map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
     ) -> anyhow::Result<Option<R>> {
         fn inner<'conn, R>(
             statement: &mut Statement<'conn>,
-            f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+            map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
         ) -> anyhow::Result<Option<R>> {
             let Some(mut row) = statement.next_row().context("failed on step call")? else {
                 return Ok(None);
             };
-            let result = f(&mut row)
+            let result = map_row(&mut row)
                 .map(Some)
                 .context("failed to parse row result")?;
             anyhow::ensure!(
@@ -401,13 +389,44 @@ impl<'conn> Statement<'conn> {
             Ok(result)
         }
 
-        let result = inner(self, f);
+        let result = inner(self, map_row);
         self.with_reset(result)
     }
 
     pub fn maybe_row<R: Column>(&mut self) -> anyhow::Result<Option<R>> {
         self.maybe(|row| row.column::<R>())
     }
+}
+
+impl Drop for Statement<'_> {
+    fn drop(&mut self) {
+        // SAFETY: Each raw_statement_ptr came from a successful sqlite3_prepare_v2 call
+        // and this is the only place that finalizes statements still owned by Statement.
+        unsafe {
+            for raw_statement_ptr in &self.raw_statement_ptrs {
+                sqlite3::sqlite3_finalize(*raw_statement_ptr);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StepResult {
+    Row,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqlType {
+    Text,
+    Integer,
+    Blob,
+    Float,
+    Null,
+}
+
+pub struct Row<'stmt, 'conn> {
+    statement: &'stmt mut Statement<'conn>,
 }
 
 impl Row<'_, '_> {
@@ -419,7 +438,7 @@ impl Row<'_, '_> {
 
         let index = index as std::ffi::c_int;
 
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let blob_ptr =
             unsafe { sqlite3::sqlite3_column_blob(self.statement.current_statement_ptr(), index) };
@@ -429,7 +448,7 @@ impl Row<'_, '_> {
             .ensure_last_result_ok()
             .with_context(|| format!("failed to read blob at index {index}"))?;
 
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let blob_len =
             unsafe { sqlite3::sqlite3_column_bytes(self.statement.current_statement_ptr(), index) };
@@ -450,7 +469,7 @@ impl Row<'_, '_> {
             "blob pointer was null at index {index}"
         );
 
-        // Safety: blob_ptr and blob_len came from SQLite for the current row and the
+        // SAFETY: blob_ptr and blob_len came from SQLite for the current row and the
         // checks above guarantee a valid non-null pointer with blob_len > 0.
         let result = unsafe { std::slice::from_raw_parts(blob_ptr.cast::<u8>(), blob_len) };
 
@@ -460,7 +479,7 @@ impl Row<'_, '_> {
     pub fn column_double(&mut self, index: i32) -> anyhow::Result<f64> {
         let index = index as std::ffi::c_int;
 
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let result = unsafe {
             sqlite3::sqlite3_column_double(self.statement.current_statement_ptr(), index)
@@ -476,7 +495,7 @@ impl Row<'_, '_> {
     pub fn column_int(&mut self, index: i32) -> anyhow::Result<i32> {
         let index = index as std::ffi::c_int;
 
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let result =
             unsafe { sqlite3::sqlite3_column_int(self.statement.current_statement_ptr(), index) };
@@ -491,7 +510,7 @@ impl Row<'_, '_> {
     pub fn column_int64(&mut self, index: i32) -> anyhow::Result<i64> {
         let index = index as std::ffi::c_int;
 
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let result =
             unsafe { sqlite3::sqlite3_column_int64(self.statement.current_statement_ptr(), index) };
@@ -511,7 +530,7 @@ impl Row<'_, '_> {
 
         let index = index as std::ffi::c_int;
 
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let text_ptr =
             unsafe { sqlite3::sqlite3_column_text(self.statement.current_statement_ptr(), index) };
@@ -521,7 +540,7 @@ impl Row<'_, '_> {
             .ensure_last_result_ok()
             .with_context(|| format!("failed to read text from column {index}"))?;
 
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let text_len =
             unsafe { sqlite3::sqlite3_column_bytes(self.statement.current_statement_ptr(), index) };
@@ -542,7 +561,7 @@ impl Row<'_, '_> {
             "text pointer was null at index {index}"
         );
 
-        // Safety: text_ptr and text_len came from SQLite for the current row and the
+        // SAFETY: text_ptr and text_len came from SQLite for the current row and the
         // checks above guarantee a valid non-null pointer with text_len > 0.
         let slice = unsafe { std::slice::from_raw_parts(text_ptr, text_len) };
 
@@ -555,7 +574,7 @@ impl Row<'_, '_> {
     }
 
     pub fn column_type(&mut self, index: i32) -> anyhow::Result<SqlType> {
-        // Safety: current_statement_ptr() is a valid SQLite statement handle for the
+        // SAFETY: current_statement_ptr() is a valid SQLite statement handle for the
         // current row and index refers to a column in that row.
         let result =
             unsafe { sqlite3::sqlite3_column_type(self.statement.current_statement_ptr(), index) };
@@ -568,18 +587,6 @@ impl Row<'_, '_> {
             SQLITE_BLOB => Ok(SqlType::Blob),
             SQLITE_NULL => Ok(SqlType::Null),
             _ => anyhow::bail!("column type returned was incorrect"),
-        }
-    }
-}
-
-impl Drop for Statement<'_> {
-    fn drop(&mut self) {
-        // Safety: Each raw_statement_ptr came from a successful sqlite3_prepare_v2 call
-        // and this is the only place that finalizes statements still owned by Statement.
-        unsafe {
-            for raw_statement_ptr in &self.raw_statement_ptrs {
-                sqlite3::sqlite3_finalize(*raw_statement_ptr);
-            }
         }
     }
 }

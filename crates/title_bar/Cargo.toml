@@ -1,16 +1,18 @@
 [package]
 name = "title_bar"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 name = "title_bar"
 path = "src/title_bar.rs"
+
+[lints]
+workspace = true
 
 [dependencies]
 actions = { workspace = true }

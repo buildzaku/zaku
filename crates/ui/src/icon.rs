@@ -4,7 +4,7 @@ use icons::IconName;
 
 use crate::{Color, DynamicSpacing};
 
-#[derive(Default, PartialEq, Copy, Clone)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub enum IconSize {
     /// 10px
     Indicator,

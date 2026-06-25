@@ -10,7 +10,10 @@ pub(crate) fn text_diff(old_text: &str, new_text: &str) -> Vec<(Range<usize>, Ar
         let replacement_text = if new_byte_range.is_empty() {
             empty.clone()
         } else {
-            new_text[new_byte_range].into()
+            new_text
+                .get(new_byte_range)
+                .expect("diff replacement range should be valid")
+                .into()
         };
         edits.push((old_byte_range, replacement_text));
     });
@@ -42,10 +45,34 @@ fn diff_internal(
             return;
         };
 
-        old_offset += token_len(input, &input.before[old_token_index..old_start]);
-        new_offset += token_len(input, &input.after[new_token_index..new_start]);
-        let old_len = token_len(input, &input.before[old_start..old_end]);
-        let new_len = token_len(input, &input.after[new_start..new_end]);
+        old_offset += token_len(
+            input,
+            input
+                .before
+                .get(old_token_index..old_start)
+                .expect("diff token range should be valid"),
+        );
+        new_offset += token_len(
+            input,
+            input
+                .after
+                .get(new_token_index..new_start)
+                .expect("diff token range should be valid"),
+        );
+        let old_len = token_len(
+            input,
+            input
+                .before
+                .get(old_start..old_end)
+                .expect("diff token range should be valid"),
+        );
+        let new_len = token_len(
+            input,
+            input
+                .after
+                .get(new_start..new_end)
+                .expect("diff token range should be valid"),
+        );
         let old_byte_range = old_offset..old_offset + old_len;
         let new_byte_range = new_offset..new_offset + new_len;
         old_token_index = old_end;

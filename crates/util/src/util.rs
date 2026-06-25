@@ -20,8 +20,12 @@ macro_rules! debug_panic {
 
 pub fn asset_str<A: rust_embed::RustEmbed>(path: &str) -> Cow<'static, str> {
     match A::get(path).expect(path).data {
-        Cow::Borrowed(bytes) => Cow::Borrowed(std::str::from_utf8(bytes).unwrap()),
-        Cow::Owned(bytes) => Cow::Owned(String::from_utf8(bytes).unwrap()),
+        Cow::Borrowed(bytes) => {
+            Cow::Borrowed(std::str::from_utf8(bytes).expect("asset should be valid utf-8"))
+        }
+        Cow::Owned(bytes) => {
+            Cow::Owned(String::from_utf8(bytes).expect("asset should be valid utf-8"))
+        }
     }
 }
 
@@ -42,7 +46,12 @@ pub fn truncate_and_trailoff(text: &str, max_chars: usize) -> String {
 
     let truncation_index = text.char_indices().map(|(index, _)| index).nth(max_chars);
     match truncation_index {
-        Some(index) => text[..index].to_string() + "…",
+        Some(index) => {
+            text.get(..index)
+                .expect("truncation index should be on char boundary")
+                .to_string()
+                + "…"
+        }
         None => text.to_string(),
     }
 }
@@ -60,7 +69,12 @@ pub fn truncate_and_remove_front(text: &str, max_chars: usize) -> String {
         .map(|(index, _)| index)
         .nth_back(suffix_char_length);
     match truncation_index {
-        Some(index) if index > 0 => "…".to_string() + &text[index..],
+        Some(index) if index > 0 => {
+            "…".to_string()
+                + text
+                    .get(index..)
+                    .expect("truncation index should be on char boundary")
+        }
         _ => text.to_string(),
     }
 }
@@ -93,7 +107,7 @@ fn log_error_with_caller<E>(caller: panic::Location<'_>, error: E)
 where
     E: Debug,
 {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     let file = caller.file();
 
     #[cfg(target_os = "windows")]
@@ -130,20 +144,14 @@ where
     I: IntoIterator<Item = T>,
     F: FnMut(&T, &T) -> Ordering,
 {
-    let mut start_index = 0;
-
     for incoming_entry in incoming_entries {
-        if let Err(idx) =
-            entries[start_index..].binary_search_by(|entry| cmp(entry, &incoming_entry))
-        {
-            let index = start_index + idx;
+        if let Err(index) = entries.binary_search_by(|entry| cmp(entry, &incoming_entry)) {
             if entries.len() < limit {
                 entries.insert(index, incoming_entry);
             } else if index < entries.len() {
                 entries.pop();
                 entries.insert(index, incoming_entry);
             }
-            start_index = index;
         }
     }
 }

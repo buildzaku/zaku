@@ -1,17 +1,19 @@
 [package]
 name = "sql_macros"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
+
+[lib]
+name = "sql_macros"
+path = "src/sql_macros.rs"
+proc-macro = true
 
 [lints]
 workspace = true
-
-[lib]
-path = "src/sql_macros.rs"
-proc-macro = true
-doctest = false
 
 [dependencies]
 sql = { workspace = true }

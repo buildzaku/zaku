@@ -1,24 +1,26 @@
 [package]
 name = "project"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
-
-[lints]
-workspace = true
 
 [lib]
 name = "project"
 path = "src/project.rs"
 
+[lints]
+workspace = true
+
 [[test]]
-name = "integration"
+name = "project_tests"
 path = "tests/integration/project_tests.rs"
-required-features = ["test-support"]
+required-features = ["test"]
 
 [features]
-test-support = ["gpui/test-support", "language/test-support"]
+test = ["gpui/test-support", "language/test"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -35,10 +37,10 @@ util = { workspace = true }
 worktree = { workspace = true }
 
 [dev-dependencies]
-fs = { workspace = true, features = ["test-support"] }
+fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
-path = { workspace = true, features = ["test-support"] }
+path = { workspace = true, features = ["test"] }
 serde_json = { workspace = true }
-util = { workspace = true, features = ["test-support"] }
+util = { workspace = true, features = ["test"] }
 util_macros = { workspace = true }

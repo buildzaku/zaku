@@ -1,19 +1,21 @@
 [package]
 name = "session"
+version.workspace = true
 license.workspace = true
-authors.workspace = true
+repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 publish.workspace = true
+
+[lib]
+name = "session"
+path = "src/session.rs"
 
 [lints]
 workspace = true
 
 [features]
-test-support = ["db/test-support"]
-
-[lib]
-name = "session"
-path = "src/session.rs"
+test = ["db/test"]
 
 [dependencies]
 db = { workspace = true }

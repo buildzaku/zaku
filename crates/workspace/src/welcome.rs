@@ -29,7 +29,9 @@ impl SectionHeader {
 
 impl RenderOnce for SectionHeader {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        ui::h_flex()
+        gpui::div()
+            .flex()
+            .items_center()
             .px_1()
             .mb_2()
             .gap_2()
@@ -79,18 +81,22 @@ impl RenderOnce for SectionButton {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let id = format!("welcome-button-{}-{}", self.label, self.tab_index);
         let action_ref = self.action.as_ref();
-        let tab_index = isize::try_from(self.tab_index).unwrap();
+        let tab_index = isize::try_from(self.tab_index).expect("tab index should fit in isize");
 
         ButtonLike::new(id)
             .tab_index(tab_index)
             .full_width()
             .size(ButtonSize::Medium)
             .child(
-                ui::h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .w_full()
                     .justify_between()
                     .child(
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .gap_2()
                             .child(
                                 Icon::new(self.icon)
@@ -135,7 +141,9 @@ struct Section<const COLS: usize> {
 
 impl<const COLS: usize> Section<COLS> {
     fn render(self, index_offset: usize, focus: &FocusHandle, cx: &App) -> impl IntoElement {
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .min_w_full()
             .child(SectionHeader::new(self.title))
             .children(
@@ -185,7 +193,7 @@ impl WelcomePage {
         let fs = self
             .workspace
             .upgrade()
-            .map(|workspace| workspace.read(cx).shared_state().fs.clone());
+            .map(|workspace| workspace.read(cx).app_state().fs.clone());
         let workspace_db = WorkspaceDb::global(cx);
         cx.spawn_in(window, async move |this: WeakEntity<Self>, cx| {
             let Some(fs) = fs else {
@@ -254,7 +262,9 @@ impl WelcomePage {
     }
 
     fn render_recent_project_section(recent_projects: Vec<impl IntoElement>) -> impl IntoElement {
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .w_full()
             .child(SectionHeader::new("Recent Projects"))
             .children(recent_projects)
@@ -303,7 +313,9 @@ impl Render for WelcomePage {
             })
             .collect::<Vec<_>>();
 
-        let welcome_content = ui::v_flex()
+        let welcome_content = gpui::div()
+            .flex()
+            .flex_col()
             .flex_1()
             .justify_center()
             .overflow_hidden()
@@ -311,21 +323,29 @@ impl Render for WelcomePage {
             .mx_auto()
             .gap_6()
             .child(
-                ui::h_flex().w_full().justify_center().mb_4().child(
-                    ui::v_flex()
-                        .items_center()
-                        .child(
-                            Label::new(format!("Welcome to {ZAKU_NAME}"))
-                                .size(LabelSize::Large)
-                                .weight(FontWeight::MEDIUM),
-                        )
-                        .child(
-                            Label::new(ZAKU_DESCRIPTION)
-                                .size(LabelSize::Small)
-                                .color(Color::Muted)
-                                .italic(),
-                        ),
-                ),
+                gpui::div()
+                    .flex()
+                    .items_center()
+                    .w_full()
+                    .justify_center()
+                    .mb_4()
+                    .child(
+                        gpui::div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .child(
+                                Label::new(format!("Welcome to {ZAKU_NAME}"))
+                                    .size(LabelSize::Large)
+                                    .weight(FontWeight::MEDIUM),
+                            )
+                            .child(
+                                Label::new(ZAKU_DESCRIPTION)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted)
+                                    .italic(),
+                            ),
+                    ),
             )
             .child(CONTENT.render(0, &self.focus_handle, cx));
 
@@ -335,7 +355,9 @@ impl Render for WelcomePage {
             welcome_content.child(Self::render_recent_project_section(recent_projects))
         };
 
-        ui::h_flex()
+        gpui::div()
+            .flex()
+            .items_center()
             .key_context("Welcome")
             .track_focus(&self.focus_handle(cx))
             .on_action(cx.listener(Self::select_previous))
@@ -346,7 +368,9 @@ impl Render for WelcomePage {
             .overflow_hidden()
             .bg(cx.theme().colors().editor_background)
             .child(
-                ui::h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .relative()
                     .size_full()
                     .px_12()

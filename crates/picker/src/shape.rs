@@ -108,7 +108,7 @@ macro_rules! relative_size {
 relative_size!(RelativeHeight, height);
 relative_size!(RelativeWidth, width);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum VerticalPadding {
     #[default]
     Pad,
@@ -121,9 +121,13 @@ pub(crate) struct Centered {
     pub(crate) height: RelativeHeight,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Shape {
-    HorizontallyCentered(Centered),
+impl Default for Centered {
+    fn default() -> Self {
+        Centered {
+            width: RelativeWidth::viewport(0.6),
+            height: RelativeHeight::viewport(0.6),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -131,19 +135,6 @@ pub(crate) struct SizeBounds {
     pub(crate) max_width: RelativeWidth,
     pub(crate) max_height: RelativeHeight,
     pub(crate) min_results: Size<Rems>,
-}
-
-impl Default for SizeBounds {
-    fn default() -> Self {
-        Self {
-            max_width: RelativeWidth::viewport(0.95),
-            max_height: (RelativeHeight::FULL - Rems(10.0)) * 0.95,
-            min_results: Size {
-                width: Rems(15.0),
-                height: Rems(20.0),
-            },
-        }
-    }
 }
 
 impl SizeBounds {
@@ -168,6 +159,24 @@ impl SizeBounds {
         let target_height = self.clamp_height(working.bottom - working.top, window);
         working.bottom = working.top + target_height;
     }
+}
+
+impl Default for SizeBounds {
+    fn default() -> Self {
+        Self {
+            max_width: RelativeWidth::viewport(0.95),
+            max_height: (RelativeHeight::FULL - Rems(10.0)) * 0.95,
+            min_results: Size {
+                width: Rems(15.0),
+                height: Rems(20.0),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Shape {
+    HorizontallyCentered(Centered),
 }
 
 impl Shape {
@@ -238,15 +247,6 @@ impl Shape {
             ..
         }) = self;
         *current_height = height.into();
-    }
-}
-
-impl Default for Centered {
-    fn default() -> Self {
-        Centered {
-            width: RelativeWidth::viewport(0.6),
-            height: RelativeHeight::viewport(0.6),
-        }
     }
 }
 
