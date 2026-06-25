@@ -197,6 +197,15 @@ impl ProjectItem for Buffer {
     }
 }
 
+pub enum ProjectEvent {
+    ActiveEntryChanged(Option<ProjectEntryId>),
+    WorktreeAdded(WorktreeId),
+    WorktreeRemoved(WorktreeId),
+    WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
+    DeletedEntry(WorktreeId, ProjectEntryId),
+    EntryMetadataUpdated(ProjectEntryId),
+}
+
 pub struct Project {
     worktree_store: Entity<WorktreeStore>,
     buffer_store: Entity<BufferStore>,
@@ -205,15 +214,6 @@ pub struct Project {
     active_entry: Option<ProjectEntryId>,
     metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
     _maintain_buffer_languages: Task<()>,
-}
-
-pub enum ProjectEvent {
-    ActiveEntryChanged(Option<ProjectEntryId>),
-    WorktreeAdded(WorktreeId),
-    WorktreeRemoved(WorktreeId),
-    WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
-    DeletedEntry(WorktreeId, ProjectEntryId),
-    EntryMetadataUpdated(ProjectEntryId),
 }
 
 impl Project {

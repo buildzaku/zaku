@@ -26,12 +26,6 @@ pub struct InputField {
     tab_stop: bool,
 }
 
-impl Focusable for InputField {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.editor.focus_handle(cx)
-    }
-}
-
 impl InputField {
     pub fn new(window: &mut Window, cx: &mut App, placeholder_text: &str) -> Self {
         let editor_factory = crate::ERASED_EDITOR_FACTORY
@@ -116,6 +110,12 @@ impl InputField {
 
     pub fn set_text(&self, text: &str, window: &mut Window, cx: &mut App) {
         self.editor().set_text(text, window, cx);
+    }
+}
+
+impl Focusable for InputField {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.editor.focus_handle(cx)
     }
 }
 

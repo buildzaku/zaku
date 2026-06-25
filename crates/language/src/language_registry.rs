@@ -20,22 +20,6 @@ use crate::{
     LanguageQueries, PLAIN_TEXT, Point, Rope,
 };
 
-pub struct LanguageRegistry {
-    state: RwLock<LanguageRegistryState>,
-    executor: BackgroundExecutor,
-}
-
-struct LanguageRegistryState {
-    languages: Vec<Arc<Language>>,
-    available_languages: Vec<AvailableLanguage>,
-    grammars: HashMap<Arc<str>, tree_sitter::Language>,
-    loading_languages: HashMap<LanguageId, Vec<oneshot::Sender<anyhow::Result<Arc<Language>>>>>,
-    subscriptions: Vec<mpsc::UnboundedSender<()>>,
-    theme: Option<Arc<Theme>>,
-    version: usize,
-    reload_count: usize,
-}
-
 #[derive(Clone)]
 pub struct AvailableLanguage {
     id: LanguageId,
@@ -75,6 +59,11 @@ impl fmt::Display for LanguageNotFound {
 pub struct LoadedLanguage {
     pub config: LanguageConfig,
     pub queries: LanguageQueries,
+}
+
+pub struct LanguageRegistry {
+    state: RwLock<LanguageRegistryState>,
+    executor: BackgroundExecutor,
 }
 
 impl LanguageRegistry {
@@ -488,6 +477,17 @@ impl LanguageRegistry {
     pub fn to_vec(&self) -> Vec<Arc<Language>> {
         self.state.read().languages.clone()
     }
+}
+
+struct LanguageRegistryState {
+    languages: Vec<Arc<Language>>,
+    available_languages: Vec<AvailableLanguage>,
+    grammars: HashMap<Arc<str>, tree_sitter::Language>,
+    loading_languages: HashMap<LanguageId, Vec<oneshot::Sender<anyhow::Result<Arc<Language>>>>>,
+    subscriptions: Vec<mpsc::UnboundedSender<()>>,
+    theme: Option<Arc<Theme>>,
+    version: usize,
+    reload_count: usize,
 }
 
 impl LanguageRegistryState {

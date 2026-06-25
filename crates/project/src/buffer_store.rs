@@ -18,15 +18,6 @@ use crate::{
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
 
-pub struct BufferStore {
-    buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
-    loading_buffers: HashMap<ProjectPath, Shared<Task<Result<Entity<Buffer>, Arc<anyhow::Error>>>>>,
-    worktree_store: Entity<WorktreeStore>,
-    opened_buffers: HashMap<BufferId, WeakEntity<Buffer>>,
-    path_to_buffer_id: HashMap<ProjectPath, BufferId>,
-    _worktree_store_subscription: Subscription,
-}
-
 pub enum BufferStoreEvent {
     BufferAdded(Entity<Buffer>),
     BufferDropped(BufferId),
@@ -34,6 +25,15 @@ pub enum BufferStoreEvent {
         buffer: Entity<Buffer>,
         old_file: Option<Arc<dyn language::File>>,
     },
+}
+
+pub struct BufferStore {
+    buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
+    loading_buffers: HashMap<ProjectPath, Shared<Task<Result<Entity<Buffer>, Arc<anyhow::Error>>>>>,
+    worktree_store: Entity<WorktreeStore>,
+    opened_buffers: HashMap<BufferId, WeakEntity<Buffer>>,
+    path_to_buffer_id: HashMap<ProjectPath, BufferId>,
+    _worktree_store_subscription: Subscription,
 }
 
 impl BufferStore {

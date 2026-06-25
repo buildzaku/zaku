@@ -39,15 +39,15 @@ impl LanguageName {
     }
 }
 
-impl From<LanguageName> for SharedString {
-    fn from(value: LanguageName) -> Self {
-        value.0
-    }
-}
-
 impl From<SharedString> for LanguageName {
     fn from(value: SharedString) -> Self {
         LanguageName(value)
+    }
+}
+
+impl From<LanguageName> for SharedString {
+    fn from(value: LanguageName) -> Self {
+        value.0
     }
 }
 

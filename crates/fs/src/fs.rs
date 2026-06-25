@@ -301,62 +301,6 @@ pub struct Metadata {
     pub is_executable: bool,
 }
 
-pub struct NativeFs {
-    executor: BackgroundExecutor,
-    is_case_sensitive: AtomicU8,
-}
-
-impl NativeFs {
-    pub fn new(executor: BackgroundExecutor) -> Self {
-        Self {
-            executor,
-            is_case_sensitive: AtomicU8::new(0),
-        }
-    }
-
-    fn canonicalize(path: &Path) -> anyhow::Result<PathBuf> {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        {
-            std::fs::canonicalize(path).map_err(Into::into)
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            let abs_path = if path.is_relative() {
-                std::env::current_dir()?.join(path)
-            } else {
-                path.to_path_buf()
-            };
-
-            let path_hstring = HSTRING::from(abs_path.as_os_str());
-            let mut volume_buffer = vec![0u16; abs_path.as_os_str().len() + 2];
-
-            // SAFETY: `path_hstring` remains valid for the duration of this call and
-            // `volume_buffer` provides writable storage for the returned UTF-16 volume root.
-            unsafe { GetVolumePathNameW(&path_hstring, &mut volume_buffer)? };
-
-            let volume_root = {
-                let len = volume_buffer
-                    .iter()
-                    .position(|&character| character == 0)
-                    .unwrap_or(volume_buffer.len());
-                PathBuf::from(OsString::from_wide(&volume_buffer[..len]))
-            };
-
-            let resolved_path = dunce::canonicalize(&abs_path)?;
-            let resolved_root = dunce::canonicalize(&volume_root)?;
-
-            if let Ok(relative) = resolved_path.strip_prefix(&resolved_root) {
-                let mut result = volume_root;
-                result.push(relative);
-                Ok(result)
-            } else {
-                Ok(resolved_path)
-            }
-        }
-    }
-}
-
 #[cfg(target_os = "linux")]
 fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
     let source = path_to_c_string(source)?;
@@ -423,6 +367,62 @@ fn path_to_c_string(path: &Path) -> io::Result<CString> {
             format!("path contains interior NUL: {}: {error}", path.display()),
         )
     })
+}
+
+pub struct NativeFs {
+    executor: BackgroundExecutor,
+    is_case_sensitive: AtomicU8,
+}
+
+impl NativeFs {
+    pub fn new(executor: BackgroundExecutor) -> Self {
+        Self {
+            executor,
+            is_case_sensitive: AtomicU8::new(0),
+        }
+    }
+
+    fn canonicalize(path: &Path) -> anyhow::Result<PathBuf> {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            std::fs::canonicalize(path).map_err(Into::into)
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let abs_path = if path.is_relative() {
+                std::env::current_dir()?.join(path)
+            } else {
+                path.to_path_buf()
+            };
+
+            let path_hstring = HSTRING::from(abs_path.as_os_str());
+            let mut volume_buffer = vec![0u16; abs_path.as_os_str().len() + 2];
+
+            // SAFETY: `path_hstring` remains valid for the duration of this call and
+            // `volume_buffer` provides writable storage for the returned UTF-16 volume root.
+            unsafe { GetVolumePathNameW(&path_hstring, &mut volume_buffer)? };
+
+            let volume_root = {
+                let len = volume_buffer
+                    .iter()
+                    .position(|&character| character == 0)
+                    .unwrap_or(volume_buffer.len());
+                PathBuf::from(OsString::from_wide(&volume_buffer[..len]))
+            };
+
+            let resolved_path = dunce::canonicalize(&abs_path)?;
+            let resolved_root = dunce::canonicalize(&volume_root)?;
+
+            if let Ok(relative) = resolved_path.strip_prefix(&resolved_root) {
+                let mut result = volume_root;
+                result.push(relative);
+                Ok(result)
+            } else {
+                Ok(resolved_path)
+            }
+        }
+    }
 }
 
 #[async_trait]

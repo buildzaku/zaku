@@ -49,39 +49,6 @@ impl ToTreeSitterPoint for Point {
     }
 }
 
-#[derive(Clone)]
-pub struct SyntaxSnapshot {
-    layers: SumTree<SyntaxLayerEntry>,
-    parsed_version: clock::Global,
-    interpolated_version: clock::Global,
-    update_count: usize,
-}
-
-impl Drop for SyntaxSnapshot {
-    fn drop(&mut self) {
-        static DROP_TX: LazyLock<mpsc::Sender<SumTree<SyntaxLayerEntry>>> = LazyLock::new(|| {
-            let (sender, receiver) = mpsc::channel();
-            std::thread::Builder::new()
-                .name("SyntaxSnapshot::drop".into())
-                .spawn(move || while receiver.recv().is_ok() {})
-                .expect("drop thread should spawn");
-            sender
-        });
-
-        let empty_layers = SumTree::from_summary(SyntaxLayerSummary {
-            min_depth: 0,
-            max_depth: 0,
-            range: Anchor::min_min_range_for_buffer(
-                BufferId::new(1).expect("buffer id should be nonzero"),
-            ),
-        });
-        let layers = std::mem::replace(&mut self.layers, empty_layers);
-        if DROP_TX.send(layers).is_err() {
-            log::debug!("Failed to drop syntax snapshot on background thread");
-        }
-    }
-}
-
 #[derive(Default)]
 pub struct SyntaxMapCaptures<'a> {
     layers: Vec<SyntaxMapCapturesLayer<'a>>,
@@ -327,6 +294,14 @@ impl Drop for QueryCursorHandle {
     }
 }
 
+#[derive(Clone)]
+pub struct SyntaxSnapshot {
+    layers: SumTree<SyntaxLayerEntry>,
+    parsed_version: clock::Global,
+    interpolated_version: clock::Global,
+    update_count: usize,
+}
+
 impl SyntaxSnapshot {
     fn new(text: &text::BufferSnapshot) -> Self {
         Self {
@@ -545,6 +520,31 @@ impl SyntaxSnapshot {
             cursor.next();
             Some(syntax_layer)
         })
+    }
+}
+
+impl Drop for SyntaxSnapshot {
+    fn drop(&mut self) {
+        static DROP_TX: LazyLock<mpsc::Sender<SumTree<SyntaxLayerEntry>>> = LazyLock::new(|| {
+            let (sender, receiver) = mpsc::channel();
+            std::thread::Builder::new()
+                .name("SyntaxSnapshot::drop".into())
+                .spawn(move || while receiver.recv().is_ok() {})
+                .expect("drop thread should spawn");
+            sender
+        });
+
+        let empty_layers = SumTree::from_summary(SyntaxLayerSummary {
+            min_depth: 0,
+            max_depth: 0,
+            range: Anchor::min_min_range_for_buffer(
+                BufferId::new(1).expect("buffer id should be nonzero"),
+            ),
+        });
+        let layers = std::mem::replace(&mut self.layers, empty_layers);
+        if DROP_TX.send(layers).is_err() {
+            log::debug!("Failed to drop syntax snapshot on background thread");
+        }
     }
 }
 

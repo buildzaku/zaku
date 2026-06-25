@@ -348,12 +348,6 @@ pub struct Timer {
     pub done: bool,
 }
 
-impl Drop for Timer {
-    fn drop(&mut self) {
-        self.finish();
-    }
-}
-
 impl Timer {
     #[must_use = "Timer will stop when dropped, the result of this function should be saved in a variable prefixed with `_` if it should stop when dropped"]
     pub fn new(logger: Logger, name: &'static str) -> Self {
@@ -403,6 +397,12 @@ impl Timer {
             elapsed
         );
         self.done = true;
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        self.finish();
     }
 }
 

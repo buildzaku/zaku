@@ -15,9 +15,6 @@ use crate::{PathStyle, is_absolute};
 #[derive(PartialEq, Eq, Hash, Serialize)]
 pub struct RelPath(str);
 
-#[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct RelPathBuf(String);
-
 impl RelPath {
     pub fn empty() -> &'static Self {
         Self::new_unchecked("")
@@ -188,9 +185,6 @@ impl ToOwned for RelPath {
     }
 }
 
-#[derive(Debug)]
-pub struct StripPrefixError;
-
 impl PartialOrd for RelPath {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
@@ -209,17 +203,23 @@ impl fmt::Debug for RelPath {
     }
 }
 
-impl fmt::Debug for RelPathBuf {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, formatter)
+impl AsRef<RelPath> for RelPath {
+    fn as_ref(&self) -> &RelPath {
+        self
     }
 }
 
-impl Default for RelPathBuf {
-    fn default() -> Self {
-        Self::new()
+impl PartialEq<str> for RelPath {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == *other
     }
 }
+
+#[derive(Debug)]
+pub struct StripPrefixError;
+
+#[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct RelPathBuf(String);
 
 impl RelPathBuf {
     pub fn new() -> Self {
@@ -250,15 +250,47 @@ impl RelPathBuf {
     }
 }
 
+impl Default for RelPathBuf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl fmt::Debug for RelPathBuf {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, formatter)
+    }
+}
+
 impl Borrow<RelPath> for RelPathBuf {
     fn borrow(&self) -> &RelPath {
         self.as_rel_path()
     }
 }
 
+impl From<Arc<RelPath>> for RelPathBuf {
+    fn from(value: Arc<RelPath>) -> Self {
+        value.to_rel_path_buf()
+    }
+}
+
 impl From<RelPathBuf> for Arc<RelPath> {
     fn from(value: RelPathBuf) -> Self {
         Arc::from(value.as_rel_path())
+    }
+}
+
+impl AsRef<RelPath> for RelPathBuf {
+    fn as_ref(&self) -> &RelPath {
+        self.as_rel_path()
+    }
+}
+
+impl Deref for RelPathBuf {
+    type Target = RelPath;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
     }
 }
 
@@ -272,35 +304,9 @@ impl From<&RelPath> for Arc<RelPath> {
     }
 }
 
-impl AsRef<RelPath> for RelPathBuf {
-    fn as_ref(&self) -> &RelPath {
-        self.as_rel_path()
-    }
-}
-
-impl AsRef<RelPath> for RelPath {
-    fn as_ref(&self) -> &RelPath {
-        self
-    }
-}
-
 impl<'a> From<&'a RelPath> for Cow<'a, RelPath> {
     fn from(value: &'a RelPath) -> Self {
         Self::Borrowed(value)
-    }
-}
-
-impl Deref for RelPathBuf {
-    type Target = RelPath;
-
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
-}
-
-impl PartialEq<str> for RelPath {
-    fn eq(&self, other: &str) -> bool {
-        self.0 == *other
     }
 }
 
@@ -310,12 +316,12 @@ pub fn rel_path(path: &str) -> &RelPath {
     RelPath::unix(path).expect("test path should be relative")
 }
 
-#[derive(Default)]
-pub struct RelPathComponents<'a>(&'a str);
-
 pub struct RelPathAncestors<'a>(Option<&'a str>);
 
 const SEPARATOR: char = '/';
+
+#[derive(Default)]
+pub struct RelPathComponents<'a>(&'a str);
 
 impl<'a> RelPathComponents<'a> {
     pub fn rest(&self) -> &'a RelPath {

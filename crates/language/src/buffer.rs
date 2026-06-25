@@ -56,27 +56,6 @@ pub struct BufferSnapshot {
     pub capability: Capability,
 }
 
-impl Clone for BufferSnapshot {
-    fn clone(&self) -> Self {
-        Self {
-            text: self.text.clone(),
-            syntax: self.syntax.clone(),
-            language: self.language.clone(),
-            file: self.file.clone(),
-            non_text_state_update_count: self.non_text_state_update_count,
-            capability: self.capability,
-        }
-    }
-}
-
-impl Deref for BufferSnapshot {
-    type Target = text::BufferSnapshot;
-
-    fn deref(&self) -> &Self::Target {
-        &self.text
-    }
-}
-
 impl BufferSnapshot {
     pub fn language(&self) -> Option<&Arc<Language>> {
         self.language.as_ref()
@@ -116,6 +95,27 @@ impl BufferSnapshot {
             syntax = Some(self.get_highlights(range.clone()));
         }
         BufferChunks::new(self.text.as_rope(), range, syntax)
+    }
+}
+
+impl Clone for BufferSnapshot {
+    fn clone(&self) -> Self {
+        Self {
+            text: self.text.clone(),
+            syntax: self.syntax.clone(),
+            language: self.language.clone(),
+            file: self.file.clone(),
+            non_text_state_update_count: self.non_text_state_update_count,
+            capability: self.capability,
+        }
+    }
+}
+
+impl Deref for BufferSnapshot {
+    type Target = text::BufferSnapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.text
     }
 }
 
@@ -330,8 +330,6 @@ pub struct Buffer {
     reparse: Option<Task<()>>,
     sync_parse_timeout: Option<Duration>,
 }
-
-impl EventEmitter<BufferEvent> for Buffer {}
 
 impl Buffer {
     pub fn local<T: Into<String>>(base_text: T, cx: &Context<Self>) -> Self {
@@ -893,6 +891,8 @@ impl Buffer {
         cx.notify();
     }
 }
+
+impl EventEmitter<BufferEvent> for Buffer {}
 
 impl Deref for Buffer {
     type Target = text::Buffer;

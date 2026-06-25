@@ -3,12 +3,6 @@ use std::sync::Arc;
 
 use worktree::{DiskState, File, RequestFileState};
 
-pub struct RequestBuffer {
-    file: Arc<File>,
-    request_file: RequestFileState,
-    is_dirty: bool,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RequestBufferEvent {
     DirtyChanged,
@@ -16,6 +10,12 @@ pub enum RequestBufferEvent {
     FileHandleChanged,
     Reloaded,
     ReloadNeeded,
+}
+
+pub struct RequestBuffer {
+    file: Arc<File>,
+    request_file: RequestFileState,
+    is_dirty: bool,
 }
 
 impl RequestBuffer {

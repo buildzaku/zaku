@@ -147,13 +147,6 @@ fn scope_alloc_from_scope_str(scope_str: &str) -> Option<ScopeAlloc> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ScopeMap {
-    entries: Vec<ScopeMapEntry>,
-    modules: Vec<(String, LevelFilter)>,
-    root_count: usize,
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub struct ScopeMapEntry {
     scope: String,
     enabled: Option<LevelFilter>,
@@ -171,6 +164,13 @@ pub enum EnabledStatus {
     Enabled,
     Disabled,
     NotConfigured,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct ScopeMap {
+    entries: Vec<ScopeMapEntry>,
+    modules: Vec<(String, LevelFilter)>,
+    root_count: usize,
 }
 
 impl ScopeMap {

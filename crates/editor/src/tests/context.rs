@@ -146,6 +146,20 @@ impl EditorTestContext {
     }
 }
 
+impl Deref for EditorTestContext {
+    type Target = VisualTestContext;
+
+    fn deref(&self) -> &Self::Target {
+        &self.cx
+    }
+}
+
+impl DerefMut for EditorTestContext {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cx
+    }
+}
+
 #[derive(Clone)]
 struct AssertionContextManager {
     id: Arc<AtomicUsize>,
@@ -186,19 +200,5 @@ impl Drop for ContextHandle {
     fn drop(&mut self) {
         let mut contexts = self.manager.contexts.write().unwrap();
         contexts.remove(&self.id);
-    }
-}
-
-impl Deref for EditorTestContext {
-    type Target = VisualTestContext;
-
-    fn deref(&self) -> &Self::Target {
-        &self.cx
-    }
-}
-
-impl DerefMut for EditorTestContext {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.cx
     }
 }

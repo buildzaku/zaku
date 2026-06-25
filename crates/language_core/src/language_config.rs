@@ -182,12 +182,6 @@ pub enum Override<T> {
     Set(T),
 }
 
-impl<T> Default for Override<T> {
-    fn default() -> Self {
-        Override::Remove { remove: false }
-    }
-}
-
 impl<T> Override<T> {
     pub fn as_option<'a>(this: Option<&'a Self>, original: Option<&'a T>) -> Option<&'a T> {
         match this {
@@ -195,6 +189,12 @@ impl<T> Override<T> {
             Some(Self::Remove { remove: true }) => None,
             Some(Self::Remove { remove: false }) | None => original,
         }
+    }
+}
+
+impl<T> Default for Override<T> {
+    fn default() -> Self {
+        Override::Remove { remove: false }
     }
 }
 
@@ -213,14 +213,6 @@ impl BracketPairConfig {
     }
 }
 
-#[derive(Deserialize, JsonSchema)]
-pub struct BracketPairContent {
-    #[serde(flatten)]
-    pub bracket_pair: BracketPair,
-    #[serde(default)]
-    pub not_in: Vec<String>,
-}
-
 impl<'de> Deserialize<'de> for BracketPairConfig {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
@@ -237,6 +229,14 @@ impl<'de> Deserialize<'de> for BracketPairConfig {
             disabled_scopes_by_bracket_ix,
         })
     }
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct BracketPairContent {
+    #[serde(flatten)]
+    pub bracket_pair: BracketPair,
+    #[serde(default)]
+    pub not_in: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, JsonSchema)]

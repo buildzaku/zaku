@@ -8,13 +8,13 @@ use bytes::Bytes;
 use futures::AsyncRead;
 use http_body::{Body, Frame};
 
-pub struct AsyncBody(pub Inner);
-
 pub enum Inner {
     Empty,
     Bytes(io::Cursor<Bytes>),
     AsyncReader(Pin<Box<dyn futures::AsyncRead + Send + Sync>>),
 }
+
+pub struct AsyncBody(pub Inner);
 
 impl AsyncBody {
     pub fn empty() -> Self {

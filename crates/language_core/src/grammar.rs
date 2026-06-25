@@ -29,19 +29,6 @@ impl Default for GrammarId {
     }
 }
 
-pub struct Grammar {
-    id: GrammarId,
-    pub ts_language: tree_sitter::Language,
-    pub error_query: Option<Query>,
-    pub highlights_config: Option<HighlightsConfig>,
-    pub brackets_config: Option<BracketsConfig>,
-    pub redactions_config: Option<RedactionConfig>,
-    pub indents_config: Option<IndentConfig>,
-    pub injection_config: Option<InjectionConfig>,
-    pub override_config: Option<OverrideConfig>,
-    pub highlight_map: Mutex<HighlightMap>,
-}
-
 pub struct HighlightsConfig {
     pub query: Query,
     pub identifier_capture_indices: Vec<u32>,
@@ -160,6 +147,19 @@ fn populate_capture_indices(
         );
     }
     Ok(success)
+}
+
+pub struct Grammar {
+    id: GrammarId,
+    pub ts_language: tree_sitter::Language,
+    pub error_query: Option<Query>,
+    pub highlights_config: Option<HighlightsConfig>,
+    pub brackets_config: Option<BracketsConfig>,
+    pub redactions_config: Option<RedactionConfig>,
+    pub indents_config: Option<IndentConfig>,
+    pub injection_config: Option<InjectionConfig>,
+    pub override_config: Option<OverrideConfig>,
+    pub highlight_map: Mutex<HighlightMap>,
 }
 
 impl Grammar {

@@ -615,6 +615,8 @@ impl Deref for Worktree {
     }
 }
 
+impl EventEmitter<WorktreeEvent> for Worktree {}
+
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProjectEntryId(usize);
 
@@ -1098,8 +1100,6 @@ pub enum WorktreeEvent {
     DeletedEntry(ProjectEntryId),
     Deleted,
 }
-
-impl EventEmitter<WorktreeEvent> for Worktree {}
 
 pub trait WorktreeModelHandle {
     #[cfg(feature = "test")]

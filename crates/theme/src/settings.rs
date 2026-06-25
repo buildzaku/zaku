@@ -71,6 +71,54 @@ impl Default for ThemeSettings {
     }
 }
 
+impl settings::Settings for ThemeSettings {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        let ui = content.ui.as_ref();
+        let editor = content.editor.as_ref();
+        let ui_font_size = clamp_font_size(
+            ui.and_then(|ui| ui.font_size)
+                .map_or_else(|| gpui::px(13.0), IntoGpui::into_gpui),
+        );
+        Self {
+            ui_density: ui.and_then(|ui| ui.density).unwrap_or_default().into(),
+            ui_font_size,
+            ui_font: Font {
+                family: ui
+                    .and_then(|ui| ui.font_family.clone())
+                    .map_or_else(|| ".SystemUIFont".into(), IntoGpui::into_gpui),
+                features: font_features_from_settings(ui.and_then(|ui| ui.font_features.as_ref())),
+                fallbacks: font_fallbacks_from_settings(
+                    ui.and_then(|ui| ui.font_fallbacks.as_deref()),
+                ),
+                weight: font_weight_from_settings(ui.and_then(|ui| ui.font_weight)),
+                style: FontStyle::default(),
+            },
+            buffer_font_size: clamp_font_size(
+                editor
+                    .and_then(|editor| editor.font_size)
+                    .map_or_else(|| gpui::px(13.0), IntoGpui::into_gpui),
+            ),
+            buffer_font: Font {
+                family: editor
+                    .and_then(|editor| editor.font_family.clone())
+                    .map_or_else(|| ".SystemUIFont".into(), IntoGpui::into_gpui),
+                features: font_features_from_settings(
+                    editor.and_then(|editor| editor.font_features.as_ref()),
+                ),
+                fallbacks: font_fallbacks_from_settings(
+                    editor.and_then(|editor| editor.font_fallbacks.as_deref()),
+                ),
+                weight: font_weight_from_settings(editor.and_then(|editor| editor.font_weight)),
+                style: FontStyle::default(),
+            },
+            buffer_line_height: editor
+                .and_then(|editor| editor.line_height)
+                .unwrap_or_default()
+                .into(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum BufferLineHeight {
     #[default]
@@ -136,52 +184,4 @@ fn font_features_from_settings(features: Option<&settings::FontFeaturesContent>)
 
 fn font_weight_from_settings(weight: Option<settings::FontWeightContent>) -> FontWeight {
     weight.unwrap_or_default().into_gpui()
-}
-
-impl settings::Settings for ThemeSettings {
-    fn from_settings(content: &settings::SettingsContent) -> Self {
-        let ui = content.ui.as_ref();
-        let editor = content.editor.as_ref();
-        let ui_font_size = clamp_font_size(
-            ui.and_then(|ui| ui.font_size)
-                .map_or_else(|| gpui::px(13.0), IntoGpui::into_gpui),
-        );
-        Self {
-            ui_density: ui.and_then(|ui| ui.density).unwrap_or_default().into(),
-            ui_font_size,
-            ui_font: Font {
-                family: ui
-                    .and_then(|ui| ui.font_family.clone())
-                    .map_or_else(|| ".SystemUIFont".into(), IntoGpui::into_gpui),
-                features: font_features_from_settings(ui.and_then(|ui| ui.font_features.as_ref())),
-                fallbacks: font_fallbacks_from_settings(
-                    ui.and_then(|ui| ui.font_fallbacks.as_deref()),
-                ),
-                weight: font_weight_from_settings(ui.and_then(|ui| ui.font_weight)),
-                style: FontStyle::default(),
-            },
-            buffer_font_size: clamp_font_size(
-                editor
-                    .and_then(|editor| editor.font_size)
-                    .map_or_else(|| gpui::px(13.0), IntoGpui::into_gpui),
-            ),
-            buffer_font: Font {
-                family: editor
-                    .and_then(|editor| editor.font_family.clone())
-                    .map_or_else(|| ".SystemUIFont".into(), IntoGpui::into_gpui),
-                features: font_features_from_settings(
-                    editor.and_then(|editor| editor.font_features.as_ref()),
-                ),
-                fallbacks: font_fallbacks_from_settings(
-                    editor.and_then(|editor| editor.font_fallbacks.as_deref()),
-                ),
-                weight: font_weight_from_settings(editor.and_then(|editor| editor.font_weight)),
-                style: FontStyle::default(),
-            },
-            buffer_line_height: editor
-                .and_then(|editor| editor.line_height)
-                .unwrap_or_default()
-                .into(),
-        }
-    }
 }

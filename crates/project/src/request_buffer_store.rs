@@ -20,6 +20,15 @@ use crate::{
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
 
+pub enum RequestBufferStoreEvent {
+    BufferAdded(Entity<RequestBuffer>),
+    BufferDropped(BufferId),
+    BufferChangedFilePath {
+        buffer: Entity<RequestBuffer>,
+        old_file: Option<Arc<File>>,
+    },
+}
+
 pub struct RequestBufferStore {
     buffer_ids_by_entry_id: HashMap<ProjectEntryId, BufferId>,
     pending_buffer_opens:
@@ -28,15 +37,6 @@ pub struct RequestBufferStore {
     opened_buffers: HashMap<BufferId, WeakEntity<RequestBuffer>>,
     path_to_buffer_id: HashMap<ProjectPath, BufferId>,
     _worktree_store_subscription: Subscription,
-}
-
-pub enum RequestBufferStoreEvent {
-    BufferAdded(Entity<RequestBuffer>),
-    BufferDropped(BufferId),
-    BufferChangedFilePath {
-        buffer: Entity<RequestBuffer>,
-        old_file: Option<Arc<File>>,
-    },
 }
 
 impl RequestBufferStore {

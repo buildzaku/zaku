@@ -41,21 +41,6 @@ impl Default for WorktreeIdCounter {
 
 impl Global for WorktreeIdCounter {}
 
-pub struct WorktreeStore {
-    next_entry_id: Arc<AtomicUsize>,
-    next_worktree_id: WorktreeIdCounter,
-    worktrees: Vec<WorktreeHandle>,
-    initial_scan_complete: (watch::Sender<bool>, watch::Receiver<bool>),
-    worktree_path_to_open: Option<Arc<SanitizedPath>>,
-    worktree_open_epoch: usize,
-    scanning_enabled: bool,
-    pending_worktree_tasks: HashMap<
-        Arc<SanitizedPath>,
-        future::Shared<Task<Result<Entity<Worktree>, Arc<anyhow::Error>>>>,
-    >,
-    fs: Arc<dyn Fs>,
-}
-
 #[derive(Clone, Debug)]
 enum WorktreeHandle {
     Strong(Entity<Worktree>),
@@ -77,6 +62,21 @@ pub enum WorktreeStoreEvent {
     WorktreeRemoved(WorktreeId),
     WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
     WorktreeDeletedEntry(WorktreeId, ProjectEntryId),
+}
+
+pub struct WorktreeStore {
+    next_entry_id: Arc<AtomicUsize>,
+    next_worktree_id: WorktreeIdCounter,
+    worktrees: Vec<WorktreeHandle>,
+    initial_scan_complete: (watch::Sender<bool>, watch::Receiver<bool>),
+    worktree_path_to_open: Option<Arc<SanitizedPath>>,
+    worktree_open_epoch: usize,
+    scanning_enabled: bool,
+    pending_worktree_tasks: HashMap<
+        Arc<SanitizedPath>,
+        future::Shared<Task<Result<Entity<Worktree>, Arc<anyhow::Error>>>>,
+    >,
+    fs: Arc<dyn Fs>,
 }
 
 impl WorktreeStore {

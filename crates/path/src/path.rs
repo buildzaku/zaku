@@ -639,6 +639,12 @@ impl Display for SanitizedPath {
     }
 }
 
+impl AsRef<Path> for SanitizedPath {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
 impl From<&SanitizedPath> for Arc<SanitizedPath> {
     fn from(sanitized_path: &SanitizedPath) -> Self {
         let path: Arc<Path> = sanitized_path.0.into();
@@ -646,12 +652,6 @@ impl From<&SanitizedPath> for Arc<SanitizedPath> {
         // SAFETY: `SanitizedPath` is a transparent wrapper around `Path` and adds no
         // extra invariants, so this `Arc` cast is valid.
         unsafe { Arc::from_raw(Arc::into_raw(path) as *const SanitizedPath) }
-    }
-}
-
-impl AsRef<Path> for SanitizedPath {
-    fn as_ref(&self) -> &Path {
-        &self.0
     }
 }
 

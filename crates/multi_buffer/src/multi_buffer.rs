@@ -168,6 +168,49 @@ impl ops::AddAssign<MultiBufferOffset> for MultiBufferOffset {
     }
 }
 
+impl MultiBufferDimension for MultiBufferOffset {
+    type TextDimension = usize;
+
+    fn from_summary(summary: &MBTextSummary) -> Self {
+        summary.len
+    }
+
+    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
+        self.0 += *summary;
+    }
+
+    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
+        *self += summary.len;
+    }
+}
+
+impl ToOffset for MultiBufferOffset {
+    #[track_caller]
+    fn to_offset(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffset {
+        assert!(
+            *self <= snapshot.len(),
+            "offset {} is greater than the snapshot.len() {}",
+            self.0,
+            snapshot.len().0,
+        );
+        *self
+    }
+
+    fn to_offset_utf16(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffsetUtf16 {
+        snapshot.offset_to_offset_utf16(*self)
+    }
+}
+
+impl ToPoint for MultiBufferOffset {
+    fn to_point(&self, snapshot: &MultiBufferSnapshot) -> Point {
+        snapshot.offset_to_point(*self)
+    }
+
+    fn to_point_utf16(&self, snapshot: &MultiBufferSnapshot) -> PointUtf16 {
+        snapshot.offset_to_point_utf16(*self)
+    }
+}
+
 #[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq)]
 pub struct MultiBufferOffsetUtf16(pub OffsetUtf16);
 
@@ -222,6 +265,32 @@ impl Sub<OffsetUtf16> for MultiBufferOffsetUtf16 {
 
     fn sub(self, other: OffsetUtf16) -> Self::Output {
         MultiBufferOffsetUtf16(self.0 - other)
+    }
+}
+
+impl MultiBufferDimension for MultiBufferOffsetUtf16 {
+    type TextDimension = OffsetUtf16;
+
+    fn from_summary(summary: &MBTextSummary) -> Self {
+        MultiBufferOffsetUtf16(summary.len_utf16)
+    }
+
+    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
+        self.0 += *summary;
+    }
+
+    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
+        self.0 += summary.len_utf16;
+    }
+}
+
+impl ToOffset for MultiBufferOffsetUtf16 {
+    fn to_offset(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffset {
+        snapshot.offset_utf16_to_offset(*self)
+    }
+
+    fn to_offset_utf16(&self, _: &MultiBufferSnapshot) -> MultiBufferOffsetUtf16 {
+        *self
     }
 }
 
@@ -302,38 +371,6 @@ impl MultiBufferDimension for PointUtf16 {
     }
 }
 
-impl MultiBufferDimension for MultiBufferOffset {
-    type TextDimension = usize;
-
-    fn from_summary(summary: &MBTextSummary) -> Self {
-        summary.len
-    }
-
-    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
-        self.0 += *summary;
-    }
-
-    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
-        *self += summary.len;
-    }
-}
-
-impl MultiBufferDimension for MultiBufferOffsetUtf16 {
-    type TextDimension = OffsetUtf16;
-
-    fn from_summary(summary: &MBTextSummary) -> Self {
-        MultiBufferOffsetUtf16(summary.len_utf16)
-    }
-
-    fn add_text_dim(&mut self, summary: &Self::TextDimension) {
-        self.0 += *summary;
-    }
-
-    fn add_mb_text_summary(&mut self, summary: &MBTextSummary) {
-        self.0 += summary.len_utf16;
-    }
-}
-
 pub trait ToOffset: 'static + fmt::Debug {
     fn to_offset(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffset;
     fn to_offset_utf16(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffsetUtf16;
@@ -342,24 +379,6 @@ pub trait ToOffset: 'static + fmt::Debug {
 pub trait ToPoint: 'static + fmt::Debug {
     fn to_point(&self, snapshot: &MultiBufferSnapshot) -> Point;
     fn to_point_utf16(&self, snapshot: &MultiBufferSnapshot) -> PointUtf16;
-}
-
-#[derive(Clone)]
-pub struct MultiBufferSnapshot {
-    buffer: BufferSnapshot,
-    edit_count: usize,
-    is_dirty: bool,
-    has_deleted_file: bool,
-    has_conflict: bool,
-}
-
-pub struct MultiBuffer {
-    snapshot: RefCell<MultiBufferSnapshot>,
-    buffer: Entity<Buffer>,
-    subscriptions: Topic<MultiBufferOffset>,
-    singleton: bool,
-    title: Option<String>,
-    capability: Capability,
 }
 
 pub struct MultiBufferChunks<'a> {
@@ -372,6 +391,15 @@ impl<'a> Iterator for MultiBufferChunks<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.buffer_chunks.next()
     }
+}
+
+pub struct MultiBuffer {
+    snapshot: RefCell<MultiBufferSnapshot>,
+    buffer: Entity<Buffer>,
+    subscriptions: Topic<MultiBufferOffset>,
+    singleton: bool,
+    title: Option<String>,
+    capability: Capability,
 }
 
 impl MultiBuffer {
@@ -650,6 +678,15 @@ impl MultiBuffer {
 
         snapshot
     }
+}
+
+#[derive(Clone)]
+pub struct MultiBufferSnapshot {
+    buffer: BufferSnapshot,
+    edit_count: usize,
+    is_dirty: bool,
+    has_deleted_file: bool,
+    has_conflict: bool,
 }
 
 impl MultiBufferSnapshot {
@@ -1006,33 +1043,6 @@ impl ToOffset for Point {
     }
 }
 
-impl ToOffset for MultiBufferOffset {
-    #[track_caller]
-    fn to_offset(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffset {
-        assert!(
-            *self <= snapshot.len(),
-            "offset {} is greater than the snapshot.len() {}",
-            self.0,
-            snapshot.len().0,
-        );
-        *self
-    }
-
-    fn to_offset_utf16(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffsetUtf16 {
-        snapshot.offset_to_offset_utf16(*self)
-    }
-}
-
-impl ToOffset for MultiBufferOffsetUtf16 {
-    fn to_offset(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffset {
-        snapshot.offset_utf16_to_offset(*self)
-    }
-
-    fn to_offset_utf16(&self, _: &MultiBufferSnapshot) -> MultiBufferOffsetUtf16 {
-        *self
-    }
-}
-
 impl ToOffset for PointUtf16 {
     fn to_offset(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffset {
         snapshot.point_utf16_to_offset(*self)
@@ -1040,16 +1050,6 @@ impl ToOffset for PointUtf16 {
 
     fn to_offset_utf16(&self, snapshot: &MultiBufferSnapshot) -> MultiBufferOffsetUtf16 {
         snapshot.point_utf16_to_offset_utf16(*self)
-    }
-}
-
-impl ToPoint for MultiBufferOffset {
-    fn to_point(&self, snapshot: &MultiBufferSnapshot) -> Point {
-        snapshot.offset_to_point(*self)
-    }
-
-    fn to_point_utf16(&self, snapshot: &MultiBufferSnapshot) -> PointUtf16 {
-        snapshot.offset_to_point_utf16(*self)
     }
 }
 
