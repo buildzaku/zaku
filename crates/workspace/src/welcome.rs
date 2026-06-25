@@ -185,7 +185,7 @@ impl WelcomePage {
         let fs = self
             .workspace
             .upgrade()
-            .map(|workspace| workspace.read(cx).shared_state().fs.clone());
+            .map(|workspace| workspace.read(cx).app_state().fs.clone());
         let workspace_db = WorkspaceDb::global(cx);
         cx.spawn_in(window, async move |this: WeakEntity<Self>, cx| {
             let Some(fs) = fs else {

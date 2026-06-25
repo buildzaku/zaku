@@ -23,7 +23,7 @@ use language::LanguageRegistry;
 use reqwest_client::ReqwestClient;
 use session::{AppSession, Session};
 use theme::{ActiveTheme, GlobalTheme, LoadThemes};
-use workspace::SharedState;
+use workspace::AppState;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -87,8 +87,8 @@ fn main() {
             }
         })
         .detach();
-        let shared_state = Arc::new(SharedState::new(fs, http_client, app_session, languages));
-        workspace::init(shared_state.clone(), cx);
+        let app_state = Arc::new(AppState::new(fs, http_client, app_session, languages));
+        workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
@@ -101,7 +101,7 @@ fn main() {
 
         cx.activate(true);
         cx.spawn(async move |cx| {
-            if let Err(error) = zaku::restore_or_create_workspace(shared_state, cx).await {
+            if let Err(error) = zaku::restore_or_create_workspace(app_state, cx).await {
                 log::error!("Failed to restore or create workspace: {error:#}");
             }
         })

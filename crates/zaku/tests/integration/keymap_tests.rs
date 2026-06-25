@@ -5,17 +5,17 @@ use std::{collections::BTreeSet, path::PathBuf, sync::Arc, time::Duration};
 use fs::{Fs, TempFs};
 use settings::watch_config_file;
 use theme::LoadThemes;
-use workspace::{Root, SharedState, Workspace, WorkspaceDb};
+use workspace::{AppState, Root, Workspace, WorkspaceDb};
 use zaku::{handle_keymap_file_changes, handle_settings_file_changes};
 
 gpui::actions!(test_only, [ActionA, ActionB]);
 
-fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
     cx.update(|cx| {
         settings::init(cx);
         settings::log_settings::init(cx);
         theme::init(LoadThemes::JustBase, cx);
-        workspace::init(shared_state, cx);
+        workspace::init(app_state, cx);
         project_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
@@ -101,13 +101,13 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-    init_test(shared_state.clone(), cx);
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), cx);
 
     let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
     let workspace_id = workspace_db.next_id().await.unwrap();
     let window = cx.add_window(move |window, cx| {
-        Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+        Root::new(Workspace::create(workspace_id, app_state, window, cx))
     });
     let workspace = window
         .read_with(cx, |root, _| root.workspace().clone())
@@ -189,13 +189,13 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-    init_test(shared_state.clone(), cx);
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state.clone(), cx);
 
     let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
     let workspace_id = workspace_db.next_id().await.unwrap();
     let window = cx.add_window(move |window, cx| {
-        Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+        Root::new(Workspace::create(workspace_id, app_state, window, cx))
     });
     let workspace = window
         .read_with(cx, |root, _| root.workspace().clone())
@@ -268,8 +268,8 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
 #[gpui::test]
 fn test_action_namespaces(cx: &mut TestAppContext) {
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-    init_test(shared_state, cx);
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+    init_test(app_state, cx);
 
     cx.update(|cx| {
         let all_actions = cx.all_action_names();

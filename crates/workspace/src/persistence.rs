@@ -779,7 +779,7 @@ mod tests {
     use util_macros::path;
     use worktree::WorktreeModelHandle;
 
-    use crate::{OpenMode, Root, SharedState, Workspace, tests::init_test};
+    use crate::{AppState, OpenMode, Root, Workspace, tests::init_test};
 
     #[gpui::test]
     async fn test_save_workspace_deduplicates_paths(cx: &mut TestAppContext) {
@@ -897,8 +897,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -918,7 +918,7 @@ mod tests {
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
@@ -1082,15 +1082,15 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));
@@ -1142,15 +1142,15 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let project_path = temp_fs.path().join(path!("project"));

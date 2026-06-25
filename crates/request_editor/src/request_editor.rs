@@ -32,7 +32,7 @@ use ui::{
     IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
-use workspace::{SharedState, Workspace, pane::Pane};
+use workspace::{AppState, Workspace, pane::Pane};
 
 use crate::persistence::RequestEditorDb;
 
@@ -463,7 +463,7 @@ impl RequestEditor {
             request_snapshot,
             active_tab: RequestEditorTab::Parameters,
             response: None,
-            http_client: SharedState::global(cx).http_client.clone(),
+            http_client: AppState::global(cx).http_client.clone(),
             params_scroll_handle: ScrollHandle::new(),
             headers_scroll_handle: ScrollHandle::new(),
             input_subscriptions,
@@ -634,7 +634,7 @@ impl RequestEditor {
         };
 
         let payload_id = payload.entity_id();
-        let languages = SharedState::global(cx).languages.clone();
+        let languages = AppState::global(cx).languages.clone();
         cx.spawn(async move |this, cx| {
             let language = match languages.language_for_name(language_name).await {
                 Ok(language) => language,
@@ -905,7 +905,7 @@ impl RequestEditor {
 
         let request_started_at = Instant::now();
         let http_client = self.http_client.clone();
-        let languages = SharedState::global(cx).languages.clone();
+        let languages = AppState::global(cx).languages.clone();
 
         window
             .spawn(cx, {
@@ -1701,14 +1701,14 @@ mod tests {
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{DockPosition, Item, Root, SharedState};
+    use workspace::{AppState, DockPosition, Item, Root};
 
-    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            workspace::init(shared_state, cx);
+            workspace::init(app_state, cx);
             editor::init(cx);
             crate::init(cx);
             response_panel::init(cx);
@@ -1744,8 +1744,8 @@ mod tests {
 
         let temp_fs = TempFs::new(cx.executor());
         let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-        let shared_state =
-            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
 
@@ -1758,7 +1758,7 @@ mod tests {
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1829,8 +1829,8 @@ mod tests {
 
         let temp_fs = TempFs::new(cx.executor());
         let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-        let shared_state =
-            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (tx, rx) = oneshot::channel();
         let rx = Arc::new(Mutex::new(Some(rx)));
 
@@ -1866,7 +1866,7 @@ mod tests {
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -1938,8 +1938,8 @@ mod tests {
 
         let temp_fs = TempFs::new(cx.executor());
         let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-        let shared_state =
-            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         let first_rx = Arc::new(Mutex::new(Some(first_rx)));
@@ -1965,7 +1965,7 @@ mod tests {
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2101,8 +2101,8 @@ mod tests {
 
         let temp_fs = TempFs::new(cx.executor());
         let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
-        let shared_state =
-            cx.update(|cx| SharedState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+        let app_state =
+            cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         let first_rx = Arc::new(Mutex::new(Some(first_rx)));
@@ -2119,7 +2119,7 @@ mod tests {
             }
         });
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2257,9 +2257,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2386,9 +2386,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
 
-        init_test(shared_state, cx);
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),

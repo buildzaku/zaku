@@ -8,17 +8,17 @@ use fs::TempFs;
 use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::{OpenMode, OpenResult, Root, SharedState, Workspace, WorkspaceDb};
+use workspace::{AppState, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
 use worktree::WorktreeModelHandle;
 
-fn init_test(shared_state: Arc<SharedState>, app_db: AppDatabase, cx: &mut TestAppContext) {
+fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppContext) {
     cx.update(|cx| {
         cx.set_global(app_db);
 
         let settings_store = SettingsStore::test_new(cx);
         cx.set_global(settings_store);
         theme::init(LoadThemes::JustBase, cx);
-        workspace::init(shared_state, cx);
+        workspace::init(app_state, cx);
         project_panel::init(cx);
         editor::init(cx);
         request_editor::init(cx);
@@ -35,13 +35,13 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     let session = Session::new(Uuid::new_v4().to_string(), kv_store.clone()).await;
 
     let temp_fs = TempFs::new(cx.executor());
-    let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
+    let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
     cx.update(|cx| {
-        shared_state
+        app_state
             .session
             .update(cx, |app_session, _cx| app_session.replace_session(session));
     });
-    init_test(shared_state.clone(), app_db, cx);
+    init_test(app_state.clone(), app_db, cx);
 
     for project_path in ["first", "second", "third", "fourth"] {
         temp_fs.insert_tree(
@@ -70,7 +70,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         fourth_path.clone(),
     ] {
         let result = cx
-            .update(|cx| Workspace::open(path, shared_state.clone(), None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(path, app_state.clone(), None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -97,7 +97,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     let [first_result, second_result, third_result, fourth_result]: [OpenResult; 4] =
         open_results.try_into().ok().unwrap();
 
-    let session_id = cx.update(|cx| shared_state.session.read(cx).id().to_owned());
+    let session_id = cx.update(|cx| app_state.session.read(cx).id().to_owned());
     let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
     let session_workspaces = workspace::last_session_workspace_locations(
         &workspace_db,
@@ -135,13 +135,13 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
 
     let restored_session = Session::new(Uuid::new_v4().to_string(), kv_store).await;
     cx.update(|cx| {
-        shared_state.session.update(cx, |app_session, _cx| {
+        app_state.session.update(cx, |app_session, _cx| {
             app_session.replace_session(restored_session);
         });
     });
 
     let mut async_cx = cx.to_async();
-    zaku::restore_or_create_workspace(shared_state.clone(), &mut async_cx)
+    zaku::restore_or_create_workspace(app_state.clone(), &mut async_cx)
         .await
         .unwrap();
 

@@ -2852,14 +2852,14 @@ mod tests {
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
-    use workspace::{SharedState, Workspace, build_workspace, pane::PaneEvent};
+    use workspace::{AppState, Workspace, build_workspace, pane::PaneEvent};
 
-    fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            workspace::init(shared_state, cx);
+            workspace::init(app_state, cx);
             crate::init(cx);
             editor::init(cx);
             request_editor::init(cx);
@@ -3041,8 +3041,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3080,8 +3080,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3150,8 +3150,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3214,8 +3214,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3320,8 +3320,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3412,8 +3412,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3541,8 +3541,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3654,8 +3654,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3765,8 +3765,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3828,8 +3828,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3918,8 +3918,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -4002,8 +4002,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -4093,8 +4093,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -4198,8 +4198,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(
             path!("project"),

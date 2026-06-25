@@ -16,7 +16,7 @@ use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use system_specs::SystemSpecs;
 use workspace::{
-    CloseIntent, DockPosition, OpenMode, Root, SessionWorkspace, SharedState, Toast, Workspace,
+    AppState, CloseIntent, DockPosition, OpenMode, Root, SessionWorkspace, Toast, Workspace,
     WorkspaceDb, create_and_open_file,
     notifications::{
         NotificationId, dismiss_app_notification, show_app_notification,
@@ -400,10 +400,10 @@ fn show_keymap_file_load_error(notification_id: NotificationId, error_message: &
 }
 
 pub async fn restore_or_create_workspace(
-    shared_state: Arc<SharedState>,
+    app_state: Arc<AppState>,
     cx: &mut AsyncApp,
 ) -> anyhow::Result<()> {
-    if let Some(workspaces) = restorable_workspace_locations(cx, &shared_state).await {
+    if let Some(workspaces) = restorable_workspace_locations(cx, &app_state).await {
         let mut error_count = 0;
 
         for session_workspace in workspaces {
@@ -411,7 +411,7 @@ pub async fn restore_or_create_workspace(
                 .update(|cx| {
                     Workspace::open(
                         session_workspace.location,
-                        shared_state.clone(),
+                        app_state.clone(),
                         None,
                         OpenMode::NewWindow,
                         cx,
@@ -457,13 +457,12 @@ pub async fn restore_or_create_workspace(
 
                 let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
                 let workspace_id = workspace_db.next_id().await?;
-                let shared_state = shared_state.clone();
+                let app_state = app_state.clone();
                 cx.update(|cx| {
                     let window_options = workspace::default_window_options(cx);
                     cx.open_window(window_options, move |window, cx| {
                         cx.new(|cx| {
-                            let workspace =
-                                Workspace::create(workspace_id, shared_state, window, cx);
+                            let workspace = Workspace::create(workspace_id, app_state, window, cx);
 
                             workspace.update(cx, |workspace, cx| {
                                 workspace.show_toast(
@@ -487,7 +486,7 @@ pub async fn restore_or_create_workspace(
     cx.update(|cx| {
         let window_options = workspace::default_window_options(cx);
         cx.open_window(window_options, move |window, cx| {
-            cx.new(|cx| Root::new(Workspace::create(workspace_id, shared_state, window, cx)))
+            cx.new(|cx| Root::new(Workspace::create(workspace_id, app_state, window, cx)))
         })
     })?;
 
@@ -496,9 +495,9 @@ pub async fn restore_or_create_workspace(
 
 async fn restorable_workspace_locations(
     cx: &mut AsyncApp,
-    shared_state: &Arc<SharedState>,
+    app_state: &Arc<AppState>,
 ) -> Option<Vec<SessionWorkspace>> {
-    let session_handle = shared_state.session.clone();
+    let session_handle = app_state.session.clone();
     let (last_session_id, last_session_window_stack) = cx.update(|cx| {
         let session = session_handle.read(cx);
 
@@ -516,7 +515,7 @@ async fn restorable_workspace_locations(
         &workspace_db,
         &last_session_id,
         last_session_window_stack,
-        shared_state.fs.as_ref(),
+        app_state.fs.as_ref(),
     )
     .await
     .filter(|locations| !locations.is_empty())?;

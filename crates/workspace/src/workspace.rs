@@ -176,14 +176,14 @@ pub struct OpenResult {
 }
 
 #[derive(Clone)]
-pub struct SharedState {
+pub struct AppState {
     pub fs: Arc<dyn fs::Fs>,
     pub http_client: Arc<dyn HttpClient>,
     pub languages: Arc<LanguageRegistry>,
     pub session: Entity<AppSession>,
 }
 
-impl SharedState {
+impl AppState {
     pub fn new(
         fs: Arc<dyn fs::Fs>,
         http_client: Arc<dyn HttpClient>,
@@ -219,25 +219,25 @@ impl SharedState {
 
     #[track_caller]
     pub fn global(cx: &App) -> Arc<Self> {
-        cx.global::<GlobalSharedState>().0.clone()
+        cx.global::<GlobalAppState>().0.clone()
     }
 
     pub fn try_global(cx: &App) -> Option<Arc<Self>> {
-        cx.try_global::<GlobalSharedState>()
-            .map(|shared_state| shared_state.0.clone())
+        cx.try_global::<GlobalAppState>()
+            .map(|app_state| app_state.0.clone())
     }
 
-    pub fn set_global(shared_state: Arc<SharedState>, cx: &mut App) {
-        cx.set_global(GlobalSharedState(shared_state));
+    pub fn set_global(app_state: Arc<AppState>, cx: &mut App) {
+        cx.set_global(GlobalAppState(app_state));
     }
 }
 
-struct GlobalSharedState(Arc<SharedState>);
+struct GlobalAppState(Arc<AppState>);
 
-impl Global for GlobalSharedState {}
+impl Global for GlobalAppState {}
 
-pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
-    SharedState::set_global(shared_state.clone(), cx);
+pub fn init(app_state: Arc<AppState>, cx: &mut App) {
+    AppState::set_global(app_state.clone(), cx);
     smol::block_on(WorkspaceDb::global(cx).initialize_schema())
         .expect("workspace persistence schema should initialize");
 
@@ -246,7 +246,7 @@ pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
             let Some(window) = window else {
                 return;
             };
-            register_actions(shared_state.clone(), workspace, window, cx);
+            register_actions(app_state.clone(), workspace, window, cx);
         }
     })
     .detach();
@@ -431,7 +431,7 @@ pub fn create_and_open_file(
     default_content: impl FnOnce() -> Cow<'static, str> + Send + 'static,
 ) -> Task<anyhow::Result<Box<dyn ItemHandle>>> {
     cx.spawn_in(window, async move |workspace, cx| {
-        let fs = workspace.read_with(cx, |workspace, _| workspace.shared_state.fs.clone())?;
+        let fs = workspace.read_with(cx, |workspace, _| workspace.app_state.fs.clone())?;
 
         match fs.metadata(path).await? {
             Some(metadata) if metadata.is_dir => {
@@ -466,7 +466,7 @@ pub fn create_and_open_file(
 }
 
 fn register_actions(
-    shared_state: Arc<SharedState>,
+    app_state: Arc<AppState>,
     workspace: &mut Workspace,
     _: &mut Window,
     _: &mut Context<Workspace>,
@@ -488,7 +488,7 @@ fn register_actions(
         })
         .register_action({
             move |_, _: &actions::workspace::NewWindow, _, cx| {
-                open_new(shared_state.clone(), cx).detach_and_log_err(cx);
+                open_new(app_state.clone(), cx).detach_and_log_err(cx);
             }
         })
         .register_action(|_, _: &actions::zaku::Minimize, window, _| {
@@ -572,7 +572,7 @@ fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptio
     }
 }
 
-pub fn open_new(shared_state: Arc<SharedState>, cx: &mut App) -> Task<anyhow::Result<()>> {
+pub fn open_new(app_state: Arc<AppState>, cx: &mut App) -> Task<anyhow::Result<()>> {
     let workspace_db = WorkspaceDb::global(cx);
 
     cx.spawn(async move |cx| {
@@ -585,7 +585,7 @@ pub fn open_new(shared_state: Arc<SharedState>, cx: &mut App) -> Task<anyhow::Re
         cx.open_window(window_options, move |window, cx| {
             window.activate_window();
 
-            cx.new(|cx| Root::new(Workspace::create(workspace_id, shared_state, window, cx)))
+            cx.new(|cx| Root::new(Workspace::create(workspace_id, app_state, window, cx)))
         })?;
 
         anyhow::Ok(())
@@ -610,7 +610,7 @@ pub fn with_active_or_new_workspace(
             .log_err();
         });
     } else {
-        let shared_state = SharedState::global(cx);
+        let app_state = AppState::global(cx);
         let workspace_db = WorkspaceDb::global(cx);
         cx.spawn(async move |cx| {
             let workspace_id = workspace_db.next_id().await?;
@@ -622,7 +622,7 @@ pub fn with_active_or_new_workspace(
             cx.open_window(window_options, move |window, cx| {
                 window.activate_window();
                 cx.new(|cx| {
-                    let workspace = Workspace::create(workspace_id, shared_state, window, cx);
+                    let workspace = Workspace::create(workspace_id, app_state, window, cx);
                     workspace.update(cx, |workspace, cx| {
                         updater(workspace, window, cx);
                     });
@@ -719,7 +719,7 @@ impl Root {
 
     pub fn replace_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let workspace = self.workspace.clone();
-        let shared_state = workspace.read(cx).shared_state().clone();
+        let app_state = workspace.read(cx).app_state().clone();
         let workspace_db = WorkspaceDb::global(cx);
 
         cx.spawn_in(window, async move |this, cx| {
@@ -732,7 +732,7 @@ impl Root {
             if should_replace {
                 let workspace_id = workspace_db.next_id().await?;
                 this.update_in(cx, |root, window, cx| {
-                    root.workspace = Workspace::create(workspace_id, shared_state, window, cx);
+                    root.workspace = Workspace::create(workspace_id, app_state, window, cx);
                     cx.notify();
                 })?;
             }
@@ -1092,7 +1092,7 @@ pub fn client_side_decorations(
 }
 
 pub struct Workspace {
-    shared_state: Arc<SharedState>,
+    app_state: Arc<AppState>,
     weak_self: WeakEntity<Self>,
     registered_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
@@ -1123,7 +1123,7 @@ pub struct Workspace {
 impl Workspace {
     pub fn create<V>(
         workspace_id: WorkspaceId,
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         window: &mut Window,
         cx: &mut Context<V>,
     ) -> Entity<Self>
@@ -1131,16 +1131,16 @@ impl Workspace {
         V: 'static,
     {
         let project = cx.new({
-            let fs = shared_state.fs.clone();
-            let languages = shared_state.languages.clone();
+            let fs = app_state.fs.clone();
+            let languages = app_state.languages.clone();
             move |cx| Project::new(fs.clone(), languages.clone(), cx)
         });
 
         cx.new(|cx| {
             Self::new(
                 Some(workspace_id),
-                Some(shared_state.session.read(cx).id().to_string()),
-                shared_state,
+                Some(app_state.session.read(cx).id().to_string()),
+                app_state,
                 project,
                 window,
                 cx,
@@ -1191,8 +1191,8 @@ impl Workspace {
         }
     }
 
-    pub fn shared_state(&self) -> &Arc<SharedState> {
-        &self.shared_state
+    pub fn app_state(&self) -> &Arc<AppState> {
+        &self.app_state
     }
 
     pub fn database_id(&self) -> Option<WorkspaceId> {
@@ -1257,7 +1257,7 @@ impl Workspace {
 
     pub fn open(
         path: PathBuf,
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         requesting_window: Option<WindowHandle<Root>>,
         open_mode: OpenMode,
         cx: &mut App,
@@ -1272,8 +1272,8 @@ impl Workspace {
             let project = cx
                 .update(|cx| {
                     Project::open(
-                        shared_state.fs.clone(),
-                        shared_state.languages.clone(),
+                        app_state.fs.clone(),
+                        app_state.languages.clone(),
                         path.clone(),
                         cx,
                     )
@@ -1288,14 +1288,14 @@ impl Workspace {
 
             let (window, workspace) = if let Some(window) = window_to_replace {
                 let workspace = window.update(cx, |root: &mut Root, window, cx| {
-                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let session_id = app_state.session.read(cx).id().to_string();
                     let project = project.clone();
-                    let shared_state = shared_state.clone();
+                    let app_state = app_state.clone();
                     let workspace = cx.new(|cx| {
                         Workspace::new(
                             Some(workspace_id),
                             Some(session_id),
-                            shared_state,
+                            app_state,
                             project,
                             window,
                             cx,
@@ -1350,12 +1350,12 @@ impl Workspace {
                     options
                 });
                 let window = cx.open_window(window_options, move |window, cx| {
-                    let session_id = shared_state.session.read(cx).id().to_string();
+                    let session_id = app_state.session.read(cx).id().to_string();
                     let workspace = cx.new(|cx| {
                         Workspace::new(
                             Some(workspace_id),
                             Some(session_id),
-                            shared_state,
+                            app_state,
                             project,
                             window,
                             cx,
@@ -1495,10 +1495,10 @@ impl Workspace {
             open_mode = OpenMode::Activate;
         }
 
-        let shared_state = self.shared_state().clone();
+        let app_state = self.app_state().clone();
 
         cx.spawn_in(window, async move |workspace, cx| {
-            let path = shared_state.fs.canonicalize(&path).await.unwrap_or(path);
+            let path = app_state.fs.canonicalize(&path).await.unwrap_or(path);
             let existing = cx.update(|_, cx| find_existing_workspace_window(path.as_path(), cx))?;
 
             if let Some((window, workspace)) = existing {
@@ -1529,9 +1529,7 @@ impl Workspace {
             }
 
             let OpenResult { window, workspace } = cx
-                .update(|_, cx| {
-                    Workspace::open(path, shared_state, requesting_window, open_mode, cx)
-                })?
+                .update(|_, cx| Workspace::open(path, app_state, requesting_window, open_mode, cx))?
                 .await?;
 
             window
@@ -2074,7 +2072,7 @@ impl Workspace {
     pub fn new(
         database_id: Option<WorkspaceId>,
         session_id: Option<String>,
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         project: Entity<Project>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -2197,7 +2195,7 @@ impl Workspace {
         });
 
         let this = Self {
-            shared_state,
+            app_state,
             weak_self: weak_handle,
             registered_actions: Vec::default(),
             database_id,
@@ -2237,12 +2235,12 @@ impl Workspace {
 
     #[cfg(any(test, feature = "test"))]
     pub fn test_new(project: Entity<Project>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let shared_state = SharedState::global(cx);
+        let app_state = AppState::global(cx);
         window.activate_window();
         let workspace = Self::new(
             None,
-            Some(shared_state.session.read(cx).id().to_string()),
-            shared_state,
+            Some(app_state.session.read(cx).id().to_string()),
+            app_state,
             project,
             window,
             cx,
@@ -2314,7 +2312,7 @@ impl Workspace {
             },
         };
 
-        let fs = self.shared_state.fs.clone();
+        let fs = self.app_state.fs.clone();
         settings::update_settings_file(fs, cx, move |settings, _| {
             theme_settings::set_mode(settings, new_mode);
         });
@@ -2685,17 +2683,17 @@ mod tests {
         },
     };
 
-    pub(crate) fn init_test(shared_state: Arc<SharedState>, cx: &mut TestAppContext) {
+    pub(crate) fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
             let settings_store = SettingsStore::test_new(cx);
             cx.set_global(settings_store);
             theme::init(LoadThemes::JustBase, cx);
-            crate::init(shared_state, cx);
+            crate::init(app_state, cx);
         });
     }
 
     async fn init_default_window_bounds(
-        shared_state: Arc<SharedState>,
+        app_state: Arc<AppState>,
         cx: &mut TestAppContext,
     ) -> Bounds<Pixels> {
         let bounds = Bounds::new(
@@ -2713,7 +2711,7 @@ mod tests {
                     },
                     move |window, cx| {
                         cx.new(|cx| {
-                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                            Root::new(Workspace::create(workspace_id, app_state, window, cx))
                         })
                     },
                 )
@@ -2739,8 +2737,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -2837,11 +2835,10 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(cx.new(|cx| Workspace::test_new(project, window, cx)))
         });
@@ -2928,10 +2925,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
@@ -3001,10 +2997,9 @@ mod tests {
     #[gpui::test]
     fn test_docks_are_disabled_on_welcome_page(cx: &mut TestAppContext) {
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         workspace.update_in(cx, |workspace, window, cx| {
@@ -3025,10 +3020,9 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         temp_fs.insert_tree(
@@ -3087,11 +3081,10 @@ mod tests {
     #[gpui::test]
     fn test_toggle_docks_and_panels(cx: &mut TestAppContext) {
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         let panel = workspace.update_in(cx, |workspace, window, cx| {
@@ -3167,11 +3160,10 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
 
         let workspace_id = workspace.update(cx, |workspace, _| {
@@ -3203,7 +3195,7 @@ mod tests {
         let (root, cx) = cx.add_window_view(move |window, cx| {
             Root::new(Workspace::create(
                 workspace_id,
-                shared_state.clone(),
+                app_state.clone(),
                 window,
                 cx,
             ))
@@ -3228,11 +3220,10 @@ mod tests {
     #[gpui::test]
     fn test_remove_last_item_refocuses_pane(cx: &mut TestAppContext) {
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
-        let project =
-            cx.new(|cx| Project::new(temp_fs.clone(), shared_state.languages.clone(), cx));
+        let project = cx.new(|cx| Project::new(temp_fs.clone(), app_state.languages.clone(), cx));
         let (workspace, cx) = build_workspace(&project, cx);
         let pane = workspace.update_in(cx, |workspace, _, _| workspace.pane().clone());
         let item = cx.new(TestItem::new);
@@ -3260,8 +3251,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3358,8 +3349,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3417,8 +3408,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3457,8 +3448,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3504,8 +3495,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3538,8 +3529,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3572,8 +3563,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
 
         temp_fs.insert_tree(path!("project"), Value::default());
 
@@ -3622,8 +3613,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3685,8 +3676,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3704,7 +3695,7 @@ mod tests {
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
@@ -3726,9 +3717,9 @@ mod tests {
 
         let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
-        let shared_state = cx.update(|_, cx| SharedState::global(cx));
+        let app_state = cx.update(|_, cx| AppState::global(cx));
         let (empty_root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let empty_workspace = empty_root.update_in(cx, |root, _, _| root.workspace().clone());
         assert_eq!(cx.windows().len(), 2);
@@ -3758,8 +3749,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3777,7 +3768,7 @@ mod tests {
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
         let workspace_id = workspace_db.next_id().await.unwrap();
         let (root, cx) = cx.add_window_view(move |window, cx| {
-            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+            Root::new(Workspace::create(workspace_id, app_state, window, cx))
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
 
@@ -3832,8 +3823,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -3904,8 +3895,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("project"),
@@ -4015,8 +4006,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(
             path!("first"),
@@ -4090,13 +4081,13 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
         let project_path = temp_fs.path().join(path!("project"));
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4116,14 +4107,14 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
         temp_fs.insert_tree(path!("project"), json!(null));
 
-        let default_bounds = init_default_window_bounds(shared_state.clone(), cx).await;
+        let default_bounds = init_default_window_bounds(app_state.clone(), cx).await;
         let project_path = temp_fs.path().join(path!("project"));
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4141,11 +4132,11 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
-        init_default_window_bounds(shared_state.clone(), cx).await;
+        init_default_window_bounds(app_state.clone(), cx).await;
 
         let workspace_id = workspace_db.next_id().await.unwrap();
         let active_bounds = Bounds::new(
@@ -4159,11 +4150,11 @@ mod tests {
                     ..WindowOptions::default()
                 },
                 {
-                    let shared_state = shared_state.clone();
+                    let app_state = app_state.clone();
                     move |window, cx| {
                         window.activate_window();
                         cx.new(|cx| {
-                            Root::new(Workspace::create(workspace_id, shared_state, window, cx))
+                            Root::new(Workspace::create(workspace_id, app_state, window, cx))
                         })
                     }
                 },
@@ -4171,7 +4162,7 @@ mod tests {
         })
         .unwrap();
 
-        cx.update(|cx| open_new(shared_state, cx)).await.unwrap();
+        cx.update(|cx| open_new(app_state, cx)).await.unwrap();
 
         let new_window = cx.update(|cx| cx.active_window().unwrap().downcast::<Root>().unwrap());
         let cascade_offset = gpui::point(gpui::px(25.0), gpui::px(25.0));
@@ -4191,13 +4182,13 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
         let project_path = temp_fs.path().join(path!("project"));
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
-        init_default_window_bounds(shared_state.clone(), cx).await;
+        init_default_window_bounds(app_state.clone(), cx).await;
 
         let active_bounds = Bounds::new(
             gpui::point(gpui::px(100.0), gpui::px(100.0)),
@@ -4211,13 +4202,13 @@ mod tests {
                     ..WindowOptions::default()
                 },
                 {
-                    let shared_state = shared_state.clone();
+                    let app_state = app_state.clone();
                     move |window, cx| {
                         window.activate_window();
                         cx.new(|cx| {
                             Root::new(Workspace::create(
                                 active_workspace_id,
-                                shared_state,
+                                app_state,
                                 window,
                                 cx,
                             ))
@@ -4229,7 +4220,7 @@ mod tests {
         .unwrap();
 
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4250,12 +4241,12 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state.clone(), cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state.clone(), cx);
 
         temp_fs.insert_tree(path!("project"), json!(null));
         let project_path = temp_fs.path().join(path!("project"));
-        init_default_window_bounds(shared_state.clone(), cx).await;
+        init_default_window_bounds(app_state.clone(), cx).await;
         let workspace_db = cx.update(|cx| WorkspaceDb::global(cx));
 
         let active_bounds = Bounds::new(
@@ -4271,13 +4262,13 @@ mod tests {
                         ..WindowOptions::default()
                     },
                     {
-                        let shared_state = shared_state.clone();
+                        let app_state = app_state.clone();
                         move |window, cx| {
                             window.activate_window();
                             cx.new(|cx| {
                                 Root::new(Workspace::create(
                                     active_workspace_id,
-                                    shared_state,
+                                    app_state,
                                     window,
                                     cx,
                                 ))
@@ -4321,7 +4312,7 @@ mod tests {
             .unwrap();
 
         let result = cx
-            .update(|cx| Workspace::open(project_path, shared_state, None, OpenMode::NewWindow, cx))
+            .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
             .await
             .unwrap();
 
@@ -4339,8 +4330,8 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let shared_state = cx.update(|cx| SharedState::test_new(temp_fs.clone(), None, cx));
-        init_test(shared_state, cx);
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
         cx.update(register_serializable_item::<TestItem>);
 
         temp_fs.insert_tree(path!("project"), Value::default());
