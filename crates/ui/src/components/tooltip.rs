@@ -11,17 +11,16 @@ use super::label::{Label, LabelCommon, LabelSize};
 use crate::prelude::*;
 use crate::{Color, KeyBinding, StyledExt};
 
-pub struct Tooltip {
-    title: Title,
-    meta: Option<SharedString>,
-    key_binding: Option<KeyBinding>,
-    max_w: Option<Length>,
-}
-
 #[derive(Clone, IntoElement)]
 enum Title {
     Str(SharedString),
     Callback(Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>),
+}
+
+impl Title {
+    fn text(title: impl Into<SharedString>) -> Self {
+        Title::Str(title.into())
+    }
 }
 
 impl From<SharedString> for Title {
@@ -39,10 +38,11 @@ impl RenderOnce for Title {
     }
 }
 
-impl Title {
-    fn text(title: impl Into<SharedString>) -> Self {
-        Title::Str(title.into())
-    }
+pub struct Tooltip {
+    title: Title,
+    meta: Option<SharedString>,
+    key_binding: Option<KeyBinding>,
+    max_w: Option<Length>,
 }
 
 impl Tooltip {

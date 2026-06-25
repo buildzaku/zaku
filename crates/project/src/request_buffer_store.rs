@@ -39,8 +39,6 @@ pub enum RequestBufferStoreEvent {
     },
 }
 
-impl EventEmitter<RequestBufferStoreEvent> for RequestBufferStore {}
-
 impl RequestBufferStore {
     pub fn new(worktree_store: Entity<WorktreeStore>, cx: &mut Context<Self>) -> Self {
         let worktree_store_subscription = cx.subscribe(&worktree_store, |_, _, event, cx| {
@@ -369,3 +367,5 @@ impl RequestBufferStore {
         }
     }
 }
+
+impl EventEmitter<RequestBufferStoreEvent> for RequestBufferStore {}

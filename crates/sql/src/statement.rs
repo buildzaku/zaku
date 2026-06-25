@@ -20,25 +20,6 @@ pub struct Statement<'conn> {
     _marker: PhantomData<sqlite3::sqlite3_stmt>,
 }
 
-pub struct Row<'stmt, 'conn> {
-    statement: &'stmt mut Statement<'conn>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum StepResult {
-    Row,
-    Done,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum SqlType {
-    Text,
-    Integer,
-    Blob,
-    Float,
-    Null,
-}
-
 impl<'conn> Statement<'conn> {
     pub fn prepare<T: AsRef<str>>(connection: &'conn Connection, query: T) -> anyhow::Result<Self> {
         let mut statement = Self {
@@ -417,6 +398,37 @@ impl<'conn> Statement<'conn> {
     }
 }
 
+impl Drop for Statement<'_> {
+    fn drop(&mut self) {
+        // SAFETY: Each raw_statement_ptr came from a successful sqlite3_prepare_v2 call
+        // and this is the only place that finalizes statements still owned by Statement.
+        unsafe {
+            for raw_statement_ptr in &self.raw_statement_ptrs {
+                sqlite3::sqlite3_finalize(*raw_statement_ptr);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum StepResult {
+    Row,
+    Done,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SqlType {
+    Text,
+    Integer,
+    Blob,
+    Float,
+    Null,
+}
+
+pub struct Row<'stmt, 'conn> {
+    statement: &'stmt mut Statement<'conn>,
+}
+
 impl Row<'_, '_> {
     pub fn column_blob(&mut self, index: i32) -> anyhow::Result<&[u8]> {
         anyhow::ensure!(
@@ -575,18 +587,6 @@ impl Row<'_, '_> {
             SQLITE_BLOB => Ok(SqlType::Blob),
             SQLITE_NULL => Ok(SqlType::Null),
             _ => anyhow::bail!("column type returned was incorrect"),
-        }
-    }
-}
-
-impl Drop for Statement<'_> {
-    fn drop(&mut self) {
-        // SAFETY: Each raw_statement_ptr came from a successful sqlite3_prepare_v2 call
-        // and this is the only place that finalizes statements still owned by Statement.
-        unsafe {
-            for raw_statement_ptr in &self.raw_statement_ptrs {
-                sqlite3::sqlite3_finalize(*raw_statement_ptr);
-            }
         }
     }
 }

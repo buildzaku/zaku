@@ -25,6 +25,26 @@ impl IndentGuideColors {
     }
 }
 
+pub struct RenderIndentGuideParams {
+    pub indent_guides: SmallVec<[IndentGuideLayout; 12]>,
+    pub indent_size: Pixels,
+    pub item_height: Pixels,
+}
+
+pub struct RenderedIndentGuide {
+    pub bounds: Bounds<Pixels>,
+    pub layout: IndentGuideLayout,
+    pub is_active: bool,
+    pub hitbox: Option<Bounds<Pixels>>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct IndentGuideLayout {
+    pub offset: Point<usize>,
+    pub length: usize,
+    pub continues_offscreen: bool,
+}
+
 pub struct IndentGuides {
     colors: IndentGuideColors,
     indent_size: Pixels,
@@ -40,16 +60,6 @@ pub struct IndentGuides {
         >,
     >,
     on_click: Option<Rc<dyn Fn(&IndentGuideLayout, &mut Window, &mut App)>>,
-}
-
-pub fn indent_guides(indent_size: Pixels, colors: IndentGuideColors) -> IndentGuides {
-    IndentGuides {
-        colors,
-        indent_size,
-        compute_indents_fn: None,
-        render_fn: None,
-        on_click: None,
-    }
 }
 
 impl IndentGuides {
@@ -146,26 +156,6 @@ impl IndentGuides {
         }
         .into_any_element()
     }
-}
-
-pub struct RenderIndentGuideParams {
-    pub indent_guides: SmallVec<[IndentGuideLayout; 12]>,
-    pub indent_size: Pixels,
-    pub item_height: Pixels,
-}
-
-pub struct RenderedIndentGuide {
-    pub bounds: Bounds<Pixels>,
-    pub layout: IndentGuideLayout,
-    pub is_active: bool,
-    pub hitbox: Option<Bounds<Pixels>>,
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub struct IndentGuideLayout {
-    pub offset: Point<usize>,
-    pub length: usize,
-    pub continues_offscreen: bool,
 }
 
 impl UniformListDecoration for IndentGuides {
@@ -372,6 +362,16 @@ impl IntoElement for IndentGuidesElement {
 
     fn into_element(self) -> Self::Element {
         self
+    }
+}
+
+pub fn indent_guides(indent_size: Pixels, colors: IndentGuideColors) -> IndentGuides {
+    IndentGuides {
+        colors,
+        indent_size,
+        compute_indents_fn: None,
+        render_fn: None,
+        on_click: None,
     }
 }
 

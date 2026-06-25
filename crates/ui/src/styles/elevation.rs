@@ -12,18 +12,6 @@ pub enum ElevationIndex {
     ModalSurface,
 }
 
-impl Display for ElevationIndex {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            ElevationIndex::Background => write!(f, "Background"),
-            ElevationIndex::Surface => write!(f, "Surface"),
-            ElevationIndex::EditorSurface => write!(f, "Editor Surface"),
-            ElevationIndex::ElevatedSurface => write!(f, "Elevated Surface"),
-            ElevationIndex::ModalSurface => write!(f, "Modal Surface"),
-        }
-    }
-}
-
 impl ElevationIndex {
     pub fn shadow(self, cx: &App) -> Vec<BoxShadow> {
         let is_light = cx.theme().appearance() == Appearance::Light;
@@ -117,6 +105,18 @@ impl ElevationIndex {
             ElevationIndex::Surface
             | ElevationIndex::ElevatedSurface
             | ElevationIndex::ModalSurface => cx.theme().colors().editor_background,
+        }
+    }
+}
+
+impl Display for ElevationIndex {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            ElevationIndex::Background => write!(f, "Background"),
+            ElevationIndex::Surface => write!(f, "Surface"),
+            ElevationIndex::EditorSurface => write!(f, "Editor Surface"),
+            ElevationIndex::ElevatedSurface => write!(f, "Elevated Surface"),
+            ElevationIndex::ModalSurface => write!(f, "Modal Surface"),
         }
     }
 }

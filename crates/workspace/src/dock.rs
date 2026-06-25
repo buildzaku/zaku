@@ -648,14 +648,14 @@ impl StatusItemView for PanelButtons {
 pub mod test {
     use super::*;
 
+    gpui::actions!(test_only, [ToggleTestPanel]);
+
     pub struct TestPanel {
         pub active: bool,
         pub focus_handle: FocusHandle,
         pub default_size: Pixels,
         pub activation_priority: u32,
     }
-
-    gpui::actions!(test_only, [ToggleTestPanel]);
 
     impl TestPanel {
         pub fn new(activation_priority: u32, cx: &mut App) -> Self {

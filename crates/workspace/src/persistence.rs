@@ -235,8 +235,6 @@ impl From<WindowBoundsJson> for WindowBounds {
 
 pub struct WorkspaceDb(ThreadSafeConnection);
 
-db::static_connection!(WorkspaceDb, []);
-
 impl WorkspaceDb {
     query! {
         pub async fn next_id() -> anyhow::Result<WorkspaceId> {
@@ -727,6 +725,8 @@ impl WorkspaceDb {
         }
     }
 }
+
+db::static_connection!(WorkspaceDb, []);
 
 pub fn delete_unloaded_items(
     alive_items: Vec<ItemId>,

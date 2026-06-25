@@ -28,8 +28,6 @@ impl Column for SerializedRequestEditor {
 
 pub(crate) struct RequestEditorDb(ThreadSafeConnection);
 
-db::static_connection!(RequestEditorDb, [workspace::WorkspaceDb]);
-
 impl RequestEditorDb {
     pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
         self.0
@@ -80,3 +78,5 @@ impl RequestEditorDb {
         }
     }
 }
+
+db::static_connection!(RequestEditorDb, [workspace::WorkspaceDb]);

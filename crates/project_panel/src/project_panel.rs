@@ -90,8 +90,6 @@ pub enum ProjectPanelEvent {
     },
 }
 
-impl EventEmitter<ProjectPanelEvent> for ProjectPanel {}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SelectedEntry(ProjectEntryId);
 
@@ -125,15 +123,6 @@ enum ClipboardEntry {
     Cut(BTreeSet<SelectedEntry>),
 }
 
-enum PasteTask {
-    Rename {
-        task: Task<anyhow::Result<Entry>>,
-    },
-    Copy {
-        task: Task<anyhow::Result<Option<Entry>>>,
-    },
-}
-
 impl ClipboardEntry {
     fn is_cut(&self) -> bool {
         matches!(self, Self::Cut(_))
@@ -151,6 +140,15 @@ impl ClipboardEntry {
             Self::Cut(entries) => Self::Copied(entries),
         }
     }
+}
+
+enum PasteTask {
+    Rename {
+        task: Task<anyhow::Result<Entry>>,
+    },
+    Copy {
+        task: Task<anyhow::Result<Option<Entry>>>,
+    },
 }
 
 pub struct ProjectPanel {
@@ -2474,91 +2472,7 @@ impl ProjectPanel {
     }
 }
 
-#[inline]
-fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) -> cmp::Ordering {
-    let a = (a.path.as_ref(), a.is_file());
-    let b = (b.path.as_ref(), b.is_file());
-    path::compare_rel_paths_by(a, b, mode, order)
-}
-
-fn display_depth(entry: &Entry) -> usize {
-    entry.path.components().count().saturating_sub(1)
-}
-
-fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
-    match entry.kind {
-        EntryKind::File => file_stem_for_entry(entry).to_string(),
-        EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
-            entry.path.file_name().map_or_else(
-                || snapshot.root_name().as_unix_str().to_string(),
-                ToString::to_string,
-            )
-        }
-    }
-}
-
-fn file_stem_for_entry(entry: &Entry) -> &str {
-    let file_name = entry.path.file_name().unwrap_or_default();
-    file_name.strip_suffix(".toml").unwrap_or(file_name)
-}
-
-fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {
-    let Ok(file_name) = RelPath::new(Path::new(file_name), path_style) else {
-        return false;
-    };
-    let Some(last_component) = file_name.file_name() else {
-        return true;
-    };
-
-    if is_dir {
-        return last_component.trim().is_empty();
-    }
-
-    let path = Path::new(last_component);
-    let file_stem = if path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
-    {
-        path.file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or(last_component)
-    } else {
-        last_component
-    };
-
-    file_stem.trim().is_empty()
-}
-
-fn file_name_for_new_entry(file_name: &str, is_dir: bool, path_style: PathStyle) -> String {
-    if is_dir {
-        return file_name.to_string();
-    }
-
-    let last_component = if path_style.is_windows() {
-        file_name.rsplit(['/', '\\']).next().unwrap_or(file_name)
-    } else {
-        file_name.rsplit('/').next().unwrap_or(file_name)
-    };
-    if Path::new(last_component)
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
-    {
-        return file_name.to_string();
-    }
-
-    let mut file_name = file_name.to_string();
-    file_name.push_str(".toml");
-    file_name
-}
-
-fn item_width_estimate(depth: usize, item_text_chars: usize, is_symlink: bool) -> usize {
-    const ICON_SIZE_FACTOR: usize = 2;
-    let mut item_width = depth * ICON_SIZE_FACTOR + item_text_chars;
-    if is_symlink {
-        item_width += ICON_SIZE_FACTOR;
-    }
-    item_width
-}
+impl EventEmitter<ProjectPanelEvent> for ProjectPanel {}
 
 impl Focusable for ProjectPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -2829,6 +2743,92 @@ impl Render for ProjectPanel {
                 .with_priority(3)
             }))
     }
+}
+
+#[inline]
+fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) -> cmp::Ordering {
+    let a = (a.path.as_ref(), a.is_file());
+    let b = (b.path.as_ref(), b.is_file());
+    path::compare_rel_paths_by(a, b, mode, order)
+}
+
+fn display_depth(entry: &Entry) -> usize {
+    entry.path.components().count().saturating_sub(1)
+}
+
+fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
+    match entry.kind {
+        EntryKind::File => file_stem_for_entry(entry).to_string(),
+        EntryKind::Dir | EntryKind::PendingDir | EntryKind::UnloadedDir => {
+            entry.path.file_name().map_or_else(
+                || snapshot.root_name().as_unix_str().to_string(),
+                ToString::to_string,
+            )
+        }
+    }
+}
+
+fn file_stem_for_entry(entry: &Entry) -> &str {
+    let file_name = entry.path.file_name().unwrap_or_default();
+    file_name.strip_suffix(".toml").unwrap_or(file_name)
+}
+
+fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {
+    let Ok(file_name) = RelPath::new(Path::new(file_name), path_style) else {
+        return false;
+    };
+    let Some(last_component) = file_name.file_name() else {
+        return true;
+    };
+
+    if is_dir {
+        return last_component.trim().is_empty();
+    }
+
+    let path = Path::new(last_component);
+    let file_stem = if path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+    {
+        path.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(last_component)
+    } else {
+        last_component
+    };
+
+    file_stem.trim().is_empty()
+}
+
+fn file_name_for_new_entry(file_name: &str, is_dir: bool, path_style: PathStyle) -> String {
+    if is_dir {
+        return file_name.to_string();
+    }
+
+    let last_component = if path_style.is_windows() {
+        file_name.rsplit(['/', '\\']).next().unwrap_or(file_name)
+    } else {
+        file_name.rsplit('/').next().unwrap_or(file_name)
+    };
+    if Path::new(last_component)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+    {
+        return file_name.to_string();
+    }
+
+    let mut file_name = file_name.to_string();
+    file_name.push_str(".toml");
+    file_name
+}
+
+fn item_width_estimate(depth: usize, item_text_chars: usize, is_symlink: bool) -> usize {
+    const ICON_SIZE_FACTOR: usize = 2;
+    let mut item_width = depth * ICON_SIZE_FACTOR + item_text_chars;
+    if is_symlink {
+        item_width += ICON_SIZE_FACTOR;
+    }
+    item_width
 }
 
 #[cfg(test)]

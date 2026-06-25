@@ -133,14 +133,6 @@ pub fn database_dir() -> PathBuf {
 
 pub struct AppDatabase(pub ThreadSafeConnection);
 
-impl Global for AppDatabase {}
-
-impl Default for AppDatabase {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl AppDatabase {
     pub fn new() -> Self {
         let db_dir = database_dir();
@@ -175,6 +167,14 @@ impl AppDatabase {
         {
             &cx.global::<Self>().0
         }
+    }
+}
+
+impl Global for AppDatabase {}
+
+impl Default for AppDatabase {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

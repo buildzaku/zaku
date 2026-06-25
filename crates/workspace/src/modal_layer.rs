@@ -65,8 +65,6 @@ pub struct ModalLayer {
     dismiss_on_focus_lost: bool,
 }
 
-impl EventEmitter<ModalOpenedEvent> for ModalLayer {}
-
 impl ModalLayer {
     pub fn new() -> Self {
         Self {
@@ -167,6 +165,8 @@ impl ModalLayer {
         self.active_modal.is_some()
     }
 }
+
+impl EventEmitter<ModalOpenedEvent> for ModalLayer {}
 
 impl Default for ModalLayer {
     fn default() -> Self {

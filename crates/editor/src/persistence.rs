@@ -28,8 +28,6 @@ impl Column for SerializedEditor {
 
 pub(crate) struct EditorDb(ThreadSafeConnection);
 
-db::static_connection!(EditorDb, [workspace::WorkspaceDb]);
-
 impl EditorDb {
     pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
         self.0
@@ -86,3 +84,5 @@ impl EditorDb {
         }
     }
 }
+
+db::static_connection!(EditorDb, [workspace::WorkspaceDb]);

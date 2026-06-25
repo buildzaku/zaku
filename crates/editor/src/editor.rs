@@ -100,14 +100,6 @@ pub enum EditorMode {
     },
 }
 
-#[derive(Clone, Debug)]
-pub enum SelectMode {
-    Character,
-    Word(Range<Anchor>),
-    Line(Range<Anchor>),
-    All,
-}
-
 impl EditorMode {
     pub fn full() -> Self {
         Self::Full {
@@ -126,6 +118,14 @@ impl EditorMode {
     pub fn is_single_line(&self) -> bool {
         matches!(self, Self::SingleLine { .. })
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum SelectMode {
+    Character,
+    Word(Range<Anchor>),
+    Line(Range<Anchor>),
+    All,
 }
 
 #[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
@@ -355,14 +355,6 @@ pub struct SelectionEffects {
     scroll: Option<scroll::Autoscroll>,
 }
 
-impl Default for SelectionEffects {
-    fn default() -> Self {
-        Self {
-            scroll: Some(scroll::Autoscroll::newest()),
-        }
-    }
-}
-
 impl SelectionEffects {
     pub fn no_scroll() -> Self {
         Self { scroll: None }
@@ -371,6 +363,14 @@ impl SelectionEffects {
     fn scroll(scroll: scroll::Autoscroll) -> Self {
         Self {
             scroll: Some(scroll),
+        }
+    }
+}
+
+impl Default for SelectionEffects {
+    fn default() -> Self {
+        Self {
+            scroll: Some(scroll::Autoscroll::newest()),
         }
     }
 }
@@ -421,8 +421,6 @@ pub struct Editor {
     selection_goal: SelectionGoal,
     _subscriptions: Vec<Subscription>,
 }
-
-impl EventEmitter<EditorEvent> for Editor {}
 
 impl Editor {
     fn empty_buffer(cx: &mut Context<Self>) -> Entity<MultiBuffer> {
@@ -2525,6 +2523,8 @@ impl Editor {
         Some(range.start.to_offset(&snapshot).0..range.end.to_offset(&snapshot).0)
     }
 }
+
+impl EventEmitter<EditorEvent> for Editor {}
 
 impl EntityInputHandler for Editor {
     fn text_for_range(

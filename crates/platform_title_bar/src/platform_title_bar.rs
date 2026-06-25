@@ -13,65 +13,6 @@ use ui::prelude::*;
 
 use crate::platform::{linux, windows};
 
-pub struct PlatformTitleBar {
-    id: ElementId,
-    platform_style: PlatformStyle,
-    children: SmallVec<[AnyElement; 2]>,
-    should_move: bool,
-    button_layout: Option<WindowButtonLayout>,
-}
-
-impl PlatformTitleBar {
-    pub fn new(id: impl Into<ElementId>, _: &mut Context<Self>) -> Self {
-        let platform_style = PlatformStyle::platform();
-
-        Self {
-            id: id.into(),
-            platform_style,
-            children: SmallVec::new(),
-            should_move: false,
-            button_layout: None,
-        }
-    }
-
-    pub fn title_bar_color(&self, window: &mut Window, cx: &mut Context<Self>) -> Hsla {
-        if cfg!(target_os = "linux") {
-            if window.is_window_active() && !self.should_move {
-                cx.theme().colors().title_bar_background
-            } else {
-                cx.theme().colors().title_bar_inactive_background
-            }
-        } else {
-            cx.theme().colors().title_bar_background
-        }
-    }
-
-    pub fn set_children<T>(&mut self, children: T)
-    where
-        T: IntoIterator<Item = AnyElement>,
-    {
-        self.children = children.into_iter().collect();
-    }
-
-    pub fn set_button_layout(&mut self, button_layout: Option<WindowButtonLayout>) {
-        self.button_layout = button_layout;
-    }
-
-    fn effective_button_layout(
-        &self,
-        decorations: Decorations,
-        cx: &App,
-    ) -> Option<WindowButtonLayout> {
-        if self.platform_style == PlatformStyle::Linux
-            && matches!(decorations, Decorations::Client { .. })
-        {
-            self.button_layout.or_else(|| cx.button_layout())
-        } else {
-            None
-        }
-    }
-}
-
 pub fn render_left_window_controls(
     button_layout: Option<WindowButtonLayout>,
     close_action: Box<dyn Action>,
@@ -129,6 +70,65 @@ pub fn render_right_window_controls(
             Some(windows::WindowsWindowControls::new(height).into_any_element())
         }
         PlatformStyle::Mac => None,
+    }
+}
+
+pub struct PlatformTitleBar {
+    id: ElementId,
+    platform_style: PlatformStyle,
+    children: SmallVec<[AnyElement; 2]>,
+    should_move: bool,
+    button_layout: Option<WindowButtonLayout>,
+}
+
+impl PlatformTitleBar {
+    pub fn new(id: impl Into<ElementId>, _: &mut Context<Self>) -> Self {
+        let platform_style = PlatformStyle::platform();
+
+        Self {
+            id: id.into(),
+            platform_style,
+            children: SmallVec::new(),
+            should_move: false,
+            button_layout: None,
+        }
+    }
+
+    pub fn title_bar_color(&self, window: &mut Window, cx: &mut Context<Self>) -> Hsla {
+        if cfg!(target_os = "linux") {
+            if window.is_window_active() && !self.should_move {
+                cx.theme().colors().title_bar_background
+            } else {
+                cx.theme().colors().title_bar_inactive_background
+            }
+        } else {
+            cx.theme().colors().title_bar_background
+        }
+    }
+
+    pub fn set_children<T>(&mut self, children: T)
+    where
+        T: IntoIterator<Item = AnyElement>,
+    {
+        self.children = children.into_iter().collect();
+    }
+
+    pub fn set_button_layout(&mut self, button_layout: Option<WindowButtonLayout>) {
+        self.button_layout = button_layout;
+    }
+
+    fn effective_button_layout(
+        &self,
+        decorations: Decorations,
+        cx: &App,
+    ) -> Option<WindowButtonLayout> {
+        if self.platform_style == PlatformStyle::Linux
+            && matches!(decorations, Decorations::Client { .. })
+        {
+            self.button_layout.or_else(|| cx.button_layout())
+        } else {
+            None
+        }
     }
 }
 

@@ -34,6 +34,29 @@ pub struct ThemeSettings {
     pub buffer_line_height: BufferLineHeight,
 }
 
+impl ThemeSettings {
+    pub fn get_global(cx: &App) -> &Self {
+        <Self as settings::Settings>::get_global(cx)
+    }
+
+    pub fn override_global(settings: ThemeSettings, cx: &mut App) {
+        <Self as settings::Settings>::override_global(settings, cx);
+    }
+
+    pub fn ui_font_size(&self, _cx: &App) -> Pixels {
+        clamp_font_size(self.ui_font_size)
+    }
+
+    pub fn buffer_font_size(&self, _cx: &App) -> Pixels {
+        clamp_font_size(self.buffer_font_size)
+    }
+
+    pub fn line_height(&self) -> f32 {
+        const MIN_LINE_HEIGHT: f32 = 1.;
+        f32::max(self.buffer_line_height.value(), MIN_LINE_HEIGHT)
+    }
+}
+
 impl Default for ThemeSettings {
     fn default() -> Self {
         let ui_font_size = gpui::px(14.);
@@ -56,18 +79,6 @@ pub enum BufferLineHeight {
     Custom(f32),
 }
 
-impl From<settings::BufferLineHeight> for BufferLineHeight {
-    fn from(value: settings::BufferLineHeight) -> Self {
-        match value {
-            settings::BufferLineHeight::Comfortable => BufferLineHeight::Comfortable,
-            settings::BufferLineHeight::Standard => BufferLineHeight::Standard,
-            settings::BufferLineHeight::Custom(line_height) => {
-                BufferLineHeight::Custom(line_height)
-            }
-        }
-    }
-}
-
 impl BufferLineHeight {
     pub fn value(&self) -> f32 {
         match self {
@@ -78,26 +89,15 @@ impl BufferLineHeight {
     }
 }
 
-impl ThemeSettings {
-    pub fn get_global(cx: &App) -> &Self {
-        <Self as settings::Settings>::get_global(cx)
-    }
-
-    pub fn override_global(settings: ThemeSettings, cx: &mut App) {
-        <Self as settings::Settings>::override_global(settings, cx);
-    }
-
-    pub fn ui_font_size(&self, _cx: &App) -> Pixels {
-        clamp_font_size(self.ui_font_size)
-    }
-
-    pub fn buffer_font_size(&self, _cx: &App) -> Pixels {
-        clamp_font_size(self.buffer_font_size)
-    }
-
-    pub fn line_height(&self) -> f32 {
-        const MIN_LINE_HEIGHT: f32 = 1.;
-        f32::max(self.buffer_line_height.value(), MIN_LINE_HEIGHT)
+impl From<settings::BufferLineHeight> for BufferLineHeight {
+    fn from(value: settings::BufferLineHeight) -> Self {
+        match value {
+            settings::BufferLineHeight::Comfortable => BufferLineHeight::Comfortable,
+            settings::BufferLineHeight::Standard => BufferLineHeight::Standard,
+            settings::BufferLineHeight::Custom(line_height) => {
+                BufferLineHeight::Custom(line_height)
+            }
+        }
     }
 }
 

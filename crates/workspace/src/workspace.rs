@@ -183,10 +183,6 @@ pub struct SharedState {
     pub session: Entity<AppSession>,
 }
 
-struct GlobalSharedState(Arc<SharedState>);
-
-impl Global for GlobalSharedState {}
-
 impl SharedState {
     pub fn new(
         fs: Arc<dyn fs::Fs>,
@@ -235,6 +231,10 @@ impl SharedState {
         cx.set_global(GlobalSharedState(shared_state));
     }
 }
+
+struct GlobalSharedState(Arc<SharedState>);
+
+impl Global for GlobalSharedState {}
 
 pub fn init(shared_state: Arc<SharedState>, cx: &mut App) {
     SharedState::set_global(shared_state.clone(), cx);
@@ -344,8 +344,6 @@ pub(crate) struct SerializableItemRegistry {
     descriptors_by_type: HashMap<TypeId, SerializableItemDescriptor>,
 }
 
-impl Global for SerializableItemRegistry {}
-
 impl SerializableItemRegistry {
     pub(crate) fn deserialize(
         item_kind: &str,
@@ -395,6 +393,8 @@ impl SerializableItemRegistry {
         this.descriptors_by_kind.get(item_kind).copied()
     }
 }
+
+impl Global for SerializableItemRegistry {}
 
 pub fn register_serializable_item<I: SerializableItem>(cx: &mut App) {
     let serialized_item_kind = I::serialized_item_kind();
@@ -773,6 +773,41 @@ impl Root {
     }
 }
 
+impl Focusable for Root {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.workspace.read(cx).focus_handle(cx)
+    }
+}
+
+impl Render for Root {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let workspace = self.workspace().clone();
+        let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
+        let root = workspace.update(cx, |workspace, cx| workspace.actions(h_flex(), window, cx));
+        let modal_layer = workspace.read(cx).modal_layer.clone();
+
+        client_side_decorations(
+            root.key_context(workspace_key_context)
+                .relative()
+                .size_full()
+                .on_action(cx.listener(Self::close_project))
+                .on_action(cx.listener(Self::close_window))
+                .child(
+                    gpui::div()
+                        .flex()
+                        .flex_1()
+                        .size_full()
+                        .overflow_hidden()
+                        .child(self.workspace().clone()),
+                )
+                .child(modal_layer),
+            window,
+            cx,
+            Tiling::default(),
+        )
+    }
+}
+
 #[cfg(any(test, feature = "test"))]
 pub fn build_workspace<'a>(
     project: &Entity<Project>,
@@ -788,15 +823,66 @@ pub fn build_workspace<'a>(
     (workspace, cx)
 }
 
-impl Focusable for Root {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.workspace.read(cx).focus_handle(cx)
-    }
-}
-
 struct GlobalResizeEdge(ResizeEdge);
 
 impl Global for GlobalResizeEdge {}
+
+fn resize_edge(
+    position: Point<Pixels>,
+    shadow_size: Pixels,
+    window_size: Size<Pixels>,
+    tiling: Tiling,
+) -> Option<ResizeEdge> {
+    let bounds = Bounds::new(Point::default(), window_size).inset(shadow_size * 1.5);
+    if bounds.contains(&position) {
+        return None;
+    }
+
+    let corner_size = gpui::size(shadow_size * 1.5, shadow_size * 1.5);
+    let top_left_bounds = Bounds::new(Point::new(gpui::px(0.0), gpui::px(0.0)), corner_size);
+    if !tiling.top && top_left_bounds.contains(&position) {
+        return Some(ResizeEdge::TopLeft);
+    }
+
+    let top_right_bounds = Bounds::new(
+        Point::new(window_size.width - corner_size.width, gpui::px(0.0)),
+        corner_size,
+    );
+    if !tiling.top && top_right_bounds.contains(&position) {
+        return Some(ResizeEdge::TopRight);
+    }
+
+    let bottom_left_bounds = Bounds::new(
+        Point::new(gpui::px(0.0), window_size.height - corner_size.height),
+        corner_size,
+    );
+    if !tiling.bottom && bottom_left_bounds.contains(&position) {
+        return Some(ResizeEdge::BottomLeft);
+    }
+
+    let bottom_right_bounds = Bounds::new(
+        Point::new(
+            window_size.width - corner_size.width,
+            window_size.height - corner_size.height,
+        ),
+        corner_size,
+    );
+    if !tiling.bottom && bottom_right_bounds.contains(&position) {
+        return Some(ResizeEdge::BottomRight);
+    }
+
+    if !tiling.top && position.y < shadow_size {
+        Some(ResizeEdge::Top)
+    } else if !tiling.bottom && position.y > window_size.height - shadow_size {
+        Some(ResizeEdge::Bottom)
+    } else if !tiling.left && position.x < shadow_size {
+        Some(ResizeEdge::Left)
+    } else if !tiling.right && position.x > window_size.width - shadow_size {
+        Some(ResizeEdge::Right)
+    } else {
+        None
+    }
+}
 
 pub fn client_side_decorations(
     element: impl IntoElement,
@@ -999,92 +1085,6 @@ pub fn client_side_decorations(
                 .absolute(),
             ),
         })
-}
-
-fn resize_edge(
-    position: Point<Pixels>,
-    shadow_size: Pixels,
-    window_size: Size<Pixels>,
-    tiling: Tiling,
-) -> Option<ResizeEdge> {
-    let bounds = Bounds::new(Point::default(), window_size).inset(shadow_size * 1.5);
-    if bounds.contains(&position) {
-        return None;
-    }
-
-    let corner_size = gpui::size(shadow_size * 1.5, shadow_size * 1.5);
-    let top_left_bounds = Bounds::new(Point::new(gpui::px(0.0), gpui::px(0.0)), corner_size);
-    if !tiling.top && top_left_bounds.contains(&position) {
-        return Some(ResizeEdge::TopLeft);
-    }
-
-    let top_right_bounds = Bounds::new(
-        Point::new(window_size.width - corner_size.width, gpui::px(0.0)),
-        corner_size,
-    );
-    if !tiling.top && top_right_bounds.contains(&position) {
-        return Some(ResizeEdge::TopRight);
-    }
-
-    let bottom_left_bounds = Bounds::new(
-        Point::new(gpui::px(0.0), window_size.height - corner_size.height),
-        corner_size,
-    );
-    if !tiling.bottom && bottom_left_bounds.contains(&position) {
-        return Some(ResizeEdge::BottomLeft);
-    }
-
-    let bottom_right_bounds = Bounds::new(
-        Point::new(
-            window_size.width - corner_size.width,
-            window_size.height - corner_size.height,
-        ),
-        corner_size,
-    );
-    if !tiling.bottom && bottom_right_bounds.contains(&position) {
-        return Some(ResizeEdge::BottomRight);
-    }
-
-    if !tiling.top && position.y < shadow_size {
-        Some(ResizeEdge::Top)
-    } else if !tiling.bottom && position.y > window_size.height - shadow_size {
-        Some(ResizeEdge::Bottom)
-    } else if !tiling.left && position.x < shadow_size {
-        Some(ResizeEdge::Left)
-    } else if !tiling.right && position.x > window_size.width - shadow_size {
-        Some(ResizeEdge::Right)
-    } else {
-        None
-    }
-}
-
-impl Render for Root {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let workspace = self.workspace().clone();
-        let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
-        let root = workspace.update(cx, |workspace, cx| workspace.actions(h_flex(), window, cx));
-        let modal_layer = workspace.read(cx).modal_layer.clone();
-
-        client_side_decorations(
-            root.key_context(workspace_key_context)
-                .relative()
-                .size_full()
-                .on_action(cx.listener(Self::close_project))
-                .on_action(cx.listener(Self::close_window))
-                .child(
-                    gpui::div()
-                        .flex()
-                        .flex_1()
-                        .size_full()
-                        .overflow_hidden()
-                        .child(self.workspace().clone()),
-                )
-                .child(modal_layer),
-            window,
-            cx,
-            Tiling::default(),
-        )
-    }
 }
 
 pub struct Workspace {

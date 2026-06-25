@@ -56,12 +56,6 @@ pub struct LabelLike {
     truncate_start: bool,
 }
 
-impl Default for LabelLike {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl LabelLike {
     pub fn new() -> Self {
         Self {
@@ -80,9 +74,7 @@ impl LabelLike {
             truncate_start: false,
         }
     }
-}
 
-impl LabelLike {
     fn style(&mut self) -> &mut StyleRefinement {
         self.base.style()
     }
@@ -94,6 +86,12 @@ impl LabelLike {
     pub fn truncate_start(mut self) -> Self {
         self.truncate_start = true;
         self
+    }
+}
+
+impl Default for LabelLike {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

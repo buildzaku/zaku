@@ -15,12 +15,6 @@ pub struct ReqwestClient {
     handle: tokio::runtime::Handle,
 }
 
-impl Default for ReqwestClient {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ReqwestClient {
     fn builder() -> reqwest::ClientBuilder {
         reqwest::Client::builder()
@@ -43,6 +37,83 @@ impl ReqwestClient {
             no_redirect_client,
             handle,
         }
+    }
+}
+
+impl Default for ReqwestClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HttpClient for ReqwestClient {
+    fn send(
+        &self,
+        request: http::Request<AsyncBody>,
+    ) -> futures::future::BoxFuture<'static, anyhow::Result<http::Response<AsyncBody>>> {
+        let (parts, body) = request.into_parts();
+        let redirect_policy = parts
+            .extensions
+            .get::<RedirectPolicy>()
+            .cloned()
+            .unwrap_or(RedirectPolicy::FollowAll);
+        let follow_limit_client = match redirect_policy {
+            RedirectPolicy::FollowLimit(limit) => Some(
+                Self::builder()
+                    .redirect(redirect::Policy::limited(limit as usize))
+                    .build()
+                    .expect("Failed to initialize HTTP client"),
+            ),
+            _ => None,
+        };
+        let client = match redirect_policy {
+            RedirectPolicy::NoFollow => &self.no_redirect_client,
+            RedirectPolicy::FollowAll => &self.client,
+            RedirectPolicy::FollowLimit(_) => follow_limit_client
+                .as_ref()
+                .expect("Follow limit client should be initialized"),
+        };
+
+        let mut request = client.request(parts.method, parts.uri.to_string());
+        request = request.headers(parts.headers);
+        let request = request.body(match body.0 {
+            Inner::Empty => reqwest::Body::default(),
+            Inner::Bytes(cursor) => cursor.into_inner().into(),
+            Inner::AsyncReader(reader) => reqwest::Body::wrap_stream(StreamReader::new(reader)),
+        });
+
+        let handle = self.handle.clone();
+        async move {
+            let mut response = handle
+                .spawn(async { request.send().await })
+                .await?
+                .map_err(|error| anyhow!(error))?;
+
+            let headers = mem::take(response.headers_mut());
+            let mut builder = http::Response::builder()
+                .status(response.status().as_u16())
+                .version(response.version());
+            *builder
+                .headers_mut()
+                .expect("Response headers should be available") = headers;
+
+            let bytes = response
+                .bytes_stream()
+                .map_err(futures::io::Error::other)
+                .into_async_read();
+            let body = AsyncBody::from_reader(bytes);
+
+            builder.body(body).map_err(|error| anyhow!(error))
+        }
+        .boxed()
+    }
+
+    fn user_agent(&self) -> Option<&http::HeaderValue> {
+        None
+    }
+
+    fn proxy(&self) -> Option<&Url> {
+        None
     }
 }
 
@@ -142,75 +213,4 @@ fn poll_read_buffer<T: futures::AsyncRead + ?Sized, B: BufMut>(
     }
 
     task::Poll::Ready(Ok(size))
-}
-
-impl HttpClient for ReqwestClient {
-    fn send(
-        &self,
-        request: http::Request<AsyncBody>,
-    ) -> futures::future::BoxFuture<'static, anyhow::Result<http::Response<AsyncBody>>> {
-        let (parts, body) = request.into_parts();
-        let redirect_policy = parts
-            .extensions
-            .get::<RedirectPolicy>()
-            .cloned()
-            .unwrap_or(RedirectPolicy::FollowAll);
-        let follow_limit_client = match redirect_policy {
-            RedirectPolicy::FollowLimit(limit) => Some(
-                Self::builder()
-                    .redirect(redirect::Policy::limited(limit as usize))
-                    .build()
-                    .expect("Failed to initialize HTTP client"),
-            ),
-            _ => None,
-        };
-        let client = match redirect_policy {
-            RedirectPolicy::NoFollow => &self.no_redirect_client,
-            RedirectPolicy::FollowAll => &self.client,
-            RedirectPolicy::FollowLimit(_) => follow_limit_client
-                .as_ref()
-                .expect("Follow limit client should be initialized"),
-        };
-
-        let mut request = client.request(parts.method, parts.uri.to_string());
-        request = request.headers(parts.headers);
-        let request = request.body(match body.0 {
-            Inner::Empty => reqwest::Body::default(),
-            Inner::Bytes(cursor) => cursor.into_inner().into(),
-            Inner::AsyncReader(reader) => reqwest::Body::wrap_stream(StreamReader::new(reader)),
-        });
-
-        let handle = self.handle.clone();
-        async move {
-            let mut response = handle
-                .spawn(async { request.send().await })
-                .await?
-                .map_err(|error| anyhow!(error))?;
-
-            let headers = mem::take(response.headers_mut());
-            let mut builder = http::Response::builder()
-                .status(response.status().as_u16())
-                .version(response.version());
-            *builder
-                .headers_mut()
-                .expect("Response headers should be available") = headers;
-
-            let bytes = response
-                .bytes_stream()
-                .map_err(futures::io::Error::other)
-                .into_async_read();
-            let body = AsyncBody::from_reader(bytes);
-
-            builder.body(body).map_err(|error| anyhow!(error))
-        }
-        .boxed()
-    }
-
-    fn user_agent(&self) -> Option<&http::HeaderValue> {
-        None
-    }
-
-    fn proxy(&self) -> Option<&Url> {
-        None
-    }
 }

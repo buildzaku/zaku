@@ -359,12 +359,6 @@ pub struct NotificationFrame {
     suffix: Option<AnyElement>,
 }
 
-impl Default for NotificationFrame {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl NotificationFrame {
     pub fn new() -> Self {
         Self {
@@ -409,6 +403,12 @@ impl NotificationFrame {
     pub fn with_suffix(mut self, suffix: impl IntoElement) -> Self {
         self.suffix = Some(suffix.into_any_element());
         self
+    }
+}
+
+impl Default for NotificationFrame {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -513,17 +513,6 @@ pub mod simple_message_notification {
         title: Option<SharedString>,
         scroll_handle: ScrollHandle,
     }
-
-    impl Focusable for MessageNotification {
-        fn focus_handle(&self, _: &App) -> FocusHandle {
-            self.focus_handle.clone()
-        }
-    }
-
-    impl EventEmitter<DismissEvent> for MessageNotification {}
-    impl EventEmitter<SuppressEvent> for MessageNotification {}
-
-    impl Notification for MessageNotification {}
 
     impl MessageNotification {
         pub fn new<S>(message: S, cx: &mut App) -> MessageNotification
@@ -666,6 +655,17 @@ pub mod simple_message_notification {
             self
         }
     }
+
+    impl Focusable for MessageNotification {
+        fn focus_handle(&self, _: &App) -> FocusHandle {
+            self.focus_handle.clone()
+        }
+    }
+
+    impl EventEmitter<DismissEvent> for MessageNotification {}
+    impl EventEmitter<SuppressEvent> for MessageNotification {}
+
+    impl Notification for MessageNotification {}
 
     impl Render for MessageNotification {
         fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

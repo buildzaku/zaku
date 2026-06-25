@@ -22,10 +22,6 @@ pub struct Connection {
     _marker: PhantomData<sqlite3::sqlite3>,
 }
 
-// SAFETY: Connection owns its sqlite3 handle, so moving it to another
-// thread transfers that ownership instead of sharing the handle.
-unsafe impl Send for Connection {}
-
 impl Connection {
     fn open<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let path = path_to_cstring(path.as_ref())?;
@@ -255,6 +251,10 @@ impl Drop for Connection {
         unsafe { sqlite3::sqlite3_close(self.sqlite3) };
     }
 }
+
+// SAFETY: Connection owns its sqlite3 handle, so moving it to another
+// thread transfers that ownership instead of sharing the handle.
+unsafe impl Send for Connection {}
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn path_to_cstring(path: &Path) -> anyhow::Result<CString> {

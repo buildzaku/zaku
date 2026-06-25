@@ -30,12 +30,6 @@ pub struct List {
     children: SmallVec<[AnyElement; 2]>,
 }
 
-impl Default for List {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl List {
     pub fn new() -> Self {
         Self {
@@ -59,6 +53,12 @@ impl List {
     pub fn toggle(mut self, toggle: impl Into<Option<bool>>) -> Self {
         self.toggle = toggle.into();
         self
+    }
+}
+
+impl Default for List {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

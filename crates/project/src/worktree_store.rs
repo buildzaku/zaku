@@ -23,12 +23,6 @@ use crate::ProjectPath;
 #[derive(Clone)]
 pub struct WorktreeIdCounter(Arc<AtomicUsize>);
 
-impl Default for WorktreeIdCounter {
-    fn default() -> Self {
-        Self(Arc::new(AtomicUsize::new(1)))
-    }
-}
-
 impl WorktreeIdCounter {
     pub fn get(cx: &mut App) -> Self {
         cx.default_global::<Self>().clone()
@@ -36,6 +30,12 @@ impl WorktreeIdCounter {
 
     fn next(&self) -> usize {
         self.0.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
+impl Default for WorktreeIdCounter {
+    fn default() -> Self {
+        Self(Arc::new(AtomicUsize::new(1)))
     }
 }
 
@@ -78,8 +78,6 @@ pub enum WorktreeStoreEvent {
     WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
     WorktreeDeletedEntry(WorktreeId, ProjectEntryId),
 }
-
-impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
 
 impl WorktreeStore {
     pub fn new(fs: Arc<dyn Fs>, next_worktree_id: WorktreeIdCounter) -> Self {
@@ -610,3 +608,5 @@ impl WorktreeStore {
         self.update_initial_scan_state(cx);
     }
 }
+
+impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}

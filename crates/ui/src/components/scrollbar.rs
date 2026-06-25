@@ -335,9 +335,7 @@ impl Scrollbars {
     pub fn for_settings<S: ScrollbarVisibility + Default>() -> Scrollbars {
         Scrollbars::new_with_setting(ScrollAxes::Both, |cx| S::default().visibility(cx))
     }
-}
 
-impl Scrollbars {
     fn new_with_setting(show_along: ScrollAxes, get_visibility: fn(&App) -> ShowScrollbar) -> Self {
         Self {
             id: None,
@@ -426,6 +424,8 @@ impl<ScrollHandle: ScrollableHandle> Scrollbars<ScrollHandle> {
     }
 }
 
+const DELTA_MAX: f32 = 1.0;
+
 #[derive(PartialEq, Clone, Debug)]
 enum VisibilityState {
     Visible,
@@ -433,8 +433,6 @@ enum VisibilityState {
     Hidden,
     Disabled,
 }
-
-const DELTA_MAX: f32 = 1.0;
 
 impl VisibilityState {
     fn from_behavior(behavior: ShowBehavior) -> Self {

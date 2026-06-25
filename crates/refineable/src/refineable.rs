@@ -23,22 +23,13 @@ pub trait IsEmpty {
     fn is_empty(&self) -> bool;
 }
 
+#[derive(Copy, Clone)]
+pub struct CascadeSlot(usize);
+
 pub struct Cascade<S: Refineable> {
     base: S::Refinement,
     refinements: Vec<Option<S::Refinement>>,
 }
-
-impl<S: Refineable> Default for Cascade<S> {
-    fn default() -> Self {
-        Self {
-            base: Default::default(),
-            refinements: Vec::new(),
-        }
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct CascadeSlot(usize);
 
 impl<S: Refineable> Cascade<S> {
     pub fn reserve(&mut self) -> CascadeSlot {
@@ -68,5 +59,14 @@ impl<S: Refineable> Cascade<S> {
             merged.refine(refinement);
         }
         merged
+    }
+}
+
+impl<S: Refineable> Default for Cascade<S> {
+    fn default() -> Self {
+        Self {
+            base: Default::default(),
+            refinements: Vec::new(),
+        }
     }
 }

@@ -216,8 +216,6 @@ pub enum ProjectEvent {
     EntryMetadataUpdated(ProjectEntryId),
 }
 
-impl EventEmitter<ProjectEvent> for Project {}
-
 impl Project {
     pub fn new(fs: Arc<dyn Fs>, languages: Arc<LanguageRegistry>, cx: &mut Context<Self>) -> Self {
         let worktree_store =
@@ -880,3 +878,5 @@ impl Project {
             .update(cx, |store, cx| store.reload_request_buffer(buffer, cx))
     }
 }
+
+impl EventEmitter<ProjectEvent> for Project {}

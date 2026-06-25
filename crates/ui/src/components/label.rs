@@ -30,9 +30,7 @@ impl Label {
         self.base = self.base.truncate_start();
         self
     }
-}
 
-impl Label {
     fn style(&mut self) -> &mut StyleRefinement {
         self.base.base.style()
     }

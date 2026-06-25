@@ -194,15 +194,6 @@ impl StaticColumnCount for SerializedItem {
     }
 }
 
-impl Bind for &SerializedItem {
-    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
-        let next_index = statement.bind(&self.kind, start_index)?;
-        let next_index = statement.bind(&self.item_id, next_index)?;
-        let next_index = statement.bind(&self.active, next_index)?;
-        statement.bind(&self.preview, next_index)
-    }
-}
-
 impl Column for SerializedItem {
     fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let (kind, next_index) = Arc::<str>::column(row, start_index)?;
@@ -218,5 +209,14 @@ impl Column for SerializedItem {
             },
             next_index,
         ))
+    }
+}
+
+impl Bind for &SerializedItem {
+    fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
+        let next_index = statement.bind(&self.kind, start_index)?;
+        let next_index = statement.bind(&self.item_id, next_index)?;
+        let next_index = statement.bind(&self.active, next_index)?;
+        statement.bind(&self.preview, next_index)
     }
 }

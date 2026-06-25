@@ -207,16 +207,6 @@ pub struct MutableSelectionsCollection<'snap, 'a> {
     selections_changed: bool,
 }
 
-impl fmt::Debug for MutableSelectionsCollection<'_, '_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("MutableSelectionsCollection")
-            .field("collection", &self.collection)
-            .field("selections_changed", &self.selections_changed)
-            .finish()
-    }
-}
-
 impl MutableSelectionsCollection<'_, '_> {
     pub fn display_snapshot(&self) -> DisplaySnapshot {
         self.snapshot.clone()
@@ -432,6 +422,16 @@ impl MutableSelectionsCollection<'_, '_> {
             let (cursor, new_goal) = update_cursor_position(map, selection.head(), selection.goal);
             selection.collapse_to(cursor, new_goal);
         });
+    }
+}
+
+impl fmt::Debug for MutableSelectionsCollection<'_, '_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MutableSelectionsCollection")
+            .field("collection", &self.collection)
+            .field("selections_changed", &self.selections_changed)
+            .finish()
     }
 }
 

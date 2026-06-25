@@ -18,8 +18,6 @@ pub enum RequestBufferEvent {
     ReloadNeeded,
 }
 
-impl EventEmitter<RequestBufferEvent> for RequestBuffer {}
-
 impl RequestBuffer {
     pub fn new(file: Arc<File>, request_file: RequestFileState) -> Self {
         Self {
@@ -120,3 +118,5 @@ impl RequestBuffer {
         cx.notify();
     }
 }
+
+impl EventEmitter<RequestBufferEvent> for RequestBuffer {}

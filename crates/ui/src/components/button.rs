@@ -93,20 +93,6 @@ pub enum ButtonVariant {
     Tinted(TintColor),
 }
 
-impl From<ButtonVariant> for Color {
-    fn from(variant: ButtonVariant) -> Self {
-        match variant {
-            ButtonVariant::Subtle
-            | ButtonVariant::Solid
-            | ButtonVariant::Accent
-            | ButtonVariant::Outline
-            | ButtonVariant::OutlinedGhost
-            | ButtonVariant::Ghost => Color::Default,
-            ButtonVariant::Tinted(tint) => tint.into(),
-        }
-    }
-}
-
 impl ButtonVariant {
     pub fn enabled(self, cx: &mut App) -> ButtonStyle {
         match self {
@@ -332,6 +318,20 @@ impl ButtonVariant {
                 }
             }
             ButtonVariant::Tinted(tint) => tint.button_style(cx),
+        }
+    }
+}
+
+impl From<ButtonVariant> for Color {
+    fn from(variant: ButtonVariant) -> Self {
+        match variant {
+            ButtonVariant::Subtle
+            | ButtonVariant::Solid
+            | ButtonVariant::Accent
+            | ButtonVariant::Outline
+            | ButtonVariant::OutlinedGhost
+            | ButtonVariant::Ghost => Color::Default,
+            ButtonVariant::Tinted(tint) => tint.into(),
         }
     }
 }

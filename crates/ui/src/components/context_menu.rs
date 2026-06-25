@@ -19,6 +19,24 @@ pub enum ContextMenuItem {
     Entry(ContextMenuEntry),
 }
 
+impl ContextMenuItem {
+    fn is_selectable(&self) -> bool {
+        match self {
+            ContextMenuItem::Header(_)
+            | ContextMenuItem::HeaderWithLink(_, _, _)
+            | ContextMenuItem::Separator
+            | ContextMenuItem::Label(_) => false,
+            ContextMenuItem::Entry(ContextMenuEntry { disabled, .. }) => !disabled,
+        }
+    }
+}
+
+impl From<ContextMenuEntry> for ContextMenuItem {
+    fn from(entry: ContextMenuEntry) -> Self {
+        ContextMenuItem::Entry(entry)
+    }
+}
+
 pub struct ContextMenuEntry {
     toggle: Option<(IconPosition, bool)>,
     label: SharedString,
@@ -109,12 +127,6 @@ impl ContextMenuEntry {
 
 impl FluentBuilder for ContextMenuEntry {}
 
-impl From<ContextMenuEntry> for ContextMenuItem {
-    fn from(entry: ContextMenuEntry) -> Self {
-        ContextMenuItem::Entry(entry)
-    }
-}
-
 pub struct ContextMenu {
     builder: Option<Rc<dyn Fn(Self, &mut Window, &mut Context<Self>) -> Self>>,
     items: Vec<ContextMenuItem>,
@@ -129,16 +141,6 @@ pub struct ContextMenu {
     keep_open_on_confirm: bool,
     fixed_width: Option<DefiniteLength>,
 }
-
-impl Focusable for ContextMenu {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
-    }
-}
-
-impl EventEmitter<DismissEvent> for ContextMenu {}
-
-impl FluentBuilder for ContextMenu {}
 
 impl ContextMenu {
     pub fn new(
@@ -1005,17 +1007,15 @@ impl ContextMenu {
     }
 }
 
-impl ContextMenuItem {
-    fn is_selectable(&self) -> bool {
-        match self {
-            ContextMenuItem::Header(_)
-            | ContextMenuItem::HeaderWithLink(_, _, _)
-            | ContextMenuItem::Separator
-            | ContextMenuItem::Label(_) => false,
-            ContextMenuItem::Entry(ContextMenuEntry { disabled, .. }) => !disabled,
-        }
+impl Focusable for ContextMenu {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
     }
 }
+
+impl EventEmitter<DismissEvent> for ContextMenu {}
+
+impl FluentBuilder for ContextMenu {}
 
 impl Render for ContextMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

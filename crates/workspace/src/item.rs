@@ -537,16 +537,17 @@ pub mod test {
         pub is_dirty: bool,
     }
 
-    pub struct TestItem {
-        pub workspace_id: Option<WorkspaceId>,
-        pub label: String,
-        pub save_count: usize,
-        pub reload_count: usize,
-        pub is_dirty: bool,
-        pub buffer_kind: ItemBufferKind,
-        pub project_items: Vec<Entity<TestProjectItem>>,
-        serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
-        focus_handle: FocusHandle,
+    impl TestProjectItem {
+        pub fn new_dirty(id: usize, path: &str, cx: &mut App) -> Entity<Self> {
+            cx.new(|_| Self {
+                entry_id: Some(ProjectEntryId::from_usize(id)),
+                project_path: Some(ProjectPath {
+                    worktree_id: WorktreeId::from_usize(0),
+                    path: Arc::from(rel_path(path)),
+                }),
+                is_dirty: true,
+            })
+        }
     }
 
     impl project::ProjectItem for TestProjectItem {
@@ -571,17 +572,16 @@ pub mod test {
         }
     }
 
-    impl TestProjectItem {
-        pub fn new_dirty(id: usize, path: &str, cx: &mut App) -> Entity<Self> {
-            cx.new(|_| Self {
-                entry_id: Some(ProjectEntryId::from_usize(id)),
-                project_path: Some(ProjectPath {
-                    worktree_id: WorktreeId::from_usize(0),
-                    path: Arc::from(rel_path(path)),
-                }),
-                is_dirty: true,
-            })
-        }
+    pub struct TestItem {
+        pub workspace_id: Option<WorkspaceId>,
+        pub label: String,
+        pub save_count: usize,
+        pub reload_count: usize,
+        pub is_dirty: bool,
+        pub buffer_kind: ItemBufferKind,
+        pub project_items: Vec<Entity<TestProjectItem>>,
+        serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
+        focus_handle: FocusHandle,
     }
 
     impl TestItem {

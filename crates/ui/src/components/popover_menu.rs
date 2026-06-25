@@ -13,30 +13,18 @@ pub trait PopoverTrigger: IntoElement + Clickable + Toggleable + 'static {}
 
 impl<T: IntoElement + Clickable + Toggleable + 'static> PopoverTrigger for T {}
 
-pub struct PopoverMenuHandle<M>(Rc<RefCell<Option<PopoverMenuHandleState<M>>>>);
-
 type MenuBuilder<M> = Rc<dyn Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static>;
 type MenuState<M> = Rc<RefCell<Option<Entity<M>>>>;
 type ChildBuilder<M> =
     Box<dyn FnOnce(MenuState<M>, Option<MenuBuilder<M>>) -> AnyElement + 'static>;
-
-impl<M> Clone for PopoverMenuHandle<M> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl<M> Default for PopoverMenuHandle<M> {
-    fn default() -> Self {
-        Self(Rc::default())
-    }
-}
 
 struct PopoverMenuHandleState<M> {
     menu_builder: MenuBuilder<M>,
     menu: MenuState<M>,
     on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
 }
+
+pub struct PopoverMenuHandle<M>(Rc<RefCell<Option<PopoverMenuHandleState<M>>>>);
 
 impl<M: ManagedView> PopoverMenuHandle<M> {
     pub fn show(&self, window: &mut Window, cx: &mut App) {
@@ -103,6 +91,88 @@ impl<M: ManagedView> PopoverMenuHandle<M> {
             self.show(window, cx);
         }
     }
+}
+
+impl<M> Clone for PopoverMenuHandle<M> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<M> Default for PopoverMenuHandle<M> {
+    fn default() -> Self {
+        Self(Rc::default())
+    }
+}
+
+fn show_menu<M: ManagedView>(
+    builder: &MenuBuilder<M>,
+    menu: &MenuState<M>,
+    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let previous_focus_handle = window.focused(cx);
+    let Some(new_menu) = builder(window, cx) else {
+        return;
+    };
+
+    let menu_clone = menu.clone();
+    window
+        .subscribe(&new_menu, cx, move |modal, _: &DismissEvent, window, cx| {
+            if modal.focus_handle(cx).contains_focused(window, cx)
+                && let Some(handle) = &previous_focus_handle
+            {
+                window.focus(handle, cx);
+            }
+            *menu_clone.borrow_mut() = None;
+            window.refresh();
+        })
+        .detach();
+
+    let focus_handle = new_menu.focus_handle(cx);
+    window.on_next_frame(move |window, _cx| {
+        window.on_next_frame(move |window, cx| {
+            window.focus(&focus_handle, cx);
+        });
+    });
+
+    *menu.borrow_mut() = Some(new_menu);
+    window.refresh();
+
+    if let Some(on_open) = on_open {
+        on_open(window, cx);
+    }
+}
+
+pub struct PopoverMenuElementState<M> {
+    menu: MenuState<M>,
+    child_bounds: Option<Bounds<Pixels>>,
+}
+
+impl<M> Clone for PopoverMenuElementState<M> {
+    fn clone(&self) -> Self {
+        Self {
+            menu: Rc::clone(&self.menu),
+            child_bounds: self.child_bounds,
+        }
+    }
+}
+
+impl<M> Default for PopoverMenuElementState<M> {
+    fn default() -> Self {
+        Self {
+            menu: Rc::default(),
+            child_bounds: None,
+        }
+    }
+}
+
+pub struct PopoverMenuFrameState<M: ManagedView> {
+    child_layout_id: Option<LayoutId>,
+    child_element: Option<AnyElement>,
+    menu_element: Option<AnyElement>,
+    menu_handle: MenuState<M>,
 }
 
 pub struct PopoverMenu<M: ManagedView> {
@@ -237,76 +307,6 @@ impl<M: ManagedView> PopoverMenu<M> {
             }
         })
     }
-}
-
-fn show_menu<M: ManagedView>(
-    builder: &MenuBuilder<M>,
-    menu: &MenuState<M>,
-    on_open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    let previous_focus_handle = window.focused(cx);
-    let Some(new_menu) = builder(window, cx) else {
-        return;
-    };
-
-    let menu_clone = menu.clone();
-    window
-        .subscribe(&new_menu, cx, move |modal, _: &DismissEvent, window, cx| {
-            if modal.focus_handle(cx).contains_focused(window, cx)
-                && let Some(handle) = &previous_focus_handle
-            {
-                window.focus(handle, cx);
-            }
-            *menu_clone.borrow_mut() = None;
-            window.refresh();
-        })
-        .detach();
-
-    let focus_handle = new_menu.focus_handle(cx);
-    window.on_next_frame(move |window, _cx| {
-        window.on_next_frame(move |window, cx| {
-            window.focus(&focus_handle, cx);
-        });
-    });
-
-    *menu.borrow_mut() = Some(new_menu);
-    window.refresh();
-
-    if let Some(on_open) = on_open {
-        on_open(window, cx);
-    }
-}
-
-pub struct PopoverMenuElementState<M> {
-    menu: MenuState<M>,
-    child_bounds: Option<Bounds<Pixels>>,
-}
-
-impl<M> Clone for PopoverMenuElementState<M> {
-    fn clone(&self) -> Self {
-        Self {
-            menu: Rc::clone(&self.menu),
-            child_bounds: self.child_bounds,
-        }
-    }
-}
-
-impl<M> Default for PopoverMenuElementState<M> {
-    fn default() -> Self {
-        Self {
-            menu: Rc::default(),
-            child_bounds: None,
-        }
-    }
-}
-
-pub struct PopoverMenuFrameState<M: ManagedView> {
-    child_layout_id: Option<LayoutId>,
-    child_element: Option<AnyElement>,
-    menu_element: Option<AnyElement>,
-    menu_handle: MenuState<M>,
 }
 
 impl<M: ManagedView> Element for PopoverMenu<M> {

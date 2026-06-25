@@ -40,8 +40,6 @@ pub enum PaneEvent {
     },
 }
 
-impl EventEmitter<PaneEvent> for Pane {}
-
 #[derive(Clone)]
 pub struct DraggedTab {
     pub pane: Entity<Pane>,
@@ -1077,6 +1075,8 @@ impl Pane {
         cx.notify();
     }
 }
+
+impl EventEmitter<PaneEvent> for Pane {}
 
 impl Focusable for Pane {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {

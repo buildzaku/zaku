@@ -277,6 +277,45 @@ impl DisplaySnapshot {
 #[derive(Copy, Clone, Default, Eq, Ord, PartialOrd, PartialEq)]
 pub struct DisplayPoint(Point);
 
+impl DisplayPoint {
+    pub fn new(row: DisplayRow, column: u32) -> Self {
+        Self(Point::new(row.0, column))
+    }
+
+    pub fn row(self) -> DisplayRow {
+        DisplayRow(self.0.row)
+    }
+
+    pub fn column(self) -> u32 {
+        self.0.column
+    }
+
+    pub fn row_mut(&mut self) -> &mut u32 {
+        &mut self.0.row
+    }
+
+    pub fn column_mut(&mut self) -> &mut u32 {
+        &mut self.0.column
+    }
+
+    pub fn to_point(self, map: &DisplaySnapshot) -> Point {
+        map.display_point_to_point(self, Bias::Left)
+    }
+
+    pub fn to_offset(self, map: &DisplaySnapshot, bias: Bias) -> MultiBufferOffset {
+        map.buffer_snapshot()
+            .point_to_offset(map.display_point_to_point(self, bias))
+    }
+
+    fn to_tab_point(self) -> TabPoint {
+        TabPoint(self.0)
+    }
+
+    fn from_tab_point(point: TabPoint) -> Self {
+        Self(point.0)
+    }
+}
+
 impl Debug for DisplayPoint {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_fmt(format_args!(
@@ -336,45 +375,6 @@ impl Sub<u32> for DisplayRow {
 
     fn sub(self, other: u32) -> Self::Output {
         DisplayRow(self.0 - other)
-    }
-}
-
-impl DisplayPoint {
-    pub fn new(row: DisplayRow, column: u32) -> Self {
-        Self(Point::new(row.0, column))
-    }
-
-    pub fn row(self) -> DisplayRow {
-        DisplayRow(self.0.row)
-    }
-
-    pub fn column(self) -> u32 {
-        self.0.column
-    }
-
-    pub fn row_mut(&mut self) -> &mut u32 {
-        &mut self.0.row
-    }
-
-    pub fn column_mut(&mut self) -> &mut u32 {
-        &mut self.0.column
-    }
-
-    pub fn to_point(self, map: &DisplaySnapshot) -> Point {
-        map.display_point_to_point(self, Bias::Left)
-    }
-
-    pub fn to_offset(self, map: &DisplaySnapshot, bias: Bias) -> MultiBufferOffset {
-        map.buffer_snapshot()
-            .point_to_offset(map.display_point_to_point(self, bias))
-    }
-
-    fn to_tab_point(self) -> TabPoint {
-        TabPoint(self.0)
-    }
-
-    fn from_tab_point(point: TabPoint) -> Self {
-        Self(point.0)
     }
 }
 

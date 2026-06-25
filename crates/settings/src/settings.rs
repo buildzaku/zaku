@@ -35,12 +35,6 @@ use util::asset_str;
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord, serde::Serialize)]
 pub struct WorktreeId(usize);
 
-impl From<WorktreeId> for usize {
-    fn from(value: WorktreeId) -> Self {
-        value.0
-    }
-}
-
 impl WorktreeId {
     pub fn from_usize(handle_id: usize) -> Self {
         Self(handle_id)
@@ -56,6 +50,12 @@ impl WorktreeId {
 
     pub fn to_usize(self) -> usize {
         self.0
+    }
+}
+
+impl From<WorktreeId> for usize {
+    fn from(value: WorktreeId) -> Self {
+        value.0
     }
 }
 

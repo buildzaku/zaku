@@ -146,11 +146,6 @@ pub enum RequestEditorEvent {
     FileHandleChanged,
 }
 
-struct Request {
-    meta: RequestMeta,
-    http: RequestHttp,
-}
-
 type RequestMeta = RequestFileMeta;
 
 type RequestBodyType = RequestFileBodyType;
@@ -162,6 +157,11 @@ struct RequestHttp {
     headers: Vec<RequestHeader>,
     body_type: Option<RequestBodyType>,
     body: Option<RequestBody>,
+}
+
+struct Request {
+    meta: RequestMeta,
+    http: RequestHttp,
 }
 
 impl Request {

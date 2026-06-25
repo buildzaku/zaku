@@ -36,8 +36,6 @@ pub enum BufferStoreEvent {
     },
 }
 
-impl EventEmitter<BufferStoreEvent> for BufferStore {}
-
 impl BufferStore {
     pub fn new(worktree_store: &Entity<WorktreeStore>, cx: &mut Context<Self>) -> Self {
         Self {
@@ -456,6 +454,8 @@ impl BufferStore {
         })
     }
 }
+
+impl EventEmitter<BufferStoreEvent> for BufferStore {}
 
 fn is_not_found_error(error: &anyhow::Error) -> bool {
     error

@@ -387,7 +387,7 @@ mod tests {
 
     use indoc::indoc;
 
-    gpui::actions!(test_keymap_file, [StringAction, InputAction]);
+    gpui::actions!(test_only, [StringAction, InputAction]);
 
     #[gpui::test]
     fn test_keymap_section_unbinds_are_loaded_before_bindings(cx: &mut App) {
@@ -396,11 +396,11 @@ mod tests {
                 [
                     {
                         "unbind": {
-                            "ctrl-a": "test_keymap_file::StringAction",
-                            "ctrl-b": ["test_keymap_file::InputAction", {}]
+                            "ctrl-a": "test_only::StringAction",
+                            "ctrl-b": ["test_only::InputAction", {}]
                         },
                         "bindings": {
-                            "ctrl-c": "test_keymap_file::StringAction"
+                            "ctrl-c": "test_only::StringAction"
                         }
                     }
                 ]
@@ -420,13 +420,13 @@ mod tests {
         assert!(
             key_bindings[0]
                 .action()
-                .partial_eq(&Unbind("test_keymap_file::StringAction".into()))
+                .partial_eq(&Unbind("test_only::StringAction".into()))
         );
         assert_eq!(key_bindings[0].action_input(), None);
         assert!(
             key_bindings[1]
                 .action()
-                .partial_eq(&Unbind("test_keymap_file::InputAction".into()))
+                .partial_eq(&Unbind("test_only::InputAction".into()))
         );
         assert_eq!(
             key_bindings[1]
@@ -435,10 +435,7 @@ mod tests {
                 .map(ToString::to_string),
             Some("{}".to_string())
         );
-        assert_eq!(
-            key_bindings[2].action().name(),
-            "test_keymap_file::StringAction"
-        );
+        assert_eq!(key_bindings[2].action().name(), "test_only::StringAction");
     }
 
     #[gpui::test]
@@ -448,7 +445,7 @@ mod tests {
                 [
                     {
                         "unbind": {
-                            "ctrl-a": ["test_keymap_file::InputAction", {}]
+                            "ctrl-a": ["test_only::InputAction", {}]
                         }
                     }
                 ]
@@ -463,7 +460,7 @@ mod tests {
         assert!(
             key_bindings[0]
                 .action()
-                .partial_eq(&Unbind("test_keymap_file::InputAction".into()))
+                .partial_eq(&Unbind("test_only::InputAction".into()))
         );
         assert_eq!(
             key_bindings[0]
@@ -507,7 +504,7 @@ mod tests {
             [
                 {
                     "unbind": {
-                        "ctrl-a": ["__UNBIND__", "test_keymap_file::StringAction"]
+                        "ctrl-a": ["__UNBIND__", "test_only::StringAction"]
                     }
                 }
             ]

@@ -50,8 +50,6 @@ pub struct SettingsStore {
     _setting_file_updates: Task<()>,
 }
 
-impl Global for SettingsStore {}
-
 impl SettingsStore {
     pub fn new(cx: &mut App, default_settings_json: impl AsRef<str>) -> Self {
         let (default_settings, parse_status) =
@@ -269,6 +267,8 @@ impl SettingsStore {
         }
     }
 }
+
+impl Global for SettingsStore {}
 
 #[cfg(test)]
 mod tests {

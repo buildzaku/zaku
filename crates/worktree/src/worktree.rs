@@ -62,6 +62,149 @@ pub struct Worktree {
 }
 
 impl Worktree {
+    pub async fn new(
+        path: impl Into<Arc<Path>>,
+        visible: bool,
+        fs: Arc<dyn Fs>,
+        next_entry_id: Arc<AtomicUsize>,
+        scanning_enabled: bool,
+        worktree_id: WorktreeId,
+        cx: &mut AsyncApp,
+    ) -> anyhow::Result<Entity<Self>> {
+        let opened_abs_path = path.into();
+
+        let metadata = fs
+            .metadata(opened_abs_path.as_ref())
+            .await
+            .context("failed to stat worktree path")?;
+
+        let path_style = PathStyle::local();
+        let fs_case_sensitive = fs.is_case_sensitive().await;
+        let root_name = match opened_abs_path.file_name() {
+            Some(file_name) => {
+                let file_name = file_name
+                    .to_str()
+                    .context("worktree root name should be valid utf-8")?;
+                RelPath::unix(file_name)
+                    .context("failed to parse worktree root name")
+                    .map(Arc::<RelPath>::from)?
+            }
+            None => RelPath::empty().into(),
+        };
+        let root_file_handle = if metadata.as_ref().is_some() {
+            fs.open_handle(opened_abs_path.as_ref())
+                .await
+                .with_context(|| {
+                    format!(
+                        "failed to open worktree root at {}",
+                        opened_abs_path.display()
+                    )
+                })
+                .log_err()
+        } else {
+            None
+        };
+
+        Ok(cx.new(move |cx: &mut Context<Self>| {
+            let mut snapshot = WorktreeSnapshot {
+                snapshot: Snapshot::new(
+                    worktree_id,
+                    root_name,
+                    opened_abs_path.clone(),
+                    path_style,
+                ),
+                root_file_handle,
+            };
+            if let Some(metadata) = metadata {
+                let mut root_entry = Entry::new(
+                    Arc::from(RelPath::empty()),
+                    &metadata,
+                    ProjectEntryId::new(next_entry_id.as_ref()),
+                    None,
+                );
+                if metadata.is_dir {
+                    root_entry.kind = if scanning_enabled {
+                        EntryKind::PendingDir
+                    } else {
+                        EntryKind::UnloadedDir
+                    };
+                }
+                snapshot.insert_entry(root_entry);
+            }
+
+            let (scan_requests_tx, scan_requests_rx) = channel::unbounded();
+            let (path_prefixes_to_scan_tx, path_prefixes_to_scan_rx) = channel::unbounded();
+            let mut worktree = Worktree {
+                snapshot,
+                scan_requests_tx,
+                path_prefixes_to_scan_tx,
+                is_scanning: watch::channel(true),
+                background_scanner_tasks: Vec::new(),
+                fs,
+                fs_case_sensitive,
+                visible,
+                next_entry_id,
+                scanning_enabled,
+            };
+            worktree.start_background_scanner(scan_requests_rx, path_prefixes_to_scan_rx, cx);
+            worktree
+        }))
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.visible
+    }
+
+    fn is_file_worktree(&self) -> bool {
+        self.root_dir().is_none()
+    }
+
+    pub fn full_path(&self, worktree_relative_path: &RelPath) -> PathBuf {
+        self.root_name()
+            .join(worktree_relative_path)
+            .display(self.path_style())
+            .to_string()
+            .into()
+    }
+
+    pub fn write_request_file(
+        &self,
+        path: Arc<RelPath>,
+        request_file: RequestFile,
+        cx: &Context<Self>,
+    ) -> Task<anyhow::Result<Arc<File>>> {
+        let fs = self.fs().clone();
+        let abs_path = self.absolutize(&path);
+        let write_task = cx.background_spawn(async move {
+            let contents = request::serialize_request_file(&request_file)?;
+            fs.write(&abs_path, contents.as_bytes()).await
+        });
+
+        cx.spawn(async move |this, cx| {
+            write_task.await?;
+            let entry = this
+                .update(cx, |worktree, cx| {
+                    worktree.refresh_entry(path.clone(), None, cx)
+                })?
+                .await?;
+            let worktree = this.upgrade().context("worktree dropped")?;
+            Ok(File::for_entry(&entry, worktree))
+        })
+    }
+
+    fn descendant_entry_ids(&self, path: &RelPath) -> Vec<ProjectEntryId> {
+        fn inner(worktree: &Worktree, path: &RelPath, entry_ids: &mut Vec<ProjectEntryId>) {
+            for entry in worktree.child_entries(path) {
+                entry_ids.push(entry.id);
+                inner(worktree, entry.path.as_ref(), entry_ids);
+            }
+        }
+
+        let mut entry_ids = Vec::new();
+        inner(self, path, &mut entry_ids);
+        entry_ids
+    }
+
     pub fn fs(&self) -> &Arc<dyn Fs> {
         &self.fs
     }
@@ -464,6 +607,14 @@ impl Worktree {
     }
 }
 
+impl Deref for Worktree {
+    type Target = Snapshot;
+
+    fn deref(&self) -> &Self::Target {
+        &self.snapshot
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProjectEntryId(usize);
 
@@ -483,156 +634,13 @@ impl ProjectEntryId {
     }
 }
 
-impl Worktree {
-    pub async fn new(
-        path: impl Into<Arc<Path>>,
-        visible: bool,
-        fs: Arc<dyn Fs>,
-        next_entry_id: Arc<AtomicUsize>,
-        scanning_enabled: bool,
-        worktree_id: WorktreeId,
-        cx: &mut AsyncApp,
-    ) -> anyhow::Result<Entity<Self>> {
-        let opened_abs_path = path.into();
-
-        let metadata = fs
-            .metadata(opened_abs_path.as_ref())
-            .await
-            .context("failed to stat worktree path")?;
-
-        let path_style = PathStyle::local();
-        let fs_case_sensitive = fs.is_case_sensitive().await;
-        let root_name = match opened_abs_path.file_name() {
-            Some(file_name) => {
-                let file_name = file_name
-                    .to_str()
-                    .context("worktree root name should be valid utf-8")?;
-                RelPath::unix(file_name)
-                    .context("failed to parse worktree root name")
-                    .map(Arc::<RelPath>::from)?
-            }
-            None => RelPath::empty().into(),
-        };
-        let root_file_handle = if metadata.as_ref().is_some() {
-            fs.open_handle(opened_abs_path.as_ref())
-                .await
-                .with_context(|| {
-                    format!(
-                        "failed to open worktree root at {}",
-                        opened_abs_path.display()
-                    )
-                })
-                .log_err()
-        } else {
-            None
-        };
-
-        Ok(cx.new(move |cx: &mut Context<Self>| {
-            let mut snapshot = WorktreeSnapshot {
-                snapshot: Snapshot::new(
-                    worktree_id,
-                    root_name,
-                    opened_abs_path.clone(),
-                    path_style,
-                ),
-                root_file_handle,
-            };
-            if let Some(metadata) = metadata {
-                let mut root_entry = Entry::new(
-                    Arc::from(RelPath::empty()),
-                    &metadata,
-                    ProjectEntryId::new(next_entry_id.as_ref()),
-                    None,
-                );
-                if metadata.is_dir {
-                    root_entry.kind = if scanning_enabled {
-                        EntryKind::PendingDir
-                    } else {
-                        EntryKind::UnloadedDir
-                    };
-                }
-                snapshot.insert_entry(root_entry);
-            }
-
-            let (scan_requests_tx, scan_requests_rx) = channel::unbounded();
-            let (path_prefixes_to_scan_tx, path_prefixes_to_scan_rx) = channel::unbounded();
-            let mut worktree = Worktree {
-                snapshot,
-                scan_requests_tx,
-                path_prefixes_to_scan_tx,
-                is_scanning: watch::channel(true),
-                background_scanner_tasks: Vec::new(),
-                fs,
-                fs_case_sensitive,
-                visible,
-                next_entry_id,
-                scanning_enabled,
-            };
-            worktree.start_background_scanner(scan_requests_rx, path_prefixes_to_scan_rx, cx);
-            worktree
-        }))
+impl<'a> Dimension<'a, PathEntrySummary> for ProjectEntryId {
+    fn zero((): ()) -> Self {
+        Self::default()
     }
 
-    pub fn is_visible(&self) -> bool {
-        self.visible
-    }
-
-    fn is_file_worktree(&self) -> bool {
-        self.root_dir().is_none()
-    }
-
-    pub fn full_path(&self, worktree_relative_path: &RelPath) -> PathBuf {
-        self.root_name()
-            .join(worktree_relative_path)
-            .display(self.path_style())
-            .to_string()
-            .into()
-    }
-
-    pub fn write_request_file(
-        &self,
-        path: Arc<RelPath>,
-        request_file: RequestFile,
-        cx: &Context<Self>,
-    ) -> Task<anyhow::Result<Arc<File>>> {
-        let fs = self.fs().clone();
-        let abs_path = self.absolutize(&path);
-        let write_task = cx.background_spawn(async move {
-            let contents = request::serialize_request_file(&request_file)?;
-            fs.write(&abs_path, contents.as_bytes()).await
-        });
-
-        cx.spawn(async move |this, cx| {
-            write_task.await?;
-            let entry = this
-                .update(cx, |worktree, cx| {
-                    worktree.refresh_entry(path.clone(), None, cx)
-                })?
-                .await?;
-            let worktree = this.upgrade().context("worktree dropped")?;
-            Ok(File::for_entry(&entry, worktree))
-        })
-    }
-
-    fn descendant_entry_ids(&self, path: &RelPath) -> Vec<ProjectEntryId> {
-        fn inner(worktree: &Worktree, path: &RelPath, entry_ids: &mut Vec<ProjectEntryId>) {
-            for entry in worktree.child_entries(path) {
-                entry_ids.push(entry.id);
-                inner(worktree, entry.path.as_ref(), entry_ids);
-            }
-        }
-
-        let mut entry_ids = Vec::new();
-        inner(self, path, &mut entry_ids);
-        entry_ids
-    }
-}
-
-impl Deref for Worktree {
-    type Target = Snapshot;
-
-    fn deref(&self) -> &Self::Target {
-        &self.snapshot
+    fn add_summary(&mut self, summary: &'a PathEntrySummary, (): ()) {
+        *self = summary.max_id;
     }
 }
 
@@ -876,20 +884,6 @@ impl fmt::Debug for Snapshot {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Entry {
-    pub id: ProjectEntryId,
-    pub kind: EntryKind,
-    pub path: Arc<RelPath>,
-    pub inode: u64,
-    pub mtime: Option<MTime>,
-    pub canonical_path: Option<Arc<Path>>,
-    pub is_external: bool,
-    pub is_fifo: bool,
-    pub size: u64,
-    pub is_request: bool,
-}
-
 pub struct LoadedFile {
     pub file: Arc<File>,
     pub text: String,
@@ -984,6 +978,20 @@ impl language::File for File {
     fn worktree_id(&self, cx: &App) -> WorktreeId {
         self.worktree.read(cx).id()
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry {
+    pub id: ProjectEntryId,
+    pub kind: EntryKind,
+    pub path: Arc<RelPath>,
+    pub inode: u64,
+    pub mtime: Option<MTime>,
+    pub canonical_path: Option<Arc<Path>>,
+    pub is_external: bool,
+    pub is_fifo: bool,
+    pub size: u64,
+    pub is_request: bool,
 }
 
 impl Entry {
@@ -1344,16 +1352,6 @@ impl ContextLessSummary for PathEntrySummary {
 
     fn add_summary(&mut self, summary: &Self) {
         self.max_id = summary.max_id;
-    }
-}
-
-impl<'a> Dimension<'a, PathEntrySummary> for ProjectEntryId {
-    fn zero((): ()) -> Self {
-        Self::default()
-    }
-
-    fn add_summary(&mut self, summary: &'a PathEntrySummary, (): ()) {
-        *self = summary.max_id;
     }
 }
 

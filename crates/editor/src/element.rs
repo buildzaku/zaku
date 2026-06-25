@@ -41,22 +41,6 @@ struct LineHighlightSpec {
     selection: bool,
 }
 
-pub(crate) struct PositionMap {
-    pub size: Size<Pixels>,
-    pub line_height: Pixels,
-    pub scroll_position: Point<ScrollOffset>,
-    pub scroll_max: Point<ScrollOffset>,
-    pub em_layout_width: Pixels,
-    pub visible_row_range: Range<DisplayRow>,
-    pub line_layouts: Vec<LineWithInvisibles>,
-    pub snapshot: EditorSnapshot,
-    pub text_align: TextAlign,
-    pub content_width: Pixels,
-    pub text_hitbox: Hitbox,
-    pub gutter_hitbox: Hitbox,
-    pub masked: bool,
-}
-
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct PointForPosition {
     pub previous_valid: DisplayPoint,
@@ -74,6 +58,22 @@ impl PointForPosition {
             None
         }
     }
+}
+
+pub(crate) struct PositionMap {
+    pub size: Size<Pixels>,
+    pub line_height: Pixels,
+    pub scroll_position: Point<ScrollOffset>,
+    pub scroll_max: Point<ScrollOffset>,
+    pub em_layout_width: Pixels,
+    pub visible_row_range: Range<DisplayRow>,
+    pub line_layouts: Vec<LineWithInvisibles>,
+    pub snapshot: EditorSnapshot,
+    pub text_align: TextAlign,
+    pub content_width: Pixels,
+    pub text_hitbox: Hitbox,
+    pub gutter_hitbox: Hitbox,
+    pub masked: bool,
 }
 
 impl PositionMap {
@@ -176,6 +176,54 @@ impl LineWithInvisibles {
             TextAlign::Right => (content_width - self.width).max(gpui::px(0.0)),
         }
     }
+}
+
+pub struct EditorLayout {
+    position_map: Rc<PositionMap>,
+    hitbox: Hitbox,
+    gutter_hitbox: Hitbox,
+    line_numbers: Arc<HashMap<MultiBufferRow, LineNumberLayout>>,
+    active_line_background: Option<PaintQuad>,
+    cursor: Option<PaintQuad>,
+    selection_ranges: Vec<Range<DisplayPoint>>,
+    vertical_scrollbar: Option<ScrollbarPrepaint>,
+    horizontal_scrollbar: Option<ScrollbarPrepaint>,
+    em_width: Pixels,
+    column_width: Pixels,
+    needs_scroll_clamp: bool,
+    clamped_scroll_position: Point<ScrollOffset>,
+}
+
+#[derive(Clone)]
+struct ScrollbarPrepaint {
+    track_bounds: Bounds<Pixels>,
+    thumb_bounds: Option<Bounds<Pixels>>,
+    track_hitbox: Hitbox,
+    thumb_hitbox: Option<Hitbox>,
+    track_quad: PaintQuad,
+    thumb_quad: Option<PaintQuad>,
+    scroll_max: ScrollOffset,
+}
+
+#[derive(Debug)]
+struct LineNumberSegment {
+    shaped_line: ShapedLine,
+    hitbox: Option<Hitbox>,
+}
+
+#[derive(Debug)]
+struct LineNumberLayout {
+    segments: SmallVec<[LineNumberSegment; 1]>,
+}
+
+struct Gutter<'a> {
+    line_height: Pixels,
+    range: Range<DisplayRow>,
+    scroll_position: Point<ScrollOffset>,
+    dimensions: &'a GutterDimensions,
+    hitbox: &'a Hitbox,
+    snapshot: &'a EditorSnapshot,
+    row_infos: &'a [RowInfo],
 }
 
 pub struct EditorElement {
@@ -1015,54 +1063,6 @@ impl EditorElement {
             }
         }
     }
-}
-
-pub struct EditorLayout {
-    position_map: Rc<PositionMap>,
-    hitbox: Hitbox,
-    gutter_hitbox: Hitbox,
-    line_numbers: Arc<HashMap<MultiBufferRow, LineNumberLayout>>,
-    active_line_background: Option<PaintQuad>,
-    cursor: Option<PaintQuad>,
-    selection_ranges: Vec<Range<DisplayPoint>>,
-    vertical_scrollbar: Option<ScrollbarPrepaint>,
-    horizontal_scrollbar: Option<ScrollbarPrepaint>,
-    em_width: Pixels,
-    column_width: Pixels,
-    needs_scroll_clamp: bool,
-    clamped_scroll_position: Point<ScrollOffset>,
-}
-
-#[derive(Clone)]
-struct ScrollbarPrepaint {
-    track_bounds: Bounds<Pixels>,
-    thumb_bounds: Option<Bounds<Pixels>>,
-    track_hitbox: Hitbox,
-    thumb_hitbox: Option<Hitbox>,
-    track_quad: PaintQuad,
-    thumb_quad: Option<PaintQuad>,
-    scroll_max: ScrollOffset,
-}
-
-#[derive(Debug)]
-struct LineNumberSegment {
-    shaped_line: ShapedLine,
-    hitbox: Option<Hitbox>,
-}
-
-#[derive(Debug)]
-struct LineNumberLayout {
-    segments: SmallVec<[LineNumberSegment; 1]>,
-}
-
-struct Gutter<'a> {
-    line_height: Pixels,
-    range: Range<DisplayRow>,
-    scroll_position: Point<ScrollOffset>,
-    dimensions: &'a GutterDimensions,
-    hitbox: &'a Hitbox,
-    snapshot: &'a EditorSnapshot,
-    row_infos: &'a [RowInfo],
 }
 
 impl IntoElement for EditorElement {
@@ -2012,18 +2012,18 @@ fn build_visible_lines(
 }
 
 #[derive(Debug)]
+pub(crate) struct HighlightedRangeLine {
+    pub start_x: Pixels,
+    pub end_x: Pixels,
+}
+
+#[derive(Debug)]
 pub(crate) struct HighlightedRange {
     pub start_y: Pixels,
     pub line_height: Pixels,
     pub lines: Vec<HighlightedRangeLine>,
     pub color: Hsla,
     pub corner_radius: Pixels,
-}
-
-#[derive(Debug)]
-pub(crate) struct HighlightedRangeLine {
-    pub start_x: Pixels,
-    pub end_x: Pixels,
 }
 
 impl HighlightedRange {

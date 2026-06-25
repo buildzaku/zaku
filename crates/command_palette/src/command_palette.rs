@@ -152,69 +152,6 @@ pub fn normalize_action_query(input: &str) -> String {
     result
 }
 
-pub struct CommandPaletteDelegate {
-    latest_query: String,
-    command_palette: WeakEntity<CommandPalette>,
-    all_commands: Vec<Command>,
-    commands: Vec<Command>,
-    matches: Vec<StringMatch>,
-    selected_index: usize,
-    previous_focus_handle: FocusHandle,
-    updating_matches: Option<(Task<()>, Receiver<(Vec<Command>, Vec<StringMatch>)>)>,
-    query_history: QueryHistory,
-}
-
-impl CommandPaletteDelegate {
-    fn new(
-        command_palette: WeakEntity<CommandPalette>,
-        commands: Vec<Command>,
-        previous_focus_handle: FocusHandle,
-    ) -> Self {
-        Self {
-            latest_query: String::new(),
-            command_palette,
-            all_commands: commands.clone(),
-            commands,
-            matches: Vec::new(),
-            selected_index: 0,
-            previous_focus_handle,
-            updating_matches: None,
-            query_history: QueryHistory::default(),
-        }
-    }
-
-    fn matches_updated(
-        &mut self,
-        query: String,
-        commands: Vec<Command>,
-        matches: Vec<StringMatch>,
-        _: &mut Context<Picker<Self>>,
-    ) {
-        drop(self.updating_matches.take());
-        self.latest_query = query;
-        self.commands = commands;
-        self.matches = matches;
-        if self.matches.is_empty() {
-            self.selected_index = 0;
-        } else {
-            self.selected_index = cmp::min(self.selected_index, self.matches.len() - 1);
-        }
-    }
-
-    fn hit_counts(cx: &App) -> HashMap<String, u16> {
-        match CommandPaletteDB::global(cx).list_commands_used() {
-            Ok(commands) => commands
-                .into_iter()
-                .map(|command| (command.command_name, command.invocations))
-                .collect(),
-            Err(error) => {
-                log::debug!("Failed to load command palette usage history: {error:?}");
-                HashMap::new()
-            }
-        }
-    }
-}
-
 #[derive(Default)]
 struct QueryHistory {
     history: Option<VecDeque<String>>,
@@ -303,6 +240,69 @@ impl QueryHistory {
 
     fn is_navigating(&self) -> bool {
         self.cursor.is_some()
+    }
+}
+
+pub struct CommandPaletteDelegate {
+    latest_query: String,
+    command_palette: WeakEntity<CommandPalette>,
+    all_commands: Vec<Command>,
+    commands: Vec<Command>,
+    matches: Vec<StringMatch>,
+    selected_index: usize,
+    previous_focus_handle: FocusHandle,
+    updating_matches: Option<(Task<()>, Receiver<(Vec<Command>, Vec<StringMatch>)>)>,
+    query_history: QueryHistory,
+}
+
+impl CommandPaletteDelegate {
+    fn new(
+        command_palette: WeakEntity<CommandPalette>,
+        commands: Vec<Command>,
+        previous_focus_handle: FocusHandle,
+    ) -> Self {
+        Self {
+            latest_query: String::new(),
+            command_palette,
+            all_commands: commands.clone(),
+            commands,
+            matches: Vec::new(),
+            selected_index: 0,
+            previous_focus_handle,
+            updating_matches: None,
+            query_history: QueryHistory::default(),
+        }
+    }
+
+    fn matches_updated(
+        &mut self,
+        query: String,
+        commands: Vec<Command>,
+        matches: Vec<StringMatch>,
+        _: &mut Context<Picker<Self>>,
+    ) {
+        drop(self.updating_matches.take());
+        self.latest_query = query;
+        self.commands = commands;
+        self.matches = matches;
+        if self.matches.is_empty() {
+            self.selected_index = 0;
+        } else {
+            self.selected_index = cmp::min(self.selected_index, self.matches.len() - 1);
+        }
+    }
+
+    fn hit_counts(cx: &App) -> HashMap<String, u16> {
+        match CommandPaletteDB::global(cx).list_commands_used() {
+            Ok(commands) => commands
+                .into_iter()
+                .map(|command| (command.command_name, command.invocations))
+                .collect(),
+            Err(error) => {
+                log::debug!("Failed to load command palette usage history: {error:?}");
+                HashMap::new()
+            }
+        }
     }
 }
 

@@ -499,6 +499,18 @@ pub enum FontStyleContent {
 #[serde(transparent)]
 pub struct FontWeightContent(pub f32);
 
+impl FontWeightContent {
+    pub const THIN: FontWeightContent = FontWeightContent(100.0);
+    pub const EXTRA_LIGHT: FontWeightContent = FontWeightContent(200.0);
+    pub const LIGHT: FontWeightContent = FontWeightContent(300.0);
+    pub const NORMAL: FontWeightContent = FontWeightContent(400.0);
+    pub const MEDIUM: FontWeightContent = FontWeightContent(500.0);
+    pub const SEMIBOLD: FontWeightContent = FontWeightContent(600.0);
+    pub const BOLD: FontWeightContent = FontWeightContent(700.0);
+    pub const EXTRA_BOLD: FontWeightContent = FontWeightContent(800.0);
+    pub const BLACK: FontWeightContent = FontWeightContent(900.0);
+}
+
 impl fmt::Display for FontWeightContent {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}", self.0)
@@ -515,16 +527,4 @@ impl Default for FontWeightContent {
     fn default() -> Self {
         Self::NORMAL
     }
-}
-
-impl FontWeightContent {
-    pub const THIN: FontWeightContent = FontWeightContent(100.0);
-    pub const EXTRA_LIGHT: FontWeightContent = FontWeightContent(200.0);
-    pub const LIGHT: FontWeightContent = FontWeightContent(300.0);
-    pub const NORMAL: FontWeightContent = FontWeightContent(400.0);
-    pub const MEDIUM: FontWeightContent = FontWeightContent(500.0);
-    pub const SEMIBOLD: FontWeightContent = FontWeightContent(600.0);
-    pub const BOLD: FontWeightContent = FontWeightContent(700.0);
-    pub const EXTRA_BOLD: FontWeightContent = FontWeightContent(800.0);
-    pub const BLACK: FontWeightContent = FontWeightContent(900.0);
 }
