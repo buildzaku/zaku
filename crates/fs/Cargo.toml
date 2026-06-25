@@ -5,15 +5,15 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
-
 [lib]
 name = "fs"
 path = "src/fs.rs"
 
+[lints]
+workspace = true
+
 [[test]]
-name = "integration"
+name = "fs_tests"
 path = "tests/integration/fs_tests.rs"
 
 [features]

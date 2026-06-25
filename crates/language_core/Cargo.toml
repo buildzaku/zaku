@@ -5,12 +5,12 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
-
 [lib]
 name = "language_core"
 path = "src/language_core.rs"
+
+[lints]
+workspace = true
 
 [dependencies]
 anyhow = { workspace = true }

@@ -5,12 +5,12 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
-
 [lib]
 name = "settings"
 path = "src/settings.rs"
+
+[lints]
+workspace = true
 
 [features]
 test = ["gpui/test-support", "fs/test"]

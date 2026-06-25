@@ -5,15 +5,15 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[lib]
+name = "http_client"
+path = "src/http_client.rs"
+
 [lints]
 workspace = true
 
 [features]
 test = []
-
-[lib]
-name = "http_client"
-path = "src/http_client.rs"
 
 [dependencies]
 anyhow = { workspace = true }

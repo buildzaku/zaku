@@ -5,15 +5,15 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
-
 [lib]
 name = "project"
 path = "src/project.rs"
 
+[lints]
+workspace = true
+
 [[test]]
-name = "integration"
+name = "project_tests"
 path = "tests/integration/project_tests.rs"
 required-features = ["test"]
 

@@ -5,20 +5,20 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
-
 [lib]
 name = "language"
 path = "src/language.rs"
 
+[lints]
+workspace = true
+
 [features]
 test = [
-    "gpui/test-support",
-    "toml",
-    "tree-sitter-html",
-    "tree-sitter-json",
-    "tree-sitter-xml",
+  "gpui/test-support",
+  "toml",
+  "tree-sitter-html",
+  "tree-sitter-json",
+  "tree-sitter-xml",
 ]
 
 [dependencies]

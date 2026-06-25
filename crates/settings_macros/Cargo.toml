@@ -5,12 +5,13 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[lib]
+name = "settings_macros"
+path = "src/settings_macros.rs"
+proc-macro = true
+
 [lints]
 workspace = true
-
-[lib]
-proc-macro = true
-path = "src/settings_macros.rs"
 
 [dependencies]
 quote = { workspace = true }

@@ -5,15 +5,15 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[lib]
+name = "db"
+path = "src/db.rs"
+
 [lints]
 workspace = true
 
 [features]
 test = []
-
-[lib]
-name = "db"
-path = "src/db.rs"
 
 [dependencies]
 anyhow = { workspace = true }

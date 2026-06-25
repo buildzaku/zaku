@@ -13,16 +13,12 @@ repository = "https://github.com/buildzaku/zaku"
 identifier = "dev.zaku.Zaku"
 icon = ["resources/app-icon.png", "resources/app-icon@2x.png"]
 
-[lints]
-workspace = true
-
 [lib]
 name = "zaku"
 path = "src/zaku.rs"
 
-[features]
-default = ["mimalloc"]
-mimalloc = ["dep:mimalloc"]
+[lints]
+workspace = true
 
 [[test]]
 name = "keymap_tests"
@@ -31,6 +27,10 @@ path = "tests/integration/keymap_tests.rs"
 [[test]]
 name = "workspace_tests"
 path = "tests/integration/workspace_tests.rs"
+
+[features]
+default = ["mimalloc"]
+mimalloc = ["dep:mimalloc"]
 
 [dependencies]
 actions = { workspace = true }

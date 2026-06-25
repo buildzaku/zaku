@@ -5,15 +5,15 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[lib]
+name = "request_editor"
+path = "src/request_editor.rs"
+
 [lints]
 workspace = true
 
 [features]
 test = ["db/test"]
-
-[lib]
-name = "request_editor"
-path = "src/request_editor.rs"
 
 [dependencies]
 actions = { workspace = true }

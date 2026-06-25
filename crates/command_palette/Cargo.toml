@@ -5,12 +5,12 @@ authors.workspace = true
 edition.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
-
 [lib]
 name = "command_palette"
 path = "src/command_palette.rs"
+
+[lints]
+workspace = true
 
 [features]
 test = ["db/test"]
