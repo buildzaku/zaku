@@ -422,7 +422,6 @@ pub fn derive_refineable(input: TokenStream) -> TokenStream {
         #derive_stream
         pub struct #refinement_ident #impl_generics {
             #(
-                #[allow(missing_docs)]
                 #field_attributes
                 #field_visibilities #field_names: #wrapped_types
             ),*
