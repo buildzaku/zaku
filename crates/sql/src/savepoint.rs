@@ -67,13 +67,13 @@ impl Drop for SavepointGuard<'_> {
 }
 
 impl Connection {
-    pub fn with_savepoint<R, F>(&self, name: impl AsRef<str>, f: F) -> anyhow::Result<R>
+    pub fn with_savepoint<R, F>(&self, name: impl AsRef<str>, operation: F) -> anyhow::Result<R>
     where
         F: FnOnce() -> anyhow::Result<R>,
     {
         let mut savepoint = SavepointGuard::new(self, name.as_ref())?;
 
-        let result = f();
+        let result = operation();
         match result {
             Ok(value) => {
                 savepoint.release()?;
@@ -89,14 +89,14 @@ impl Connection {
     pub fn with_savepoint_rollback<R, F>(
         &self,
         name: impl AsRef<str>,
-        f: F,
+        operation: F,
     ) -> anyhow::Result<Option<R>>
     where
         F: FnOnce() -> anyhow::Result<Option<R>>,
     {
         let mut savepoint = SavepointGuard::new(self, name.as_ref())?;
 
-        let result = f();
+        let result = operation();
         match result {
             Ok(Some(value)) => {
                 savepoint.release()?;

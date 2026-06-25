@@ -130,8 +130,8 @@ impl FakeHttpClient {
 
 #[cfg(any(test, feature = "test"))]
 impl fmt::Debug for FakeHttpClient {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FakeHttpClient").finish()
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("FakeHttpClient").finish()
     }
 }
 

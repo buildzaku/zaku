@@ -225,38 +225,42 @@ impl Render for Tooltip {
         let meta = self.meta.clone();
         let key_binding = self.key_binding.clone();
         let max_w = self.max_w;
-        tooltip_container(cx, move |el, _| {
-            el.child(
-                gpui::div()
-                    .h_flex()
-                    .gap_4()
-                    .child(
+        tooltip_container(cx, move |element, _| {
+            element
+                .child(
+                    gpui::div()
+                        .h_flex()
+                        .gap_4()
+                        .child(
+                            gpui::div()
+                                .map(|this| match max_w {
+                                    Some(max_w) => this.max_w(max_w),
+                                    None => this.max_w_72(),
+                                })
+                                .child(title),
+                        )
+                        .when_some(key_binding, |this, key_binding| {
+                            this.justify_between().child(key_binding)
+                        }),
+                )
+                .when_some(meta, |this, meta| {
+                    this.child(
                         gpui::div()
                             .map(|this| match max_w {
                                 Some(max_w) => this.max_w(max_w),
                                 None => this.max_w_72(),
                             })
-                            .child(title),
+                            .child(Label::new(meta).size(LabelSize::Small).color(Color::Muted)),
                     )
-                    .when_some(key_binding, |this, key_binding| {
-                        this.justify_between().child(key_binding)
-                    }),
-            )
-            .when_some(meta, |this, meta| {
-                this.child(
-                    gpui::div()
-                        .map(|this| match max_w {
-                            Some(max_w) => this.max_w(max_w),
-                            None => this.max_w_72(),
-                        })
-                        .child(Label::new(meta).size(LabelSize::Small).color(Color::Muted)),
-                )
-            })
+                })
         })
     }
 }
 
-pub fn tooltip_container<C>(cx: &mut C, f: impl FnOnce(Div, &mut C) -> Div) -> impl IntoElement
+pub fn tooltip_container<C>(
+    cx: &mut C,
+    builder: impl FnOnce(Div, &mut C) -> Div,
+) -> impl IntoElement
 where
     C: AppContext + Borrow<App>,
 {
@@ -273,7 +277,7 @@ where
             .text_color(app.theme().colors().text)
             .py_0p5()
             .px_1p5()
-            .map(|el| f(el, cx)),
+            .map(|element| builder(element, cx)),
     )
 }
 
@@ -306,8 +310,8 @@ impl LinkPreview {
 
 impl Render for LinkPreview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        tooltip_container(cx, |el, _| {
-            el.child(
+        tooltip_container(cx, |element, _| {
+            element.child(
                 Label::new(self.link.clone())
                     .size(LabelSize::XSmall)
                     .color(Color::Muted),

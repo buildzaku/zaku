@@ -69,20 +69,20 @@ impl ParentElement for List {
 }
 
 impl From<String> for EmptyMessage {
-    fn from(s: String) -> Self {
-        EmptyMessage::Text(SharedString::from(s))
+    fn from(text: String) -> Self {
+        EmptyMessage::Text(SharedString::from(text))
     }
 }
 
 impl From<&str> for EmptyMessage {
-    fn from(s: &str) -> Self {
-        EmptyMessage::Text(SharedString::from(s.to_owned()))
+    fn from(text: &str) -> Self {
+        EmptyMessage::Text(SharedString::from(text.to_owned()))
     }
 }
 
 impl From<AnyElement> for EmptyMessage {
-    fn from(e: AnyElement) -> Self {
-        EmptyMessage::Element(e)
+    fn from(element: AnyElement) -> Self {
+        EmptyMessage::Element(element)
     }
 }
 

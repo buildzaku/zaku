@@ -936,8 +936,8 @@ impl ContextMenu {
                             .zip(self.end_slot_action.as_ref())
                             .zip(end_slot_title.as_ref())
                             .zip(end_slot_handler.as_ref()),
-                        |el, (((icon, action), title), handler)| {
-                            el.end_slot({
+                        |element, (((icon, action), title), handler)| {
+                            element.end_slot({
                                 let icon_button = IconButton::new("end-slot-icon", *icon)
                                     .shape(IconButtonShape::Square)
                                     .tooltip({
@@ -1050,10 +1050,10 @@ impl Render for ContextMenu {
                     .on_mouse_down_out(cx.listener(|this, _event: &MouseDownEvent, window, cx| {
                         this.cancel(&actions::menu::Cancel, window, cx);
                     }))
-                    .when_some(self.end_slot_action.as_ref(), |el, action| {
-                        el.on_boxed_action(action.as_ref(), cx.listener(ContextMenu::end_slot))
+                    .when_some(self.end_slot_action.as_ref(), |element, action| {
+                        element.on_boxed_action(action.as_ref(), cx.listener(ContextMenu::end_slot))
                     })
-                    .when(!self.delayed, |mut el| {
+                    .when(!self.delayed, |mut element| {
                         for item in &self.items {
                             if let ContextMenuItem::Entry(ContextMenuEntry {
                                 action: Some(action),
@@ -1061,13 +1061,13 @@ impl Render for ContextMenu {
                                 ..
                             }) = item
                             {
-                                el = el.on_boxed_action(
+                                element = element.on_boxed_action(
                                     action.as_ref(),
                                     cx.listener(ContextMenu::on_action_dispatch),
                                 );
                             }
                         }
-                        el
+                        element
                     })
                     .child(
                         List::new().children(

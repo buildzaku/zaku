@@ -200,11 +200,11 @@ impl Anchor {
 }
 
 impl fmt::Debug for Anchor {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Anchor::Min => write!(f, "Anchor::Min"),
-            Anchor::Max => write!(f, "Anchor::Max"),
-            Anchor::Excerpt(excerpt_anchor) => write!(f, "{excerpt_anchor:?}"),
+            Anchor::Min => write!(formatter, "Anchor::Min"),
+            Anchor::Max => write!(formatter, "Anchor::Max"),
+            Anchor::Excerpt(excerpt_anchor) => write!(formatter, "{excerpt_anchor:?}"),
         }
     }
 }

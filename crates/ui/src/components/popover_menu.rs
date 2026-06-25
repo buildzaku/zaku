@@ -209,9 +209,9 @@ impl<M: ManagedView> PopoverMenu<M> {
 
     pub fn menu(
         mut self,
-        f: impl Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static,
+        menu_builder: impl Fn(&mut Window, &mut App) -> Option<Entity<M>> + 'static,
     ) -> Self {
-        self.menu_builder = Some(Rc::new(f));
+        self.menu_builder = Some(Rc::new(menu_builder));
         self
     }
 
@@ -220,13 +220,14 @@ impl<M: ManagedView> PopoverMenu<M> {
         self
     }
 
-    pub fn trigger<T: PopoverTrigger>(mut self, t: T) -> Self {
+    pub fn trigger<T: PopoverTrigger>(mut self, trigger: T) -> Self {
         let on_open = self.on_open.clone();
         self.child_builder = Some(Box::new(move |menu, builder| {
             let open = menu.borrow().is_some();
-            t.toggle_state(open)
-                .when_some(builder, |el, builder| {
-                    el.on_click(move |_event, window, cx| {
+            trigger
+                .toggle_state(open)
+                .when_some(builder, |element, builder| {
+                    element.on_click(move |_event, window, cx| {
                         show_menu(&builder, &menu, on_open.clone(), window, cx);
                     })
                 })
@@ -237,20 +238,22 @@ impl<M: ManagedView> PopoverMenu<M> {
 
     pub fn trigger_with_tooltip<T: PopoverTrigger + ButtonCommon>(
         mut self,
-        t: T,
+        trigger: T,
         tooltip_builder: impl Fn(&mut Window, &mut App) -> AnyView + 'static,
     ) -> Self {
         let on_open = self.on_open.clone();
         self.child_builder = Some(Box::new(move |menu, builder| {
             let open = menu.borrow().is_some();
-            t.toggle_state(open)
-                .when_some(builder, |el, builder| {
-                    el.on_click(move |_, window, cx| {
-                        show_menu(&builder, &menu, on_open.clone(), window, cx);
-                    })
-                    .when(!open, |t| {
-                        t.tooltip(move |window, cx| tooltip_builder(window, cx))
-                    })
+            trigger
+                .toggle_state(open)
+                .when_some(builder, |element, builder| {
+                    element
+                        .on_click(move |_, window, cx| {
+                            show_menu(&builder, &menu, on_open.clone(), window, cx);
+                        })
+                        .when(!open, |t| {
+                            t.tooltip(move |window, cx| tooltip_builder(window, cx))
+                        })
                 })
                 .into_any_element()
         }));

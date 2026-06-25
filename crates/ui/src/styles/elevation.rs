@@ -110,13 +110,13 @@ impl ElevationIndex {
 }
 
 impl Display for ElevationIndex {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            ElevationIndex::Background => write!(f, "Background"),
-            ElevationIndex::Surface => write!(f, "Surface"),
-            ElevationIndex::EditorSurface => write!(f, "Editor Surface"),
-            ElevationIndex::ElevatedSurface => write!(f, "Elevated Surface"),
-            ElevationIndex::ModalSurface => write!(f, "Modal Surface"),
+            ElevationIndex::Background => write!(formatter, "Background"),
+            ElevationIndex::Surface => write!(formatter, "Surface"),
+            ElevationIndex::EditorSurface => write!(formatter, "Editor Surface"),
+            ElevationIndex::ElevatedSurface => write!(formatter, "Elevated Surface"),
+            ElevationIndex::ModalSurface => write!(formatter, "Modal Surface"),
         }
     }
 }

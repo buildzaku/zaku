@@ -859,25 +859,27 @@ impl Snapshot {
 }
 
 impl fmt::Debug for Snapshot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         struct EntriesById<'a>(&'a SumTree<PathEntry>);
         struct EntriesByPath<'a>(&'a SumTree<Entry>);
 
         impl fmt::Debug for EntriesByPath<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.debug_map()
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter
+                    .debug_map()
                     .entries(self.0.iter().map(|entry| (&entry.path, entry.id)))
                     .finish()
             }
         }
 
         impl fmt::Debug for EntriesById<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.debug_list().entries(self.0.iter()).finish()
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.debug_list().entries(self.0.iter()).finish()
             }
         }
 
-        f.debug_struct("Snapshot")
+        formatter
+            .debug_struct("Snapshot")
             .field("id", &self.id)
             .field("root_name", &self.root_name)
             .field("entries_by_path", &EntriesByPath(&self.entries_by_path))

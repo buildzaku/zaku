@@ -89,7 +89,7 @@ impl Connection {
         self.ensure_ok(result_code)
     }
 
-    pub(crate) fn with_write<T>(&self, f: impl FnOnce(&Connection) -> T) -> T {
+    pub(crate) fn with_write<T>(&self, write_operation: impl FnOnce(&Connection) -> T) -> T {
         struct RestoreWrite<'a> {
             write: &'a Cell<bool>,
             previous: bool,
@@ -107,7 +107,7 @@ impl Connection {
             previous,
         };
 
-        f(self)
+        write_operation(self)
     }
 
     pub fn sql_has_syntax_error(&self, sql: &str) -> Option<(String, usize)> {

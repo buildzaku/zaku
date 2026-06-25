@@ -318,20 +318,20 @@ impl<'conn> Statement<'conn> {
 
     pub fn map<R>(
         &mut self,
-        f: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+        map_row: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
     ) -> anyhow::Result<Vec<R>> {
         fn inner<'conn, R>(
             statement: &mut Statement<'conn>,
-            mut f: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+            mut map_row: impl for<'stmt> FnMut(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
         ) -> anyhow::Result<Vec<R>> {
             let mut mapped_rows = Vec::new();
             while let Some(mut row) = statement.next_row()? {
-                mapped_rows.push(f(&mut row)?);
+                mapped_rows.push(map_row(&mut row)?);
             }
             Ok(mapped_rows)
         }
 
-        let result = inner(self, f);
+        let result = inner(self, map_row);
         self.with_reset(result)
     }
 
@@ -341,16 +341,16 @@ impl<'conn> Statement<'conn> {
 
     pub fn single<R>(
         &mut self,
-        f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+        map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
     ) -> anyhow::Result<R> {
         fn inner<'conn, R>(
             statement: &mut Statement<'conn>,
-            f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+            map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
         ) -> anyhow::Result<R> {
             let mut row = statement
                 .next_row()?
                 .ok_or_else(|| anyhow!("single called with query that returns no rows"))?;
-            let result = f(&mut row)?;
+            let result = map_row(&mut row)?;
             anyhow::ensure!(
                 statement.next_row()?.is_none(),
                 "single called with a query that returns more than one row"
@@ -359,7 +359,7 @@ impl<'conn> Statement<'conn> {
             Ok(result)
         }
 
-        let result = inner(self, f);
+        let result = inner(self, map_row);
         self.with_reset(result)
     }
 
@@ -369,16 +369,16 @@ impl<'conn> Statement<'conn> {
 
     pub fn maybe<R>(
         &mut self,
-        f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+        map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
     ) -> anyhow::Result<Option<R>> {
         fn inner<'conn, R>(
             statement: &mut Statement<'conn>,
-            f: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
+            map_row: impl for<'stmt> FnOnce(&mut Row<'stmt, 'conn>) -> anyhow::Result<R>,
         ) -> anyhow::Result<Option<R>> {
             let Some(mut row) = statement.next_row().context("failed on step call")? else {
                 return Ok(None);
             };
-            let result = f(&mut row)
+            let result = map_row(&mut row)
                 .map(Some)
                 .context("failed to parse row result")?;
             anyhow::ensure!(
@@ -389,7 +389,7 @@ impl<'conn> Statement<'conn> {
             Ok(result)
         }
 
-        let result = inner(self, f);
+        let result = inner(self, map_row);
         self.with_reset(result)
     }
 
