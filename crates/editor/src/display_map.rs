@@ -241,7 +241,11 @@ impl DisplaySnapshot {
         let mut line = String::new();
         for chunk in self.text_chunks(display_row) {
             if let Some(newline_index) = chunk.find('\n') {
-                line.push_str(&chunk[..newline_index]);
+                line.push_str(
+                    chunk
+                        .get(..newline_index)
+                        .expect("newline index should be valid"),
+                );
                 break;
             }
             line.push_str(chunk);

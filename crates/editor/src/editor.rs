@@ -854,11 +854,11 @@ impl Editor {
             let column_bytes = (cursor_point.column as usize).min(current_line.len());
             let current_display_column = current_line
                 .get(..column_bytes)
-                .unwrap_or("")
+                .expect("cursor column should be valid")
                 .chars()
                 .count()
                 .to_f64()
-                .unwrap();
+                .expect("display column should fit in f64");
             let goal_column = match self.selection_goal {
                 SelectionGoal::HorizontalPosition(x) => x,
                 SelectionGoal::HorizontalRange { end, .. } => end,
@@ -2767,7 +2767,8 @@ impl EntityInputHandler for Editor {
             .max(0.0)
             .to_u32()
             .expect("scroll row should fit in u32");
-        let line_index = usize::try_from(row.saturating_sub(scroll_row)).unwrap();
+        let line_index = usize::try_from(row.saturating_sub(scroll_row))
+            .expect("line index should fit in usize");
         let line = position_map.line_layouts.get(line_index)?;
         if line.row.0 != row {
             return None;
@@ -2831,7 +2832,7 @@ impl EntityInputHandler for Editor {
                 .expect("line display column should fit in u32");
             let local_display_column =
                 usize::try_from(unclipped_column.saturating_sub(line_display_column_start))
-                    .unwrap();
+                    .expect("local display column should fit in usize");
             let local_display_column = local_display_column.min(line.len);
             let buffer_column = byte_offset_from_char_count(&line.line_text, local_display_column);
             line.line_start_offset + buffer_column

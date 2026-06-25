@@ -399,7 +399,12 @@ impl ProjectPanel {
     fn load_entry_metadata_for_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
         let end_index = range.end.min(self.tree_state.visible_entries.len());
         let entry_range = range.start.min(end_index)..end_index;
-        let entries = self.tree_state.visible_entries[entry_range].to_vec();
+        let entries = self
+            .tree_state
+            .visible_entries
+            .get(entry_range)
+            .expect("visible entry range should be valid")
+            .to_vec();
 
         for entry in entries {
             self.project
@@ -503,7 +508,7 @@ impl ProjectPanel {
                 })
                 .await;
 
-            this.update_in(cx, |this, window, cx| {
+            if let Err(error) = this.update_in(cx, |this, window, cx| {
                 let (visible_entries, max_width_item_index) = visible_entries;
                 this.tree_state.visible_entries = visible_entries;
                 this.tree_state.max_width_item_index = max_width_item_index;
@@ -521,8 +526,9 @@ impl ProjectPanel {
                     this.autoscroll(cx);
                 }
                 cx.notify();
-            })
-            .ok();
+            }) {
+                log::trace!("Failed to update visible project entries: {error:?}");
+            }
         });
 
         self.update_visible_entries_task = UpdateVisibleEntriesTask {
@@ -1647,12 +1653,16 @@ impl ProjectPanel {
 
             match new_entry {
                 Err(error) => {
-                    project_panel
-                        .update_in(cx, |project_panel, window, cx| {
+                    if let Err(update_error) =
+                        project_panel.update_in(cx, |project_panel, window, cx| {
                             project_panel.marked_entries.clear();
                             project_panel.update_visible_entries(None, false, false, window, cx);
                         })
-                        .ok();
+                    {
+                        log::trace!(
+                            "Failed to update project panel after entry edit failed: {update_error:?}"
+                        );
+                    }
                     Err(error)?;
                 }
                 Ok(new_entry) => {
@@ -1749,7 +1759,9 @@ impl ProjectPanel {
         Entry {
             id: Self::NEW_ENTRY_ID,
             kind: new_entry_kind,
-            path: parent_entry.path.join(RelPath::unix("\0").unwrap()),
+            path: parent_entry
+                .path
+                .join(RelPath::unix("\0").expect("new entry placeholder path should be valid")),
             inode: 0,
             mtime: parent_entry.mtime,
             canonical_path: parent_entry.canonical_path.clone(),
@@ -1778,7 +1790,12 @@ impl ProjectPanel {
 
         let end_index = range.end.min(self.tree_state.visible_entries.len());
         let entry_range = range.start.min(end_index)..end_index;
-        for entry in &self.tree_state.visible_entries[entry_range] {
+        for entry in self
+            .tree_state
+            .visible_entries
+            .get(entry_range)
+            .expect("visible entry range should be valid")
+        {
             let mut details = self.details_for_entry(&snapshot, entry, cx);
 
             if let Some(edit_state) = &self.tree_state.edit_state {
@@ -2165,7 +2182,9 @@ impl ProjectPanel {
             && expanded_dir_ids.binary_search(&selected_entry.id).is_ok();
         if !is_expanded_dir {
             depth = depth.checked_sub(1)?;
-            parent_row = self.tree_state.visible_entries[..selection_row]
+            let (entries_before_selection, _) =
+                self.tree_state.visible_entries.split_at(selection_row);
+            parent_row = entries_before_selection
                 .iter()
                 .enumerate()
                 .rev()
@@ -2173,7 +2192,8 @@ impl ProjectPanel {
         }
 
         let start = parent_row.checked_add(1)?;
-        let end = self.tree_state.visible_entries[start..]
+        let (_, entries_after_start) = self.tree_state.visible_entries.split_at(start);
+        let end = entries_after_start
             .iter()
             .position(|entry| display_depth(entry) <= depth)
             .map_or(self.tree_state.visible_entries.len(), |offset| {

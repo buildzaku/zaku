@@ -581,8 +581,7 @@ pub fn humanize_action_name(name: &str) -> String {
     let mut result = String::with_capacity(capacity);
     let mut index = 0;
 
-    while index < characters.len() {
-        let character = characters[index];
+    while let Some(&character) = characters.get(index) {
         if character == ':' {
             if result.ends_with(':') {
                 result.push(' ');
@@ -603,7 +602,9 @@ pub fn humanize_action_name(name: &str) -> String {
                 index += 1;
             }
 
-            let uppercase_run = &characters[start..index];
+            let uppercase_run = characters
+                .get(start..index)
+                .expect("uppercase run should be in bounds");
             if uppercase_run.len() > 1 {
                 let split_before_last = characters
                     .get(index)
@@ -618,14 +619,21 @@ pub fn humanize_action_name(name: &str) -> String {
                     if !result.ends_with(' ') {
                         result.push(' ');
                     }
-                    result.extend(&uppercase_run[..acronym_end]);
+                    result.extend(
+                        uppercase_run
+                            .get(..acronym_end)
+                            .expect("acronym range should be in bounds"),
+                    );
                 }
 
                 if split_before_last {
                     if !result.ends_with(' ') {
                         result.push(' ');
                     }
-                    result.extend(uppercase_run[acronym_end].to_lowercase());
+                    let character = uppercase_run
+                        .get(acronym_end)
+                        .expect("acronym character should be in bounds");
+                    result.extend(character.to_lowercase());
                 }
             } else {
                 if !result.ends_with(' ') {

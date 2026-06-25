@@ -214,7 +214,7 @@ pub fn handle_settings_file_changes(
     let user_content = cx
         .foreground_executor()
         .block_on(user_settings_file_rx.next())
-        .unwrap();
+        .expect("user settings file should be loaded");
 
     cx.update_global::<SettingsStore, _>(|store, cx| {
         let result = store.set_user_settings(&user_content, cx);
@@ -250,7 +250,9 @@ pub fn handle_keymap_file_changes(
             let next_mapping = cx.keyboard_mapper().get_key_equivalents();
             if current_mapping.as_ref() != next_mapping {
                 current_mapping = next_mapping.cloned();
-                keyboard_layout_tx.unbounded_send(()).ok();
+                if keyboard_layout_tx.unbounded_send(()).is_err() {
+                    log::trace!("Keyboard layout update receiver dropped");
+                }
             }
         })
         .detach();
@@ -263,7 +265,9 @@ pub fn handle_keymap_file_changes(
             let next_layout_id = cx.keyboard_layout().id();
             if next_layout_id != current_layout_id {
                 current_layout_id = next_layout_id.to_string();
-                keyboard_layout_tx.unbounded_send(()).ok();
+                if keyboard_layout_tx.unbounded_send(()).is_err() {
+                    log::trace!("Keyboard layout update receiver dropped");
+                }
             }
         })
         .detach();
@@ -331,10 +335,7 @@ fn load_default_keymap(cx: &mut App) {
     #[cfg(target_os = "windows")]
     let asset_path = "keymaps/default_windows.json";
 
-    let key_bindings = match KeymapFile::load_asset(asset_path, cx) {
-        Ok(key_bindings) => key_bindings,
-        Err(error) => panic!("Failed to load default keymap: {error}"),
-    };
+    let key_bindings = KeymapFile::load_asset(asset_path, cx).expect("default keymap should load");
     cx.bind_keys(key_bindings);
 }
 
@@ -435,15 +436,16 @@ pub async fn restore_or_create_workspace(
                 if let Some(window) = cx.active_window()
                     && let Some(root) = window.downcast::<Root>()
                 {
-                    root.update(cx, |root, _, cx| {
+                    if let Err(error) = root.update(cx, |root, _, cx| {
                         root.workspace().update(cx, |workspace, cx| {
                             workspace.show_toast(
                                 Toast::new(NotificationId::unique::<()>(), message.clone()),
                                 cx,
                             );
                         });
-                    })
-                    .ok();
+                    }) {
+                        log::trace!("Failed to show workspace restore toast: {error:?}");
+                    }
                     return true;
                 }
 

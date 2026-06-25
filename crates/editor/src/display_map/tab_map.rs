@@ -9,6 +9,14 @@ use super::raw_chunks::RawChunks;
 const MAX_EXPANSION_COLUMN: u32 = 256;
 const SPACES: &[u8; text::Chunk::MASK_BITS] = &[b' '; text::Chunk::MASK_BITS];
 
+fn spaces(len: u32) -> &'static str {
+    let len = usize::try_from(len).expect("space run length should fit in usize");
+    let spaces = SPACES.get(..len).expect("space run should be in bounds");
+
+    // SAFETY: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
+    unsafe { std::str::from_utf8_unchecked(spaces) }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct Chunk<'a> {
     pub text: &'a str,
@@ -23,12 +31,9 @@ pub struct TabMap(TabSnapshot);
 
 impl TabMap {
     pub fn new(buffer_snapshot: MultiBufferSnapshot, tab_size: NonZeroU32) -> (Self, TabSnapshot) {
-        let mask_bits = u32::try_from(text::Chunk::MASK_BITS).unwrap();
-        let max_tabs = NonZeroU32::new(mask_bits).unwrap();
-
         let snapshot = TabSnapshot {
             buffer_snapshot,
-            tab_size: tab_size.min(max_tabs),
+            tab_size: tab_size.min(Self::max_tabs()),
             max_expansion_column: MAX_EXPANSION_COLUMN,
             version: 0,
         };
@@ -42,12 +47,10 @@ impl TabMap {
         tab_size: NonZeroU32,
     ) -> (TabSnapshot, Vec<TabEdit>) {
         let old_snapshot = &mut self.0;
-        let mask_bits = u32::try_from(text::Chunk::MASK_BITS).unwrap();
-        let max_tabs = NonZeroU32::new(mask_bits).unwrap();
 
         let mut new_snapshot = TabSnapshot {
             buffer_snapshot,
-            tab_size: tab_size.min(max_tabs),
+            tab_size: tab_size.min(Self::max_tabs()),
             max_expansion_column: old_snapshot.max_expansion_column,
             version: old_snapshot.version,
         };
@@ -110,7 +113,8 @@ impl TabMap {
                         remaining_tabs &= remaining_tabs - 1;
                     }
 
-                    let chunk_len = u32::try_from(chunk.text.len()).unwrap();
+                    let chunk_len =
+                        u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
                     offset_from_edit += chunk_len;
                     if old_end.column + offset_from_edit >= old_snapshot.max_expansion_column
                         && new_end.column + offset_from_edit >= new_snapshot.max_expansion_column
@@ -131,8 +135,10 @@ impl TabMap {
             let mut buffer_edits = buffer_edits.into_iter();
 
             if let Some(mut first_edit) = buffer_edits.next() {
-                // This code relies on reusing allocations from the Vec<_> - at the time of writing .flatten() prevents them.
-                #[allow(clippy::filter_map_identity)]
+                #[expect(
+                    clippy::filter_map_identity,
+                    reason = "flatten prevents reusing the original vec allocation"
+                )]
                 let mut edits: Vec<_> = buffer_edits
                     .scan(&mut first_edit, |state, edit| {
                         if state.old.end >= edit.old.start {
@@ -192,6 +198,12 @@ impl TabMap {
         *old_snapshot = new_snapshot;
         (old_snapshot.clone(), tab_edits)
     }
+
+    fn max_tabs() -> NonZeroU32 {
+        let mask_bits =
+            u32::try_from(text::Chunk::MASK_BITS).expect("chunk mask bits should fit in u32");
+        NonZeroU32::new(mask_bits).expect("chunk mask bits should be nonzero")
+    }
 }
 
 #[derive(Clone)]
@@ -249,8 +261,7 @@ impl TabSnapshot {
             max_output_position: range.end.0,
             tab_size: self.tab_size,
             chunk: Chunk {
-                // SAFETY: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
-                text: unsafe { std::str::from_utf8_unchecked(&SPACES[..to_next_stop as usize]) },
+                text: spaces(to_next_stop),
                 chars: bitmask_for_len(to_next_stop),
                 ..Default::default()
             },
@@ -350,7 +361,8 @@ impl TabSnapshot {
         let left_over_char_bytes = if cursor.is_char_boundary() {
             0
         } else {
-            u32::try_from(cursor.bytes_until_next_char().unwrap_or(0)).unwrap()
+            u32::try_from(cursor.bytes_until_next_char().unwrap_or(0))
+                .expect("char boundary distance should fit in u32")
         };
 
         let collapsed_bytes = cursor.byte_offset() + left_over_char_bytes;
@@ -463,7 +475,11 @@ impl<'a> Iterator for TabChunks<'a> {
             if let Some(chunk) = self.raw_chunks.next() {
                 self.chunk = chunk;
                 if self.inside_leading_tab {
-                    self.chunk.text = &self.chunk.text[1..];
+                    self.chunk.text = self
+                        .chunk
+                        .text
+                        .strip_prefix('\t')
+                        .expect("leading tab chunk should start with tab");
                     self.chunk.tabs >>= 1;
                     self.chunk.chars >>= 1;
                     self.chunk.newlines >>= 1;
@@ -476,7 +492,11 @@ impl<'a> Iterator for TabChunks<'a> {
         }
 
         if self.chunk.tabs & 1 != 0 {
-            self.chunk.text = &self.chunk.text[1..];
+            self.chunk.text = self
+                .chunk
+                .text
+                .strip_prefix('\t')
+                .expect("tab chunk should start with tab");
             self.chunk.tabs >>= 1;
             self.chunk.chars >>= 1;
             self.chunk.newlines >>= 1;
@@ -497,8 +517,7 @@ impl<'a> Iterator for TabChunks<'a> {
             self.output_position = next_output_position;
 
             return Some(Chunk {
-                // SAFETY: `SPACES` is ASCII-only; any sub-slice is valid UTF-8.
-                text: unsafe { std::str::from_utf8_unchecked(&SPACES[..len as usize]) },
+                text: spaces(len),
                 chars: bitmask_for_len(len),
                 tabs: 0,
                 newlines: 0,
@@ -512,7 +531,8 @@ impl<'a> Iterator for TabChunks<'a> {
             self.chunk.tabs = 0;
             self.chunk.chars = 0;
             self.chunk.newlines = 0;
-            let chunk_len = u32::try_from(chunk.text.len()).unwrap();
+            let chunk_len =
+                u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
 
             let newline_count = chunk.newlines.count_ones();
             if newline_count > 0 {
@@ -540,8 +560,12 @@ impl<'a> Iterator for TabChunks<'a> {
         }
 
         let prefix_len = self.chunk.tabs.trailing_zeros() as usize;
-        let (prefix, suffix) = self.chunk.text.split_at(prefix_len);
-        let prefix_len = u32::try_from(prefix_len).unwrap();
+        let (prefix, suffix) = self
+            .chunk
+            .text
+            .split_at_checked(prefix_len)
+            .expect("tab prefix should be valid");
+        let prefix_len = u32::try_from(prefix_len).expect("tab prefix length should fit in u32");
 
         let mask = 1u128.unbounded_shl(prefix_len).wrapping_sub(1);
         let prefix_chars = self.chunk.chars & mask;
@@ -617,11 +641,12 @@ where
             }
 
             if chunk.chars & (1 << index) != 0 {
-                Some(
-                    (chunk.text[index as usize..].chars().next()?)
-                        .len_utf8()
-                        .saturating_sub(diff),
-                )
+                let index = usize::try_from(index).expect("chunk byte index should fit in usize");
+                let chunk_text = chunk
+                    .text
+                    .get(index..)
+                    .expect("chunk byte index should be valid");
+                Some((chunk_text.chars().next()?).len_utf8().saturating_sub(diff))
             } else {
                 None
             }
@@ -648,7 +673,8 @@ where
             .or_else(|| self.chunks.next().zip(Some(0)))
         {
             if chunk.tabs == 0 {
-                let chunk_len = u32::try_from(chunk.text.len()).unwrap();
+                let chunk_len =
+                    u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
                 let chunk_distance = chunk_len - chunk_position;
                 if chunk_distance + traversed >= distance {
                     let overshoot = traversed.abs_diff(distance);
@@ -897,7 +923,7 @@ mod tests {
                     )
                     .map(|chunk| chunk.text)
                     .collect::<String>(),
-                &output[index..],
+                output.get(index..).expect("output index should be valid"),
                 "text from index {index}"
             );
 

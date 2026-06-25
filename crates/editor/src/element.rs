@@ -95,20 +95,27 @@ impl PositionMap {
         {
             let x_relative_to_text = x
                 - line.alignment_offset(self.text_align, self.content_width)
-                - self.em_layout_width * line.line_display_column_start.to_f32().unwrap();
+                - self.em_layout_width
+                    * line
+                        .line_display_column_start
+                        .to_f32()
+                        .expect("line display column start should fit in f32");
             if let Some(index) = line.index_for_x(x_relative_to_text) {
                 let display_column = line
                     .line_display_column_start
                     .saturating_add(index)
                     .min(u32::MAX as usize);
-                (u32::try_from(display_column).unwrap(), gpui::px(0.0))
+                (
+                    u32::try_from(display_column).expect("display column should fit in u32"),
+                    gpui::px(0.0),
+                )
             } else {
                 let display_column = line
                     .line_display_column_start
                     .saturating_add(line.len)
                     .min(u32::MAX as usize);
                 (
-                    u32::try_from(display_column).unwrap(),
+                    u32::try_from(display_column).expect("display column should fit in u32"),
                     gpui::px(0.0).max(x_relative_to_text - line.width),
                 )
             }
@@ -358,7 +365,7 @@ impl EditorElement {
                 let display_row = DisplayRow(gutter.range.start.0.checked_add(row_offset)?);
                 line_number.clear();
                 let number = row_info.buffer_row? + 1;
-                write!(&mut line_number, "{number}").unwrap();
+                write!(&mut line_number, "{number}").expect("writing to string should succeed");
 
                 let color = if active_rows
                     .get(&display_row)
@@ -1104,7 +1111,9 @@ impl Element for EditorElement {
                     let line_count = line_count.max(min_lines);
                     let line_count =
                         max_lines.map_or(line_count, |max_lines| line_count.min(max_lines));
-                    style.size.height = (line_height * line_count.to_f32().unwrap()).into();
+                    style.size.height = (line_height
+                        * line_count.to_f32().expect("line count should fit in f32"))
+                    .into();
                 }
                 EditorMode::Full { .. } => {
                     style.size.height = gpui::relative(1.0).into();
@@ -1472,7 +1481,10 @@ impl Element for EditorElement {
                         if cursor_display_column < line_display_column_start {
                             let leading_columns = line_display_column_start - cursor_display_column;
                             let leading_width = Pixels::from(
-                                f64::from(column_width) * leading_columns.to_f64().unwrap(),
+                                f64::from(column_width)
+                                    * leading_columns
+                                        .to_f64()
+                                        .expect("leading column count should fit in f64"),
                             );
                             line.origin.x - leading_width
                         } else if cursor_display_column <= line_display_column_end {
@@ -1481,7 +1493,10 @@ impl Element for EditorElement {
                         } else {
                             let trailing_columns = cursor_display_column - line_display_column_end;
                             let trailing_width = Pixels::from(
-                                f64::from(column_width) * trailing_columns.to_f64().unwrap(),
+                                f64::from(column_width)
+                                    * trailing_columns
+                                        .to_f64()
+                                        .expect("trailing column count should fit in f64"),
                             );
                             line.origin.x + line.width + trailing_width
                         }
@@ -1718,7 +1733,12 @@ fn build_visible_lines(
             let mut line_exceeded_max_len = false;
             for text_chunk in display_snapshot.text_chunks(row) {
                 let (mut chunk, has_newline) = if let Some(index) = text_chunk.find('\n') {
-                    (&text_chunk[..index], true)
+                    (
+                        text_chunk
+                            .get(..index)
+                            .expect("newline index should be valid"),
+                        true,
+                    )
                 } else {
                     (text_chunk, false)
                 };
@@ -1729,7 +1749,9 @@ fn build_visible_lines(
                         while !chunk.is_char_boundary(chunk_len) {
                             chunk_len -= 1;
                         }
-                        chunk = &chunk[..chunk_len];
+                        chunk = chunk
+                            .get(..chunk_len)
+                            .expect("chunk boundary should be valid");
                         line_exceeded_max_len = true;
                     }
 
@@ -1765,19 +1787,28 @@ fn build_visible_lines(
 
             let target_end_column = line_display_column_start
                 .saturating_add(MAX_LINE_LEN)
-                .min(usize::try_from(u32::MAX).unwrap());
+                .min(usize::try_from(u32::MAX).expect("u32 max should fit in usize"));
             let line_display_column_end = display_snapshot
                 .clip_point(
-                    DisplayPoint::new(row, u32::try_from(target_end_column).unwrap()),
+                    DisplayPoint::new(
+                        row,
+                        u32::try_from(target_end_column).expect("display column should fit in u32"),
+                    ),
                     text::Bias::Right,
                 )
                 .column() as usize;
 
             if line_display_column_start < line_display_column_end {
-                let chunk_start =
-                    TabPoint::new(row.0, u32::try_from(line_display_column_start).unwrap());
-                let chunk_end =
-                    TabPoint::new(row.0, u32::try_from(line_display_column_end).unwrap());
+                let chunk_start = TabPoint::new(
+                    row.0,
+                    u32::try_from(line_display_column_start)
+                        .expect("display column should fit in u32"),
+                );
+                let chunk_end = TabPoint::new(
+                    row.0,
+                    u32::try_from(line_display_column_end)
+                        .expect("display column should fit in u32"),
+                );
                 for highlighted_chunk in display_snapshot.highlighted_chunks(
                     chunk_start..chunk_end,
                     LanguageAwareStyling {
@@ -1788,7 +1819,12 @@ fn build_visible_lines(
                 ) {
                     let chunk_text = highlighted_chunk.text;
                     let (mut chunk_text, has_newline) = if let Some(index) = chunk_text.find('\n') {
-                        (&chunk_text[..index], true)
+                        (
+                            chunk_text
+                                .get(..index)
+                                .expect("newline index should be valid"),
+                            true,
+                        )
                     } else {
                         (chunk_text, false)
                     };
@@ -1800,7 +1836,9 @@ fn build_visible_lines(
                             bounded_end -= 1;
                         }
                         if bounded_end > 0 {
-                            chunk_text = &chunk_text[..bounded_end];
+                            chunk_text = chunk_text
+                                .get(..bounded_end)
+                                .expect("chunk boundary should be valid");
                             line_text.push_str(chunk_text);
                             let text_style = if let Some(highlight_style) = highlighted_chunk.style
                             {
@@ -1839,10 +1877,18 @@ fn build_visible_lines(
         let mut base_style = style.clone();
         base_style.color = text_color;
 
-        let line_x_offset =
-            Pixels::from(f64::from(em_layout_width) * line_display_column_start.to_f64().unwrap());
-        let line_y_offset =
-            Pixels::from(f64::from(line_height) * visible_row_index.to_f64().unwrap());
+        let line_x_offset = Pixels::from(
+            f64::from(em_layout_width)
+                * line_display_column_start
+                    .to_f64()
+                    .expect("line display column start should fit in f64"),
+        );
+        let line_y_offset = Pixels::from(
+            f64::from(line_height)
+                * visible_row_index
+                    .to_f64()
+                    .expect("visible row index should fit in f64"),
+        );
         let origin = gpui::point(
             bounds.left() - scroll_x_pixels + line_x_offset,
             first_row_origin_y + line_y_offset,
@@ -1982,11 +2028,20 @@ pub(crate) struct HighlightedRangeLine {
 
 impl HighlightedRange {
     pub(crate) fn paint(&self, fill: bool, bounds: Bounds<Pixels>, window: &mut Window) {
-        if self.lines.len() >= 2 && self.lines[0].start_x > self.lines[1].end_x {
-            self.paint_lines(self.start_y, &self.lines[0..1], fill, bounds, window);
+        if let Some((first_line, remaining_lines)) = self.lines.split_first()
+            && let Some(second_line) = remaining_lines.first()
+            && first_line.start_x > second_line.end_x
+        {
+            self.paint_lines(
+                self.start_y,
+                std::slice::from_ref(first_line),
+                fill,
+                bounds,
+                window,
+            );
             self.paint_lines(
                 self.start_y + self.line_height,
-                &self.lines[1..],
+                remaining_lines,
                 fill,
                 bounds,
                 window,
@@ -2038,8 +2093,10 @@ impl HighlightedRange {
         let mut iter = lines.iter().enumerate().peekable();
         while let Some((index, line)) = iter.next() {
             let line_count = index + 1;
-            let line_height_offset =
-                Pixels::from(line_count.to_f64().unwrap() * f64::from(self.line_height));
+            let line_height_offset = Pixels::from(
+                line_count.to_f64().expect("line count should fit in f64")
+                    * f64::from(self.line_height),
+            );
             let bottom_right = gpui::point(line.end_x, start_y + line_height_offset);
 
             if let Some((_, next_line)) = iter.peek() {

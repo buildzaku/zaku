@@ -535,16 +535,14 @@ impl<D: PickerDelegate> Picker<D> {
 
     fn on_input_editor_event(
         &mut self,
+        editor: &dyn ErasedEditor,
         event: ErasedEditorEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Head::Editor(input) = &self.head else {
-            panic!("unexpected call");
-        };
         match event {
             ErasedEditorEvent::BufferEdited => {
-                let query = input.text(cx);
+                let query = editor.text(cx);
                 self.update_matches(query, window, cx);
             }
             ErasedEditorEvent::Blurred => {
@@ -556,9 +554,6 @@ impl<D: PickerDelegate> Picker<D> {
     }
 
     fn on_empty_head_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Head::Empty(_) = &self.head else {
-            panic!("unexpected call");
-        };
         if window.is_window_active() {
             self.cancel(&actions::menu::Cancel, window, cx);
         }

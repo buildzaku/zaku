@@ -214,7 +214,9 @@ impl Editor {
     }
 
     pub fn set_vertical_scroll_margin(&mut self, margin_rows: usize, cx: &mut Context<Self>) {
-        self.scroll_manager.vertical_scroll_margin = margin_rows.to_f64().unwrap();
+        self.scroll_manager.vertical_scroll_margin = margin_rows
+            .to_f64()
+            .expect("vertical scroll margin should fit in f64");
         cx.notify();
     }
 }

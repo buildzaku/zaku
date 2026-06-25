@@ -23,10 +23,14 @@ impl Settings for EditorSettings {
         Self {
             current_line_highlight: editor
                 .and_then(|editor| editor.current_line_highlight)
-                .unwrap(),
+                .expect("editor current line highlight should be defaulted"),
             gutter: Gutter {
-                min_line_number_digits: gutter.min_line_number_digits.unwrap(),
-                line_numbers: gutter.line_numbers.unwrap(),
+                min_line_number_digits: gutter
+                    .min_line_number_digits
+                    .expect("editor gutter minimum line number digits should be defaulted"),
+                line_numbers: gutter
+                    .line_numbers
+                    .expect("editor gutter line numbers should be defaulted"),
             },
         }
     }

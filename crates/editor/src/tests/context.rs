@@ -21,19 +21,19 @@ use crate::{
     display_map::{DisplayMap, HighlightKey},
 };
 
-pub struct EditorTestContext {
-    pub cx: VisualTestContext,
-    pub window: AnyWindowHandle,
-    pub editor: Entity<Editor>,
-    pub assertion_cx: AssertionContextManager,
+pub(crate) struct EditorTestContext {
+    pub(crate) cx: VisualTestContext,
+    pub(crate) window: AnyWindowHandle,
+    pub(crate) editor: Entity<Editor>,
+    assertion_cx: AssertionContextManager,
 }
 
 impl EditorTestContext {
-    pub fn new(cx: &mut TestAppContext) -> Self {
+    pub(crate) fn new(cx: &mut TestAppContext) -> Self {
         Self::new_with_mode(cx, EditorMode::full())
     }
 
-    pub fn new_single_line(cx: &mut TestAppContext) -> Self {
+    pub(crate) fn new_single_line(cx: &mut TestAppContext) -> Self {
         Self::new_with_mode(cx, EditorMode::SingleLine)
     }
 
@@ -57,18 +57,18 @@ impl EditorTestContext {
         }
     }
 
-    pub fn add_assertion_context(&self, context: String) -> ContextHandle {
+    fn add_assertion_context(&self, context: String) -> ContextHandle {
         self.assertion_cx.add_context(context)
     }
 
-    pub fn update_editor<F, T>(&mut self, update: F) -> T
+    pub(crate) fn update_editor<F, T>(&mut self, update: F) -> T
     where
         F: FnOnce(&mut Editor, &mut Window, &mut Context<Editor>) -> T,
     {
         self.editor.update_in(&mut self.cx, update)
     }
 
-    pub fn dispatch_action<A>(&mut self, action: A)
+    pub(crate) fn dispatch_action<A>(&mut self, action: A)
     where
         A: Action,
     {
@@ -76,7 +76,7 @@ impl EditorTestContext {
     }
 
     #[track_caller]
-    pub fn set_state(&mut self, marked_text: &str) -> ContextHandle {
+    pub(crate) fn set_state(&mut self, marked_text: &str) -> ContextHandle {
         let assertion_context = self.add_assertion_context(format!(
             "Initial Editor State: \"{}\"",
             marked_text.escape_debug()
@@ -107,7 +107,7 @@ impl EditorTestContext {
     }
 
     #[track_caller]
-    pub fn assert_state(&mut self, marked_text: &str) {
+    pub(crate) fn assert_state(&mut self, marked_text: &str) {
         let (expected_text, mut ranges) = marked_text_ranges(marked_text, true);
         let expected_selection = ranges.pop().unwrap_or(0..0);
         assert!(ranges.is_empty(), "expected a single selection range");
@@ -147,20 +147,20 @@ impl EditorTestContext {
 }
 
 #[derive(Clone)]
-pub struct AssertionContextManager {
+struct AssertionContextManager {
     id: Arc<AtomicUsize>,
     contexts: Arc<RwLock<BTreeMap<usize, String>>>,
 }
 
 impl AssertionContextManager {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             id: Arc::new(AtomicUsize::new(0)),
             contexts: Arc::new(RwLock::new(BTreeMap::new())),
         }
     }
 
-    pub fn add_context(&self, context: String) -> ContextHandle {
+    fn add_context(&self, context: String) -> ContextHandle {
         let id = self.id.fetch_add(1, Ordering::Relaxed);
         let mut contexts = self.contexts.write().unwrap();
         contexts.insert(id, context);
@@ -170,14 +170,14 @@ impl AssertionContextManager {
         }
     }
 
-    pub fn context(&self) -> String {
+    fn context(&self) -> String {
         let contexts = self.contexts.read().unwrap();
         let joined = contexts.values().cloned().collect::<Vec<_>>().join("\n");
         format!("\n{joined}\n")
     }
 }
 
-pub struct ContextHandle {
+pub(crate) struct ContextHandle {
     id: usize,
     manager: AssertionContextManager,
 }

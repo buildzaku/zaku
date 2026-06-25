@@ -5089,6 +5089,7 @@ dependencies = [
  "fs",
  "gpui",
  "indoc",
+ "log",
  "path",
  "project",
  "request_editor",

@@ -1086,7 +1086,11 @@ impl RequestEditor {
                                         } else {
                                             bytes_received = u64::MAX;
                                         }
-                                        payload.extend_from_slice(&buffer[..chunk]);
+                                        payload.extend_from_slice(
+                                            buffer
+                                                .get(..chunk)
+                                                .expect("read chunk should fit in buffer"),
+                                        );
                                     }
                                     Err(error) => {
                                         read_error = Some(error);
@@ -1750,7 +1754,7 @@ mod tests {
                 assert_eq!(request.uri().path(), "/me");
                 let rx = rx.lock().take().unwrap();
 
-                async move { rx.await.map_err(|_| anyhow!("Response sender dropped"))? }
+                async move { Ok(rx.await.unwrap()) }
             }
         });
 
@@ -1813,7 +1817,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("response"))
             .unwrap();
-        assert!(tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
     }
 
     #[gpui::test]
@@ -1854,7 +1861,7 @@ mod tests {
                         "#}
                     );
 
-                    rx.await.map_err(|_| anyhow!("Response sender dropped"))?
+                    Ok(rx.await.unwrap())
                 }
             }
         });
@@ -1919,7 +1926,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::empty())
             .unwrap();
-        assert!(tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
     }
 
     #[gpui::test]
@@ -1948,9 +1958,9 @@ mod tests {
                 let executor = executor.clone();
 
                 async move {
-                    let response = rx.await.map_err(|_| anyhow!("Response sender dropped"))?;
+                    let response = rx.await.unwrap();
                     executor.timer(response_delay).await;
-                    response
+                    Ok(response)
                 }
             }
         });
@@ -2025,7 +2035,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("first response"))
             .unwrap();
-        assert!(first_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(first_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.executor().advance_clock(first_response_delay);
         cx.run_until_parked();
@@ -2039,7 +2052,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("second response"))
             .unwrap();
-        assert!(second_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(second_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.executor().advance_clock(second_response_delay);
         cx.run_until_parked();
@@ -2099,7 +2115,7 @@ mod tests {
                     "/second" => second_rx.lock().take().unwrap(),
                     path => panic!("Unexpected request path: {path}"),
                 };
-                async move { rx.await.map_err(|_| anyhow!("Response sender dropped"))? }
+                async move { Ok(rx.await.unwrap()) }
             }
         });
 
@@ -2179,7 +2195,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("first response"))
             .unwrap();
-        assert!(first_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(first_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.run_until_parked();
 
@@ -2192,7 +2211,10 @@ mod tests {
             .status(StatusCode::OK)
             .body(AsyncBody::from("second response"))
             .unwrap();
-        assert!(second_tx.send(Ok(response)).is_ok());
+        assert!(
+            matches!(second_tx.send(response).map_err(|_response| ()), Ok(())),
+            "response receiver should be active"
+        );
 
         cx.run_until_parked();
 

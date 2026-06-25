@@ -9,7 +9,7 @@ use crate::{
     display_map::{DisplayMap, DisplayPoint, DisplaySnapshot, ToDisplayPoint},
 };
 
-pub fn marked_display_snapshot(
+pub(crate) fn marked_display_snapshot(
     marked_text: &str,
     cx: &mut App,
 ) -> (DisplaySnapshot, Vec<DisplayPoint>) {

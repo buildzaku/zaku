@@ -160,8 +160,7 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     let error_details = errors
         .into_iter()
         .filter_map(|(kind, paths)| {
-            #[allow(unused_mut)]
-            let mut error_kind_details = match paths.as_slice() {
+            let error_kind_details = match paths.as_slice() {
                 [] => return None,
                 [path] => format!(
                     "{kind} when creating directory {}",
@@ -173,12 +172,13 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             {
                 if kind == ErrorKind::PermissionDenied {
-                    error_kind_details.push_str("\n\n");
-                    error_kind_details.push_str(indoc! {"
+                    let permission_hint = indoc! {"
                         Consider using chown and chmod tools for altering the directories permissions if your user has corresponding rights.
 
                         For example, `sudo chown $(whoami):staff ~/.config` and `chmod +uwrx ~/.config`
-                    "});
+                    "};
+
+                    return Some(format!("{error_kind_details}\n\n{permission_hint}"));
                 }
             }
 

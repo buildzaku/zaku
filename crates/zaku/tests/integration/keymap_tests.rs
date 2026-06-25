@@ -38,12 +38,12 @@ fn assert_key_bindings_for(
 ) {
     let available_actions = cx
         .update(|cx| window.update(cx, |_, window, cx| window.available_actions(cx)))
-        .unwrap();
+        .expect("available actions should be readable");
 
     for (key, action) in actions {
         let bindings = cx
             .update(|cx| window.update(cx, |_, window, _| window.bindings_for_action(action)))
-            .unwrap();
+            .expect("key bindings should be readable");
 
         assert!(
             available_actions
@@ -74,7 +74,7 @@ fn has_key_binding(
 ) -> bool {
     let bindings = cx
         .update(|cx| window.update(cx, |_, window, _| window.bindings_for_action(action)))
-        .unwrap();
+        .expect("key bindings should be readable");
 
     bindings.iter().any(|binding| {
         binding

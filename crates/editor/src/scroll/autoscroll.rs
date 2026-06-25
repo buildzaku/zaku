@@ -175,12 +175,18 @@ impl Editor {
                 )
                 .column() as usize;
 
-            let prefix_width = em_advance * line_display_column_start.to_f64().unwrap();
+            let prefix_width = em_advance
+                * line_display_column_start
+                    .to_f64()
+                    .expect("line display column start should fit in f64");
             let line_display_column_end = line_display_column_start.saturating_add(layout.len);
 
             let column_x = |display_column: usize| -> ScrollOffset {
                 if display_column < line_display_column_start {
-                    em_advance * display_column.to_f64().unwrap()
+                    em_advance
+                        * display_column
+                            .to_f64()
+                            .expect("display column should fit in f64")
                 } else if display_column <= line_display_column_end {
                     let local_column = display_column - line_display_column_start;
                     prefix_width + ScrollOffset::from(layout.x_for_index(local_column))
@@ -188,7 +194,10 @@ impl Editor {
                     let tail_columns = display_column - line_display_column_end;
                     prefix_width
                         + ScrollOffset::from(layout.x_for_index(layout.len))
-                        + em_advance * tail_columns.to_f64().unwrap()
+                        + em_advance
+                            * tail_columns
+                                .to_f64()
+                                .expect("tail column count should fit in f64")
                 }
             };
 
