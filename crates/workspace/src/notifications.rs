@@ -294,7 +294,7 @@ pub trait DetachAndPromptErr<R> {
         msg: &str,
         window: &Window,
         cx: &App,
-        f: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
+        builder: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
     ) -> Task<Option<R>>;
 
     fn detach_and_prompt_err(
@@ -302,7 +302,7 @@ pub trait DetachAndPromptErr<R> {
         msg: &str,
         window: &Window,
         cx: &App,
-        f: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
+        builder: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
     );
 }
 
@@ -315,7 +315,7 @@ where
         msg: &str,
         window: &Window,
         cx: &App,
-        f: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
+        builder: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
     ) -> Task<Option<R>> {
         let msg = msg.to_owned();
         window.spawn(cx, async move |cx| match self.await {
@@ -327,7 +327,7 @@ where
                     if !display.ends_with('\n') {
                         display.push('.');
                     }
-                    let detail = f(&error, window, cx).unwrap_or(display);
+                    let detail = builder(&error, window, cx).unwrap_or(display);
                     window.prompt(PromptLevel::Critical, &msg, Some(&detail), &["Ok"], cx)
                 }) && let Err(error) = prompt.await
                 {
@@ -343,9 +343,9 @@ where
         msg: &str,
         window: &Window,
         cx: &App,
-        f: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
+        builder: impl FnOnce(&anyhow::Error, &mut Window, &mut App) -> Option<String> + 'static,
     ) {
-        self.prompt_err(msg, window, cx, f).detach();
+        self.prompt_err(msg, window, cx, builder).detach();
     }
 }
 

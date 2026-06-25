@@ -594,7 +594,7 @@ pub fn open_new(shared_state: Arc<SharedState>, cx: &mut App) -> Task<anyhow::Re
 
 pub fn with_active_or_new_workspace(
     cx: &mut App,
-    f: impl FnOnce(&mut Workspace, &mut Window, &mut Context<Workspace>) + Send + 'static,
+    updater: impl FnOnce(&mut Workspace, &mut Window, &mut Context<Workspace>) + Send + 'static,
 ) {
     if let Some(root) = cx
         .active_window()
@@ -603,7 +603,9 @@ pub fn with_active_or_new_workspace(
         cx.defer(move |cx| {
             root.update(cx, |root, window, cx| {
                 let workspace = root.workspace().clone();
-                workspace.update(cx, |workspace, cx| f(workspace, window, cx));
+                workspace.update(cx, |workspace, cx| {
+                    updater(workspace, window, cx);
+                });
             })
             .log_err();
         });
@@ -621,7 +623,9 @@ pub fn with_active_or_new_workspace(
                 window.activate_window();
                 cx.new(|cx| {
                     let workspace = Workspace::create(workspace_id, shared_state, window, cx);
-                    workspace.update(cx, |workspace, cx| f(workspace, window, cx));
+                    workspace.update(cx, |workspace, cx| {
+                        updater(workspace, window, cx);
+                    });
                     Root::new(workspace)
                 })
             })?;

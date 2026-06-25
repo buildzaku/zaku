@@ -2746,10 +2746,15 @@ impl Render for ProjectPanel {
 }
 
 #[inline]
-fn cmp_worktree_entries(a: &Entry, b: &Entry, mode: SortMode, order: SortOrder) -> cmp::Ordering {
-    let a = (a.path.as_ref(), a.is_file());
-    let b = (b.path.as_ref(), b.is_file());
-    path::compare_rel_paths_by(a, b, mode, order)
+fn cmp_worktree_entries(
+    left: &Entry,
+    right: &Entry,
+    mode: SortMode,
+    order: SortOrder,
+) -> cmp::Ordering {
+    let left = (left.path.as_ref(), left.is_file());
+    let right = (right.path.as_ref(), right.is_file());
+    path::compare_rel_paths_by(left, right, mode, order)
 }
 
 fn display_depth(entry: &Entry) -> usize {

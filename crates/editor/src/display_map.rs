@@ -265,11 +265,12 @@ impl DisplaySnapshot {
     pub(crate) fn display_column_for_x(
         &self,
         display_row: DisplayRow,
-        x: Pixels,
+        position: Pixels,
         details: &TextLayoutDetails,
     ) -> u32 {
         let layout_line = self.layout_row(display_row, details);
-        u32::try_from(layout_line.closest_index_for_x(x)).expect("display column should fit in u32")
+        u32::try_from(layout_line.closest_index_for_x(position))
+            .expect("display column should fit in u32")
     }
 }
 

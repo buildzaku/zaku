@@ -74,10 +74,10 @@ impl Bind for SerializedWindowBounds {
 impl Column for SerializedWindowBounds {
     fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
         let (window_state, next_index) = String::column(row, start_index)?;
-        let ((x, y, width, height), _): ((f32, f32, f32, f32), _) =
+        let ((origin_x, origin_y, width, height), _): ((f32, f32, f32, f32), _) =
             Column::column(row, next_index)?;
         let bounds = Bounds {
-            origin: gpui::point(gpui::px(x), gpui::px(y)),
+            origin: gpui::point(gpui::px(origin_x), gpui::px(origin_y)),
             size: gpui::size(gpui::px(width), gpui::px(height)),
         };
 

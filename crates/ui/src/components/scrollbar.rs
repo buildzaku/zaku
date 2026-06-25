@@ -323,19 +323,17 @@ pub struct Scrollbars<T: ScrollableHandle = ScrollHandle> {
     scrollbar_width: ScrollbarWidth,
 }
 
-impl<T: ScrollableHandle> Scrollbars<T> {
+impl Scrollbars {
     pub fn new(show_along: ScrollAxes) -> Scrollbars {
-        Scrollbars::<ScrollHandle>::new_with_setting(show_along, |_| ShowScrollbar::default())
+        Self::new_with_setting(show_along, |_| ShowScrollbar::default())
     }
 
     pub fn always_visible(show_along: ScrollAxes) -> Scrollbars {
-        Scrollbars::<ScrollHandle>::new_with_setting(show_along, |_| ShowScrollbar::Always)
+        Self::new_with_setting(show_along, |_| ShowScrollbar::Always)
     }
 
     pub fn for_settings<S: ScrollbarVisibility + Default>() -> Scrollbars {
-        Scrollbars::<ScrollHandle>::new_with_setting(ScrollAxes::Both, |cx| {
-            S::default().visibility(cx)
-        })
+        Self::new_with_setting(ScrollAxes::Both, |cx| S::default().visibility(cx))
     }
 
     fn new_with_setting(
@@ -352,7 +350,9 @@ impl<T: ScrollableHandle> Scrollbars<T> {
             scrollbar_width: ScrollbarWidth::Normal,
         }
     }
+}
 
+impl<T: ScrollableHandle> Scrollbars<T> {
     pub fn id(mut self, id: impl Into<ElementId>) -> Self {
         self.id = Some(id.into());
         self

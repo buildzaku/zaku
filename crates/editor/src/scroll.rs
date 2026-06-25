@@ -68,21 +68,25 @@ impl OngoingScroll {
         const UNLOCK_LOWER_BOUND: Pixels = gpui::px(6.0);
         let mut axis = self.axis;
 
-        let x = delta.x.abs();
-        let y = delta.y.abs();
+        let x_delta = delta.x.abs();
+        let y_delta = delta.y.abs();
         let duration = Instant::now().duration_since(self.last_event);
         if duration > SCROLL_EVENT_SEPARATION {
-            axis = if x <= y {
+            axis = if x_delta <= y_delta {
                 Some(Axis::Vertical)
             } else {
                 Some(Axis::Horizontal)
             };
-        } else if x.max(y) >= UNLOCK_LOWER_BOUND {
+        } else if x_delta.max(y_delta) >= UNLOCK_LOWER_BOUND {
             match axis {
-                Some(Axis::Vertical) if x > y && x >= y * UNLOCK_PERCENT => {
+                Some(Axis::Vertical)
+                    if x_delta > y_delta && x_delta >= y_delta * UNLOCK_PERCENT =>
+                {
                     axis = None;
                 }
-                Some(Axis::Horizontal) if y > x && y >= x * UNLOCK_PERCENT => {
+                Some(Axis::Horizontal)
+                    if y_delta > x_delta && y_delta >= x_delta * UNLOCK_PERCENT =>
+                {
                     axis = None;
                 }
                 Some(Axis::Vertical | Axis::Horizontal) | None => {}

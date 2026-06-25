@@ -858,7 +858,7 @@ impl Editor {
                 .to_f64()
                 .expect("display column should fit in f64");
             let goal_column = match self.selection_goal {
-                SelectionGoal::HorizontalPosition(x) => x,
+                SelectionGoal::HorizontalPosition(position) => position,
                 SelectionGoal::HorizontalRange { end, .. } => end,
                 _ => current_display_column,
             };

@@ -80,12 +80,12 @@ impl PositionMap {
     pub(crate) fn point_for_position(&self, position: Point<Pixels>) -> PointForPosition {
         let text_bounds = self.text_hitbox.bounds;
         let local_position = position - text_bounds.origin;
-        let y = local_position.y.clamp(gpui::px(0.0), self.size.height);
+        let clamped_y = local_position.y.clamp(gpui::px(0.0), self.size.height);
         let scroll_x_pixels =
             Pixels::from(self.scroll_position.x * f64::from(self.em_layout_width));
-        let x = local_position.x + scroll_x_pixels;
+        let scrolled_x = local_position.x + scroll_x_pixels;
         let scroll_y = self.scroll_position.y.max(0.0);
-        let row = (f64::from(y / self.line_height) + scroll_y)
+        let row = (f64::from(clamped_y / self.line_height) + scroll_y)
             .to_u32()
             .expect("display row should fit in u32");
 
@@ -93,7 +93,7 @@ impl PositionMap {
             row.checked_sub(self.visible_row_range.start.0)
             && let Some(line) = self.line_layouts.get(line_index as usize)
         {
-            let x_relative_to_text = x
+            let x_relative_to_text = scrolled_x
                 - line.alignment_offset(self.text_align, self.content_width)
                 - self.em_layout_width
                     * line
@@ -120,7 +120,7 @@ impl PositionMap {
                 )
             }
         } else {
-            (0, x.max(gpui::px(0.0)))
+            (0, scrolled_x.max(gpui::px(0.0)))
         };
 
         let mut exact_unclipped = DisplayPoint::new(DisplayRow(row), column);
@@ -163,9 +163,9 @@ impl LineWithInvisibles {
         self.shaped_line.x_for_index(index.min(self.len))
     }
 
-    pub(crate) fn index_for_x(&self, x: Pixels) -> Option<usize> {
+    pub(crate) fn index_for_x(&self, position: Pixels) -> Option<usize> {
         self.shaped_line
-            .index_for_x(x)
+            .index_for_x(position)
             .map(|index| index.min(self.len))
     }
 

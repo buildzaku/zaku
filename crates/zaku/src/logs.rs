@@ -49,8 +49,8 @@ impl Render for LogsView {
 impl Item for LogsView {
     type Event = EditorEvent;
 
-    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
-        Editor::to_item_events(event, f);
+    fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
+        Editor::to_item_events(event, emitter);
     }
 
     fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {

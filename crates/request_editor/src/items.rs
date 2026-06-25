@@ -23,14 +23,14 @@ const MAX_TAB_TITLE_LEN: usize = 24;
 impl Item for RequestEditor {
     type Event = RequestEditorEvent;
 
-    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+    fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
         match event {
             RequestEditorEvent::Saved
             | RequestEditorEvent::TitleChanged
             | RequestEditorEvent::DirtyChanged => {
-                f(ItemEvent::UpdateTab);
+                emitter(ItemEvent::UpdateTab);
             }
-            RequestEditorEvent::RequestBufferEdited => f(ItemEvent::Edit),
+            RequestEditorEvent::RequestBufferEdited => emitter(ItemEvent::Edit),
             RequestEditorEvent::FileHandleChanged => {}
         }
     }
@@ -110,9 +110,9 @@ impl Item for RequestEditor {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
-        f(Entity::entity_id(&self.buffer), self.buffer.read(cx));
+        visitor(Entity::entity_id(&self.buffer), self.buffer.read(cx));
     }
 
     fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {

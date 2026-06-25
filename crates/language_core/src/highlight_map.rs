@@ -14,9 +14,11 @@ impl HighlightId {
 
         Self(NonZeroU32::new(value).expect("highlight capture id should not be zero"))
     }
+}
 
-    pub fn capture_id(self) -> u32 {
-        self.0.get() - 1
+impl From<HighlightId> for usize {
+    fn from(value: HighlightId) -> Self {
+        value.0.get() as usize - 1
     }
 }
 

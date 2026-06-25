@@ -22,12 +22,12 @@ use crate::{
 impl Item for Editor {
     type Event = EditorEvent;
 
-    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+    fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
         match event {
             EditorEvent::Saved | EditorEvent::TitleChanged | EditorEvent::DirtyChanged => {
-                f(ItemEvent::UpdateTab);
+                emitter(ItemEvent::UpdateTab);
             }
-            EditorEvent::BufferEdited => f(ItemEvent::Edit),
+            EditorEvent::BufferEdited => emitter(ItemEvent::Edit),
             EditorEvent::Blurred | EditorEvent::FileHandleChanged => {}
         }
     }
@@ -71,10 +71,10 @@ impl Item for Editor {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
         if let Some(buffer) = self.buffer.read(cx).as_singleton() {
-            f(buffer.entity_id(), buffer.read(cx));
+            visitor(buffer.entity_id(), buffer.read(cx));
         }
     }
 

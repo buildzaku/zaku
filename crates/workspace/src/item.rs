@@ -75,7 +75,7 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         self.tab_tooltip_text(cx).map(TabTooltipContent::Text)
     }
 
-    fn to_item_events(_event: &Self::Event, _f: &mut dyn FnMut(ItemEvent)) {}
+    fn to_item_events(_event: &Self::Event, _emitter: &mut dyn FnMut(ItemEvent)) {}
 
     fn deactivated(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {}
 
@@ -93,7 +93,7 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
     fn for_each_project_item(
         &self,
         _cx: &App,
-        _f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        _visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
     }
 
@@ -228,7 +228,7 @@ pub trait ItemHandle: 'static + Send {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     );
     fn buffer_kind(&self, cx: &App) -> ItemBufferKind;
     fn boxed_clone(&self) -> Box<dyn ItemHandle>;
@@ -337,9 +337,9 @@ impl<T: Item> ItemHandle for Entity<T> {
     fn for_each_project_item(
         &self,
         cx: &App,
-        f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+        visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
     ) {
-        self.read(cx).for_each_project_item(cx, f);
+        self.read(cx).for_each_project_item(cx, visitor);
     }
 
     fn buffer_kind(&self, cx: &App) -> ItemBufferKind {
@@ -650,8 +650,8 @@ pub mod test {
             self.label.clone().into()
         }
 
-        fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
-            f(*event);
+        fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
+            emitter(*event);
         }
 
         fn is_dirty(&self, _cx: &App) -> bool {
@@ -661,11 +661,11 @@ pub mod test {
         fn for_each_project_item(
             &self,
             cx: &App,
-            f: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
+            visitor: &mut dyn FnMut(EntityId, &dyn project::ProjectItem),
         ) {
             self.project_items
                 .iter()
-                .for_each(|item| f(item.entity_id(), item.read(cx)));
+                .for_each(|item| visitor(item.entity_id(), item.read(cx)));
         }
 
         fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {
