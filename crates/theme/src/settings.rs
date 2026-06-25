@@ -6,7 +6,7 @@ use settings::{IntoGpui, RegisterSetting};
 const MIN_FONT_SIZE: Pixels = gpui::px(10.0);
 const MAX_FONT_SIZE: Pixels = gpui::px(64.0);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UiDensity {
     #[default]
     Default,
@@ -119,7 +119,7 @@ impl settings::Settings for ThemeSettings {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum BufferLineHeight {
     #[default]
     Comfortable,

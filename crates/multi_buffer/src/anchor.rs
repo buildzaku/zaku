@@ -10,7 +10,7 @@ use crate::{
     ToPoint,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExcerptAnchor {
     pub(crate) text_anchor: text::Anchor,
 }
@@ -86,7 +86,7 @@ impl ToPoint for ExcerptAnchor {
 ///
 /// Unlike simple offsets, anchors remain valid as the text is edited, automatically
 /// adjusting to reflect insertions and deletions around them.
-#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Anchor {
     Min,
     Excerpt(ExcerptAnchor),

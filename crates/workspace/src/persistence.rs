@@ -19,7 +19,7 @@ use self::model::{
 };
 use crate::{ItemId, WorkspaceId};
 
-#[derive(Copy, Clone, Debug, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct SerializedWindowBounds(pub WindowBounds);
 
 impl StaticColumnCount for SerializedWindowBounds {

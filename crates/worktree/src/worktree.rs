@@ -617,7 +617,7 @@ impl Deref for Worktree {
 
 impl EventEmitter<WorktreeEvent> for Worktree {}
 
-#[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProjectEntryId(usize);
 
 impl ProjectEntryId {
@@ -893,7 +893,7 @@ pub struct LoadedFile {
     pub text: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct File {
     pub worktree: Entity<Worktree>,
     pub path: Arc<RelPath>,
@@ -984,7 +984,7 @@ impl language::File for File {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Entry {
     pub id: ProjectEntryId,
     pub kind: EntryKind,
@@ -1063,7 +1063,7 @@ impl KeyedItem for Entry {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryKind {
     UnloadedDir,
     PendingDir,
@@ -1085,7 +1085,7 @@ impl EntryKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PathChange {
     Added,
     Removed,
@@ -1096,7 +1096,7 @@ pub enum PathChange {
 
 pub type UpdatedEntriesSet = Arc<[(Arc<RelPath>, ProjectEntryId, PathChange)]>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub enum WorktreeEvent {
     UpdatedEntries(UpdatedEntriesSet),
     DeletedEntry(ProjectEntryId),
@@ -1272,7 +1272,7 @@ impl DerefMut for WorktreeSnapshot {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntrySummary {
     count: usize,
     file_count: usize,
@@ -1301,7 +1301,7 @@ impl ContextLessSummary for EntrySummary {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PathKey(pub Arc<RelPath>);
 
 impl Default for PathKey {
@@ -1320,7 +1320,7 @@ impl<'a> Dimension<'a, EntrySummary> for PathKey {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PathEntry {
     id: ProjectEntryId,
     path: Arc<RelPath>,
@@ -1342,7 +1342,7 @@ impl KeyedItem for PathEntry {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct PathEntrySummary {
     max_id: ProjectEntryId,
 }
@@ -2346,7 +2346,7 @@ impl BackgroundScannerState {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct EventRoot {
     path: Arc<RelPath>,
     was_rescanned: bool,
@@ -2360,7 +2360,7 @@ struct ScanJob {
     is_external: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum BackgroundScannerPhase {
     InitialScan,
     EventsReceivedDuringInitialScan,
@@ -2379,7 +2379,7 @@ impl fs::Watcher for NullWatcher {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 struct TraversalProgress<'a> {
     max_path: &'a RelPath,
     count: usize,

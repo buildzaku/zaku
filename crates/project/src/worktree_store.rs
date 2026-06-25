@@ -41,7 +41,7 @@ impl Default for WorktreeIdCounter {
 
 impl Global for WorktreeIdCounter {}
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 enum WorktreeHandle {
     Strong(Entity<Worktree>),
     Weak(WeakEntity<Worktree>),

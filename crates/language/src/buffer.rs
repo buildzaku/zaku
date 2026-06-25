@@ -21,7 +21,7 @@ use crate::{
     SyntaxMapCaptures, SyntaxSnapshot, text_diff::text_diff,
 };
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Capability {
     ReadWrite,
     Read,
@@ -34,7 +34,7 @@ impl Capability {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BufferEvent {
     Edited,
     DirtyChanged,
@@ -251,7 +251,7 @@ impl<'a> Iterator for BufferChunks<'a> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Chunk<'a> {
     pub text: &'a str,
     pub syntax_highlight_id: Option<HighlightId>,
@@ -286,7 +286,7 @@ pub trait File: Send + Sync + Any {
     fn worktree_id(&self, cx: &App) -> WorktreeId;
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DiskState {
     New,
     Present { mtime: MTime, size: u64 },

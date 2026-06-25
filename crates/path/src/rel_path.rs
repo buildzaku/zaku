@@ -218,7 +218,7 @@ impl PartialEq<str> for RelPath {
 #[derive(Debug)]
 pub struct StripPrefixError;
 
-#[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelPathBuf(String);
 
 impl RelPathBuf {

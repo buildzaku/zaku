@@ -11,7 +11,7 @@ use util::ResultExt;
 use super::SerializedWindowBounds;
 use crate::{ItemHandle, SerializableItemRegistry, Workspace, WorkspaceId, pane::Pane};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SerializedWorkspace {
     pub id: WorkspaceId,
     pub location: PathBuf,
@@ -23,7 +23,7 @@ pub struct SerializedWorkspace {
     pub window_id: Option<u64>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DockStructure {
     pub left: DockData,
     pub bottom: DockData,
@@ -44,7 +44,7 @@ impl Column for DockStructure {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DockData {
     pub visible: bool,
     pub active_panel: Option<String>,
@@ -71,13 +71,13 @@ impl Column for DockData {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SessionWorkspace {
     pub location: PathBuf,
     pub window_id: Option<WindowId>,
 }
 
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SerializedPane {
     pub(crate) active: bool,
     pub(crate) children: Vec<SerializedItem>,
@@ -169,7 +169,7 @@ impl SerializedPane {
 pub(crate) type PaneId = i64;
 pub type ItemId = u64;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SerializedItem {
     pub kind: Arc<str>,
     pub item_id: ItemId,

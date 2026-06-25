@@ -62,7 +62,7 @@ pub fn init(cx: &mut App) {
     });
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorEvent {
     BufferEdited,
     Blurred,
@@ -75,7 +75,7 @@ pub enum EditorEvent {
 const MAX_SELECTION_HISTORY_LEN: usize = 1024;
 const MAX_LINE_LEN: usize = 1024;
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipboardSelection {
     pub len: usize,
     pub is_entire_line: bool,
@@ -86,7 +86,7 @@ pub struct ClipboardSelection {
     pub line_range: Option<RangeInclusive<u32>>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditorMode {
     SingleLine,
     AutoHeight {
@@ -120,7 +120,7 @@ impl EditorMode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub enum SelectMode {
     Character,
     Word(Range<Anchor>),
@@ -128,7 +128,7 @@ pub enum SelectMode {
     All,
 }
 
-#[derive(Copy, Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SizingBehavior {
     #[default]
     Default,
@@ -228,7 +228,7 @@ impl Deref for EditorSnapshot {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct GutterDimensions {
     pub left_padding: Pixels,
     pub right_padding: Pixels,
@@ -263,12 +263,12 @@ pub fn column_pixels(style: &EditorStyle, column: usize, window: &Window) -> Pix
     layout.width
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 struct SelectionHistoryEntry {
     selections: Arc<[Selection<Anchor>]>,
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum SelectionHistoryMode {
     #[default]
     Normal,
@@ -381,13 +381,13 @@ struct DeferredSelectionEffectsState {
     history_entry: SelectionHistoryEntry,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy)]
 struct ScrollbarDrag {
     axis: Axis,
     pointer_offset: Pixels,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy)]
 struct ScrollbarAxes {
     horizontal: bool,
     vertical: bool,

@@ -2,13 +2,13 @@ pub use settings::CurrentLineHighlight;
 
 use settings::{RegisterSetting, Settings, SettingsContent};
 
-#[derive(Clone, Debug, PartialEq, Eq, RegisterSetting)]
+#[derive(Debug, Clone, PartialEq, Eq, RegisterSetting)]
 pub struct EditorSettings {
     pub current_line_highlight: CurrentLineHighlight,
     pub gutter: Gutter,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Gutter {
     pub min_line_number_digits: usize,
     pub line_numbers: bool,

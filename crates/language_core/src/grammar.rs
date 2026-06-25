@@ -14,7 +14,7 @@ use crate::{
 
 pub static NEXT_GRAMMAR_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GrammarId(pub usize);
 
 impl GrammarId {
@@ -67,7 +67,7 @@ pub struct OverrideEntry {
     pub value: LanguageConfigOverride,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct InjectionPatternConfig {
     pub language: Option<Box<str>>,
     pub combined: bool,
@@ -81,7 +81,7 @@ pub struct BracketsConfig {
     pub patterns: Vec<BracketsPatternConfig>,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct BracketsPatternConfig {
     pub newline_only: bool,
     pub rainbow_exclude: bool,

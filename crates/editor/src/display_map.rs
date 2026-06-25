@@ -27,7 +27,7 @@ pub trait ToDisplayPoint {
     fn to_display_point(&self, map: &DisplaySnapshot) -> DisplayPoint;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HighlightKey {
     InputComposition,
 }
@@ -275,7 +275,7 @@ impl DisplaySnapshot {
 }
 
 /// A zero-indexed point in a display buffer consisting of a row and column.
-#[derive(Copy, Clone, Default, Eq, Ord, PartialOrd, PartialEq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DisplayPoint(Point);
 
 impl DisplayPoint {
@@ -343,7 +343,7 @@ impl Sub for DisplayPoint {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, Ord, PartialOrd, PartialEq, Deserialize, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
 #[serde(transparent)]
 pub struct DisplayRow(pub u32);
 

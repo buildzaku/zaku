@@ -40,7 +40,7 @@ impl Clone for Source {
     }
 }
 
-#[derive(Clone, Debug, IntoElement)]
+#[derive(Debug, Clone, IntoElement)]
 pub struct KeyBinding {
     source: Source,
     size: Option<AbsoluteLength>,

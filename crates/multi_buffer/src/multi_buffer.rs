@@ -23,7 +23,7 @@ use language::{Buffer, BufferChunks, BufferSnapshot, Capability, Chunk, Language
 
 pub type MultiBufferPoint = Point;
 
-#[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MultiBufferRow(pub u32);
 
 impl MultiBufferRow {
@@ -40,27 +40,27 @@ impl Add<usize> for MultiBufferRow {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RowInfo {
     pub buffer_row: Option<u32>,
     pub multibuffer_row: Option<MultiBufferRow>,
     pub wrapped_buffer_row: Option<u32>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum CharKind {
     Whitespace,
     Punctuation,
     Word,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CharScopeContext {
     Completion,
     LinkedEdit,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct CharClassifier {
     word_chars: Arc<[char]>,
 }
@@ -93,7 +93,7 @@ impl CharClassifier {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MultiBufferOffset(pub usize);
 
 impl MultiBufferOffset {
@@ -211,7 +211,7 @@ impl ToPoint for MultiBufferOffset {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MultiBufferOffsetUtf16(pub OffsetUtf16);
 
 impl MultiBufferOffsetUtf16 {
@@ -301,7 +301,7 @@ pub trait MultiBufferDimension: 'static + Copy + Default + fmt::Debug {
     fn add_mb_text_summary(&mut self, summary: &MBTextSummary);
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MBTextSummary {
     pub len: MultiBufferOffset,
     pub chars: usize,

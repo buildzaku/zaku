@@ -82,7 +82,7 @@ const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
 const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
 pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceId(i64);
 
 impl From<i64> for WorkspaceId {
@@ -115,14 +115,14 @@ impl Column for WorkspaceId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OpenMode {
     NewWindow,
     #[default]
     Activate,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CloseIntent {
     Quit,
     CloseWindow,
@@ -324,7 +324,7 @@ pub fn register_project_item<I: ProjectItem>(cx: &mut App) {
     cx.default_global::<ProjectItemRegistry>().register::<I>();
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy)]
 struct SerializableItemDescriptor {
     deserialize: fn(
         Entity<Project>,

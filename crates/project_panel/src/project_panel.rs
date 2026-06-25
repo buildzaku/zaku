@@ -90,17 +90,17 @@ pub enum ProjectPanelEvent {
     },
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct SelectedEntry(ProjectEntryId);
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 enum ValidationState {
     None,
     Warning(String),
     Error(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 struct EditState {
     worktree_id: WorktreeId,
     entry_id: ProjectEntryId,
@@ -117,7 +117,7 @@ impl EditState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 enum ClipboardEntry {
     Copied(BTreeSet<SelectedEntry>),
     Cut(BTreeSet<SelectedEntry>),

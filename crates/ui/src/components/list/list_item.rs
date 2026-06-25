@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::{Disclosure, TOOLTIP_SHOW_DELAY, prelude::*};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ListItemSpacing {
     #[default]
     Dense,

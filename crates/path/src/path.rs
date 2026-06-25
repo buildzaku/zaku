@@ -35,7 +35,7 @@ pub trait PathExt {
         Self: From<&'a Path>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PathStyle {
     Posix,
     Windows,
@@ -129,7 +129,7 @@ pub fn is_absolute(path: &str, path_style: PathStyle) -> bool {
                         .is_some_and(|separator| matches!(*separator, b'/' | b'\\')))
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortOrder {
     #[default]
     Default,
@@ -138,7 +138,7 @@ pub enum SortOrder {
     Unicode,
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SortMode {
     #[default]
     DirectoriesFirst,
@@ -564,7 +564,7 @@ pub fn keymap_file() -> &'static PathBuf {
 /// In memory, this is identical to `Path`. On non-Windows conversions to this
 /// type are no-ops. On Windows, these conversions sanitize UNC paths by
 /// removing the `\\?\` prefix.
-#[derive(Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct SanitizedPath(Path);
 

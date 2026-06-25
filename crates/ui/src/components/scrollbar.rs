@@ -30,7 +30,7 @@ pub mod scrollbars {
     use schemars::JsonSchema;
     use serde::{Deserialize, Serialize};
 
-    #[derive(Copy, Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
     #[serde(rename_all = "snake_case")]
     pub enum ShowScrollbar {
         #[default]
@@ -204,7 +204,7 @@ impl<T: ScrollableHandle> UniformListDecoration for ScrollbarStateWrapper<T> {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum ShowBehavior {
     Always,
     Autohide,
@@ -247,13 +247,13 @@ impl ScrollAxes {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrackLayout {
     Classic,
     Overlay,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 enum ReservedSpace {
     #[default]
     None,
@@ -282,7 +282,7 @@ impl ReservedSpace {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 enum ScrollbarWidth {
     #[default]
     Normal,
@@ -429,7 +429,7 @@ impl<T: ScrollableHandle> Scrollbars<T> {
 
 const DELTA_MAX: f32 = 1.0;
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(Debug, Clone, PartialEq)]
 enum VisibilityState {
     Visible,
     Animating { showing: bool, delta: f32 },
@@ -843,7 +843,7 @@ struct ScrollbarElement<T: ScrollableHandle> {
     state: Entity<ScrollbarState<T>>,
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 enum ThumbState {
     #[default]
     Inactive,

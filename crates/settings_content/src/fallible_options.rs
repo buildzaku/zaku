@@ -81,7 +81,7 @@ mod tests {
     use settings_macros::with_fallible_options;
 
     #[with_fallible_options]
-    #[derive(Debug, Deserialize, PartialEq)]
+    #[derive(Debug, PartialEq, Deserialize)]
     struct FooSettings {
         foo: Option<String>,
         bar: Option<usize>,

@@ -22,7 +22,7 @@ pub type QueuedWrite = Box<dyn 'static + Send + FnOnce()>;
 pub type WriteQueue = Box<dyn 'static + Send + Sync + Fn(QueuedWrite) -> anyhow::Result<()>>;
 pub type WriteQueueConstructor = Box<dyn 'static + Send + FnMut() -> WriteQueue>;
 
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum ConnectionTarget {
     Memory(Arc<str>),
     File(Arc<PathBuf>),

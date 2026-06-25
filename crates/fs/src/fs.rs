@@ -109,7 +109,7 @@ impl Stream for WatchStream {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PathEventKind {
     Removed,
     Created,
@@ -117,7 +117,7 @@ pub enum PathEventKind {
     Rescan,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PathEvent {
     pub path: PathBuf,
     pub kind: Option<PathEventKind>,
@@ -129,20 +129,20 @@ impl From<PathEvent> for PathBuf {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct RenameOptions {
     pub overwrite: bool,
     pub ignore_if_exists: bool,
     pub create_parents: bool,
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct RemoveOptions {
     pub recursive: bool,
     pub ignore_if_not_exists: bool,
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct CopyOptions {
     pub overwrite: bool,
     pub ignore_if_exists: bool,
@@ -265,7 +265,7 @@ impl FileHandle for std::fs::File {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct MTime(SystemTime);
 
@@ -290,7 +290,7 @@ impl MTime {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Metadata {
     pub inode: u64,
     pub mtime: MTime,

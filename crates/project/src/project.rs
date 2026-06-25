@@ -45,7 +45,7 @@ pub trait ProjectItem: 'static {
     fn is_dirty(&self) -> bool;
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProjectPath {
     pub worktree_id: WorktreeId,
     pub path: Arc<RelPath>,
@@ -73,13 +73,13 @@ impl<P: Into<Arc<RelPath>>> From<(WorktreeId, P)> for ProjectPath {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryMetadata {
     pub prefix_label: Option<String>,
     pub is_invalid: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct EntryMetadataVersion {
     path: Arc<RelPath>,
     inode: u64,

@@ -8,7 +8,7 @@ use theme::{ActiveTheme, ThemeSettings};
 
 use crate::{Color, StyledTypography};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LabelSize {
     #[default]
     Default,
@@ -17,7 +17,7 @@ pub enum LabelSize {
     XSmall,
 }
 
-#[derive(Default, PartialEq, Copy, Clone)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub enum LineHeightStyle {
     #[default]
     TextLabel,

@@ -39,7 +39,7 @@ impl DerefMut for Notifications {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NotificationId {
     Unique(TypeId),
     Composite(TypeId, ElementId),

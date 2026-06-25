@@ -28,11 +28,12 @@ pub use settings_store::{Settings, SettingsStore};
 
 use gpui::App;
 use rust_embed::RustEmbed;
+use serde::Serialize;
 use std::{borrow::Cow, fmt};
 
 use util::asset_str;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, PartialOrd, Ord, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct WorktreeId(usize);
 
 impl WorktreeId {

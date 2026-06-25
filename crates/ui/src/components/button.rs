@@ -30,7 +30,7 @@ pub struct ButtonStyle {
     pub icon_color: Hsla,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TintColor {
     #[default]
     Info,
@@ -81,7 +81,7 @@ impl From<TintColor> for Color {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum ButtonVariant {
     #[default]
     Subtle,
@@ -336,7 +336,7 @@ impl From<ButtonVariant> for Color {
     }
 }
 
-#[derive(Default, PartialEq, Clone, Copy)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub enum ButtonSize {
     Large,
     Medium,
@@ -358,7 +358,7 @@ impl ButtonSize {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum IconPosition {
     #[default]
     Start,

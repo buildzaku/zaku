@@ -41,7 +41,7 @@ pub trait StyledTypography: Styled + Sized {
 
 impl<E: Styled> StyledTypography for E {}
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum TextSize {
     #[default]
     Default,
@@ -78,7 +78,7 @@ impl TextSize {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum HeadlineSize {
     XSmall,
     Small,

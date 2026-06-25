@@ -14,7 +14,7 @@ pub use url::Url;
 
 pub use async_body::{AsyncBody, Inner};
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub enum RedirectPolicy {
     #[default]
     NoFollow,

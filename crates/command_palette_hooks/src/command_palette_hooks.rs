@@ -70,7 +70,7 @@ impl CommandPaletteFilter {
     }
 }
 
-#[derive(Deref, DerefMut, Default)]
+#[derive(Default, Deref, DerefMut)]
 struct GlobalCommandPaletteFilter(CommandPaletteFilter);
 
 impl Global for GlobalCommandPaletteFilter {}

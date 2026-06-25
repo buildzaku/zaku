@@ -21,7 +21,7 @@ pub(crate) struct PendingSelection {
     mode: SelectMode,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct SelectionsCollection {
     next_selection_id: usize,
     disjoint: Arc<[Selection<Anchor>]>,

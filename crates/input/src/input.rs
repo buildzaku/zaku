@@ -30,7 +30,7 @@ pub trait ErasedEditor: 'static {
     fn as_any(&self) -> &dyn Any;
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErasedEditorEvent {
     BufferEdited,
     Blurred,

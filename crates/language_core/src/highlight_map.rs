@@ -1,6 +1,6 @@
 use std::{num::NonZeroU32, sync::Arc};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HighlightId(NonZeroU32);
 
 impl HighlightId {
@@ -22,7 +22,7 @@ impl From<HighlightId> for usize {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct HighlightMap(Arc<[Option<HighlightId>]>);
 
 impl HighlightMap {

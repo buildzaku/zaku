@@ -9,7 +9,7 @@ use std::{
 
 static NEXT_LANGUAGE_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LanguageId(usize);
 
 impl LanguageId {
@@ -25,7 +25,7 @@ impl Default for LanguageId {
 }
 
 #[derive(
-    Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub struct LanguageName(pub SharedString);
 

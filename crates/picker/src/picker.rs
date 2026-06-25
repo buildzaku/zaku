@@ -27,7 +27,7 @@ pub enum Direction {
     Down,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollBehavior {
     RevealSelected,
     PreserveOffset,
@@ -38,7 +38,7 @@ struct PendingUpdateMatches {
     _task: Task<anyhow::Result<()>>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum PickerEditorPosition {
     #[default]
     Start,
@@ -194,7 +194,7 @@ pub trait PickerDelegate: Sized + 'static {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum ContainerKind {
     UniformList,
 }

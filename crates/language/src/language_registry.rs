@@ -40,7 +40,7 @@ impl AvailableLanguage {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Copy, Default)]
 enum LanguageMatchPrecedence {
     #[default]
     Undetermined,

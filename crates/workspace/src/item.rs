@@ -13,14 +13,14 @@ use crate::{
     SerializableItemRegistry, Workspace, WorkspaceId, pane::Pane, persistence::model::ItemId,
 };
 
-#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ItemEvent {
     CloseItem,
     UpdateTab,
     Edit,
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct TabContentParams {
     pub detail: Option<usize>,
     pub selected: bool,

@@ -262,7 +262,7 @@ fn is_covered_rescan(kind: Option<PathEventKind>, path: &Path, ancestor: &Path) 
     kind == Some(PathEventKind::Rescan) && path != ancestor && path.starts_with(ancestor)
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct WatcherRegistrationId(u32);
 
 struct WatcherRegistrationState {

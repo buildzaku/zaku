@@ -17,7 +17,7 @@ use tree_sitter::{Node, ParseOptions, Query, QueryCapture, QueryCaptures, QueryC
 use crate::LanguageId;
 use crate::{Grammar, Language, QUERY_CURSORS, with_parser};
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct ParseTimeout;
 
 impl std::error::Error for ParseTimeout {}

@@ -29,7 +29,7 @@ pub fn default_theme(appearance: Appearance) -> &'static str {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum Appearance {
     Light,
     Dark,
@@ -105,7 +105,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     cx.set_global(GlobalTheme::new(theme));
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Theme {
     pub id: String,
     pub name: SharedString,

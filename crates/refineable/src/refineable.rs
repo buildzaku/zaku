@@ -23,7 +23,7 @@ pub trait IsEmpty {
     fn is_empty(&self) -> bool;
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy)]
 pub struct CascadeSlot(usize);
 
 pub struct Cascade<S: Refineable> {

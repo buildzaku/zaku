@@ -3,7 +3,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 /// Permanently delete the selected file or directory.
-#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = project_panel)]
 #[serde(deny_unknown_fields)]
 pub struct Delete {
@@ -12,7 +12,7 @@ pub struct Delete {
 }
 
 /// Move the selected file or directory to the system trash.
-#[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = project_panel)]
 #[serde(deny_unknown_fields)]
 pub struct Trash {

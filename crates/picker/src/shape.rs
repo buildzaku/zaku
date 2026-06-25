@@ -108,7 +108,7 @@ macro_rules! relative_size {
 relative_size!(RelativeHeight, height);
 relative_size!(RelativeWidth, width);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) enum VerticalPadding {
     #[default]
     Pad,

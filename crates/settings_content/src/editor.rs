@@ -16,7 +16,7 @@ pub struct EditorSettingsContent {
     pub gutter: Option<GutterContent>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
 #[serde(rename_all = "snake_case")]
 pub enum CurrentLineHighlight {
     None,

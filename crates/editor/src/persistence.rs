@@ -6,7 +6,7 @@ use db::{
 };
 use workspace::{ItemId, WorkspaceId};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SerializedEditor {
     pub(crate) absolute_path: PathBuf,
 }

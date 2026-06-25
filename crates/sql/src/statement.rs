@@ -410,13 +410,13 @@ impl Drop for Statement<'_> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StepResult {
     Row,
     Done,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqlType {
     Text,
     Integer,

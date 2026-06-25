@@ -10,7 +10,7 @@ use super::{
 
 use crate::{ContextMenu, PopoverMenu, prelude::*};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum DropdownVariant {
     #[default]
     Solid,

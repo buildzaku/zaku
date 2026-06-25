@@ -3,7 +3,7 @@ pub trait Toggleable {
     fn toggle_state(self, selected: bool) -> Self;
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum ToggleState {
     #[default]
     Unselected,

@@ -86,7 +86,7 @@ impl Action for ActionSequence {
     }
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct KeymapSection {
     #[serde(default)]
     pub context: String,
@@ -100,11 +100,11 @@ pub(crate) struct KeymapSection {
     unrecognized_fields: IndexMap<String, Value>,
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
 pub(crate) struct KeymapAction(Value);
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
 pub(crate) struct UnbindTargetAction(Value);
 
@@ -123,7 +123,7 @@ pub enum KeymapFileLoadResult {
     },
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
 pub struct KeymapFile(Vec<KeymapSection>);
 

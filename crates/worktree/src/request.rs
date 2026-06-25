@@ -5,19 +5,19 @@ use toml_edit::{Item, Table};
 
 pub const REQUEST_FILE_VERSION: u32 = 1;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequestFileState {
     Parsed(RequestFile),
     Invalid(String),
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFile {
     pub meta: RequestFileMeta,
     pub http: RequestFileHttp,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFileMeta {
     pub version: u32,
 }
@@ -30,7 +30,7 @@ impl Default for RequestFileMeta {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFileHttp {
     pub method: String,
     pub url: String,
@@ -54,7 +54,7 @@ impl Default for RequestFileHttp {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFileParam {
     pub name: String,
     pub value: String,
@@ -62,7 +62,7 @@ pub struct RequestFileParam {
     pub disabled: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFileHeader {
     pub name: String,
     pub value: String,
@@ -70,14 +70,14 @@ pub struct RequestFileHeader {
     pub disabled: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestFileBody {
     pub r#type: RequestFileBodyType,
     #[serde(default)]
     pub data: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RequestFileBodyType {
     Text,

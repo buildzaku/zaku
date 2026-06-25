@@ -19,7 +19,7 @@ const SCROLL_EVENT_SEPARATION: Duration = Duration::from_millis(28);
 
 pub(crate) struct WasScrolled(pub(crate) bool);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ScrollAnchor {
     pub offset: Point<ScrollOffset>,
     pub anchor: Anchor,
@@ -47,7 +47,7 @@ impl ScrollAnchor {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone, Copy)]
 struct OngoingScroll {
     last_event: Instant,
     axis: Option<Axis>,

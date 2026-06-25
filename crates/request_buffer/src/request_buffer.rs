@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use worktree::{DiskState, File, RequestFileState};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestBufferEvent {
     DirtyChanged,
     Saved,

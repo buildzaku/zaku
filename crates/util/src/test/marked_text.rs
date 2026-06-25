@@ -200,7 +200,7 @@ pub fn generate_marked_text(
     marked_text
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum TextRangeMarker {
     Empty(char),
     Range(char, char),

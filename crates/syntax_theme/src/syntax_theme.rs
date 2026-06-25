@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SyntaxTheme {
     highlights: Vec<HighlightStyle>,
     capture_name_map: BTreeMap<String, usize>,

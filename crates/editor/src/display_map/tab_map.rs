@@ -17,7 +17,7 @@ fn spaces(len: u32) -> &'static str {
     unsafe { std::str::from_utf8_unchecked(spaces) }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub(super) struct Chunk<'a> {
     pub text: &'a str,
     pub syntax_highlight_id: Option<HighlightId>,
@@ -426,7 +426,7 @@ impl TabSnapshot {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, Eq, Ord, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TabPoint(pub Point);
 
 impl TabPoint {
@@ -757,7 +757,7 @@ fn get_char_offset(range: Range<u32>, bit_map: u128) -> u32 {
     masked.count_ones()
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TabStop {
     char_offset: u32,
     byte_offset: u32,

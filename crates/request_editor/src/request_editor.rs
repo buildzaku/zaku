@@ -137,7 +137,7 @@ enum RequestEditorTab {
     Body,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RequestEditorEvent {
     RequestBufferEdited,
     DirtyChanged,

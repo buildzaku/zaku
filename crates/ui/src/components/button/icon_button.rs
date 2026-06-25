@@ -11,7 +11,7 @@ use super::{
 
 use crate::{Clickable, Color, Disableable, FixedWidth, IconSize, Toggleable, VisibleOnHover};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum IconButtonShape {
     Square,
     #[default]

@@ -7,7 +7,7 @@ use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 
 use metadata::{ZAKU_COMMIT_SHA, ZAKU_NAME, ZAKU_VERSION};
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct SystemSpecs {
     app_version: String,
     os_name: String,

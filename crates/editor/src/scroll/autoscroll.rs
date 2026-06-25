@@ -11,7 +11,7 @@ use crate::{
     scroll::{ScrollOffset, WasScrolled},
 };
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Autoscroll {
     Fit,
     Newest,

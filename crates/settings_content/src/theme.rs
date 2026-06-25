@@ -8,14 +8,14 @@ use std::{fmt, sync::Arc};
 
 #[derive(
     Debug,
+    Clone,
+    Copy,
+    Default,
     PartialEq,
     Eq,
     PartialOrd,
     Ord,
     Hash,
-    Clone,
-    Copy,
-    Default,
     Serialize,
     Deserialize,
     MergeFrom,
@@ -28,7 +28,7 @@ pub enum UiDensity {
     Comfortable,
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, MergeFrom, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeAppearanceMode {
     #[default]
@@ -37,7 +37,7 @@ pub enum ThemeAppearanceMode {
     Dark,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum FeatureValue {
     Bool(bool),
@@ -51,7 +51,7 @@ fn is_valid_feature_tag(tag: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric())
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, MergeFrom)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, MergeFrom)]
 #[serde(transparent)]
 pub struct FontFeaturesContent(pub IndexMap<String, u32>);
 
@@ -119,7 +119,7 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, MergeFrom, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(rename_all = "snake_case")]
 pub enum BufferLineHeight {
     #[default]
@@ -128,7 +128,7 @@ pub enum BufferLineHeight {
     Custom(#[serde(deserialize_with = "deserialize_line_height")] f32),
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, MergeFrom, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, MergeFrom)]
 #[serde(transparent)]
 pub struct FontSize(pub f32);
 
@@ -145,7 +145,7 @@ impl From<f32> for FontSize {
 }
 
 #[with_fallible_options]
-#[derive(Clone, Debug, Serialize, Deserialize, MergeFrom, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
 #[serde(transparent)]
 pub struct FontFamilyName(pub Arc<str>);
 
@@ -199,7 +199,7 @@ pub struct UiSettingsContent {
 }
 
 #[with_fallible_options]
-#[derive(Debug, Clone, Default, Serialize, Deserialize, MergeFrom, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(default)]
 pub struct ThemeStyleContent {
     #[serde(rename = "background.appearance")]
@@ -215,7 +215,7 @@ pub struct ThemeStyleContent {
     pub syntax: IndexMap<String, HighlightStyleContent>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, MergeFrom, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(default)]
 pub struct HighlightStyleContent {
     pub color: Option<String>,
@@ -258,7 +258,7 @@ where
 }
 
 #[with_fallible_options]
-#[derive(Debug, Clone, Default, Serialize, Deserialize, MergeFrom, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(default)]
 pub struct ThemeColorsContent {
     #[serde(rename = "background")]
@@ -384,7 +384,7 @@ pub struct ThemeColorsContent {
 }
 
 #[with_fallible_options]
-#[derive(Debug, Clone, Default, Serialize, Deserialize, MergeFrom, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(default)]
 pub struct StatusColorsContent {
     #[serde(rename = "conflict")]
@@ -479,7 +479,7 @@ pub struct StatusColorsContent {
     pub warning_border: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, MergeFrom, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(rename_all = "snake_case")]
 pub enum WindowBackgroundContent {
     Opaque,
@@ -487,7 +487,7 @@ pub enum WindowBackgroundContent {
     Blurred,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, MergeFrom, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(rename_all = "snake_case")]
 pub enum FontStyleContent {
     Normal,
@@ -495,7 +495,7 @@ pub enum FontStyleContent {
     Oblique,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Serialize, Deserialize, MergeFrom)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, MergeFrom)]
 #[serde(transparent)]
 pub struct FontWeightContent(pub f32);
 

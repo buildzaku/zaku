@@ -9,7 +9,7 @@ use crate::{
     display_map::{DisplayPoint, DisplayRow, DisplaySnapshot, ToDisplayPoint},
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FindRange {
     SingleLine,
     MultiLine,

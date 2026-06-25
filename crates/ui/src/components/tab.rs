@@ -11,14 +11,14 @@ use crate::{DynamicSpacing, Toggleable, h_flex};
 
 const TAB_SLOT_SIZE: Pixels = gpui::px(14.0);
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TabPosition {
     First,
     Middle(Ordering),
     Last,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TabCloseSide {
     Start,
     End,
