@@ -2668,7 +2668,9 @@ mod tests {
     use serde_json::{Value, json};
     use std::sync::Arc;
 
-    use fs::{Fs, TempFs};
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use fs::Fs;
+    use fs::TempFs;
     use path::rel_path;
     use settings::SettingsStore;
     use theme::LoadThemes;

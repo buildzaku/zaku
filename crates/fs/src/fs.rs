@@ -245,7 +245,12 @@ impl FileHandle for std::fs::File {
             "GetFinalPathNameByHandleW returned 0 length"
         );
 
-        let mut buf = vec![0u16; required_len as usize + 1];
+        let required_len =
+            usize::try_from(required_len).context("required path length should fit in usize")?;
+        let buffer_len = required_len
+            .checked_add(1)
+            .context("required path length should leave room for terminator")?;
+        let mut buf = vec![0u16; buffer_len];
 
         // SAFETY: `handle` remains valid for the duration of this call and `buf`
         // provides writable storage for the returned UTF-16 path.
@@ -256,7 +261,12 @@ impl FileHandle for std::fs::File {
             "GetFinalPathNameByHandleW failed to write path"
         );
 
-        let os_str = OsString::from_wide(&buf[..written as usize]);
+        let written =
+            usize::try_from(written).context("written path length should fit in usize")?;
+        let path = buf
+            .get(..written)
+            .context("written path length should be in bounds")?;
+        let os_str = OsString::from_wide(path);
         anyhow::ensure!(
             !os_str.is_empty(),
             "could not find a path for the file handle"
@@ -349,14 +359,19 @@ fn rename_without_replace(source: &Path, target: &Path) -> io::Result<()> {
 
     // SAFETY: `source` and `target` remain valid NUL-terminated UTF-16 strings for
     // the duration of this call.
-    unsafe {
+    let result = unsafe {
         MoveFileExW(
             PCWSTR(source.as_ptr()),
             PCWSTR(target.as_ptr()),
             MOVE_FILE_FLAGS::default(),
         )
+    };
+
+    if let Err(_error) = result {
+        return Err(io::Error::last_os_error());
     }
-    .map_err(|_| io::Error::last_os_error())
+
+    Ok(())
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -408,7 +423,10 @@ impl NativeFs {
                     .iter()
                     .position(|&character| character == 0)
                     .unwrap_or(volume_buffer.len());
-                PathBuf::from(OsString::from_wide(&volume_buffer[..len]))
+                let volume = volume_buffer
+                    .get(..len)
+                    .context("volume path length should be in bounds")?;
+                PathBuf::from(OsString::from_wide(volume))
             };
 
             let resolved_path = dunce::canonicalize(&abs_path)?;

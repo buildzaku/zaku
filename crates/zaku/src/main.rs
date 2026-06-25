@@ -233,7 +233,7 @@ fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
         };
 
         let notification_id = "dev.zaku.Oops";
-        proxy
+        if let Err(error) = proxy
             .add_notification(
                 notification_id,
                 Notification::new("Zaku failed to launch")
@@ -244,7 +244,9 @@ fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
                     ])),
             )
             .await
-            .ok();
+        {
+            eprintln!("Failed to show launch failure notification: {error:?}.");
+        }
 
         std::process::exit(1);
     })
