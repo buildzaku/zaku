@@ -46,7 +46,7 @@ use crate::{
     selections_collection::{MutableSelectionsCollection, SelectionsCollection},
 };
 
-const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
+pub const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
 pub fn init(cx: &mut App) {
     smol::block_on(persistence::EditorDb::global(cx).initialize_schema())
@@ -278,7 +278,7 @@ enum SelectionHistoryMode {
 }
 
 #[derive(Default)]
-struct SelectionHistory {
+pub struct SelectionHistory {
     selections_by_transaction:
         HashMap<TransactionId, (Arc<[Selection<Anchor>]>, Option<Arc<[Selection<Anchor>]>>)>,
     mode: SelectionHistoryMode,
@@ -287,7 +287,7 @@ struct SelectionHistory {
 }
 
 impl SelectionHistory {
-    fn new(initial: Arc<[Selection<Anchor>]>) -> Self {
+    pub fn new(initial: Arc<[Selection<Anchor>]>) -> Self {
         let mut history = Self::default();
         if !initial.is_empty() {
             history.push(SelectionHistoryEntry {
@@ -394,15 +394,15 @@ struct ScrollbarAxes {
 }
 
 pub struct Editor {
-    focus_handle: FocusHandle,
-    buffer: Entity<MultiBuffer>,
-    display_map: Entity<DisplayMap>,
+    pub focus_handle: FocusHandle,
+    pub buffer: Entity<MultiBuffer>,
+    pub display_map: Entity<DisplayMap>,
     pub selections: SelectionsCollection,
     scroll_manager: scroll::ScrollManager,
     mode: EditorMode,
     placeholder: SharedString,
-    ime_transaction: Option<TransactionId>,
-    selection_history: SelectionHistory,
+    pub ime_transaction: Option<TransactionId>,
+    pub selection_history: SelectionHistory,
     defer_selection_effects: bool,
     deferred_selection_effects_state: Option<DeferredSelectionEffectsState>,
     last_position_map: Option<Rc<PositionMap>>,
@@ -418,12 +418,12 @@ pub struct Editor {
     masked: bool,
     muted: bool,
     current_line_highlight: Option<CurrentLineHighlight>,
-    selection_goal: SelectionGoal,
+    pub selection_goal: SelectionGoal,
     _subscriptions: Vec<Subscription>,
 }
 
 impl Editor {
-    fn empty_buffer(cx: &mut Context<Self>) -> Entity<MultiBuffer> {
+    pub fn empty_buffer(cx: &mut Context<Self>) -> Entity<MultiBuffer> {
         let buffer = cx.new(|cx| Buffer::local("", cx));
         cx.new(|cx| MultiBuffer::singleton(buffer, cx))
     }
@@ -566,7 +566,7 @@ impl Editor {
         cx.notify();
     }
 
-    fn buffer_snapshot(&self, cx: &App) -> MultiBufferSnapshot {
+    pub fn buffer_snapshot(&self, cx: &App) -> MultiBufferSnapshot {
         self.buffer.read(cx).snapshot(cx)
     }
 
@@ -590,7 +590,7 @@ impl Editor {
             .update(cx, |display_map, cx| display_map.snapshot(cx))
     }
 
-    fn selection(&self, cx: &App) -> Selection<MultiBufferOffset> {
+    pub fn selection(&self, cx: &App) -> Selection<MultiBufferOffset> {
         let snapshot = self.buffer_snapshot(cx);
         let selection = self.selections.newest_anchor();
         Selection {
@@ -614,7 +614,7 @@ impl Editor {
         }
     }
 
-    fn selected_range(&self, cx: &App) -> Range<usize> {
+    pub fn selected_range(&self, cx: &App) -> Range<usize> {
         let selection = self.selection(cx);
         selection.start.0..selection.end.0
     }
@@ -2071,7 +2071,7 @@ impl Editor {
         self.replace_selection(sanitized_text.as_ref(), cx);
     }
 
-    fn undo(&mut self, _: &actions::editor::Undo, _: &mut Window, cx: &mut Context<Self>) {
+    pub fn undo(&mut self, _: &actions::editor::Undo, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -2099,7 +2099,7 @@ impl Editor {
         cx.notify();
     }
 
-    fn redo(&mut self, _: &actions::editor::Redo, _: &mut Window, cx: &mut Context<Self>) {
+    pub fn redo(&mut self, _: &actions::editor::Redo, _: &mut Window, cx: &mut Context<Self>) {
         if self.read_only(cx) {
             return;
         }
@@ -2173,7 +2173,7 @@ impl Editor {
         }
     }
 
-    fn begin_selection(
+    pub fn begin_selection(
         &mut self,
         position: DisplayPoint,
         click_count: usize,
@@ -2275,7 +2275,7 @@ impl Editor {
         });
     }
 
-    fn update_selection(&mut self, position: DisplayPoint, cx: &mut Context<Self>) {
+    pub fn update_selection(&mut self, position: DisplayPoint, cx: &mut Context<Self>) {
         let display_snapshot = self.display_snapshot(cx);
         let Some(mut pending) = self.selections.pending_anchor().cloned() else {
             return;
@@ -2362,7 +2362,7 @@ impl Editor {
         });
     }
 
-    fn end_selection(&mut self, cx: &mut Context<Self>) {
+    pub fn end_selection(&mut self, cx: &mut Context<Self>) {
         if let Some(pending_mode) = self.selections.pending_mode() {
             let selections = self
                 .selections
@@ -2452,7 +2452,7 @@ impl Editor {
         }
     }
 
-    pub(crate) fn create_style(&self, cx: &App) -> EditorStyle {
+    pub fn create_style(&self, cx: &App) -> EditorStyle {
         let theme_colors = cx.theme().colors();
         let theme_settings = ThemeSettings::get_global(cx);
 
@@ -2507,7 +2507,7 @@ impl Editor {
             .map(|(style, ranges)| (style, ranges.to_vec()))
     }
 
-    fn clear_highlights(&mut self, key: HighlightKey, cx: &mut Context<Self>) {
+    pub fn clear_highlights(&mut self, key: HighlightKey, cx: &mut Context<Self>) {
         let cleared = self
             .display_map
             .update(cx, |map, _| map.clear_highlights(key));
@@ -2521,6 +2521,11 @@ impl Editor {
         let (_, ranges) = self.text_highlights(HighlightKey::InputComposition, cx)?;
         let range = ranges.first()?;
         Some(range.start.to_offset(&snapshot).0..range.end.to_offset(&snapshot).0)
+    }
+
+    #[cfg(any(test, feature = "test"))]
+    pub fn clear_last_position_map(&mut self) {
+        self.last_position_map = None;
     }
 }
 
@@ -2986,6 +2991,3 @@ fn byte_offset_from_char_count(text: &str, char_count: usize) -> usize {
         .nth(char_count)
         .map_or_else(|| text.len(), |(index, _)| index)
 }
-
-#[cfg(test)]
-mod tests;

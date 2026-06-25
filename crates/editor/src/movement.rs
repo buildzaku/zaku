@@ -450,7 +450,7 @@ mod tests {
 
     use settings::SettingsStore;
 
-    use crate::tests::util::marked_display_snapshot;
+    use crate::display_map::marked_display_snapshot;
 
     fn init_test(cx: &mut App) {
         let settings_store = SettingsStore::test_new(cx);

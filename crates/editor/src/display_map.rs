@@ -3,6 +3,8 @@ mod tab_map;
 
 pub use tab_map::{TabMap, TabPoint, TabSnapshot};
 
+#[cfg(test)]
+use gpui::{App, AppContext};
 use gpui::{Context, Entity, HighlightStyle, LineLayout, Pixels, TextRun};
 use serde::Deserialize;
 use std::{
@@ -15,11 +17,16 @@ use std::{
 };
 use text::{Bias, Point, subscription::Subscription as BufferSubscription};
 
+#[cfg(test)]
+use language::Buffer;
 use language::LanguageAwareStyling;
 use multi_buffer::{
     Anchor, MultiBuffer, MultiBufferOffset, MultiBufferPoint, MultiBufferRow, MultiBufferSnapshot,
     RowInfo, ToPoint,
 };
+
+#[cfg(test)]
+use util::test::marked_text_offsets;
 
 use crate::{EditorStyle, movement::TextLayoutDetails};
 
@@ -409,6 +416,28 @@ impl ToDisplayPoint for Anchor {
 }
 
 #[cfg(test)]
+pub(crate) fn marked_display_snapshot(
+    marked_text: &str,
+    cx: &mut App,
+) -> (DisplaySnapshot, Vec<DisplayPoint>) {
+    let (text, marker_offsets) = marked_text_offsets(marked_text);
+    let buffer = cx.new(|cx| Buffer::local(text.as_str(), cx));
+    let multibuffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx));
+    let display_map = cx.new(|cx| DisplayMap::new(multibuffer, crate::DEFAULT_TAB_SIZE, cx));
+    let snapshot = display_map.update(cx, |map, cx| map.snapshot(cx));
+    let display_points = marker_offsets
+        .into_iter()
+        .map(|offset| {
+            snapshot
+                .buffer_snapshot()
+                .offset_to_point(MultiBufferOffset(offset))
+                .to_display_point(&snapshot)
+        })
+        .collect();
+    (snapshot, display_points)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -417,7 +446,7 @@ mod tests {
     use language::Buffer;
     use settings::SettingsStore;
 
-    use crate::{DEFAULT_TAB_SIZE, tests::util::marked_display_snapshot};
+    use crate::DEFAULT_TAB_SIZE;
 
     fn init_test(cx: &mut App) {
         let settings_store = SettingsStore::test_new(cx);

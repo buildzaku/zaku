@@ -14,6 +14,11 @@ path = "src/editor.rs"
 [lints]
 workspace = true
 
+[[test]]
+name = "editor_tests"
+path = "tests/integration/editor_tests.rs"
+required-features = ["test"]
+
 [features]
 test = ["db/test"]
 
