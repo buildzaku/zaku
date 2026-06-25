@@ -112,7 +112,7 @@ async fn test_native_fs_rename_respects_create_parents(
         )
         .await;
 
-    assert!(result.is_err());
+    result.unwrap_err();
     assert_eq!(std::fs::read_to_string(&source_b).unwrap(), "content b");
     assert!(!missing_parent_target.exists());
 }
@@ -127,8 +127,7 @@ async fn test_native_fs_canonicalize(executor: BackgroundExecutor) {
 
     std::fs::write(file, "test").unwrap();
 
-    let canonicalized = fs.canonicalize(file.as_path()).await;
-    assert!(canonicalized.is_ok());
+    fs.canonicalize(file.as_path()).await.unwrap();
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
