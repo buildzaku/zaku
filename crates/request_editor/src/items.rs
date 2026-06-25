@@ -61,14 +61,16 @@ impl Item for RequestEditor {
             Some(truncate_and_trailoff(description, MAX_TAB_TITLE_LEN))
         });
 
-        ui::h_flex()
+        gpui::div()
+            .flex()
+            .items_center()
             .min_w_0()
             .gap_2()
             .when(
                 matches!(&self.request, RequestEditorState::Invalid { .. }),
                 |this| {
                     this.child(
-                        ui::h_flex().flex_none().items_center().child(
+                        gpui::div().flex_none().flex().items_center().child(
                             Icon::new(IconName::WarningCircle)
                                 .size(IconSize::Small)
                                 .color(Color::Error),
@@ -78,7 +80,7 @@ impl Item for RequestEditor {
             )
             .when_some(selected_method_label, |this, method| {
                 this.child(
-                    ui::h_flex().flex_none().items_center().child(
+                    gpui::div().flex_none().flex().items_center().child(
                         Label::new(method)
                             .size(LabelSize::Small)
                             .weight(FontWeight::MEDIUM)

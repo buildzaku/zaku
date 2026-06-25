@@ -49,7 +49,7 @@ impl<D: PickerDelegate> Picker<D> {
             .children(match &self.head {
                 Head::Editor(editor) => {
                     if editor_position == PickerEditorPosition::Start {
-                        Some(gpui::div().flex().flex_row().items_center().w_full().child(
+                        Some(gpui::div().flex().items_center().w_full().child(
                             gpui::div().flex_1().child(self.delegate.render_editor(
                                 &editor.clone(),
                                 window,
@@ -60,22 +60,18 @@ impl<D: PickerDelegate> Picker<D> {
                         None
                     }
                 }
-                Head::Empty(empty_head) => Some(
-                    gpui::div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .child(empty_head.clone()),
-                ),
+                Head::Empty(empty_head) => {
+                    Some(gpui::div().flex().items_center().child(empty_head.clone()))
+                }
             })
             .when(self.delegate.match_count() > 0, |element| {
                 element.child(
                     gpui::div()
+                        .id("element-container")
                         .flex()
                         .flex_col()
-                        .id("element-container")
-                        .relative()
                         .flex_grow_1()
+                        .relative()
                         .min_h_0()
                         .when_some(
                             self.shape.results_max_height(

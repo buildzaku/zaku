@@ -16,9 +16,7 @@ use std::{
 
 use command_palette_hooks::CommandPaletteFilter;
 use picker::{Direction, Picker, PickerDelegate};
-use ui::{
-    HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, Toggleable, prelude::ActiveTheme,
-};
+use ui::{ActiveTheme, HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, Toggleable};
 use workspace::{ModalView, Workspace};
 
 use crate::persistence::CommandPaletteDB;
@@ -538,7 +536,6 @@ impl PickerDelegate for CommandPaletteDelegate {
                 .child(
                     gpui::div()
                         .flex()
-                        .flex_row()
                         .items_center()
                         .w_full()
                         .py_px()

@@ -7,7 +7,7 @@ use std::{cell::RefCell, panic, rc::Rc};
 
 use super::button::ButtonCommon;
 
-use crate::prelude::*;
+use crate::{Clickable, Toggleable};
 
 pub trait PopoverTrigger: IntoElement + Clickable + Toggleable + 'static {}
 
@@ -296,7 +296,7 @@ impl<M: ManagedView> PopoverMenu<M> {
 
     fn resolved_offset(&self, window: &mut Window) -> Point<Pixels> {
         self.offset.unwrap_or_else(|| {
-            let offset = rems_from_px(5.0) * window.rem_size();
+            let offset = crate::rems_from_px(5.0) * window.rem_size();
             match self.anchor {
                 Anchor::TopRight | Anchor::BottomRight | Anchor::RightCenter => {
                     gpui::point(offset, gpui::px(0.0))

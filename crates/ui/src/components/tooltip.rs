@@ -8,8 +8,7 @@ use theme::ThemeSettings;
 
 use super::label::{Label, LabelCommon, LabelSize};
 
-use crate::prelude::*;
-use crate::{Color, KeyBinding, StyledExt};
+use crate::{ActiveTheme, Color, KeyBinding, StyledExt, StyledTypography};
 
 #[derive(Clone, IntoElement)]
 enum Title {
@@ -229,7 +228,8 @@ impl Render for Tooltip {
             element
                 .child(
                     gpui::div()
-                        .h_flex()
+                        .flex()
+                        .items_center()
                         .gap_4()
                         .child(
                             gpui::div()
@@ -269,7 +269,8 @@ where
 
     gpui::div().pl_2().pt_2p5().child(
         gpui::div()
-            .v_flex()
+            .flex()
+            .flex_col()
             .elevation_2(app)
             .rounded_sm()
             .font(ui_font)

@@ -13,9 +13,9 @@ pub use list_sub_header::*;
 use gpui::{AnyElement, App, SharedString, Window, prelude::*};
 use smallvec::SmallVec;
 
-use super::label::Label;
+use super::label::{Label, LabelCommon};
 
-use crate::prelude::*;
+use crate::{Color, DynamicSpacing};
 
 pub enum EmptyMessage {
     Text(SharedString),
@@ -88,7 +88,9 @@ impl From<AnyElement> for EmptyMessage {
 
 impl RenderOnce for List {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .w_full()
             .py(DynamicSpacing::Base04.rems(cx))
             .children(self.header)

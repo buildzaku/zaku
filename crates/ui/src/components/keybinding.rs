@@ -4,8 +4,9 @@ use gpui::{
 };
 use std::rc::Rc;
 
-use crate::PlatformStyle;
-use crate::{Color, Icon, IconName, IconSize, prelude::*};
+use crate::{
+    ActiveTheme, Color, DynamicSpacing, Icon, IconName, IconSize, PlatformStyle, TextSize,
+};
 
 #[derive(Debug)]
 enum Source {
@@ -131,7 +132,9 @@ impl RenderOnce for KeyBinding {
             let color = self.disabled.then_some(Color::Disabled);
 
             gpui::div()
-                .h_flex()
+                .flex_none()
+                .flex()
+                .items_center()
                 .debug_selector(|| {
                     format!(
                         "KEY_BINDING-{}",
@@ -143,11 +146,11 @@ impl RenderOnce for KeyBinding {
                     )
                 })
                 .gap(DynamicSpacing::Base04.rems(cx))
-                .flex_none()
                 .children(keystrokes.iter().map(|keystroke| {
                     gpui::div()
-                        .h_flex()
                         .flex_none()
+                        .flex()
+                        .items_center()
                         .py_0p5()
                         .rounded_xs()
                         .text_color(cx.theme().colors().text_muted)
@@ -339,7 +342,7 @@ impl RenderOnce for Key {
             .py_0()
             .map(|this| {
                 if single_char {
-                    this.w(size).flex().flex_none().justify_center()
+                    this.w(size).flex_none().flex().justify_center()
                 } else {
                     this.px_0p5()
                 }

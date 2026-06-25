@@ -61,9 +61,9 @@ use project::{Project, ProjectEntryId, ProjectEvent, ProjectPath};
 use session::AppSession;
 use settings::{SettingsStore, ThemeAppearanceMode};
 use theme::{ActiveTheme, Appearance, SystemAppearance};
+use ui::StyledTypography;
 #[cfg(target_os = "macos")]
 use ui::utils;
-use ui::{StyledTypography, h_flex};
 use util::ResultExt;
 
 #[cfg(any(test, feature = "test"))]
@@ -787,7 +787,9 @@ impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = self.workspace().clone();
         let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
-        let root = workspace.update(cx, |workspace, cx| workspace.actions(h_flex(), window, cx));
+        let root = workspace.update(cx, |workspace, cx| {
+            workspace.actions(gpui::div().flex().items_center(), window, cx)
+        });
         let modal_layer = workspace.read(cx).modal_layer.clone();
 
         client_side_decorations(
@@ -2590,7 +2592,6 @@ impl Render for Workspace {
                     .bg(theme_colors.background)
                     .relative()
                     .flex()
-                    .flex_row()
                     .flex_1()
                     .overflow_hidden()
                     .border_y_1()

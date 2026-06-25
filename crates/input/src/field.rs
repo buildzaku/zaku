@@ -2,7 +2,7 @@ use gpui::{App, FocusHandle, Focusable, Hsla, Length, SharedString, Window, prel
 use std::sync::Arc;
 
 use theme::ActiveTheme;
-use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize, StyledExt};
+use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
 
 use crate::ErasedEditor;
 
@@ -164,8 +164,9 @@ impl Render for InputField {
         };
 
         gpui::div()
-            .v_flex()
             .id(self.placeholder.clone())
+            .flex()
+            .flex_col()
             .w_full()
             .gap_1()
             .when_some(self.label.clone(), |this, label| {
@@ -173,14 +174,15 @@ impl Render for InputField {
             })
             .child(
                 gpui::div()
-                    .h_flex()
+                    .flex()
+                    .flex_grow_1()
+                    .items_center()
                     .track_focus(&configured_handle)
                     .min_w(self.min_width)
                     .min_h_8()
                     .w_full()
                     .px_2()
                     .py_1p5()
-                    .flex_grow_1()
                     .text_color(style.text_color)
                     .rounded_md()
                     .bg(style.background_color)

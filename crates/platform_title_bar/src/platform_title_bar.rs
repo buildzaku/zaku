@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use std::mem;
 
 use actions::workspace::CloseWindow;
-use ui::prelude::*;
+use ui::{ActiveTheme, PlatformStyle};
 
 use crate::platform::{linux, windows};
 
@@ -157,7 +157,9 @@ impl Render for PlatformTitleBar {
             window.set_traffic_light_position(gpui::point(x_inset, y_inset));
         }
 
-        h_flex()
+        gpui::div()
+            .flex()
+            .items_center()
             .window_control_area(WindowControlArea::Drag)
             .w_full()
             .h(height)
@@ -236,7 +238,6 @@ impl Render for PlatformTitleBar {
                 gpui::div()
                     .id(self.id.clone())
                     .flex()
-                    .flex_row()
                     .items_center()
                     .justify_between()
                     .overflow_x_hidden()

@@ -423,18 +423,24 @@ impl RenderOnce for NotificationFrame {
             ("close", IconName::Close)
         };
 
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .occlude()
             .p_3()
             .gap_2()
             .elevation_3(cx)
             .child(
-                ui::h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .gap_4()
                     .justify_between()
                     .items_start()
                     .child(
-                        ui::v_flex()
+                        gpui::div()
+                            .flex()
+                            .flex_col()
                             .gap_0p5()
                             .when_some(self.title.clone(), |div, title| {
                                 div.child(Label::new(title))
@@ -693,7 +699,9 @@ pub mod simple_message_notification {
                     }
                 }))
                 .with_suffix(
-                    ui::h_flex()
+                    gpui::div()
+                        .flex()
+                        .items_center()
                         .gap_1p5()
                         .children(self.primary_message.iter().map(|message| {
                             let mut button = Button::new(message.clone(), message.clone())
@@ -737,25 +745,30 @@ pub mod simple_message_notification {
                             button
                         }))
                         .child(
-                            ui::h_flex().w_full().justify_end().children(
-                                self.more_info_message
-                                    .iter()
-                                    .zip(self.more_info_url.iter())
-                                    .map(|(message, url)| {
-                                        let url = url.clone();
-                                        Button::new(message.clone(), message.clone())
-                                            .label_size(LabelSize::Small)
-                                            .variant(ButtonVariant::Solid)
-                                            .end_icon(
-                                                Icon::new(IconName::ArrowUpRight)
-                                                    .size(IconSize::Indicator)
-                                                    .color(Color::Muted),
-                                            )
-                                            .on_click(
-                                                cx.listener(move |_, _, _, cx| cx.open_url(&url)),
-                                            )
-                                    }),
-                            ),
+                            gpui::div()
+                                .flex()
+                                .items_center()
+                                .w_full()
+                                .justify_end()
+                                .children(
+                                    self.more_info_message
+                                        .iter()
+                                        .zip(self.more_info_url.iter())
+                                        .map(|(message, url)| {
+                                            let url = url.clone();
+                                            Button::new(message.clone(), message.clone())
+                                                .label_size(LabelSize::Small)
+                                                .variant(ButtonVariant::Solid)
+                                                .end_icon(
+                                                    Icon::new(IconName::ArrowUpRight)
+                                                        .size(IconSize::Indicator)
+                                                        .color(Color::Muted),
+                                                )
+                                                .on_click(cx.listener(move |_, _, _, cx| {
+                                                    cx.open_url(&url);
+                                                }))
+                                        }),
+                                ),
                         ),
                 )
         }

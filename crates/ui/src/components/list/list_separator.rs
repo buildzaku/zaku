@@ -1,6 +1,6 @@
 use gpui::{App, Window, prelude::*};
 
-use crate::prelude::*;
+use crate::{ActiveTheme, DynamicSpacing};
 
 #[derive(IntoElement)]
 pub struct ListSeparator;

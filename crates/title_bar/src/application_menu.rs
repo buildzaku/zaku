@@ -1,8 +1,8 @@
 use gpui::{Action, App, Context, Entity, Window, prelude::*};
 
 use ui::{
-    ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu,
-    PopoverMenuHandle, Tooltip, prelude::*,
+    ButtonCommon, ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize,
+    PopoverMenu, PopoverMenuHandle, Tooltip,
 };
 
 pub(crate) struct ApplicationMenu {

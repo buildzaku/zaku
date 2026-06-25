@@ -377,7 +377,6 @@ impl Render for ResponsePanel {
                         header.child(
                             gpui::div()
                                 .flex()
-                                .flex_row()
                                 .items_center()
                                 .gap_1()
                                 .child(

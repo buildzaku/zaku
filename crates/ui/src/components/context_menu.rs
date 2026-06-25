@@ -7,8 +7,10 @@ use std::{rc::Rc, time::Duration};
 use theme::ThemeSettings;
 
 use crate::{
-    IconButtonShape, KeyBinding, List, ListItem, ListSeparator, ListSubHeader, Tooltip, prelude::*,
-    utils::WithRemSize,
+    Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, Disableable, Icon,
+    IconButton, IconButtonShape, IconName, IconPosition, IconSize, KeyBinding, Label, LabelCommon,
+    LabelSize, List, ListItem, ListSeparator, ListSubHeader, StyledExt, Toggleable, Tooltip,
+    VisibleOnHover, utils::WithRemSize,
 };
 
 pub enum ContextMenuItem {
@@ -866,7 +868,9 @@ impl ContextMenu {
         };
 
         let label_element = if let Some(icon_name) = icon {
-            h_flex()
+            gpui::div()
+                .flex()
+                .items_center()
                 .gap_1p5()
                 .when(
                     *icon_position == IconPosition::Start && toggle.is_none(),
@@ -916,7 +920,9 @@ impl ContextMenu {
                         }
                     })
                     .child(
-                        h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .w_full()
                             .justify_between()
                             .child(label_element)
@@ -1024,12 +1030,13 @@ impl Render for ContextMenu {
             .occlude()
             .elevation_2(cx)
             .flex()
-            .flex_row()
             .flex_shrink_0()
             .child(
-                v_flex()
+                gpui::div()
                     .id("context-menu")
-                    .max_h(vh(0.75, window))
+                    .flex()
+                    .flex_col()
+                    .max_h(crate::vh(0.75, window))
                     .flex_shrink_0()
                     .when_some(self.fixed_width, |this, width| {
                         this.w(width).overflow_x_hidden()

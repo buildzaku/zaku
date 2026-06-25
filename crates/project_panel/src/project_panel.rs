@@ -2214,8 +2214,10 @@ impl ProjectPanel {
     fn render_root_header(root_name: String, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors();
 
-        ui::h_flex()
+        gpui::div()
             .flex_none()
+            .flex()
+            .items_center()
             .h(DynamicSpacing::Base36.px(cx))
             .w_full()
             .px(DynamicSpacing::Base12.px(cx))
@@ -2242,14 +2244,16 @@ impl ProjectPanel {
                 IconName::CaretRight
             };
 
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(
                     gpui::div()
                         .w(Self::DISCLOSURE_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_center()
                         .child(
@@ -2261,15 +2265,17 @@ impl ProjectPanel {
                 .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
                 .into_any_element()
         } else if details.is_invalid {
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
-                    ui::h_flex()
+                    gpui::div()
                         .w(Self::PREFIX_LABEL_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_end()
                         .child(
@@ -2280,15 +2286,17 @@ impl ProjectPanel {
                 )
                 .into_any_element()
         } else if let Some(prefix_label) = details.prefix_label.as_ref() {
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
-                    ui::h_flex()
+                    gpui::div()
                         .w(Self::PREFIX_LABEL_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_end()
                         .child(
@@ -2302,15 +2310,17 @@ impl ProjectPanel {
                 )
                 .into_any_element()
         } else {
-            ui::h_flex()
+            gpui::div()
                 .flex_none()
+                .flex()
                 .items_center()
                 .gap_0p5()
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
-                    ui::h_flex()
+                    gpui::div()
                         .w(Self::PREFIX_LABEL_SLOT_WIDTH)
                         .flex_none()
+                        .flex()
                         .items_center()
                         .justify_end()
                         .child(
@@ -2420,7 +2430,9 @@ impl ProjectPanel {
                     .selectable(false)
                     .child(Self::render_entry_prefix(details))
                     .child(if show_editor {
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .h_6()
                             .w_full()
                             .mr(Pixels::ZERO - DynamicSpacing::Base06.px(cx) - gpui::px(1.0))
@@ -2434,7 +2446,9 @@ impl ProjectPanel {
                             )
                             .child(self.file_name_editor.clone())
                     } else {
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .h_6()
                             .child(Label::new(details.file_name.clone()).single_line())
                     })

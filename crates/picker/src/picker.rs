@@ -158,11 +158,10 @@ pub trait PickerDelegate: Sized + 'static {
             )
             .child(
                 gpui::div()
+                    .flex_none()
                     .flex()
-                    .flex_row()
                     .items_center()
                     .overflow_hidden()
-                    .flex_none()
                     .h_9()
                     .px_2p5()
                     .child(gpui::div().flex_1().child(editor.render(window, cx)))

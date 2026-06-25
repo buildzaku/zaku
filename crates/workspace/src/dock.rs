@@ -626,7 +626,6 @@ impl Render for PanelButtons {
 
         gpui::div()
             .flex()
-            .flex_row()
             .gap_1()
             .children(buttons)
             .font_ui(cx)

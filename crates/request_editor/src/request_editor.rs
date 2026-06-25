@@ -1160,7 +1160,9 @@ impl RequestEditor {
     }
 
     fn render_invalid(&self, error: &str, cx: &mut Context<Self>) -> Div {
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .track_focus(&self.focus_handle)
             .size_full()
             .gap_2()
@@ -1185,10 +1187,10 @@ impl RequestEditor {
                     .id(id)
                     .relative()
                     .flex_none()
-                    .h(DynamicSpacing::Base24.px(cx))
-                    .px(DynamicSpacing::Base08.px(cx))
                     .flex()
                     .items_center()
+                    .h(DynamicSpacing::Base24.px(cx))
+                    .px(DynamicSpacing::Base08.px(cx))
                     .rounded_sm()
                     .border_1()
                     .when(active, |this| {
@@ -1223,8 +1225,10 @@ impl RequestEditor {
 
         let colors = cx.theme().colors();
 
-        ui::h_flex()
+        gpui::div()
             .id("request-editor-tabs")
+            .flex()
+            .items_center()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
             .gap_1()
@@ -1312,12 +1316,16 @@ impl RequestEditor {
                 }));
 
             rows.push(
-                ui::h_flex()
+                gpui::div()
                     .id(("param-row", index))
+                    .flex()
+                    .items_center()
                     .w_full()
                     .child(gpui::div().pr_1p5().child(checkbox))
                     .child(
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .flex_1()
                             .gap_2p5()
                             .child(gpui::div().flex_1().child(param.name.clone()))
@@ -1339,13 +1347,17 @@ impl RequestEditor {
             }));
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .w_full()
             .flex_1()
             .min_h_0()
             .child(
-                ui::v_flex()
+                gpui::div()
                     .id("parameters")
+                    .flex()
+                    .flex_col()
                     .track_scroll(&self.params_scroll_handle)
                     .size_full()
                     .min_w_0()
@@ -1355,7 +1367,7 @@ impl RequestEditor {
                     .gap_2()
                     .py_3()
                     .children(rows)
-                    .child(ui::h_flex().pl_1().child(add_button)),
+                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
             )
             .custom_scrollbars(
                 Scrollbars::new(ScrollAxes::Vertical)
@@ -1418,12 +1430,16 @@ impl RequestEditor {
                 }));
 
             rows.push(
-                ui::h_flex()
+                gpui::div()
                     .id(("header-row", index))
+                    .flex()
+                    .items_center()
                     .w_full()
                     .child(gpui::div().pr_1p5().child(checkbox))
                     .child(
-                        ui::h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .flex_1()
                             .gap_2p5()
                             .child(gpui::div().flex_1().child(header.name.clone()))
@@ -1445,13 +1461,17 @@ impl RequestEditor {
             }));
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .w_full()
             .flex_1()
             .min_h_0()
             .child(
-                ui::v_flex()
+                gpui::div()
                     .id("headers")
+                    .flex()
+                    .flex_col()
                     .track_scroll(&self.headers_scroll_handle)
                     .size_full()
                     .min_w_0()
@@ -1461,7 +1481,7 @@ impl RequestEditor {
                     .gap_2()
                     .py_3()
                     .children(rows)
-                    .child(ui::h_flex().pl_1().child(add_button)),
+                    .child(gpui::div().flex().items_center().pl_1().child(add_button)),
             )
             .custom_scrollbars(
                 Scrollbars::new(ScrollAxes::Vertical)
@@ -1511,14 +1531,18 @@ impl RequestEditor {
         });
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
             .id("body")
+            .flex()
+            .flex_col()
             .w_full()
             .flex_1()
             .min_h_0()
             .bg(colors.panel_background)
             .child(
-                ui::h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .w_full()
                     .h(DynamicSpacing::Base36.px(cx))
                     .px_3()
@@ -1612,13 +1636,17 @@ impl RequestEditor {
         };
         let colors = cx.theme().colors();
 
-        ui::v_flex()
+        gpui::div()
+            .flex()
+            .flex_col()
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(colors.panel_background)
             .when_some(request_relative_path, |this, request_relative_path| {
                 this.child(
-                    ui::h_flex()
+                    gpui::div()
+                        .flex()
+                        .items_center()
                         .w_full()
                         .px_3()
                         .pt_2()
@@ -1626,7 +1654,9 @@ impl RequestEditor {
                 )
             })
             .child(
-                ui::h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .w_full()
                     .px_3()
                     .py_3()

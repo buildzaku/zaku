@@ -1,7 +1,10 @@
 use gpui::{App, ClickEvent, CursorStyle, ElementId, SharedString, Window, prelude::*};
 use std::sync::Arc;
 
-use crate::{Color, IconButton, IconButtonShape, IconName, IconSize, prelude::*};
+use crate::{
+    Clickable, Color, Disableable, IconButton, IconButtonShape, IconName, IconSize, Toggleable,
+    VisibleOnHover,
+};
 
 #[derive(IntoElement)]
 pub struct Disclosure {

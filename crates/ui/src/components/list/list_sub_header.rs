@@ -1,6 +1,9 @@
 use gpui::{AnyElement, App, SharedString, Window, prelude::*};
 
-use crate::prelude::*;
+use crate::{
+    ActiveTheme, Color, DynamicSpacing, Icon, IconName, IconSize, Label, LabelCommon, LabelSize,
+    Toggleable,
+};
 
 #[derive(IntoElement)]
 pub struct ListSubHeader {
@@ -47,7 +50,9 @@ impl Toggleable for ListSubHeader {
 
 impl RenderOnce for ListSubHeader {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        h_flex()
+        gpui::div()
+            .flex()
+            .items_center()
             .flex_1()
             .w_full()
             .relative()

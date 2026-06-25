@@ -5,7 +5,10 @@ use gpui::{
 use smallvec::SmallVec;
 use std::sync::Arc;
 
-use crate::{Disclosure, TOOLTIP_SHOW_DELAY, prelude::*};
+use crate::{
+    ActiveTheme, Disableable, Disclosure, DynamicSpacing, TOOLTIP_SHOW_DELAY, Toggleable,
+    VisibleOnHover,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ListItemSpacing {
@@ -235,8 +238,10 @@ impl RenderOnce for ListItem {
             .selected_background
             .unwrap_or(colors.ghost_element_selected);
 
-        h_flex()
+        gpui::div()
             .id(self.id)
+            .flex()
+            .items_center()
             .when_some(self.group_name, |this, group| this.group(group))
             .w_full()
             .relative()
@@ -264,8 +269,10 @@ impl RenderOnce for ListItem {
             .when(self.rounded, |this| this.rounded_sm())
             .when_some(self.on_hover, |this, on_hover| this.on_hover(on_hover))
             .child(
-                h_flex()
+                gpui::div()
                     .id("inner-list-item")
+                    .flex()
+                    .items_center()
                     .group("list-item")
                     .w_full()
                     .relative()
@@ -331,7 +338,9 @@ impl RenderOnce for ListItem {
                             )
                     }))
                     .child(
-                        h_flex()
+                        gpui::div()
+                            .flex()
+                            .items_center()
                             .flex_grow_1()
                             .flex_shrink_0()
                             .flex_basis(gpui::relative(0.25))
@@ -348,7 +357,9 @@ impl RenderOnce for ListItem {
                     )
                     .when_some(self.end_slot, |this, end_slot| {
                         this.justify_between().child(
-                            h_flex()
+                            gpui::div()
+                                .flex()
+                                .items_center()
                                 .flex_shrink_1()
                                 .overflow_hidden()
                                 .when(self.end_hover_slot.is_some(), |this| {
@@ -360,7 +371,9 @@ impl RenderOnce for ListItem {
                     })
                     .when_some(self.end_hover_slot, |this, end_hover_slot| {
                         this.child(
-                            h_flex()
+                            gpui::div()
+                                .flex()
+                                .items_center()
                                 .h_full()
                                 .absolute()
                                 .right(DynamicSpacing::Base06.rems(cx))

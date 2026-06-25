@@ -8,7 +8,7 @@ use gpui::{
 };
 use smallvec::SmallVec;
 
-use ui::{h_flex, prelude::*};
+use ui::{ActiveTheme, Color, DynamicSpacing, Graphic, GraphicName, IconSize, PlatformStyle};
 use workspace::Workspace;
 
 use crate::application_menu::ApplicationMenu;
@@ -121,17 +121,32 @@ impl Render for TitleBar {
             title_bar_controls.push(zaku);
         }
 
-        let title_bar_controls = h_flex()
-            .h_full()
+        let title_bar_controls = gpui::div()
+            .flex()
             .items_center()
+            .h_full()
             .children(title_bar_controls)
             .into_any_element();
 
         if title_bar_controls_on_left {
             children.push(title_bar_controls);
-            children.push(h_flex().h_full().flex_1().into_any_element());
+            children.push(
+                gpui::div()
+                    .flex()
+                    .items_center()
+                    .h_full()
+                    .flex_1()
+                    .into_any_element(),
+            );
         } else {
-            children.push(h_flex().h_full().flex_1().into_any_element());
+            children.push(
+                gpui::div()
+                    .flex()
+                    .items_center()
+                    .h_full()
+                    .flex_1()
+                    .into_any_element(),
+            );
             children.push(title_bar_controls);
         }
 

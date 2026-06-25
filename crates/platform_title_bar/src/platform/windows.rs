@@ -2,7 +2,7 @@ use gpui::{App, Hsla, IntoElement, Pixels, RenderOnce, Window, WindowControlArea
 #[cfg(target_os = "windows")]
 use windows::{Wdk::System::SystemServices, Win32::System::SystemInformation::OSVERSIONINFOW};
 
-use ui::prelude::*;
+use ui::ActiveTheme;
 
 #[derive(IntoElement)]
 pub struct WindowsWindowControls {
@@ -43,7 +43,6 @@ impl RenderOnce for WindowsWindowControls {
             .id("windows-window-controls")
             .font_family(Self::get_font())
             .flex()
-            .flex_row()
             .justify_center()
             .content_stretch()
             .max_h(self.button_height)
@@ -126,8 +125,9 @@ impl RenderOnce for WindowsCaptionButton {
         };
 
         gpui::div()
-            .h_flex()
             .id(self.id())
+            .flex()
+            .items_center()
             .justify_center()
             .content_center()
             .occlude()

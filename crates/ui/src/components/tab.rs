@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 
 use theme::ActiveTheme;
 
-use crate::{DynamicSpacing, Toggleable, h_flex};
+use crate::{DynamicSpacing, Toggleable};
 
 const TAB_SLOT_SIZE: Pixels = gpui::px(14.0);
 
@@ -120,14 +120,18 @@ impl RenderOnce for Tab {
         };
 
         let start_slot = self.start_slot.map(|start_slot| {
-            h_flex()
+            gpui::div()
+                .flex()
+                .items_center()
                 .size(TAB_SLOT_SIZE)
                 .justify_center()
                 .child(start_slot)
                 .into_any_element()
         });
         let end_slot = self.end_slot.map(|end_slot| {
-            h_flex()
+            gpui::div()
+                .flex()
+                .items_center()
                 .size(TAB_SLOT_SIZE)
                 .justify_center()
                 .child(end_slot)
@@ -175,7 +179,9 @@ impl RenderOnce for Tab {
                 )
             })
             .child(
-                h_flex()
+                gpui::div()
+                    .flex()
+                    .items_center()
                     .group("tab")
                     .relative()
                     .h(Self::content_height(cx))

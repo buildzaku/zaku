@@ -211,7 +211,6 @@ impl Render for ModalLayer {
                     .child(
                         gpui::div()
                             .flex()
-                            .flex_row()
                             .items_center()
                             .occlude()
                             .child(active_modal.modal.view())
