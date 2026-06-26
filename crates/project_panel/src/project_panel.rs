@@ -171,8 +171,6 @@ pub struct ProjectPanel {
 impl ProjectPanel {
     const PANEL_KEY: &str = "ProjectPanel";
     const DEFAULT_SIZE: Pixels = gpui::px(250.0);
-    const INDENT_SIZE: Pixels = gpui::px(12.0);
-    const DISCLOSURE_SLOT_WIDTH: Pixels = gpui::px(14.0);
     const NEW_ENTRY_ID: ProjectEntryId = ProjectEntryId::MAX;
 
     pub fn new(
@@ -2222,6 +2220,14 @@ impl ProjectPanel {
         })
     }
 
+    fn entry_indent_size(window: &Window) -> Pixels {
+        gpui::rems(12.0 / 14.0) * window.rem_size()
+    }
+
+    fn entry_prefix_slot_width(window: &Window) -> Pixels {
+        window.rem_size()
+    }
+
     fn render_root_header(&self, root_name: &str, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors();
         let focus_handle = self.focus_handle.clone();
@@ -2288,7 +2294,9 @@ impl ProjectPanel {
             .into_any_element()
     }
 
-    fn render_entry_prefix(details: &EntryDetails) -> AnyElement {
+    fn render_entry_prefix(details: &EntryDetails, window: &Window) -> AnyElement {
+        let entry_prefix_slot_width = Self::entry_prefix_slot_width(window);
+
         if details.kind.is_dir() {
             let icon = if details.is_expanded {
                 IconName::FolderOpen
@@ -2308,7 +2316,7 @@ impl ProjectPanel {
                 .gap_0p5()
                 .child(
                     gpui::div()
-                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2321,7 +2329,7 @@ impl ProjectPanel {
                 )
                 .child(
                     gpui::div()
-                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2335,10 +2343,10 @@ impl ProjectPanel {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(gpui::div().w(entry_prefix_slot_width).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2356,10 +2364,10 @@ impl ProjectPanel {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(gpui::div().w(entry_prefix_slot_width).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2380,10 +2388,10 @@ impl ProjectPanel {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(gpui::div().w(entry_prefix_slot_width).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2402,7 +2410,7 @@ impl ProjectPanel {
         &self,
         entry_id: ProjectEntryId,
         details: &EntryDetails,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let is_dir = details.kind.is_dir();
@@ -2490,10 +2498,10 @@ impl ProjectPanel {
             .child(
                 ListItem::new(entry_id.to_usize())
                     .indent_level(details.depth)
-                    .indent_step_size(Self::INDENT_SIZE)
+                    .indent_step_size(Self::entry_indent_size(window))
                     .spacing(ListItemSpacing::Dense)
                     .selectable(false)
-                    .child(Self::render_entry_prefix(details))
+                    .child(Self::render_entry_prefix(details, window))
                     .child(if show_editor {
                         gpui::div()
                             .flex()
@@ -2679,7 +2687,7 @@ impl Render for ProjectPanel {
                                 )
                                 .with_decoration(
                                     ui::indent_guides(
-                                        Self::INDENT_SIZE,
+                                        Self::entry_indent_size(window),
                                         IndentGuideColors::panel(cx),
                                     )
                                     .with_compute_indents_fn(
@@ -2748,7 +2756,7 @@ impl Render for ProjectPanel {
                                     ))
                                     .with_render_fn(
                                         cx.entity(),
-                                        |this, params, _, cx| {
+                                        |this, params, window, cx| {
                                             const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
                                             const PADDING_Y: Pixels = gpui::px(1.0);
 
@@ -2757,8 +2765,8 @@ impl Render for ProjectPanel {
                                             let indent_size = params.indent_size;
                                             let item_height = params.item_height;
                                             let left_offset = DynamicSpacing::Base06.px(cx)
-                                                + Self::DISCLOSURE_SLOT_WIDTH * 0.5
-                                                - gpui::px(0.5);
+                                                + Self::entry_prefix_slot_width(window) * 0.5
+                                                + gpui::px(0.5);
 
                                             params
                                                 .indent_guides
