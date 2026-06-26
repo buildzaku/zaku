@@ -2328,7 +2328,7 @@ impl ProjectPanel {
                         .items_center()
                         .justify_end()
                         .child(
-                            Icon::new(IconName::FileGeneric)
+                            Icon::new(IconName::FileToml)
                                 .size(IconSize::Medium)
                                 .color(Color::Muted),
                         ),
