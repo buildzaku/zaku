@@ -793,14 +793,14 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self
-            .project
-            .read(cx)
-            .worktree_id_for_entry(entry_id, cx)
-            .is_none()
-        {
-            return;
-        }
+        let is_root = {
+            let project = self.project.read(cx);
+            if project.worktree_id_for_entry(entry_id, cx).is_none() {
+                return;
+            }
+
+            project.entry_is_worktree_root(entry_id, cx)
+        };
 
         self.selection = Some(SelectedEntry(entry_id));
         let has_pasteable_content = self.has_pasteable_content();
@@ -818,9 +818,11 @@ impl ProjectPanel {
                     Box::new(actions::project_panel::RevealInFileManager),
                 )
                 .separator()
-                .action("Cut", Box::new(actions::project_panel::Cut))
-                .action("Copy", Box::new(actions::project_panel::Copy))
-                .action("Duplicate", Box::new(actions::project_panel::Duplicate))
+                .when(!is_root, |menu| {
+                    menu.action("Cut", Box::new(actions::project_panel::Cut))
+                        .action("Copy", Box::new(actions::project_panel::Copy))
+                        .action("Duplicate", Box::new(actions::project_panel::Duplicate))
+                })
                 .action_disabled_when(
                     !has_pasteable_content,
                     "Paste",
@@ -828,20 +830,22 @@ impl ProjectPanel {
                 )
                 .separator()
                 .action("Copy Path", Box::new(actions::workspace::CopyPath))
-                .action(
-                    "Copy Relative Path",
-                    Box::new(actions::workspace::CopyRelativePath),
-                )
-                .separator()
-                .action("Rename", Box::new(actions::project_panel::Rename))
-                .action(
-                    "Trash",
-                    Box::new(actions::project_panel::Trash { skip_prompt: false }),
-                )
-                .action(
-                    "Delete",
-                    Box::new(actions::project_panel::Delete { skip_prompt: false }),
-                )
+                .when(!is_root, |menu| {
+                    menu.action(
+                        "Copy Relative Path",
+                        Box::new(actions::workspace::CopyRelativePath),
+                    )
+                    .separator()
+                    .action("Rename", Box::new(actions::project_panel::Rename))
+                    .action(
+                        "Trash",
+                        Box::new(actions::project_panel::Trash { skip_prompt: false }),
+                    )
+                    .action(
+                        "Delete",
+                        Box::new(actions::project_panel::Delete { skip_prompt: false }),
+                    )
+                })
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
