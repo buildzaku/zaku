@@ -23,9 +23,10 @@ use project::{
 };
 use theme::ActiveTheme;
 use ui::{
-    Color, ContextMenu, DynamicSpacing, Icon, IconName, IconSize, IndentGuideColors,
-    IndentGuideLayout, Label, LabelCommon, LabelSize, ListItem, ListItemSpacing,
-    RenderedIndentGuide, ScrollAxes, Scrollbars, TrackLayout, WithScrollbar,
+    ButtonCommon, Clickable, Color, ContextMenu, DynamicSpacing, Icon, IconButton, IconButtonShape,
+    IconName, IconSize, IndentGuideColors, IndentGuideLayout, Label, LabelCommon, LabelSize,
+    ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars, Tooltip, TrackLayout,
+    WithScrollbar,
 };
 use util::ResultExt;
 
@@ -170,9 +171,6 @@ pub struct ProjectPanel {
 impl ProjectPanel {
     const PANEL_KEY: &str = "ProjectPanel";
     const DEFAULT_SIZE: Pixels = gpui::px(250.0);
-    const INDENT_SIZE: Pixels = gpui::px(9.0);
-    const DISCLOSURE_SLOT_WIDTH: Pixels = gpui::px(13.0);
-    const PREFIX_LABEL_SLOT_WIDTH: Pixels = gpui::px(32.0);
     const NEW_ENTRY_ID: ProjectEntryId = ProjectEntryId::MAX;
 
     pub fn new(
@@ -485,10 +483,9 @@ impl ProjectPanel {
                     let mut max_width_item = None;
                     for (index, entry) in entries.iter().enumerate() {
                         let entry_label = file_name_for_entry(&snapshot, entry);
-                        let prefix_chars = usize::from(entry.is_request) * 5;
                         let width_estimate = item_width_estimate(
                             display_depth(entry),
-                            entry_label.chars().count() + prefix_chars,
+                            entry_label.chars().count(),
                             false,
                         );
 
@@ -793,14 +790,14 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self
-            .project
-            .read(cx)
-            .worktree_id_for_entry(entry_id, cx)
-            .is_none()
-        {
-            return;
-        }
+        let is_root = {
+            let project = self.project.read(cx);
+            if project.worktree_id_for_entry(entry_id, cx).is_none() {
+                return;
+            }
+
+            project.entry_is_worktree_root(entry_id, cx)
+        };
 
         self.selection = Some(SelectedEntry(entry_id));
         let has_pasteable_content = self.has_pasteable_content();
@@ -818,9 +815,11 @@ impl ProjectPanel {
                     Box::new(actions::project_panel::RevealInFileManager),
                 )
                 .separator()
-                .action("Cut", Box::new(actions::project_panel::Cut))
-                .action("Copy", Box::new(actions::project_panel::Copy))
-                .action("Duplicate", Box::new(actions::project_panel::Duplicate))
+                .when(!is_root, |menu| {
+                    menu.action("Cut", Box::new(actions::project_panel::Cut))
+                        .action("Copy", Box::new(actions::project_panel::Copy))
+                        .action("Duplicate", Box::new(actions::project_panel::Duplicate))
+                })
                 .action_disabled_when(
                     !has_pasteable_content,
                     "Paste",
@@ -828,20 +827,22 @@ impl ProjectPanel {
                 )
                 .separator()
                 .action("Copy Path", Box::new(actions::workspace::CopyPath))
-                .action(
-                    "Copy Relative Path",
-                    Box::new(actions::workspace::CopyRelativePath),
-                )
-                .separator()
-                .action("Rename", Box::new(actions::project_panel::Rename))
-                .action(
-                    "Trash",
-                    Box::new(actions::project_panel::Trash { skip_prompt: false }),
-                )
-                .action(
-                    "Delete",
-                    Box::new(actions::project_panel::Delete { skip_prompt: false }),
-                )
+                .when(!is_root, |menu| {
+                    menu.action(
+                        "Copy Relative Path",
+                        Box::new(actions::workspace::CopyRelativePath),
+                    )
+                    .separator()
+                    .action("Rename", Box::new(actions::project_panel::Rename))
+                    .action(
+                        "Trash",
+                        Box::new(actions::project_panel::Trash { skip_prompt: false }),
+                    )
+                    .action(
+                        "Delete",
+                        Box::new(actions::project_panel::Delete { skip_prompt: false }),
+                    )
+                })
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
@@ -1360,14 +1361,23 @@ impl ProjectPanel {
     }
 
     fn add_entry(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((worktree_id, entry_id)) = self
+        let pending_new_entry = self.tree_state.edit_state.as_ref().and_then(|edit_state| {
+            edit_state.is_new_entry().then_some((
+                edit_state.worktree_id,
+                edit_state.entry_id,
+                edit_state.previously_focused,
+            ))
+        });
+
+        let Some((worktree_id, entry_id, previously_focused)) = self
             .selection
             .and_then(|selection| {
                 self.project
                     .read(cx)
                     .worktree_id_for_entry(selection.0, cx)
-                    .map(|worktree_id| (worktree_id, selection.0))
+                    .map(|worktree_id| (worktree_id, selection.0, Some(selection)))
             })
+            .or(pending_new_entry)
             .or_else(|| {
                 let entry_id = self.snapshot(cx)?.root_entry()?.id;
                 let worktree_id = self
@@ -1377,7 +1387,7 @@ impl ProjectPanel {
                     .read(cx)
                     .id();
 
-                Some((worktree_id, entry_id))
+                Some((worktree_id, entry_id, None))
             })
         else {
             return;
@@ -1418,7 +1428,6 @@ impl ProjectPanel {
             }
         }
 
-        let previously_focused = self.selection;
         self.marked_entries.clear();
         self.tree_state.edit_state = Some(EditState {
             worktree_id,
@@ -2211,27 +2220,83 @@ impl ProjectPanel {
         })
     }
 
-    fn render_root_header(root_name: String, cx: &mut Context<Self>) -> AnyElement {
+    fn entry_indent_size(window: &Window) -> Pixels {
+        gpui::rems(12.0 / 14.0) * window.rem_size()
+    }
+
+    fn entry_prefix_slot_width(window: &Window) -> Pixels {
+        window.rem_size()
+    }
+
+    fn render_root_header(&self, root_name: &str, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors();
+        let focus_handle = self.focus_handle.clone();
 
         gpui::div()
             .flex_none()
             .flex()
             .items_center()
+            .gap_1()
             .h(DynamicSpacing::Base36.px(cx))
             .w_full()
             .px(DynamicSpacing::Base12.px(cx))
             .bg(colors.panel_background)
             .child(
-                Label::new(root_name)
-                    .size(LabelSize::Small)
-                    .weight(FontWeight::MEDIUM)
-                    .truncate(),
+                gpui::div().flex_1().min_w_0().child(
+                    Label::new(root_name.to_ascii_uppercase())
+                        .size(LabelSize::Small)
+                        .truncate(),
+                ),
+            )
+            .child(
+                gpui::div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap_0p5()
+                    .child(
+                        IconButton::new("project-panel-new-request", IconName::FileTomlPlus)
+                            .shape(IconButtonShape::Square)
+                            .icon_size(IconSize::Medium)
+                            .icon_color(Color::Muted)
+                            .tooltip(Tooltip::for_action_title_in(
+                                "New Request",
+                                &actions::project_panel::NewFile,
+                                &focus_handle,
+                            ))
+                            .on_click(cx.listener(|project_panel, _, window, cx| {
+                                project_panel.new_file(
+                                    &actions::project_panel::NewFile,
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    )
+                    .child(
+                        IconButton::new("project-panel-new-collection", IconName::FolderPlus)
+                            .shape(IconButtonShape::Square)
+                            .icon_size(IconSize::Medium)
+                            .icon_color(Color::Muted)
+                            .tooltip(Tooltip::for_action_title_in(
+                                "New Collection",
+                                &actions::project_panel::NewDirectory,
+                                &focus_handle,
+                            ))
+                            .on_click(cx.listener(|project_panel, _, window, cx| {
+                                project_panel.new_directory(
+                                    &actions::project_panel::NewDirectory,
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    ),
             )
             .into_any_element()
     }
 
-    fn render_entry_prefix(details: &EntryDetails) -> AnyElement {
+    fn render_entry_prefix(details: &EntryDetails, window: &Window) -> AnyElement {
+        let entry_prefix_slot_width = Self::entry_prefix_slot_width(window);
+
         if details.kind.is_dir() {
             let icon = if details.is_expanded {
                 IconName::FolderOpen
@@ -2251,7 +2316,7 @@ impl ProjectPanel {
                 .gap_0p5()
                 .child(
                     gpui::div()
-                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2262,7 +2327,15 @@ impl ProjectPanel {
                                 .color(Color::Muted),
                         ),
                 )
-                .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
+                .child(
+                    gpui::div()
+                        .w(entry_prefix_slot_width)
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted)),
+                )
                 .into_any_element()
         } else if details.is_invalid {
             gpui::div()
@@ -2270,10 +2343,10 @@ impl ProjectPanel {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(gpui::div().w(entry_prefix_slot_width).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2291,10 +2364,10 @@ impl ProjectPanel {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(gpui::div().w(entry_prefix_slot_width).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2315,16 +2388,16 @@ impl ProjectPanel {
                 .flex()
                 .items_center()
                 .gap_0p5()
-                .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
+                .child(gpui::div().w(entry_prefix_slot_width).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .w(entry_prefix_slot_width)
                         .flex_none()
                         .flex()
                         .items_center()
                         .justify_end()
                         .child(
-                            Icon::new(IconName::FileGeneric)
+                            Icon::new(IconName::FileToml)
                                 .size(IconSize::Medium)
                                 .color(Color::Muted),
                         ),
@@ -2337,7 +2410,7 @@ impl ProjectPanel {
         &self,
         entry_id: ProjectEntryId,
         details: &EntryDetails,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let is_dir = details.kind.is_dir();
@@ -2425,10 +2498,10 @@ impl ProjectPanel {
             .child(
                 ListItem::new(entry_id.to_usize())
                     .indent_level(details.depth)
-                    .indent_step_size(Self::INDENT_SIZE)
+                    .indent_step_size(Self::entry_indent_size(window))
                     .spacing(ListItemSpacing::Dense)
                     .selectable(false)
-                    .child(Self::render_entry_prefix(details))
+                    .child(Self::render_entry_prefix(details, window))
                     .child(if show_editor {
                         gpui::div()
                             .flex()
@@ -2542,7 +2615,7 @@ impl Render for ProjectPanel {
         let root_header = self
             .snapshot(cx)
             .map(|snapshot| snapshot.root_name().as_unix_str().to_string())
-            .map(|root_name| Self::render_root_header(root_name, cx));
+            .map(|root_name| self.render_root_header(&root_name, cx));
         let colors = cx.theme().colors();
         let entry_count = self.tree_state.visible_entries.len();
 
@@ -2584,137 +2657,224 @@ impl Render for ProjectPanel {
                     .min_h_0()
                     .w_full()
                     .child(
-                        gpui::uniform_list(
-                            "project-panel-entries",
-                            entry_count,
-                            cx.processor(|this, range: Range<usize>, window, cx| {
-                                this.load_entry_metadata_for_range(range.clone(), cx);
-                                let mut items =
-                                    Vec::with_capacity(range.end.saturating_sub(range.start));
-                                this.for_each_visible_entry(
-                                    range,
-                                    window,
-                                    cx,
-                                    &mut |entry_id, details, window, cx| {
-                                        items.push(
-                                            this.render_entry(entry_id, &details, window, cx),
-                                        );
-                                    },
-                                );
-                                items
-                            }),
-                        )
-                        .with_decoration(
-                            ui::indent_guides(Self::INDENT_SIZE, IndentGuideColors::panel(cx))
-                                .with_compute_indents_fn(
-                                    cx.entity(),
-                                    |this, range, _window, _cx| {
-                                        let mut items = SmallVec::with_capacity(
+                        gpui::div()
+                            .flex()
+                            .flex_col()
+                            .size_full()
+                            .child(
+                                gpui::uniform_list(
+                                    "project-panel-entries",
+                                    entry_count,
+                                    cx.processor(|this, range: Range<usize>, window, cx| {
+                                        this.load_entry_metadata_for_range(range.clone(), cx);
+                                        let mut items = Vec::with_capacity(
                                             range.end.saturating_sub(range.start),
                                         );
-                                        for index in range {
-                                            if let Some(entry) =
-                                                this.tree_state.visible_entries.get(index)
-                                            {
-                                                items.push(display_depth(entry));
-                                            }
-                                        }
+                                        this.for_each_visible_entry(
+                                            range,
+                                            window,
+                                            cx,
+                                            &mut |entry_id, details, window, cx| {
+                                                items.push(
+                                                    this.render_entry(
+                                                        entry_id, &details, window, cx,
+                                                    ),
+                                                );
+                                            },
+                                        );
                                         items
-                                    },
+                                    }),
                                 )
-                                .on_click(cx.listener(
-                                    |this, active_indent_guide: &IndentGuideLayout, window, cx| {
-                                        if !window.modifiers().secondary() {
-                                            return;
-                                        }
-
-                                        let row = active_indent_guide.offset.y;
-                                        let Some(snapshot) = this.snapshot(cx) else {
-                                            return;
-                                        };
-                                        let Some(parent_entry_id) = this
-                                            .tree_state
-                                            .visible_entries
-                                            .get(row)
-                                            .and_then(|entry| entry.path.parent())
-                                            .and_then(|path| snapshot.entry_for_path(path))
-                                            .map(|entry| entry.id)
-                                        else {
-                                            return;
-                                        };
-                                        if snapshot
-                                            .root_entry()
-                                            .is_some_and(|entry| entry.id == parent_entry_id)
-                                        {
-                                            return;
-                                        }
-                                        let Some(expanded_dir_ids) =
-                                            this.tree_state.expanded_dir_ids.as_mut()
-                                        else {
-                                            return;
-                                        };
-                                        let Ok(index) =
-                                            expanded_dir_ids.binary_search(&parent_entry_id)
-                                        else {
-                                            return;
-                                        };
-
-                                        expanded_dir_ids.remove(index);
-                                        this.update_visible_entries(None, false, false, window, cx);
-                                        window.focus(&this.focus_handle, cx);
-                                        cx.notify();
-                                    },
-                                ))
-                                .with_render_fn(cx.entity(), |this, params, _, cx| {
-                                    const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
-                                    const PADDING_Y: Pixels = gpui::px(1.0);
-
-                                    let active_guide =
-                                        this.find_active_indent_guide(&params.indent_guides);
-                                    let indent_size = params.indent_size;
-                                    let item_height = params.item_height;
-                                    let left_offset = DynamicSpacing::Base06.px(cx)
-                                        + Self::DISCLOSURE_SLOT_WIDTH * 0.5
-                                        - gpui::px(0.5);
-
-                                    params
-                                        .indent_guides
-                                        .into_iter()
-                                        .enumerate()
-                                        .map(|(index, layout)| {
-                                            let guide_x =
-                                                layout.offset.x * indent_size + left_offset;
-                                            let guide_y = layout.offset.y * item_height + PADDING_Y;
-                                            let guide_height =
-                                                layout.length * item_height - PADDING_Y * 2.0;
-                                            let bounds = Bounds::new(
-                                                gpui::point(guide_x, guide_y),
-                                                gpui::size(gpui::px(1.0), guide_height),
+                                .with_decoration(
+                                    ui::indent_guides(
+                                        Self::entry_indent_size(window),
+                                        IndentGuideColors::panel(cx),
+                                    )
+                                    .with_compute_indents_fn(
+                                        cx.entity(),
+                                        |this, range, _window, _cx| {
+                                            let mut items = SmallVec::with_capacity(
+                                                range.end.saturating_sub(range.start),
                                             );
-                                            let hitbox_x = bounds.origin.x - HITBOX_OVERDRAW;
-                                            let hitbox_width =
-                                                bounds.size.width + HITBOX_OVERDRAW * 2.0;
-
-                                            RenderedIndentGuide {
-                                                bounds,
-                                                layout,
-                                                is_active: Some(index) == active_guide,
-                                                hitbox: Some(Bounds::new(
-                                                    gpui::point(hitbox_x, bounds.origin.y),
-                                                    gpui::size(hitbox_width, bounds.size.height),
-                                                )),
+                                            for index in range {
+                                                if let Some(entry) =
+                                                    this.tree_state.visible_entries.get(index)
+                                                {
+                                                    items.push(display_depth(entry));
+                                                }
                                             }
-                                        })
-                                        .collect()
-                                }),
-                        )
-                        .with_sizing_behavior(ListSizingBehavior::Infer)
-                        .with_horizontal_sizing_behavior(
-                            ListHorizontalSizingBehavior::Unconstrained,
-                        )
-                        .with_width_from_item(self.tree_state.max_width_item_index)
-                        .track_scroll(&self.scroll_handle)
-                        .size_full(),
+                                            items
+                                        },
+                                    )
+                                    .on_click(cx.listener(
+                                        |this,
+                                         active_indent_guide: &IndentGuideLayout,
+                                         window,
+                                         cx| {
+                                            if !window.modifiers().secondary() {
+                                                return;
+                                            }
+
+                                            let row = active_indent_guide.offset.y;
+                                            let Some(snapshot) = this.snapshot(cx) else {
+                                                return;
+                                            };
+                                            let Some(parent_entry_id) = this
+                                                .tree_state
+                                                .visible_entries
+                                                .get(row)
+                                                .and_then(|entry| entry.path.parent())
+                                                .and_then(|path| snapshot.entry_for_path(path))
+                                                .map(|entry| entry.id)
+                                            else {
+                                                return;
+                                            };
+                                            if snapshot
+                                                .root_entry()
+                                                .is_some_and(|entry| entry.id == parent_entry_id)
+                                            {
+                                                return;
+                                            }
+                                            let Some(expanded_dir_ids) =
+                                                this.tree_state.expanded_dir_ids.as_mut()
+                                            else {
+                                                return;
+                                            };
+                                            let Ok(index) =
+                                                expanded_dir_ids.binary_search(&parent_entry_id)
+                                            else {
+                                                return;
+                                            };
+
+                                            expanded_dir_ids.remove(index);
+                                            this.update_visible_entries(
+                                                None, false, false, window, cx,
+                                            );
+                                            window.focus(&this.focus_handle, cx);
+                                            cx.notify();
+                                        },
+                                    ))
+                                    .with_render_fn(
+                                        cx.entity(),
+                                        |this, params, window, cx| {
+                                            const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
+                                            const PADDING_Y: Pixels = gpui::px(1.0);
+
+                                            let active_guide = this
+                                                .find_active_indent_guide(&params.indent_guides);
+                                            let indent_size = params.indent_size;
+                                            let item_height = params.item_height;
+                                            let left_offset = DynamicSpacing::Base06.px(cx)
+                                                + Self::entry_prefix_slot_width(window) * 0.5
+                                                + gpui::px(0.5);
+
+                                            params
+                                                .indent_guides
+                                                .into_iter()
+                                                .enumerate()
+                                                .map(|(index, layout)| {
+                                                    let guide_x =
+                                                        layout.offset.x * indent_size + left_offset;
+                                                    let guide_y =
+                                                        layout.offset.y * item_height + PADDING_Y;
+                                                    let guide_height = layout.length * item_height
+                                                        - PADDING_Y * 2.0;
+                                                    let bounds = Bounds::new(
+                                                        gpui::point(guide_x, guide_y),
+                                                        gpui::size(gpui::px(1.0), guide_height),
+                                                    );
+                                                    let hitbox_x =
+                                                        bounds.origin.x - HITBOX_OVERDRAW;
+                                                    let hitbox_width =
+                                                        bounds.size.width + HITBOX_OVERDRAW * 2.0;
+
+                                                    RenderedIndentGuide {
+                                                        bounds,
+                                                        layout,
+                                                        is_active: Some(index) == active_guide,
+                                                        hitbox: Some(Bounds::new(
+                                                            gpui::point(hitbox_x, bounds.origin.y),
+                                                            gpui::size(
+                                                                hitbox_width,
+                                                                bounds.size.height,
+                                                            ),
+                                                        )),
+                                                    }
+                                                })
+                                                .collect()
+                                        },
+                                    ),
+                                )
+                                .with_sizing_behavior(ListSizingBehavior::Infer)
+                                .with_horizontal_sizing_behavior(
+                                    ListHorizontalSizingBehavior::Unconstrained,
+                                )
+                                .with_width_from_item(self.tree_state.max_width_item_index)
+                                .track_scroll(&self.scroll_handle),
+                            )
+                            .child(
+                                gpui::div()
+                                    .id("project-panel-empty-space")
+                                    .flex_grow_1()
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                                            let was_editing = this.tree_state.edit_state.is_some();
+
+                                            cx.stop_propagation();
+                                            this.selection = None;
+                                            this.marked_entries.clear();
+                                            this.focus_handle(cx).focus(window, cx);
+
+                                            if was_editing {
+                                                cx.notify();
+                                                return;
+                                            }
+
+                                            if event.click_count > 1 {
+                                                let Some(root_entry_id) =
+                                                    this.snapshot(cx).and_then(|snapshot| {
+                                                        snapshot.root_entry().map(|entry| entry.id)
+                                                    })
+                                                else {
+                                                    cx.notify();
+                                                    return;
+                                                };
+
+                                                this.selection = Some(SelectedEntry(root_entry_id));
+                                                this.new_file(
+                                                    &actions::project_panel::NewFile,
+                                                    window,
+                                                    cx,
+                                                );
+                                            } else {
+                                                cx.notify();
+                                            }
+                                        }),
+                                    )
+                                    .on_mouse_down(
+                                        MouseButton::Right,
+                                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                                            cx.stop_propagation();
+
+                                            let Some(root_entry_id) =
+                                                this.snapshot(cx).and_then(|snapshot| {
+                                                    snapshot.root_entry().map(|entry| entry.id)
+                                                })
+                                            else {
+                                                return;
+                                            };
+
+                                            this.marked_entries.clear();
+                                            this.deploy_context_menu(
+                                                event.position,
+                                                root_entry_id,
+                                                window,
+                                                cx,
+                                            );
+                                        }),
+                                    ),
+                            ),
                     )
                     .custom_scrollbars(
                         Scrollbars::new(ScrollAxes::Both)
@@ -3221,6 +3381,114 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(metadata.is_dir);
+    }
+
+    #[gpui::test]
+    async fn test_new_entry_preserves_parent(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "foo": {
+                    "bar": {
+                        "baz.toml": "",
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/foo", cx);
+        toggle_expand_dir(&panel, "project/foo/bar", cx);
+        select_path(&panel, "project/foo/bar/baz.toml", cx);
+
+        let bar_entry_id = panel.update(cx, |panel, cx| {
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
+            worktree
+                .read(cx)
+                .entry_for_path(rel_path("foo/bar"))
+                .unwrap()
+                .id
+        });
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_file(&actions::project_panel::NewFile, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        panel.update(cx, |panel, _| {
+            let edit_state = panel.tree_state.edit_state.as_ref().unwrap();
+            assert_eq!(edit_state.entry_id, bar_entry_id);
+            assert!(!edit_state.is_dir);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v foo"),
+                String::from("    v bar"),
+                String::from("          [EDITOR: '']  <== selected"),
+                String::from("          baz"),
+            ]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_directory(&actions::project_panel::NewDirectory, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        panel.update(cx, |panel, _| {
+            let edit_state = panel.tree_state.edit_state.as_ref().unwrap();
+            assert_eq!(edit_state.entry_id, bar_entry_id);
+            assert!(edit_state.is_dir);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v foo"),
+                String::from("    v bar"),
+                String::from("        > [EDITOR: '']  <== selected"),
+                String::from("          baz"),
+            ]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_file(&actions::project_panel::NewFile, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        panel.update(cx, |panel, _| {
+            let edit_state = panel.tree_state.edit_state.as_ref().unwrap();
+            assert_eq!(edit_state.entry_id, bar_entry_id);
+            assert!(!edit_state.is_dir);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v foo"),
+                String::from("    v bar"),
+                String::from("          [EDITOR: '']  <== selected"),
+                String::from("          baz"),
+            ]
+        );
     }
 
     #[gpui::test]

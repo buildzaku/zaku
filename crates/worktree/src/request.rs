@@ -129,11 +129,11 @@ pub fn request_method_label(method: &str) -> String {
         "GET" => "GET".to_string(),
         "POST" => "POST".to_string(),
         "PUT" => "PUT".to_string(),
-        "PATCH" => "PATCH".to_string(),
+        "PATCH" => "PTCH".to_string(),
         "DELETE" => "DEL".to_string(),
         "HEAD" => "HEAD".to_string(),
         "OPTIONS" => "OPT".to_string(),
-        _ => method.chars().take(5).collect(),
+        _ => method.chars().take(4).collect(),
     }
 }
 
