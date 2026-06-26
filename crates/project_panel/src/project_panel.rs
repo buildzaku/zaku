@@ -171,9 +171,8 @@ pub struct ProjectPanel {
 impl ProjectPanel {
     const PANEL_KEY: &str = "ProjectPanel";
     const DEFAULT_SIZE: Pixels = gpui::px(250.0);
-    const INDENT_SIZE: Pixels = gpui::px(9.0);
-    const DISCLOSURE_SLOT_WIDTH: Pixels = gpui::px(13.0);
-    const PREFIX_LABEL_SLOT_WIDTH: Pixels = gpui::px(32.0);
+    const INDENT_SIZE: Pixels = gpui::px(12.0);
+    const DISCLOSURE_SLOT_WIDTH: Pixels = gpui::px(14.0);
     const NEW_ENTRY_ID: ProjectEntryId = ProjectEntryId::MAX;
 
     pub fn new(
@@ -486,10 +485,9 @@ impl ProjectPanel {
                     let mut max_width_item = None;
                     for (index, entry) in entries.iter().enumerate() {
                         let entry_label = file_name_for_entry(&snapshot, entry);
-                        let prefix_chars = usize::from(entry.is_request) * 5;
                         let width_estimate = item_width_estimate(
                             display_depth(entry),
-                            entry_label.chars().count() + prefix_chars,
+                            entry_label.chars().count(),
                             false,
                         );
 
@@ -2321,7 +2319,15 @@ impl ProjectPanel {
                                 .color(Color::Muted),
                         ),
                 )
-                .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted))
+                .child(
+                    gpui::div()
+                        .w(Self::DISCLOSURE_SLOT_WIDTH)
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(Icon::new(icon).size(IconSize::Medium).color(Color::Muted)),
+                )
                 .into_any_element()
         } else if details.is_invalid {
             gpui::div()
@@ -2332,7 +2338,7 @@ impl ProjectPanel {
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .w(Self::DISCLOSURE_SLOT_WIDTH)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2353,7 +2359,7 @@ impl ProjectPanel {
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .w(Self::DISCLOSURE_SLOT_WIDTH)
                         .flex_none()
                         .flex()
                         .items_center()
@@ -2377,7 +2383,7 @@ impl ProjectPanel {
                 .child(gpui::div().w(Self::DISCLOSURE_SLOT_WIDTH).flex_none())
                 .child(
                     gpui::div()
-                        .w(Self::PREFIX_LABEL_SLOT_WIDTH)
+                        .w(Self::DISCLOSURE_SLOT_WIDTH)
                         .flex_none()
                         .flex()
                         .items_center()
