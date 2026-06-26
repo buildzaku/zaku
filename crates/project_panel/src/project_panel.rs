@@ -2584,137 +2584,222 @@ impl Render for ProjectPanel {
                     .min_h_0()
                     .w_full()
                     .child(
-                        gpui::uniform_list(
-                            "project-panel-entries",
-                            entry_count,
-                            cx.processor(|this, range: Range<usize>, window, cx| {
-                                this.load_entry_metadata_for_range(range.clone(), cx);
-                                let mut items =
-                                    Vec::with_capacity(range.end.saturating_sub(range.start));
-                                this.for_each_visible_entry(
-                                    range,
-                                    window,
-                                    cx,
-                                    &mut |entry_id, details, window, cx| {
-                                        items.push(
-                                            this.render_entry(entry_id, &details, window, cx),
-                                        );
-                                    },
-                                );
-                                items
-                            }),
-                        )
-                        .with_decoration(
-                            ui::indent_guides(Self::INDENT_SIZE, IndentGuideColors::panel(cx))
-                                .with_compute_indents_fn(
-                                    cx.entity(),
-                                    |this, range, _window, _cx| {
-                                        let mut items = SmallVec::with_capacity(
+                        gpui::div()
+                            .flex()
+                            .flex_col()
+                            .size_full()
+                            .child(
+                                gpui::uniform_list(
+                                    "project-panel-entries",
+                                    entry_count,
+                                    cx.processor(|this, range: Range<usize>, window, cx| {
+                                        this.load_entry_metadata_for_range(range.clone(), cx);
+                                        let mut items = Vec::with_capacity(
                                             range.end.saturating_sub(range.start),
                                         );
-                                        for index in range {
-                                            if let Some(entry) =
-                                                this.tree_state.visible_entries.get(index)
-                                            {
-                                                items.push(display_depth(entry));
-                                            }
-                                        }
+                                        this.for_each_visible_entry(
+                                            range,
+                                            window,
+                                            cx,
+                                            &mut |entry_id, details, window, cx| {
+                                                items.push(
+                                                    this.render_entry(
+                                                        entry_id, &details, window, cx,
+                                                    ),
+                                                );
+                                            },
+                                        );
                                         items
-                                    },
+                                    }),
                                 )
-                                .on_click(cx.listener(
-                                    |this, active_indent_guide: &IndentGuideLayout, window, cx| {
-                                        if !window.modifiers().secondary() {
-                                            return;
-                                        }
-
-                                        let row = active_indent_guide.offset.y;
-                                        let Some(snapshot) = this.snapshot(cx) else {
-                                            return;
-                                        };
-                                        let Some(parent_entry_id) = this
-                                            .tree_state
-                                            .visible_entries
-                                            .get(row)
-                                            .and_then(|entry| entry.path.parent())
-                                            .and_then(|path| snapshot.entry_for_path(path))
-                                            .map(|entry| entry.id)
-                                        else {
-                                            return;
-                                        };
-                                        if snapshot
-                                            .root_entry()
-                                            .is_some_and(|entry| entry.id == parent_entry_id)
-                                        {
-                                            return;
-                                        }
-                                        let Some(expanded_dir_ids) =
-                                            this.tree_state.expanded_dir_ids.as_mut()
-                                        else {
-                                            return;
-                                        };
-                                        let Ok(index) =
-                                            expanded_dir_ids.binary_search(&parent_entry_id)
-                                        else {
-                                            return;
-                                        };
-
-                                        expanded_dir_ids.remove(index);
-                                        this.update_visible_entries(None, false, false, window, cx);
-                                        window.focus(&this.focus_handle, cx);
-                                        cx.notify();
-                                    },
-                                ))
-                                .with_render_fn(cx.entity(), |this, params, _, cx| {
-                                    const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
-                                    const PADDING_Y: Pixels = gpui::px(1.0);
-
-                                    let active_guide =
-                                        this.find_active_indent_guide(&params.indent_guides);
-                                    let indent_size = params.indent_size;
-                                    let item_height = params.item_height;
-                                    let left_offset = DynamicSpacing::Base06.px(cx)
-                                        + Self::DISCLOSURE_SLOT_WIDTH * 0.5
-                                        - gpui::px(0.5);
-
-                                    params
-                                        .indent_guides
-                                        .into_iter()
-                                        .enumerate()
-                                        .map(|(index, layout)| {
-                                            let guide_x =
-                                                layout.offset.x * indent_size + left_offset;
-                                            let guide_y = layout.offset.y * item_height + PADDING_Y;
-                                            let guide_height =
-                                                layout.length * item_height - PADDING_Y * 2.0;
-                                            let bounds = Bounds::new(
-                                                gpui::point(guide_x, guide_y),
-                                                gpui::size(gpui::px(1.0), guide_height),
+                                .with_decoration(
+                                    ui::indent_guides(
+                                        Self::INDENT_SIZE,
+                                        IndentGuideColors::panel(cx),
+                                    )
+                                    .with_compute_indents_fn(
+                                        cx.entity(),
+                                        |this, range, _window, _cx| {
+                                            let mut items = SmallVec::with_capacity(
+                                                range.end.saturating_sub(range.start),
                                             );
-                                            let hitbox_x = bounds.origin.x - HITBOX_OVERDRAW;
-                                            let hitbox_width =
-                                                bounds.size.width + HITBOX_OVERDRAW * 2.0;
-
-                                            RenderedIndentGuide {
-                                                bounds,
-                                                layout,
-                                                is_active: Some(index) == active_guide,
-                                                hitbox: Some(Bounds::new(
-                                                    gpui::point(hitbox_x, bounds.origin.y),
-                                                    gpui::size(hitbox_width, bounds.size.height),
-                                                )),
+                                            for index in range {
+                                                if let Some(entry) =
+                                                    this.tree_state.visible_entries.get(index)
+                                                {
+                                                    items.push(display_depth(entry));
+                                                }
                                             }
-                                        })
-                                        .collect()
-                                }),
-                        )
-                        .with_sizing_behavior(ListSizingBehavior::Infer)
-                        .with_horizontal_sizing_behavior(
-                            ListHorizontalSizingBehavior::Unconstrained,
-                        )
-                        .with_width_from_item(self.tree_state.max_width_item_index)
-                        .track_scroll(&self.scroll_handle)
-                        .size_full(),
+                                            items
+                                        },
+                                    )
+                                    .on_click(cx.listener(
+                                        |this,
+                                         active_indent_guide: &IndentGuideLayout,
+                                         window,
+                                         cx| {
+                                            if !window.modifiers().secondary() {
+                                                return;
+                                            }
+
+                                            let row = active_indent_guide.offset.y;
+                                            let Some(snapshot) = this.snapshot(cx) else {
+                                                return;
+                                            };
+                                            let Some(parent_entry_id) = this
+                                                .tree_state
+                                                .visible_entries
+                                                .get(row)
+                                                .and_then(|entry| entry.path.parent())
+                                                .and_then(|path| snapshot.entry_for_path(path))
+                                                .map(|entry| entry.id)
+                                            else {
+                                                return;
+                                            };
+                                            if snapshot
+                                                .root_entry()
+                                                .is_some_and(|entry| entry.id == parent_entry_id)
+                                            {
+                                                return;
+                                            }
+                                            let Some(expanded_dir_ids) =
+                                                this.tree_state.expanded_dir_ids.as_mut()
+                                            else {
+                                                return;
+                                            };
+                                            let Ok(index) =
+                                                expanded_dir_ids.binary_search(&parent_entry_id)
+                                            else {
+                                                return;
+                                            };
+
+                                            expanded_dir_ids.remove(index);
+                                            this.update_visible_entries(
+                                                None, false, false, window, cx,
+                                            );
+                                            window.focus(&this.focus_handle, cx);
+                                            cx.notify();
+                                        },
+                                    ))
+                                    .with_render_fn(
+                                        cx.entity(),
+                                        |this, params, _, cx| {
+                                            const HITBOX_OVERDRAW: Pixels = gpui::px(3.0);
+                                            const PADDING_Y: Pixels = gpui::px(1.0);
+
+                                            let active_guide = this
+                                                .find_active_indent_guide(&params.indent_guides);
+                                            let indent_size = params.indent_size;
+                                            let item_height = params.item_height;
+                                            let left_offset = DynamicSpacing::Base06.px(cx)
+                                                + Self::DISCLOSURE_SLOT_WIDTH * 0.5
+                                                - gpui::px(0.5);
+
+                                            params
+                                                .indent_guides
+                                                .into_iter()
+                                                .enumerate()
+                                                .map(|(index, layout)| {
+                                                    let guide_x =
+                                                        layout.offset.x * indent_size + left_offset;
+                                                    let guide_y =
+                                                        layout.offset.y * item_height + PADDING_Y;
+                                                    let guide_height = layout.length * item_height
+                                                        - PADDING_Y * 2.0;
+                                                    let bounds = Bounds::new(
+                                                        gpui::point(guide_x, guide_y),
+                                                        gpui::size(gpui::px(1.0), guide_height),
+                                                    );
+                                                    let hitbox_x =
+                                                        bounds.origin.x - HITBOX_OVERDRAW;
+                                                    let hitbox_width =
+                                                        bounds.size.width + HITBOX_OVERDRAW * 2.0;
+
+                                                    RenderedIndentGuide {
+                                                        bounds,
+                                                        layout,
+                                                        is_active: Some(index) == active_guide,
+                                                        hitbox: Some(Bounds::new(
+                                                            gpui::point(hitbox_x, bounds.origin.y),
+                                                            gpui::size(
+                                                                hitbox_width,
+                                                                bounds.size.height,
+                                                            ),
+                                                        )),
+                                                    }
+                                                })
+                                                .collect()
+                                        },
+                                    ),
+                                )
+                                .with_sizing_behavior(ListSizingBehavior::Infer)
+                                .with_horizontal_sizing_behavior(
+                                    ListHorizontalSizingBehavior::Unconstrained,
+                                )
+                                .with_width_from_item(self.tree_state.max_width_item_index)
+                                .track_scroll(&self.scroll_handle),
+                            )
+                            .child(
+                                gpui::div()
+                                    .id("project-panel-empty-space")
+                                    .flex_grow_1()
+                                    .on_click(cx.listener(
+                                        |this, event: &ClickEvent, window, cx| {
+                                            if event.is_right_click()
+                                                || matches!(event, ClickEvent::Keyboard(_))
+                                            {
+                                                return;
+                                            }
+
+                                            cx.stop_propagation();
+                                            this.selection = None;
+                                            this.marked_entries.clear();
+                                            window.focus(&this.focus_handle, cx);
+
+                                            if event.click_count() > 1 {
+                                                let Some(root_entry_id) =
+                                                    this.snapshot(cx).and_then(|snapshot| {
+                                                        snapshot.root_entry().map(|entry| entry.id)
+                                                    })
+                                                else {
+                                                    cx.notify();
+                                                    return;
+                                                };
+
+                                                this.selection = Some(SelectedEntry(root_entry_id));
+                                                this.new_file(
+                                                    &actions::project_panel::NewFile,
+                                                    window,
+                                                    cx,
+                                                );
+                                            } else {
+                                                cx.notify();
+                                            }
+                                        },
+                                    ))
+                                    .on_mouse_down(
+                                        MouseButton::Right,
+                                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                                            cx.stop_propagation();
+
+                                            let Some(root_entry_id) =
+                                                this.snapshot(cx).and_then(|snapshot| {
+                                                    snapshot.root_entry().map(|entry| entry.id)
+                                                })
+                                            else {
+                                                return;
+                                            };
+
+                                            this.marked_entries.clear();
+                                            this.deploy_context_menu(
+                                                event.position,
+                                                root_entry_id,
+                                                window,
+                                                cx,
+                                            );
+                                        }),
+                                    ),
+                            ),
                     )
                     .custom_scrollbars(
                         Scrollbars::new(ScrollAxes::Both)
