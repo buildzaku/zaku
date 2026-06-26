@@ -1365,14 +1365,23 @@ impl ProjectPanel {
     }
 
     fn add_entry(&mut self, is_dir: bool, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((worktree_id, entry_id)) = self
+        let pending_new_entry = self.tree_state.edit_state.as_ref().and_then(|edit_state| {
+            edit_state.is_new_entry().then_some((
+                edit_state.worktree_id,
+                edit_state.entry_id,
+                edit_state.previously_focused,
+            ))
+        });
+
+        let Some((worktree_id, entry_id, previously_focused)) = self
             .selection
             .and_then(|selection| {
                 self.project
                     .read(cx)
                     .worktree_id_for_entry(selection.0, cx)
-                    .map(|worktree_id| (worktree_id, selection.0))
+                    .map(|worktree_id| (worktree_id, selection.0, Some(selection)))
             })
+            .or(pending_new_entry)
             .or_else(|| {
                 let entry_id = self.snapshot(cx)?.root_entry()?.id;
                 let worktree_id = self
@@ -1382,7 +1391,7 @@ impl ProjectPanel {
                     .read(cx)
                     .id();
 
-                Some((worktree_id, entry_id))
+                Some((worktree_id, entry_id, None))
             })
         else {
             return;
@@ -1423,7 +1432,6 @@ impl ProjectPanel {
             }
         }
 
-        let previously_focused = self.selection;
         self.marked_entries.clear();
         self.tree_state.edit_state = Some(EditState {
             worktree_id,
@@ -2253,7 +2261,6 @@ impl ProjectPanel {
                                 &focus_handle,
                             ))
                             .on_click(cx.listener(|project_panel, _, window, cx| {
-                                window.focus(&project_panel.focus_handle, cx);
                                 project_panel.new_file(
                                     &actions::project_panel::NewFile,
                                     window,
@@ -2272,7 +2279,6 @@ impl ProjectPanel {
                                 &focus_handle,
                             ))
                             .on_click(cx.listener(|project_panel, _, window, cx| {
-                                window.focus(&project_panel.focus_handle, cx);
                                 project_panel.new_directory(
                                     &actions::project_panel::NewDirectory,
                                     window,
@@ -3361,6 +3367,114 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(metadata.is_dir);
+    }
+
+    #[gpui::test]
+    async fn test_new_entry_preserves_parent(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "foo": {
+                    "bar": {
+                        "baz.toml": "",
+                    },
+                },
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs, &project_path, cx).await;
+        let (workspace, cx) = build_workspace(&project, cx);
+        let panel = workspace.update_in(cx, ProjectPanel::new);
+        cx.run_until_parked();
+
+        toggle_expand_dir(&panel, "project/foo", cx);
+        toggle_expand_dir(&panel, "project/foo/bar", cx);
+        select_path(&panel, "project/foo/bar/baz.toml", cx);
+
+        let bar_entry_id = panel.update(cx, |panel, cx| {
+            let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
+            worktree
+                .read(cx)
+                .entry_for_path(rel_path("foo/bar"))
+                .unwrap()
+                .id
+        });
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_file(&actions::project_panel::NewFile, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        panel.update(cx, |panel, _| {
+            let edit_state = panel.tree_state.edit_state.as_ref().unwrap();
+            assert_eq!(edit_state.entry_id, bar_entry_id);
+            assert!(!edit_state.is_dir);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v foo"),
+                String::from("    v bar"),
+                String::from("          [EDITOR: '']  <== selected"),
+                String::from("          baz"),
+            ]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_directory(&actions::project_panel::NewDirectory, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        panel.update(cx, |panel, _| {
+            let edit_state = panel.tree_state.edit_state.as_ref().unwrap();
+            assert_eq!(edit_state.entry_id, bar_entry_id);
+            assert!(edit_state.is_dir);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v foo"),
+                String::from("    v bar"),
+                String::from("        > [EDITOR: '']  <== selected"),
+                String::from("          baz"),
+            ]
+        );
+
+        panel.update_in(cx, |panel, window, cx| {
+            panel.new_file(&actions::project_panel::NewFile, window, cx);
+        });
+        cx.run_until_parked();
+
+        panel.update_in(cx, |panel, window, cx| {
+            assert!(panel.file_name_editor.read(cx).is_focused(window));
+        });
+        panel.update(cx, |panel, _| {
+            let edit_state = panel.tree_state.edit_state.as_ref().unwrap();
+            assert_eq!(edit_state.entry_id, bar_entry_id);
+            assert!(!edit_state.is_dir);
+        });
+        assert_eq!(
+            visible_entries_as_strings(&panel, 0..10, cx),
+            vec![
+                String::from("v foo"),
+                String::from("    v bar"),
+                String::from("          [EDITOR: '']  <== selected"),
+                String::from("          baz"),
+            ]
+        );
     }
 
     #[gpui::test]
