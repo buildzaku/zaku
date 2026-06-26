@@ -23,9 +23,10 @@ use project::{
 };
 use theme::ActiveTheme;
 use ui::{
-    Color, ContextMenu, DynamicSpacing, Icon, IconName, IconSize, IndentGuideColors,
-    IndentGuideLayout, Label, LabelCommon, LabelSize, ListItem, ListItemSpacing,
-    RenderedIndentGuide, ScrollAxes, Scrollbars, TrackLayout, WithScrollbar,
+    ButtonCommon, Clickable, Color, ContextMenu, DynamicSpacing, Icon, IconButton, IconButtonShape,
+    IconName, IconSize, IndentGuideColors, IndentGuideLayout, Label, LabelCommon, LabelSize,
+    ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars, Tooltip, TrackLayout,
+    WithScrollbar,
 };
 use util::ResultExt;
 
@@ -2215,22 +2216,70 @@ impl ProjectPanel {
         })
     }
 
-    fn render_root_header(root_name: String, cx: &mut Context<Self>) -> AnyElement {
+    fn render_root_header(&self, root_name: &str, cx: &mut Context<Self>) -> AnyElement {
         let colors = cx.theme().colors();
+        let focus_handle = self.focus_handle.clone();
 
         gpui::div()
             .flex_none()
             .flex()
             .items_center()
+            .gap_1()
             .h(DynamicSpacing::Base36.px(cx))
             .w_full()
             .px(DynamicSpacing::Base12.px(cx))
             .bg(colors.panel_background)
             .child(
-                Label::new(root_name)
-                    .size(LabelSize::Small)
-                    .weight(FontWeight::MEDIUM)
-                    .truncate(),
+                gpui::div().flex_1().min_w_0().child(
+                    Label::new(root_name.to_ascii_uppercase())
+                        .size(LabelSize::Small)
+                        .truncate(),
+                ),
+            )
+            .child(
+                gpui::div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap_0p5()
+                    .child(
+                        IconButton::new("project-panel-new-request", IconName::FileTomlPlus)
+                            .shape(IconButtonShape::Square)
+                            .icon_size(IconSize::Medium)
+                            .icon_color(Color::Muted)
+                            .tooltip(Tooltip::for_action_title_in(
+                                "New Request",
+                                &actions::project_panel::NewFile,
+                                &focus_handle,
+                            ))
+                            .on_click(cx.listener(|project_panel, _, window, cx| {
+                                window.focus(&project_panel.focus_handle, cx);
+                                project_panel.new_file(
+                                    &actions::project_panel::NewFile,
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    )
+                    .child(
+                        IconButton::new("project-panel-new-collection", IconName::FolderPlus)
+                            .shape(IconButtonShape::Square)
+                            .icon_size(IconSize::Medium)
+                            .icon_color(Color::Muted)
+                            .tooltip(Tooltip::for_action_title_in(
+                                "New Collection",
+                                &actions::project_panel::NewDirectory,
+                                &focus_handle,
+                            ))
+                            .on_click(cx.listener(|project_panel, _, window, cx| {
+                                window.focus(&project_panel.focus_handle, cx);
+                                project_panel.new_directory(
+                                    &actions::project_panel::NewDirectory,
+                                    window,
+                                    cx,
+                                );
+                            })),
+                    ),
             )
             .into_any_element()
     }
@@ -2546,7 +2595,7 @@ impl Render for ProjectPanel {
         let root_header = self
             .snapshot(cx)
             .map(|snapshot| snapshot.root_name().as_unix_str().to_string())
-            .map(|root_name| Self::render_root_header(root_name, cx));
+            .map(|root_name| self.render_root_header(&root_name, cx));
         let colors = cx.theme().colors();
         let entry_count = self.tree_state.visible_entries.len();
 
