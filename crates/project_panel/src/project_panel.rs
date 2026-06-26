@@ -2747,20 +2747,22 @@ impl Render for ProjectPanel {
                                 gpui::div()
                                     .id("project-panel-empty-space")
                                     .flex_grow_1()
-                                    .on_click(cx.listener(
-                                        |this, event: &ClickEvent, window, cx| {
-                                            if event.is_right_click()
-                                                || matches!(event, ClickEvent::Keyboard(_))
-                                            {
-                                                return;
-                                            }
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                                            let was_editing = this.tree_state.edit_state.is_some();
 
                                             cx.stop_propagation();
                                             this.selection = None;
                                             this.marked_entries.clear();
-                                            window.focus(&this.focus_handle, cx);
+                                            this.focus_handle(cx).focus(window, cx);
 
-                                            if event.click_count() > 1 {
+                                            if was_editing {
+                                                cx.notify();
+                                                return;
+                                            }
+
+                                            if event.click_count > 1 {
                                                 let Some(root_entry_id) =
                                                     this.snapshot(cx).and_then(|snapshot| {
                                                         snapshot.root_entry().map(|entry| entry.id)
@@ -2779,8 +2781,8 @@ impl Render for ProjectPanel {
                                             } else {
                                                 cx.notify();
                                             }
-                                        },
-                                    ))
+                                        }),
+                                    )
                                     .on_mouse_down(
                                         MouseButton::Right,
                                         cx.listener(|this, event: &MouseDownEvent, window, cx| {
