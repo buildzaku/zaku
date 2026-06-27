@@ -13,7 +13,8 @@ use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
     Color, ColumnWidthConfig, DynamicSpacing, IconName, Label, LabelCommon, LabelSize,
-    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableInteractionState, UncheckedTableRow,
+    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableInteractionState, Text, TextCommon,
+    TextSize, UncheckedTableRow,
 };
 use workspace::{Panel, Workspace, pane::Pane};
 
@@ -602,8 +603,8 @@ impl ResponsePanel {
                             .px_2()
                             .py_1()
                             .child(
-                                Label::new(header.name)
-                                    .size(LabelSize::Small)
+                                Text::new(header.name)
+                                    .size(TextSize::Small)
                                     .color(Color::Accent)
                                     .alpha(0.85),
                             )
@@ -612,8 +613,8 @@ impl ResponsePanel {
                             .px_2()
                             .py_1()
                             .child(
-                                Label::new(header.value)
-                                    .size(LabelSize::Small)
+                                Text::new(header.value)
+                                    .size(TextSize::Small)
                                     .color(Color::Default),
                             )
                             .into_any_element(),
@@ -711,8 +712,8 @@ impl ResponsePanel {
                                 .px_2()
                                 .py_1()
                                 .child(
-                                    Label::new(name)
-                                        .size(LabelSize::Small)
+                                    Text::new(name)
+                                        .size(TextSize::Small)
                                         .weight(FontWeight::MEDIUM)
                                         .color(Color::Accent)
                                         .alpha(0.85),
@@ -721,11 +722,7 @@ impl ResponsePanel {
                             gpui::div()
                                 .px_2()
                                 .py_1()
-                                .child(
-                                    Label::new(value)
-                                        .size(LabelSize::Small)
-                                        .color(Color::Default),
-                                )
+                                .child(Text::new(value).size(TextSize::Small).color(Color::Default))
                                 .into_any_element(),
                         ],
                         CookieTableRow::Attribute { name, value } => vec![
@@ -733,8 +730,8 @@ impl ResponsePanel {
                                 .px_2()
                                 .py_1()
                                 .child(
-                                    Label::new(name)
-                                        .size(LabelSize::Small)
+                                    Text::new(name)
+                                        .size(TextSize::Small)
                                         .color(Color::Accent)
                                         .alpha(0.85),
                                 )
@@ -742,11 +739,7 @@ impl ResponsePanel {
                             gpui::div()
                                 .px_2()
                                 .py_1()
-                                .child(
-                                    Label::new(value)
-                                        .size(LabelSize::Small)
-                                        .color(Color::Default),
-                                )
+                                .child(Text::new(value).size(TextSize::Small).color(Color::Default))
                                 .into_any_element(),
                         ],
                     }

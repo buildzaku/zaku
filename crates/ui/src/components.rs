@@ -13,6 +13,7 @@ mod redistributable_columns;
 mod scrollbar;
 mod tab;
 mod tab_bar;
+mod text;
 mod toggle;
 mod tooltip;
 
@@ -31,5 +32,6 @@ pub use redistributable_columns::*;
 pub use scrollbar::*;
 pub use tab::*;
 pub use tab_bar::*;
+pub use text::*;
 pub use toggle::*;
 pub use tooltip::*;
