@@ -71,6 +71,7 @@ async-lock = { version = "3.4" }
 async-trait = { version = "0.1" }
 bytes = { version = "1.11" }
 clock = { git = "https://github.com/zed-industries/zed", rev = "adedf355d5", package = "clock" }
+cookie = { version = "0.18" }
 derive_more = { version = "2.1", features = ["deref", "deref_mut"] }
 dirs = { version = "6.0" }
 dunce = { version = "1.0" }

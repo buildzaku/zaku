@@ -24,7 +24,7 @@ use project::{
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
     RequestFileState,
 };
-use response_panel::{Response, ResponseHeader, ResponsePanel, ResponseState};
+use response_panel::{Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
@@ -85,6 +85,40 @@ fn response_headers(headers: &http::HeaderMap) -> Vec<ResponseHeader> {
             ResponseHeader::new(
                 name.as_str().to_string(),
                 String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            )
+        })
+        .collect()
+}
+
+fn response_cookies(headers: &http::HeaderMap) -> Vec<ResponseCookie> {
+    headers
+        .get_all(http::header::SET_COOKIE)
+        .iter()
+        .filter_map(|header| {
+            let header = String::from_utf8_lossy(header.as_bytes());
+            let cookie = cookie::Cookie::parse(header.as_ref()).ok()?;
+            Some(
+                ResponseCookie::new(cookie.name().to_string(), cookie.value().to_string())
+                    .domain(cookie.domain().map(str::to_string))
+                    .path(cookie.path().map(str::to_string))
+                    .expires(cookie.expires().map(|expires| {
+                        expires.datetime().map_or_else(
+                            || "session".to_string(),
+                            |expires_datetime| expires_datetime.to_string(),
+                        )
+                    }))
+                    .max_age(
+                        cookie
+                            .max_age()
+                            .map(|max_age| max_age.whole_seconds().to_string()),
+                    )
+                    .secure(cookie.secure())
+                    .http_only(cookie.http_only())
+                    .same_site(cookie.same_site().map(|same_site| match same_site {
+                        cookie::SameSite::Strict => "strict",
+                        cookie::SameSite::Lax => "lax",
+                        cookie::SameSite::None => "none",
+                    })),
             )
         })
         .collect()
@@ -1040,8 +1074,10 @@ impl RequestEditor {
 
                     let status_code = received.status();
                     let response_headers = response_headers(received.headers());
+                    let response_cookies = response_cookies(received.headers());
                     let still_active = response.update(cx, |response, cx| {
                         response.set_headers(request_id, response_headers, cx)
+                            && response.set_cookies(request_id, response_cookies, cx)
                     });
                     if !still_active {
                         return;

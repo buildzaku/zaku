@@ -75,6 +75,7 @@ fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
 enum ResponsePanelTab {
     Body,
     Headers,
+    Cookies,
 }
 
 #[derive(Clone)]
@@ -96,6 +97,70 @@ impl ResponseHeader {
             name: name.into(),
             value: value.into(),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct ResponseCookie {
+    name: SharedString,
+    value: SharedString,
+    domain: Option<SharedString>,
+    path: Option<SharedString>,
+    expires: Option<SharedString>,
+    max_age: Option<SharedString>,
+    secure: Option<bool>,
+    http_only: Option<bool>,
+    same_site: Option<SharedString>,
+}
+
+impl ResponseCookie {
+    pub fn new(name: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            domain: None,
+            path: None,
+            expires: None,
+            max_age: None,
+            secure: None,
+            http_only: None,
+            same_site: None,
+        }
+    }
+
+    pub fn domain(mut self, domain: Option<impl Into<SharedString>>) -> Self {
+        self.domain = domain.map(Into::into);
+        self
+    }
+
+    pub fn path(mut self, path: Option<impl Into<SharedString>>) -> Self {
+        self.path = path.map(Into::into);
+        self
+    }
+
+    pub fn expires(mut self, expires: Option<impl Into<SharedString>>) -> Self {
+        self.expires = expires.map(Into::into);
+        self
+    }
+
+    pub fn max_age(mut self, max_age: Option<impl Into<SharedString>>) -> Self {
+        self.max_age = max_age.map(Into::into);
+        self
+    }
+
+    pub fn secure(mut self, secure: Option<bool>) -> Self {
+        self.secure = secure;
+        self
+    }
+
+    pub fn http_only(mut self, http_only: Option<bool>) -> Self {
+        self.http_only = http_only;
+        self
+    }
+
+    pub fn same_site(mut self, same_site: Option<impl Into<SharedString>>) -> Self {
+        self.same_site = same_site.map(Into::into);
+        self
     }
 }
 
@@ -163,6 +228,7 @@ pub struct Response {
     request_id: usize,
     state: ResponseState,
     headers: Vec<ResponseHeader>,
+    cookies: Vec<ResponseCookie>,
     editor: Entity<Editor>,
     payload: Entity<MultiBuffer>,
 }
@@ -175,6 +241,7 @@ impl Response {
             request_id: 0,
             state: ResponseState::default(),
             headers: Vec::new(),
+            cookies: Vec::new(),
             editor,
             payload,
         }
@@ -206,6 +273,10 @@ impl Response {
         &self.headers
     }
 
+    fn cookies(&self) -> &[ResponseCookie] {
+        &self.cookies
+    }
+
     pub fn set_headers(
         &mut self,
         request_id: usize,
@@ -217,6 +288,21 @@ impl Response {
         }
 
         self.headers = headers;
+        cx.notify();
+        true
+    }
+
+    pub fn set_cookies(
+        &mut self,
+        request_id: usize,
+        cookies: Vec<ResponseCookie>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.request_id != request_id {
+            return false;
+        }
+
+        self.cookies = cookies;
         cx.notify();
         true
     }
@@ -233,6 +319,7 @@ impl Response {
         self.request_id = request_id;
         self.state = ResponseState::default();
         self.headers.clear();
+        self.cookies.clear();
         self.editor = editor;
         self.payload = payload;
         if was_focused {
@@ -294,6 +381,7 @@ pub struct ResponsePanel {
     pane: WeakEntity<Pane>,
     active_tab: ResponsePanelTab,
     headers_table: Entity<TableInteractionState>,
+    cookies_table: Entity<TableInteractionState>,
     response: Option<Entity<Response>>,
     response_subscription: Option<Subscription>,
     _focus_subscription: Subscription,
@@ -306,6 +394,7 @@ impl ResponsePanel {
     pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let headers_table = cx.new(|cx| TableInteractionState::new(cx));
+        let cookies_table = cx.new(|cx| TableInteractionState::new(cx));
         let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
             cx.on_next_frame(window, |response_panel, window, cx| {
                 let editor = response_panel.response.as_ref().and_then(|response| {
@@ -332,6 +421,7 @@ impl ResponsePanel {
             pane,
             active_tab: ResponsePanelTab::Body,
             headers_table,
+            cookies_table,
             response: None,
             response_subscription: None,
             _focus_subscription: focus_subscription,
@@ -373,11 +463,37 @@ impl ResponsePanel {
                 Label::new(match tab {
                     ResponsePanelTab::Body => "NO RESPONSE",
                     ResponsePanelTab::Headers => "NO HEADERS",
+                    ResponsePanelTab::Cookies => "NO COOKIES",
                 })
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             )
             .into_any_element()
+    }
+
+    fn render_body(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = cx.theme().colors();
+        let editor = self.response.as_ref().and_then(|response| {
+            let response = response.read(cx);
+            match response.state() {
+                ResponseState::Idle => None,
+                ResponseState::Fetching { .. }
+                | ResponseState::Completed { .. }
+                | ResponseState::Error { .. } => Some(response.editor()),
+            }
+        });
+
+        editor.map_or_else(
+            || Self::render_empty_content(ResponsePanelTab::Body),
+            |editor| {
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .bg(colors.panel_background)
+                    .child(editor)
+                    .into_any_element()
+            },
+        )
     }
 
     fn render_headers(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -422,29 +538,85 @@ impl ResponsePanel {
             .into_any_element()
     }
 
-    fn render_body(&self, cx: &mut Context<Self>) -> AnyElement {
-        let colors = cx.theme().colors();
-        let editor = self.response.as_ref().and_then(|response| {
-            let response = response.read(cx);
-            match response.state() {
-                ResponseState::Idle => None,
-                ResponseState::Fetching { .. }
-                | ResponseState::Completed { .. }
-                | ResponseState::Error { .. } => Some(response.editor()),
-            }
-        });
+    fn render_cookies(&self, cx: &mut Context<Self>) -> AnyElement {
+        let cookies = self
+            .response
+            .as_ref()
+            .map_or_else(Vec::new, |response| response.read(cx).cookies().to_vec());
+        if cookies.is_empty() {
+            return Self::render_empty_content(ResponsePanelTab::Cookies);
+        }
 
-        editor.map_or_else(
-            || Self::render_empty_content(ResponsePanelTab::Body),
-            |editor| {
-                gpui::div()
-                    .flex_1()
-                    .min_h_0()
-                    .bg(colors.panel_background)
-                    .child(editor)
-                    .into_any_element()
-            },
-        )
+        let mut table = Table::new(2)
+            .interactable(&self.cookies_table)
+            .width_config(ColumnWidthConfig::explicit(vec![
+                DefiniteLength::Fraction(0.24),
+                DefiniteLength::Fraction(0.76),
+            ]))
+            .disable_base_style()
+            .hide_row_hover();
+
+        for cookie in cookies {
+            table = table.row(vec![
+                gpui::div().px_2().py_1().child(
+                    Label::new(cookie.name)
+                        .size(LabelSize::Small)
+                        .weight(FontWeight::MEDIUM)
+                        .color(Color::Accent)
+                        .alpha(0.85),
+                ),
+                gpui::div().px_2().py_1().child(
+                    Label::new(cookie.value)
+                        .size(LabelSize::Small)
+                        .color(Color::Default),
+                ),
+            ]);
+
+            for (attribute_name, attribute_value) in [
+                ("Domain", cookie.domain),
+                ("Path", cookie.path),
+                ("Expires", cookie.expires),
+                ("Max-Age", cookie.max_age),
+                (
+                    "Secure",
+                    cookie
+                        .secure
+                        .map(|secure| SharedString::from(secure.to_string())),
+                ),
+                (
+                    "HttpOnly",
+                    cookie
+                        .http_only
+                        .map(|http_only| SharedString::from(http_only.to_string())),
+                ),
+                ("SameSite", cookie.same_site),
+            ]
+            .into_iter()
+            .filter_map(|(attribute_name, attribute_value)| {
+                attribute_value.map(|attribute_value| (attribute_name, attribute_value))
+            }) {
+                table = table.row(vec![
+                    gpui::div().px_2().py_1().child(
+                        Label::new(attribute_name)
+                            .size(LabelSize::Small)
+                            .color(Color::Accent)
+                            .alpha(0.85),
+                    ),
+                    gpui::div().px_2().py_1().child(
+                        Label::new(attribute_value)
+                            .size(LabelSize::Small)
+                            .color(Color::Default),
+                    ),
+                ]);
+            }
+        }
+
+        gpui::div()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .child(table)
+            .into_any_element()
     }
 
     fn render_response_summary(response_summary: ResponseSummary) -> impl IntoElement {
@@ -576,6 +748,12 @@ impl ResponsePanel {
                         active_tab == ResponsePanelTab::Headers,
                         "Headers".into(),
                         ResponsePanelTab::Headers,
+                    ))
+                    .child(tab(
+                        ElementId::Name("response-cookies-tab".into()),
+                        active_tab == ResponsePanelTab::Cookies,
+                        "Cookies".into(),
+                        ResponsePanelTab::Cookies,
                     )),
             )
             .when_some(response_summary, |this, response_summary| {
@@ -634,6 +812,7 @@ impl Render for ResponsePanel {
         let tab_content = match self.active_tab {
             ResponsePanelTab::Body => self.render_body(cx),
             ResponsePanelTab::Headers => self.render_headers(cx),
+            ResponsePanelTab::Cookies => self.render_cookies(cx),
         };
         let colors = cx.theme().colors();
 
