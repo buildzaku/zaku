@@ -1,6 +1,7 @@
 use gpui::{
     Action, AnyElement, App, Context, DefiniteLength, ElementId, Entity, FocusHandle, Focusable,
-    FontWeight, Pixels, Render, SharedString, Subscription, WeakEntity, Window, prelude::*,
+    FontWeight, ListAlignment, ListState, Pixels, Render, SharedString, Subscription, WeakEntity,
+    Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use std::{sync::Arc, time::Duration};
@@ -12,7 +13,7 @@ use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
     Color, ColumnWidthConfig, DynamicSpacing, IconName, Label, LabelCommon, LabelSize,
-    LineHeightStyle, Table, TableInteractionState,
+    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableInteractionState, UncheckedTableRow,
 };
 use workspace::{Panel, Workspace, pane::Pane};
 
@@ -162,6 +163,18 @@ impl ResponseCookie {
         self.same_site = same_site.map(Into::into);
         self
     }
+}
+
+#[derive(Clone)]
+enum CookieTableRow {
+    Cookie {
+        name: SharedString,
+        value: SharedString,
+    },
+    Attribute {
+        name: &'static str,
+        value: SharedString,
+    },
 }
 
 #[derive(Clone, Default)]
@@ -381,7 +394,9 @@ pub struct ResponsePanel {
     pane: WeakEntity<Pane>,
     active_tab: ResponsePanelTab,
     headers_table: Entity<TableInteractionState>,
+    headers_list_state: ListState,
     cookies_table: Entity<TableInteractionState>,
+    cookies_list_state: ListState,
     response: Option<Entity<Response>>,
     response_subscription: Option<Subscription>,
     _focus_subscription: Subscription,
@@ -393,8 +408,18 @@ impl ResponsePanel {
 
     pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let headers_table = cx.new(|cx| TableInteractionState::new(cx));
-        let cookies_table = cx.new(|cx| TableInteractionState::new(cx));
+        let headers_table = cx.new(|cx| {
+            TableInteractionState::new(cx).with_custom_scrollbar(
+                Scrollbars::new(ScrollAxes::Vertical).id("response-headers-scrollbar"),
+            )
+        });
+        let headers_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
+        let cookies_table = cx.new(|cx| {
+            TableInteractionState::new(cx).with_custom_scrollbar(
+                Scrollbars::new(ScrollAxes::Vertical).id("response-cookies-scrollbar"),
+            )
+        });
+        let cookies_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
         let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
             cx.on_next_frame(window, |response_panel, window, cx| {
                 let editor = response_panel.response.as_ref().and_then(|response| {
@@ -421,10 +446,49 @@ impl ResponsePanel {
             pane,
             active_tab: ResponsePanelTab::Body,
             headers_table,
+            headers_list_state,
             cookies_table,
+            cookies_list_state,
             response: None,
             response_subscription: None,
             _focus_subscription: focus_subscription,
+        }
+    }
+
+    fn table_row_counts(response: &Entity<Response>, cx: &App) -> (usize, usize) {
+        let response = response.read(cx);
+        let headers_row_count = response.headers().len();
+        let cookies_row_count = response
+            .cookies()
+            .iter()
+            .map(|cookie| {
+                let attribute_row_count = [
+                    cookie.domain.is_some(),
+                    cookie.path.is_some(),
+                    cookie.expires.is_some(),
+                    cookie.max_age.is_some(),
+                    cookie.secure.is_some(),
+                    cookie.http_only.is_some(),
+                    cookie.same_site.is_some(),
+                ]
+                .into_iter()
+                .filter(|has_attribute| *has_attribute)
+                .count();
+
+                1 + attribute_row_count
+            })
+            .sum();
+
+        (headers_row_count, cookies_row_count)
+    }
+
+    fn sync_table_row_counts(&self, headers_row_count: usize, cookies_row_count: usize) {
+        if self.headers_list_state.item_count() != headers_row_count {
+            self.headers_list_state.reset(headers_row_count);
+        }
+
+        if self.cookies_list_state.item_count() != cookies_row_count {
+            self.cookies_list_state.reset(cookies_row_count);
         }
     }
 
@@ -438,10 +502,22 @@ impl ResponsePanel {
             return;
         }
 
+        let (headers_row_count, cookies_row_count) = if let Some(response) = response.as_ref() {
+            Self::table_row_counts(response, cx)
+        } else {
+            (0, 0)
+        };
         let _previous_subscription = self.response_subscription.take();
-        self.response_subscription = response
-            .as_ref()
-            .map(|response| cx.observe(response, |_, _, cx| cx.notify()));
+        self.headers_list_state.reset(0);
+        self.cookies_list_state.reset(0);
+        self.response_subscription = response.as_ref().map(|response| {
+            cx.observe(response, |response_panel, response, cx| {
+                let (headers_row_count, cookies_row_count) = Self::table_row_counts(&response, cx);
+                response_panel.sync_table_row_counts(headers_row_count, cookies_row_count);
+                cx.notify();
+            })
+        });
+        self.sync_table_row_counts(headers_row_count, cookies_row_count);
         self.response = response;
         cx.notify();
     }
@@ -505,30 +581,45 @@ impl ResponsePanel {
             return Self::render_empty_content(ResponsePanelTab::Headers);
         }
 
-        let mut table = Table::new(2)
+        let row_count = headers.len();
+        let table = Table::new(2)
             .interactable(&self.headers_table)
             .width_config(ColumnWidthConfig::explicit(vec![
                 DefiniteLength::Fraction(0.24),
                 DefiniteLength::Fraction(0.76),
             ]))
             .disable_base_style()
-            .hide_row_hover();
+            .hide_row_hover()
+            .variable_row_height_list(row_count, self.headers_list_state.clone(), {
+                move |header_index, _, _| -> UncheckedTableRow<AnyElement> {
+                    let header = headers
+                        .get(header_index)
+                        .expect("response header row should exist")
+                        .clone();
 
-        for header in headers {
-            table = table.row(vec![
-                gpui::div().px_2().py_1().child(
-                    Label::new(header.name)
-                        .size(LabelSize::Small)
-                        .color(Color::Accent)
-                        .alpha(0.85),
-                ),
-                gpui::div().px_2().py_1().child(
-                    Label::new(header.value)
-                        .size(LabelSize::Small)
-                        .color(Color::Default),
-                ),
-            ]);
-        }
+                    vec![
+                        gpui::div()
+                            .px_2()
+                            .py_1()
+                            .child(
+                                Label::new(header.name)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Accent)
+                                    .alpha(0.85),
+                            )
+                            .into_any_element(),
+                        gpui::div()
+                            .px_2()
+                            .py_1()
+                            .child(
+                                Label::new(header.value)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Default),
+                            )
+                            .into_any_element(),
+                    ]
+                }
+            });
 
         gpui::div()
             .flex_1()
@@ -547,30 +638,12 @@ impl ResponsePanel {
             return Self::render_empty_content(ResponsePanelTab::Cookies);
         }
 
-        let mut table = Table::new(2)
-            .interactable(&self.cookies_table)
-            .width_config(ColumnWidthConfig::explicit(vec![
-                DefiniteLength::Fraction(0.24),
-                DefiniteLength::Fraction(0.76),
-            ]))
-            .disable_base_style()
-            .hide_row_hover();
-
+        let mut rows = Vec::new();
         for cookie in cookies {
-            table = table.row(vec![
-                gpui::div().px_2().py_1().child(
-                    Label::new(cookie.name)
-                        .size(LabelSize::Small)
-                        .weight(FontWeight::MEDIUM)
-                        .color(Color::Accent)
-                        .alpha(0.85),
-                ),
-                gpui::div().px_2().py_1().child(
-                    Label::new(cookie.value)
-                        .size(LabelSize::Small)
-                        .color(Color::Default),
-                ),
-            ]);
+            rows.push(CookieTableRow::Cookie {
+                name: cookie.name,
+                value: cookie.value,
+            });
 
             for (attribute_name, attribute_value) in [
                 ("Domain", cookie.domain),
@@ -595,21 +668,90 @@ impl ResponsePanel {
             .filter_map(|(attribute_name, attribute_value)| {
                 attribute_value.map(|attribute_value| (attribute_name, attribute_value))
             }) {
-                table = table.row(vec![
-                    gpui::div().px_2().py_1().child(
-                        Label::new(attribute_name)
-                            .size(LabelSize::Small)
-                            .color(Color::Accent)
-                            .alpha(0.85),
-                    ),
-                    gpui::div().px_2().py_1().child(
-                        Label::new(attribute_value)
-                            .size(LabelSize::Small)
-                            .color(Color::Default),
-                    ),
-                ]);
+                rows.push(CookieTableRow::Attribute {
+                    name: attribute_name,
+                    value: attribute_value,
+                });
             }
         }
+
+        let cookie_header_background = cx.theme().colors().panel_tab_bar_background.opacity(0.85);
+        let row_count = rows.len();
+        let rows_for_style = rows.clone();
+        let table = Table::new(2)
+            .interactable(&self.cookies_table)
+            .width_config(ColumnWidthConfig::explicit(vec![
+                DefiniteLength::Fraction(0.24),
+                DefiniteLength::Fraction(0.76),
+            ]))
+            .disable_base_style()
+            .hide_row_hover()
+            .map_row(move |(row_index, row), _, _| {
+                if matches!(
+                    rows_for_style
+                        .get(row_index)
+                        .expect("response cookie row should exist"),
+                    CookieTableRow::Cookie { .. }
+                ) {
+                    row.bg(cookie_header_background).into_any_element()
+                } else {
+                    row.into_any_element()
+                }
+            })
+            .variable_row_height_list(row_count, self.cookies_list_state.clone(), {
+                move |row_index, _, _| -> UncheckedTableRow<AnyElement> {
+                    let row = rows
+                        .get(row_index)
+                        .expect("response cookie row should exist")
+                        .clone();
+
+                    match row {
+                        CookieTableRow::Cookie { name, value } => vec![
+                            gpui::div()
+                                .px_2()
+                                .py_1()
+                                .child(
+                                    Label::new(name)
+                                        .size(LabelSize::Small)
+                                        .weight(FontWeight::MEDIUM)
+                                        .color(Color::Accent)
+                                        .alpha(0.85),
+                                )
+                                .into_any_element(),
+                            gpui::div()
+                                .px_2()
+                                .py_1()
+                                .child(
+                                    Label::new(value)
+                                        .size(LabelSize::Small)
+                                        .color(Color::Default),
+                                )
+                                .into_any_element(),
+                        ],
+                        CookieTableRow::Attribute { name, value } => vec![
+                            gpui::div()
+                                .px_2()
+                                .py_1()
+                                .child(
+                                    Label::new(name)
+                                        .size(LabelSize::Small)
+                                        .color(Color::Accent)
+                                        .alpha(0.85),
+                                )
+                                .into_any_element(),
+                            gpui::div()
+                                .px_2()
+                                .py_1()
+                                .child(
+                                    Label::new(value)
+                                        .size(LabelSize::Small)
+                                        .color(Color::Default),
+                                )
+                                .into_any_element(),
+                        ],
+                    }
+                }
+            });
 
         gpui::div()
             .flex_1()
