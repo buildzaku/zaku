@@ -7467,6 +7467,7 @@ dependencies = [
  "actions",
  "gpui",
  "icons",
+ "itertools 0.14.0",
  "log",
  "schemars",
  "serde",

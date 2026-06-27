@@ -18,6 +18,7 @@ workspace = true
 actions = { workspace = true }
 gpui = { workspace = true }
 icons = { workspace = true }
+itertools = { workspace = true }
 log = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
