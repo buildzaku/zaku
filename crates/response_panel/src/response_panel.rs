@@ -1,6 +1,6 @@
 use gpui::{
-    Action, App, Context, Entity, FocusHandle, Focusable, Pixels, Render, SharedString,
-    Subscription, WeakEntity, Window, prelude::*,
+    Action, AnyElement, App, Context, ElementId, Entity, FocusHandle, Focusable, FontWeight,
+    Pixels, Render, SharedString, Subscription, WeakEntity, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use std::{sync::Arc, time::Duration};
@@ -10,7 +10,7 @@ use http_client::StatusCode;
 use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
-use ui::{Color, DynamicSpacing, IconName, Label, LabelCommon, LabelSize};
+use ui::{Color, DynamicSpacing, IconName, Label, LabelCommon, LabelSize, LineHeightStyle};
 use workspace::{Panel, Workspace, pane::Pane};
 
 pub fn init(cx: &mut App) {
@@ -66,6 +66,11 @@ fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
         format!("{hours} h {minutes} m {seconds:.2} s")
     }
     .into()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ResponsePanelTab {
+    Body,
 }
 
 #[derive(Clone)]
@@ -242,6 +247,7 @@ impl Response {
 pub struct ResponsePanel {
     focus_handle: FocusHandle,
     pane: WeakEntity<Pane>,
+    active_tab: ResponsePanelTab,
     response: Option<Entity<Response>>,
     response_subscription: Option<Subscription>,
     _focus_subscription: Subscription,
@@ -266,6 +272,7 @@ impl ResponsePanel {
         Self {
             focus_handle,
             pane,
+            active_tab: ResponsePanelTab::Body,
             response: None,
             response_subscription: None,
             _focus_subscription: focus_subscription,
@@ -300,6 +307,131 @@ impl ResponsePanel {
         self.response
             .as_ref()
             .map_or_else(String::new, |response| response.read(cx).text(cx))
+    }
+
+    fn render_response_summary(response_summary: ResponseSummary) -> impl IntoElement {
+        gpui::div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .child(
+                gpui::div()
+                    .min_w(gpui::px(40.0))
+                    .flex()
+                    .justify_center()
+                    .items_center()
+                    .child(
+                        Label::new(response_summary.label)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                    ),
+            )
+            .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
+            .child(
+                gpui::div()
+                    .min_w(gpui::px(40.0))
+                    .flex()
+                    .justify_center()
+                    .items_center()
+                    .child(
+                        Label::new(response_summary.elapsed_duration)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                    ),
+            )
+            .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
+            .child(
+                gpui::div()
+                    .min_w(gpui::px(40.0))
+                    .flex()
+                    .justify_center()
+                    .items_center()
+                    .child(
+                        Label::new(response_summary.bytes_received)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                    ),
+            )
+    }
+
+    fn render_tab_bar(
+        &self,
+        response_summary: Option<ResponseSummary>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let active_tab = self.active_tab;
+        let colors = cx.theme().colors();
+
+        let tab =
+            |id: ElementId, active: bool, label: SharedString, set_active_tab: ResponsePanelTab| {
+                let colors = cx.theme().colors();
+
+                gpui::div()
+                    .id(id)
+                    .relative()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .h(DynamicSpacing::Base24.px(cx))
+                    .px(DynamicSpacing::Base08.px(cx))
+                    .rounded_sm()
+                    .border_1()
+                    .when(active, |this| {
+                        this.border_color(colors.border.opacity(0.25))
+                            .bg(colors.panel_tab_active_background)
+                    })
+                    .when(!active, |this| {
+                        this.border_color(gpui::transparent_black())
+                            .bg(gpui::transparent_black())
+                    })
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |response_panel, _, _, cx| {
+                        cx.stop_propagation();
+                        if response_panel.active_tab != set_active_tab {
+                            response_panel.active_tab = set_active_tab;
+                            cx.notify();
+                        }
+                    }))
+                    .child(
+                        Label::new(label)
+                            .size(LabelSize::Small)
+                            .line_height_style(LineHeightStyle::UiLabel)
+                            .weight(FontWeight::MEDIUM)
+                            .color(if active {
+                                Color::Custom(colors.panel_tab_active_foreground)
+                            } else {
+                                Color::Custom(colors.panel_tab_inactive_foreground)
+                            })
+                            .single_line(),
+                    )
+            };
+
+        gpui::div()
+            .id("response-panel-tabs")
+            .flex()
+            .items_center()
+            .justify_between()
+            .w_full()
+            .h(DynamicSpacing::Base36.px(cx))
+            .gap_1()
+            .pl_1()
+            .pr_3()
+            .border_b_1()
+            .border_color(colors.border)
+            .bg(colors.panel_tab_bar_background)
+            .child(tab(
+                ElementId::Name("response-body-tab".into()),
+                active_tab == ResponsePanelTab::Body,
+                "Body".into(),
+                ResponsePanelTab::Body,
+            ))
+            .when_some(response_summary, |this, response_summary| {
+                this.child(Self::render_response_summary(response_summary))
+            })
+            .into_any_element()
     }
 }
 
@@ -347,7 +479,7 @@ impl Panel for ResponsePanel {
 
 impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme_colors = cx.theme().colors();
+        let panel_background = cx.theme().colors().panel_background;
         let focus_handle = self.focus_handle(cx);
         let response_summary = self
             .response
@@ -360,74 +492,13 @@ impl Render for ResponsePanel {
             .flex()
             .flex_col()
             .size_full()
-            .bg(theme_colors.panel_background)
-            .child(
-                gpui::div()
-                    .w_full()
-                    .h(DynamicSpacing::Base36.px(cx))
-                    .px_3()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(theme_colors.border)
-                    .bg(theme_colors.panel_tab_bar_background)
-                    .child(Label::new("Response").size(LabelSize::Small))
-                    .when_some(response_summary, |header, response_summary| {
-                        header.child(
-                            gpui::div()
-                                .flex()
-                                .items_center()
-                                .gap_1()
-                                .child(
-                                    gpui::div()
-                                        .min_w(gpui::px(40.0))
-                                        .flex()
-                                        .justify_center()
-                                        .items_center()
-                                        .child(
-                                            Label::new(response_summary.label)
-                                                .size(LabelSize::Small)
-                                                .color(Color::Muted)
-                                                .single_line(),
-                                        ),
-                                )
-                                .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
-                                .child(
-                                    gpui::div()
-                                        .min_w(gpui::px(40.0))
-                                        .flex()
-                                        .justify_center()
-                                        .items_center()
-                                        .child(
-                                            Label::new(response_summary.elapsed_duration)
-                                                .size(LabelSize::Small)
-                                                .color(Color::Muted)
-                                                .single_line(),
-                                        ),
-                                )
-                                .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
-                                .child(
-                                    gpui::div()
-                                        .min_w(gpui::px(40.0))
-                                        .flex()
-                                        .justify_center()
-                                        .items_center()
-                                        .child(
-                                            Label::new(response_summary.bytes_received)
-                                                .size(LabelSize::Small)
-                                                .color(Color::Muted)
-                                                .single_line(),
-                                        ),
-                                ),
-                        )
-                    }),
-            )
+            .bg(panel_background)
+            .child(self.render_tab_bar(response_summary, cx))
             .child(
                 gpui::div()
                     .flex_1()
                     .min_h_0()
-                    .bg(theme_colors.panel_background)
+                    .bg(panel_background)
                     .when_some(editor, |this, editor| this.child(editor)),
             )
     }

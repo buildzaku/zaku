@@ -1178,6 +1178,7 @@ impl RequestEditor {
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let active_tab = self.active_tab;
+        let colors = cx.theme().colors();
 
         let tab =
             |id: ElementId, active: bool, label: SharedString, set_active_tab: RequestEditorTab| {
@@ -1222,8 +1223,6 @@ impl RequestEditor {
                             .single_line(),
                     )
             };
-
-        let colors = cx.theme().colors();
 
         gpui::div()
             .id("request-editor-tabs")
