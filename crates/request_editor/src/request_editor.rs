@@ -24,7 +24,7 @@ use project::{
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
     RequestFileState,
 };
-use response_panel::{Response, ResponsePanel, ResponseState};
+use response_panel::{Response, ResponseHeader, ResponsePanel, ResponseState};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
@@ -76,6 +76,18 @@ fn update_response_panel(workspace: &mut Workspace, cx: &mut Context<Workspace>)
             response_panel.set_response(response, cx);
         });
     }
+}
+
+fn response_headers(headers: &http::HeaderMap) -> Vec<ResponseHeader> {
+    headers
+        .iter()
+        .map(|(name, value)| {
+            ResponseHeader::new(
+                name.as_str().to_string(),
+                String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            )
+        })
+        .collect()
 }
 
 pub trait RequestPaneExt: Sized {
@@ -1027,6 +1039,14 @@ impl RequestEditor {
                     };
 
                     let status_code = received.status();
+                    let response_headers = response_headers(received.headers());
+                    let still_active = response.update(cx, |response, cx| {
+                        response.set_headers(request_id, response_headers, cx)
+                    });
+                    if !still_active {
+                        return;
+                    }
+
                     let content_type = received
                         .headers()
                         .get(http::header::CONTENT_TYPE)

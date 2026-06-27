@@ -1,6 +1,6 @@
 use gpui::{
-    Action, AnyElement, App, Context, ElementId, Entity, FocusHandle, Focusable, FontWeight,
-    Pixels, Render, SharedString, Subscription, WeakEntity, Window, prelude::*,
+    Action, AnyElement, App, Context, DefiniteLength, ElementId, Entity, FocusHandle, Focusable,
+    FontWeight, Pixels, Render, SharedString, Subscription, WeakEntity, Window, prelude::*,
 };
 use num_traits::ToPrimitive;
 use std::{sync::Arc, time::Duration};
@@ -10,7 +10,10 @@ use http_client::StatusCode;
 use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
-use ui::{Color, DynamicSpacing, IconName, Label, LabelCommon, LabelSize, LineHeightStyle};
+use ui::{
+    Color, ColumnWidthConfig, DynamicSpacing, IconName, Label, LabelCommon, LabelSize,
+    LineHeightStyle, Table, TableInteractionState,
+};
 use workspace::{Panel, Workspace, pane::Pane};
 
 pub fn init(cx: &mut App) {
@@ -71,6 +74,7 @@ fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ResponsePanelTab {
     Body,
+    Headers,
 }
 
 #[derive(Clone)]
@@ -78,6 +82,21 @@ struct ResponseSummary {
     label: SharedString,
     elapsed_duration: SharedString,
     bytes_received: SharedString,
+}
+
+#[derive(Clone)]
+pub struct ResponseHeader {
+    name: SharedString,
+    value: SharedString,
+}
+
+impl ResponseHeader {
+    pub fn new(name: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -143,6 +162,7 @@ impl ResponseState {
 pub struct Response {
     request_id: usize,
     state: ResponseState,
+    headers: Vec<ResponseHeader>,
     editor: Entity<Editor>,
     payload: Entity<MultiBuffer>,
 }
@@ -154,6 +174,7 @@ impl Response {
         Self {
             request_id: 0,
             state: ResponseState::default(),
+            headers: Vec::new(),
             editor,
             payload,
         }
@@ -181,6 +202,25 @@ impl Response {
         self.editor.clone()
     }
 
+    fn headers(&self) -> &[ResponseHeader] {
+        &self.headers
+    }
+
+    pub fn set_headers(
+        &mut self,
+        request_id: usize,
+        headers: Vec<ResponseHeader>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.request_id != request_id {
+            return false;
+        }
+
+        self.headers = headers;
+        cx.notify();
+        true
+    }
+
     pub fn text(&self, cx: &App) -> String {
         self.payload.read(cx).snapshot(cx).text()
     }
@@ -192,6 +232,7 @@ impl Response {
 
         self.request_id = request_id;
         self.state = ResponseState::default();
+        self.headers.clear();
         self.editor = editor;
         self.payload = payload;
         if was_focused {
@@ -200,6 +241,10 @@ impl Response {
         }
         cx.notify();
         request_id
+    }
+
+    pub fn state(&self) -> &ResponseState {
+        &self.state
     }
 
     pub fn set_state(
@@ -248,6 +293,7 @@ pub struct ResponsePanel {
     focus_handle: FocusHandle,
     pane: WeakEntity<Pane>,
     active_tab: ResponsePanelTab,
+    headers_table: Entity<TableInteractionState>,
     response: Option<Entity<Response>>,
     response_subscription: Option<Subscription>,
     _focus_subscription: Subscription,
@@ -259,10 +305,22 @@ impl ResponsePanel {
 
     pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
+        let headers_table = cx.new(|cx| TableInteractionState::new(cx));
         let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
             cx.on_next_frame(window, |response_panel, window, cx| {
+                let editor = response_panel.response.as_ref().and_then(|response| {
+                    let response = response.read(cx);
+                    match response.state() {
+                        ResponseState::Idle => None,
+                        ResponseState::Fetching { .. }
+                        | ResponseState::Completed { .. }
+                        | ResponseState::Error { .. } => Some(response.editor()),
+                    }
+                });
+
                 if response_panel.focus_handle.is_focused(window)
-                    && let Some(editor) = response_panel.editor(cx)
+                    && response_panel.active_tab == ResponsePanelTab::Body
+                    && let Some(editor) = editor
                 {
                     editor.focus_handle(cx).focus(window, cx);
                 }
@@ -273,6 +331,7 @@ impl ResponsePanel {
             focus_handle,
             pane,
             active_tab: ResponsePanelTab::Body,
+            headers_table,
             response: None,
             response_subscription: None,
             _focus_subscription: focus_subscription,
@@ -297,16 +356,95 @@ impl ResponsePanel {
         cx.notify();
     }
 
-    fn editor(&self, cx: &App) -> Option<Entity<Editor>> {
-        self.response
-            .as_ref()
-            .map(|response| response.read(cx).editor())
-    }
-
     pub fn text(&self, cx: &App) -> String {
         self.response
             .as_ref()
             .map_or_else(String::new, |response| response.read(cx).text(cx))
+    }
+
+    fn render_empty_content(tab: ResponsePanelTab) -> AnyElement {
+        gpui::div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                Label::new(match tab {
+                    ResponsePanelTab::Body => "NO RESPONSE",
+                    ResponsePanelTab::Headers => "NO HEADERS",
+                })
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+            )
+            .into_any_element()
+    }
+
+    fn render_headers(&self, cx: &mut Context<Self>) -> AnyElement {
+        let headers = self
+            .response
+            .as_ref()
+            .map_or_else(Vec::new, |response| response.read(cx).headers().to_vec());
+        if headers.is_empty() {
+            return Self::render_empty_content(ResponsePanelTab::Headers);
+        }
+
+        let mut table = Table::new(2)
+            .interactable(&self.headers_table)
+            .width_config(ColumnWidthConfig::explicit(vec![
+                DefiniteLength::Fraction(0.24),
+                DefiniteLength::Fraction(0.76),
+            ]))
+            .disable_base_style()
+            .hide_row_hover();
+
+        for header in headers {
+            table = table.row(vec![
+                gpui::div().px_2().py_1().child(
+                    Label::new(header.name)
+                        .size(LabelSize::Small)
+                        .color(Color::Accent)
+                        .alpha(0.85),
+                ),
+                gpui::div().px_2().py_1().child(
+                    Label::new(header.value)
+                        .size(LabelSize::Small)
+                        .color(Color::Default),
+                ),
+            ]);
+        }
+
+        gpui::div()
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .child(table)
+            .into_any_element()
+    }
+
+    fn render_body(&self, cx: &mut Context<Self>) -> AnyElement {
+        let colors = cx.theme().colors();
+        let editor = self.response.as_ref().and_then(|response| {
+            let response = response.read(cx);
+            match response.state() {
+                ResponseState::Idle => None,
+                ResponseState::Fetching { .. }
+                | ResponseState::Completed { .. }
+                | ResponseState::Error { .. } => Some(response.editor()),
+            }
+        });
+
+        editor.map_or_else(
+            || Self::render_empty_content(ResponsePanelTab::Body),
+            |editor| {
+                gpui::div()
+                    .flex_1()
+                    .min_h_0()
+                    .bg(colors.panel_background)
+                    .child(editor)
+                    .into_any_element()
+            },
+        )
     }
 
     fn render_response_summary(response_summary: ResponseSummary) -> impl IntoElement {
@@ -357,12 +495,12 @@ impl ResponsePanel {
             )
     }
 
-    fn render_tab_bar(
-        &self,
-        response_summary: Option<ResponseSummary>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let active_tab = self.active_tab;
+        let response_summary = self
+            .response
+            .as_ref()
+            .and_then(|response| response.read(cx).summary());
         let colors = cx.theme().colors();
 
         let tab =
@@ -422,12 +560,24 @@ impl ResponsePanel {
             .border_b_1()
             .border_color(colors.border)
             .bg(colors.panel_tab_bar_background)
-            .child(tab(
-                ElementId::Name("response-body-tab".into()),
-                active_tab == ResponsePanelTab::Body,
-                "Body".into(),
-                ResponsePanelTab::Body,
-            ))
+            .child(
+                gpui::div()
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(tab(
+                        ElementId::Name("response-body-tab".into()),
+                        active_tab == ResponsePanelTab::Body,
+                        "Body".into(),
+                        ResponsePanelTab::Body,
+                    ))
+                    .child(tab(
+                        ElementId::Name("response-headers-tab".into()),
+                        active_tab == ResponsePanelTab::Headers,
+                        "Headers".into(),
+                        ResponsePanelTab::Headers,
+                    )),
+            )
             .when_some(response_summary, |this, response_summary| {
                 this.child(Self::render_response_summary(response_summary))
             })
@@ -479,28 +629,22 @@ impl Panel for ResponsePanel {
 
 impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let panel_background = cx.theme().colors().panel_background;
         let focus_handle = self.focus_handle(cx);
-        let response_summary = self
-            .response
-            .as_ref()
-            .and_then(|response| response.read(cx).summary());
-        let editor = self.editor(cx);
+        let tab_bar = self.render_tab_bar(cx);
+        let tab_content = match self.active_tab {
+            ResponsePanelTab::Body => self.render_body(cx),
+            ResponsePanelTab::Headers => self.render_headers(cx),
+        };
+        let colors = cx.theme().colors();
 
         gpui::div()
             .track_focus(&focus_handle)
             .flex()
             .flex_col()
             .size_full()
-            .bg(panel_background)
-            .child(self.render_tab_bar(response_summary, cx))
-            .child(
-                gpui::div()
-                    .flex_1()
-                    .min_h_0()
-                    .bg(panel_background)
-                    .when_some(editor, |this, editor| this.child(editor)),
-            )
+            .bg(colors.panel_background)
+            .child(tab_bar)
+            .child(tab_content)
     }
 }
 
