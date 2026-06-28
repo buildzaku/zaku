@@ -257,15 +257,18 @@ pub struct Response {
 impl Response {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let (editor, payload) = Self::new_editor(window, cx);
-        let headers_table = cx.new(|cx| {
+        let response_id = cx.entity_id();
+        let headers_table = cx.new(move |cx| {
             TableInteractionState::new(cx).with_custom_scrollbar(
-                Scrollbars::new(ScrollAxes::Vertical).id("response-headers-scrollbar"),
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id(("response-headers-scrollbar", response_id)),
             )
         });
         let headers_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
-        let cookies_table = cx.new(|cx| {
+        let cookies_table = cx.new(move |cx| {
             TableInteractionState::new(cx).with_custom_scrollbar(
-                Scrollbars::new(ScrollAxes::Vertical).id("response-cookies-scrollbar"),
+                Scrollbars::new(ScrollAxes::Vertical)
+                    .id(("response-cookies-scrollbar", response_id)),
             )
         });
         let cookies_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
