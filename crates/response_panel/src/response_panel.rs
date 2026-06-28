@@ -13,10 +13,12 @@ use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
     Color, ColumnWidthConfig, DynamicSpacing, IconName, Label, LabelCommon, LabelSize,
-    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableInteractionState, Text, TextCommon,
-    TextSize, UncheckedTableRow,
+    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState, TextSize,
 };
 use workspace::{Panel, Workspace, pane::Pane};
+
+const NAME_COLUMN_INDEX: usize = 0;
+const VALUE_COLUMN_INDEX: usize = 1;
 
 pub fn init(cx: &mut App) {
     cx.observe_new(
@@ -166,16 +168,17 @@ impl ResponseCookie {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CookieTableRowKind {
+    Header,
+    Attribute,
+}
+
 #[derive(Clone)]
-enum CookieTableRow {
-    Cookie {
-        name: SharedString,
-        value: SharedString,
-    },
-    Attribute {
-        name: &'static str,
-        value: SharedString,
-    },
+struct CookieTableRow {
+    kind: CookieTableRowKind,
+    name: SharedString,
+    value: SharedString,
 }
 
 #[derive(Clone, Default)]
@@ -493,6 +496,58 @@ impl ResponsePanel {
         }
     }
 
+    fn cookie_table_rows(cookies: &[ResponseCookie]) -> Vec<CookieTableRow> {
+        let mut rows = Vec::new();
+        for cookie in cookies {
+            rows.push(CookieTableRow {
+                kind: CookieTableRowKind::Header,
+                name: cookie.name.clone(),
+                value: cookie.value.clone(),
+            });
+
+            for (attribute_name, attribute_value) in [
+                ("Domain", cookie.domain.clone()),
+                ("Path", cookie.path.clone()),
+                ("Expires", cookie.expires.clone()),
+                ("Max-Age", cookie.max_age.clone()),
+                (
+                    "Secure",
+                    cookie
+                        .secure
+                        .map(|secure| SharedString::from(secure.to_string())),
+                ),
+                (
+                    "HttpOnly",
+                    cookie
+                        .http_only
+                        .map(|http_only| SharedString::from(http_only.to_string())),
+                ),
+                ("SameSite", cookie.same_site.clone()),
+            ]
+            .into_iter()
+            .filter_map(|(attribute_name, attribute_value)| {
+                attribute_value.map(|attribute_value| (attribute_name, attribute_value))
+            }) {
+                rows.push(CookieTableRow {
+                    kind: CookieTableRowKind::Attribute,
+                    name: attribute_name.into(),
+                    value: attribute_value,
+                });
+            }
+        }
+
+        rows
+    }
+
+    fn clear_table_text_selection(&self, cx: &mut Context<Self>) {
+        for table in [&self.headers_table, &self.cookies_table] {
+            table.update(cx, |table, cx| {
+                table.clear_text_selection();
+                cx.notify();
+            });
+        }
+    }
+
     pub fn set_response(&mut self, response: Option<Entity<Response>>, cx: &mut Context<Self>) {
         let unchanged = match (&self.response, &response) {
             (Some(old_response), Some(new_response)) => old_response == new_response,
@@ -509,12 +564,19 @@ impl ResponsePanel {
             (0, 0)
         };
         let _previous_subscription = self.response_subscription.take();
+        self.clear_table_text_selection(cx);
         self.headers_list_state.reset(0);
         self.cookies_list_state.reset(0);
         self.response_subscription = response.as_ref().map(|response| {
             cx.observe(response, |response_panel, response, cx| {
                 let (headers_row_count, cookies_row_count) = Self::table_row_counts(&response, cx);
+                let row_counts_changed = response_panel.headers_list_state.item_count()
+                    != headers_row_count
+                    || response_panel.cookies_list_state.item_count() != cookies_row_count;
                 response_panel.sync_table_row_counts(headers_row_count, cookies_row_count);
+                if row_counts_changed {
+                    response_panel.clear_table_text_selection(cx);
+                }
                 cx.notify();
             })
         });
@@ -574,16 +636,20 @@ impl ResponsePanel {
     }
 
     fn render_headers(&self, cx: &mut Context<Self>) -> AnyElement {
-        let headers = self
-            .response
-            .as_ref()
-            .map_or_else(Vec::new, |response| response.read(cx).headers().to_vec());
+        let headers = Arc::new(
+            self.response
+                .as_ref()
+                .map_or_else(Vec::new, |response| response.read(cx).headers().to_vec()),
+        );
         if headers.is_empty() {
             return Self::render_empty_content(ResponsePanelTab::Headers);
         }
 
         let row_count = headers.len();
-        let table = Table::new(2)
+        let column_count = 2;
+        let headers_for_text = headers.clone();
+        let headers_for_rows = headers.clone();
+        let table = Table::new(column_count)
             .interactable(&self.headers_table)
             .width_config(ColumnWidthConfig::explicit(vec![
                 DefiniteLength::Fraction(0.24),
@@ -591,33 +657,28 @@ impl ResponsePanel {
             ]))
             .disable_base_style()
             .hide_row_hover()
+            .cell_text(move |row_index, column_index, _, _| {
+                let header = headers_for_text.get(row_index)?;
+                match column_index {
+                    NAME_COLUMN_INDEX => Some(header.name.clone()),
+                    VALUE_COLUMN_INDEX => Some(header.value.clone()),
+                    _ => None,
+                }
+            })
             .variable_row_height_list(row_count, self.headers_list_state.clone(), {
-                move |header_index, _, _| -> UncheckedTableRow<AnyElement> {
-                    let header = headers
+                move |header_index, _, _| {
+                    let header = headers_for_rows
                         .get(header_index)
-                        .expect("response header row should exist")
-                        .clone();
+                        .expect("response header row should exist");
 
                     vec![
-                        gpui::div()
-                            .px_2()
-                            .py_1()
-                            .child(
-                                Text::new(header.name)
-                                    .size(TextSize::Small)
-                                    .color(Color::Accent)
-                                    .alpha(0.85),
-                            )
-                            .into_any_element(),
-                        gpui::div()
-                            .px_2()
-                            .py_1()
-                            .child(
-                                Text::new(header.value)
-                                    .size(TextSize::Small)
-                                    .color(Color::Default),
-                            )
-                            .into_any_element(),
+                        TableCell::text(header.name.clone())
+                            .size(TextSize::Small)
+                            .color(Color::Accent)
+                            .alpha(0.85),
+                        TableCell::text(header.value.clone())
+                            .size(TextSize::Small)
+                            .color(Color::Default),
                     ]
                 }
             });
@@ -639,47 +700,14 @@ impl ResponsePanel {
             return Self::render_empty_content(ResponsePanelTab::Cookies);
         }
 
-        let mut rows = Vec::new();
-        for cookie in cookies {
-            rows.push(CookieTableRow::Cookie {
-                name: cookie.name,
-                value: cookie.value,
-            });
-
-            for (attribute_name, attribute_value) in [
-                ("Domain", cookie.domain),
-                ("Path", cookie.path),
-                ("Expires", cookie.expires),
-                ("Max-Age", cookie.max_age),
-                (
-                    "Secure",
-                    cookie
-                        .secure
-                        .map(|secure| SharedString::from(secure.to_string())),
-                ),
-                (
-                    "HttpOnly",
-                    cookie
-                        .http_only
-                        .map(|http_only| SharedString::from(http_only.to_string())),
-                ),
-                ("SameSite", cookie.same_site),
-            ]
-            .into_iter()
-            .filter_map(|(attribute_name, attribute_value)| {
-                attribute_value.map(|attribute_value| (attribute_name, attribute_value))
-            }) {
-                rows.push(CookieTableRow::Attribute {
-                    name: attribute_name,
-                    value: attribute_value,
-                });
-            }
-        }
-
+        let rows = Arc::new(Self::cookie_table_rows(&cookies));
         let cookie_header_background = cx.theme().colors().panel_tab_bar_background.opacity(0.85);
         let row_count = rows.len();
+        let column_count = 2;
         let rows_for_style = rows.clone();
-        let table = Table::new(2)
+        let rows_for_text = rows.clone();
+        let rows_for_render = rows.clone();
+        let table = Table::new(column_count)
             .interactable(&self.cookies_table)
             .width_config(ColumnWidthConfig::explicit(vec![
                 DefiniteLength::Fraction(0.24),
@@ -688,61 +716,43 @@ impl ResponsePanel {
             .disable_base_style()
             .hide_row_hover()
             .map_row(move |(row_index, row), _, _| {
-                if matches!(
-                    rows_for_style
-                        .get(row_index)
-                        .expect("response cookie row should exist"),
-                    CookieTableRow::Cookie { .. }
-                ) {
+                if rows_for_style
+                    .get(row_index)
+                    .expect("response cookie row should exist")
+                    .kind
+                    == CookieTableRowKind::Header
+                {
                     row.bg(cookie_header_background).into_any_element()
                 } else {
                     row.into_any_element()
                 }
             })
+            .cell_text(move |row_index, column_index, _, _| {
+                let row = rows_for_text.get(row_index)?;
+                match column_index {
+                    NAME_COLUMN_INDEX => Some(row.name.clone()),
+                    VALUE_COLUMN_INDEX => Some(row.value.clone()),
+                    _ => None,
+                }
+            })
             .variable_row_height_list(row_count, self.cookies_list_state.clone(), {
-                move |row_index, _, _| -> UncheckedTableRow<AnyElement> {
-                    let row = rows
+                move |row_index, _, _| {
+                    let row = rows_for_render
                         .get(row_index)
-                        .expect("response cookie row should exist")
-                        .clone();
+                        .expect("response cookie row should exist");
 
-                    match row {
-                        CookieTableRow::Cookie { name, value } => vec![
-                            gpui::div()
-                                .px_2()
-                                .py_1()
-                                .child(
-                                    Text::new(name)
-                                        .size(TextSize::Small)
-                                        .weight(FontWeight::MEDIUM)
-                                        .color(Color::Accent)
-                                        .alpha(0.85),
-                                )
-                                .into_any_element(),
-                            gpui::div()
-                                .px_2()
-                                .py_1()
-                                .child(Text::new(value).size(TextSize::Small).color(Color::Default))
-                                .into_any_element(),
-                        ],
-                        CookieTableRow::Attribute { name, value } => vec![
-                            gpui::div()
-                                .px_2()
-                                .py_1()
-                                .child(
-                                    Text::new(name)
-                                        .size(TextSize::Small)
-                                        .color(Color::Accent)
-                                        .alpha(0.85),
-                                )
-                                .into_any_element(),
-                            gpui::div()
-                                .px_2()
-                                .py_1()
-                                .child(Text::new(value).size(TextSize::Small).color(Color::Default))
-                                .into_any_element(),
-                        ],
-                    }
+                    vec![
+                        TableCell::text(row.name.clone())
+                            .size(TextSize::Small)
+                            .color(Color::Accent)
+                            .alpha(0.85)
+                            .when(row.kind == CookieTableRowKind::Header, |this| {
+                                this.weight(FontWeight::MEDIUM)
+                            }),
+                        TableCell::text(row.value.clone())
+                            .size(TextSize::Small)
+                            .color(Color::Default),
+                    ]
                 }
             });
 
@@ -837,6 +847,7 @@ impl ResponsePanel {
                         cx.stop_propagation();
                         if response_panel.active_tab != set_active_tab {
                             response_panel.active_tab = set_active_tab;
+                            response_panel.clear_table_text_selection(cx);
                             cx.notify();
                         }
                     }))
