@@ -329,24 +329,32 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
         "first response"
     );
 
-    let expected_headers_scroll_offset = ListOffset {
+    let first_headers_scroll_offset = ListOffset {
         item_ix: 7,
         offset_in_item: gpui::px(3.0),
     };
-    let expected_cookies_scroll_offset = ListOffset {
+    let first_cookies_scroll_offset = ListOffset {
         item_ix: 12,
         offset_in_item: gpui::px(2.0),
+    };
+    let second_headers_scroll_offset = ListOffset {
+        item_ix: 19,
+        offset_in_item: gpui::px(4.0),
+    };
+    let second_cookies_scroll_offset = ListOffset {
+        item_ix: 20,
+        offset_in_item: gpui::px(5.0),
     };
 
     response_panel.update(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
             .expect("response panel should have response")
-            .scroll_to(expected_headers_scroll_offset);
+            .scroll_to(first_headers_scroll_offset);
         response_panel
             .cookies_list_state(cx)
             .expect("response panel should have response")
-            .scroll_to(expected_cookies_scroll_offset);
+            .scroll_to(first_cookies_scroll_offset);
     });
 
     let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
@@ -357,11 +365,11 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
     });
     assert_eq!(
         headers_scroll_offset.item_ix,
-        expected_headers_scroll_offset.item_ix,
+        first_headers_scroll_offset.item_ix,
     );
     assert_eq!(
         headers_scroll_offset.offset_in_item,
-        expected_headers_scroll_offset.offset_in_item,
+        first_headers_scroll_offset.offset_in_item,
     );
 
     let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
@@ -372,14 +380,14 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
     });
     assert_eq!(
         cookies_scroll_offset.item_ix,
-        expected_cookies_scroll_offset.item_ix,
+        first_cookies_scroll_offset.item_ix,
     );
     assert_eq!(
         cookies_scroll_offset.offset_in_item,
-        expected_cookies_scroll_offset.offset_in_item,
+        first_cookies_scroll_offset.offset_in_item,
     );
 
-    open_result
+    let second_item = open_result
         .window
         .update(cx, |root, window, cx| {
             root.workspace().update(cx, |workspace, cx| {
@@ -389,12 +397,54 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
         .unwrap()
         .await
         .unwrap();
+    let second_item_id = second_item.item_id();
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "second response"
+    );
+
+    response_panel.update(cx, |response_panel, cx| {
+        response_panel
+            .headers_list_state(cx)
+            .expect("response panel should have response")
+            .scroll_to(second_headers_scroll_offset);
+        response_panel
+            .cookies_list_state(cx)
+            .expect("response panel should have response")
+            .scroll_to(second_cookies_scroll_offset);
+    });
+
+    let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
+        response_panel
+            .headers_list_state(cx)
+            .expect("response panel should have response")
+            .logical_scroll_top()
+    });
+    assert_eq!(
+        headers_scroll_offset.item_ix,
+        second_headers_scroll_offset.item_ix,
+    );
+    assert_eq!(
+        headers_scroll_offset.offset_in_item,
+        second_headers_scroll_offset.offset_in_item,
+    );
+
+    let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
+        response_panel
+            .cookies_list_state(cx)
+            .expect("response panel should have response")
+            .logical_scroll_top()
+    });
+    assert_eq!(
+        cookies_scroll_offset.item_ix,
+        second_cookies_scroll_offset.item_ix,
+    );
+    assert_eq!(
+        cookies_scroll_offset.offset_in_item,
+        second_cookies_scroll_offset.offset_in_item,
     );
 
     let first_item_index = pane.read_with(cx, |pane, _| {
@@ -418,33 +468,84 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
         "first response"
     );
 
-    let restored_headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
+    let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .headers_list_state(cx)
             .expect("response panel should have response")
             .logical_scroll_top()
     });
     assert_eq!(
-        restored_headers_scroll_offset.item_ix,
-        expected_headers_scroll_offset.item_ix,
+        headers_scroll_offset.item_ix,
+        first_headers_scroll_offset.item_ix,
     );
     assert_eq!(
-        restored_headers_scroll_offset.offset_in_item,
-        expected_headers_scroll_offset.offset_in_item,
+        headers_scroll_offset.offset_in_item,
+        first_headers_scroll_offset.offset_in_item,
     );
 
-    let restored_cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
+    let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
         response_panel
             .cookies_list_state(cx)
             .expect("response panel should have response")
             .logical_scroll_top()
     });
     assert_eq!(
-        restored_cookies_scroll_offset.item_ix,
-        expected_cookies_scroll_offset.item_ix,
+        cookies_scroll_offset.item_ix,
+        first_cookies_scroll_offset.item_ix,
     );
     assert_eq!(
-        restored_cookies_scroll_offset.offset_in_item,
-        expected_cookies_scroll_offset.offset_in_item,
+        cookies_scroll_offset.offset_in_item,
+        first_cookies_scroll_offset.offset_in_item,
+    );
+
+    let second_item_index = pane.read_with(cx, |pane, _| {
+        pane.items()
+            .position(|item| item.item_id() == second_item_id)
+            .unwrap()
+    });
+
+    open_result
+        .window
+        .update(cx, |_, window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(second_item_index, true, false, window, cx);
+            });
+        })
+        .unwrap();
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "second response"
+    );
+
+    let headers_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
+        response_panel
+            .headers_list_state(cx)
+            .expect("response panel should have response")
+            .logical_scroll_top()
+    });
+    assert_eq!(
+        headers_scroll_offset.item_ix,
+        second_headers_scroll_offset.item_ix,
+    );
+    assert_eq!(
+        headers_scroll_offset.offset_in_item,
+        second_headers_scroll_offset.offset_in_item,
+    );
+
+    let cookies_scroll_offset = response_panel.read_with(cx, |response_panel, cx| {
+        response_panel
+            .cookies_list_state(cx)
+            .expect("response panel should have response")
+            .logical_scroll_top()
+    });
+    assert_eq!(
+        cookies_scroll_offset.item_ix,
+        second_cookies_scroll_offset.item_ix,
+    );
+    assert_eq!(
+        cookies_scroll_offset.offset_in_item,
+        second_cookies_scroll_offset.offset_in_item,
     );
 }
