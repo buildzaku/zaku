@@ -128,8 +128,6 @@ impl TableTextId {
     }
 }
 
-type CellText = Rc<dyn Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString>>;
-
 pub struct ResizableColumnsState {
     initial_widths: TableRow<AbsoluteLength>,
     widths: TableRow<AbsoluteLength>,
@@ -375,7 +373,7 @@ impl TableInteractionState {
         &self,
         row_count: usize,
         column_count: usize,
-        cell_text: &CellText,
+        text_for_selection: &dyn Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString>,
         window: &mut Window,
         cx: &mut App,
     ) -> Option<String> {
@@ -388,7 +386,7 @@ impl TableInteractionState {
         for row_index in 0..row_count {
             let mut selected_cells = Vec::new();
             for column_index in 0..column_count {
-                let Some(text) = cell_text(row_index, column_index, window, cx) else {
+                let Some(text) = text_for_selection(row_index, column_index, window, cx) else {
                     continue;
                 };
                 let text: &str = text.as_ref();
@@ -417,12 +415,12 @@ impl TableInteractionState {
         &mut self,
         row_count: usize,
         column_count: usize,
-        cell_text: &CellText,
+        text_for_selection: &dyn Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(selected_text) =
-            self.selected_text(row_count, column_count, cell_text, window, cx)
+            self.selected_text(row_count, column_count, text_for_selection, window, cx)
         else {
             return;
         };
@@ -446,7 +444,7 @@ impl TableInteractionState {
         &mut self,
         row_count: usize,
         column_count: usize,
-        cell_text: &CellText,
+        text_for_selection: &dyn Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString>,
         position: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -454,7 +452,7 @@ impl TableInteractionState {
         self.focus_handle.focus(window, cx);
 
         let has_selected_text = self
-            .selected_text(row_count, column_count, cell_text, window, cx)
+            .selected_text(row_count, column_count, text_for_selection, window, cx)
             .is_some();
         let focus_handle = self.focus_handle.clone();
         let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
@@ -606,7 +604,8 @@ pub struct Table {
     column_width_config: ColumnWidthConfig,
     interaction_state: Option<WeakEntity<TableInteractionState>>,
     row_mapper: Option<Rc<dyn Fn((usize, Stateful<Div>), &mut Window, &mut App) -> AnyElement>>,
-    cell_text: Option<CellText>,
+    text_for_selection:
+        Option<Rc<dyn Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString>>>,
     empty_table_callback: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>>,
     striped: bool,
     show_row_borders: bool,
@@ -624,7 +623,7 @@ impl Table {
             column_width_config: ColumnWidthConfig::auto(),
             interaction_state: None,
             row_mapper: None,
-            cell_text: None,
+            text_for_selection: None,
             empty_table_callback: None,
             striped: false,
             show_row_borders: true,
@@ -746,11 +745,12 @@ impl Table {
         self
     }
 
-    pub fn cell_text(
+    pub fn text_for_selection(
         mut self,
-        cell_text: impl Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString> + 'static,
+        text_for_selection: impl Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString>
+        + 'static,
     ) -> Self {
-        self.cell_text = Some(Rc::new(cell_text));
+        self.text_for_selection = Some(Rc::new(text_for_selection));
         self
     }
 
@@ -892,7 +892,7 @@ fn render_text_cell(
                 }
             });
 
-        if let Some(cell_text) = table_cx.cell_text.clone() {
+        if let Some(text_for_selection) = table_cx.text_for_selection.clone() {
             let row_count = table_cx.total_row_count;
             let column_count = table_cx.column_count;
             cell = cell.on_mouse_down(MouseButton::Right, {
@@ -902,7 +902,7 @@ fn render_text_cell(
                         state.deploy_text_context_menu(
                             row_count,
                             column_count,
-                            &cell_text,
+                            text_for_selection.as_ref(),
                             event.position,
                             window,
                             cx,
@@ -1167,7 +1167,8 @@ pub struct TableRenderContext {
     pub column_widths: Option<TableRow<Length>>,
     pub row_mapper: Option<Rc<dyn Fn((usize, Stateful<Div>), &mut Window, &mut App) -> AnyElement>>,
     interaction_state: Option<Entity<TableInteractionState>>,
-    cell_text: Option<CellText>,
+    text_for_selection:
+        Option<Rc<dyn Fn(usize, usize, &mut Window, &mut App) -> Option<SharedString>>>,
     pub striped: bool,
     pub show_row_borders: bool,
     pub show_row_hover: bool,
@@ -1187,7 +1188,7 @@ impl TableRenderContext {
             column_widths: table.column_width_config.widths_to_render(cx),
             row_mapper: table.row_mapper.clone(),
             interaction_state,
-            cell_text: table.cell_text.clone(),
+            text_for_selection: table.text_for_selection.clone(),
             striped: table.striped,
             show_row_borders: table.show_row_borders,
             show_row_hover: table.show_row_hover,
@@ -1203,7 +1204,7 @@ impl TableRenderContext {
             column_widths,
             row_mapper: None,
             interaction_state: None,
-            cell_text: None,
+            text_for_selection: None,
             striped: false,
             show_row_borders: true,
             show_row_hover: true,
@@ -1318,7 +1319,7 @@ impl RenderOnce for Table {
             });
         }
 
-        let cell_text = self.cell_text.clone();
+        let text_for_selection = self.text_for_selection.clone();
         let row_count = self.rows.len();
         let column_count = self.column_count;
         let table_cx = TableRenderContext::new(&self, interaction_state.clone(), cx);
@@ -1377,18 +1378,18 @@ impl RenderOnce for Table {
                 this.track_focus(focus_handle)
             })
             .when_some(
-                interaction_state.as_ref().zip(cell_text),
-                |this, (interaction_state, cell_text)| {
+                interaction_state.as_ref().zip(text_for_selection),
+                |this, (interaction_state, text_for_selection)| {
                     this.on_action({
                         let interaction_state = interaction_state.clone();
-                        let cell_text = cell_text.clone();
+                        let text_for_selection = text_for_selection.clone();
 
                         move |_: &actions::editor::Copy, window: &mut Window, cx: &mut App| {
                             interaction_state.update(cx, |state, cx| {
                                 state.copy_selected_text(
                                     row_count,
                                     column_count,
-                                    &cell_text,
+                                    text_for_selection.as_ref(),
                                     window,
                                     cx,
                                 );

@@ -4,7 +4,7 @@ use gpui::{
     Window, prelude::*,
 };
 use num_traits::ToPrimitive;
-use std::{sync::Arc, time::Duration};
+use std::{rc::Rc, sync::Arc, time::Duration};
 
 use editor::Editor;
 use http_client::StatusCode;
@@ -76,7 +76,7 @@ fn format_elapsed_duration(elapsed_duration: Duration) -> SharedString {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum ResponsePanelTab {
+pub enum ResponsePanelTab {
     Body,
     Headers,
     Cookies,
@@ -244,27 +244,47 @@ impl ResponseState {
 pub struct Response {
     request_id: usize,
     state: ResponseState,
-    headers: Vec<ResponseHeader>,
-    cookies: Vec<ResponseCookie>,
     editor: Entity<Editor>,
     payload: Entity<MultiBuffer>,
+    headers: Vec<ResponseHeader>,
+    headers_table: Entity<TableInteractionState>,
+    headers_list_state: ListState,
+    cookies: Vec<ResponseCookie>,
+    cookies_table: Entity<TableInteractionState>,
+    cookies_list_state: ListState,
 }
 
 impl Response {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let (payload, editor) = Self::new_editor(window, cx);
+        let (editor, payload) = Self::new_editor(window, cx);
+        let headers_table = cx.new(|cx| {
+            TableInteractionState::new(cx).with_custom_scrollbar(
+                Scrollbars::new(ScrollAxes::Vertical).id("response-headers-scrollbar"),
+            )
+        });
+        let headers_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
+        let cookies_table = cx.new(|cx| {
+            TableInteractionState::new(cx).with_custom_scrollbar(
+                Scrollbars::new(ScrollAxes::Vertical).id("response-cookies-scrollbar"),
+            )
+        });
+        let cookies_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
 
         Self {
             request_id: 0,
             state: ResponseState::default(),
-            headers: Vec::new(),
-            cookies: Vec::new(),
             editor,
             payload,
+            headers: Vec::new(),
+            headers_table,
+            headers_list_state,
+            cookies: Vec::new(),
+            cookies_table,
+            cookies_list_state,
         }
     }
 
-    fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<MultiBuffer>, Entity<Editor>) {
+    fn new_editor(window: &mut Window, cx: &mut App) -> (Entity<Editor>, Entity<MultiBuffer>) {
         let payload = cx.new(move |cx| {
             let buffer = cx.new(|cx| Buffer::local("", cx).with_language(PLAIN_TEXT.clone(), cx));
             MultiBuffer::singleton(buffer, cx)
@@ -275,7 +295,7 @@ impl Response {
             editor
         });
 
-        (payload, editor)
+        (editor, payload)
     }
 
     fn summary(&self) -> Option<ResponseSummary> {
@@ -290,8 +310,18 @@ impl Response {
         &self.headers
     }
 
-    fn cookies(&self) -> &[ResponseCookie] {
-        &self.cookies
+    fn sync_headers_row_count(&self) {
+        let headers_row_count = self.headers.len();
+        if self.headers_list_state.item_count() != headers_row_count {
+            self.headers_list_state.reset(headers_row_count);
+        }
+    }
+
+    fn clear_headers_text_selection(&self, cx: &mut App) {
+        self.headers_table.update(cx, |table, cx| {
+            table.clear_text_selection();
+            cx.notify();
+        });
     }
 
     pub fn set_headers(
@@ -305,8 +335,50 @@ impl Response {
         }
 
         self.headers = headers;
+        self.sync_headers_row_count();
+        self.clear_headers_text_selection(cx);
         cx.notify();
         true
+    }
+
+    fn cookies(&self) -> &[ResponseCookie] {
+        &self.cookies
+    }
+
+    fn cookies_row_count(&self) -> usize {
+        self.cookies
+            .iter()
+            .map(|cookie| {
+                let attribute_row_count = [
+                    cookie.domain.is_some(),
+                    cookie.path.is_some(),
+                    cookie.expires.is_some(),
+                    cookie.max_age.is_some(),
+                    cookie.secure.is_some(),
+                    cookie.http_only.is_some(),
+                    cookie.same_site.is_some(),
+                ]
+                .into_iter()
+                .filter(|has_attribute| *has_attribute)
+                .count();
+
+                1 + attribute_row_count
+            })
+            .sum()
+    }
+
+    fn sync_cookies_row_count(&self) {
+        let cookies_row_count = self.cookies_row_count();
+        if self.cookies_list_state.item_count() != cookies_row_count {
+            self.cookies_list_state.reset(cookies_row_count);
+        }
+    }
+
+    fn clear_cookies_text_selection(&self, cx: &mut App) {
+        self.cookies_table.update(cx, |table, cx| {
+            table.clear_text_selection();
+            cx.notify();
+        });
     }
 
     pub fn set_cookies(
@@ -320,6 +392,8 @@ impl Response {
         }
 
         self.cookies = cookies;
+        self.sync_cookies_row_count();
+        self.clear_cookies_text_selection(cx);
         cx.notify();
         true
     }
@@ -330,13 +404,17 @@ impl Response {
 
     pub fn begin_response(&mut self, window: &mut Window, cx: &mut Context<Self>) -> usize {
         let was_focused = self.editor.focus_handle(cx).contains_focused(window, cx);
-        let (payload, editor) = Self::new_editor(window, cx);
+        let (editor, payload) = Self::new_editor(window, cx);
         let request_id = self.request_id.wrapping_add(1);
 
         self.request_id = request_id;
         self.state = ResponseState::default();
         self.headers.clear();
         self.cookies.clear();
+        self.headers_list_state.reset(0);
+        self.cookies_list_state.reset(0);
+        self.clear_headers_text_selection(cx);
+        self.clear_cookies_text_selection(cx);
         self.editor = editor;
         self.payload = payload;
         if was_focused {
@@ -397,10 +475,7 @@ pub struct ResponsePanel {
     focus_handle: FocusHandle,
     pane: WeakEntity<Pane>,
     active_tab: ResponsePanelTab,
-    headers_table: Entity<TableInteractionState>,
-    headers_list_state: ListState,
-    cookies_table: Entity<TableInteractionState>,
-    cookies_list_state: ListState,
+    on_active_tab_change: Option<Rc<dyn Fn(ResponsePanelTab, &mut Context<ResponsePanel>)>>,
     response: Option<Entity<Response>>,
     response_subscription: Option<Subscription>,
     _focus_subscription: Subscription,
@@ -412,18 +487,6 @@ impl ResponsePanel {
 
     pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let headers_table = cx.new(|cx| {
-            TableInteractionState::new(cx).with_custom_scrollbar(
-                Scrollbars::new(ScrollAxes::Vertical).id("response-headers-scrollbar"),
-            )
-        });
-        let headers_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
-        let cookies_table = cx.new(|cx| {
-            TableInteractionState::new(cx).with_custom_scrollbar(
-                Scrollbars::new(ScrollAxes::Vertical).id("response-cookies-scrollbar"),
-            )
-        });
-        let cookies_list_state = ListState::new(0, ListAlignment::Top, gpui::px(1.0)).measure_all();
         let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
             cx.on_next_frame(window, |response_panel, window, cx| {
                 let editor = response_panel.response.as_ref().and_then(|response| {
@@ -437,7 +500,7 @@ impl ResponsePanel {
                 });
 
                 if response_panel.focus_handle.is_focused(window)
-                    && response_panel.active_tab == ResponsePanelTab::Body
+                    && response_panel.active_tab() == ResponsePanelTab::Body
                     && let Some(editor) = editor
                 {
                     editor.focus_handle(cx).focus(window, cx);
@@ -449,51 +512,47 @@ impl ResponsePanel {
             focus_handle,
             pane,
             active_tab: ResponsePanelTab::Body,
-            headers_table,
-            headers_list_state,
-            cookies_table,
-            cookies_list_state,
+            on_active_tab_change: None,
             response: None,
             response_subscription: None,
             _focus_subscription: focus_subscription,
         }
     }
 
-    fn table_row_counts(response: &Entity<Response>, cx: &App) -> (usize, usize) {
-        let response = response.read(cx);
-        let headers_row_count = response.headers().len();
-        let cookies_row_count = response
-            .cookies()
-            .iter()
-            .map(|cookie| {
-                let attribute_row_count = [
-                    cookie.domain.is_some(),
-                    cookie.path.is_some(),
-                    cookie.expires.is_some(),
-                    cookie.max_age.is_some(),
-                    cookie.secure.is_some(),
-                    cookie.http_only.is_some(),
-                    cookie.same_site.is_some(),
-                ]
-                .into_iter()
-                .filter(|has_attribute| *has_attribute)
-                .count();
-
-                1 + attribute_row_count
-            })
-            .sum();
-
-        (headers_row_count, cookies_row_count)
+    #[cfg(any(test, feature = "test"))]
+    pub fn headers_list_state(&self, cx: &App) -> Option<ListState> {
+        self.response
+            .as_ref()
+            .map(|response| response.read(cx).headers_list_state.clone())
     }
 
-    fn sync_table_row_counts(&self, headers_row_count: usize, cookies_row_count: usize) {
-        if self.headers_list_state.item_count() != headers_row_count {
-            self.headers_list_state.reset(headers_row_count);
+    #[cfg(any(test, feature = "test"))]
+    pub fn cookies_list_state(&self, cx: &App) -> Option<ListState> {
+        self.response
+            .as_ref()
+            .map(|response| response.read(cx).cookies_list_state.clone())
+    }
+
+    fn active_tab(&self) -> ResponsePanelTab {
+        self.active_tab
+    }
+
+    fn set_active_tab(&mut self, active_tab: ResponsePanelTab, cx: &mut Context<Self>) {
+        if self.active_tab == active_tab {
+            return;
         }
 
-        if self.cookies_list_state.item_count() != cookies_row_count {
-            self.cookies_list_state.reset(cookies_row_count);
+        self.active_tab = active_tab;
+        if let Some(on_active_tab_change) = self.on_active_tab_change.clone() {
+            on_active_tab_change(active_tab, cx);
         }
+        if let Some(response) = self.response.clone() {
+            response.update(cx, |response, cx| {
+                response.clear_headers_text_selection(cx);
+                response.clear_cookies_text_selection(cx);
+            });
+        }
+        cx.notify();
     }
 
     fn cookie_table_rows(cookies: &[ResponseCookie]) -> Vec<CookieTableRow> {
@@ -539,50 +598,42 @@ impl ResponsePanel {
         rows
     }
 
-    fn clear_table_text_selection(&self, cx: &mut Context<Self>) {
-        for table in [&self.headers_table, &self.cookies_table] {
-            table.update(cx, |table, cx| {
-                table.clear_text_selection();
-                cx.notify();
+    pub fn set_response(
+        &mut self,
+        response: Option<Entity<Response>>,
+        active_tab: ResponsePanelTab,
+        on_active_tab_change: Option<Rc<dyn Fn(ResponsePanelTab, &mut Context<ResponsePanel>)>>,
+        cx: &mut Context<Self>,
+    ) {
+        self.on_active_tab_change = on_active_tab_change;
+
+        let response_changed = match (&self.response, &response) {
+            (Some(old_response), Some(new_response)) => old_response != new_response,
+            (None, None) => false,
+            _ => true,
+        };
+        let active_tab_changed = self.active_tab != active_tab;
+
+        if response_changed {
+            let _previous_subscription = self.response_subscription.take();
+            self.response_subscription = response.as_ref().map(|response| {
+                cx.observe(response, |_, _, cx| {
+                    cx.notify();
+                })
             });
-        }
-    }
-
-    pub fn set_response(&mut self, response: Option<Entity<Response>>, cx: &mut Context<Self>) {
-        let unchanged = match (&self.response, &response) {
-            (Some(old_response), Some(new_response)) => old_response == new_response,
-            (None, None) => true,
-            _ => false,
-        };
-        if unchanged {
-            return;
+            self.response = response;
         }
 
-        let (headers_row_count, cookies_row_count) = if let Some(response) = response.as_ref() {
-            Self::table_row_counts(response, cx)
-        } else {
-            (0, 0)
-        };
-        let _previous_subscription = self.response_subscription.take();
-        self.clear_table_text_selection(cx);
-        self.headers_list_state.reset(0);
-        self.cookies_list_state.reset(0);
-        self.response_subscription = response.as_ref().map(|response| {
-            cx.observe(response, |response_panel, response, cx| {
-                let (headers_row_count, cookies_row_count) = Self::table_row_counts(&response, cx);
-                let row_counts_changed = response_panel.headers_list_state.item_count()
-                    != headers_row_count
-                    || response_panel.cookies_list_state.item_count() != cookies_row_count;
-                response_panel.sync_table_row_counts(headers_row_count, cookies_row_count);
-                if row_counts_changed {
-                    response_panel.clear_table_text_selection(cx);
-                }
-                cx.notify();
-            })
-        });
-        self.sync_table_row_counts(headers_row_count, cookies_row_count);
-        self.response = response;
-        cx.notify();
+        if response_changed || active_tab_changed {
+            self.active_tab = active_tab;
+            if let Some(response) = self.response.clone() {
+                response.update(cx, |response, cx| {
+                    response.clear_headers_text_selection(cx);
+                    response.clear_cookies_text_selection(cx);
+                });
+            }
+            cx.notify();
+        }
     }
 
     pub fn text(&self, cx: &App) -> String {
@@ -636,28 +687,37 @@ impl ResponsePanel {
     }
 
     fn render_headers(&self, cx: &mut Context<Self>) -> AnyElement {
-        let headers = Arc::new(
-            self.response
-                .as_ref()
-                .map_or_else(Vec::new, |response| response.read(cx).headers().to_vec()),
-        );
+        let Some(response) = self.response.as_ref() else {
+            return Self::render_empty_content(ResponsePanelTab::Headers);
+        };
+
+        let (headers, headers_table, headers_list_state) = {
+            let response = response.read(cx);
+            (
+                response.headers().to_vec(),
+                response.headers_table.clone(),
+                response.headers_list_state.clone(),
+            )
+        };
+
         if headers.is_empty() {
             return Self::render_empty_content(ResponsePanelTab::Headers);
         }
 
+        let headers = Rc::new(headers);
         let row_count = headers.len();
         let column_count = 2;
         let headers_for_text = headers.clone();
         let headers_for_rows = headers.clone();
         let table = Table::new(column_count)
-            .interactable(&self.headers_table)
+            .interactable(&headers_table)
             .width_config(ColumnWidthConfig::explicit(vec![
                 DefiniteLength::Fraction(0.24),
                 DefiniteLength::Fraction(0.76),
             ]))
             .disable_base_style()
             .hide_row_hover()
-            .cell_text(move |row_index, column_index, _, _| {
+            .text_for_selection(move |row_index, column_index, _, _| {
                 let header = headers_for_text.get(row_index)?;
                 match column_index {
                     NAME_COLUMN_INDEX => Some(header.name.clone()),
@@ -665,7 +725,7 @@ impl ResponsePanel {
                     _ => None,
                 }
             })
-            .variable_row_height_list(row_count, self.headers_list_state.clone(), {
+            .variable_row_height_list(row_count, headers_list_state, {
                 move |header_index, _, _| {
                     let header = headers_for_rows
                         .get(header_index)
@@ -692,15 +752,24 @@ impl ResponsePanel {
     }
 
     fn render_cookies(&self, cx: &mut Context<Self>) -> AnyElement {
-        let cookies = self
-            .response
-            .as_ref()
-            .map_or_else(Vec::new, |response| response.read(cx).cookies().to_vec());
+        let Some(response) = self.response.as_ref() else {
+            return Self::render_empty_content(ResponsePanelTab::Cookies);
+        };
+
+        let (cookies, cookies_table, cookies_list_state) = {
+            let response = response.read(cx);
+            (
+                response.cookies().to_vec(),
+                response.cookies_table.clone(),
+                response.cookies_list_state.clone(),
+            )
+        };
+
         if cookies.is_empty() {
             return Self::render_empty_content(ResponsePanelTab::Cookies);
         }
 
-        let rows = Arc::new(Self::cookie_table_rows(&cookies));
+        let rows = Rc::new(Self::cookie_table_rows(&cookies));
         let cookie_header_background = cx.theme().colors().panel_tab_bar_background.opacity(0.85);
         let row_count = rows.len();
         let column_count = 2;
@@ -708,7 +777,7 @@ impl ResponsePanel {
         let rows_for_text = rows.clone();
         let rows_for_render = rows.clone();
         let table = Table::new(column_count)
-            .interactable(&self.cookies_table)
+            .interactable(&cookies_table)
             .width_config(ColumnWidthConfig::explicit(vec![
                 DefiniteLength::Fraction(0.24),
                 DefiniteLength::Fraction(0.76),
@@ -727,7 +796,7 @@ impl ResponsePanel {
                     row.into_any_element()
                 }
             })
-            .cell_text(move |row_index, column_index, _, _| {
+            .text_for_selection(move |row_index, column_index, _, _| {
                 let row = rows_for_text.get(row_index)?;
                 match column_index {
                     NAME_COLUMN_INDEX => Some(row.name.clone()),
@@ -735,7 +804,7 @@ impl ResponsePanel {
                     _ => None,
                 }
             })
-            .variable_row_height_list(row_count, self.cookies_list_state.clone(), {
+            .variable_row_height_list(row_count, cookies_list_state, {
                 move |row_index, _, _| {
                     let row = rows_for_render
                         .get(row_index)
@@ -813,7 +882,7 @@ impl ResponsePanel {
     }
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
-        let active_tab = self.active_tab;
+        let active_tab = self.active_tab();
         let response_summary = self
             .response
             .as_ref()
@@ -845,11 +914,7 @@ impl ResponsePanel {
                     .cursor_pointer()
                     .on_click(cx.listener(move |response_panel, _, _, cx| {
                         cx.stop_propagation();
-                        if response_panel.active_tab != set_active_tab {
-                            response_panel.active_tab = set_active_tab;
-                            response_panel.clear_table_text_selection(cx);
-                            cx.notify();
-                        }
+                        response_panel.set_active_tab(set_active_tab, cx);
                     }))
                     .child(
                         Label::new(label)
@@ -955,7 +1020,7 @@ impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus_handle = self.focus_handle(cx);
         let tab_bar = self.render_tab_bar(cx);
-        let tab_content = match self.active_tab {
+        let tab_content = match self.active_tab() {
             ResponsePanelTab::Body => self.render_body(cx),
             ResponsePanelTab::Headers => self.render_headers(cx),
             ResponsePanelTab::Cookies => self.render_cookies(cx),

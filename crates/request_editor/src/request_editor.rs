@@ -7,6 +7,7 @@ use gpui::{
     FontWeight, ScrollHandle, SharedString, Subscription, WeakEntity, Window, prelude::*,
 };
 use std::{
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -24,7 +25,9 @@ use project::{
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
     RequestFileState,
 };
-use response_panel::{Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponseState};
+use response_panel::{
+    Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
+};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
@@ -67,15 +70,47 @@ pub fn init(cx: &mut App) {
 }
 
 fn update_response_panel(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
-    let response = workspace
-        .active_item_as::<RequestEditor>(cx)
-        .and_then(|request_editor| request_editor.read(cx).response());
+    let active_request_editor = workspace.active_item_as::<RequestEditor>(cx);
+    let (response, active_response_tab, on_active_response_tab_change) =
+        if let Some(request_editor) = active_request_editor {
+            let (response, active_response_tab) = {
+                let request_editor = request_editor.read(cx);
+                (
+                    request_editor.response(),
+                    request_editor.active_response_tab(),
+                )
+            };
+            (
+                response,
+                active_response_tab,
+                Some(on_active_response_tab_change(request_editor.downgrade())),
+            )
+        } else {
+            (None, ResponsePanelTab::Body, None)
+        };
 
     if let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) {
         response_panel.update(cx, |response_panel, cx| {
-            response_panel.set_response(response, cx);
+            response_panel.set_response(
+                response,
+                active_response_tab,
+                on_active_response_tab_change,
+                cx,
+            );
         });
     }
+}
+
+fn on_active_response_tab_change(
+    request_editor: WeakEntity<RequestEditor>,
+) -> Rc<dyn Fn(ResponsePanelTab, &mut Context<ResponsePanel>)> {
+    Rc::new(move |active_response_tab, cx| {
+        if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+            request_editor.set_active_response_tab(active_response_tab, cx);
+        }) {
+            log::debug!("Failed to update active response tab: {error:?}");
+        }
+    })
 }
 
 fn response_headers(headers: &http::HeaderMap) -> Vec<ResponseHeader> {
@@ -429,6 +464,7 @@ pub struct RequestEditor {
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
     active_tab: RequestEditorTab,
+    active_response_tab: ResponsePanelTab,
     response: Option<Entity<Response>>,
     http_client: Arc<dyn HttpClient>,
     params_scroll_handle: ScrollHandle,
@@ -508,6 +544,7 @@ impl RequestEditor {
             request,
             request_snapshot,
             active_tab: RequestEditorTab::Parameters,
+            active_response_tab: ResponsePanelTab::Body,
             response: None,
             http_client: AppState::global(cx).http_client.clone(),
             params_scroll_handle: ScrollHandle::new(),
@@ -530,6 +567,21 @@ impl RequestEditor {
 
     fn response(&self) -> Option<Entity<Response>> {
         self.response.clone()
+    }
+
+    fn active_response_tab(&self) -> ResponsePanelTab {
+        self.active_response_tab
+    }
+
+    fn set_active_response_tab(
+        &mut self,
+        active_response_tab: ResponsePanelTab,
+        cx: &mut Context<Self>,
+    ) {
+        if self.active_response_tab != active_response_tab {
+            self.active_response_tab = active_response_tab;
+            cx.notify();
+        }
     }
 
     fn unpreview_tab(&self, cx: &mut Context<Self>) {
@@ -933,8 +985,15 @@ impl RequestEditor {
             .response
             .get_or_insert_with(|| cx.new(|cx| Response::new(window, cx)))
             .clone();
+        let active_response_tab = self.active_response_tab;
+        let on_active_response_tab_change = on_active_response_tab_change(cx.weak_entity());
         response_panel.update(cx, |panel, cx| {
-            panel.set_response(Some(response.clone()), cx);
+            panel.set_response(
+                Some(response.clone()),
+                active_response_tab,
+                Some(on_active_response_tab_change),
+                cx,
+            );
         });
 
         let request_id = response.update(cx, |response, cx| response.begin_response(window, cx));
