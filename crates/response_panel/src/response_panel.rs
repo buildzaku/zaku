@@ -25,6 +25,11 @@ pub fn init(cx: &mut App) {
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
             workspace.register_action(
                 |workspace, _: &actions::response_panel::ToggleFocus, window, cx| {
+                    if let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) {
+                        response_panel.update(cx, |response_panel, _| {
+                            response_panel.take_auto_hidden();
+                        });
+                    }
                     workspace.toggle_panel_focus::<ResponsePanel>(window, cx);
                 },
             );
@@ -477,9 +482,11 @@ impl Response {
 pub struct ResponsePanel {
     focus_handle: FocusHandle,
     pane: WeakEntity<Pane>,
+    response: Option<Entity<Response>>,
     active_tab: ResponsePanelTab,
     on_active_tab_change: Option<Rc<dyn Fn(ResponsePanelTab, &mut Context<ResponsePanel>)>>,
-    response: Option<Entity<Response>>,
+    has_response_context: bool,
+    auto_hidden: bool,
     response_subscription: Option<Subscription>,
     _focus_subscription: Subscription,
 }
@@ -514,9 +521,11 @@ impl ResponsePanel {
         Self {
             focus_handle,
             pane,
+            response: None,
             active_tab: ResponsePanelTab::Body,
             on_active_tab_change: None,
-            response: None,
+            has_response_context: false,
+            auto_hidden: false,
             response_subscription: None,
             _focus_subscription: focus_subscription,
         }
@@ -538,6 +547,16 @@ impl ResponsePanel {
 
     fn active_tab(&self) -> ResponsePanelTab {
         self.active_tab
+    }
+
+    pub fn mark_auto_hidden(&mut self) {
+        self.auto_hidden = true;
+    }
+
+    pub fn take_auto_hidden(&mut self) -> bool {
+        let auto_hidden = self.auto_hidden;
+        self.auto_hidden = false;
+        auto_hidden
     }
 
     fn set_active_tab(&mut self, active_tab: ResponsePanelTab, cx: &mut Context<Self>) {
@@ -606,9 +625,12 @@ impl ResponsePanel {
         response: Option<Entity<Response>>,
         active_tab: ResponsePanelTab,
         on_active_tab_change: Option<Rc<dyn Fn(ResponsePanelTab, &mut Context<ResponsePanel>)>>,
+        has_response_context: bool,
         cx: &mut Context<Self>,
     ) {
         self.on_active_tab_change = on_active_tab_change;
+        let response_context_changed = self.has_response_context != has_response_context;
+        self.has_response_context = has_response_context;
 
         let response_changed = match (&self.response, &response) {
             (Some(old_response), Some(new_response)) => old_response != new_response,
@@ -627,7 +649,7 @@ impl ResponsePanel {
             self.response = response;
         }
 
-        if response_changed || active_tab_changed {
+        if response_changed || active_tab_changed || response_context_changed {
             self.active_tab = active_tab;
             if let Some(response) = self.response.clone() {
                 response.update(cx, |response, cx| {
@@ -1022,11 +1044,15 @@ impl Panel for ResponsePanel {
 impl Render for ResponsePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus_handle = self.focus_handle(cx);
-        let tab_bar = self.render_tab_bar(cx);
-        let tab_content = match self.active_tab() {
-            ResponsePanelTab::Body => self.render_body(cx),
-            ResponsePanelTab::Headers => self.render_headers(cx),
-            ResponsePanelTab::Cookies => self.render_cookies(cx),
+        let tab_bar = self.has_response_context.then(|| self.render_tab_bar(cx));
+        let tab_content = if self.has_response_context {
+            match self.active_tab() {
+                ResponsePanelTab::Body => self.render_body(cx),
+                ResponsePanelTab::Headers => self.render_headers(cx),
+                ResponsePanelTab::Cookies => self.render_cookies(cx),
+            }
+        } else {
+            Self::render_empty_content(ResponsePanelTab::Body)
         };
         let colors = cx.theme().colors();
 
@@ -1037,7 +1063,7 @@ impl Render for ResponsePanel {
             .flex_col()
             .size_full()
             .bg(colors.panel_background)
-            .child(tab_bar)
+            .when_some(tab_bar, |this, tab_bar| this.child(tab_bar))
             .child(tab_content)
     }
 }

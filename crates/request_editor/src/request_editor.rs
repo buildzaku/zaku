@@ -35,7 +35,10 @@ use ui::{
     IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
-use workspace::{AppState, Workspace, pane::Pane};
+use workspace::{
+    AppState, Workspace,
+    pane::{Pane, PaneEvent},
+};
 
 use crate::persistence::RequestEditorDb;
 
@@ -47,12 +50,40 @@ pub fn init(cx: &mut App) {
     workspace::register_serializable_item::<RequestEditor>(cx);
 
     cx.observe_new(
-        |workspace: &mut Workspace, _: Option<&mut Window>, cx: &mut Context<Workspace>| {
-            let pane = workspace.pane().clone();
-            cx.observe(&pane, |workspace, _, cx| {
-                update_response_panel(workspace, cx);
-            })
-            .detach();
+        |workspace: &mut Workspace, window: Option<&mut Window>, cx: &mut Context<Workspace>| {
+            if let Some(window) = window {
+                let pane = workspace.pane().clone();
+                let workspace = cx.weak_entity();
+
+                window
+                    .subscribe(
+                        &pane,
+                        cx,
+                        move |_, event: &PaneEvent, window, cx| match event {
+                            PaneEvent::ActivateItem { .. } => {
+                                if let Err(error) = workspace.update(cx, |workspace, cx| {
+                                    update_response_panel(workspace, window, cx);
+                                }) {
+                                    log::debug!("Failed to update response panel: {error:?}");
+                                }
+                            }
+                            PaneEvent::RemovedItem { .. } => {
+                                let workspace = workspace.clone();
+                                window.defer(cx, move |window, cx| {
+                                    if let Err(error) = workspace.update(cx, |workspace, cx| {
+                                        update_response_panel(workspace, window, cx);
+                                    }) {
+                                        log::debug!("Failed to update response panel: {error:?}");
+                                    }
+                                });
+                            }
+                            PaneEvent::AddItem { .. }
+                            | PaneEvent::ChangeItemTitle
+                            | PaneEvent::UserSavedItem { .. } => {}
+                        },
+                    )
+                    .detach();
+            }
 
             workspace.register_action(
                 |workspace, _: &actions::workspace::SendRequest, window, cx| {
@@ -69,35 +100,83 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-fn update_response_panel(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
+fn update_response_panel(
+    workspace: &mut Workspace,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
     let active_request_editor = workspace.active_item_as::<RequestEditor>(cx);
-    let (response, active_response_tab, on_active_response_tab_change) =
+    let (has_response_context, response, active_response_tab, on_active_response_tab_change) =
         if let Some(request_editor) = active_request_editor {
-            let (response, active_response_tab) = {
+            let (has_response_context, response, active_response_tab) = {
                 let request_editor = request_editor.read(cx);
-                (
-                    request_editor.response(),
-                    request_editor.active_response_tab(),
-                )
+                match &request_editor.request {
+                    RequestEditorState::Ready(_) => (
+                        true,
+                        request_editor.response(),
+                        request_editor.active_response_tab(),
+                    ),
+                    RequestEditorState::Invalid { .. } => (false, None, ResponsePanelTab::Body),
+                }
             };
             (
+                has_response_context,
                 response,
                 active_response_tab,
-                Some(on_active_response_tab_change(request_editor.downgrade())),
+                has_response_context
+                    .then(|| on_active_response_tab_change(request_editor.downgrade())),
             )
         } else {
-            (None, ResponsePanelTab::Body, None)
+            (false, None, ResponsePanelTab::Body, None)
         };
 
-    if let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) {
-        response_panel.update(cx, |response_panel, cx| {
-            response_panel.set_response(
-                response,
-                active_response_tab,
-                on_active_response_tab_change,
-                cx,
-            );
-        });
+    let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) else {
+        return;
+    };
+
+    let should_open_response_panel = response_panel.update(cx, |response_panel, cx| {
+        response_panel.set_response(
+            response,
+            active_response_tab,
+            on_active_response_tab_change,
+            has_response_context,
+            cx,
+        );
+
+        if has_response_context {
+            response_panel.take_auto_hidden()
+        } else {
+            false
+        }
+    });
+
+    if has_response_context && should_open_response_panel {
+        workspace.open_panel::<ResponsePanel>(window, cx);
+        return;
+    }
+
+    if !has_response_context {
+        let docks = [
+            workspace.left_dock().clone(),
+            workspace.bottom_dock().clone(),
+        ];
+
+        if let Some(open_dock) = docks.into_iter().find(|dock| {
+            let dock = dock.read(cx);
+            let Some(response_panel_index) = dock.panel_index_for_type::<ResponsePanel>() else {
+                return false;
+            };
+
+            dock.is_open() && dock.active_panel_index() == Some(response_panel_index)
+        }) {
+            response_panel.update(cx, |response_panel, _| {
+                response_panel.mark_auto_hidden();
+            });
+
+            open_dock.update(cx, |dock, cx| {
+                dock.set_open(false, window, cx);
+            });
+        }
     }
 }
 
@@ -992,6 +1071,7 @@ impl RequestEditor {
                 Some(response.clone()),
                 active_response_tab,
                 Some(on_active_response_tab_change),
+                true,
                 cx,
             );
         });
