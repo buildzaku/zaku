@@ -14,6 +14,9 @@ path = "src/response_panel.rs"
 [lints]
 workspace = true
 
+[features]
+test = []
+
 [dependencies]
 actions = { workspace = true }
 editor = { workspace = true }

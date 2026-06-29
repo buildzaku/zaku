@@ -7,6 +7,7 @@ use gpui::{
     FontWeight, ScrollHandle, SharedString, Subscription, WeakEntity, Window, prelude::*,
 };
 use std::{
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -24,7 +25,9 @@ use project::{
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
     RequestFileState,
 };
-use response_panel::{Response, ResponsePanel, ResponseState};
+use response_panel::{
+    Response, ResponseCookie, ResponseHeader, ResponsePanel, ResponsePanelTab, ResponseState,
+};
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
@@ -32,7 +35,10 @@ use ui::{
     IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
-use workspace::{AppState, Workspace, pane::Pane};
+use workspace::{
+    AppState, Workspace,
+    pane::{Pane, PaneEvent},
+};
 
 use crate::persistence::RequestEditorDb;
 
@@ -44,12 +50,40 @@ pub fn init(cx: &mut App) {
     workspace::register_serializable_item::<RequestEditor>(cx);
 
     cx.observe_new(
-        |workspace: &mut Workspace, _: Option<&mut Window>, cx: &mut Context<Workspace>| {
-            let pane = workspace.pane().clone();
-            cx.observe(&pane, |workspace, _, cx| {
-                update_response_panel(workspace, cx);
-            })
-            .detach();
+        |workspace: &mut Workspace, window: Option<&mut Window>, cx: &mut Context<Workspace>| {
+            if let Some(window) = window {
+                let pane = workspace.pane().clone();
+                let workspace = cx.weak_entity();
+
+                window
+                    .subscribe(
+                        &pane,
+                        cx,
+                        move |_, event: &PaneEvent, window, cx| match event {
+                            PaneEvent::ActivateItem { .. } => {
+                                if let Err(error) = workspace.update(cx, |workspace, cx| {
+                                    update_response_panel(workspace, window, cx);
+                                }) {
+                                    log::debug!("Failed to update response panel: {error:?}");
+                                }
+                            }
+                            PaneEvent::RemovedItem { .. } => {
+                                let workspace = workspace.clone();
+                                window.defer(cx, move |window, cx| {
+                                    if let Err(error) = workspace.update(cx, |workspace, cx| {
+                                        update_response_panel(workspace, window, cx);
+                                    }) {
+                                        log::debug!("Failed to update response panel: {error:?}");
+                                    }
+                                });
+                            }
+                            PaneEvent::AddItem { .. }
+                            | PaneEvent::ChangeItemTitle
+                            | PaneEvent::UserSavedItem { .. } => {}
+                        },
+                    )
+                    .detach();
+            }
 
             workspace.register_action(
                 |workspace, _: &actions::workspace::SendRequest, window, cx| {
@@ -66,16 +100,142 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-fn update_response_panel(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
-    let response = workspace
-        .active_item_as::<RequestEditor>(cx)
-        .and_then(|request_editor| request_editor.read(cx).response());
+fn update_response_panel(
+    workspace: &mut Workspace,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let active_request_editor = workspace.active_item_as::<RequestEditor>(cx);
+    let (has_response_context, response, active_response_tab, on_active_response_tab_change) =
+        if let Some(request_editor) = active_request_editor {
+            let (has_response_context, response, active_response_tab) = {
+                let request_editor = request_editor.read(cx);
+                match &request_editor.request {
+                    RequestEditorState::Ready(_) => (
+                        true,
+                        request_editor.response(),
+                        request_editor.active_response_tab(),
+                    ),
+                    RequestEditorState::Invalid { .. } => (false, None, ResponsePanelTab::Body),
+                }
+            };
+            (
+                has_response_context,
+                response,
+                active_response_tab,
+                has_response_context
+                    .then(|| on_active_response_tab_change(request_editor.downgrade())),
+            )
+        } else {
+            (false, None, ResponsePanelTab::Body, None)
+        };
 
-    if let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) {
-        response_panel.update(cx, |response_panel, cx| {
-            response_panel.set_response(response, cx);
-        });
+    let Some(response_panel) = workspace.panel::<ResponsePanel>(cx) else {
+        return;
+    };
+
+    let should_open_response_panel = response_panel.update(cx, |response_panel, cx| {
+        response_panel.set_response(
+            response,
+            active_response_tab,
+            on_active_response_tab_change,
+            has_response_context,
+            cx,
+        );
+
+        if has_response_context {
+            response_panel.take_auto_hidden()
+        } else {
+            false
+        }
+    });
+
+    if has_response_context && should_open_response_panel {
+        workspace.open_panel::<ResponsePanel>(window, cx);
+        return;
     }
+
+    if !has_response_context {
+        let docks = [
+            workspace.left_dock().clone(),
+            workspace.bottom_dock().clone(),
+        ];
+
+        if let Some(open_dock) = docks.into_iter().find(|dock| {
+            let dock = dock.read(cx);
+            let Some(response_panel_index) = dock.panel_index_for_type::<ResponsePanel>() else {
+                return false;
+            };
+
+            dock.is_open() && dock.active_panel_index() == Some(response_panel_index)
+        }) {
+            response_panel.update(cx, |response_panel, _| {
+                response_panel.mark_auto_hidden();
+            });
+
+            open_dock.update(cx, |dock, cx| {
+                dock.set_open(false, window, cx);
+            });
+        }
+    }
+}
+
+fn on_active_response_tab_change(
+    request_editor: WeakEntity<RequestEditor>,
+) -> Rc<dyn Fn(ResponsePanelTab, &mut Context<ResponsePanel>)> {
+    Rc::new(move |active_response_tab, cx| {
+        if let Err(error) = request_editor.update(cx, |request_editor, cx| {
+            request_editor.set_active_response_tab(active_response_tab, cx);
+        }) {
+            log::debug!("Failed to update active response tab: {error:?}");
+        }
+    })
+}
+
+fn response_headers(headers: &http::HeaderMap) -> Vec<ResponseHeader> {
+    headers
+        .iter()
+        .map(|(name, value)| {
+            ResponseHeader::new(
+                name.as_str().to_string(),
+                String::from_utf8_lossy(value.as_bytes()).into_owned(),
+            )
+        })
+        .collect()
+}
+
+fn response_cookies(headers: &http::HeaderMap) -> Vec<ResponseCookie> {
+    headers
+        .get_all(http::header::SET_COOKIE)
+        .iter()
+        .filter_map(|header| {
+            let header = String::from_utf8_lossy(header.as_bytes());
+            let cookie = cookie::Cookie::parse(header.as_ref()).ok()?;
+            Some(
+                ResponseCookie::new(cookie.name().to_string(), cookie.value().to_string())
+                    .domain(cookie.domain().map(str::to_string))
+                    .path(cookie.path().map(str::to_string))
+                    .expires(cookie.expires().map(|expires| {
+                        expires.datetime().map_or_else(
+                            || "session".to_string(),
+                            |expires_datetime| expires_datetime.to_string(),
+                        )
+                    }))
+                    .max_age(
+                        cookie
+                            .max_age()
+                            .map(|max_age| max_age.whole_seconds().to_string()),
+                    )
+                    .secure(cookie.secure())
+                    .http_only(cookie.http_only())
+                    .same_site(cookie.same_site().map(|same_site| match same_site {
+                        cookie::SameSite::Strict => "strict",
+                        cookie::SameSite::Lax => "lax",
+                        cookie::SameSite::None => "none",
+                    })),
+            )
+        })
+        .collect()
 }
 
 pub trait RequestPaneExt: Sized {
@@ -383,6 +543,7 @@ pub struct RequestEditor {
     request: RequestEditorState,
     request_snapshot: Option<RequestSnapshot>,
     active_tab: RequestEditorTab,
+    active_response_tab: ResponsePanelTab,
     response: Option<Entity<Response>>,
     http_client: Arc<dyn HttpClient>,
     params_scroll_handle: ScrollHandle,
@@ -462,6 +623,7 @@ impl RequestEditor {
             request,
             request_snapshot,
             active_tab: RequestEditorTab::Parameters,
+            active_response_tab: ResponsePanelTab::Body,
             response: None,
             http_client: AppState::global(cx).http_client.clone(),
             params_scroll_handle: ScrollHandle::new(),
@@ -484,6 +646,21 @@ impl RequestEditor {
 
     fn response(&self) -> Option<Entity<Response>> {
         self.response.clone()
+    }
+
+    fn active_response_tab(&self) -> ResponsePanelTab {
+        self.active_response_tab
+    }
+
+    fn set_active_response_tab(
+        &mut self,
+        active_response_tab: ResponsePanelTab,
+        cx: &mut Context<Self>,
+    ) {
+        if self.active_response_tab != active_response_tab {
+            self.active_response_tab = active_response_tab;
+            cx.notify();
+        }
     }
 
     fn unpreview_tab(&self, cx: &mut Context<Self>) {
@@ -887,8 +1064,16 @@ impl RequestEditor {
             .response
             .get_or_insert_with(|| cx.new(|cx| Response::new(window, cx)))
             .clone();
+        let active_response_tab = self.active_response_tab;
+        let on_active_response_tab_change = on_active_response_tab_change(cx.weak_entity());
         response_panel.update(cx, |panel, cx| {
-            panel.set_response(Some(response.clone()), cx);
+            panel.set_response(
+                Some(response.clone()),
+                active_response_tab,
+                Some(on_active_response_tab_change),
+                true,
+                cx,
+            );
         });
 
         let request_id = response.update(cx, |response, cx| response.begin_response(window, cx));
@@ -1027,6 +1212,16 @@ impl RequestEditor {
                     };
 
                     let status_code = received.status();
+                    let response_headers = response_headers(received.headers());
+                    let response_cookies = response_cookies(received.headers());
+                    let still_active = response.update(cx, |response, cx| {
+                        response.set_headers(request_id, response_headers, cx)
+                            && response.set_cookies(request_id, response_cookies, cx)
+                    });
+                    if !still_active {
+                        return;
+                    }
+
                     let content_type = received
                         .headers()
                         .get(http::header::CONTENT_TYPE)
@@ -1178,8 +1373,9 @@ impl RequestEditor {
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let active_tab = self.active_tab;
+        let colors = cx.theme().colors();
 
-        let tab =
+        let render_tab =
             |id: ElementId, active: bool, label: SharedString, set_active_tab: RequestEditorTab| {
                 let colors = cx.theme().colors();
 
@@ -1189,18 +1385,10 @@ impl RequestEditor {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .h(DynamicSpacing::Base24.px(cx))
+                    .justify_center()
+                    .h_full()
+                    .min_w(DynamicSpacing::Base48.px(cx))
                     .px(DynamicSpacing::Base08.px(cx))
-                    .rounded_sm()
-                    .border_1()
-                    .when(active, |this| {
-                        this.border_color(colors.border.opacity(0.25))
-                            .bg(colors.panel_tab_active_background)
-                    })
-                    .when(!active, |this| {
-                        this.border_color(gpui::transparent_black())
-                            .bg(gpui::transparent_black())
-                    })
                     .cursor_pointer()
                     .on_click(cx.listener(move |request_editor, _, _, cx| {
                         cx.stop_propagation();
@@ -1210,20 +1398,36 @@ impl RequestEditor {
                         }
                     }))
                     .child(
-                        Label::new(label)
-                            .size(LabelSize::Small)
-                            .line_height_style(LineHeightStyle::UiLabel)
-                            .weight(FontWeight::MEDIUM)
-                            .color(if active {
-                                Color::Custom(colors.panel_tab_active_foreground)
-                            } else {
-                                Color::Custom(colors.panel_tab_inactive_foreground)
+                        gpui::div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .h_full()
+                            .when(active, |this| {
+                                this.child(
+                                    gpui::div()
+                                        .absolute()
+                                        .left_0()
+                                        .right_0()
+                                        .bottom_0()
+                                        .h(DynamicSpacing::Base01.px(cx))
+                                        .bg(colors.panel_tab_active_foreground),
+                                )
                             })
-                            .single_line(),
+                            .child(
+                                Label::new(label)
+                                    .size(LabelSize::Small)
+                                    .line_height_style(LineHeightStyle::UiLabel)
+                                    .weight(FontWeight::MEDIUM)
+                                    .color(if active {
+                                        Color::Custom(colors.panel_tab_active_foreground)
+                                    } else {
+                                        Color::Custom(colors.panel_tab_inactive_foreground)
+                                    })
+                                    .single_line(),
+                            ),
                     )
             };
-
-        let colors = cx.theme().colors();
 
         gpui::div()
             .id("request-editor-tabs")
@@ -1231,24 +1435,23 @@ impl RequestEditor {
             .items_center()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
-            .gap_1()
             .px_1()
             .border_y_1()
             .border_color(colors.border)
             .bg(colors.panel_tab_bar_background)
-            .child(tab(
+            .child(render_tab(
                 ElementId::Name("parameters-tab".into()),
                 active_tab == RequestEditorTab::Parameters,
                 "Parameters".into(),
                 RequestEditorTab::Parameters,
             ))
-            .child(tab(
+            .child(render_tab(
                 ElementId::Name("headers-tab".into()),
                 active_tab == RequestEditorTab::Headers,
                 "Headers".into(),
                 RequestEditorTab::Headers,
             ))
-            .child(tab(
+            .child(render_tab(
                 ElementId::Name("body-tab".into()),
                 active_tab == RequestEditorTab::Body,
                 "Body".into(),

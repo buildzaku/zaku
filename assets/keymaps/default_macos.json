@@ -38,8 +38,20 @@
       "cmd-b": "workspace::ToggleLeftDock",
       "cmd-j": "workspace::ToggleBottomDock",
       "cmd-s": "workspace::Save",
+      "cmd-enter": "workspace::SendRequest",
       "cmd-shift-e": "project_panel::ToggleFocus",
       "cmd-shift-r": "response_panel::ToggleFocus"
+    }
+  },
+  {
+    "context": "Welcome",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-1": ["welcome::OpenRecentProject", 0],
+      "cmd-2": ["welcome::OpenRecentProject", 1],
+      "cmd-3": ["welcome::OpenRecentProject", 2],
+      "cmd-4": ["welcome::OpenRecentProject", 3],
+      "cmd-5": ["welcome::OpenRecentProject", 4]
     }
   },
   {
@@ -85,14 +97,18 @@
     }
   },
   {
-    "context": "Welcome",
+    "context": "ResponsePanel",
     "use_key_equivalents": true,
     "bindings": {
-      "cmd-1": ["welcome::OpenRecentProject", 0],
-      "cmd-2": ["welcome::OpenRecentProject", 1],
-      "cmd-3": ["welcome::OpenRecentProject", 2],
-      "cmd-4": ["welcome::OpenRecentProject", 3],
-      "cmd-5": ["welcome::OpenRecentProject", 4]
+      "cmd-enter": "workspace::SendRequest"
+    }
+  },
+  {
+    "context": "ResponsePanel > Text",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-a": "editor::SelectAll",
+      "cmd-c": "editor::Copy"
     }
   },
   {

@@ -218,6 +218,7 @@ pub fn render_keybinding_keystroke(
 fn icon_for_key(key: &str, platform_style: PlatformStyle) -> Option<IconName> {
     match key {
         "backspace" | "delete" => Some(IconName::Backspace),
+        "enter" => Some(IconName::Return),
         "shift" if platform_style == PlatformStyle::Mac => Some(IconName::Shift),
         "control" | "function" if platform_style == PlatformStyle::Mac => Some(IconName::Control),
         "platform" if platform_style == PlatformStyle::Mac => Some(IconName::Command),

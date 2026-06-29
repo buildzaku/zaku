@@ -41,6 +41,7 @@ pub enum IconName {
     Network,
     Option,
     Plus,
+    Return,
     Shift,
     Trash,
     Tree,
