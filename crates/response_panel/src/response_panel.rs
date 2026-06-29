@@ -667,25 +667,6 @@ impl ResponsePanel {
             .map_or_else(String::new, |response| response.read(cx).text(cx))
     }
 
-    fn render_empty_content(tab: ResponsePanelTab) -> AnyElement {
-        gpui::div()
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(
-                Label::new(match tab {
-                    ResponsePanelTab::Body => "NO RESPONSE",
-                    ResponsePanelTab::Headers => "NO HEADERS",
-                    ResponsePanelTab::Cookies => "NO COOKIES",
-                })
-                .size(LabelSize::Small)
-                .color(Color::Muted),
-            )
-            .into_any_element()
-    }
-
     fn render_send_request_hint(&self, cx: &App) -> AnyElement {
         gpui::div()
             .flex_1()
@@ -750,7 +731,18 @@ impl ResponsePanel {
         };
 
         if headers.is_empty() {
-            return Self::render_empty_content(ResponsePanelTab::Headers);
+            return gpui::div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Label::new("No headers received.")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+                .into_any_element();
         }
 
         let headers = Rc::new(headers);
@@ -819,7 +811,18 @@ impl ResponsePanel {
         };
 
         if cookies.is_empty() {
-            return Self::render_empty_content(ResponsePanelTab::Cookies);
+            return gpui::div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Label::new("No cookies received.")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+                .into_any_element();
         }
 
         let rows = Rc::new(Self::cookie_table_rows(&cookies));
@@ -1096,7 +1099,7 @@ impl Render for ResponsePanel {
                 .items_center()
                 .justify_center()
                 .child(
-                    Label::new("NO RESPONSE AVAILABLE")
+                    Label::new("No response available.")
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
