@@ -717,13 +717,16 @@ impl ResponsePanel {
             return self.render_send_request_hint(cx);
         };
 
-        let (headers, headers_table, headers_list_state) = {
+        let (is_fetching, headers, headers_table, headers_list_state) = {
             let response = response.read(cx);
-            if matches!(response.state(), ResponseState::Idle) {
-                return self.render_send_request_hint(cx);
-            }
+            let is_fetching = match response.state() {
+                ResponseState::Idle => return self.render_send_request_hint(cx),
+                ResponseState::Fetching { .. } => true,
+                ResponseState::Completed { .. } | ResponseState::Error { .. } => false,
+            };
 
             (
+                is_fetching,
                 response.headers().to_vec(),
                 response.headers_table.clone(),
                 response.headers_list_state.clone(),
@@ -731,12 +734,17 @@ impl ResponsePanel {
         };
 
         if headers.is_empty() {
-            return gpui::div()
+            let empty_content = gpui::div()
                 .flex_1()
                 .min_h_0()
                 .flex()
                 .items_center()
-                .justify_center()
+                .justify_center();
+            if is_fetching {
+                return empty_content.into_any_element();
+            }
+
+            return empty_content
                 .child(
                     Label::new("No headers received.")
                         .size(LabelSize::Small)
@@ -797,13 +805,16 @@ impl ResponsePanel {
             return self.render_send_request_hint(cx);
         };
 
-        let (cookies, cookies_table, cookies_list_state) = {
+        let (is_fetching, cookies, cookies_table, cookies_list_state) = {
             let response = response.read(cx);
-            if matches!(response.state(), ResponseState::Idle) {
-                return self.render_send_request_hint(cx);
-            }
+            let is_fetching = match response.state() {
+                ResponseState::Idle => return self.render_send_request_hint(cx),
+                ResponseState::Fetching { .. } => true,
+                ResponseState::Completed { .. } | ResponseState::Error { .. } => false,
+            };
 
             (
+                is_fetching,
                 response.cookies().to_vec(),
                 response.cookies_table.clone(),
                 response.cookies_list_state.clone(),
@@ -811,12 +822,17 @@ impl ResponsePanel {
         };
 
         if cookies.is_empty() {
-            return gpui::div()
+            let empty_content = gpui::div()
                 .flex_1()
                 .min_h_0()
                 .flex()
                 .items_center()
-                .justify_center()
+                .justify_center();
+            if is_fetching {
+                return empty_content.into_any_element();
+            }
+
+            return empty_content
                 .child(
                     Label::new("No cookies received.")
                         .size(LabelSize::Small)
