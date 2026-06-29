@@ -1375,7 +1375,7 @@ impl RequestEditor {
         let active_tab = self.active_tab;
         let colors = cx.theme().colors();
 
-        let tab =
+        let render_tab =
             |id: ElementId, active: bool, label: SharedString, set_active_tab: RequestEditorTab| {
                 let colors = cx.theme().colors();
 
@@ -1385,18 +1385,10 @@ impl RequestEditor {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .h(DynamicSpacing::Base24.px(cx))
+                    .justify_center()
+                    .h_full()
+                    .min_w(DynamicSpacing::Base48.px(cx))
                     .px(DynamicSpacing::Base08.px(cx))
-                    .rounded_sm()
-                    .border_1()
-                    .when(active, |this| {
-                        this.border_color(colors.border.opacity(0.25))
-                            .bg(colors.panel_tab_active_background)
-                    })
-                    .when(!active, |this| {
-                        this.border_color(gpui::transparent_black())
-                            .bg(gpui::transparent_black())
-                    })
                     .cursor_pointer()
                     .on_click(cx.listener(move |request_editor, _, _, cx| {
                         cx.stop_propagation();
@@ -1406,16 +1398,34 @@ impl RequestEditor {
                         }
                     }))
                     .child(
-                        Label::new(label)
-                            .size(LabelSize::Small)
-                            .line_height_style(LineHeightStyle::UiLabel)
-                            .weight(FontWeight::MEDIUM)
-                            .color(if active {
-                                Color::Custom(colors.panel_tab_active_foreground)
-                            } else {
-                                Color::Custom(colors.panel_tab_inactive_foreground)
+                        gpui::div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .h_full()
+                            .when(active, |this| {
+                                this.child(
+                                    gpui::div()
+                                        .absolute()
+                                        .left_0()
+                                        .right_0()
+                                        .bottom_0()
+                                        .h(DynamicSpacing::Base01.px(cx))
+                                        .bg(colors.panel_tab_active_foreground),
+                                )
                             })
-                            .single_line(),
+                            .child(
+                                Label::new(label)
+                                    .size(LabelSize::Small)
+                                    .line_height_style(LineHeightStyle::UiLabel)
+                                    .weight(FontWeight::MEDIUM)
+                                    .color(if active {
+                                        Color::Custom(colors.panel_tab_active_foreground)
+                                    } else {
+                                        Color::Custom(colors.panel_tab_inactive_foreground)
+                                    })
+                                    .single_line(),
+                            ),
                     )
             };
 
@@ -1425,24 +1435,23 @@ impl RequestEditor {
             .items_center()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
-            .gap_1()
             .px_1()
             .border_y_1()
             .border_color(colors.border)
             .bg(colors.panel_tab_bar_background)
-            .child(tab(
+            .child(render_tab(
                 ElementId::Name("parameters-tab".into()),
                 active_tab == RequestEditorTab::Parameters,
                 "Parameters".into(),
                 RequestEditorTab::Parameters,
             ))
-            .child(tab(
+            .child(render_tab(
                 ElementId::Name("headers-tab".into()),
                 active_tab == RequestEditorTab::Headers,
                 "Headers".into(),
                 RequestEditorTab::Headers,
             ))
-            .child(tab(
+            .child(render_tab(
                 ElementId::Name("body-tab".into()),
                 active_tab == RequestEditorTab::Body,
                 "Body".into(),

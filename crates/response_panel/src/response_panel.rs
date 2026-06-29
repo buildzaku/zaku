@@ -858,14 +858,14 @@ impl ResponsePanel {
             .into_any_element()
     }
 
-    fn render_response_summary(response_summary: ResponseSummary) -> impl IntoElement {
+    fn render_response_summary(response_summary: ResponseSummary, cx: &App) -> impl IntoElement {
         gpui::div()
             .flex()
             .items_center()
             .gap_1()
             .child(
                 gpui::div()
-                    .min_w(gpui::px(40.0))
+                    .min_w(DynamicSpacing::Base40.px(cx))
                     .flex()
                     .justify_center()
                     .items_center()
@@ -879,7 +879,7 @@ impl ResponsePanel {
             .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
             .child(
                 gpui::div()
-                    .min_w(gpui::px(40.0))
+                    .min_w(DynamicSpacing::Base40.px(cx))
                     .flex()
                     .justify_center()
                     .items_center()
@@ -893,7 +893,7 @@ impl ResponsePanel {
             .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
             .child(
                 gpui::div()
-                    .min_w(gpui::px(40.0))
+                    .min_w(DynamicSpacing::Base40.px(cx))
                     .flex()
                     .justify_center()
                     .items_center()
@@ -914,7 +914,7 @@ impl ResponsePanel {
             .and_then(|response| response.read(cx).summary());
         let colors = cx.theme().colors();
 
-        let tab =
+        let render_tab =
             |id: ElementId, active: bool, label: SharedString, set_active_tab: ResponsePanelTab| {
                 let colors = cx.theme().colors();
 
@@ -924,34 +924,44 @@ impl ResponsePanel {
                     .flex_none()
                     .flex()
                     .items_center()
-                    .h(DynamicSpacing::Base24.px(cx))
+                    .justify_center()
+                    .h_full()
+                    .min_w(DynamicSpacing::Base48.px(cx))
                     .px(DynamicSpacing::Base08.px(cx))
-                    .rounded_sm()
-                    .border_1()
-                    .when(active, |this| {
-                        this.border_color(colors.border.opacity(0.25))
-                            .bg(colors.panel_tab_active_background)
-                    })
-                    .when(!active, |this| {
-                        this.border_color(gpui::transparent_black())
-                            .bg(gpui::transparent_black())
-                    })
                     .cursor_pointer()
                     .on_click(cx.listener(move |response_panel, _, _, cx| {
                         cx.stop_propagation();
                         response_panel.set_active_tab(set_active_tab, cx);
                     }))
                     .child(
-                        Label::new(label)
-                            .size(LabelSize::Small)
-                            .line_height_style(LineHeightStyle::UiLabel)
-                            .weight(FontWeight::MEDIUM)
-                            .color(if active {
-                                Color::Custom(colors.panel_tab_active_foreground)
-                            } else {
-                                Color::Custom(colors.panel_tab_inactive_foreground)
+                        gpui::div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .h_full()
+                            .when(active, |this| {
+                                this.child(
+                                    gpui::div()
+                                        .absolute()
+                                        .left_0()
+                                        .right_0()
+                                        .bottom_0()
+                                        .h(DynamicSpacing::Base01.px(cx))
+                                        .bg(colors.panel_tab_active_foreground),
+                                )
                             })
-                            .single_line(),
+                            .child(
+                                Label::new(label)
+                                    .size(LabelSize::Small)
+                                    .line_height_style(LineHeightStyle::UiLabel)
+                                    .weight(FontWeight::MEDIUM)
+                                    .color(if active {
+                                        Color::Custom(colors.panel_tab_active_foreground)
+                                    } else {
+                                        Color::Custom(colors.panel_tab_inactive_foreground)
+                                    })
+                                    .single_line(),
+                            ),
                     )
             };
 
@@ -962,9 +972,6 @@ impl ResponsePanel {
             .justify_between()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
-            .gap_1()
-            .pl_1()
-            .pr_3()
             .border_b_1()
             .border_color(colors.border)
             .bg(colors.panel_tab_bar_background)
@@ -972,20 +979,21 @@ impl ResponsePanel {
                 gpui::div()
                     .flex()
                     .items_center()
-                    .gap_1()
-                    .child(tab(
+                    .h_full()
+                    .px_1()
+                    .child(render_tab(
                         ElementId::Name("response-body-tab".into()),
                         active_tab == ResponsePanelTab::Body,
                         "Body".into(),
                         ResponsePanelTab::Body,
                     ))
-                    .child(tab(
+                    .child(render_tab(
                         ElementId::Name("response-headers-tab".into()),
                         active_tab == ResponsePanelTab::Headers,
                         "Headers".into(),
                         ResponsePanelTab::Headers,
                     ))
-                    .child(tab(
+                    .child(render_tab(
                         ElementId::Name("response-cookies-tab".into()),
                         active_tab == ResponsePanelTab::Cookies,
                         "Cookies".into(),
@@ -993,7 +1001,8 @@ impl ResponsePanel {
                     )),
             )
             .when_some(response_summary, |this, response_summary| {
-                this.child(Self::render_response_summary(response_summary))
+                this.pr_3()
+                    .child(Self::render_response_summary(response_summary, cx))
             })
             .into_any_element()
     }
