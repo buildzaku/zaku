@@ -842,7 +842,7 @@ impl ResponsePanel {
         }
 
         let rows = Rc::new(Self::cookie_table_rows(&cookies));
-        let cookie_header_background = cx.theme().colors().panel_tab_bar_background.opacity(0.85);
+        let cookie_header_background = cx.theme().colors().panel_tab_bar_background;
         let row_count = rows.len();
         let column_count = 2;
         let rows_for_style = rows.clone();
@@ -863,7 +863,7 @@ impl ResponsePanel {
                     .kind
                     == CookieTableRowKind::Header
                 {
-                    row.bg(cookie_header_background).into_any_element()
+                    row.bg(cookie_header_background).py_0p5().into_any_element()
                 } else {
                     row.into_any_element()
                 }
