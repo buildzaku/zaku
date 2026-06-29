@@ -549,3 +549,211 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
         second_cookies_scroll_offset.offset_in_item,
     );
 }
+
+#[gpui::test]
+async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+
+    http_client.replace_handler({
+        move |_, request| {
+            assert_eq!(request.uri().path(), "/valid");
+
+            async move {
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::from("valid response"))
+                    .unwrap())
+            }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        serde_json::json!({
+            "collection": {
+                "valid.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/valid"
+                "#},
+                "invalid.toml": "",
+            },
+            "settings.json": "{}",
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let open_result = cx
+        .update(|cx| {
+            Workspace::open(
+                project_path,
+                app_state.clone(),
+                None,
+                OpenMode::NewWindow,
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+    open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+        .await;
+    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.project().read(cx).root_worktree(cx).unwrap()
+    });
+    worktree.flush_fs_events(cx).await;
+
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+
+    let valid_request_path = ProjectPath {
+        worktree_id,
+        path: Arc::from(rel_path("collection/valid.toml")),
+    };
+    let invalid_request_path = ProjectPath {
+        worktree_id,
+        path: Arc::from(rel_path("collection/invalid.toml")),
+    };
+    let settings_path = ProjectPath {
+        worktree_id,
+        path: Arc::from(rel_path("settings.json")),
+    };
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(valid_request_path.clone(), None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "valid response"
+    );
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(invalid_request_path, None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(valid_request_path.clone(), None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "valid response"
+    );
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(settings_path.clone(), None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::response_panel::ToggleFocus,
+    );
+    cx.run_until_parked();
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(valid_request_path, None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "valid response"
+    );
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(settings_path, None, true, window, cx)
+            })
+        })
+        .unwrap()
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+}

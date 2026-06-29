@@ -2386,6 +2386,19 @@ impl Workspace {
         }
     }
 
+    pub fn is_panel_open<T: Panel>(&self, cx: &App) -> bool {
+        for dock in [self.left_dock.clone(), self.bottom_dock.clone()] {
+            let dock = dock.read(cx);
+            if dock.panel_index_for_type::<T>().is_some_and(|panel_index| {
+                dock.is_open() && dock.active_panel_index() == Some(panel_index)
+            }) {
+                return true;
+            }
+        }
+
+        false
+    }
+
     pub fn panel<T: Panel>(&self, cx: &App) -> Option<Entity<T>> {
         [self.left_dock.clone(), self.bottom_dock.clone()]
             .into_iter()
