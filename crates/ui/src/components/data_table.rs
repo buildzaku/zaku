@@ -989,18 +989,16 @@ impl Element for TableTextElement {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let text_layout = self.styled_text.layout().clone();
+        let text_layout = self.styled_text.layout();
         for hitbox in hitboxes.as_slice() {
             window.set_cursor_style(CursorStyle::IBeam, hitbox);
         }
 
         if let Some(interaction_state) = self.interaction_state.as_ref()
             && let Err(error) = interaction_state.update(cx, |state, _| {
-                state.text_selection.register_layout(
-                    self.id,
-                    self.text.clone(),
-                    text_layout.clone(),
-                );
+                state
+                    .text_selection
+                    .register_layout(self.id, self.text.clone(), text_layout);
             })
         {
             log::trace!("Failed to register table text layout: {error:?}");
@@ -1009,7 +1007,7 @@ impl Element for TableTextElement {
         if let Some(selected_range) = self.selected_range.clone() {
             paint_text_selection(
                 selected_range,
-                &text_layout,
+                text_layout,
                 cx.theme().colors().element_selection_background,
                 window,
             );

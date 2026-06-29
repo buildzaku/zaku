@@ -1,5 +1,6 @@
-use gpui::{Bounds, Hsla, Pixels, Point, SharedString, TextLayout, Window};
-use std::ops::Range;
+use gpui::{Bounds, Hsla, Pixels, Point, SharedString, TextLayout, Window, WrappedLineLayout};
+use smallvec::SmallVec;
+use std::{ops::Range, sync::Arc};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextSelectionPoint<T> {
@@ -51,7 +52,50 @@ impl<T: Copy + Ord> TextSelection<T> {
 struct TextLayoutEntry<T> {
     id: T,
     text: SharedString,
-    layout: TextLayout,
+    layout: TextLayoutSnapshot,
+}
+
+#[derive(Clone)]
+struct TextLayoutSnapshot {
+    bounds: Bounds<Pixels>,
+    line_height: Pixels,
+    lines: SmallVec<[Arc<WrappedLineLayout>; 1]>,
+}
+
+impl TextLayoutSnapshot {
+    fn new(layout: &TextLayout) -> Self {
+        Self {
+            bounds: layout.bounds(),
+            line_height: layout.line_height(),
+            lines: layout.line_layouts(),
+        }
+    }
+
+    fn closest_index_for_position(&self, position: Point<Pixels>) -> usize {
+        if position.y < self.bounds.top() {
+            return 0;
+        }
+
+        let mut line_origin = self.bounds.origin;
+        let mut line_start_index = 0;
+        for line_layout in &self.lines {
+            let line_bottom = line_origin.y + line_layout.size(self.line_height).height;
+            if position.y > line_bottom {
+                line_origin.y = line_bottom;
+                line_start_index += line_layout.len() + 1;
+            } else {
+                let position_within_line = position - line_origin;
+                let index_within_line = match line_layout
+                    .closest_index_for_position(position_within_line, self.line_height)
+                {
+                    Ok(index) | Err(index) => index,
+                };
+                return line_start_index + index_within_line;
+            }
+        }
+
+        line_start_index.saturating_sub(1)
+    }
 }
 
 pub struct TextSelectionState<T> {
@@ -94,12 +138,17 @@ impl<T: Copy + Ord> TextSelectionState<T> {
             .is_some_and(|selection| !selection.is_empty())
     }
 
-    pub fn register_layout(&mut self, id: T, text: SharedString, layout: TextLayout) {
-        if let Some(existing_layout) = self.layouts.iter_mut().find(|layout| layout.id == id) {
+    pub fn register_layout(&mut self, id: T, text: SharedString, layout: &TextLayout) {
+        let snapshot = TextLayoutSnapshot::new(layout);
+        if let Some(existing_layout) = self.layouts.iter_mut().find(|entry| entry.id == id) {
             existing_layout.text = text;
-            existing_layout.layout = layout;
+            existing_layout.layout = snapshot;
         } else {
-            self.layouts.push(TextLayoutEntry { id, text, layout });
+            self.layouts.push(TextLayoutEntry {
+                id,
+                text,
+                layout: snapshot,
+            });
         }
     }
 
@@ -219,9 +268,10 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         layout: &TextLayoutEntry<T>,
         position: Point<Pixels>,
     ) -> TextSelectionPoint<T> {
-        let offset = match layout.layout.index_for_position(position) {
-            Ok(offset) | Err(offset) => offset.min(layout.text.len()),
-        };
+        let offset = layout
+            .layout
+            .closest_index_for_position(position)
+            .min(layout.text.len());
         TextSelectionPoint::new(id, offset)
     }
 }
