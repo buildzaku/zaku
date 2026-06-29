@@ -45,6 +45,16 @@
     }
   },
   {
+    "context": "Welcome",
+    "bindings": {
+      "ctrl-1": ["welcome::OpenRecentProject", 0],
+      "ctrl-2": ["welcome::OpenRecentProject", 1],
+      "ctrl-3": ["welcome::OpenRecentProject", 2],
+      "ctrl-4": ["welcome::OpenRecentProject", 3],
+      "ctrl-5": ["welcome::OpenRecentProject", 4]
+    }
+  },
+  {
     "context": "Pane",
     "bindings": {
       "ctrl-f4": "pane::CloseActiveItem",
@@ -93,13 +103,10 @@
     }
   },
   {
-    "context": "Welcome",
+    "context": "ResponsePanel > Text",
     "bindings": {
-      "ctrl-1": ["welcome::OpenRecentProject", 0],
-      "ctrl-2": ["welcome::OpenRecentProject", 1],
-      "ctrl-3": ["welcome::OpenRecentProject", 2],
-      "ctrl-4": ["welcome::OpenRecentProject", 3],
-      "ctrl-5": ["welcome::OpenRecentProject", 4]
+      "ctrl-a": "editor::SelectAll",
+      "ctrl-c": "editor::Copy"
     }
   },
   {

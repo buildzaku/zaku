@@ -43,6 +43,17 @@
     }
   },
   {
+    "context": "Welcome",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-1": ["welcome::OpenRecentProject", 0],
+      "cmd-2": ["welcome::OpenRecentProject", 1],
+      "cmd-3": ["welcome::OpenRecentProject", 2],
+      "cmd-4": ["welcome::OpenRecentProject", 3],
+      "cmd-5": ["welcome::OpenRecentProject", 4]
+    }
+  },
+  {
     "context": "Pane",
     "use_key_equivalents": true,
     "bindings": {
@@ -85,14 +96,11 @@
     }
   },
   {
-    "context": "Welcome",
+    "context": "ResponsePanel > Text",
     "use_key_equivalents": true,
     "bindings": {
-      "cmd-1": ["welcome::OpenRecentProject", 0],
-      "cmd-2": ["welcome::OpenRecentProject", 1],
-      "cmd-3": ["welcome::OpenRecentProject", 2],
-      "cmd-4": ["welcome::OpenRecentProject", 3],
-      "cmd-5": ["welcome::OpenRecentProject", 4]
+      "cmd-a": "editor::SelectAll",
+      "cmd-c": "editor::Copy"
     }
   },
   {

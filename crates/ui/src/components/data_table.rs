@@ -1380,42 +1380,43 @@ impl RenderOnce for Table {
             .when_some(
                 interaction_state.as_ref().zip(text_for_selection),
                 |this, (interaction_state, text_for_selection)| {
-                    this.on_action({
-                        let interaction_state = interaction_state.clone();
-                        let text_for_selection = text_for_selection.clone();
+                    this.key_context("Text")
+                        .on_action({
+                            let interaction_state = interaction_state.clone();
+                            let text_for_selection = text_for_selection.clone();
 
-                        move |_: &actions::editor::Copy, window: &mut Window, cx: &mut App| {
-                            interaction_state.update(cx, |state, cx| {
-                                state.copy_selected_text(
-                                    row_count,
-                                    column_count,
-                                    text_for_selection.as_ref(),
-                                    window,
-                                    cx,
-                                );
-                            });
-                        }
-                    })
-                    .on_action({
-                        let interaction_state = interaction_state.clone();
+                            move |_: &actions::editor::Copy, window: &mut Window, cx: &mut App| {
+                                interaction_state.update(cx, |state, cx| {
+                                    state.copy_selected_text(
+                                        row_count,
+                                        column_count,
+                                        text_for_selection.as_ref(),
+                                        window,
+                                        cx,
+                                    );
+                                });
+                            }
+                        })
+                        .on_action({
+                            let interaction_state = interaction_state.clone();
 
-                        move |_: &actions::editor::SelectAll, _: &mut Window, cx: &mut App| {
-                            interaction_state.update(cx, |state, cx| {
-                                state.select_all_text(row_count, cx);
-                            });
-                        }
-                    })
-                    .on_mouse_up(MouseButton::Left, {
-                        let interaction_state = interaction_state.clone();
+                            move |_: &actions::editor::SelectAll, _: &mut Window, cx: &mut App| {
+                                interaction_state.update(cx, |state, cx| {
+                                    state.select_all_text(row_count, cx);
+                                });
+                            }
+                        })
+                        .on_mouse_up(MouseButton::Left, {
+                            let interaction_state = interaction_state.clone();
 
-                        move |_, _, cx| {
-                            interaction_state.update(cx, |state, cx| {
-                                if state.text_selection.end_selection_drag() {
-                                    cx.notify();
-                                }
-                            });
-                        }
-                    })
+                            move |_, _, cx| {
+                                interaction_state.update(cx, |state, cx| {
+                                    if state.text_selection.end_selection_drag() {
+                                        cx.notify();
+                                    }
+                                });
+                            }
+                        })
                 },
             )
             .when_some(table_width, |this, width| this.w(width))

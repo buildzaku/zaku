@@ -1032,6 +1032,7 @@ impl Render for ResponsePanel {
 
         gpui::div()
             .track_focus(&focus_handle)
+            .key_context(Self::PANEL_KEY)
             .flex()
             .flex_col()
             .size_full()
