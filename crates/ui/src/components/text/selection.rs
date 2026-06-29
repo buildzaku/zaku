@@ -469,10 +469,10 @@ pub fn paint_text_selection(
                 let right = (line_origin.x + end_position.x).max(left);
                 if right > left {
                     window.paint_quad(gpui::fill(
-                        window.pixel_snap_bounds(Bounds::new(
+                        Bounds::new(
                             gpui::point(left, wrapped_line_top),
                             gpui::size(right - left, line_height),
-                        )),
+                        ),
                         color,
                     ));
                 }
