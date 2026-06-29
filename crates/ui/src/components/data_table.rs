@@ -5,10 +5,10 @@ pub use table_row::{IntoTableRow, TableRow};
 use gpui::{
     AbsoluteLength, Anchor, AnyElement, App, Bounds, ClipboardItem, Context, CursorStyle,
     DefiniteLength, DismissEvent, Div, DragMoveEvent, Element, ElementId, Entity, EntityId,
-    FocusHandle, Focusable, FontWeight, GlobalElementId, Hitbox, HitboxBehavior,
-    InspectorElementId, LayoutId, Length, ListHorizontalSizingBehavior, ListSizingBehavior,
-    ListState, MouseButton, Pixels, Point, RenderOnce, ScrollHandle, SharedString, Stateful,
-    StyledText, Subscription, UniformListScrollHandle, WeakEntity, Window, prelude::*,
+    FocusHandle, Focusable, FontWeight, GlobalElementId, Hitbox, InspectorElementId, LayoutId,
+    Length, ListHorizontalSizingBehavior, ListSizingBehavior, ListState, MouseButton, Pixels,
+    Point, RenderOnce, ScrollHandle, SharedString, Stateful, StyledText, Subscription,
+    UniformListScrollHandle, WeakEntity, Window, prelude::*,
 };
 use std::{ops::Range, rc::Rc};
 
@@ -25,7 +25,7 @@ use super::{
 
 use crate::{
     Color, ContextMenu, LineHeightStyle, StyledTypography, TextSelectionPoint, TextSelectionState,
-    TextSize, paint_text_selection,
+    TextSize, insert_text_hitboxes, paint_text_selection,
 };
 
 pub type UncheckedTableRow<T> = Vec<T>;
@@ -944,7 +944,7 @@ struct TableTextElement {
 
 impl Element for TableTextElement {
     type RequestLayoutState = ();
-    type PrepaintState = Hitbox;
+    type PrepaintState = Vec<Hitbox>;
 
     fn id(&self) -> Option<ElementId> {
         None
@@ -976,7 +976,7 @@ impl Element for TableTextElement {
     ) -> Self::PrepaintState {
         self.styled_text
             .prepaint(None, inspector_id, bounds, state, window, cx);
-        window.insert_hitbox(bounds, HitboxBehavior::Normal)
+        insert_text_hitboxes(self.styled_text.layout(), window)
     }
 
     fn paint(
@@ -985,12 +985,14 @@ impl Element for TableTextElement {
         inspector_id: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
-        hitbox: &mut Self::PrepaintState,
+        hitboxes: &mut Self::PrepaintState,
         window: &mut Window,
         cx: &mut App,
     ) {
         let text_layout = self.styled_text.layout().clone();
-        window.set_cursor_style(CursorStyle::IBeam, hitbox);
+        for hitbox in hitboxes.as_slice() {
+            window.set_cursor_style(CursorStyle::IBeam, hitbox);
+        }
 
         if let Some(interaction_state) = self.interaction_state.as_ref()
             && let Err(error) = interaction_state.update(cx, |state, _| {

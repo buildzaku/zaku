@@ -3,8 +3,8 @@ mod selection;
 pub use selection::{TextSelectionPoint, TextSelectionState, paint_text_selection};
 
 use gpui::{
-    App, Div, FontWeight, RenderOnce, SharedString, StyleRefinement, StyledText, UnderlineStyle,
-    Window, prelude::*,
+    App, Bounds, Div, FontWeight, Hitbox, HitboxBehavior, Pixels, RenderOnce, SharedString,
+    StyleRefinement, StyledText, TextAlign, TextLayout, UnderlineStyle, Window, prelude::*,
 };
 
 use theme::{ActiveTheme, ThemeSettings};
@@ -210,4 +210,56 @@ impl RenderOnce for Text {
         let Self { base, text, style } = self;
         style.apply(base, cx).child(StyledText::new(text))
     }
+}
+
+pub fn insert_text_hitboxes(text_layout: &TextLayout, window: &mut Window) -> Vec<Hitbox> {
+    let line_height = text_layout.line_height();
+    let text_bounds = text_layout.bounds();
+    let text_align = window.text_style().text_align;
+    let mut line_origin = text_bounds.origin;
+    let mut hitboxes = Vec::new();
+
+    for line_layout in text_layout.line_layouts() {
+        let unwrapped_layout = &line_layout.unwrapped_layout;
+        let mut row_start_x = Pixels::ZERO;
+        let mut row_top = line_origin.y;
+        let row_ends = line_layout
+            .wrap_boundaries()
+            .iter()
+            .filter_map(|wrap_boundary| {
+                unwrapped_layout
+                    .runs
+                    .get(wrap_boundary.run_ix)
+                    .and_then(|run| run.glyphs.get(wrap_boundary.glyph_ix))
+                    .map(|glyph| glyph.position.x)
+            })
+            .chain([unwrapped_layout.width]);
+
+        for row_end_x in row_ends {
+            let row_width = row_end_x - row_start_x;
+            if row_width > Pixels::ZERO {
+                let row_left = match text_align {
+                    TextAlign::Left => line_origin.x,
+                    TextAlign::Center => {
+                        (line_origin.x * 2.0 + text_bounds.size.width - row_width) / 2.0
+                    }
+                    TextAlign::Right => line_origin.x + text_bounds.size.width - row_width,
+                };
+                hitboxes.push(window.insert_hitbox(
+                    Bounds::new(
+                        gpui::point(row_left, row_top),
+                        gpui::size(row_width, line_height),
+                    ),
+                    HitboxBehavior::Normal,
+                ));
+            }
+
+            row_start_x = row_end_x;
+            row_top += line_height;
+        }
+
+        line_origin.y += line_layout.size(line_height).height;
+    }
+
+    hitboxes
 }
