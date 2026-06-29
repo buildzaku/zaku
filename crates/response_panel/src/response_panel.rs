@@ -12,7 +12,7 @@ use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
-    Color, ColumnWidthConfig, DynamicSpacing, IconName, Label, LabelCommon, LabelSize,
+    Color, ColumnWidthConfig, DynamicSpacing, IconName, KeyBinding, Label, LabelCommon, LabelSize,
     LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState, TextSize,
 };
 use workspace::{Panel, Workspace, pane::Pane};
@@ -686,38 +686,62 @@ impl ResponsePanel {
             .into_any_element()
     }
 
+    fn render_send_request_hint(&self, cx: &App) -> AnyElement {
+        gpui::div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .gap_1()
+            .child(
+                Label::new("Send Request")
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+            .child(KeyBinding::for_action_in(
+                &actions::workspace::SendRequest,
+                &self.focus_handle,
+                cx,
+            ))
+            .into_any_element()
+    }
+
     fn render_body(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(response) = self.response.as_ref() else {
+            return self.render_send_request_hint(cx);
+        };
+
         let colors = cx.theme().colors();
-        let editor = self.response.as_ref().and_then(|response| {
+        let editor = {
             let response = response.read(cx);
             match response.state() {
-                ResponseState::Idle => None,
+                ResponseState::Idle => return self.render_send_request_hint(cx),
                 ResponseState::Fetching { .. }
                 | ResponseState::Completed { .. }
-                | ResponseState::Error { .. } => Some(response.editor()),
+                | ResponseState::Error { .. } => response.editor(),
             }
-        });
+        };
 
-        editor.map_or_else(
-            || Self::render_empty_content(ResponsePanelTab::Body),
-            |editor| {
-                gpui::div()
-                    .flex_1()
-                    .min_h_0()
-                    .bg(colors.panel_background)
-                    .child(editor)
-                    .into_any_element()
-            },
-        )
+        gpui::div()
+            .flex_1()
+            .min_h_0()
+            .bg(colors.panel_background)
+            .child(editor)
+            .into_any_element()
     }
 
     fn render_headers(&self, cx: &mut Context<Self>) -> AnyElement {
         let Some(response) = self.response.as_ref() else {
-            return Self::render_empty_content(ResponsePanelTab::Headers);
+            return self.render_send_request_hint(cx);
         };
 
         let (headers, headers_table, headers_list_state) = {
             let response = response.read(cx);
+            if matches!(response.state(), ResponseState::Idle) {
+                return self.render_send_request_hint(cx);
+            }
+
             (
                 response.headers().to_vec(),
                 response.headers_table.clone(),
@@ -778,11 +802,15 @@ impl ResponsePanel {
 
     fn render_cookies(&self, cx: &mut Context<Self>) -> AnyElement {
         let Some(response) = self.response.as_ref() else {
-            return Self::render_empty_content(ResponsePanelTab::Cookies);
+            return self.render_send_request_hint(cx);
         };
 
         let (cookies, cookies_table, cookies_list_state) = {
             let response = response.read(cx);
+            if matches!(response.state(), ResponseState::Idle) {
+                return self.render_send_request_hint(cx);
+            }
+
             (
                 response.cookies().to_vec(),
                 response.cookies_table.clone(),
@@ -1061,7 +1089,18 @@ impl Render for ResponsePanel {
                 ResponsePanelTab::Cookies => self.render_cookies(cx),
             }
         } else {
-            Self::render_empty_content(ResponsePanelTab::Body)
+            gpui::div()
+                .flex_1()
+                .min_h_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Label::new("NO RESPONSE AVAILABLE")
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+                .into_any_element()
         };
         let colors = cx.theme().colors();
 

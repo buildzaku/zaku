@@ -38,6 +38,7 @@
       "cmd-b": "workspace::ToggleLeftDock",
       "cmd-j": "workspace::ToggleBottomDock",
       "cmd-s": "workspace::Save",
+      "cmd-enter": "workspace::SendRequest",
       "cmd-shift-e": "project_panel::ToggleFocus",
       "cmd-shift-r": "response_panel::ToggleFocus"
     }
@@ -93,6 +94,13 @@
     "use_key_equivalents": true,
     "bindings": {
       "space": "project_panel::Open"
+    }
+  },
+  {
+    "context": "ResponsePanel",
+    "use_key_equivalents": true,
+    "bindings": {
+      "cmd-enter": "workspace::SendRequest"
     }
   },
   {

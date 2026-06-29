@@ -40,6 +40,7 @@
       "ctrl-b": "workspace::ToggleLeftDock",
       "ctrl-j": "workspace::ToggleBottomDock",
       "ctrl-s": "workspace::Save",
+      "ctrl-enter": "workspace::SendRequest",
       "ctrl-shift-e": "project_panel::ToggleFocus",
       "ctrl-shift-r": "response_panel::ToggleFocus"
     }
@@ -100,6 +101,12 @@
     "context": "ProjectPanel && not_editing",
     "bindings": {
       "space": "project_panel::Open"
+    }
+  },
+  {
+    "context": "ResponsePanel",
+    "bindings": {
+      "ctrl-enter": "workspace::SendRequest"
     }
   },
   {
