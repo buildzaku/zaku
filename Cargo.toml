@@ -9,6 +9,7 @@ members = [
   "crates/db",
   "crates/editor",
   "crates/fs",
+  "crates/git",
   "crates/grammars",
   "crates/http_client",
   "crates/icons",
@@ -157,6 +158,7 @@ command_palette_hooks = { path = "crates/command_palette_hooks" }
 db = { path = "crates/db" }
 editor = { path = "crates/editor" }
 fs = { path = "crates/fs" }
+git = { path = "crates/git" }
 grammars = { path = "crates/grammars" }
 http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }

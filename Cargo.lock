@@ -2332,6 +2332,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
+name = "git"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "path",
+ "serde",
+ "sum_tree",
+ "util 0.0.0",
+]
+
+[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
