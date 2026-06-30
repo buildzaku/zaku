@@ -3186,6 +3186,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ignore"
+version = "0.4.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b915661dd01db3f05050265b2477bcc6527b3792388e2749b41623cc592be67d"
+dependencies = [
+ "crossbeam-deque",
+ "globset",
+ "log",
+ "memchr",
+ "regex-automata",
+ "same-file",
+ "walkdir",
+ "winapi-util",
+]
+
+[[package]]
 name = "image"
 version = "0.25.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9011,9 +9027,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-lock",
+ "collections 0.0.0",
  "fs",
  "futures",
+ "git",
  "gpui",
+ "ignore",
  "indoc",
  "language",
  "log",

@@ -1,3 +1,4 @@
+mod ignore;
 mod request;
 
 pub use language::DiskState;
@@ -8,6 +9,7 @@ pub use request::{
 };
 pub use settings::WorktreeId;
 
+use ::ignore::gitignore::{Gitignore, GitignoreBuilder};
 use anyhow::{Context as AnyhowContext, anyhow};
 use async_lock::Mutex;
 #[cfg(feature = "test")]
@@ -22,7 +24,7 @@ use smallvec::{SmallVec, smallvec};
 use smol::channel;
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    ffi::OsStr,
     fmt,
     future::Future,
     ops::{Deref, DerefMut, Range},
@@ -38,13 +40,17 @@ use std::{
 use sum_tree::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
 use tokio::sync::{oneshot, watch};
 
+use collections::{HashMap, HashSet};
 use fs::{
     FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, RemoveOptions,
     Watcher as FsWatcher,
 };
+use git::{DOT_GIT, GITIGNORE};
 use language::{LineEnding, Rope};
 use path::{PathStyle, RelPath, SanitizedPath};
 use util::ResultExt;
+
+use crate::ignore::{IgnoreKind, IgnoreStack};
 
 pub const FS_WATCH_LATENCY: Duration = Duration::from_millis(100);
 
@@ -113,6 +119,7 @@ impl Worktree {
                     opened_abs_path.clone(),
                     path_style,
                 ),
+                ignores_by_parent_abs_path: HashMap::default(),
                 root_file_handle,
             };
             if let Some(metadata) = metadata {
@@ -129,7 +136,8 @@ impl Worktree {
                         EntryKind::UnloadedDir
                     };
                 }
-                snapshot.insert_entry(root_entry);
+                cx.foreground_executor()
+                    .block_on(snapshot.insert_entry(root_entry, fs.as_ref()));
             }
 
             let (scan_requests_tx, scan_requests_rx) = channel::unbounded();
@@ -488,6 +496,7 @@ impl Worktree {
         new_path: Arc<SanitizedPath>,
         cx: &Context<Worktree>,
     ) {
+        self.snapshot.ignores_by_parent_abs_path = HashMap::default();
         let root_name = match new_path.as_path().file_name() {
             Some(file_name) => {
                 let file_name = file_name
@@ -992,6 +1001,7 @@ pub struct Entry {
     pub inode: u64,
     pub mtime: Option<MTime>,
     pub canonical_path: Option<Arc<Path>>,
+    pub is_ignored: bool,
     pub is_external: bool,
     pub is_fifo: bool,
     pub size: u64,
@@ -1016,6 +1026,7 @@ impl Entry {
             inode: metadata.inode,
             mtime: Some(metadata.mtime),
             canonical_path,
+            is_ignored: false,
             is_external: false,
             is_fifo: metadata.is_fifo,
             size: metadata.len,
@@ -1173,11 +1184,39 @@ impl WorktreeModelHandle for Entity<Worktree> {
 #[derive(Clone)]
 struct WorktreeSnapshot {
     snapshot: Snapshot,
+    ignores_by_parent_abs_path: HashMap<Arc<Path>, (Arc<Gitignore>, bool)>,
     root_file_handle: Option<Arc<dyn FileHandle>>,
 }
 
 impl WorktreeSnapshot {
-    fn insert_entry(&mut self, entry: Entry) -> Entry {
+    async fn insert_entry(&mut self, mut entry: Entry, fs: &dyn Fs) -> Entry {
+        if entry.is_file() && entry.path.file_name() == Some(GITIGNORE) {
+            let abs_path = self.absolutize(&entry.path);
+            match build_gitignore(&abs_path, fs).await {
+                Ok(ignore) => {
+                    self.ignores_by_parent_abs_path.insert(
+                        abs_path
+                            .parent()
+                            .expect("gitignore path should have a parent")
+                            .into(),
+                        (Arc::new(ignore), true),
+                    );
+                }
+                Err(error) => {
+                    log::error!("Failed to load .gitignore file: {error:#}");
+                }
+            }
+        }
+
+        if entry.kind == EntryKind::PendingDir
+            && let Some(existing_entry) = self
+                .snapshot
+                .entries_by_path
+                .get(&PathKey(entry.path.clone()), ())
+        {
+            entry.kind = existing_entry.kind;
+        }
+
         let removed = self
             .snapshot
             .entries_by_path
@@ -1192,6 +1231,49 @@ impl WorktreeSnapshot {
             .insert_or_replace(entry.to_path_entry(), ());
 
         entry
+    }
+
+    async fn ignore_stack_for_abs_path(
+        &self,
+        abs_path: &Path,
+        is_dir: bool,
+        fs: &dyn Fs,
+    ) -> IgnoreStack {
+        let mut new_ignores = Vec::new();
+        let mut repo_root = None;
+        for (index, ancestor) in abs_path.ancestors().enumerate() {
+            if index > 0 {
+                if let Some((ignore, _)) = self.ignores_by_parent_abs_path.get(ancestor) {
+                    new_ignores.push((ancestor, Some(ignore.clone())));
+                } else {
+                    new_ignores.push((ancestor, None));
+                }
+            }
+
+            let metadata = fs.metadata(&ancestor.join(DOT_GIT)).await.ok().flatten();
+            if metadata.is_some() {
+                repo_root = Some(Arc::from(ancestor));
+                break;
+            }
+        }
+
+        let mut ignore_stack = IgnoreStack::none();
+        ignore_stack.repo_root = repo_root;
+        for (parent_abs_path, ignore) in new_ignores.into_iter().rev() {
+            if ignore_stack.is_abs_path_ignored(parent_abs_path, true) {
+                ignore_stack = IgnoreStack::all();
+                break;
+            } else if let Some(ignore) = ignore {
+                ignore_stack =
+                    ignore_stack.append(IgnoreKind::Gitignore(parent_abs_path.into()), ignore);
+            }
+        }
+
+        if ignore_stack.is_abs_path_ignored(abs_path, is_dir) {
+            ignore_stack = IgnoreStack::all();
+        }
+
+        ignore_stack
     }
 
     #[cfg(feature = "test")]
@@ -1412,6 +1494,7 @@ impl BackgroundScanner {
                         ScanJob {
                             abs_path: Arc::<Path>::from(state.snapshot.abs_path.as_path()),
                             path: Arc::from(RelPath::empty()),
+                            ignore_stack: IgnoreStack::none(),
                             scan_queue: scan_job_tx.clone(),
                             ancestor_inodes,
                             is_external: root_entry.is_external,
@@ -1580,13 +1663,28 @@ impl BackgroundScanner {
         let (scan_job_tx, scan_job_rx) = channel::unbounded();
         {
             let mut state = self.state.lock().await;
+            let root_path = state.snapshot.abs_path.clone();
             for path in paths {
                 for ancestor in path.ancestors() {
                     if let Some(entry) = state.snapshot.entry_for_path(ancestor)
                         && entry.kind == EntryKind::UnloadedDir
                     {
-                        let abs_path = state.snapshot.absolutize(ancestor);
-                        state.enqueue_scan_dir(abs_path.into(), entry, &scan_job_tx);
+                        let abs_path = if entry.is_external {
+                            entry.canonical_path.as_ref().map_or_else(
+                                || root_path.as_path().join(ancestor.as_std_path()),
+                                |path| path.as_ref().to_path_buf(),
+                            )
+                        } else {
+                            root_path.as_path().join(ancestor.as_std_path())
+                        };
+                        state
+                            .enqueue_scan_dir(
+                                abs_path.into(),
+                                entry,
+                                &scan_job_tx,
+                                self.fs.as_ref(),
+                            )
+                            .await;
                         state.paths_to_scan.insert(path.clone());
                         break;
                     }
@@ -1655,7 +1753,10 @@ impl BackgroundScanner {
                         {
                             let mut state = self.state.lock().await;
                             state.snapshot.scan_id += 1;
-                            state.remove_path(RelPath::empty(), self.watcher.as_ref());
+                            state.remove_path_from_snapshot_and_unwatch(
+                                RelPath::empty(),
+                                self.watcher.as_ref(),
+                            );
                             state.snapshot.completed_scan_id = state.snapshot.scan_id;
                             for (_, removed_entry) in std::mem::take(&mut state.removed_entries) {
                                 state.scanned_dirs.remove(&removed_entry.id);
@@ -1768,8 +1869,14 @@ impl BackgroundScanner {
             Some(scan_job_tx.clone()),
         )
         .await;
-        drop(scan_job_tx);
-        self.scan_dirs(false, scan_job_rx).await;
+        {
+            let ignores_to_update = self.ignores_needing_update().await;
+            let ignores_to_update = self.order_ignores(ignores_to_update).await;
+            let snapshot = self.state.lock().await.snapshot.clone();
+            self.update_ignore_statuses_for_paths(scan_job_tx, snapshot, ignores_to_update)
+                .await;
+            self.scan_dirs(false, scan_job_rx).await;
+        }
 
         {
             let mut state = self.state.lock().await;
@@ -1910,10 +2017,12 @@ impl BackgroundScanner {
         log::trace!("Scanning directory {:?}", job.path);
 
         let next_entry_id = self.next_entry_id.clone();
+        let mut ignore_stack = job.ignore_stack.clone();
+        let mut new_ignore = None;
         let mut root_canonical_path = None;
         let mut new_entries: Vec<Entry> = Vec::new();
         let mut new_jobs: Vec<Option<ScanJob>> = Vec::new();
-        let child_paths = self
+        let mut child_paths = self
             .fs
             .read_dir(&job.abs_path)
             .await?
@@ -1928,16 +2037,40 @@ impl BackgroundScanner {
             })
             .collect::<Vec<_>>()
             .await;
+        swap_to_front(&mut child_paths, GITIGNORE);
+        swap_to_front(&mut child_paths, DOT_GIT);
+
+        if let Some(path) = child_paths.first()
+            && path.ends_with(DOT_GIT)
+        {
+            ignore_stack.repo_root = Some(job.abs_path.clone());
+        }
 
         for child_abs_path in child_paths {
             let child_abs_path: Arc<Path> = child_abs_path.into();
-            let Some(child_name) = child_abs_path.file_name().and_then(|name| name.to_str()) else {
+            let Some(child_name) = child_abs_path.file_name() else {
                 continue;
             };
-            let Some(child_name) = RelPath::unix(child_name).ok() else {
+            let Some(child_path) = child_name
+                .to_str()
+                .and_then(|name| Some(job.path.join(RelPath::unix(name).ok()?)))
+            else {
                 continue;
             };
-            let child_path = job.path.join(child_name);
+
+            if child_name == GITIGNORE {
+                match build_gitignore(&child_abs_path, self.fs.as_ref()).await {
+                    Ok(ignore) => {
+                        let ignore = Arc::new(ignore);
+                        ignore_stack = ignore_stack
+                            .append(IgnoreKind::Gitignore(job.abs_path.clone()), ignore.clone());
+                        new_ignore = Some(ignore);
+                    }
+                    Err(error) => {
+                        log::error!("Failed to load .gitignore file: {error:#}");
+                    }
+                }
+            }
 
             let child_metadata = match self.fs.metadata(child_abs_path.as_ref()).await {
                 Ok(Some(metadata)) => metadata,
@@ -1987,6 +2120,8 @@ impl BackgroundScanner {
                 }
                 child_entry.canonical_path = Some(canonical_path.into());
             }
+            child_entry.is_ignored =
+                ignore_stack.is_abs_path_ignored(&child_abs_path, child_entry.is_dir());
 
             if child_entry.is_dir() {
                 if job.ancestor_inodes.contains(&child_entry.inode) {
@@ -1997,6 +2132,11 @@ impl BackgroundScanner {
                     new_jobs.push(Some(ScanJob {
                         abs_path: child_abs_path.clone(),
                         path: child_path,
+                        ignore_stack: if child_entry.is_ignored {
+                            IgnoreStack::all()
+                        } else {
+                            ignore_stack.clone()
+                        },
                         scan_queue: job.scan_queue.clone(),
                         ancestor_inodes,
                         is_external: child_entry.is_external,
@@ -2032,7 +2172,7 @@ impl BackgroundScanner {
                     }
                 }
             }
-            state.populate_dir(&job.path, new_entries);
+            state.populate_dir(job.path.clone(), new_entries, new_ignore);
         }
 
         self.watcher.add(job.abs_path.as_ref()).log_err();
@@ -2081,71 +2221,76 @@ impl BackgroundScanner {
         let mut state = self.state.lock().await;
         let doing_recursive_update = scan_queue_tx.is_some();
 
+        let mut paths_to_process = Vec::with_capacity(relative_paths.len());
         for (path, metadata) in relative_paths.iter().zip(metadata.iter()) {
-            if matches!(metadata, Ok(None)) || doing_recursive_update {
-                state.remove_path(path.as_ref(), self.watcher.as_ref());
-            }
+            let path_was_removed = matches!(metadata, Ok(None));
+            let removed_descendant_paths = if path_was_removed || doing_recursive_update {
+                state.remove_path_from_snapshot(path)
+            } else {
+                Vec::new()
+            };
+            paths_to_process.push((path, metadata, removed_descendant_paths));
         }
 
-        for (path, metadata) in relative_paths.iter().zip(metadata) {
+        for (path, metadata, mut removed_descendant_abs_paths) in paths_to_process {
             let abs_path: Arc<Path> = root_abs_path.as_path().join(path.as_std_path()).into();
             match metadata {
                 Ok(Some((metadata, canonical_path))) => {
-                    if metadata.is_dir {
-                        let entry_id = state.entry_id_for(
-                            self.next_entry_id.as_ref(),
-                            path.as_ref(),
-                            &metadata,
-                        );
-                        let mut entry = Entry::new(
-                            path.clone(),
-                            &metadata,
-                            entry_id,
-                            metadata
-                                .is_symlink
-                                .then(|| canonical_path.as_path().to_path_buf().into()),
-                        );
-                        entry.is_external = !canonical_path.starts_with(root_canonical_path);
-                        entry.kind =
-                            if doing_recursive_update && state.should_scan_directory(&entry) {
-                                EntryKind::PendingDir
-                            } else if doing_recursive_update {
-                                EntryKind::UnloadedDir
-                            } else {
-                                EntryKind::Dir
-                            };
-                        state.insert_entry(entry.clone());
-                        if let Some(scan_queue_tx) = scan_queue_tx.as_ref()
-                            && entry.kind == EntryKind::PendingDir
-                        {
-                            state.enqueue_scan_dir(abs_path.clone(), &entry, scan_queue_tx);
+                    if metadata.is_fifo {
+                        if !doing_recursive_update {
+                            removed_descendant_abs_paths = state.remove_path_from_snapshot(path);
                         }
-                    } else if !metadata.is_fifo {
-                        let entry_id = state.entry_id_for(
-                            self.next_entry_id.as_ref(),
-                            path.as_ref(),
-                            &metadata,
-                        );
-                        let mut entry = Entry::new(
-                            path.clone(),
-                            &metadata,
-                            entry_id,
-                            metadata
-                                .is_symlink
-                                .then(|| canonical_path.as_path().to_path_buf().into()),
-                        );
-                        entry.is_external = !canonical_path.starts_with(root_canonical_path);
-                        entry.is_request = abs_path
+                        state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths);
+                        continue;
+                    }
+
+                    let ignore_stack = state
+                        .snapshot
+                        .ignore_stack_for_abs_path(&abs_path, metadata.is_dir, self.fs.as_ref())
+                        .await;
+                    let is_external = !canonical_path.starts_with(root_canonical_path);
+                    let entry_id = state.entry_id_for(self.next_entry_id.as_ref(), path, metadata);
+                    let mut fs_entry = Entry::new(
+                        path.clone(),
+                        metadata,
+                        entry_id,
+                        metadata
+                            .is_symlink
+                            .then(|| canonical_path.as_path().to_path_buf().into()),
+                    );
+
+                    let is_dir = fs_entry.is_dir();
+                    fs_entry.is_ignored = ignore_stack.is_abs_path_ignored(&abs_path, is_dir);
+                    fs_entry.is_external = is_external;
+                    if !is_dir {
+                        fs_entry.is_request = abs_path
                             .extension()
                             .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
-                        state.insert_entry(entry);
-                    } else {
-                        state.remove_path(path.as_ref(), self.watcher.as_ref());
                     }
+
+                    if let (Some(scan_queue_tx), true) = (&scan_queue_tx, is_dir) {
+                        if state.should_scan_directory(&fs_entry) {
+                            state
+                                .enqueue_scan_dir(
+                                    abs_path.clone(),
+                                    &fs_entry,
+                                    scan_queue_tx,
+                                    self.fs.as_ref(),
+                                )
+                                .await;
+                        } else {
+                            fs_entry.kind = EntryKind::UnloadedDir;
+                        }
+                    }
+
+                    state.insert_entry(fs_entry, self.fs.as_ref()).await;
                 }
-                Ok(None) => {}
+                Ok(None) => {
+                    state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths);
+                }
                 Err(error) => {
                     log::error!("Failed to reload {}: {error:#}", abs_path.display());
+                    state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths);
                 }
             }
         }
@@ -2156,6 +2301,200 @@ impl BackgroundScanner {
             usize::MAX,
             Ord::cmp,
         );
+    }
+
+    async fn update_ignore_statuses_for_paths(
+        &self,
+        scan_job_tx: channel::Sender<ScanJob>,
+        prev_snapshot: WorktreeSnapshot,
+        ignores_to_update: Vec<(Arc<Path>, IgnoreStack)>,
+    ) {
+        let (ignore_queue_tx, ignore_queue_rx) = channel::unbounded();
+        for (parent_abs_path, ignore_stack) in ignores_to_update {
+            ignore_queue_tx
+                .send_blocking(UpdateIgnoreStatusJob {
+                    abs_path: parent_abs_path,
+                    ignore_stack,
+                    ignore_queue: ignore_queue_tx.clone(),
+                    scan_queue: scan_job_tx.clone(),
+                })
+                .expect("ignore status job channel should be open");
+        }
+        drop(ignore_queue_tx);
+
+        self.executor
+            .scoped(|scope| {
+                for _ in 0..self.executor.num_cpus() {
+                    scope.spawn(async {
+                        loop {
+                            futures::select_biased! {
+                                request = self.next_scan_request().fuse() => {
+                                    let Ok(request) = request else {
+                                        break;
+                                    };
+                                    if !self.process_scan_request(request, true).await {
+                                        return;
+                                    }
+                                }
+                                job = ignore_queue_rx.recv().fuse() => {
+                                    let Ok(job) = job else {
+                                        break;
+                                    };
+                                    self.update_ignore_status(job, &prev_snapshot).await;
+                                }
+                            }
+                        }
+                    });
+                }
+            })
+            .await;
+    }
+
+    async fn ignores_needing_update(&self) -> Vec<Arc<Path>> {
+        let mut ignores_to_update = Vec::new();
+        let snapshot = &mut self.state.lock().await.snapshot;
+        let abs_path = snapshot.abs_path.clone();
+
+        snapshot
+            .ignores_by_parent_abs_path
+            .retain(|parent_abs_path, (_, needs_update)| {
+                if let Ok(parent_path) = parent_abs_path.strip_prefix(abs_path.as_path())
+                    && let Some(parent_path) =
+                        RelPath::new(parent_path, PathStyle::local()).log_err()
+                {
+                    if *needs_update {
+                        *needs_update = false;
+                        if snapshot.snapshot.entry_for_path(&parent_path).is_some() {
+                            ignores_to_update.push(parent_abs_path.clone());
+                        }
+                    }
+
+                    let ignore_path = parent_path.join(
+                        RelPath::unix(GITIGNORE)
+                            .expect("gitignore path should be a valid relative path"),
+                    );
+                    if snapshot.snapshot.entry_for_path(&ignore_path).is_none() {
+                        return false;
+                    }
+                }
+                true
+            });
+
+        ignores_to_update
+    }
+
+    async fn order_ignores(&self, mut ignores: Vec<Arc<Path>>) -> Vec<(Arc<Path>, IgnoreStack)> {
+        let snapshot = self.state.lock().await.snapshot.clone();
+        ignores.sort_unstable();
+        let mut ignores_to_update = ignores.into_iter().peekable();
+
+        let mut result = Vec::new();
+        while let Some(parent_abs_path) = ignores_to_update.next() {
+            while ignores_to_update
+                .peek()
+                .is_some_and(|path| path.starts_with(&parent_abs_path))
+            {
+                ignores_to_update.next();
+            }
+            let ignore_stack = snapshot
+                .ignore_stack_for_abs_path(&parent_abs_path, true, self.fs.as_ref())
+                .await;
+            result.push((parent_abs_path, ignore_stack));
+        }
+
+        result
+    }
+
+    async fn update_ignore_status(&self, job: UpdateIgnoreStatusJob, snapshot: &WorktreeSnapshot) {
+        log::trace!("Updating ignore status {}", job.abs_path.display());
+
+        let mut ignore_stack = job.ignore_stack;
+        if let Some((ignore, _)) = snapshot.ignores_by_parent_abs_path.get(&job.abs_path) {
+            ignore_stack =
+                ignore_stack.append(IgnoreKind::Gitignore(job.abs_path.clone()), ignore.clone());
+        }
+
+        let mut entries_by_path_edits = Vec::new();
+        let Some(path) = job
+            .abs_path
+            .strip_prefix(snapshot.abs_path.as_path())
+            .with_context(|| {
+                format!(
+                    "Failed to strip prefix '{}' from path '{}'",
+                    snapshot.abs_path.as_path().display(),
+                    job.abs_path.display()
+                )
+            })
+            .log_err()
+        else {
+            return;
+        };
+
+        let Some(path) = RelPath::new(path, PathStyle::local()).log_err() else {
+            return;
+        };
+
+        if let Ok(Some(metadata)) = self.fs.metadata(&job.abs_path.join(DOT_GIT)).await
+            && metadata.is_dir
+        {
+            ignore_stack.repo_root = Some(job.abs_path.clone());
+        }
+
+        for mut entry in snapshot.child_entries(&path).cloned() {
+            let was_ignored = entry.is_ignored;
+            let abs_path: Arc<Path> = snapshot.absolutize(&entry.path).into();
+            entry.is_ignored = ignore_stack.is_abs_path_ignored(&abs_path, entry.is_dir());
+
+            if entry.is_dir() {
+                let child_ignore_stack = if entry.is_ignored {
+                    IgnoreStack::all()
+                } else {
+                    ignore_stack.clone()
+                };
+
+                if was_ignored && !entry.is_ignored && entry.kind.is_unloaded() {
+                    let state = self.state.lock().await;
+                    if state.should_scan_directory(&entry) {
+                        state
+                            .enqueue_scan_dir(
+                                abs_path.clone(),
+                                &entry,
+                                &job.scan_queue,
+                                self.fs.as_ref(),
+                            )
+                            .await;
+                    }
+                }
+
+                job.ignore_queue
+                    .send(UpdateIgnoreStatusJob {
+                        abs_path: abs_path.clone(),
+                        ignore_stack: child_ignore_stack,
+                        ignore_queue: job.ignore_queue.clone(),
+                        scan_queue: job.scan_queue.clone(),
+                    })
+                    .await
+                    .expect("ignore status job channel is unbounded");
+            }
+
+            if entry.is_ignored != was_ignored {
+                entries_by_path_edits.push(Edit::Insert(entry));
+            }
+        }
+
+        let state = &mut self.state.lock().await;
+        for edit in &entries_by_path_edits {
+            if let Edit::Insert(entry) = edit
+                && let Err(index) = state.changed_paths.binary_search(&entry.path)
+            {
+                state.changed_paths.insert(index, entry.path.clone());
+            }
+        }
+
+        state
+            .snapshot
+            .entries_by_path
+            .edit(entries_by_path_edits, ());
     }
 
     async fn progress_timer(&self, running: bool) {
@@ -2209,7 +2548,7 @@ impl BackgroundScannerState {
     }
 
     fn should_scan_directory(&self, entry: &Entry) -> bool {
-        (self.scanning_enabled && !entry.is_external)
+        (self.scanning_enabled && !entry.is_external && !entry.is_ignored)
             || self.scanned_dirs.contains(&entry.id)
             || self
                 .paths_to_scan
@@ -2221,13 +2560,18 @@ impl BackgroundScannerState {
                 .any(|path_prefix| entry.path.as_ref().starts_with(path_prefix.as_ref()))
     }
 
-    fn enqueue_scan_dir(
+    async fn enqueue_scan_dir(
         &self,
         abs_path: Arc<Path>,
         entry: &Entry,
         scan_job_tx: &channel::Sender<ScanJob>,
+        fs: &dyn Fs,
     ) {
         let path = entry.path.clone();
+        let ignore_stack = self
+            .snapshot
+            .ignore_stack_for_abs_path(&abs_path, true, fs)
+            .await;
         let mut ancestor_inodes = self.snapshot.ancestor_inodes_for_path(path.as_ref());
 
         if !ancestor_inodes.contains(&entry.inode) {
@@ -2236,6 +2580,7 @@ impl BackgroundScannerState {
                 .try_send(ScanJob {
                     abs_path,
                     path,
+                    ignore_stack,
                     scan_queue: scan_job_tx.clone(),
                     ancestor_inodes,
                     is_external: entry.is_external,
@@ -2246,13 +2591,14 @@ impl BackgroundScannerState {
 
     fn populate_dir(
         &mut self,
-        parent_path: &Arc<RelPath>,
+        parent_path: Arc<RelPath>,
         entries: impl IntoIterator<Item = Entry>,
+        ignore: Option<Arc<Gitignore>>,
     ) {
         let mut parent_entry = if let Some(parent_entry) = self
             .snapshot
             .entries_by_path
-            .get(&PathKey(Arc::clone(parent_path)), ())
+            .get(&PathKey(parent_path.clone()), ())
         {
             parent_entry.clone()
         } else {
@@ -2264,6 +2610,13 @@ impl BackgroundScannerState {
             EntryKind::PendingDir | EntryKind::UnloadedDir => parent_entry.kind = EntryKind::Dir,
             EntryKind::Dir => {}
             EntryKind::File => return,
+        }
+
+        if let Some(ignore) = ignore {
+            let abs_parent_path: Arc<Path> = self.snapshot.absolutize(&parent_path).into();
+            self.snapshot
+                .ignores_by_parent_abs_path
+                .insert(abs_parent_path, (ignore, false));
         }
 
         let parent_entry_id = parent_entry.id;
@@ -2281,23 +2634,40 @@ impl BackgroundScannerState {
             .edit(entries_by_path_edits, ());
         self.snapshot.entries_by_id.edit(entries_by_id_edits, ());
 
-        if let Err(index) = self.changed_paths.binary_search(parent_path) {
-            self.changed_paths.insert(index, Arc::clone(parent_path));
+        if let Err(index) = self.changed_paths.binary_search(&parent_path) {
+            self.changed_paths.insert(index, parent_path);
         }
 
         #[cfg(feature = "test")]
         self.snapshot.check_invariants();
     }
 
-    fn insert_entry(&mut self, entry: Entry) {
+    async fn insert_entry(&mut self, entry: Entry, fs: &dyn Fs) -> Entry {
         self.removed_entries.remove(&entry.inode);
-        self.snapshot.insert_entry(entry);
+        let entry = self.snapshot.insert_entry(entry, fs).await;
 
         #[cfg(feature = "test")]
         self.snapshot.check_invariants();
+
+        entry
     }
 
-    fn remove_path(&mut self, path: &RelPath, watcher: &dyn FsWatcher) {
+    fn remove_path_from_snapshot_and_unwatch(&mut self, path: &RelPath, watcher: &dyn FsWatcher) {
+        let removed_descendant_abs_paths = self.remove_path_from_snapshot(path);
+        self.unwatch_path(watcher, removed_descendant_abs_paths);
+    }
+
+    fn unwatch_path(
+        &mut self,
+        watcher: &dyn FsWatcher,
+        removed_descendant_abs_paths: Vec<PathBuf>,
+    ) {
+        for removed_dir_abs_path in removed_descendant_abs_paths {
+            watcher.remove(removed_dir_abs_path.as_path()).log_err();
+        }
+    }
+
+    fn remove_path_from_snapshot(&mut self, path: &RelPath) -> Vec<PathBuf> {
         let mut new_entries;
         let removed_entries;
         {
@@ -2324,6 +2694,20 @@ impl BackgroundScannerState {
             } else {
                 self.removed_entries.insert(entry.inode, entry.clone());
             }
+
+            if entry.path.file_name() == Some(GITIGNORE)
+                && let Some(parent) = entry.path.parent()
+            {
+                let abs_parent_path = self.snapshot.absolutize(parent);
+                if let Some((_, needs_update)) = self
+                    .snapshot
+                    .ignores_by_parent_abs_path
+                    .get_mut(abs_parent_path.as_path())
+                {
+                    *needs_update = true;
+                }
+            }
+
             if let Err(index) = removed_ids.binary_search(&entry.id) {
                 removed_ids.insert(index, entry.id);
             }
@@ -2337,12 +2721,10 @@ impl BackgroundScannerState {
             (),
         );
 
-        for removed_dir_abs_path in removed_dir_abs_paths {
-            watcher.remove(removed_dir_abs_path.as_path()).log_err();
-        }
-
         #[cfg(feature = "test")]
         self.snapshot.check_invariants();
+
+        removed_dir_abs_paths
     }
 }
 
@@ -2355,9 +2737,17 @@ struct EventRoot {
 struct ScanJob {
     abs_path: Arc<Path>,
     path: Arc<RelPath>,
+    ignore_stack: IgnoreStack,
     scan_queue: channel::Sender<ScanJob>,
     ancestor_inodes: HashSet<u64>,
     is_external: bool,
+}
+
+struct UpdateIgnoreStatusJob {
+    abs_path: Arc<Path>,
+    ignore_stack: IgnoreStack,
+    ignore_queue: channel::Sender<UpdateIgnoreStatusJob>,
+    scan_queue: channel::Sender<ScanJob>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2605,6 +2995,37 @@ impl<'a> Iterator for ChildEntriesIter<'a> {
             return Some(item);
         }
         None
+    }
+}
+
+async fn build_gitignore(abs_path: &Path, fs: &dyn Fs) -> anyhow::Result<Gitignore> {
+    let parent = abs_path.parent().unwrap_or_else(|| Path::new("/"));
+    build_gitignore_with_root(abs_path, parent, fs).await
+}
+
+async fn build_gitignore_with_root(
+    abs_path: &Path,
+    root: &Path,
+    fs: &dyn Fs,
+) -> anyhow::Result<Gitignore> {
+    let contents = fs
+        .load(abs_path)
+        .await
+        .with_context(|| format!("failed to load gitignore file at {}", abs_path.display()))?;
+    let mut builder = GitignoreBuilder::new(root);
+    for line in contents.lines() {
+        builder.add_line(Some(abs_path.into()), line)?;
+    }
+    Ok(builder.build()?)
+}
+
+fn swap_to_front(child_paths: &mut Vec<PathBuf>, file: &str) {
+    let position = child_paths
+        .iter()
+        .position(|path| path.file_name() == Some(OsStr::new(file)));
+    if let Some(position) = position {
+        let path = child_paths.remove(position);
+        child_paths.insert(0, path);
     }
 }
 

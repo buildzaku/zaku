@@ -1772,6 +1772,7 @@ impl ProjectPanel {
             inode: 0,
             mtime: parent_entry.mtime,
             canonical_path: parent_entry.canonical_path.clone(),
+            is_ignored: parent_entry.is_ignored,
             is_external: false,
             is_fifo: parent_entry.is_fifo,
             size: parent_entry.size,

@@ -69,6 +69,229 @@ async fn test_traversal(cx: &mut TestAppContext) {
     });
 }
 
+#[gpui::test]
+async fn test_open_gitignored_files(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            ".gitignore": indoc! {"
+                ignored/
+            "},
+            "foo": {
+                "ignored": {
+                    "bar": {
+                        "first.toml": "",
+                        "second.toml": "",
+                    },
+                    "baz": {
+                        "third.toml": "",
+                    },
+                },
+            },
+            "bar": {
+                "fourth.toml": "",
+            },
+        }),
+    );
+
+    let worktree = Worktree::new(
+        temp_fs.path().join("project"),
+        true,
+        temp_fs.clone(),
+        Arc::new(AtomicUsize::new(1)),
+        true,
+        WorktreeId::from_usize(1),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| (entry.path.as_ref(), entry.is_ignored))
+                .collect::<Vec<_>>(),
+            vec![
+                (rel_path(""), false),
+                (rel_path(".gitignore"), false),
+                (rel_path("bar"), false),
+                (rel_path("bar/fourth.toml"), false),
+                (rel_path("foo"), false),
+                (rel_path("foo/ignored"), true),
+            ]
+        );
+    });
+
+    let loaded = worktree
+        .update(cx, |worktree, cx| {
+            worktree.load_file(rel_path("foo/ignored/bar/first.toml"), cx)
+        })
+        .await
+        .unwrap();
+
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| (entry.path.as_ref(), entry.is_ignored))
+                .collect::<Vec<_>>(),
+            vec![
+                (rel_path(""), false),
+                (rel_path(".gitignore"), false),
+                (rel_path("bar"), false),
+                (rel_path("bar/fourth.toml"), false),
+                (rel_path("foo"), false),
+                (rel_path("foo/ignored"), true),
+                (rel_path("foo/ignored/bar"), true),
+                (rel_path("foo/ignored/bar/first.toml"), true),
+                (rel_path("foo/ignored/bar/second.toml"), true),
+                (rel_path("foo/ignored/baz"), true),
+            ]
+        );
+
+        assert_eq!(
+            loaded.file.path.as_ref(),
+            rel_path("foo/ignored/bar/first.toml")
+        );
+    });
+
+    let loaded = worktree
+        .update(cx, |worktree, cx| {
+            worktree.load_file(rel_path("foo/ignored/baz/third.toml"), cx)
+        })
+        .await
+        .unwrap();
+
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| (entry.path.as_ref(), entry.is_ignored))
+                .collect::<Vec<_>>(),
+            vec![
+                (rel_path(""), false),
+                (rel_path(".gitignore"), false),
+                (rel_path("bar"), false),
+                (rel_path("bar/fourth.toml"), false),
+                (rel_path("foo"), false),
+                (rel_path("foo/ignored"), true),
+                (rel_path("foo/ignored/bar"), true),
+                (rel_path("foo/ignored/bar/first.toml"), true),
+                (rel_path("foo/ignored/bar/second.toml"), true),
+                (rel_path("foo/ignored/baz"), true),
+                (rel_path("foo/ignored/baz/third.toml"), true),
+            ]
+        );
+
+        assert_eq!(
+            loaded.file.path.as_ref(),
+            rel_path("foo/ignored/baz/third.toml")
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_dirs_no_longer_ignored(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            ".gitignore": indoc! {"
+                ignored/
+            "},
+            "foo": {
+                "first.toml": "",
+            },
+            "ignored": {
+                "bar": {
+                    "second.toml": "",
+                    "baz": {
+                        "third.toml": "",
+                    },
+                    "qux": {
+                        "fourth.toml": "",
+                    },
+                },
+            },
+        }),
+    );
+
+    let worktree = Worktree::new(
+        temp_fs.path().join("project"),
+        true,
+        temp_fs.clone(),
+        Arc::new(AtomicUsize::new(1)),
+        true,
+        WorktreeId::from_usize(1),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
+    cx.update(|cx| {
+        worktree
+            .read(cx)
+            .refresh_entries_for_paths(vec![Arc::from(rel_path("ignored/bar/second.toml"))])
+    })
+    .await
+    .unwrap();
+
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| (entry.path.as_ref(), entry.is_ignored))
+                .collect::<Vec<_>>(),
+            vec![
+                (rel_path(""), false),
+                (rel_path(".gitignore"), false),
+                (rel_path("foo"), false),
+                (rel_path("foo/first.toml"), false),
+                (rel_path("ignored"), true),
+                (rel_path("ignored/bar"), true),
+                (rel_path("ignored/bar/baz"), true),
+                (rel_path("ignored/bar/qux"), true),
+                (rel_path("ignored/bar/second.toml"), true),
+            ]
+        );
+    });
+
+    temp_fs
+        .write(&temp_fs.path().join(path!("project/.gitignore")), b"baz\n")
+        .await
+        .unwrap();
+    worktree.flush_fs_events(cx).await;
+
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| (entry.path.as_ref(), entry.is_ignored))
+                .collect::<Vec<_>>(),
+            vec![
+                (rel_path(""), false),
+                (rel_path(".gitignore"), false),
+                (rel_path("foo"), false),
+                (rel_path("foo/first.toml"), false),
+                (rel_path("ignored"), false),
+                (rel_path("ignored/bar"), false),
+                (rel_path("ignored/bar/baz"), true),
+                (rel_path("ignored/bar/qux"), false),
+                (rel_path("ignored/bar/qux/fourth.toml"), false),
+                (rel_path("ignored/bar/second.toml"), false),
+            ]
+        );
+    });
+}
+
 #[gpui::test(iterations = 10)]
 async fn test_circular_symlinks(cx: &mut TestAppContext) {
     cx.executor().allow_parking();

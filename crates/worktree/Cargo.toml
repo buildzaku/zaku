@@ -24,9 +24,12 @@ test = ["gpui/test-support"]
 [dependencies]
 anyhow = { workspace = true }
 async-lock = { workspace = true }
+collections = { workspace = true }
 fs = { workspace = true }
 futures = { workspace = true }
+git = { workspace = true }
 gpui = { workspace = true }
+ignore = { workspace = true }
 language = { workspace = true }
 log = { workspace = true }
 path = { workspace = true }
