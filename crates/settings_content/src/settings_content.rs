@@ -1,10 +1,12 @@
 mod editor;
 mod fallible_options;
+mod git;
 pub mod merge_from;
 mod theme;
 
 pub use editor::*;
 pub use fallible_options::*;
+pub use git::*;
 pub use merge_from::MergeFrom as MergeFromTrait;
 pub use theme::*;
 
@@ -24,5 +26,6 @@ pub struct SettingsContent {
     pub theme: Option<ThemeSettingsContent>,
     pub ui: Option<UiSettingsContent>,
     pub editor: Option<EditorSettingsContent>,
+    pub git: Option<GitSettingsContent>,
     pub log: Option<HashMap<String, String>>,
 }

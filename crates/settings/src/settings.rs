@@ -1,3 +1,4 @@
+mod git_settings;
 mod into_gpui;
 mod keymap_file;
 pub mod log_settings;
@@ -21,6 +22,7 @@ pub mod private {
 }
 
 pub use ::settings_content::*;
+pub use git_settings::*;
 pub use into_gpui::IntoGpui;
 pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
 pub use settings_file::{update_settings_file, watch_config_file};

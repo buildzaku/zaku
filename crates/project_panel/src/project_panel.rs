@@ -16,7 +16,8 @@ use std::{
 };
 
 use editor::{
-    Editor, EditorEvent, MultiBufferOffset, SelectionEffects, items::entry_git_aware_label_color,
+    Editor, EditorEvent, MultiBufferOffset, SelectionEffects,
+    items::{entry_git_aware_label_color, entry_label_color},
 };
 use git::status::GitSummary;
 use path::{PathStyle, RelPath, SortMode, SortOrder};
@@ -25,6 +26,7 @@ use project::{
     Snapshot, Worktree, WorktreeId,
     git_store::{GitStoreEvent, RepositoryEvent},
 };
+use settings::{GitSettings, Settings, SettingsStore};
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, Clickable, Color, ContextMenu, DynamicSpacing, Icon, IconButton, IconButtonShape,
@@ -202,6 +204,16 @@ impl ProjectPanel {
                     GitStoreEvent::ActiveRepositoryChanged(_) => {}
                 },
             )
+            .detach();
+
+            let mut git_settings = *GitSettings::get_global(cx);
+            cx.observe_global_in::<SettingsStore>(window, move |_, _, cx| {
+                let new_git_settings = *GitSettings::get_global(cx);
+                if git_settings != new_git_settings {
+                    git_settings = new_git_settings;
+                    cx.notify();
+                }
+            })
             .detach();
 
             cx.subscribe_in(
@@ -2459,9 +2471,16 @@ impl ProjectPanel {
         let show_editor = details.is_editing && !details.is_processing;
         let is_marked = details.is_marked && !show_editor;
         let is_selected = details.is_selected && !show_editor;
-        let label_color =
-            entry_git_aware_label_color(details.git_status, details.is_ignored, is_marked);
-        let git_indicator = git_status_indicator(details.git_status);
+        let git_settings = GitSettings::get_global(cx);
+        let git_status_enabled = git_settings.is_git_status_enabled();
+        let label_color = if git_status_enabled && git_settings.status.project_panel.colors {
+            entry_git_aware_label_color(details.git_status, details.is_ignored, is_marked)
+        } else {
+            entry_label_color(is_marked)
+        };
+        let git_indicator = (git_status_enabled && git_settings.status.project_panel.indicators)
+            .then(|| git_status_indicator(details.git_status))
+            .flatten();
         let bg_color = if is_marked {
             colors.element_selected
         } else if is_selected {

@@ -11,6 +11,7 @@ use std::{
 
 use path::PathStyle;
 use project::{Project, ProjectEntryId, ProjectPath};
+use settings::SettingsStore;
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
@@ -63,6 +64,7 @@ pub struct Pane {
     tab_bar_scroll_handle: ScrollHandle,
     save_modals_spawned: HashSet<EntityId>,
     _focus_subscriptions: Vec<Subscription>,
+    _settings_subscription: Subscription,
 }
 
 impl Pane {
@@ -78,6 +80,8 @@ impl Pane {
             cx.on_focus_in(&focus_handle, window, Pane::focus_in),
             cx.on_focus_out(&focus_handle, window, Pane::focus_out),
         ];
+        let settings_subscription =
+            cx.observe_global_in::<SettingsStore>(window, |_, _, cx| cx.notify());
 
         Self {
             focus_handle,
@@ -92,6 +96,7 @@ impl Pane {
             tab_bar_scroll_handle: ScrollHandle::new(),
             save_modals_spawned: HashSet::default(),
             _focus_subscriptions: focus_subscriptions,
+            _settings_subscription: settings_subscription,
         }
     }
 

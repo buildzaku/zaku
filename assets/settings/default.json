@@ -23,5 +23,18 @@
       "min_line_number_digits": 4
     }
   },
+  "git": {
+    "enabled": true,
+    "status": {
+      "enabled": true,
+      "project_panel": {
+        "colors": true,
+        "indicators": true
+      },
+      "tabs": {
+        "colors": true
+      }
+    }
+  },
   "log": {}
 }
