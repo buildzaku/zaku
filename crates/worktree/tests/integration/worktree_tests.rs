@@ -70,6 +70,69 @@ async fn test_traversal(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_git_index_events(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let temp_fs = TempFs::new(cx.executor());
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            ".git": {},
+            "request.toml": "",
+        }),
+    );
+
+    let worktree = Worktree::new(
+        temp_fs.path().join("project"),
+        true,
+        temp_fs.clone(),
+        Arc::new(AtomicUsize::new(1)),
+        true,
+        WorktreeId::from_usize(1),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+
+    cx.update(|cx| worktree.read(cx).scan_complete()).await;
+
+    worktree.read_with(cx, |worktree, _| {
+        assert_eq!(
+            worktree
+                .entries(0)
+                .map(|entry| entry.path.as_ref())
+                .collect::<Vec<_>>(),
+            vec![rel_path(""), rel_path("request.toml")]
+        );
+    });
+
+    let events_count = Arc::new(Mutex::new(0));
+    worktree.update(cx, |_, cx| {
+        let events_count = events_count.clone();
+        cx.subscribe(&worktree, move |_, _, event, _| {
+            if matches!(event, WorktreeEvent::UpdatedGitRepositories(_)) {
+                *events_count.lock() += 1;
+            }
+        })
+        .detach();
+    });
+
+    temp_fs
+        .write(&temp_fs.path().join(path!("project/.git/index.lock")), b"")
+        .await
+        .unwrap();
+    worktree.flush_fs_events(cx).await;
+    assert!(*events_count.lock() == 0);
+
+    temp_fs
+        .write(&temp_fs.path().join(path!("project/.git/index")), b"")
+        .await
+        .unwrap();
+    worktree.flush_fs_events(cx).await;
+    assert!(*events_count.lock() > 0);
+}
+
+#[gpui::test]
 async fn test_open_gitignored_files(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
