@@ -49,7 +49,11 @@ use fs::{
     FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, RemoveOptions,
     Watcher as FsWatcher,
 };
-use git::{DOT_GIT, GITIGNORE, status::GitSummary};
+use git::{
+    BISECT_LOG, COMMIT_MESSAGE, DOT_GIT, FETCH_HEAD, FSMONITOR_DAEMON, GC_PID, GITIGNORE,
+    HOOKS_DIR, INFO_DIR, LFS_DIR, LOGS_DIR, LOGS_REF_STASH, OBJECTS_DIR, ORIG_HEAD,
+    REBASE_APPLY_DIR, REBASE_MERGE_DIR, REPO_EXCLUDE, SEQUENCER_DIR, status::GitSummary,
+};
 use language::{LineEnding, Rope};
 use path::{PathStyle, RelPath, SanitizedPath};
 use util::ResultExt;
@@ -1382,10 +1386,6 @@ impl WorktreeSnapshot {
                 }
             }
         }
-        if entry.path.file_name() == Some(DOT_GIT) {
-            self.insert_git_repository(entry.path.clone(), fs).await;
-        }
-
         if entry.kind == EntryKind::PendingDir
             && let Some(existing_entry) = self
                 .snapshot
@@ -1409,46 +1409,6 @@ impl WorktreeSnapshot {
             .insert_or_replace(entry.to_path_entry(), ());
 
         entry
-    }
-
-    async fn insert_git_repository(&mut self, dot_git_path: Arc<RelPath>, fs: &dyn Fs) {
-        let Some(work_directory_path) = dot_git_path.parent() else {
-            log::debug!("Not building Git repository for the worktree itself: {dot_git_path:?}");
-            return;
-        };
-
-        if work_directory_path
-            .components()
-            .any(|component| component == DOT_GIT)
-        {
-            log::debug!(
-                "Not building Git repository for nested `.git` directory: {dot_git_path:?}"
-            );
-            return;
-        }
-
-        let Some(work_directory_entry) = self.snapshot.entry_for_path(work_directory_path) else {
-            log::debug!("Working directory {work_directory_path:?} not indexed");
-            return;
-        };
-        let work_directory_id = work_directory_entry.id;
-
-        let dot_git_abs_path: Arc<Path> = self.absolutize(&dot_git_path).into();
-        let work_directory_abs_path: Arc<Path> = self.absolutize(work_directory_path).into();
-        let (repository_dir_abs_path, common_dir_abs_path) =
-            discover_git_paths(&dot_git_abs_path, fs).await;
-
-        self.git_repositories.insert(
-            work_directory_id,
-            RepositoryEntry {
-                work_directory_id,
-                work_directory_abs_path,
-                git_dir_scan_id: self.scan_id,
-                dot_git_abs_path,
-                common_dir_abs_path,
-                repository_dir_abs_path,
-            },
-        );
     }
 
     async fn ignore_stack_for_abs_path(
@@ -1938,6 +1898,16 @@ impl BackgroundScanner {
     }
 
     async fn process_events(&self, mut events: Vec<PathEvent>) {
+        let skip_index = |ranges: &mut SmallVec<[Range<usize>; 4]>, index: usize| {
+            if let Some(last_range) = ranges.last_mut()
+                && last_range.end == index
+            {
+                last_range.end += 1;
+            } else {
+                ranges.push(index..index + 1);
+            }
+        };
+
         let root_path = self.state.lock().await.snapshot.abs_path.clone();
         let root_canonical_path = self.fs.canonicalize(root_path.as_path()).await;
         let root_canonical_path = match &root_canonical_path {
@@ -1992,6 +1962,7 @@ impl BackgroundScanner {
                             state.remove_path_from_snapshot_and_unwatch(
                                 RelPath::empty(),
                                 self.watcher.as_ref(),
+                                false,
                             );
                             state.snapshot.completed_scan_id = state.snapshot.scan_id;
                             for (_, removed_entry) in std::mem::take(&mut state.removed_entries) {
@@ -2013,7 +1984,97 @@ impl BackgroundScanner {
             }
         };
 
-        let mut relative_paths = Vec::with_capacity(events.len());
+        let skipped_file_names_in_dot_git =
+            [COMMIT_MESSAGE, FETCH_HEAD, ORIG_HEAD, BISECT_LOG, GC_PID];
+        let skipped_dirs_in_dot_git = [
+            FSMONITOR_DAEMON,
+            LFS_DIR,
+            OBJECTS_DIR,
+            HOOKS_DIR,
+            REBASE_MERGE_DIR,
+            REBASE_APPLY_DIR,
+            SEQUENCER_DIR,
+        ];
+
+        let mut dot_git_abs_paths = Vec::new();
+        {
+            let mut ranges_to_drop = SmallVec::<[Range<usize>; 4]>::new();
+
+            for (index, event) in events.iter().enumerate() {
+                let abs_path = SanitizedPath::new(&event.path);
+                let mut dot_git_paths = None;
+
+                for ancestor in abs_path.as_path().ancestors() {
+                    if is_dot_git(ancestor, self.fs.as_ref()).await {
+                        let path_in_git_dir = abs_path
+                            .as_path()
+                            .strip_prefix(ancestor)
+                            .expect("stripping off the ancestor");
+                        dot_git_paths = Some((ancestor.to_owned(), path_in_git_dir.to_owned()));
+                        break;
+                    }
+                }
+
+                if let Some((dot_git_abs_path, path_in_git_dir)) = dot_git_paths {
+                    let is_ignored = skipped_file_names_in_dot_git.iter().any(|skipped| {
+                        path_in_git_dir
+                            .file_name()
+                            .is_some_and(|file_name| file_name == OsStr::new(skipped))
+                    }) || (path_in_git_dir.starts_with(LOGS_DIR)
+                        && path_in_git_dir != Path::new(LOGS_REF_STASH))
+                        || (path_in_git_dir.starts_with(INFO_DIR)
+                            && path_in_git_dir != Path::new(REPO_EXCLUDE))
+                        || skipped_dirs_in_dot_git.iter().any(|skipped_git_subdir| {
+                            path_in_git_dir.starts_with(skipped_git_subdir)
+                        })
+                        || path_in_git_dir
+                            .extension()
+                            .is_some_and(|extension| extension == "lock")
+                        || (path_in_git_dir.components().count() == 1
+                            && path_in_git_dir
+                                .extension()
+                                .is_some_and(|extension| extension == "new" || extension == "tmp"));
+                    let is_dot_git = path_in_git_dir == Path::new("")
+                        && matches!(event.kind, Some(PathEventKind::Changed))
+                        && matches!(
+                            self.fs.metadata(&dot_git_abs_path).await,
+                            Ok(Some(metadata)) if metadata.is_dir
+                        );
+
+                    if is_ignored {
+                        log::debug!(
+                            "Ignoring event {} as it's in the .git directory among skipped files or directories",
+                            abs_path.as_path().display()
+                        );
+                        skip_index(&mut ranges_to_drop, index);
+                        continue;
+                    }
+                    if is_dot_git {
+                        log::debug!(
+                            "Ignoring event {} for .git directory itself (kind: {:?})",
+                            abs_path.as_path().display(),
+                            event.kind
+                        );
+                        skip_index(&mut ranges_to_drop, index);
+                        continue;
+                    }
+
+                    if !dot_git_abs_paths.contains(&dot_git_abs_path) {
+                        log::debug!(
+                            "Detected update within Git repo at {}: {}",
+                            dot_git_abs_path.display(),
+                            abs_path.as_path().display()
+                        );
+                        dot_git_abs_paths.push(dot_git_abs_path);
+                    }
+                }
+            }
+
+            for range_to_drop in ranges_to_drop.into_iter().rev() {
+                events.drain(range_to_drop);
+            }
+        }
+
         events.sort_unstable_by(|left, right| left.path.cmp(&right.path));
         events.dedup_by(|left, right| {
             if left.path == right.path || left.path.starts_with(&right.path) {
@@ -2025,21 +2086,13 @@ impl BackgroundScanner {
                 false
             }
         });
-        {
-            fn skip_idx(ranges: &mut SmallVec<[Range<usize>; 4]>, idx: usize) {
-                if let Some(last_range) = ranges.last_mut()
-                    && last_range.end == idx
-                {
-                    last_range.end += 1;
-                } else {
-                    ranges.push(idx..idx + 1);
-                }
-            }
 
+        let mut relative_paths = Vec::with_capacity(events.len());
+        {
             let snapshot = &self.state.lock().await.snapshot;
             let mut ranges_to_drop = SmallVec::<[Range<usize>; 4]>::new();
 
-            for (idx, event) in events.iter().enumerate() {
+            for (index, event) in events.iter().enumerate() {
                 let abs_path = SanitizedPath::new(&event.path);
                 let relative_path = if let Ok(path) = abs_path
                     .as_path()
@@ -2048,12 +2101,29 @@ impl BackgroundScanner {
                 {
                     path
                 } else {
-                    log::error!(
-                        "Ignoring event {abs_path:?} outside of root path {root_canonical_path:?}",
-                    );
-                    skip_idx(&mut ranges_to_drop, idx);
+                    skip_index(&mut ranges_to_drop, index);
                     continue;
                 };
+
+                if abs_path.as_path().file_name() == Some(OsStr::new(GITIGNORE)) {
+                    for (_, repository) in snapshot.git_repositories.iter() {
+                        let Some(work_directory_entry) =
+                            snapshot.entry_for_id(repository.work_directory_id)
+                        else {
+                            continue;
+                        };
+
+                        if relative_path
+                            .as_ref()
+                            .starts_with(work_directory_entry.path.as_ref())
+                            && !dot_git_abs_paths.iter().any(|dot_git_abs_path| {
+                                dot_git_abs_path == repository.common_dir_abs_path.as_ref()
+                            })
+                        {
+                            dot_git_abs_paths.push(repository.common_dir_abs_path.to_path_buf());
+                        }
+                    }
+                }
 
                 let parent_dir_is_loaded = relative_path.parent().is_none_or(|parent| {
                     snapshot
@@ -2062,7 +2132,12 @@ impl BackgroundScanner {
                 });
                 if !parent_dir_is_loaded {
                     log::debug!("Ignoring event {relative_path:?} within unloaded directory");
-                    skip_idx(&mut ranges_to_drop, idx);
+                    skip_index(&mut ranges_to_drop, index);
+                    continue;
+                }
+
+                if is_path_excluded(relative_path.as_ref()) {
+                    skip_index(&mut ranges_to_drop, index);
                     continue;
                 }
 
@@ -2077,7 +2152,7 @@ impl BackgroundScanner {
             }
         }
 
-        if relative_paths.is_empty() {
+        if relative_paths.is_empty() && dot_git_abs_paths.is_empty() {
             return;
         }
 
@@ -2105,6 +2180,9 @@ impl BackgroundScanner {
             Some(scan_job_tx.clone()),
         )
         .await;
+        if !dot_git_abs_paths.is_empty() {
+            self.update_git_repositories(dot_git_abs_paths).await;
+        }
         {
             let ignores_to_update = self.ignores_needing_update().await;
             let ignores_to_update = self.order_ignores(ignores_to_update).await;
@@ -2124,6 +2202,83 @@ impl BackgroundScanner {
 
         self.send_status_update(false, SmallVec::new(), &relative_paths)
             .await;
+    }
+
+    async fn update_git_repositories(&self, dot_git_paths: Vec<PathBuf>) {
+        log::trace!("Reloading repositories: {dot_git_paths:?}");
+        let mut state = self.state.lock().await;
+        let scan_id = state.snapshot.scan_id;
+
+        for dot_git_dir in dot_git_paths {
+            let sanitized_dot_git_dir = SanitizedPath::new(&dot_git_dir);
+            let existing_repository_entry =
+                state
+                    .snapshot
+                    .git_repositories
+                    .iter()
+                    .find_map(|(_, repository)| {
+                        if SanitizedPath::new(repository.common_dir_abs_path.as_ref())
+                            == sanitized_dot_git_dir
+                            || SanitizedPath::new(repository.repository_dir_abs_path.as_ref())
+                                == sanitized_dot_git_dir
+                            || SanitizedPath::new(repository.dot_git_abs_path.as_ref())
+                                == sanitized_dot_git_dir
+                        {
+                            Some(repository.clone())
+                        } else {
+                            None
+                        }
+                    });
+
+            match existing_repository_entry {
+                None => {
+                    let Ok(relative_path) = dot_git_dir.strip_prefix(state.snapshot.abs_path())
+                    else {
+                        continue;
+                    };
+                    let Some(relative_path) =
+                        RelPath::new(relative_path, PathStyle::local()).log_err()
+                    else {
+                        continue;
+                    };
+                    state
+                        .insert_git_repository(
+                            relative_path.into_owned().into(),
+                            self.fs.as_ref(),
+                            self.watcher.as_ref(),
+                        )
+                        .await;
+                }
+                Some(mut repository) => {
+                    repository.git_dir_scan_id = scan_id;
+                    state
+                        .snapshot
+                        .git_repositories
+                        .insert(repository.work_directory_id, repository);
+                }
+            }
+        }
+
+        let repositories = state
+            .snapshot
+            .git_repositories
+            .iter()
+            .map(|(work_directory_id, repository)| {
+                (*work_directory_id, repository.dot_git_abs_path.clone())
+            })
+            .collect::<Vec<_>>();
+        let mut ids_to_preserve = HashSet::default();
+        for (work_directory_id, dot_git_abs_path) in repositories {
+            let dot_git_present = !matches!(self.fs.metadata(&dot_git_abs_path).await, Ok(None));
+            if dot_git_present {
+                ids_to_preserve.insert(work_directory_id);
+            }
+        }
+
+        state
+            .snapshot
+            .git_repositories
+            .retain(|work_directory_id, _| ids_to_preserve.contains(work_directory_id));
     }
 
     async fn send_status_update(
@@ -2249,13 +2404,17 @@ impl BackgroundScanner {
     }
 
     async fn scan_dir(&self, job: &ScanJob) -> anyhow::Result<()> {
+        if is_path_excluded(job.path.as_ref()) {
+            log::error!("Skipping excluded directory {:?}", job.path);
+            return Ok(());
+        }
+
         let root_abs_path = self.state.lock().await.snapshot.abs_path().clone();
         log::trace!("Scanning directory {:?}", job.path);
 
         let next_entry_id = self.next_entry_id.clone();
         let mut ignore_stack = job.ignore_stack.clone();
         let mut new_ignore = None;
-        let mut dot_git_path = None;
         let mut root_canonical_path = None;
         let mut new_entries: Vec<Entry> = Vec::new();
         let mut new_jobs: Vec<Option<ScanJob>> = Vec::new();
@@ -2319,7 +2478,27 @@ impl BackgroundScanner {
             };
 
             if child_name == DOT_GIT && !child_metadata.is_fifo {
-                dot_git_path = Some(child_path.clone());
+                self.state
+                    .lock()
+                    .await
+                    .insert_git_repository(
+                        child_path.clone(),
+                        self.fs.as_ref(),
+                        self.watcher.as_ref(),
+                    )
+                    .await;
+            }
+
+            if is_path_excluded(child_path.as_ref()) {
+                self.state
+                    .lock()
+                    .await
+                    .remove_path_from_snapshot_and_unwatch(
+                        child_path.as_ref(),
+                        self.watcher.as_ref(),
+                        true,
+                    );
+                continue;
             }
 
             let mut child_entry = Entry::new(
@@ -2412,12 +2591,6 @@ impl BackgroundScanner {
                 }
             }
             state.populate_dir(job.path.clone(), new_entries, new_ignore);
-            if let Some(dot_git_path) = dot_git_path {
-                state
-                    .snapshot
-                    .insert_git_repository(dot_git_path, self.fs.as_ref())
-                    .await;
-            }
         }
 
         self.watcher.add(job.abs_path.as_ref()).log_err();
@@ -2468,17 +2641,25 @@ impl BackgroundScanner {
 
         let mut paths_to_process = Vec::with_capacity(relative_paths.len());
         for (path, metadata) in relative_paths.iter().zip(metadata.iter()) {
+            let path_is_excluded = is_path_excluded(path.as_ref());
             let path_was_removed = matches!(metadata, Ok(None));
-            let removed_descendant_paths = if path_was_removed || doing_recursive_update {
-                state.remove_path_from_snapshot(path, path_was_removed)
-            } else {
-                Vec::new()
-            };
+            let prune_repositories = path_was_removed && !path_is_excluded;
+            let removed_descendant_paths =
+                if path_was_removed || doing_recursive_update || path_is_excluded {
+                    state.remove_path_from_snapshot(path, prune_repositories)
+                } else {
+                    Vec::new()
+                };
             paths_to_process.push((path, metadata, removed_descendant_paths));
         }
 
         for (path, metadata, mut removed_descendant_abs_paths) in paths_to_process {
             let abs_path: Arc<Path> = root_abs_path.as_path().join(path.as_std_path()).into();
+            if is_path_excluded(path.as_ref()) {
+                state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths, true);
+                continue;
+            }
+
             match metadata {
                 Ok(Some((metadata, canonical_path))) => {
                     if metadata.is_fifo {
@@ -2486,7 +2667,11 @@ impl BackgroundScanner {
                             removed_descendant_abs_paths =
                                 state.remove_path_from_snapshot(path, true);
                         }
-                        state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths);
+                        state.unwatch_path(
+                            self.watcher.as_ref(),
+                            removed_descendant_abs_paths,
+                            false,
+                        );
                         continue;
                     }
 
@@ -2529,14 +2714,16 @@ impl BackgroundScanner {
                         }
                     }
 
-                    state.insert_entry(fs_entry, self.fs.as_ref()).await;
+                    state
+                        .insert_entry(fs_entry, self.fs.as_ref(), self.watcher.as_ref())
+                        .await;
                 }
                 Ok(None) => {
-                    state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths);
+                    state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths, false);
                 }
                 Err(error) => {
                     log::error!("Failed to reload {}: {error:#}", abs_path.display());
-                    state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths);
+                    state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths, false);
                 }
             }
         }
@@ -2888,9 +3075,13 @@ impl BackgroundScannerState {
         self.snapshot.check_invariants();
     }
 
-    async fn insert_entry(&mut self, entry: Entry, fs: &dyn Fs) -> Entry {
+    async fn insert_entry(&mut self, entry: Entry, fs: &dyn Fs, watcher: &dyn FsWatcher) -> Entry {
         self.removed_entries.remove(&entry.inode);
         let entry = self.snapshot.insert_entry(entry, fs).await;
+        if entry.path.file_name() == Some(DOT_GIT) {
+            self.insert_git_repository(entry.path.clone(), fs, watcher)
+                .await;
+        }
 
         #[cfg(feature = "test")]
         self.snapshot.check_invariants();
@@ -2898,17 +3089,95 @@ impl BackgroundScannerState {
         entry
     }
 
-    fn remove_path_from_snapshot_and_unwatch(&mut self, path: &RelPath, watcher: &dyn FsWatcher) {
-        let removed_descendant_abs_paths = self.remove_path_from_snapshot(path, true);
-        self.unwatch_path(watcher, removed_descendant_abs_paths);
+    async fn insert_git_repository(
+        &mut self,
+        dot_git_path: Arc<RelPath>,
+        fs: &dyn Fs,
+        watcher: &dyn FsWatcher,
+    ) {
+        let Some(work_directory_path) = dot_git_path.parent() else {
+            log::debug!("Not building Git repository for the worktree itself: {dot_git_path:?}");
+            return;
+        };
+
+        if work_directory_path
+            .components()
+            .any(|component| component == DOT_GIT)
+        {
+            log::debug!(
+                "Not building Git repository for nested `.git` directory: {dot_git_path:?}"
+            );
+            return;
+        }
+
+        let Some(work_directory_entry) = self.snapshot.entry_for_path(work_directory_path) else {
+            log::debug!("Working directory {work_directory_path:?} not indexed");
+            return;
+        };
+        let work_directory_id = work_directory_entry.id;
+
+        let dot_git_abs_path: Arc<Path> = self.snapshot.absolutize(&dot_git_path).into();
+        let work_directory_abs_path: Arc<Path> =
+            self.snapshot.absolutize(work_directory_path).into();
+        let (repository_dir_abs_path, common_dir_abs_path) =
+            discover_git_paths(&dot_git_abs_path, fs).await;
+
+        watcher.add(common_dir_abs_path.as_ref()).log_err();
+        watcher.add(repository_dir_abs_path.as_ref()).log_err();
+
+        let reftable_path = common_dir_abs_path.join("reftable");
+        if let Ok(Some(metadata)) = fs.metadata(&reftable_path).await
+            && metadata.is_dir
+        {
+            watcher.add(&reftable_path).log_err();
+        }
+
+        self.snapshot.git_repositories.insert(
+            work_directory_id,
+            RepositoryEntry {
+                work_directory_id,
+                work_directory_abs_path,
+                git_dir_scan_id: 0,
+                dot_git_abs_path,
+                common_dir_abs_path,
+                repository_dir_abs_path,
+            },
+        );
+    }
+
+    fn remove_path_from_snapshot_and_unwatch(
+        &mut self,
+        path: &RelPath,
+        watcher: &dyn FsWatcher,
+        preserve_repository_watches: bool,
+    ) {
+        let removed_descendant_abs_paths =
+            self.remove_path_from_snapshot(path, !preserve_repository_watches);
+        self.unwatch_path(
+            watcher,
+            removed_descendant_abs_paths,
+            preserve_repository_watches,
+        );
     }
 
     fn unwatch_path(
         &mut self,
         watcher: &dyn FsWatcher,
         removed_descendant_abs_paths: Vec<PathBuf>,
+        preserve_repository_watches: bool,
     ) {
+        let mut repository_watches_to_preserve = HashSet::<Arc<Path>>::default();
+        if preserve_repository_watches {
+            for repository in self.snapshot.git_repositories.values() {
+                repository_watches_to_preserve.insert(repository.common_dir_abs_path.clone());
+                repository_watches_to_preserve.insert(repository.repository_dir_abs_path.clone());
+            }
+        }
+
         for removed_dir_abs_path in removed_descendant_abs_paths {
+            if repository_watches_to_preserve.contains(removed_dir_abs_path.as_path()) {
+                continue;
+            }
             watcher.remove(removed_dir_abs_path.as_path()).log_err();
         }
     }
@@ -3310,6 +3579,26 @@ async fn build_gitignore_with_root(
         builder.add_line(Some(abs_path.into()), line)?;
     }
     Ok(builder.build()?)
+}
+
+async fn is_dot_git(path: &Path, fs: &dyn Fs) -> bool {
+    if let Some(file_name) = path.file_name()
+        && file_name == DOT_GIT
+    {
+        return true;
+    }
+
+    let head_metadata = fs.metadata(&path.join("HEAD")).await;
+    if !matches!(head_metadata, Ok(Some(_))) {
+        return false;
+    }
+
+    let config_metadata = fs.metadata(&path.join("config")).await;
+    matches!(config_metadata, Ok(Some(_)))
+}
+
+fn is_path_excluded(path: &RelPath) -> bool {
+    path.components().any(|component| component == DOT_GIT)
 }
 
 fn parse_gitfile(content: &str) -> anyhow::Result<&Path> {
