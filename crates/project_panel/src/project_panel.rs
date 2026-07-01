@@ -2546,7 +2546,7 @@ impl ProjectPanel {
                         this.end_slot(gpui::div().flex().items_center().flex_none().pr_3().child(
                             if details.kind.is_dir() {
                                 Indicator::dot()
-                                    .color(Color::Custom(color.color(cx).opacity(0.5)))
+                                    .color(Color::Custom(label_color.color(cx).opacity(0.5)))
                                     .into_any_element()
                             } else {
                                 Label::new(label)
