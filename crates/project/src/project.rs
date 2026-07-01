@@ -3,6 +3,7 @@ pub mod git_store;
 pub mod request_buffer_store;
 pub mod worktree_store;
 
+pub use git_store::git_traversal::{ChildEntriesGitIter, GitEntry, GitEntryRef, GitTraversal};
 pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
     Entry, EntryKind, File, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,

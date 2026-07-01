@@ -1,3 +1,5 @@
+pub mod git_traversal;
+
 use anyhow::Context as AnyhowContext;
 use futures::{FutureExt, StreamExt, channel::mpsc, future, stream::FuturesOrdered};
 use gpui::{App, AppContext, AsyncApp, Context, Entity, EventEmitter, Subscription, Task};
