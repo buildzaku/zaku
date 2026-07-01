@@ -5151,6 +5151,7 @@ dependencies = [
  "anyhow",
  "editor",
  "fs",
+ "git",
  "gpui",
  "indoc",
  "log",
