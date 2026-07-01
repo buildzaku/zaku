@@ -16,17 +16,19 @@ use std::{
 };
 
 use editor::{Editor, EditorEvent, MultiBufferOffset, SelectionEffects};
+use git::status::GitSummary;
 use path::{PathStyle, RelPath, SortMode, SortOrder};
 use project::{
-    Entry, EntryKind, Project, ProjectEntryId, ProjectEvent, ProjectPath, Snapshot, Worktree,
-    WorktreeId,
+    Entry, EntryKind, GitEntry, GitTraversal, Project, ProjectEntryId, ProjectEvent, ProjectPath,
+    Snapshot, Worktree, WorktreeId,
+    git_store::{GitStoreEvent, RepositoryEvent},
 };
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, Clickable, Color, ContextMenu, DynamicSpacing, Icon, IconButton, IconButtonShape,
-    IconName, IconSize, IndentGuideColors, IndentGuideLayout, Label, LabelCommon, LabelSize,
-    ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars, Tooltip, TrackLayout,
-    WithScrollbar,
+    IconName, IconSize, IndentGuideColors, IndentGuideLayout, Indicator, Label, LabelCommon,
+    LabelSize, ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars, Tooltip,
+    TrackLayout, WithScrollbar,
 };
 use util::ResultExt;
 
@@ -63,7 +65,7 @@ impl Default for UpdateVisibleEntriesTask {
 
 #[derive(Default)]
 struct TreeState {
-    visible_entries: Vec<Entry>,
+    visible_entries: Vec<GitEntry>,
     expanded_dir_ids: Option<Vec<ProjectEntryId>>,
     max_width_item_index: Option<usize>,
     edit_state: Option<EditState>,
@@ -78,8 +80,10 @@ struct EntryDetails {
     is_invalid: bool,
     is_selected: bool,
     is_marked: bool,
+    is_ignored: bool,
     is_editing: bool,
     is_processing: bool,
+    git_status: GitSummary,
 }
 
 #[derive(Debug)]
@@ -179,9 +183,25 @@ impl ProjectPanel {
         cx: &mut Context<Workspace>,
     ) -> Entity<Self> {
         let project = workspace.project().clone();
+        let git_store = project.read(cx).git_store().clone();
         let pane = workspace.pane().downgrade();
         let project_panel = cx.new(|cx| {
             let file_name_editor = cx.new(|cx| Editor::single_line(window, cx));
+            cx.subscribe_in(
+                &git_store,
+                window,
+                |this: &mut ProjectPanel, _, event, window, cx| match event {
+                    GitStoreEvent::RepositoryUpdated(_, RepositoryEvent::StatusesChanged, _)
+                    | GitStoreEvent::RepositoryAdded
+                    | GitStoreEvent::RepositoryRemoved(_) => {
+                        this.update_visible_entries(None, false, false, window, cx);
+                        cx.notify();
+                    }
+                    GitStoreEvent::ActiveRepositoryChanged(_) => {}
+                },
+            )
+            .detach();
+
             cx.subscribe_in(
                 &file_name_editor,
                 window,
@@ -365,7 +385,7 @@ impl ProjectPanel {
         Ok(())
     }
 
-    fn details_for_entry(&self, snapshot: &Snapshot, entry: &Entry, cx: &App) -> EntryDetails {
+    fn details_for_entry(&self, snapshot: &Snapshot, entry: &GitEntry, cx: &App) -> EntryDetails {
         let expanded_dir_ids = self.tree_state.expanded_dir_ids.as_deref().unwrap_or(&[]);
         let is_expanded = entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_ok();
         let file_name = file_name_for_entry(snapshot, entry);
@@ -387,8 +407,10 @@ impl ProjectPanel {
             is_invalid,
             is_selected: self.selection == Some(selection),
             is_marked: self.marked_entries.contains(&selection),
+            is_ignored: entry.is_ignored,
             is_editing: false,
             is_processing: false,
+            git_status: entry.git_summary,
         }
     }
 
@@ -430,6 +452,10 @@ impl ProjectPanel {
 
         let expanded_dir_ids = self.tree_state.expanded_dir_ids.clone().unwrap_or_default();
         let edit_state = self.tree_state.edit_state.clone();
+        let repo_snapshots = {
+            let project = self.project.read(cx);
+            project.git_store().read(cx).repo_snapshots(cx)
+        };
 
         let visible_entries_task = cx.spawn_in(window, async move |this, cx| {
             let visible_entries = cx
@@ -438,7 +464,7 @@ impl ProjectPanel {
                         return (Vec::new(), None);
                     };
                     let mut entries = Vec::new();
-                    let mut traversal = snapshot.entries(0);
+                    let mut traversal = GitTraversal::new(&repo_snapshots, snapshot.entries(0));
                     let mut new_entry_parent_id = None;
                     let mut new_entry_kind = EntryKind::Dir;
                     if let Some(edit_state) = &edit_state
@@ -457,10 +483,14 @@ impl ProjectPanel {
                         if root_entry_id != Some(entry.id)
                             && (entry.kind.is_dir() || entry.is_request)
                         {
-                            entries.push(entry.clone());
+                            entries.push(entry.to_owned());
                         }
                         if new_entry_parent_id == Some(entry.id) {
-                            entries.push(Self::create_new_entry(entry, new_entry_kind));
+                            entries.push(Self::create_new_git_entry(
+                                entry.entry,
+                                entry.git_summary,
+                                new_entry_kind,
+                            ));
                         }
 
                         if entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_err()
@@ -1762,20 +1792,28 @@ impl ProjectPanel {
         });
     }
 
-    fn create_new_entry(parent_entry: &Entry, new_entry_kind: EntryKind) -> Entry {
-        Entry {
-            id: Self::NEW_ENTRY_ID,
-            kind: new_entry_kind,
-            path: parent_entry
-                .path
-                .join(RelPath::unix("\0").expect("new entry placeholder path should be valid")),
-            inode: 0,
-            mtime: parent_entry.mtime,
-            canonical_path: parent_entry.canonical_path.clone(),
-            is_external: false,
-            is_fifo: parent_entry.is_fifo,
-            size: parent_entry.size,
-            is_request: false,
+    fn create_new_git_entry(
+        parent_entry: &Entry,
+        git_summary: GitSummary,
+        new_entry_kind: EntryKind,
+    ) -> GitEntry {
+        GitEntry {
+            entry: Entry {
+                id: Self::NEW_ENTRY_ID,
+                kind: new_entry_kind,
+                path: parent_entry
+                    .path
+                    .join(RelPath::unix("\0").expect("new entry placeholder path should be valid")),
+                inode: 0,
+                mtime: parent_entry.mtime,
+                canonical_path: parent_entry.canonical_path.clone(),
+                is_ignored: parent_entry.is_ignored,
+                is_external: false,
+                is_fifo: parent_entry.is_fifo,
+                size: parent_entry.size,
+                is_request: false,
+            },
+            git_summary,
         }
     }
 
@@ -2419,6 +2457,9 @@ impl ProjectPanel {
         let show_editor = details.is_editing && !details.is_processing;
         let is_marked = details.is_marked && !show_editor;
         let is_selected = details.is_selected && !show_editor;
+        let label_color =
+            entry_git_aware_label_color(details.git_status, details.is_ignored, is_marked);
+        let git_indicator = git_status_indicator(details.git_status);
         let bg_color = if is_marked {
             colors.element_selected
         } else if is_selected {
@@ -2501,6 +2542,20 @@ impl ProjectPanel {
                     .indent_step_size(Self::entry_indent_size(window))
                     .spacing(ListItemSpacing::Dense)
                     .selectable(false)
+                    .when_some(git_indicator, |this, (label, color)| {
+                        this.end_slot(gpui::div().flex().items_center().flex_none().pr_3().child(
+                            if details.kind.is_dir() {
+                                Indicator::dot()
+                                    .color(Color::Custom(label_color.color(cx).opacity(0.5)))
+                                    .into_any_element()
+                            } else {
+                                Label::new(label)
+                                    .size(LabelSize::Small)
+                                    .color(color)
+                                    .into_any_element()
+                            },
+                        ))
+                    })
                     .child(Self::render_entry_prefix(details, window))
                     .child(if show_editor {
                         gpui::div()
@@ -2519,11 +2574,11 @@ impl ProjectPanel {
                             )
                             .child(self.file_name_editor.clone())
                     } else {
-                        gpui::div()
-                            .flex()
-                            .items_center()
-                            .h_6()
-                            .child(Label::new(details.file_name.clone()).single_line())
+                        gpui::div().flex().items_center().h_6().child(
+                            Label::new(details.file_name.clone())
+                                .color(label_color)
+                                .single_line(),
+                        )
                     })
                     .on_secondary_mouse_down(cx.listener(
                         move |project_panel, event: &MouseDownEvent, window, cx| {
@@ -2950,6 +3005,50 @@ fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
 fn file_stem_for_entry(entry: &Entry) -> &str {
     let file_name = entry.path.file_name().unwrap_or_default();
     file_name.strip_suffix(".toml").unwrap_or(file_name)
+}
+
+fn entry_git_aware_label_color(git_status: GitSummary, ignored: bool, selected: bool) -> Color {
+    let tracked = git_status.index + git_status.worktree;
+    if git_status.conflict > 0 {
+        Color::Conflict
+    } else if tracked.deleted > 0 {
+        Color::Deleted
+    } else if tracked.modified > 0 {
+        Color::Modified
+    } else if tracked.added > 0 || git_status.untracked > 0 {
+        Color::Created
+    } else if ignored {
+        Color::Ignored
+    } else if selected {
+        Color::Default
+    } else {
+        Color::Muted
+    }
+}
+
+fn git_status_indicator(git_status: GitSummary) -> Option<(&'static str, Color)> {
+    if git_status.conflict > 0 {
+        return Some(("!", Color::Conflict));
+    }
+    if git_status.untracked > 0 {
+        return Some(("U", Color::Created));
+    }
+    if git_status.worktree.deleted > 0 {
+        return Some(("D", Color::Deleted));
+    }
+    if git_status.worktree.modified > 0 {
+        return Some(("M", Color::Modified));
+    }
+    if git_status.index.deleted > 0 {
+        return Some(("D", Color::Deleted));
+    }
+    if git_status.index.modified > 0 {
+        return Some(("M", Color::Modified));
+    }
+    if git_status.index.added > 0 {
+        return Some(("A", Color::Created));
+    }
+    None
 }
 
 fn is_missing_entry_name(file_name: &str, is_dir: bool, path_style: PathStyle) -> bool {

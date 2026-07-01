@@ -14,7 +14,8 @@ use project::{Project, ProjectEntryId, ProjectPath};
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
-    IconSize, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
+    IconSize, Indicator, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip,
+    VisibleOnHover,
 };
 use util::ResultExt;
 
@@ -898,7 +899,7 @@ impl Pane {
                 .relative()
                 .size(IconSize::Small.square(window, cx))
                 .justify_center()
-                .child(render_item_indicator(tab_control_group_name.clone(), cx))
+                .child(render_item_indicator(tab_control_group_name.clone()))
                 .child(
                     gpui::div()
                         .flex()
@@ -1177,12 +1178,11 @@ impl Render for Pane {
     }
 }
 
-fn render_item_indicator(group_name: String, cx: &App) -> AnyElement {
+fn render_item_indicator(group_name: String) -> AnyElement {
     gpui::div()
-        .size_1p5()
-        .rounded_sm()
-        .bg(cx.theme().colors().text_accent)
+        .flex_none()
         .group_hover(group_name, |style| style.invisible())
+        .child(Indicator::dot().color(Color::Accent))
         .into_any_element()
 }
 

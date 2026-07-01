@@ -9,6 +9,7 @@ members = [
   "crates/db",
   "crates/editor",
   "crates/fs",
+  "crates/git",
   "crates/grammars",
   "crates/http_client",
   "crates/icons",
@@ -82,6 +83,7 @@ gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "f8e1ab7f
 gpui_util = { git = "https://github.com/zed-industries/zed", rev = "f8e1ab7f3c", package = "gpui_util" }
 http = { version = "1.4" }
 http-body = { version = "1.0" }
+ignore = { version = "0.4" }
 imara-diff = { version = "0.2" }
 indexmap = { version = "2.14" }
 indoc = { version = "2.0" }
@@ -140,6 +142,7 @@ tree-sitter-xml = { version = "0.7" }
 unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.23", features = ["v4"] }
+which = { version = "8.0" }
 windows = { version = "0.62", features = [
   "Wdk_System_SystemServices",
   "Win32_Foundation",
@@ -157,6 +160,7 @@ command_palette_hooks = { path = "crates/command_palette_hooks" }
 db = { path = "crates/db" }
 editor = { path = "crates/editor" }
 fs = { path = "crates/fs" }
+git = { path = "crates/git" }
 grammars = { path = "crates/grammars" }
 http_client = { path = "crates/http_client" }
 icons = { path = "crates/icons" }
