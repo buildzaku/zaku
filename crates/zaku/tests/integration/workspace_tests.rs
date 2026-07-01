@@ -233,7 +233,7 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
                         "set-cookie",
                         format!(
                             "{prefix}-cookie-{cookie_index}=value-{cookie_index}; \
-                            Path=/; Domain=example.com; Secure; HttpOnly; SameSite=Lax"
+                            Path=/; Domain=zaku.dev; Secure; HttpOnly; SameSite=Lax"
                         ),
                     );
                 }

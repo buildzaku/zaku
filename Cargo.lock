@@ -2336,11 +2336,15 @@ name = "git"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "fs",
+ "gpui",
  "log",
  "path",
  "serde",
+ "serde_json",
  "sum_tree",
  "util 0.0.0",
+ "util_macros 0.0.0",
 ]
 
 [[package]]
@@ -2651,7 +2655,7 @@ source = "git+https://github.com/zed-industries/zed?rev=f8e1ab7f3c#f8e1ab7f3c92e
 dependencies = [
  "anyhow",
  "log",
- "which",
+ "which 6.0.3",
 ]
 
 [[package]]
@@ -5119,8 +5123,10 @@ name = "project"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "collections 0.0.0",
  "fs",
  "futures",
+ "git",
  "gpui",
  "indoc",
  "language",
@@ -5128,10 +5134,12 @@ dependencies = [
  "path",
  "request_buffer",
  "serde_json",
+ "sum_tree",
  "text",
  "tokio",
  "util 0.0.0",
  "util_macros 0.0.0",
+ "which 8.0.4",
  "worktree",
 ]
 
@@ -7769,7 +7777,7 @@ dependencies = [
  "url",
  "util_macros 0.1.0",
  "walkdir",
- "which",
+ "which 6.0.3",
  "windows 0.61.3",
 ]
 
@@ -8364,6 +8372,15 @@ dependencies = [
  "home",
  "rustix 0.38.44",
  "winsafe",
+]
+
+[[package]]
+name = "which"
+version = "8.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48d7cd18d4acb58fb3cdfe9ea54e6cd96a4e7d4cc45c56338b236e82dad47248"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

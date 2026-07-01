@@ -37,15 +37,19 @@ use std::{
     task::Poll,
     time::Duration,
 };
-use sum_tree::{Bias, ContextLessSummary, Dimension, Edit, Item, KeyedItem, SeekTarget, SumTree};
+use sum_tree::{
+    Bias, ContextLessSummary, Dimension, Dimensions, Edit, SeekTarget, SumTree, TreeMap,
+};
 use tokio::sync::{oneshot, watch};
 
+#[cfg(feature = "test")]
+use collections::BTreeSet;
 use collections::{HashMap, HashSet};
 use fs::{
     FileHandle, Fs, MTime, Metadata as FsMetadata, PathEvent, PathEventKind, RemoveOptions,
     Watcher as FsWatcher,
 };
-use git::{DOT_GIT, GITIGNORE};
+use git::{DOT_GIT, GITIGNORE, status::GitSummary};
 use language::{LineEnding, Rope};
 use path::{PathStyle, RelPath, SanitizedPath};
 use util::ResultExt;
@@ -120,6 +124,7 @@ impl Worktree {
                     path_style,
                 ),
                 ignores_by_parent_abs_path: HashMap::default(),
+                git_repositories: TreeMap::default(),
                 root_file_handle,
             };
             if let Some(metadata) = metadata {
@@ -609,10 +614,118 @@ impl Worktree {
         changes: UpdatedEntriesSet,
         cx: &mut Context<Worktree>,
     ) {
+        let repo_changes = self.changed_repos(&self.snapshot, &snapshot);
         self.snapshot = snapshot;
         if !changes.is_empty() {
             cx.emit(WorktreeEvent::UpdatedEntries(changes));
         }
+        if !repo_changes.is_empty() {
+            cx.emit(WorktreeEvent::UpdatedGitRepositories(repo_changes));
+        }
+    }
+
+    fn changed_repos(
+        &self,
+        old_snapshot: &WorktreeSnapshot,
+        new_snapshot: &WorktreeSnapshot,
+    ) -> UpdatedGitRepositoriesSet {
+        let clone_entry = |entry: &(&ProjectEntryId, &RepositoryEntry)| (*entry.0, entry.1.clone());
+        let mut changes = Vec::new();
+        let mut old_repos = old_snapshot.git_repositories.iter().peekable();
+        let new_repos = new_snapshot.git_repositories.clone();
+        let mut new_repos = new_repos.iter().peekable();
+
+        loop {
+            match (
+                new_repos.peek().map(clone_entry),
+                old_repos.peek().map(clone_entry),
+            ) {
+                (Some((new_entry_id, new_repo)), Some((old_entry_id, old_repo))) => {
+                    match Ord::cmp(&new_entry_id, &old_entry_id) {
+                        Ordering::Less => {
+                            changes.push(UpdatedGitRepository {
+                                work_directory_id: new_entry_id,
+                                old_work_directory_abs_path: None,
+                                new_work_directory_abs_path: Some(
+                                    new_repo.work_directory_abs_path.clone(),
+                                ),
+                                dot_git_abs_path: Some(new_repo.dot_git_abs_path.clone()),
+                                repository_dir_abs_path: Some(
+                                    new_repo.repository_dir_abs_path.clone(),
+                                ),
+                                common_dir_abs_path: Some(new_repo.common_dir_abs_path.clone()),
+                            });
+                            new_repos.next();
+                        }
+                        Ordering::Equal => {
+                            if new_repo.git_dir_scan_id != old_repo.git_dir_scan_id
+                                || new_repo.work_directory_abs_path
+                                    != old_repo.work_directory_abs_path
+                            {
+                                changes.push(UpdatedGitRepository {
+                                    work_directory_id: new_entry_id,
+                                    old_work_directory_abs_path: Some(
+                                        old_repo.work_directory_abs_path.clone(),
+                                    ),
+                                    new_work_directory_abs_path: Some(
+                                        new_repo.work_directory_abs_path.clone(),
+                                    ),
+                                    dot_git_abs_path: Some(new_repo.dot_git_abs_path.clone()),
+                                    repository_dir_abs_path: Some(
+                                        new_repo.repository_dir_abs_path.clone(),
+                                    ),
+                                    common_dir_abs_path: Some(new_repo.common_dir_abs_path.clone()),
+                                });
+                            }
+                            new_repos.next();
+                            old_repos.next();
+                        }
+                        Ordering::Greater => {
+                            changes.push(UpdatedGitRepository {
+                                work_directory_id: old_entry_id,
+                                old_work_directory_abs_path: Some(
+                                    old_repo.work_directory_abs_path.clone(),
+                                ),
+                                new_work_directory_abs_path: None,
+                                dot_git_abs_path: None,
+                                repository_dir_abs_path: None,
+                                common_dir_abs_path: None,
+                            });
+                            old_repos.next();
+                        }
+                    }
+                }
+                (Some((entry_id, repository)), None) => {
+                    changes.push(UpdatedGitRepository {
+                        work_directory_id: entry_id,
+                        old_work_directory_abs_path: None,
+                        new_work_directory_abs_path: Some(
+                            repository.work_directory_abs_path.clone(),
+                        ),
+                        dot_git_abs_path: Some(repository.dot_git_abs_path.clone()),
+                        repository_dir_abs_path: Some(repository.repository_dir_abs_path.clone()),
+                        common_dir_abs_path: Some(repository.common_dir_abs_path.clone()),
+                    });
+                    new_repos.next();
+                }
+                (None, Some((entry_id, repository))) => {
+                    changes.push(UpdatedGitRepository {
+                        work_directory_id: entry_id,
+                        old_work_directory_abs_path: Some(
+                            repository.work_directory_abs_path.clone(),
+                        ),
+                        new_work_directory_abs_path: None,
+                        dot_git_abs_path: Some(repository.dot_git_abs_path.clone()),
+                        repository_dir_abs_path: None,
+                        common_dir_abs_path: None,
+                    });
+                    old_repos.next();
+                }
+                (None, None) => break,
+            }
+        }
+
+        changes.into()
     }
 }
 
@@ -1054,7 +1167,7 @@ impl Entry {
     }
 }
 
-impl Item for Entry {
+impl sum_tree::Item for Entry {
     type Summary = EntrySummary;
 
     fn summary(&self, (): ()) -> Self::Summary {
@@ -1066,7 +1179,7 @@ impl Item for Entry {
     }
 }
 
-impl KeyedItem for Entry {
+impl sum_tree::KeyedItem for Entry {
     type Key = PathKey;
 
     fn key(&self) -> Self::Key {
@@ -1105,11 +1218,72 @@ pub enum PathChange {
     Loaded,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdatedGitRepository {
+    pub work_directory_id: ProjectEntryId,
+    pub old_work_directory_abs_path: Option<Arc<Path>>,
+    pub new_work_directory_abs_path: Option<Arc<Path>>,
+    pub dot_git_abs_path: Option<Arc<Path>>,
+    pub repository_dir_abs_path: Option<Arc<Path>>,
+    pub common_dir_abs_path: Option<Arc<Path>>,
+}
+
 pub type UpdatedEntriesSet = Arc<[(Arc<RelPath>, ProjectEntryId, PathChange)]>;
+pub type UpdatedGitRepositoriesSet = Arc<[UpdatedGitRepository]>;
+
+#[derive(Debug, Clone)]
+pub struct PathProgress<'a> {
+    pub max_path: &'a RelPath,
+}
+
+#[derive(Debug, Clone)]
+pub struct PathSummary<S> {
+    pub max_path: Arc<RelPath>,
+    pub item_summary: S,
+}
+
+impl<S: sum_tree::Summary> sum_tree::Summary for PathSummary<S> {
+    type Context<'a> = S::Context<'a>;
+
+    fn zero(cx: Self::Context<'_>) -> Self {
+        Self {
+            max_path: Arc::from(RelPath::empty()),
+            item_summary: S::zero(cx),
+        }
+    }
+
+    fn add_summary(&mut self, rhs: &Self, cx: Self::Context<'_>) {
+        self.max_path = rhs.max_path.clone();
+        self.item_summary.add_summary(&rhs.item_summary, cx);
+    }
+}
+
+impl<'a, S: sum_tree::Summary> Dimension<'a, PathSummary<S>> for PathProgress<'a> {
+    fn zero(_: S::Context<'_>) -> Self {
+        Self {
+            max_path: RelPath::empty(),
+        }
+    }
+
+    fn add_summary(&mut self, summary: &'a PathSummary<S>, _: S::Context<'_>) {
+        self.max_path = summary.max_path.as_ref();
+    }
+}
+
+impl<'a> Dimension<'a, PathSummary<GitSummary>> for GitSummary {
+    fn zero((): ()) -> Self {
+        Self::default()
+    }
+
+    fn add_summary(&mut self, summary: &'a PathSummary<GitSummary>, (): ()) {
+        *self += summary.item_summary;
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum WorktreeEvent {
     UpdatedEntries(UpdatedEntriesSet),
+    UpdatedGitRepositories(UpdatedGitRepositoriesSet),
     DeletedEntry(ProjectEntryId),
     Deleted,
 }
@@ -1185,6 +1359,7 @@ impl WorktreeModelHandle for Entity<Worktree> {
 struct WorktreeSnapshot {
     snapshot: Snapshot,
     ignores_by_parent_abs_path: HashMap<Arc<Path>, (Arc<Gitignore>, bool)>,
+    git_repositories: TreeMap<ProjectEntryId, RepositoryEntry>,
     root_file_handle: Option<Arc<dyn FileHandle>>,
 }
 
@@ -1206,6 +1381,9 @@ impl WorktreeSnapshot {
                     log::error!("Failed to load .gitignore file: {error:#}");
                 }
             }
+        }
+        if entry.path.file_name() == Some(DOT_GIT) {
+            self.insert_git_repository(entry.path.clone(), fs).await;
         }
 
         if entry.kind == EntryKind::PendingDir
@@ -1231,6 +1409,46 @@ impl WorktreeSnapshot {
             .insert_or_replace(entry.to_path_entry(), ());
 
         entry
+    }
+
+    async fn insert_git_repository(&mut self, dot_git_path: Arc<RelPath>, fs: &dyn Fs) {
+        let Some(work_directory_path) = dot_git_path.parent() else {
+            log::debug!("Not building Git repository for the worktree itself: {dot_git_path:?}");
+            return;
+        };
+
+        if work_directory_path
+            .components()
+            .any(|component| component == DOT_GIT)
+        {
+            log::debug!(
+                "Not building Git repository for nested `.git` directory: {dot_git_path:?}"
+            );
+            return;
+        }
+
+        let Some(work_directory_entry) = self.snapshot.entry_for_path(work_directory_path) else {
+            log::debug!("Working directory {work_directory_path:?} not indexed");
+            return;
+        };
+        let work_directory_id = work_directory_entry.id;
+
+        let dot_git_abs_path: Arc<Path> = self.absolutize(&dot_git_path).into();
+        let work_directory_abs_path: Arc<Path> = self.absolutize(work_directory_path).into();
+        let (repository_dir_abs_path, common_dir_abs_path) =
+            discover_git_paths(&dot_git_abs_path, fs).await;
+
+        self.git_repositories.insert(
+            work_directory_id,
+            RepositoryEntry {
+                work_directory_id,
+                work_directory_abs_path,
+                git_dir_scan_id: self.scan_id,
+                dot_git_abs_path,
+                common_dir_abs_path,
+                repository_dir_abs_path,
+            },
+        );
     }
 
     async fn ignore_stack_for_abs_path(
@@ -1278,8 +1496,6 @@ impl WorktreeSnapshot {
 
     #[cfg(feature = "test")]
     fn check_invariants(&self) {
-        use std::collections::BTreeSet;
-
         assert_eq!(
             self.snapshot
                 .entries_by_path
@@ -1355,6 +1571,16 @@ impl DerefMut for WorktreeSnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct RepositoryEntry {
+    work_directory_id: ProjectEntryId,
+    work_directory_abs_path: Arc<Path>,
+    git_dir_scan_id: usize,
+    dot_git_abs_path: Arc<Path>,
+    common_dir_abs_path: Arc<Path>,
+    repository_dir_abs_path: Arc<Path>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntrySummary {
     count: usize,
     file_count: usize,
@@ -1402,13 +1628,23 @@ impl<'a> Dimension<'a, EntrySummary> for PathKey {
     }
 }
 
+impl<'a, S: sum_tree::Summary> Dimension<'a, PathSummary<S>> for PathKey {
+    fn zero(_: S::Context<'_>) -> Self {
+        PathKey::default()
+    }
+
+    fn add_summary(&mut self, summary: &'a PathSummary<S>, _: S::Context<'_>) {
+        self.0 = summary.max_path.clone();
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PathEntry {
     id: ProjectEntryId,
     path: Arc<RelPath>,
 }
 
-impl Item for PathEntry {
+impl sum_tree::Item for PathEntry {
     type Summary = PathEntrySummary;
 
     fn summary(&self, (): ()) -> Self::Summary {
@@ -1416,7 +1652,7 @@ impl Item for PathEntry {
     }
 }
 
-impl KeyedItem for PathEntry {
+impl sum_tree::KeyedItem for PathEntry {
     type Key = ProjectEntryId;
 
     fn key(&self) -> Self::Key {
@@ -2019,6 +2255,7 @@ impl BackgroundScanner {
         let next_entry_id = self.next_entry_id.clone();
         let mut ignore_stack = job.ignore_stack.clone();
         let mut new_ignore = None;
+        let mut dot_git_path = None;
         let mut root_canonical_path = None;
         let mut new_entries: Vec<Entry> = Vec::new();
         let mut new_jobs: Vec<Option<ScanJob>> = Vec::new();
@@ -2081,6 +2318,10 @@ impl BackgroundScanner {
                 }
             };
 
+            if child_name == DOT_GIT && !child_metadata.is_fifo {
+                dot_git_path = Some(child_path.clone());
+            }
+
             let mut child_entry = Entry::new(
                 child_path.clone(),
                 &child_metadata,
@@ -2120,10 +2361,9 @@ impl BackgroundScanner {
                 }
                 child_entry.canonical_path = Some(canonical_path.into());
             }
-            child_entry.is_ignored =
-                ignore_stack.is_abs_path_ignored(&child_abs_path, child_entry.is_dir());
-
             if child_entry.is_dir() {
+                child_entry.is_ignored = ignore_stack.is_abs_path_ignored(&child_abs_path, true);
+
                 if job.ancestor_inodes.contains(&child_entry.inode) {
                     new_jobs.push(None);
                 } else {
@@ -2142,18 +2382,17 @@ impl BackgroundScanner {
                         is_external: child_entry.is_external,
                     }));
                 }
+            } else {
+                if child_metadata.is_fifo {
+                    continue;
+                }
 
-                new_entries.push(child_entry);
-                continue;
+                child_entry.is_ignored = ignore_stack.is_abs_path_ignored(&child_abs_path, false);
+                child_entry.is_request = child_abs_path
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
             }
 
-            if child_metadata.is_fifo {
-                continue;
-            }
-
-            child_entry.is_request = child_abs_path
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
             new_entries.push(child_entry);
         }
 
@@ -2173,6 +2412,12 @@ impl BackgroundScanner {
                 }
             }
             state.populate_dir(job.path.clone(), new_entries, new_ignore);
+            if let Some(dot_git_path) = dot_git_path {
+                state
+                    .snapshot
+                    .insert_git_repository(dot_git_path, self.fs.as_ref())
+                    .await;
+            }
         }
 
         self.watcher.add(job.abs_path.as_ref()).log_err();
@@ -2225,7 +2470,7 @@ impl BackgroundScanner {
         for (path, metadata) in relative_paths.iter().zip(metadata.iter()) {
             let path_was_removed = matches!(metadata, Ok(None));
             let removed_descendant_paths = if path_was_removed || doing_recursive_update {
-                state.remove_path_from_snapshot(path)
+                state.remove_path_from_snapshot(path, path_was_removed)
             } else {
                 Vec::new()
             };
@@ -2238,7 +2483,8 @@ impl BackgroundScanner {
                 Ok(Some((metadata, canonical_path))) => {
                     if metadata.is_fifo {
                         if !doing_recursive_update {
-                            removed_descendant_abs_paths = state.remove_path_from_snapshot(path);
+                            removed_descendant_abs_paths =
+                                state.remove_path_from_snapshot(path, true);
                         }
                         state.unwatch_path(self.watcher.as_ref(), removed_descendant_abs_paths);
                         continue;
@@ -2653,7 +2899,7 @@ impl BackgroundScannerState {
     }
 
     fn remove_path_from_snapshot_and_unwatch(&mut self, path: &RelPath, watcher: &dyn FsWatcher) {
-        let removed_descendant_abs_paths = self.remove_path_from_snapshot(path);
+        let removed_descendant_abs_paths = self.remove_path_from_snapshot(path, true);
         self.unwatch_path(watcher, removed_descendant_abs_paths);
     }
 
@@ -2667,7 +2913,11 @@ impl BackgroundScannerState {
         }
     }
 
-    fn remove_path_from_snapshot(&mut self, path: &RelPath) -> Vec<PathBuf> {
+    fn remove_path_from_snapshot(
+        &mut self,
+        path: &RelPath,
+        prune_repositories: bool,
+    ) -> Vec<PathBuf> {
         let mut new_entries;
         let removed_entries;
         {
@@ -2720,6 +2970,13 @@ impl BackgroundScannerState {
                 .collect(),
             (),
         );
+        if prune_repositories {
+            self.snapshot
+                .git_repositories
+                .retain(|work_directory_id, _| {
+                    removed_ids.binary_search(work_directory_id).is_err()
+                });
+        }
 
         #[cfg(feature = "test")]
         self.snapshot.check_invariants();
@@ -2796,6 +3053,16 @@ impl<'a> Dimension<'a, EntrySummary> for TraversalProgress<'a> {
         self.max_path = summary.max_path.as_ref();
         self.count += summary.count;
         self.file_count += summary.file_count;
+    }
+}
+
+impl<'a, S: sum_tree::Summary> Dimension<'a, PathSummary<S>> for TraversalProgress<'a> {
+    fn zero(_: S::Context<'_>) -> Self {
+        Self::default()
+    }
+
+    fn add_summary(&mut self, summary: &'a PathSummary<S>, _: S::Context<'_>) {
+        self.max_path = summary.max_path.as_ref();
     }
 }
 
@@ -2910,7 +3177,7 @@ impl<'a> Iterator for Traversal<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-enum PathTarget<'a> {
+pub enum PathTarget<'a> {
     Path(&'a RelPath),
     Successor(&'a RelPath),
 }
@@ -2933,6 +3200,32 @@ impl PathTarget<'_> {
 impl<'a> SeekTarget<'a, EntrySummary, TraversalProgress<'a>> for PathTarget<'_> {
     fn cmp(&self, cursor_location: &TraversalProgress<'a>, (): ()) -> Ordering {
         self.cmp_path(cursor_location.max_path)
+    }
+}
+
+impl<'a, S: sum_tree::Summary> SeekTarget<'a, PathSummary<S>, PathProgress<'a>> for PathTarget<'_> {
+    fn cmp(&self, cursor_location: &PathProgress<'a>, _: S::Context<'_>) -> Ordering {
+        self.cmp_path(cursor_location.max_path)
+    }
+}
+
+impl<'a, S: sum_tree::Summary> SeekTarget<'a, PathSummary<S>, TraversalProgress<'a>>
+    for PathTarget<'_>
+{
+    fn cmp(&self, cursor_location: &TraversalProgress<'a>, _: S::Context<'_>) -> Ordering {
+        self.cmp_path(cursor_location.max_path)
+    }
+}
+
+impl<'a> SeekTarget<'a, PathSummary<GitSummary>, Dimensions<TraversalProgress<'a>, GitSummary>>
+    for PathTarget<'_>
+{
+    fn cmp(
+        &self,
+        cursor_location: &Dimensions<TraversalProgress<'a>, GitSummary>,
+        (): (),
+    ) -> Ordering {
+        self.cmp_path(cursor_location.0.max_path)
     }
 }
 
@@ -3017,6 +3310,63 @@ async fn build_gitignore_with_root(
         builder.add_line(Some(abs_path.into()), line)?;
     }
     Ok(builder.build()?)
+}
+
+fn parse_gitfile(content: &str) -> anyhow::Result<&Path> {
+    let path = content
+        .strip_prefix("gitdir:")
+        .with_context(|| format!("parsing gitfile content {content:?}"))?;
+    Ok(Path::new(path.trim()))
+}
+
+fn resolve_gitfile_path(dot_git_abs_path: &Path, gitfile_path: &Path) -> PathBuf {
+    if gitfile_path.is_absolute() {
+        gitfile_path.into()
+    } else {
+        dot_git_abs_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(gitfile_path)
+    }
+}
+
+fn resolve_commondir_path(repository_dir_abs_path: &Path, commondir_path: &str) -> PathBuf {
+    let commondir_path = Path::new(commondir_path.trim());
+    if commondir_path.is_absolute() {
+        commondir_path.into()
+    } else {
+        repository_dir_abs_path.join(commondir_path)
+    }
+}
+
+async fn discover_git_paths(dot_git_abs_path: &Arc<Path>, fs: &dyn Fs) -> (Arc<Path>, Arc<Path>) {
+    let mut repository_dir_abs_path = dot_git_abs_path.clone();
+    let mut common_dir_abs_path = dot_git_abs_path.clone();
+
+    if let Some(path) = fs
+        .load(dot_git_abs_path)
+        .await
+        .ok()
+        .as_ref()
+        .and_then(|contents| parse_gitfile(contents).log_err())
+    {
+        let path = resolve_gitfile_path(dot_git_abs_path, path);
+        if let Some(path) = fs.canonicalize(&path).await.log_err() {
+            repository_dir_abs_path = path.as_path().into();
+            common_dir_abs_path = repository_dir_abs_path.clone();
+
+            if let Some(commondir_contents) = fs.load(&path.join("commondir")).await.ok()
+                && let Some(commondir_path) = fs
+                    .canonicalize(&resolve_commondir_path(&path, &commondir_contents))
+                    .await
+                    .log_err()
+            {
+                common_dir_abs_path = commondir_path.as_path().into();
+            }
+        }
+    }
+
+    (repository_dir_abs_path, common_dir_abs_path)
 }
 
 fn swap_to_front(child_paths: &mut Vec<PathBuf>, file: &str) {

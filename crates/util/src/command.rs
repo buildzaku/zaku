@@ -1,34 +1,35 @@
-#[cfg(target_os = "windows")]
-use std::{ffi::OsStr, io, path::Path};
+pub use std::process::Stdio;
 
 #[cfg(target_os = "windows")]
-use smol::process::windows::CommandExt as SmolCommandExt;
+use smol::process::windows::CommandExt;
+use std::{ffi::OsStr, io, path::Path};
 
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000_u32;
 
-#[cfg(target_os = "windows")]
 pub fn new_command(program: impl AsRef<OsStr>) -> Command {
     Command::new(program)
 }
 
-#[cfg(target_os = "windows")]
 pub type Child = smol::process::Child;
 
-#[cfg(target_os = "windows")]
-pub use std::process::Stdio;
-
-#[cfg(target_os = "windows")]
 #[derive(Debug)]
 pub struct Command(smol::process::Command);
 
-#[cfg(target_os = "windows")]
 impl Command {
     #[inline]
     pub fn new(program: impl AsRef<OsStr>) -> Self {
-        let mut command = smol::process::Command::new(program);
-        command.creation_flags(CREATE_NO_WINDOW);
-        Self(command)
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            Self(smol::process::Command::new(program))
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let mut command = smol::process::Command::new(program);
+            command.creation_flags(CREATE_NO_WINDOW);
+            Self(command)
+        }
     }
 
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {

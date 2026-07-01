@@ -142,6 +142,7 @@ tree-sitter-xml = { version = "0.7" }
 unicode-segmentation = { version = "1.13" }
 url = { version = "2.5" }
 uuid = { version = "1.23", features = ["v4"] }
+which = { version = "8.0" }
 windows = { version = "0.62", features = [
   "Wdk_System_SystemServices",
   "Win32_Foundation",

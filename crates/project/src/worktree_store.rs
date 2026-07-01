@@ -2,7 +2,6 @@ use anyhow::{Context as AnyhowContext, anyhow};
 use futures::{FutureExt, future};
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Global, Task, WeakEntity};
 use std::{
-    collections::HashMap,
     io, mem,
     path::{Path, PathBuf},
     sync::{
@@ -12,10 +11,12 @@ use std::{
 };
 use tokio::sync::watch;
 
+use collections::HashMap;
 use fs::{CopyOptions, Fs, RenameOptions};
 use path::{PathStyle, RelPath, SanitizedPath};
 use worktree::{
-    Entry, ProjectEntryId, Snapshot, UpdatedEntriesSet, Worktree, WorktreeEvent, WorktreeId,
+    Entry, ProjectEntryId, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, Worktree,
+    WorktreeEvent, WorktreeId,
 };
 
 use crate::ProjectPath;
@@ -61,6 +62,7 @@ pub enum WorktreeStoreEvent {
     WorktreeAdded(Entity<Worktree>),
     WorktreeRemoved(WorktreeId),
     WorktreeUpdatedEntries(WorktreeId, UpdatedEntriesSet),
+    WorktreeUpdatedGitRepositories(WorktreeId, UpdatedGitRepositoriesSet),
     WorktreeDeletedEntry(WorktreeId, ProjectEntryId),
 }
 
@@ -568,6 +570,12 @@ impl WorktreeStore {
             match event {
                 WorktreeEvent::UpdatedEntries(changes) => {
                     cx.emit(WorktreeStoreEvent::WorktreeUpdatedEntries(
+                        worktree_id,
+                        changes.clone(),
+                    ));
+                }
+                WorktreeEvent::UpdatedGitRepositories(changes) => {
+                    cx.emit(WorktreeStoreEvent::WorktreeUpdatedGitRepositories(
                         worktree_id,
                         changes.clone(),
                     ));

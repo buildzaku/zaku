@@ -19,8 +19,15 @@ test = []
 
 [dependencies]
 anyhow = { workspace = true }
+gpui = { workspace = true }
 log = { workspace = true }
 path = { workspace = true }
 serde = { workspace = true }
 sum_tree = { workspace = true }
 util = { workspace = true }
+
+[dev-dependencies]
+fs = { workspace = true, features = ["test"] }
+gpui = { workspace = true, features = ["test-support"] }
+serde_json = { workspace = true }
+util_macros = { workspace = true }

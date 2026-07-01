@@ -1,4 +1,5 @@
 pub mod buffer_store;
+pub mod git_store;
 pub mod request_buffer_store;
 pub mod worktree_store;
 
@@ -6,7 +7,8 @@ pub use request_buffer::{RequestBuffer, RequestBufferEvent};
 pub use worktree::{
     Entry, EntryKind, File, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
-    RequestFileState, Snapshot, UpdatedEntriesSet, Worktree, WorktreeId, request_method_label,
+    RequestFileState, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository,
+    Worktree, WorktreeId, request_method_label,
 };
 
 use anyhow::anyhow;
@@ -15,19 +17,21 @@ use futures::{FutureExt, StreamExt};
 use gpui::TestAppContext;
 use gpui::{App, AppContext, Context, Entity, EventEmitter, Task, TaskExt};
 use std::{
-    collections::HashMap,
     future::Future,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
+use collections::HashMap;
 use fs::{Fs, MTime};
+use git::status::FileStatus;
 use language::{AvailableLanguage, Buffer, BufferEvent, Language, LanguageRegistry, PLAIN_TEXT};
 use path::{PathStyle, RelPath};
 use util::ResultExt;
 
 use crate::{
     buffer_store::{BufferStore, BufferStoreEvent},
+    git_store::GitStore,
     request_buffer_store::{RequestBufferStore, RequestBufferStoreEvent},
     worktree_store::{WorktreeIdCounter, WorktreeStore, WorktreeStoreEvent},
 };
@@ -52,6 +56,13 @@ pub struct ProjectPath {
 }
 
 impl ProjectPath {
+    pub fn from_file(file: &dyn language::File, cx: &App) -> Self {
+        Self {
+            worktree_id: file.worktree_id(cx),
+            path: file.path().clone(),
+        }
+    }
+
     pub fn root_path(worktree_id: WorktreeId) -> Self {
         Self {
             worktree_id,
@@ -151,10 +162,7 @@ impl ProjectItem for RequestBuffer {
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {
         let file = self.file();
 
-        Some(ProjectPath {
-            worktree_id: file.worktree_id(cx),
-            path: file.path.clone(),
-        })
+        Some(ProjectPath::from_file(file.as_ref(), cx))
     }
 
     fn is_dirty(&self) -> bool {
@@ -186,10 +194,7 @@ impl ProjectItem for Buffer {
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {
         let file = self.file()?;
 
-        Some(ProjectPath {
-            worktree_id: file.worktree_id(cx),
-            path: file.path().clone(),
-        })
+        Some(ProjectPath::from_file(file.as_ref(), cx))
     }
 
     fn is_dirty(&self) -> bool {
@@ -210,6 +215,7 @@ pub struct Project {
     worktree_store: Entity<WorktreeStore>,
     buffer_store: Entity<BufferStore>,
     request_buffer_store: Entity<RequestBufferStore>,
+    git_store: Entity<GitStore>,
     languages: Arc<LanguageRegistry>,
     active_entry: Option<ProjectEntryId>,
     metadata_by_entry_id: HashMap<ProjectEntryId, EntryMetadataState>,
@@ -227,6 +233,10 @@ impl Project {
         let request_buffer_store = cx.new({
             let worktree_store = worktree_store.clone();
             move |cx| RequestBufferStore::new(worktree_store.clone(), cx)
+        });
+        let git_store = cx.new({
+            let worktree_store = worktree_store.clone();
+            move |cx| GitStore::new(worktree_store.clone(), cx)
         });
         cx.subscribe(&worktree_store, |this, _, event, cx| {
             this.on_worktree_store_event(event, cx);
@@ -246,9 +256,10 @@ impl Project {
             worktree_store,
             buffer_store,
             request_buffer_store,
+            git_store,
             languages,
             active_entry: None,
-            metadata_by_entry_id: HashMap::new(),
+            metadata_by_entry_id: HashMap::default(),
             _maintain_buffer_languages: maintain_buffer_languages,
         }
     }
@@ -313,6 +324,7 @@ impl Project {
                     changes.clone(),
                 ));
             }
+            WorktreeStoreEvent::WorktreeUpdatedGitRepositories(_, _) => {}
             WorktreeStoreEvent::WorktreeDeletedEntry(worktree_id, entry_id) => {
                 self.metadata_by_entry_id.remove(entry_id);
                 cx.emit(ProjectEvent::DeletedEntry(*worktree_id, *entry_id));
@@ -524,6 +536,21 @@ impl Project {
 
     pub fn worktree_store(&self) -> Entity<WorktreeStore> {
         self.worktree_store.clone()
+    }
+
+    pub fn git_store(&self) -> &Entity<GitStore> {
+        &self.git_store
+    }
+
+    #[inline]
+    pub fn project_path_git_status(
+        &self,
+        project_path: &ProjectPath,
+        cx: &App,
+    ) -> Option<FileStatus> {
+        self.git_store
+            .read(cx)
+            .project_path_git_status(project_path, cx)
     }
 
     pub fn wait_for_initial_scan(&self, cx: &App) -> impl Future<Output = ()> + use<> {
