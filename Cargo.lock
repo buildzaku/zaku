@@ -1676,6 +1676,7 @@ dependencies = [
  "anyhow",
  "db",
  "fs",
+ "git",
  "gpui",
  "icons",
  "indoc",

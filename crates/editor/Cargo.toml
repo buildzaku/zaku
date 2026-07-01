@@ -26,6 +26,7 @@ test = ["db/test"]
 actions = { workspace = true }
 anyhow = { workspace = true }
 db = { workspace = true }
+git = { workspace = true }
 gpui = { workspace = true }
 icons = { workspace = true }
 input = { workspace = true }

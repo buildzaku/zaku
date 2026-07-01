@@ -4,6 +4,7 @@ use gpui::{
     WeakEntity, Window, prelude::*,
 };
 
+use editor::items::{entry_git_aware_label_color, entry_label_color};
 use path::PathExt;
 use project::{Project, RequestBuffer, RequestFileState};
 use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
@@ -47,8 +48,24 @@ impl Item for RequestEditor {
             }
             RequestEditorState::Invalid { .. } => None,
         };
+        let label_color = project::ProjectItem::project_path(self.buffer.read(cx), cx)
+            .and_then(|project_path| {
+                let project = self.project.read(cx);
+                let entry = project.entry_for_path(&project_path, cx)?;
+                let git_status = project
+                    .project_path_git_status(&project_path, cx)
+                    .map(|status| status.summary())
+                    .unwrap_or_default();
+
+                Some(entry_git_aware_label_color(
+                    git_status,
+                    entry.is_ignored,
+                    params.selected,
+                ))
+            })
+            .unwrap_or_else(|| entry_label_color(params.selected));
         let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
-            .color(params.text_color())
+            .color(label_color)
             .when(params.preview, |this| this.italic());
         let description = params.detail.and_then(|detail| {
             let path = self.path_for_request(detail, false, cx)?;

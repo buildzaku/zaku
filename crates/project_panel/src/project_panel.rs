@@ -15,7 +15,9 @@ use std::{
     sync::Arc,
 };
 
-use editor::{Editor, EditorEvent, MultiBufferOffset, SelectionEffects};
+use editor::{
+    Editor, EditorEvent, MultiBufferOffset, SelectionEffects, items::entry_git_aware_label_color,
+};
 use git::status::GitSummary;
 use path::{PathStyle, RelPath, SortMode, SortOrder};
 use project::{
@@ -3005,25 +3007,6 @@ fn file_name_for_entry(snapshot: &Snapshot, entry: &Entry) -> String {
 fn file_stem_for_entry(entry: &Entry) -> &str {
     let file_name = entry.path.file_name().unwrap_or_default();
     file_name.strip_suffix(".toml").unwrap_or(file_name)
-}
-
-fn entry_git_aware_label_color(git_status: GitSummary, ignored: bool, selected: bool) -> Color {
-    let tracked = git_status.index + git_status.worktree;
-    if git_status.conflict > 0 {
-        Color::Conflict
-    } else if tracked.deleted > 0 {
-        Color::Deleted
-    } else if tracked.modified > 0 {
-        Color::Modified
-    } else if tracked.added > 0 || git_status.untracked > 0 {
-        Color::Created
-    } else if ignored {
-        Color::Ignored
-    } else if selected {
-        Color::Default
-    } else {
-        Color::Muted
-    }
 }
 
 fn git_status_indicator(git_status: GitSummary) -> Option<(&'static str, Color)> {

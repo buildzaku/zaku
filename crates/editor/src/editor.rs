@@ -2,7 +2,7 @@ mod config;
 pub mod display_map;
 mod editor_settings;
 mod element;
-mod items;
+pub mod items;
 mod movement;
 mod persistence;
 mod scroll;
@@ -398,11 +398,12 @@ pub struct Editor {
     pub buffer: Entity<MultiBuffer>,
     pub display_map: Entity<DisplayMap>,
     pub selections: SelectionsCollection,
+    pub ime_transaction: Option<TransactionId>,
+    pub selection_history: SelectionHistory,
+    pub selection_goal: SelectionGoal,
     scroll_manager: scroll::ScrollManager,
     mode: EditorMode,
     placeholder: SharedString,
-    pub ime_transaction: Option<TransactionId>,
-    pub selection_history: SelectionHistory,
     defer_selection_effects: bool,
     deferred_selection_effects_state: Option<DeferredSelectionEffectsState>,
     last_position_map: Option<Rc<PositionMap>>,
@@ -418,7 +419,6 @@ pub struct Editor {
     masked: bool,
     muted: bool,
     current_line_highlight: Option<CurrentLineHighlight>,
-    pub selection_goal: SelectionGoal,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -519,11 +519,12 @@ impl Editor {
             buffer,
             display_map,
             selections,
+            ime_transaction: None,
+            selection_history,
+            selection_goal: SelectionGoal::None,
             scroll_manager,
             mode,
             placeholder: SharedString::default(),
-            ime_transaction: None,
-            selection_history,
             defer_selection_effects: false,
             deferred_selection_effects_state: None,
             last_position_map: None,
@@ -542,7 +543,6 @@ impl Editor {
             masked: false,
             muted: false,
             current_line_highlight: None,
-            selection_goal: SelectionGoal::None,
             _subscriptions: subscriptions,
         };
 

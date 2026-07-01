@@ -2,12 +2,13 @@ use anyhow::anyhow;
 use gpui::{App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
+use git::status::GitSummary;
 use icons::FileIcons;
 use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
 use path::PathExt;
 use project::Project;
-use ui::Icon;
+use ui::{Color, Icon};
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, Workspace, WorkspaceId,
     delete_unloaded_items, pane::Pane,
@@ -183,6 +184,31 @@ fn path_for_file<'a>(
             path = path.parent()?;
         }
         Some(path.display(file.path_style(cx)))
+    }
+}
+
+pub fn entry_label_color(selected: bool) -> Color {
+    if selected {
+        Color::Default
+    } else {
+        Color::Muted
+    }
+}
+
+pub fn entry_git_aware_label_color(git_status: GitSummary, ignored: bool, selected: bool) -> Color {
+    let tracked = git_status.index + git_status.worktree;
+    if git_status.conflict > 0 {
+        Color::Conflict
+    } else if tracked.deleted > 0 {
+        Color::Deleted
+    } else if tracked.modified > 0 {
+        Color::Modified
+    } else if tracked.added > 0 || git_status.untracked > 0 {
+        Color::Created
+    } else if ignored {
+        Color::Ignored
+    } else {
+        entry_label_color(selected)
     }
 }
 
