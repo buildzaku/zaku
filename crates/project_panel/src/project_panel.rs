@@ -26,9 +26,9 @@ use project::{
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, Clickable, Color, ContextMenu, DynamicSpacing, Icon, IconButton, IconButtonShape,
-    IconName, IconSize, IndentGuideColors, IndentGuideLayout, Label, LabelCommon, LabelSize,
-    ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars, Tooltip, TrackLayout,
-    WithScrollbar,
+    IconName, IconSize, IndentGuideColors, IndentGuideLayout, Indicator, Label, LabelCommon,
+    LabelSize, ListItem, ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars, Tooltip,
+    TrackLayout, WithScrollbar,
 };
 use util::ResultExt;
 
@@ -2545,10 +2545,8 @@ impl ProjectPanel {
                     .when_some(git_indicator, |this, (label, color)| {
                         this.end_slot(gpui::div().flex().items_center().flex_none().pr_3().child(
                             if details.kind.is_dir() {
-                                gpui::div()
-                                    .size_1p5()
-                                    .rounded_sm()
-                                    .bg(color.color(cx).opacity(0.5))
+                                Indicator::dot()
+                                    .color(Color::Custom(color.color(cx).opacity(0.5)))
                                     .into_any_element()
                             } else {
                                 Label::new(label)
