@@ -24,7 +24,7 @@ impl RenderOnce for Indicator {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         gpui::div()
             .flex_none()
-            .size_1p5()
+            .size_2()
             .rounded_full()
             .bg(self.color.color(cx))
     }
