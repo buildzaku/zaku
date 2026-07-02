@@ -21,6 +21,4 @@ test = []
 log = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
-
-[target.'cfg(target_os = "windows")'.dependencies]
 smol = { workspace = true }

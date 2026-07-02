@@ -10,9 +10,10 @@ use anyhow::Context;
 use std::{
     borrow::Cow,
     cmp::Ordering,
+    error::Error,
     ffi::OsStr,
-    fmt::{self, Debug, Display, Formatter},
-    path::{Path, PathBuf},
+    fmt,
+    path::{Component, Path, PathBuf},
     sync::{Arc, OnceLock},
 };
 
@@ -627,14 +628,14 @@ impl SanitizedPath {
     }
 }
 
-impl Debug for SanitizedPath {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.0, formatter)
+impl fmt::Debug for SanitizedPath {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, formatter)
     }
 }
 
-impl Display for SanitizedPath {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+impl fmt::Display for SanitizedPath {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(formatter, "{}", self.0.display())
     }
 }
@@ -653,6 +654,57 @@ impl From<&SanitizedPath> for Arc<SanitizedPath> {
         // extra invariants, so this `Arc` cast is valid.
         unsafe { Arc::from_raw(Arc::into_raw(path) as *const SanitizedPath) }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct NormalizeError;
+
+impl Error for NormalizeError {}
+
+impl fmt::Display for NormalizeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("parent reference `..` points outside of base directory")
+    }
+}
+
+pub fn normalize_lexically(path: &Path) -> Result<PathBuf, NormalizeError> {
+    let mut lexical = PathBuf::new();
+    let mut iter = path.components().peekable();
+
+    let root = match iter.peek() {
+        Some(Component::ParentDir) => return Err(NormalizeError),
+        Some(component @ (Component::RootDir | Component::CurDir)) => {
+            lexical.push(component);
+            iter.next();
+            lexical.as_os_str().len()
+        }
+        Some(Component::Prefix(prefix)) => {
+            lexical.push(prefix.as_os_str());
+            iter.next();
+            if let Some(component @ Component::RootDir) = iter.peek() {
+                lexical.push(component);
+                iter.next();
+            }
+            lexical.as_os_str().len()
+        }
+        None => return Ok(PathBuf::new()),
+        Some(Component::Normal(_)) => 0,
+    };
+
+    for component in iter {
+        match component {
+            Component::RootDir | Component::Prefix(_) => return Err(NormalizeError),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if lexical.as_os_str().len() == root {
+                    return Err(NormalizeError);
+                }
+                lexical.pop();
+            }
+            Component::Normal(path) => lexical.push(path),
+        }
+    }
+    Ok(lexical)
 }
 
 #[cfg(test)]

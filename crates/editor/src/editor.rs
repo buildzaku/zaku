@@ -2,7 +2,7 @@ mod config;
 pub mod display_map;
 mod editor_settings;
 mod element;
-mod items;
+pub mod items;
 mod movement;
 mod persistence;
 mod scroll;
@@ -398,11 +398,12 @@ pub struct Editor {
     pub buffer: Entity<MultiBuffer>,
     pub display_map: Entity<DisplayMap>,
     pub selections: SelectionsCollection,
+    pub ime_transaction: Option<TransactionId>,
+    pub selection_history: SelectionHistory,
+    pub selection_goal: SelectionGoal,
     scroll_manager: scroll::ScrollManager,
     mode: EditorMode,
     placeholder: SharedString,
-    pub ime_transaction: Option<TransactionId>,
-    pub selection_history: SelectionHistory,
     defer_selection_effects: bool,
     deferred_selection_effects_state: Option<DeferredSelectionEffectsState>,
     last_position_map: Option<Rc<PositionMap>>,
@@ -418,7 +419,6 @@ pub struct Editor {
     masked: bool,
     muted: bool,
     current_line_highlight: Option<CurrentLineHighlight>,
-    pub selection_goal: SelectionGoal,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -519,11 +519,12 @@ impl Editor {
             buffer,
             display_map,
             selections,
+            ime_transaction: None,
+            selection_history,
+            selection_goal: SelectionGoal::None,
             scroll_manager,
             mode,
             placeholder: SharedString::default(),
-            ime_transaction: None,
-            selection_history,
             defer_selection_effects: false,
             deferred_selection_effects_state: None,
             last_position_map: None,
@@ -542,7 +543,6 @@ impl Editor {
             masked: false,
             muted: false,
             current_line_highlight: None,
-            selection_goal: SelectionGoal::None,
             _subscriptions: subscriptions,
         };
 
@@ -2456,25 +2456,34 @@ impl Editor {
         let theme_colors = cx.theme().colors();
         let theme_settings = ThemeSettings::get_global(cx);
 
-        let font_size = match self.mode {
-            EditorMode::SingleLine | EditorMode::AutoHeight { .. } => gpui::rems(0.875).into(),
-            EditorMode::Full { .. } => (theme_settings.buffer_font_size(cx) * 0.875).into(),
+        let color = if self.muted {
+            theme_colors.text_disabled
+        } else {
+            theme_colors.editor_foreground
         };
-
-        let text_style = TextStyle {
-            color: if self.muted {
-                theme_colors.text_disabled
-            } else {
-                theme_colors.editor_foreground
+        let text_style = match self.mode {
+            EditorMode::SingleLine | EditorMode::AutoHeight { .. } => TextStyle {
+                color,
+                font_family: theme_settings.ui_font.family.clone(),
+                font_features: theme_settings.ui_font.features.clone(),
+                font_fallbacks: theme_settings.ui_font.fallbacks.clone(),
+                font_size: gpui::rems(0.875).into(),
+                font_weight: theme_settings.ui_font.weight,
+                font_style: theme_settings.ui_font.style,
+                line_height: gpui::relative(theme_settings.line_height()),
+                ..Default::default()
             },
-            font_family: theme_settings.buffer_font.family.clone(),
-            font_features: theme_settings.buffer_font.features.clone(),
-            font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
-            font_size,
-            font_weight: theme_settings.buffer_font.weight,
-            font_style: theme_settings.buffer_font.style,
-            line_height: gpui::relative(theme_settings.line_height()),
-            ..Default::default()
+            EditorMode::Full { .. } => TextStyle {
+                color,
+                font_family: theme_settings.buffer_font.family.clone(),
+                font_features: theme_settings.buffer_font.features.clone(),
+                font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
+                font_size: (theme_settings.buffer_font_size(cx) * 0.875).into(),
+                font_weight: theme_settings.buffer_font.weight,
+                font_style: theme_settings.buffer_font.style,
+                line_height: gpui::relative(theme_settings.line_height()),
+                ..Default::default()
+            },
         };
 
         EditorStyle {

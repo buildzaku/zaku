@@ -1962,8 +1962,7 @@ mod tests {
         });
         let workspace = root.update_in(cx, |root, _, _| root.workspace().clone());
         let response_panel = workspace.update_in(cx, |workspace, window, cx| {
-            let pane = workspace.pane().downgrade();
-            let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
+            let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
             workspace.add_panel(response_panel.clone(), DockPosition::Bottom, window, cx);
             response_panel
         });

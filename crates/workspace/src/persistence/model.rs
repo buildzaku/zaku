@@ -124,40 +124,27 @@ impl SerializedPane {
         }
 
         let mut items = Vec::new();
-        let mut active_item = None;
-        let mut preview_item = None;
-        for (index, item_handle) in future::join_all(item_tasks).await.into_iter().enumerate() {
+        for item_handle in future::join_all(item_tasks).await {
             let item_handle = item_handle.log_err();
+            items.push(item_handle.clone());
 
-            if let Some(item_handle) = item_handle.clone() {
-                if Some(index) == active_item_index {
-                    active_item = Some(item_handle.clone());
-                }
-
-                if Some(index) == preview_item_index {
-                    preview_item = Some(item_handle.clone());
-                }
-
+            if let Some(item_handle) = item_handle {
                 pane.update_in(cx, |pane, window, cx| {
-                    pane.add_item(item_handle, true, false, false, Some(index), window, cx);
+                    pane.add_item(item_handle, true, true, true, None, window, cx);
                 })?;
             }
-
-            items.push(item_handle);
         }
 
-        if let Some(active_item) = active_item {
+        if let Some(active_item_index) = active_item_index {
             pane.update_in(cx, |pane, window, cx| {
-                if let Some(active_item_index) = pane.index_for_item(active_item.as_ref()) {
-                    pane.activate_item(active_item_index, false, false, window, cx);
-                }
+                pane.activate_item(active_item_index, false, false, window, cx);
             })?;
         }
 
-        if let Some(preview_item) = preview_item {
+        if let Some(preview_item_index) = preview_item_index {
             pane.update(cx, |pane, cx| {
-                if pane.index_for_item(preview_item.as_ref()).is_some() {
-                    pane.set_preview_item_id(Some(preview_item.item_id()), cx);
+                if let Some(item) = pane.item_for_index(preview_item_index) {
+                    pane.set_preview_item_id(Some(item.item_id()), cx);
                 }
             })?;
         }

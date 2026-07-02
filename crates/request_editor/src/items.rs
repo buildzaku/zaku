@@ -4,8 +4,10 @@ use gpui::{
     WeakEntity, Window, prelude::*,
 };
 
+use editor::items::{entry_git_aware_label_color, entry_label_color};
 use path::PathExt;
 use project::{Project, RequestBuffer, RequestFileState};
+use settings::{GitSettings, Settings};
 use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
 use util::truncate_and_trailoff;
 use workspace::{
@@ -47,8 +49,31 @@ impl Item for RequestEditor {
             }
             RequestEditorState::Invalid { .. } => None,
         };
+        let git_settings = GitSettings::get_global(cx);
+        let git_status_enabled =
+            git_settings.is_git_status_enabled() && git_settings.status.tabs.colors;
+        let label_color = if git_status_enabled {
+            project::ProjectItem::project_path(self.buffer.read(cx), cx)
+                .and_then(|project_path| {
+                    let project = self.project.read(cx);
+                    let entry = project.entry_for_path(&project_path, cx)?;
+                    let git_status = project
+                        .project_path_git_status(&project_path, cx)
+                        .map(|status| status.summary())
+                        .unwrap_or_default();
+
+                    Some(entry_git_aware_label_color(
+                        git_status,
+                        entry.is_ignored,
+                        params.selected,
+                    ))
+                })
+                .unwrap_or_else(|| entry_label_color(params.selected))
+        } else {
+            entry_label_color(params.selected)
+        };
         let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
-            .color(params.text_color())
+            .color(label_color)
             .when(params.preview, |this| this.italic());
         let description = params.detail.and_then(|detail| {
             let path = self.path_for_request(detail, false, cx)?;

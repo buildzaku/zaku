@@ -33,10 +33,11 @@ use futures::{
 use gpui::WindowDecorations;
 use gpui::{
     Action, AnyView, App, AsyncWindowContext, Bounds, BoxShadow, Context, CursorStyle, Decorations,
-    Div, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, Global, HitboxBehavior, Hsla,
-    KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point,
-    PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions,
-    WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
+    Div, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Global,
+    HitboxBehavior, Hsla, KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions,
+    Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling,
+    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions,
+    prelude::*,
 };
 #[cfg(any(test, feature = "test"))]
 use gpui::{TestAppContext, VisualTestContext};
@@ -1093,6 +1094,10 @@ pub fn client_side_decorations(
         })
 }
 
+pub enum WorkspaceEvent {
+    PaneRestored(Entity<Pane>),
+}
+
 pub struct Workspace {
     app_state: Arc<AppState>,
     weak_self: WeakEntity<Self>,
@@ -1417,26 +1422,29 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<()>> {
         let project = self.project.clone();
-        let pane = self.pane.downgrade();
         let workspace_id = serialized_workspace.id;
         let center_pane = serialized_workspace.center_pane;
         let docks = serialized_workspace.docks;
 
         cx.spawn_in(window, async move |workspace, cx| {
-            workspace.update_in(cx, |workspace, window, cx| {
-                workspace.set_dock_structure(docks, window, cx);
-            })?;
-
             let scan_complete =
                 workspace.read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))?;
             scan_complete.await;
 
+            let pane =
+                workspace.update_in(cx, |workspace, window, cx| workspace.add_pane(window, cx))?;
+            let weak_pane = pane.downgrade();
             let deserialized_items = match center_pane
-                .deserialize_to(&project, &pane, workspace_id, workspace.clone(), cx)
+                .deserialize_to(&project, &weak_pane, workspace_id, workspace.clone(), cx)
                 .await
             {
                 Ok(items) => items,
                 Err(error) => return Err(error),
+            };
+            let pane = if weak_pane.read_with(cx, |pane, _| pane.items_len() != 0)? {
+                Some(pane)
+            } else {
+                None
             };
 
             let item_ids_by_kind = cx.update(|_, cx| {
@@ -1453,7 +1461,14 @@ impl Workspace {
             })?;
 
             let cleanup_tasks = workspace.update_in(cx, |workspace, window, cx| {
-                workspace.active_item_path_changed(cx);
+                if let Some(pane) = pane {
+                    workspace.set_active_pane(&pane, window, cx);
+                    cx.emit(WorkspaceEvent::PaneRestored(pane.clone()));
+                    cx.focus_self(window);
+                }
+                workspace.set_dock_structure(docks, window, cx);
+                cx.notify();
+
                 item_ids_by_kind
                     .into_iter()
                     .map(|(item_kind, loaded_items)| {
@@ -1629,6 +1644,53 @@ impl Workspace {
 
     pub fn pane(&self) -> &Entity<Pane> {
         &self.pane
+    }
+
+    fn add_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<Pane> {
+        let workspace = self.weak_self.clone();
+        let project = self.project.clone();
+        let pane = cx.new(|cx| Pane::new(workspace, &project, window, cx));
+        cx.subscribe_in(&pane, window, |workspace, pane, event, window, cx| {
+            workspace.handle_pane_event(pane, event, window, cx);
+        })
+        .detach();
+
+        let focus_handle = pane.read(cx).focus_handle(cx);
+        window.focus(&focus_handle, cx);
+
+        pane
+    }
+
+    fn set_active_pane(
+        &mut self,
+        pane: &Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.pane.entity_id() != pane.entity_id() {
+            let previous_pane = self.pane.clone();
+            let previous_item_ids = previous_pane
+                .read(cx)
+                .items()
+                .map(|item| item.item_id())
+                .collect::<Vec<_>>();
+            for item_id in previous_item_ids {
+                let item_pane_is_previous = self
+                    .panes_by_item
+                    .get(&item_id)
+                    .and_then(WeakEntity::upgrade)
+                    .is_some_and(|pane| pane.entity_id() == previous_pane.entity_id());
+                if item_pane_is_previous {
+                    self.panes_by_item.remove(&item_id);
+                }
+            }
+            self.pane = pane.clone();
+        }
+
+        self.status_bar.update(cx, |status_bar, cx| {
+            status_bar.set_active_pane(pane, window, cx);
+        });
+        self.active_item_path_changed(cx);
     }
 
     pub fn active_item(&self, cx: &App) -> Option<Box<dyn ItemHandle>> {
@@ -2541,6 +2603,8 @@ impl Workspace {
         }
     }
 }
+
+impl EventEmitter<WorkspaceEvent> for Workspace {}
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

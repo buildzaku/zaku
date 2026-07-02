@@ -11,10 +11,12 @@ use std::{
 
 use path::PathStyle;
 use project::{Project, ProjectEntryId, ProjectPath};
+use settings::SettingsStore;
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
     ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
-    IconSize, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip, VisibleOnHover,
+    IconSize, Indicator, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip,
+    VisibleOnHover,
 };
 use util::ResultExt;
 
@@ -62,6 +64,7 @@ pub struct Pane {
     tab_bar_scroll_handle: ScrollHandle,
     save_modals_spawned: HashSet<EntityId>,
     _focus_subscriptions: Vec<Subscription>,
+    _settings_subscription: Subscription,
 }
 
 impl Pane {
@@ -77,6 +80,8 @@ impl Pane {
             cx.on_focus_in(&focus_handle, window, Pane::focus_in),
             cx.on_focus_out(&focus_handle, window, Pane::focus_out),
         ];
+        let settings_subscription =
+            cx.observe_global_in::<SettingsStore>(window, |_, _, cx| cx.notify());
 
         Self {
             focus_handle,
@@ -91,6 +96,7 @@ impl Pane {
             tab_bar_scroll_handle: ScrollHandle::new(),
             save_modals_spawned: HashSet::default(),
             _focus_subscriptions: focus_subscriptions,
+            _settings_subscription: settings_subscription,
         }
     }
 
@@ -898,7 +904,7 @@ impl Pane {
                 .relative()
                 .size(IconSize::Small.square(window, cx))
                 .justify_center()
-                .child(render_item_indicator(tab_control_group_name.clone(), cx))
+                .child(render_item_indicator(tab_control_group_name.clone()))
                 .child(
                     gpui::div()
                         .flex()
@@ -1177,12 +1183,11 @@ impl Render for Pane {
     }
 }
 
-fn render_item_indicator(group_name: String, cx: &App) -> AnyElement {
+fn render_item_indicator(group_name: String) -> AnyElement {
     gpui::div()
-        .size_1p5()
-        .rounded_sm()
-        .bg(cx.theme().colors().text_accent)
+        .flex_none()
         .group_hover(group_name, |style| style.invisible())
+        .child(Indicator::dot().color(Color::Accent))
         .into_any_element()
 }
 
