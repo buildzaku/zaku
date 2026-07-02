@@ -2478,9 +2478,10 @@ impl ProjectPanel {
         } else {
             entry_label_color(is_marked)
         };
-        let git_indicator = (git_status_enabled && git_settings.status.project_panel.indicators)
-            .then(|| git_status_indicator(details.git_status))
-            .flatten();
+        let git_indicator =
+            (!show_editor && git_status_enabled && git_settings.status.project_panel.indicators)
+                .then(|| git_status_indicator(details.git_status))
+                .flatten();
         let bg_color = if is_marked {
             colors.element_selected
         } else if is_selected {
