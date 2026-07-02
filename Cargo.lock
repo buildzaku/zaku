@@ -7213,8 +7213,10 @@ dependencies = [
  "actions",
  "gpui",
  "platform_title_bar",
+ "project",
  "smallvec",
  "ui",
+ "util 0.0.0",
  "workspace",
 ]
 

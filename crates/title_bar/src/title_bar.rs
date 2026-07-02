@@ -3,15 +3,24 @@ mod application_menu;
 pub use platform_title_bar::{self, PlatformTitleBar};
 
 use gpui::{
-    AnyElement, App, Context, ElementId, Entity, MouseButton, Subscription, WeakEntity, Window,
-    WindowButton, prelude::*,
+    AnyElement, App, Context, ElementId, Entity, MouseButton, SharedString, Subscription,
+    WeakEntity, Window, WindowButton, prelude::*,
 };
 use smallvec::SmallVec;
+use std::ffi::OsStr;
 
-use ui::{ActiveTheme, Color, DynamicSpacing, Graphic, GraphicName, IconSize, PlatformStyle};
+use project::{Project, git_store::GitStoreEvent, repo_identity_path};
+use ui::{
+    ActiveTheme, Color, DynamicSpacing, Graphic, GraphicName, Icon, IconName, IconSize,
+    PlatformStyle, Text, TextCommon, TextSize,
+};
 use workspace::Workspace;
 
 use crate::application_menu::ApplicationMenu;
+
+const MAX_PROJECT_NAME_LENGTH: usize = 40;
+const MAX_BRANCH_NAME_LENGTH: usize = 40;
+const MAX_SHORT_SHA_LENGTH: usize = 8;
 
 pub fn init(cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, window, cx| {
@@ -27,9 +36,11 @@ pub fn init(cx: &mut App) {
 
 pub struct TitleBar {
     platform_titlebar: Entity<PlatformTitleBar>,
+    project: Entity<Project>,
     workspace: WeakEntity<Workspace>,
     application_menu: Option<Entity<ApplicationMenu>>,
     _workspace_subscription: Option<Subscription>,
+    _git_store_subscription: Subscription,
     _button_layout_subscription: Subscription,
 }
 
@@ -40,23 +51,114 @@ impl TitleBar {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let project = workspace.project().clone();
+        let git_store = project.read(cx).git_store().clone();
         let workspace = workspace.weak_handle();
         let application_menu = Some(cx.new(|cx| ApplicationMenu::new(window, cx)));
         let workspace_subscription = workspace
             .upgrade()
             .map(|workspace_entity| cx.observe(&workspace_entity, |_, _, cx| cx.notify()));
+        let git_store_subscription = cx.subscribe(&git_store, |_, _, event, cx| match event {
+            GitStoreEvent::ActiveRepositoryChanged(_)
+            | GitStoreEvent::RepositoryUpdated(_, _, true) => cx.notify(),
+            _ => {}
+        });
         let button_layout_subscription =
             cx.observe_button_layout_changed(window, |_, _, cx| cx.notify());
-
         let platform_titlebar = cx.new(|cx| PlatformTitleBar::new(id, cx));
 
         Self {
             platform_titlebar,
+            project,
             workspace,
             application_menu,
             _workspace_subscription: workspace_subscription,
+            _git_store_subscription: git_store_subscription,
             _button_layout_subscription: button_layout_subscription,
         }
+    }
+
+    fn render_project_name(
+        &self,
+        name: Option<SharedString>,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let display_name = if let Some(name) = name {
+            util::truncate_and_trailoff(&name, MAX_PROJECT_NAME_LENGTH)
+        } else {
+            String::new()
+        };
+
+        Text::new(display_name)
+            .size(TextSize::Small)
+            .color(Color::Muted)
+            .single_line()
+            .truncate()
+    }
+
+    fn render_branch(
+        &self,
+        repository: &Entity<project::git_store::Repository>,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let (branch_name, icon_info) = {
+            let repository = repository.read(cx).snapshot();
+
+            let branch_name = repository
+                .branch
+                .as_ref()
+                .map(|branch| branch.name())
+                .map(|name| util::truncate_and_trailoff(name, MAX_BRANCH_NAME_LENGTH))
+                .or_else(|| {
+                    repository.head_commit.as_ref().map(|commit| {
+                        commit
+                            .sha
+                            .chars()
+                            .take(MAX_SHORT_SHA_LENGTH)
+                            .collect::<String>()
+                    })
+                });
+
+            let status = repository.status_summary();
+            let tracked = status.index + status.worktree;
+            let icon_info = if status.conflict > 0 {
+                (IconName::Warning, Color::Conflict)
+            } else if tracked.modified > 0 {
+                (IconName::SquareDot, Color::Modified)
+            } else if tracked.added > 0 || status.untracked > 0 {
+                (IconName::SquarePlus, Color::Created)
+            } else if tracked.deleted > 0 {
+                (IconName::SquareMinus, Color::Deleted)
+            } else {
+                (IconName::GitBranch, Color::Muted)
+            };
+
+            (branch_name, icon_info)
+        };
+
+        let branch_name = branch_name?;
+        let (branch_icon, branch_icon_color) = icon_info;
+
+        Some(
+            gpui::div()
+                .flex()
+                .items_center()
+                .gap_px()
+                .child(
+                    Icon::new(branch_icon)
+                        .size(IconSize::XSmall)
+                        .color(branch_icon_color),
+                )
+                .child(
+                    Text::new(branch_name)
+                        .size(TextSize::Small)
+                        .color(Color::Muted)
+                        .single_line()
+                        .truncate(),
+                )
+                .into_any_element(),
+        )
     }
 }
 
@@ -66,11 +168,42 @@ impl Render for TitleBar {
             self.application_menu = None;
         }
 
-        let colors = cx.theme().colors();
+        let text_color = cx.theme().colors().text;
         let mut children = SmallVec::<[AnyElement; 2]>::new();
         let button_layout = cx.button_layout();
         let platform_style = PlatformStyle::platform();
-        let title_bar_controls_on_left = match platform_style {
+        let mut project_name = self
+            .project
+            .read(cx)
+            .root_worktree(cx)
+            .and_then(|worktree| {
+                worktree
+                    .read(cx)
+                    .root_name()
+                    .file_name()
+                    .map(SharedString::from)
+            });
+        let git_store = self.project.read(cx).git_store().clone();
+        let repository = git_store.read(cx).active_repository();
+        if let Some(repository) = &repository {
+            let repository = repository.read(cx).snapshot();
+            let identity = repo_identity_path(repository.common_dir_abs_path.as_ref());
+
+            let display_name = if identity.extension() == Some(OsStr::new("git")) {
+                identity.file_stem()
+            } else {
+                identity.file_name()
+            };
+
+            if let Some(repo_name) = display_name.and_then(|name| name.to_str()) {
+                project_name = Some(SharedString::from(repo_name));
+            }
+        }
+        let branch = repository
+            .as_ref()
+            .and_then(|repository| self.render_branch(repository, cx));
+        let show_separator = project_name.is_some() && branch.is_some();
+        let menu_controls_on_left = match platform_style {
             PlatformStyle::Linux => {
                 let supported_controls = window.window_controls();
 
@@ -90,6 +223,31 @@ impl Render for TitleBar {
             PlatformStyle::Windows => true,
         };
 
+        let project_items = gpui::div()
+            .flex()
+            .items_center()
+            .h_full()
+            .min_w_0()
+            .overflow_x_hidden()
+            .flex_1()
+            .gap_0p5()
+            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
+                cx.stop_propagation();
+            })
+            .when_some(project_name, |this, project_name| {
+                this.child(self.render_project_name(Some(project_name), window, cx))
+            })
+            .when(show_separator, |this| {
+                this.child(
+                    Text::new("/")
+                        .size(TextSize::Small)
+                        .color(Color::Muted)
+                        .alpha(0.25),
+                )
+            })
+            .when_some(branch, |this, branch| this.child(branch))
+            .into_any_element();
+
         let zaku = gpui::div()
             .flex()
             .items_center()
@@ -99,7 +257,7 @@ impl Render for TitleBar {
             })
             .child(
                 Graphic::with_height(GraphicName::Zaku, IconSize::Small.rems())
-                    .color(Color::Custom(colors.text)),
+                    .color(Color::Custom(text_color)),
             )
             .into_any_element();
         let application_menu = gpui::div()
@@ -111,44 +269,27 @@ impl Render for TitleBar {
             })
             .children(self.application_menu.clone())
             .into_any_element();
-        let mut title_bar_controls = SmallVec::<[AnyElement; 2]>::new();
+        let mut title_bar_items = SmallVec::<[AnyElement; 3]>::new();
 
-        if title_bar_controls_on_left {
-            title_bar_controls.push(zaku);
-            title_bar_controls.push(application_menu);
+        if menu_controls_on_left {
+            title_bar_items.push(zaku);
+            title_bar_items.push(application_menu);
+            title_bar_items.push(project_items);
         } else {
-            title_bar_controls.push(application_menu);
-            title_bar_controls.push(zaku);
+            title_bar_items.push(project_items);
+            title_bar_items.push(application_menu);
+            title_bar_items.push(zaku);
         }
 
-        let title_bar_controls = gpui::div()
-            .flex()
-            .items_center()
-            .h_full()
-            .children(title_bar_controls)
-            .into_any_element();
-
-        if title_bar_controls_on_left {
-            children.push(title_bar_controls);
-            children.push(
-                gpui::div()
-                    .flex()
-                    .items_center()
-                    .h_full()
-                    .flex_1()
-                    .into_any_element(),
-            );
-        } else {
-            children.push(
-                gpui::div()
-                    .flex()
-                    .items_center()
-                    .h_full()
-                    .flex_1()
-                    .into_any_element(),
-            );
-            children.push(title_bar_controls);
-        }
+        children.push(
+            gpui::div()
+                .flex()
+                .items_center()
+                .h_full()
+                .w_full()
+                .children(title_bar_items)
+                .into_any_element(),
+        );
 
         self.platform_titlebar.update(cx, |titlebar, _cx| {
             titlebar.set_button_layout(button_layout);
