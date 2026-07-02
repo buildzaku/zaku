@@ -3,30 +3,9 @@ use serde::{
     Deserialize, Deserializer, Serialize,
     de::{MapAccess, Visitor},
 };
-use settings_macros::{MergeFrom, with_fallible_options};
 use std::{fmt, sync::Arc};
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    MergeFrom,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum UiDensity {
-    #[default]
-    Default,
-    Compact,
-    Comfortable,
-}
+use settings_macros::{MergeFrom, with_fallible_options};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, MergeFrom)]
 #[serde(rename_all = "snake_case")]
@@ -119,15 +98,6 @@ impl<'de> Deserialize<'de> for FontFeaturesContent {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
-#[serde(rename_all = "snake_case")]
-pub enum BufferLineHeight {
-    #[default]
-    Comfortable,
-    Standard,
-    Custom(#[serde(deserialize_with = "deserialize_line_height")] f32),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, MergeFrom)]
 #[serde(transparent)]
 pub struct FontSize(pub f32);
@@ -167,35 +137,10 @@ impl From<FontFamilyName> for String {
     }
 }
 
-fn deserialize_line_height<'de, D>(deserializer: D) -> Result<f32, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let value = f32::deserialize(deserializer)?;
-    if value < 1.0 {
-        return Err(serde::de::Error::custom(
-            "editor.line_height.custom must be at least 1.0",
-        ));
-    }
-
-    Ok(value)
-}
-
 #[with_fallible_options]
 #[derive(Clone, Default, Serialize, Deserialize, MergeFrom)]
 pub struct ThemeSettingsContent {
     pub mode: Option<ThemeAppearanceMode>,
-}
-
-#[with_fallible_options]
-#[derive(Clone, Default, Serialize, Deserialize, MergeFrom)]
-pub struct UiSettingsContent {
-    pub density: Option<UiDensity>,
-    pub font_size: Option<FontSize>,
-    pub font_family: Option<FontFamilyName>,
-    pub font_fallbacks: Option<Vec<FontFamilyName>>,
-    pub font_features: Option<FontFeaturesContent>,
-    pub font_weight: Option<FontWeightContent>,
 }
 
 #[with_fallible_options]
