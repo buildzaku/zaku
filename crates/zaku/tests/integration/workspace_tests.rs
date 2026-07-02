@@ -1,7 +1,7 @@
-use gpui::{ListOffset, TestAppContext};
+use gpui::{Entity, ListOffset, TestAppContext};
 use indoc::indoc;
 use serde_json::json;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
@@ -14,7 +14,7 @@ use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
 use workspace::{AppState, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
-use worktree::WorktreeModelHandle;
+use worktree::{Worktree, WorktreeModelHandle};
 
 fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppContext) {
     cx.update(|cx| {
@@ -30,6 +30,70 @@ fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppCont
         response_panel::init(cx);
         zaku::init(cx);
     });
+}
+
+async fn open_workspace(
+    project_path: PathBuf,
+    app_state: Arc<AppState>,
+    cx: &mut TestAppContext,
+) -> (OpenResult, Entity<Worktree>) {
+    let open_result = cx
+        .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
+        .await
+        .expect("workspace should open");
+
+    open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+        .await;
+    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .project()
+            .read(cx)
+            .root_worktree(cx)
+            .expect("workspace should have a root worktree")
+    });
+    worktree.flush_fs_events(cx).await;
+
+    (open_result, worktree)
+}
+
+async fn open_path(open_result: &OpenResult, path: ProjectPath, cx: &mut TestAppContext) {
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(path, None, true, window, cx)
+            })
+        })
+        .expect("window should update to open path")
+        .await
+        .expect("path should open");
+}
+
+fn activate_item_for_path(open_result: &OpenResult, path: &str, cx: &mut TestAppContext) {
+    let path = rel_path(path);
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+    let item_index = pane.read_with(cx, |pane, cx| {
+        pane.items()
+            .position(|item| {
+                item.project_path(cx)
+                    .is_some_and(|project_path| project_path.path.as_ref() == path)
+            })
+            .expect("pane should contain item for path")
+    });
+
+    open_result
+        .window
+        .update(cx, |_, window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(item_index, true, false, window, cx);
+            });
+        })
+        .expect("window should update to activate item");
+    cx.run_until_parked();
 }
 
 #[gpui::test]
@@ -75,19 +139,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         third_path.clone(),
         fourth_path.clone(),
     ] {
-        let result = cx
-            .update(|cx| Workspace::open(path, app_state.clone(), None, OpenMode::NewWindow, cx))
-            .await
-            .unwrap();
-
-        result
-            .workspace
-            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-            .await;
-        let worktree = result.workspace.read_with(cx, |workspace, cx| {
-            workspace.project().read(cx).root_worktree(cx).unwrap()
-        });
-        worktree.flush_fs_events(cx).await;
+        let (result, _) = open_workspace(path, app_state.clone(), cx).await;
         result
             .window
             .update(cx, |root, window, cx| {
@@ -275,55 +327,20 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
     );
 
     let project_path = temp_fs.path().join("project");
-    let open_result = cx
-        .update(|cx| {
-            Workspace::open(
-                project_path,
-                app_state.clone(),
-                None,
-                OpenMode::NewWindow,
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-    open_result
-        .workspace
-        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-        .await;
-    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.project().read(cx).root_worktree(cx).unwrap()
-    });
-    worktree.flush_fs_events(cx).await;
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
 
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
         .expect("response panel should be registered");
-    let pane = open_result
-        .workspace
-        .read_with(cx, |workspace, _| workspace.pane().clone());
 
-    let first_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/first.toml")),
-    };
-    let second_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/second.toml")),
-    };
-    let first_item = open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(first_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    let first_item_id = first_item.item_id();
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
@@ -394,17 +411,13 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         first_cookies_scroll_offset.offset_in_item,
     );
 
-    let second_item = open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(second_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    let second_item_id = second_item.item_id();
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
+
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
@@ -457,21 +470,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         second_cookies_scroll_offset.offset_in_item,
     );
 
-    let first_item_index = pane.read_with(cx, |pane, _| {
-        pane.items()
-            .position(|item| item.item_id() == first_item_id)
-            .unwrap()
-    });
-
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(first_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -511,21 +510,7 @@ async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
         first_cookies_scroll_offset.offset_in_item,
     );
 
-    let second_item_index = pane.read_with(cx, |pane, _| {
-        pane.items()
-            .position(|item| item.item_id() == second_item_id)
-            .unwrap()
-    });
-
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(second_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -623,71 +608,28 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
     );
 
     let project_path = temp_fs.path().join("project");
-    let open_result = cx
-        .update(|cx| {
-            Workspace::open(
-                project_path.clone(),
-                app_state.clone(),
-                None,
-                OpenMode::NewWindow,
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-    open_result
-        .workspace
-        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-        .await;
-    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.project().read(cx).root_worktree(cx).unwrap()
-    });
-    worktree.flush_fs_events(cx).await;
+    let (open_result, worktree) = open_workspace(project_path.clone(), app_state.clone(), cx).await;
 
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
-    let settings_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("settings.json")),
-    };
-    let first_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/first.toml")),
-    };
-    let second_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/second.toml")),
-    };
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(settings_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(first_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(second_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("settings.json"))),
+        cx,
+    )
+    .await;
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
     cx.run_until_parked();
     cx.executor()
         .advance_clock(workspace::SERIALIZATION_THROTTLE_TIME);
@@ -707,26 +649,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         .unwrap();
     cx.run_until_parked();
 
-    let open_result = cx
-        .update(|cx| {
-            Workspace::open(
-                project_path,
-                app_state.clone(),
-                None,
-                OpenMode::NewWindow,
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-    open_result
-        .workspace
-        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-        .await;
-    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.project().read(cx).root_worktree(cx).unwrap()
-    });
-    worktree.flush_fs_events(cx).await;
+    let (open_result, _) = open_workspace(project_path, app_state.clone(), cx).await;
     cx.run_until_parked();
 
     let response_panel = open_result
@@ -739,25 +662,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
 
     assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
 
-    let settings_item_index = pane.read_with(cx, |pane, cx| {
-        pane.items()
-            .position(|item| {
-                item.project_path(cx).is_some_and(|project_path| {
-                    project_path.path.as_ref() == rel_path("settings.json")
-                })
-            })
-            .unwrap()
-    });
-
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(settings_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
+    activate_item_for_path(&open_result, "settings.json", cx);
 
     cx.dispatch_action(
         open_result.window.into(),
@@ -772,25 +677,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    let second_item_index = pane.read_with(cx, |pane, cx| {
-        pane.items()
-            .position(|item| {
-                item.project_path(cx).is_some_and(|project_path| {
-                    project_path.path.as_ref() == rel_path("collection/second.toml")
-                })
-            })
-            .unwrap()
-    });
-
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(second_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
@@ -803,15 +690,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "second response"
     );
 
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(settings_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
+    activate_item_for_path(&open_result, "settings.json", cx);
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -820,25 +699,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    let first_item_index = pane.read_with(cx, |pane, cx| {
-        pane.items()
-            .position(|item| {
-                item.project_path(cx).is_some_and(|project_path| {
-                    project_path.path.as_ref() == rel_path("collection/first.toml")
-                })
-            })
-            .unwrap()
-    });
-
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(first_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
 
     assert!(
         response_panel.read_with(cx, |response_panel, cx| {
@@ -858,15 +719,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "first response"
     );
 
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(second_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -921,26 +774,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     );
 
     let project_path = temp_fs.path().join("project");
-    let open_result = cx
-        .update(|cx| {
-            Workspace::open(
-                project_path,
-                app_state.clone(),
-                None,
-                OpenMode::NewWindow,
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-    open_result
-        .workspace
-        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-        .await;
-    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.project().read(cx).root_worktree(cx).unwrap()
-    });
-    worktree.flush_fs_events(cx).await;
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
 
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     let response_panel = open_result
@@ -951,29 +785,12 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         .workspace
         .read_with(cx, |workspace, _| workspace.pane().clone());
 
-    let valid_request_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/valid.toml")),
-    };
-    let invalid_request_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/invalid.toml")),
-    };
-    let settings_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("settings.json")),
-    };
+    let valid_request_path = ProjectPath::from((worktree_id, rel_path("collection/valid.toml")));
+    let invalid_request_path =
+        ProjectPath::from((worktree_id, rel_path("collection/invalid.toml")));
+    let settings_path = ProjectPath::from((worktree_id, rel_path("settings.json")));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(valid_request_path.clone(), None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(&open_result, valid_request_path.clone(), cx).await;
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
@@ -985,32 +802,14 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         "valid response"
     );
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(invalid_request_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(&open_result, invalid_request_path, cx).await;
     cx.run_until_parked();
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(valid_request_path.clone(), None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(&open_result, valid_request_path.clone(), cx).await;
     cx.run_until_parked();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
@@ -1021,16 +820,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         "valid response"
     );
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(settings_path.clone(), None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(&open_result, settings_path.clone(), cx).await;
     cx.run_until_parked();
 
     assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
@@ -1048,16 +838,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(valid_request_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(&open_result, valid_request_path, cx).await;
     cx.run_until_parked();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
@@ -1068,16 +849,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         "valid response"
     );
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(settings_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(&open_result, settings_path, cx).await;
     cx.run_until_parked();
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
