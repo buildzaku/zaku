@@ -932,6 +932,17 @@ async fn compute_snapshot(
     })
 }
 
+pub fn repo_identity_path(common_dir: &Path) -> &Path {
+    let is_dot_entry = common_dir
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().starts_with('.'));
+    if is_dot_entry {
+        common_dir.parent().unwrap_or(common_dir)
+    } else {
+        common_dir
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -981,5 +992,22 @@ mod tests {
                 RepoPath::new("foo/first.toml").unwrap(),
             ]
         );
+    }
+
+    #[test]
+    fn test_repo_identity_path() {
+        let examples = [
+            ("/home/me/zaku/.git", "/home/me/zaku"),
+            ("/repos/project/.bare", "/repos/project"),
+            ("/repos/zaku.git", "/repos/zaku.git"),
+            ("/repos/project", "/repos/project"),
+        ];
+
+        for (common_dir, expected) in examples {
+            assert_eq!(
+                repo_identity_path(Path::new(common_dir)),
+                Path::new(expected)
+            );
+        }
     }
 }

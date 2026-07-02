@@ -1708,8 +1708,14 @@ impl Workspace {
     fn active_item_path_changed(&mut self, cx: &mut Context<Self>) {
         let active_entry = self.active_project_path(cx);
         self.project.update(cx, |project, cx| {
-            project.set_active_path(active_entry, cx);
+            project.set_active_path(active_entry.clone(), cx);
         });
+        if let Some(project_path) = &active_entry {
+            let git_store = self.project.read(cx).git_store().clone();
+            git_store.update(cx, |git_store, cx| {
+                git_store.set_active_repo_for_path(project_path, cx);
+            });
+        }
     }
 
     fn handle_pane_event(
