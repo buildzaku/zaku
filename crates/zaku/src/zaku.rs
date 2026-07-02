@@ -16,7 +16,7 @@ use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use system_specs::SystemSpecs;
 use workspace::{
-    AppState, CloseIntent, DockPosition, OpenMode, Root, SessionWorkspace, Toast, Workspace,
+    AppState, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace, Toast, Workspace,
     WorkspaceDb, create_and_open_file,
     notifications::{
         NotificationId, dismiss_app_notification, show_app_notification,
@@ -36,7 +36,13 @@ pub fn init(cx: &mut App) {
         };
 
         let project_panel = ProjectPanel::new(workspace, window, cx);
+        let project_panel_should_start_open = project_panel.read(cx).starts_open(window, cx);
         workspace.add_panel(project_panel, DockPosition::Left, window, cx);
+        if !project_panel_should_start_open {
+            workspace.left_dock().update(cx, |dock, cx| {
+                dock.set_open(false, window, cx);
+            });
+        }
 
         let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
         workspace.add_panel(response_panel, DockPosition::Bottom, window, cx);
