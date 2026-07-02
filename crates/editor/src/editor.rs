@@ -2456,25 +2456,34 @@ impl Editor {
         let theme_colors = cx.theme().colors();
         let theme_settings = ThemeSettings::get_global(cx);
 
-        let font_size = match self.mode {
-            EditorMode::SingleLine | EditorMode::AutoHeight { .. } => gpui::rems(0.875).into(),
-            EditorMode::Full { .. } => (theme_settings.buffer_font_size(cx) * 0.875).into(),
+        let color = if self.muted {
+            theme_colors.text_disabled
+        } else {
+            theme_colors.editor_foreground
         };
-
-        let text_style = TextStyle {
-            color: if self.muted {
-                theme_colors.text_disabled
-            } else {
-                theme_colors.editor_foreground
+        let text_style = match self.mode {
+            EditorMode::SingleLine | EditorMode::AutoHeight { .. } => TextStyle {
+                color,
+                font_family: theme_settings.ui_font.family.clone(),
+                font_features: theme_settings.ui_font.features.clone(),
+                font_fallbacks: theme_settings.ui_font.fallbacks.clone(),
+                font_size: gpui::rems(0.875).into(),
+                font_weight: theme_settings.ui_font.weight,
+                font_style: theme_settings.ui_font.style,
+                line_height: gpui::relative(theme_settings.line_height()),
+                ..Default::default()
             },
-            font_family: theme_settings.buffer_font.family.clone(),
-            font_features: theme_settings.buffer_font.features.clone(),
-            font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
-            font_size,
-            font_weight: theme_settings.buffer_font.weight,
-            font_style: theme_settings.buffer_font.style,
-            line_height: gpui::relative(theme_settings.line_height()),
-            ..Default::default()
+            EditorMode::Full { .. } => TextStyle {
+                color,
+                font_family: theme_settings.buffer_font.family.clone(),
+                font_features: theme_settings.buffer_font.features.clone(),
+                font_fallbacks: theme_settings.buffer_font.fallbacks.clone(),
+                font_size: (theme_settings.buffer_font_size(cx) * 0.875).into(),
+                font_weight: theme_settings.buffer_font.weight,
+                font_style: theme_settings.buffer_font.style,
+                line_height: gpui::relative(theme_settings.line_height()),
+                ..Default::default()
+            },
         };
 
         EditorStyle {
