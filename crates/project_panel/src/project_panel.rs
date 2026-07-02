@@ -4733,7 +4733,7 @@ mod tests {
             vec![
                 String::from("v collection"),
                 String::from("    v nested"),
-                String::from("    v scripts"),
+                String::from("    v scripts  <== selected"),
                 String::from("          second"),
                 String::from("      first"),
                 String::from("  request"),
