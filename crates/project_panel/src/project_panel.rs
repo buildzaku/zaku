@@ -2133,22 +2133,23 @@ impl ProjectPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() else {
-            return;
-        };
+        if let Some(expanded_dir_ids) = self.tree_state.expanded_dir_ids.as_mut() {
+            self.project.update(cx, |project, cx| {
+                match expanded_dir_ids.binary_search(&entry_id) {
+                    Ok(index) => {
+                        expanded_dir_ids.remove(index);
+                    }
+                    Err(index) => {
+                        project.expand_entry(entry_id, cx);
+                        expanded_dir_ids.insert(index, entry_id);
+                    }
+                }
+            });
 
-        match expanded_dir_ids.binary_search(&entry_id) {
-            Ok(index) => {
-                expanded_dir_ids.remove(index);
-            }
-            Err(index) => {
-                expanded_dir_ids.insert(index, entry_id);
-            }
+            self.update_visible_entries(Some(entry_id), false, false, window, cx);
+            window.focus(&self.focus_handle, cx);
+            cx.notify();
         }
-
-        self.update_visible_entries(None, false, false, window, cx);
-        window.focus(&self.focus_handle, cx);
-        cx.notify();
     }
 
     fn toggle_expand_all(
