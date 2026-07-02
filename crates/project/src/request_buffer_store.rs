@@ -78,25 +78,24 @@ impl RequestBufferStore {
                     return Task::ready(Err(anyhow!("no such worktree")));
                 };
 
-                let worktree_entry = self
-                    .worktree_store
-                    .read(cx)
-                    .entry_for_path(&project_path, cx)
-                    .cloned()
-                    .ok_or_else(|| anyhow!("no such entry"));
-                let worktree_entry = match worktree_entry {
-                    Ok(entry) => entry,
-                    Err(error) => return Task::ready(Err(error)),
-                };
-                if !worktree_entry.is_request {
-                    return Task::ready(Err(anyhow!("Cannot open non-request file")));
-                }
-
                 let load_file_task =
                     worktree.update(cx, |worktree, cx| worktree.load_file(path.as_ref(), cx));
                 let open_task = cx.spawn(async move |this, cx| {
                     let loaded = load_file_task.await?;
                     let file = loaded.file;
+                    let file_worktree = file.worktree.clone();
+                    let file_path = file.path.clone();
+                    let entry_id = file.entry_id;
+                    let is_request = file_worktree.read_with(cx, |worktree, _| {
+                        entry_id
+                            .and_then(|entry_id| worktree.entry_for_id(entry_id))
+                            .or_else(|| worktree.entry_for_path(file_path.as_ref()))
+                            .is_some_and(|entry| entry.is_request)
+                    });
+                    if !is_request {
+                        return Err(anyhow!("Cannot open non-request file"));
+                    }
+
                     let parse_task =
                         cx.background_spawn(
                             async move { worktree::parse_request_file(&loaded.text) },

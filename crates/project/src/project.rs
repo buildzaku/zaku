@@ -147,7 +147,12 @@ impl ProjectItem for RequestBuffer {
         path: &ProjectPath,
         cx: &mut App,
     ) -> Option<Task<anyhow::Result<Entity<Self>>>> {
-        if !project.read(cx).entry_for_path(path, cx)?.is_request {
+        let is_request = path
+            .path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"));
+
+        if !is_request {
             return None;
         }
 
