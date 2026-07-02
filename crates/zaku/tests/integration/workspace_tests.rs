@@ -1,7 +1,9 @@
+use futures::channel::oneshot;
 use gpui::{Entity, ListOffset, TestAppContext};
 use indoc::indoc;
+use parking_lot::Mutex;
 use serde_json::json;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
@@ -13,7 +15,7 @@ use response_panel::ResponsePanel;
 use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::{AppState, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
+use workspace::{AppState, ItemHandle, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
 use worktree::{Worktree, WorktreeModelHandle};
 
 fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppContext) {
@@ -69,6 +71,23 @@ async fn open_path(open_result: &OpenResult, path: ProjectPath, cx: &mut TestApp
         .expect("window should update to open path")
         .await
         .expect("path should open");
+}
+
+async fn open_path_preview(
+    open_result: &OpenResult,
+    path: ProjectPath,
+    cx: &mut TestAppContext,
+) -> Box<dyn ItemHandle> {
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path_preview(path, None, false, true, true, window, cx)
+            })
+        })
+        .expect("window should update to open preview path")
+        .await
+        .expect("preview path should open")
 }
 
 fn activate_item_for_path(open_result: &OpenResult, path: &str, cx: &mut TestAppContext) {
@@ -252,6 +271,339 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         recent_workspace_paths,
         vec![second_path, fourth_path, third_path, first_path],
         "recent workspaces should preserve window stack order"
+    );
+}
+
+#[gpui::test]
+async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+    let (tx, rx) = oneshot::channel();
+    let rx = Arc::new(Mutex::new(Some(rx)));
+
+    http_client.replace_handler({
+        move |_, request| {
+            assert_eq!(request.uri().path(), "/me");
+            let rx = rx.lock().take().unwrap();
+
+            async move { Ok(rx.await.unwrap()) }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "request.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/me"
+                "#}
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/request.toml"))),
+        cx,
+    )
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        let response_panel_id = Entity::entity_id(&response_panel);
+        let active_panel_id = workspace
+            .bottom_dock()
+            .read(cx)
+            .active_panel()
+            .map(|panel| panel.panel_id());
+
+        assert!(workspace.bottom_dock().read(cx).is_open());
+        assert_eq!(active_panel_id, Some(response_panel_id));
+    });
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("response"))
+        .unwrap();
+    assert!(
+        matches!(tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+}
+
+#[gpui::test]
+async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+    let (first_tx, first_rx) = oneshot::channel();
+    let (second_tx, second_rx) = oneshot::channel();
+    let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+    let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+    let first_response_delay = Duration::from_secs(5);
+    let second_response_delay = Duration::from_secs(3);
+    let executor = cx.executor();
+
+    http_client.replace_handler({
+        move |_, request| {
+            let (rx, response_delay) = match request.uri().path() {
+                "/first" => (first_rx.lock().take().unwrap(), first_response_delay),
+                "/second" => (second_rx.lock().take().unwrap(), second_response_delay),
+                path => panic!("Unexpected request path: {path}"),
+            };
+            let executor = executor.clone();
+
+            async move {
+                let response = rx.await.unwrap();
+                executor.timer(response_delay).await;
+                Ok(response)
+            }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "first.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/first"
+                "#},
+                "second.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/second"
+                "#}
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("first response"))
+        .unwrap();
+    assert!(
+        matches!(first_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.executor().advance_clock(first_response_delay);
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        ""
+    );
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("second response"))
+        .unwrap();
+    assert!(
+        matches!(second_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.executor().advance_clock(second_response_delay);
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "second response"
+    );
+
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "first response"
+    );
+}
+
+#[gpui::test]
+async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+    let (first_tx, first_rx) = oneshot::channel();
+    let (second_tx, second_rx) = oneshot::channel();
+    let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+    let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+
+    http_client.replace_handler({
+        move |_, request| {
+            let rx = match request.uri().path() {
+                "/first" => first_rx.lock().take().unwrap(),
+                "/second" => second_rx.lock().take().unwrap(),
+                path => panic!("Unexpected request path: {path}"),
+            };
+            async move { Ok(rx.await.unwrap()) }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "first.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/first"
+                "#},
+                "second.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/second"
+                "#}
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+
+    let first_item = open_path_preview(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+    assert!(pane.read_with(cx, |pane, _| pane.preview_item_idx().is_none()));
+
+    open_path_preview(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    let first_item_id = first_item.item_id();
+    assert!(pane.read_with(cx, |pane, _| {
+        pane.items().any(|item| item.item_id() == first_item_id)
+    }));
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("first response"))
+        .unwrap();
+    assert!(
+        matches!(first_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        ""
+    );
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("second response"))
+        .unwrap();
+    assert!(
+        matches!(second_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "second response"
+    );
+
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "first response"
     );
 }
 

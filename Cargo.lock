@@ -9271,6 +9271,7 @@ dependencies = [
  "metadata",
  "mimalloc",
  "multi_buffer",
+ "parking_lot",
  "path",
  "project",
  "project_panel",
