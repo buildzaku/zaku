@@ -35,10 +35,7 @@ use ui::{
     IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
-use workspace::{
-    AppState, Workspace,
-    pane::{Pane, PaneEvent},
-};
+use workspace::{AppState, Workspace, WorkspaceEvent, pane::Pane};
 
 use crate::persistence::RequestEditorDb;
 
@@ -52,37 +49,19 @@ pub fn init(cx: &mut App) {
     cx.observe_new(
         |workspace: &mut Workspace, window: Option<&mut Window>, cx: &mut Context<Workspace>| {
             if let Some(window) = window {
-                let pane = workspace.pane().clone();
-                let workspace = cx.weak_entity();
+                let workspace_handle = cx.entity();
 
-                window
-                    .subscribe(
-                        &pane,
-                        cx,
-                        move |_, event: &PaneEvent, window, cx| match event {
-                            PaneEvent::ActivateItem { .. } => {
-                                if let Err(error) = workspace.update(cx, |workspace, cx| {
-                                    update_response_panel(workspace, window, cx);
-                                }) {
-                                    log::debug!("Failed to update response panel: {error:?}");
-                                }
-                            }
-                            PaneEvent::RemovedItem { .. } => {
-                                let workspace = workspace.clone();
-                                window.defer(cx, move |window, cx| {
-                                    if let Err(error) = workspace.update(cx, |workspace, cx| {
-                                        update_response_panel(workspace, window, cx);
-                                    }) {
-                                        log::debug!("Failed to update response panel: {error:?}");
-                                    }
-                                });
-                            }
-                            PaneEvent::AddItem { .. }
-                            | PaneEvent::ChangeItemTitle
-                            | PaneEvent::UserSavedItem { .. } => {}
-                        },
-                    )
-                    .detach();
+                cx.subscribe_in(
+                    &workspace_handle,
+                    window,
+                    move |workspace, _, event, window, cx| match event {
+                        WorkspaceEvent::ActiveItemChanged => {
+                            update_response_panel(workspace, window, cx);
+                        }
+                        WorkspaceEvent::PaneRestored(_) => {}
+                    },
+                )
+                .detach();
             }
 
             workspace.register_action(

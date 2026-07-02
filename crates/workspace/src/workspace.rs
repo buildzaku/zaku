@@ -1095,6 +1095,7 @@ pub fn client_side_decorations(
 }
 
 pub enum WorkspaceEvent {
+    ActiveItemChanged,
     PaneRestored(Entity<Pane>),
 }
 
@@ -1706,6 +1707,7 @@ impl Workspace {
     }
 
     fn active_item_path_changed(&mut self, cx: &mut Context<Self>) {
+        cx.emit(WorkspaceEvent::ActiveItemChanged);
         let active_entry = self.active_project_path(cx);
         self.project.update(cx, |project, cx| {
             project.set_active_path(active_entry.clone(), cx);
@@ -1734,6 +1736,10 @@ impl Workspace {
             PaneEvent::ActivateItem { .. } | PaneEvent::ChangeItemTitle
         ) {
             self.active_item_path_changed(cx);
+        }
+
+        if matches!(event, PaneEvent::RemovedItem { .. }) {
+            cx.emit(WorkspaceEvent::ActiveItemChanged);
         }
 
         self.serialize_workspace(window, cx);
