@@ -2,13 +2,17 @@ pub mod git_traversal;
 
 use anyhow::Context as AnyhowContext;
 use futures::{FutureExt, StreamExt, channel::mpsc, future, stream::FuturesOrdered};
-use gpui::{App, AppContext, AsyncApp, Context, Entity, EventEmitter, Subscription, Task};
+use gpui::{
+    App, AppContext, AsyncApp, Context, Entity, EventEmitter, SharedString, Subscription, Task,
+};
 use std::{ops, path::Path, sync::Arc};
 use sum_tree::{Bias, Edit, SumTree};
 
 use collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use git::{
-    repository::{GitRepository, RepoPath, SystemGitRepository},
+    repository::{
+        Branch, BranchesScanResult, CommitDetails, GitRepository, RepoPath, SystemGitRepository,
+    },
     status::{FileStatus, GitStatus, GitSummary},
 };
 use path::{PathStyle, RelPath};
@@ -60,6 +64,10 @@ pub struct RepositorySnapshot {
     pub repository_dir_abs_path: Arc<Path>,
     pub common_dir_abs_path: Arc<Path>,
     pub path_style: PathStyle,
+    pub branch: Option<Branch>,
+    pub branch_list: Arc<[Branch]>,
+    pub branch_list_error: Option<SharedString>,
+    pub head_commit: Option<CommitDetails>,
     pub scan_id: u64,
 }
 
@@ -86,6 +94,10 @@ impl RepositorySnapshot {
             dot_git_abs_path,
             common_dir_abs_path,
             work_directory_abs_path,
+            branch: None,
+            branch_list: Arc::from([]),
+            branch_list_error: None,
+            head_commit: None,
             path_style,
             scan_id: 0,
         }
@@ -164,6 +176,8 @@ impl RepositoryState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RepositoryEvent {
     StatusesChanged,
+    HeadChanged,
+    BranchListChanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -848,6 +862,24 @@ async fn compute_snapshot(
         this.paths_needing_status_update.clear();
     });
 
+    let branches_future = {
+        let backend = backend.clone();
+        async move { backend.branches().await.log_err().unwrap_or_default() }
+    };
+    let head_commit_future = {
+        let backend = backend.clone();
+        async move { backend.show("HEAD".to_string()).await.ok() }
+    };
+    let (branches, head_commit) = future::join(branches_future, head_commit_future).await;
+    log::debug!("Fetched branches and HEAD commit");
+
+    let BranchesScanResult {
+        branches,
+        error: branch_list_error,
+    } = branches;
+    let branch = branches.iter().find(|branch| branch.is_head).cloned();
+    let branch_list: Arc<[Branch]> = branches.into();
+
     let statuses = match RelPath::new(".".as_ref(), PathStyle::local()) {
         Ok(path) => backend
             .status(&[RepoPath::from_rel_path(&path)])
@@ -873,10 +905,27 @@ async fn compute_snapshot(
     );
 
     this.update(cx, |this, cx| {
+        let head_changed =
+            branch != this.snapshot.branch || head_commit != this.snapshot.head_commit;
+        let branch_list_changed = *branch_list != *this.snapshot.branch_list;
+        let branch_list_error_changed = branch_list_error != this.snapshot.branch_list_error;
+
+        if head_changed {
+            cx.emit(RepositoryEvent::HeadChanged);
+        }
+
+        if branch_list_changed || branch_list_error_changed {
+            cx.emit(RepositoryEvent::BranchListChanged);
+        }
+
         if statuses_by_path != this.snapshot.statuses_by_path {
             cx.emit(RepositoryEvent::StatusesChanged);
         }
 
+        this.snapshot.branch = branch;
+        this.snapshot.branch_list = branch_list;
+        this.snapshot.branch_list_error = branch_list_error;
+        this.snapshot.head_commit = head_commit;
         this.snapshot.scan_id += 1;
         this.snapshot.statuses_by_path = statuses_by_path;
         this.snapshot.clone()

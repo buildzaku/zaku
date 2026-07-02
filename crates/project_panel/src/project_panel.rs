@@ -234,7 +234,7 @@ impl ProjectPanel {
                         this.update_visible_entries(None, false, false, window, cx);
                         cx.notify();
                     }
-                    GitStoreEvent::ActiveRepositoryChanged(_) => {}
+                    _ => {}
                 },
             )
             .detach();

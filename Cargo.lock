@@ -2338,6 +2338,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "fs",
+ "futures",
  "gpui",
  "log",
  "path",

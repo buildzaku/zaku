@@ -1,9 +1,11 @@
-use anyhow::{Context, bail};
-use gpui::{BackgroundExecutor, Task};
+use anyhow::Context;
+use futures::{FutureExt, future::BoxFuture};
+use gpui::{BackgroundExecutor, SharedString, Task};
 use std::{
     ffi::{OsStr, OsString},
     fmt, ops,
     path::{Path, PathBuf},
+    process::Output,
     sync::Arc,
 };
 
@@ -59,7 +61,144 @@ impl ops::Deref for RepoPath {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Branch {
+    pub is_head: bool,
+    pub ref_name: SharedString,
+    pub upstream: Option<Upstream>,
+    pub most_recent_commit: Option<CommitSummary>,
+}
+
+impl Branch {
+    pub fn name(&self) -> &str {
+        self.ref_name
+            .as_ref()
+            .strip_prefix("refs/heads/")
+            .or_else(|| self.ref_name.as_ref().strip_prefix("refs/remotes/"))
+            .unwrap_or(self.ref_name.as_ref())
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.ref_name.starts_with("refs/remotes/")
+    }
+
+    pub fn remote_name(&self) -> Option<&str> {
+        self.ref_name
+            .strip_prefix("refs/remotes/")
+            .and_then(|stripped| stripped.split('/').next())
+    }
+
+    pub fn tracking_status(&self) -> Option<UpstreamTrackingStatus> {
+        self.upstream
+            .as_ref()
+            .and_then(|upstream| upstream.tracking.status())
+    }
+
+    pub fn priority_key(&self) -> (bool, Option<i64>) {
+        (
+            self.is_head,
+            self.most_recent_commit
+                .as_ref()
+                .map(|commit| commit.commit_timestamp),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BranchesScanResult {
+    pub branches: Vec<Branch>,
+    pub error: Option<SharedString>,
+}
+
+impl From<Vec<Branch>> for BranchesScanResult {
+    fn from(branches: Vec<Branch>) -> Self {
+        Self {
+            branches,
+            error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Upstream {
+    pub ref_name: SharedString,
+    pub tracking: UpstreamTracking,
+}
+
+impl Upstream {
+    pub fn is_remote(&self) -> bool {
+        self.remote_name().is_some()
+    }
+
+    pub fn remote_name(&self) -> Option<&str> {
+        self.ref_name
+            .strip_prefix("refs/remotes/")
+            .and_then(|stripped| stripped.split('/').next())
+    }
+
+    pub fn stripped_ref_name(&self) -> Option<&str> {
+        self.ref_name.strip_prefix("refs/remotes/")
+    }
+
+    pub fn branch_name(&self) -> Option<&str> {
+        self.ref_name
+            .strip_prefix("refs/remotes/")
+            .and_then(|stripped| stripped.split_once('/').map(|(_, name)| name))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UpstreamTracking {
+    Gone,
+    Tracked(UpstreamTrackingStatus),
+}
+
+impl UpstreamTracking {
+    pub fn is_gone(&self) -> bool {
+        matches!(self, UpstreamTracking::Gone)
+    }
+
+    pub fn status(&self) -> Option<UpstreamTrackingStatus> {
+        match self {
+            UpstreamTracking::Gone => None,
+            UpstreamTracking::Tracked(status) => Some(*status),
+        }
+    }
+}
+
+impl From<UpstreamTrackingStatus> for UpstreamTracking {
+    fn from(status: UpstreamTrackingStatus) -> Self {
+        UpstreamTracking::Tracked(status)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UpstreamTrackingStatus {
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CommitSummary {
+    pub sha: SharedString,
+    pub subject: SharedString,
+    pub commit_timestamp: i64,
+    pub author_name: SharedString,
+    pub has_parent: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct CommitDetails {
+    pub sha: SharedString,
+    pub message: SharedString,
+    pub commit_timestamp: i64,
+    pub author_email: SharedString,
+    pub author_name: SharedString,
+}
+
 pub trait GitRepository: Send + Sync {
+    fn branches(&self) -> BoxFuture<'_, anyhow::Result<BranchesScanResult>>;
+    fn show(&self, commit: String) -> BoxFuture<'_, anyhow::Result<CommitDetails>>;
     fn status(&self, path_prefixes: &[RepoPath]) -> Task<anyhow::Result<GitStatus>>;
 }
 
@@ -81,7 +220,7 @@ fn normalize_git_metadata_path(path: &Path) -> anyhow::Result<PathBuf> {
 pub struct SystemGitRepository {
     pub git_dir: PathBuf,
     pub common_dir: PathBuf,
-    pub working_directory: Option<PathBuf>,
+    pub working_directory: PathBuf,
     pub system_git_binary_path: PathBuf,
     executor: BackgroundExecutor,
 }
@@ -102,11 +241,13 @@ impl SystemGitRepository {
         let dotgit_parent = dotgit_path.parent().context(".git has no parent")?;
         let has_working_directory =
             dotgit_path.is_file() || dotgit_path.file_name() == Some(OsStr::new(".git"));
-        let working_directory = if has_working_directory {
-            Some(normalize_git_metadata_path(dotgit_parent)?)
-        } else {
-            None
-        };
+        if !has_working_directory {
+            anyhow::bail!(
+                "Git repository has no working directory: {}",
+                dotgit_path.display()
+            );
+        }
+        let working_directory = normalize_git_metadata_path(dotgit_parent)?;
 
         let git_dir = if dotgit_path.is_file() {
             let content =
@@ -153,27 +294,129 @@ impl SystemGitRepository {
         })
     }
 
-    fn working_directory(&self) -> anyhow::Result<PathBuf> {
-        self.working_directory
-            .clone()
-            .context("Git repository has no working directory")
-    }
-
-    fn git_binary_in_worktree(&self) -> anyhow::Result<GitBinary> {
-        Ok(GitBinary::new(
+    fn git_binary_in_worktree(&self) -> GitBinary {
+        GitBinary::new(
             self.system_git_binary_path.clone(),
-            self.working_directory()?,
-        ))
+            self.working_directory.clone(),
+        )
     }
 }
 
 impl GitRepository for SystemGitRepository {
+    fn branches(&self) -> BoxFuture<'_, anyhow::Result<BranchesScanResult>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let fields = [
+                    "%(HEAD)",
+                    "%(objectname)",
+                    "%(parent)",
+                    "%(refname)",
+                    "%(upstream)",
+                    "%(upstream:track)",
+                    "%(committerdate:unix)",
+                    "%(authorname)",
+                    "%(contents:subject)",
+                ]
+                .join("%00");
+                let args = vec![
+                    "for-each-ref",
+                    "refs/heads/**/*",
+                    "refs/remotes/**/*",
+                    "--format",
+                    &fields,
+                ];
+                let output = git.build_command(&args).output().await?;
+
+                let error = if output.status.success() {
+                    None
+                } else {
+                    let error = format_branch_scan_error(&output);
+                    log::warn!("Failed to get Git branches with commit metadata: {error}");
+                    Some(error.into())
+                };
+
+                let input = String::from_utf8_lossy(&output.stdout);
+                let mut branches = parse_branch_input(&input);
+                if branches.is_empty() {
+                    let output = git
+                        .build_command(&["symbolic-ref", "--quiet", "HEAD"])
+                        .output()
+                        .await?;
+
+                    if output.status.success() {
+                        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+                        branches.push(Branch {
+                            ref_name: name.into(),
+                            is_head: true,
+                            upstream: None,
+                            most_recent_commit: None,
+                        });
+                    }
+                }
+
+                Ok(BranchesScanResult { branches, error })
+            })
+            .boxed()
+    }
+
+    fn show(&self, commit: String) -> BoxFuture<'_, anyhow::Result<CommitDetails>> {
+        let git = self.git_binary_in_worktree();
+        self.executor
+            .spawn(async move {
+                let output = git
+                    .build_command(&[
+                        "show",
+                        "--no-patch",
+                        "--format=%H%x00%B%x00%at%x00%ae%x00%an%x00",
+                        &commit,
+                    ])
+                    .output()
+                    .await?;
+                let output = std::str::from_utf8(&output.stdout)?;
+                let mut fields = output.split('\0');
+                let (
+                    Some(sha),
+                    Some(message),
+                    Some(commit_timestamp),
+                    Some(author_email),
+                    Some(author_name),
+                    Some(""),
+                    None,
+                ) = (
+                    fields.next(),
+                    fields.next(),
+                    fields.next(),
+                    fields.next(),
+                    fields.next(),
+                    fields.next(),
+                    fields.next(),
+                )
+                else {
+                    anyhow::bail!("Unexpected git-show output for {commit:?}: {output:?}");
+                };
+                let sha = sha.to_string().into();
+                let message = message.to_string().into();
+                let commit_timestamp = commit_timestamp.parse()?;
+                let author_email = author_email.to_string().into();
+                let author_name = author_name.to_string().into();
+                Ok(CommitDetails {
+                    sha,
+                    message,
+                    commit_timestamp,
+                    author_email,
+                    author_name,
+                })
+            })
+            .boxed()
+    }
+
     fn status(&self, path_prefixes: &[RepoPath]) -> Task<anyhow::Result<GitStatus>> {
         let git = self.git_binary_in_worktree();
         let args = git_status_args(path_prefixes);
         log::debug!("Checking for Git status in {path_prefixes:?}");
         self.executor.spawn(async move {
-            let git = git?;
             let output = git.build_command(&args).output().await?;
 
             if output.status.success() {
@@ -181,10 +424,112 @@ impl GitRepository for SystemGitRepository {
                 stdout.parse()
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                bail!("Git status failed: {stderr}");
+                anyhow::bail!("Git status failed: {stderr}");
             }
         })
     }
+}
+
+fn parse_branch_input(input: &str) -> Vec<Branch> {
+    let mut branches = Vec::new();
+    for line in input.split('\n') {
+        if line.is_empty() {
+            continue;
+        }
+        let mut fields = line.split('\x00');
+        let Some(head) = fields.next() else {
+            continue;
+        };
+        let Some(head_sha) = fields.next().map(|field| field.to_string().into()) else {
+            continue;
+        };
+        let Some(parent_sha) = fields.next().map(|field| field.to_string()) else {
+            continue;
+        };
+        let Some(ref_name) = fields.next().map(|field| field.to_string().into()) else {
+            continue;
+        };
+        let Some(upstream_name) = fields.next().map(|field| field.to_string()) else {
+            continue;
+        };
+        let Some(upstream_tracking) = fields
+            .next()
+            .and_then(|field| parse_upstream_track(field).ok())
+        else {
+            continue;
+        };
+        let Some(committer_date) = fields.next().and_then(|field| field.parse::<i64>().ok()) else {
+            continue;
+        };
+        let Some(author_name) = fields.next().map(|field| field.to_string().into()) else {
+            continue;
+        };
+        let Some(subject) = fields.next().map(|field| field.to_string().into()) else {
+            continue;
+        };
+
+        branches.push(Branch {
+            is_head: head == "*",
+            ref_name,
+            most_recent_commit: Some(CommitSummary {
+                sha: head_sha,
+                subject,
+                commit_timestamp: committer_date,
+                author_name,
+                has_parent: !parent_sha.is_empty(),
+            }),
+            upstream: if upstream_name.is_empty() {
+                None
+            } else {
+                Some(Upstream {
+                    ref_name: upstream_name.into(),
+                    tracking: upstream_tracking,
+                })
+            },
+        });
+    }
+
+    branches
+}
+
+fn format_branch_scan_error(output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr)
+        .trim()
+        .replace('\n', " ");
+    if stderr.is_empty() {
+        format!("Git for-each-ref exited with {}", output.status)
+    } else {
+        stderr
+    }
+}
+
+fn parse_upstream_track(upstream_track: &str) -> anyhow::Result<UpstreamTracking> {
+    if upstream_track.is_empty() {
+        return Ok(UpstreamTracking::Tracked(UpstreamTrackingStatus {
+            ahead: 0,
+            behind: 0,
+        }));
+    }
+
+    let upstream_track = upstream_track.strip_prefix("[").context("missing [")?;
+    let upstream_track = upstream_track.strip_suffix("]").context("missing ]")?;
+    let mut ahead = 0;
+    let mut behind = 0;
+    for component in upstream_track.split(", ") {
+        if component == "gone" {
+            return Ok(UpstreamTracking::Gone);
+        }
+        if let Some(ahead_count) = component.strip_prefix("ahead ") {
+            ahead = ahead_count.parse::<u32>()?;
+        }
+        if let Some(behind_count) = component.strip_prefix("behind ") {
+            behind = behind_count.parse::<u32>()?;
+        }
+    }
+    Ok(UpstreamTracking::Tracked(UpstreamTrackingStatus {
+        ahead,
+        behind,
+    }))
 }
 
 struct GitBinary {
@@ -269,6 +614,77 @@ mod tests {
         output
     }
 
+    #[test]
+    fn test_branches_parsing() {
+        #[expect(
+            clippy::octal_escapes,
+            reason = "Git output uses NUL-delimited fields before SHAs"
+        )]
+        let input = "*\035248d531f5484bc0cd4755538e6e30de71aff63\0\0refs/heads/main\0refs/remotes/origin/main\0\01770091759\0Mayank Verma\0Setup project files\n";
+        assert_eq!(
+            parse_branch_input(input),
+            vec![Branch {
+                is_head: true,
+                ref_name: "refs/heads/main".into(),
+                upstream: Some(Upstream {
+                    ref_name: "refs/remotes/origin/main".into(),
+                    tracking: UpstreamTracking::Tracked(UpstreamTrackingStatus {
+                        ahead: 0,
+                        behind: 0,
+                    }),
+                }),
+                most_recent_commit: Some(CommitSummary {
+                    sha: "35248d531f5484bc0cd4755538e6e30de71aff63".into(),
+                    subject: "Setup project files".into(),
+                    commit_timestamp: 1770091759,
+                    author_name: SharedString::new_static("Mayank Verma"),
+                    has_parent: false,
+                }),
+            }]
+        );
+    }
+
+    #[test]
+    fn test_branches_parsing_containing_refs_with_missing_fields() {
+        #[expect(
+            clippy::octal_escapes,
+            reason = "Git output uses NUL-delimited fields before SHAs"
+        )]
+        let input = " \090012116c03db04344ab10d50348553aa94f1ea0\0refs/heads/broken\n \0668e059e269848c7449093c2481169c89b7b0d40\035248d531f5484bc0cd4755538e6e30de71aff63\0refs/heads/dev\0\0\01770112670\0Mayank Verma\0zaku: Initial setup with basic GPUI window\n*\035248d531f5484bc0cd4755538e6e30de71aff63\0\0refs/heads/main\0\0\01770091759\0Mayank Verma\0Setup project files\n";
+
+        let branches = parse_branch_input(input);
+        assert_eq!(branches.len(), 2);
+        assert_eq!(
+            branches,
+            vec![
+                Branch {
+                    is_head: false,
+                    ref_name: "refs/heads/dev".into(),
+                    upstream: None,
+                    most_recent_commit: Some(CommitSummary {
+                        sha: "668e059e269848c7449093c2481169c89b7b0d40".into(),
+                        subject: "zaku: Initial setup with basic GPUI window".into(),
+                        commit_timestamp: 1770112670,
+                        author_name: SharedString::new_static("Mayank Verma"),
+                        has_parent: true,
+                    }),
+                },
+                Branch {
+                    is_head: true,
+                    ref_name: "refs/heads/main".into(),
+                    upstream: None,
+                    most_recent_commit: Some(CommitSummary {
+                        sha: "35248d531f5484bc0cd4755538e6e30de71aff63".into(),
+                        subject: "Setup project files".into(),
+                        commit_timestamp: 1770091759,
+                        author_name: SharedString::new_static("Mayank Verma"),
+                        has_parent: false,
+                    }),
+                },
+            ]
+        );
+    }
+
     #[gpui::test]
     async fn test_system_git_repository_new_resolves_normal_repository_paths(
         cx: &mut TestAppContext,
@@ -293,7 +709,7 @@ mod tests {
             std::fs::canonicalize(&dotgit_path).unwrap()
         );
         assert_eq!(
-            std::fs::canonicalize(repository.working_directory.as_ref().unwrap()).unwrap(),
+            std::fs::canonicalize(&repository.working_directory).unwrap(),
             std::fs::canonicalize(&repository_dir).unwrap()
         );
     }
@@ -334,7 +750,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            std::fs::canonicalize(repository.working_directory.as_ref().unwrap()).unwrap(),
+            std::fs::canonicalize(&repository.working_directory).unwrap(),
             std::fs::canonicalize(&worktree_dir).unwrap()
         );
         assert_eq!(
@@ -348,7 +764,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_system_git_repository_new_supports_bare_repositories(cx: &mut TestAppContext) {
+    async fn test_system_git_repository_new_rejects_bare_repositories(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
@@ -360,22 +776,17 @@ mod tests {
         ];
         git_command(temp_fs.path(), arguments).await;
 
-        let repository =
-            SystemGitRepository::new(&repository_dir, Some("git".into()), cx.executor()).unwrap();
+        let Err(error) =
+            SystemGitRepository::new(&repository_dir, Some("git".into()), cx.executor())
+        else {
+            panic!("Bare repository should be rejected");
+        };
 
-        assert_eq!(
-            std::fs::canonicalize(&repository.git_dir).unwrap(),
-            std::fs::canonicalize(&repository_dir).unwrap()
+        assert!(
+            error
+                .to_string()
+                .contains("Git repository has no working directory")
         );
-        assert_eq!(
-            std::fs::canonicalize(&repository.common_dir).unwrap(),
-            std::fs::canonicalize(&repository_dir).unwrap()
-        );
-        assert_eq!(repository.working_directory, None);
-
-        let output = git_command(&repository_dir, ["rev-parse", "--is-bare-repository"]).await;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert_eq!(stdout.as_ref(), "true\n");
     }
 
     #[gpui::test]
