@@ -1,7 +1,7 @@
 use gpui::{
     Action, AnyElement, App, Context, DefiniteLength, ElementId, Entity, FocusHandle, Focusable,
-    FontWeight, ListAlignment, ListState, Pixels, Render, SharedString, Subscription, WeakEntity,
-    Window, prelude::*,
+    FontWeight, ListAlignment, ListState, Pixels, Render, SharedString, Subscription, Window,
+    prelude::*,
 };
 use num_traits::ToPrimitive;
 use std::{rc::Rc, sync::Arc, time::Duration};
@@ -15,7 +15,7 @@ use ui::{
     Color, ColumnWidthConfig, DynamicSpacing, IconName, KeyBinding, Label, LabelCommon, LabelSize,
     LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState, TextSize,
 };
-use workspace::{Panel, Workspace, pane::Pane};
+use workspace::{Panel, Workspace};
 
 const NAME_COLUMN_INDEX: usize = 0;
 const VALUE_COLUMN_INDEX: usize = 1;
@@ -481,7 +481,6 @@ impl Response {
 
 pub struct ResponsePanel {
     focus_handle: FocusHandle,
-    pane: WeakEntity<Pane>,
     response: Option<Entity<Response>>,
     active_tab: ResponsePanelTab,
     on_active_tab_change: Option<Rc<dyn Fn(ResponsePanelTab, &mut Context<ResponsePanel>)>>,
@@ -495,7 +494,7 @@ impl ResponsePanel {
     const PANEL_KEY: &str = "ResponsePanel";
     const DEFAULT_SIZE: Pixels = gpui::px(440.0);
 
-    pub fn new(pane: WeakEntity<Pane>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
         let focus_subscription = cx.on_focus(&focus_handle, window, |_, window, cx| {
             cx.on_next_frame(window, |response_panel, window, cx| {
@@ -520,7 +519,6 @@ impl ResponsePanel {
 
         Self {
             focus_handle,
-            pane,
             response: None,
             active_tab: ResponsePanelTab::Body,
             on_active_tab_change: None,
@@ -1088,12 +1086,6 @@ impl Panel for ResponsePanel {
 
     fn activation_priority(&self) -> u32 {
         2
-    }
-
-    fn enabled(&self, cx: &App) -> bool {
-        self.pane
-            .upgrade()
-            .is_some_and(|pane| !pane.read(cx).should_display_welcome_page())
     }
 }
 

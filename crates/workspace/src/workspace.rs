@@ -33,10 +33,11 @@ use futures::{
 use gpui::WindowDecorations;
 use gpui::{
     Action, AnyView, App, AsyncWindowContext, Bounds, BoxShadow, Context, CursorStyle, Decorations,
-    Div, DragMoveEvent, Entity, EntityId, FocusHandle, Focusable, Global, HitboxBehavior, Hsla,
-    KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions, Pixels, Point,
-    PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions,
-    WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions, prelude::*,
+    Div, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Global,
+    HitboxBehavior, Hsla, KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions,
+    Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling,
+    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions,
+    prelude::*,
 };
 #[cfg(any(test, feature = "test"))]
 use gpui::{TestAppContext, VisualTestContext};
@@ -1093,6 +1094,10 @@ pub fn client_side_decorations(
         })
 }
 
+pub enum WorkspaceEvent {
+    PaneRestored(Entity<Pane>),
+}
+
 pub struct Workspace {
     app_state: Arc<AppState>,
     weak_self: WeakEntity<Self>,
@@ -1458,6 +1463,7 @@ impl Workspace {
             let cleanup_tasks = workspace.update_in(cx, |workspace, window, cx| {
                 if let Some(pane) = pane {
                     workspace.set_active_pane(&pane, window, cx);
+                    cx.emit(WorkspaceEvent::PaneRestored(pane.clone()));
                     cx.focus_self(window);
                 }
                 workspace.set_dock_structure(docks, window, cx);
@@ -2597,6 +2603,8 @@ impl Workspace {
         }
     }
 }
+
+impl EventEmitter<WorkspaceEvent> for Workspace {}
 
 impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

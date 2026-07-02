@@ -35,8 +35,7 @@ use ui::{
     TrackLayout, WithScrollbar,
 };
 use util::ResultExt;
-
-use workspace::{Panel, Workspace, pane::Pane};
+use workspace::{Panel, Workspace, WorkspaceEvent};
 
 pub fn init(cx: &mut App) {
     cx.observe_new(
@@ -163,7 +162,7 @@ enum PasteTask {
 pub struct ProjectPanel {
     focus_handle: FocusHandle,
     project: Entity<Project>,
-    pane: WeakEntity<Pane>,
+    workspace: WeakEntity<Workspace>,
     scroll_handle: UniformListScrollHandle,
     update_visible_entries_task: UpdateVisibleEntriesTask,
     tree_state: TreeState,
@@ -188,9 +187,42 @@ impl ProjectPanel {
     ) -> Entity<Self> {
         let project = workspace.project().clone();
         let git_store = project.read(cx).git_store().clone();
-        let pane = workspace.pane().downgrade();
+        let workspace_entity = cx.entity();
+        let workspace_handle = workspace.weak_handle();
         let project_panel = cx.new(|cx| {
             let file_name_editor = cx.new(|cx| Editor::single_line(window, cx));
+            cx.subscribe_in(
+                &workspace_entity,
+                window,
+                |this: &mut ProjectPanel, _, event, window, cx| match event {
+                    WorkspaceEvent::PaneRestored(pane) => {
+                        let entry_ids = {
+                            let project = this.project.read(cx);
+                            pane.read(cx)
+                                .items()
+                                .filter_map(|item| {
+                                    let project_path = item.project_path(cx)?;
+                                    project
+                                        .entry_for_path(&project_path, cx)
+                                        .map(|entry| entry.id)
+                                })
+                                .collect::<Vec<_>>()
+                        };
+
+                        if entry_ids.is_empty() {
+                            return;
+                        }
+
+                        for entry_id in entry_ids {
+                            this.expand_entry(entry_id, cx);
+                        }
+                        this.update_visible_entries(None, false, false, window, cx);
+                        cx.notify();
+                    }
+                },
+            )
+            .detach();
+
             cx.subscribe_in(
                 &git_store,
                 window,
@@ -289,7 +321,7 @@ impl ProjectPanel {
             let mut this = Self {
                 focus_handle: cx.focus_handle(),
                 project: project.clone(),
-                pane: pane.clone(),
+                workspace: workspace_handle.clone(),
                 scroll_handle: UniformListScrollHandle::new(),
                 update_visible_entries_task: UpdateVisibleEntriesTask::default(),
                 tree_state: TreeState::default(),
@@ -1195,7 +1227,8 @@ impl ProjectPanel {
 
         let (dirty_buffers, file_paths) = {
             let project = self.project.read(cx);
-            let dirty_buffers = self.pane.upgrade().map_or(0, |pane| {
+            let dirty_buffers = self.workspace.upgrade().map_or(0, |workspace| {
+                let pane = workspace.read(cx).pane().clone();
                 pane.read(cx)
                     .items()
                     .filter(|item| {
@@ -2681,10 +2714,7 @@ impl Panel for ProjectPanel {
     }
 
     fn enabled(&self, cx: &App) -> bool {
-        self.pane
-            .upgrade()
-            .is_some_and(|pane| !pane.read(cx).should_display_welcome_page())
-            && self.project.read(cx).root_worktree(cx).is_some()
+        self.project.read(cx).root_worktree(cx).is_some()
     }
 }
 

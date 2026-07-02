@@ -38,8 +38,7 @@ pub fn init(cx: &mut App) {
         let project_panel = ProjectPanel::new(workspace, window, cx);
         workspace.add_panel(project_panel, DockPosition::Left, window, cx);
 
-        let pane = workspace.pane().downgrade();
-        let response_panel = cx.new(|cx| ResponsePanel::new(pane, window, cx));
+        let response_panel = cx.new(|cx| ResponsePanel::new(window, cx));
         workspace.add_panel(response_panel, DockPosition::Bottom, window, cx);
 
         workspace.register_action(
