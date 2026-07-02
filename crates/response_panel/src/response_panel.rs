@@ -543,6 +543,11 @@ impl ResponsePanel {
             .map(|response| response.read(cx).cookies_list_state.clone())
     }
 
+    #[cfg(any(test, feature = "test"))]
+    pub fn has_response_context(&self) -> bool {
+        self.has_response_context
+    }
+
     fn active_tab(&self) -> ResponsePanelTab {
         self.active_tab
     }
