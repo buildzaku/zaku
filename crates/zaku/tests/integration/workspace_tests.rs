@@ -112,7 +112,6 @@ fn activate_item_for_path(open_result: &OpenResult, path: &str, cx: &mut TestApp
             });
         })
         .expect("window should update to activate item");
-    cx.run_until_parked();
 }
 
 #[gpui::test]
@@ -982,7 +981,30 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         cx,
     )
     .await;
-    cx.run_until_parked();
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::response_panel::ToggleFocus,
+    );
+
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+
+    activate_item_for_path(&open_result, "settings.json", cx);
+
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
     cx.executor()
         .advance_clock(workspace::SERIALIZATION_THROTTLE_TIME);
 
@@ -1001,9 +1023,8 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         .unwrap();
     cx.run_until_parked();
 
-    let (open_result, _) = open_workspace(project_path, app_state.clone(), cx).await;
-    cx.run_until_parked();
-
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
@@ -1013,6 +1034,30 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         .read_with(cx, |workspace, _| workspace.pane().clone());
 
     assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
+    assert_eq!(
+        pane.read_with(cx, |pane, cx| {
+            pane.active_item().and_then(|item| item.project_path(cx))
+        }),
+        Some(ProjectPath::from((worktree_id, rel_path("settings.json"))))
+    );
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+    assert!(
+        response_panel.read_with(cx, |response_panel, cx| {
+            response_panel.text(cx).is_empty()
+        }),
+        "response panel should reflect restored request tab"
+    );
 
     activate_item_for_path(&open_result, "settings.json", cx);
 
@@ -1020,7 +1065,6 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         open_result.window.into(),
         actions::response_panel::ToggleFocus,
     );
-    cx.run_until_parked();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1155,14 +1199,12 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     );
 
     open_path(&open_result, invalid_request_path, cx).await;
-    cx.run_until_parked();
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
     open_path(&open_result, valid_request_path.clone(), cx).await;
-    cx.run_until_parked();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1173,7 +1215,6 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     );
 
     open_path(&open_result, settings_path.clone(), cx).await;
-    cx.run_until_parked();
 
     assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
@@ -1184,14 +1225,12 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         open_result.window.into(),
         actions::response_panel::ToggleFocus,
     );
-    cx.run_until_parked();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
     open_path(&open_result, valid_request_path, cx).await;
-    cx.run_until_parked();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1202,7 +1241,6 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     );
 
     open_path(&open_result, settings_path, cx).await;
-    cx.run_until_parked();
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
