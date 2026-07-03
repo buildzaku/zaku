@@ -523,7 +523,7 @@ impl ResponsePanel {
             active_tab: ResponsePanelTab::Body,
             on_active_tab_change: None,
             has_response_context: false,
-            auto_hidden: false,
+            auto_hidden: true,
             response_subscription: None,
             _focus_subscription: focus_subscription,
         }
@@ -541,6 +541,11 @@ impl ResponsePanel {
         self.response
             .as_ref()
             .map(|response| response.read(cx).cookies_list_state.clone())
+    }
+
+    #[cfg(any(test, feature = "test"))]
+    pub fn has_response_context(&self) -> bool {
+        self.has_response_context
     }
 
     fn active_tab(&self) -> ResponsePanelTab {
@@ -1082,6 +1087,17 @@ impl Panel for ResponsePanel {
 
     fn toggle_action(&self) -> Box<dyn Action> {
         actions::response_panel::ToggleFocus.boxed_clone()
+    }
+
+    fn auto_hidden(&self) -> bool {
+        self.auto_hidden
+    }
+
+    fn set_auto_hidden(&mut self, auto_hidden: bool, cx: &mut Context<Self>) {
+        if self.auto_hidden != auto_hidden {
+            self.auto_hidden = auto_hidden;
+            cx.notify();
+        }
     }
 
     fn activation_priority(&self) -> u32 {

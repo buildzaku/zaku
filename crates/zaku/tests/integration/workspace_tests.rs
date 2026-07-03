@@ -1,6 +1,9 @@
-use gpui::{ListOffset, TestAppContext};
+use futures::channel::oneshot;
+use gpui::{Entity, ListOffset, TestAppContext};
 use indoc::indoc;
-use std::sync::Arc;
+use parking_lot::Mutex;
+use serde_json::json;
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use uuid::Uuid;
 
 use db::{AppDatabase, kv::KeyValueStore};
@@ -12,8 +15,8 @@ use response_panel::ResponsePanel;
 use session::Session;
 use settings::SettingsStore;
 use theme::LoadThemes;
-use workspace::{AppState, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
-use worktree::WorktreeModelHandle;
+use workspace::{AppState, ItemHandle, OpenMode, OpenResult, Root, Workspace, WorkspaceDb};
+use worktree::{Worktree, WorktreeModelHandle};
 
 fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppContext) {
     cx.update(|cx| {
@@ -29,6 +32,86 @@ fn init_test(app_state: Arc<AppState>, app_db: AppDatabase, cx: &mut TestAppCont
         response_panel::init(cx);
         zaku::init(cx);
     });
+}
+
+async fn open_workspace(
+    project_path: PathBuf,
+    app_state: Arc<AppState>,
+    cx: &mut TestAppContext,
+) -> (OpenResult, Entity<Worktree>) {
+    let open_result = cx
+        .update(|cx| Workspace::open(project_path, app_state, None, OpenMode::NewWindow, cx))
+        .await
+        .expect("workspace should open");
+
+    open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
+        .await;
+    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace
+            .project()
+            .read(cx)
+            .root_worktree(cx)
+            .expect("workspace should have a root worktree")
+    });
+    worktree.flush_fs_events(cx).await;
+
+    (open_result, worktree)
+}
+
+async fn open_path(open_result: &OpenResult, path: ProjectPath, cx: &mut TestAppContext) {
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path(path, None, true, window, cx)
+            })
+        })
+        .expect("window should update to open path")
+        .await
+        .expect("path should open");
+}
+
+async fn open_path_preview(
+    open_result: &OpenResult,
+    path: ProjectPath,
+    cx: &mut TestAppContext,
+) -> Box<dyn ItemHandle> {
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.open_path_preview(path, None, false, true, true, window, cx)
+            })
+        })
+        .expect("window should update to open preview path")
+        .await
+        .expect("preview path should open")
+}
+
+fn activate_item_for_path(open_result: &OpenResult, path: &str, cx: &mut TestAppContext) {
+    let path = rel_path(path);
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+    let item_index = pane.read_with(cx, |pane, cx| {
+        pane.items()
+            .position(|item| {
+                item.project_path(cx)
+                    .is_some_and(|project_path| project_path.path.as_ref() == path)
+            })
+            .expect("pane should contain item for path")
+    });
+
+    open_result
+        .window
+        .update(cx, |_, window, cx| {
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(item_index, true, false, window, cx);
+            });
+        })
+        .expect("window should update to activate item");
 }
 
 #[gpui::test]
@@ -51,7 +134,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
     for project_path in ["first", "second", "third", "fourth"] {
         temp_fs.insert_tree(
             project_path,
-            serde_json::json!({
+            json!({
                 "collection": {
                     "request.toml": indoc! {"
                         [meta]
@@ -74,19 +157,7 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
         third_path.clone(),
         fourth_path.clone(),
     ] {
-        let result = cx
-            .update(|cx| Workspace::open(path, app_state.clone(), None, OpenMode::NewWindow, cx))
-            .await
-            .unwrap();
-
-        result
-            .workspace
-            .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-            .await;
-        let worktree = result.workspace.read_with(cx, |workspace, cx| {
-            workspace.project().read(cx).root_worktree(cx).unwrap()
-        });
-        worktree.flush_fs_events(cx).await;
+        let (result, _) = open_workspace(path, app_state.clone(), cx).await;
         result
             .window
             .update(cx, |root, window, cx| {
@@ -203,7 +274,342 @@ async fn test_restore_last_session_with_multiple_workspaces(cx: &mut TestAppCont
 }
 
 #[gpui::test]
-async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut TestAppContext) {
+async fn test_send_request_opens_response_panel(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+    let (tx, rx) = oneshot::channel();
+    let rx = Arc::new(Mutex::new(Some(rx)));
+
+    http_client.replace_handler({
+        move |_, request| {
+            assert_eq!(request.uri().path(), "/me");
+            let rx = rx.lock().take().unwrap();
+
+            async move { Ok(rx.await.unwrap()) }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "request.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/me"
+                "#}
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/request.toml"))),
+        cx,
+    )
+    .await;
+
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+    open_result.workspace.read_with(cx, |workspace, cx| {
+        let response_panel_id = Entity::entity_id(&response_panel);
+        let active_panel_id = workspace
+            .bottom_dock()
+            .read(cx)
+            .active_panel()
+            .map(|panel| panel.panel_id());
+
+        assert!(workspace.bottom_dock().read(cx).is_open());
+        assert_eq!(active_panel_id, Some(response_panel_id));
+    });
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("response"))
+        .unwrap();
+    assert!(
+        matches!(tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+}
+
+#[gpui::test]
+async fn test_each_request_editor_has_its_own_response(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+    let (first_tx, first_rx) = oneshot::channel();
+    let (second_tx, second_rx) = oneshot::channel();
+    let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+    let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+    let first_response_delay = Duration::from_secs(5);
+    let second_response_delay = Duration::from_secs(3);
+    let executor = cx.executor();
+
+    http_client.replace_handler({
+        move |_, request| {
+            let (rx, response_delay) = match request.uri().path() {
+                "/first" => (first_rx.lock().take().unwrap(), first_response_delay),
+                "/second" => (second_rx.lock().take().unwrap(), second_response_delay),
+                path => panic!("Unexpected request path: {path}"),
+            };
+            let executor = executor.clone();
+
+            async move {
+                let response = rx.await.unwrap();
+                executor.timer(response_delay).await;
+                Ok(response)
+            }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "first.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/first"
+                "#},
+                "second.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/second"
+                "#}
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("first response"))
+        .unwrap();
+    assert!(
+        matches!(first_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.executor().advance_clock(first_response_delay);
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        ""
+    );
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("second response"))
+        .unwrap();
+    assert!(
+        matches!(second_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.executor().advance_clock(second_response_delay);
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "second response"
+    );
+
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "first response"
+    );
+}
+
+#[gpui::test]
+async fn test_send_request_with_preview_request_editor(cx: &mut TestAppContext) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+    let (first_tx, first_rx) = oneshot::channel();
+    let (second_tx, second_rx) = oneshot::channel();
+    let first_rx = Arc::new(Mutex::new(Some(first_rx)));
+    let second_rx = Arc::new(Mutex::new(Some(second_rx)));
+
+    http_client.replace_handler({
+        move |_, request| {
+            let rx = match request.uri().path() {
+                "/first" => first_rx.lock().take().unwrap(),
+                "/second" => second_rx.lock().take().unwrap(),
+                path => panic!("Unexpected request path: {path}"),
+            };
+            async move { Ok(rx.await.unwrap()) }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "first.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/first"
+                "#},
+                "second.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/second"
+                "#}
+            }
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+
+    let first_item = open_path_preview(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+    assert!(pane.read_with(cx, |pane, _| pane.preview_item_idx().is_none()));
+
+    open_path_preview(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    let first_item_id = first_item.item_id();
+    assert!(pane.read_with(cx, |pane, _| {
+        pane.items().any(|item| item.item_id() == first_item_id)
+    }));
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("first response"))
+        .unwrap();
+    assert!(
+        matches!(first_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        ""
+    );
+
+    let response = Response::builder()
+        .status(StatusCode::OK)
+        .body(AsyncBody::from("second response"))
+        .unwrap();
+    assert!(
+        matches!(second_tx.send(response), Ok(())),
+        "response receiver should be active"
+    );
+
+    cx.run_until_parked();
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "second response"
+    );
+
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
+
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "first response"
+    );
+}
+
+#[gpui::test]
+async fn test_switching_request_editor_tab_preserves_response_panel_scroll(
+    cx: &mut TestAppContext,
+) {
     cx.executor().allow_parking();
 
     let app_db = AppDatabase::test_new();
@@ -249,7 +655,7 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
 
     temp_fs.insert_tree(
         "project",
-        serde_json::json!({
+        json!({
             "collection": {
                 "first.toml": indoc! {r#"
                     [meta]
@@ -272,58 +678,27 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
     );
 
     let project_path = temp_fs.path().join("project");
-    let open_result = cx
-        .update(|cx| {
-            Workspace::open(
-                project_path,
-                app_state.clone(),
-                None,
-                OpenMode::NewWindow,
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-    open_result
-        .workspace
-        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-        .await;
-    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.project().read(cx).root_worktree(cx).unwrap()
-    });
-    worktree.flush_fs_events(cx).await;
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
 
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
         .expect("response panel should be registered");
-    let pane = open_result
-        .workspace
-        .read_with(cx, |workspace, _| workspace.pane().clone());
 
-    let first_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/first.toml")),
-    };
-    let second_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/second.toml")),
-    };
-    let first_item = open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(first_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    let first_item_id = first_item.item_id();
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
 
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "first response"
@@ -387,20 +762,19 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
         first_cookies_scroll_offset.offset_in_item,
     );
 
-    let second_item = open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(second_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    let second_item_id = second_item.item_id();
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
+
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "second response"
@@ -447,22 +821,11 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
         second_cookies_scroll_offset.offset_in_item,
     );
 
-    let first_item_index = pane.read_with(cx, |pane, _| {
-        pane.items()
-            .position(|item| item.item_id() == first_item_id)
-            .unwrap()
-    });
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
 
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(first_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
-
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "first response"
@@ -498,22 +861,11 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
         first_cookies_scroll_offset.offset_in_item,
     );
 
-    let second_item_index = pane.read_with(cx, |pane, _| {
-        pane.items()
-            .position(|item| item.item_id() == second_item_id)
-            .unwrap()
-    });
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
 
-    open_result
-        .window
-        .update(cx, |_, window, cx| {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(second_item_index, true, false, window, cx);
-            });
-        })
-        .unwrap();
-    cx.run_until_parked();
-
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "second response"
@@ -551,6 +903,225 @@ async fn test_switching_request_tab_preserves_response_panel_scroll(cx: &mut Tes
 }
 
 #[gpui::test]
+async fn test_restored_request_editor_tabs_preserve_response_panel_context(
+    cx: &mut TestAppContext,
+) {
+    cx.executor().allow_parking();
+
+    let app_db = AppDatabase::test_new();
+    let temp_fs = TempFs::new(cx.executor());
+    let http_client = FakeHttpClient::with_response(StatusCode::NOT_FOUND);
+    let app_state =
+        cx.update(|cx| AppState::test_new(temp_fs.clone(), Some(http_client.clone()), cx));
+
+    http_client.replace_handler({
+        move |_, request| {
+            let response = match request.uri().path() {
+                "/first" => "first response",
+                "/second" => "second response",
+                path => panic!("Unexpected request path: {path}"),
+            };
+
+            async move {
+                Ok(Response::builder()
+                    .status(StatusCode::OK)
+                    .body(AsyncBody::from(response))
+                    .unwrap())
+            }
+        }
+    });
+
+    init_test(app_state.clone(), app_db, cx);
+
+    temp_fs.insert_tree(
+        "project",
+        json!({
+            "collection": {
+                "first.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/first"
+                "#},
+                "second.toml": indoc! {r#"
+                    [meta]
+                    version = 1
+
+                    [http]
+                    method = "GET"
+                    url = "https://api.zaku.dev/second"
+                "#}
+            },
+            "settings.json": "{}",
+        }),
+    );
+
+    let project_path = temp_fs.path().join("project");
+    let (open_result, worktree) = open_workspace(project_path.clone(), app_state.clone(), cx).await;
+
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("settings.json"))),
+        cx,
+    )
+    .await;
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/first.toml"))),
+        cx,
+    )
+    .await;
+    open_path(
+        &open_result,
+        ProjectPath::from((worktree_id, rel_path("collection/second.toml"))),
+        cx,
+    )
+    .await;
+
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+
+    activate_item_for_path(&open_result, "settings.json", cx);
+
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    cx.executor()
+        .advance_clock(workspace::SERIALIZATION_THROTTLE_TIME);
+
+    open_result
+        .window
+        .update(cx, |root, window, cx| {
+            root.workspace().update(cx, |workspace, cx| {
+                workspace.flush_serialization(window, cx)
+            })
+        })
+        .unwrap()
+        .await;
+    open_result
+        .window
+        .update(cx, |_, window, _| window.remove_window())
+        .unwrap();
+    cx.run_until_parked();
+
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
+    let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
+    let response_panel = open_result
+        .workspace
+        .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
+        .expect("response panel should be registered");
+    let pane = open_result
+        .workspace
+        .read_with(cx, |workspace, _| workspace.pane().clone());
+
+    assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
+    assert_eq!(
+        pane.read_with(cx, |pane, cx| {
+            pane.active_item().and_then(|item| item.project_path(cx))
+        }),
+        Some(ProjectPath::from((worktree_id, rel_path("settings.json"))))
+    );
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+    assert!(
+        response_panel.read_with(cx, |response_panel, cx| {
+            response_panel.text(cx).is_empty()
+        }),
+        "response panel should reflect restored request tab"
+    );
+
+    activate_item_for_path(&open_result, "settings.json", cx);
+
+    cx.dispatch_action(
+        open_result.window.into(),
+        actions::response_panel::ToggleFocus,
+    );
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(!response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
+
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "second response"
+    );
+
+    activate_item_for_path(&open_result, "settings.json", cx);
+
+    assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(!response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+
+    activate_item_for_path(&open_result, "collection/first.toml", cx);
+
+    assert!(
+        response_panel.read_with(cx, |response_panel, cx| {
+            response_panel.text(cx).is_empty()
+        }),
+        "response panel should reflect first tab"
+    );
+
+    cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
+    cx.run_until_parked();
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "first response"
+    );
+
+    activate_item_for_path(&open_result, "collection/second.toml", cx);
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert_eq!(
+        response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
+        "second response"
+    );
+}
+
+#[gpui::test]
 async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext) {
     cx.executor().allow_parking();
 
@@ -577,7 +1148,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
 
     temp_fs.insert_tree(
         "project",
-        serde_json::json!({
+        json!({
             "collection": {
                 "valid.toml": indoc! {r#"
                     [meta]
@@ -594,26 +1165,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     );
 
     let project_path = temp_fs.path().join("project");
-    let open_result = cx
-        .update(|cx| {
-            Workspace::open(
-                project_path,
-                app_state.clone(),
-                None,
-                OpenMode::NewWindow,
-                cx,
-            )
-        })
-        .await
-        .unwrap();
-    open_result
-        .workspace
-        .read_with(cx, |workspace, cx| workspace.worktree_scan_complete(cx))
-        .await;
-    let worktree = open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.project().read(cx).root_worktree(cx).unwrap()
-    });
-    worktree.flush_fs_events(cx).await;
+    let (open_result, worktree) = open_workspace(project_path, app_state.clone(), cx).await;
 
     let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
     let response_panel = open_result
@@ -624,87 +1176,48 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         .workspace
         .read_with(cx, |workspace, _| workspace.pane().clone());
 
-    let valid_request_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/valid.toml")),
-    };
-    let invalid_request_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("collection/invalid.toml")),
-    };
-    let settings_path = ProjectPath {
-        worktree_id,
-        path: Arc::from(rel_path("settings.json")),
-    };
+    let valid_request_path = ProjectPath::from((worktree_id, rel_path("collection/valid.toml")));
+    let invalid_request_path =
+        ProjectPath::from((worktree_id, rel_path("collection/invalid.toml")));
+    let settings_path = ProjectPath::from((worktree_id, rel_path("settings.json")));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(valid_request_path.clone(), None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
+    open_path(&open_result, valid_request_path.clone(), cx).await;
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "valid response"
     );
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(invalid_request_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    cx.run_until_parked();
+    open_path(&open_result, invalid_request_path, cx).await;
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(valid_request_path.clone(), None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    cx.run_until_parked();
+    open_path(&open_result, valid_request_path.clone(), cx).await;
 
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "valid response"
     );
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(settings_path.clone(), None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    cx.run_until_parked();
+    open_path(&open_result, settings_path.clone(), cx).await;
 
     assert_eq!(pane.read_with(cx, |pane, _| pane.items_len()), 3);
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
@@ -715,43 +1228,22 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
         open_result.window.into(),
         actions::response_panel::ToggleFocus,
     );
-    cx.run_until_parked();
 
     assert!(open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
     }));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(valid_request_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    cx.run_until_parked();
+    open_path(&open_result, valid_request_path, cx).await;
 
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
     assert_eq!(
         response_panel.read_with(cx, |response_panel, cx| response_panel.text(cx)),
         "valid response"
     );
-    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
-        workspace.is_panel_open::<ResponsePanel>(cx)
-    }));
 
-    open_result
-        .window
-        .update(cx, |root, window, cx| {
-            root.workspace().update(cx, |workspace, cx| {
-                workspace.open_path(settings_path, None, true, window, cx)
-            })
-        })
-        .unwrap()
-        .await
-        .unwrap();
-    cx.run_until_parked();
+    open_path(&open_result, settings_path, cx).await;
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)

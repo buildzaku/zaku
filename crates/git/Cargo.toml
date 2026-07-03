@@ -19,6 +19,7 @@ test = []
 
 [dependencies]
 anyhow = { workspace = true }
+futures = { workspace = true }
 gpui = { workspace = true }
 log = { workspace = true }
 path = { workspace = true }

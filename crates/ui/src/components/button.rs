@@ -224,7 +224,7 @@ impl ButtonVariant {
             ButtonVariant::Subtle => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.ghost_element_active,
+                    background: colors.ghost_element_hover,
                     border_color: gpui::transparent_black(),
                     label_color: colors.text,
                     icon_color: colors.text,
@@ -370,7 +370,7 @@ pub struct Button {
     id: ElementId,
     variant: ButtonVariant,
     selected: bool,
-    selected_style: Option<ButtonVariant>,
+    selected_background: Option<Hsla>,
     label: SharedString,
     label_color: Option<Color>,
     label_size: Option<LabelSize>,
@@ -398,7 +398,7 @@ impl Button {
             id: id.into(),
             variant: ButtonVariant::default(),
             selected: false,
-            selected_style: None,
+            selected_background: None,
             label: label.into(),
             label_color: None,
             label_size: None,
@@ -492,8 +492,8 @@ impl Toggleable for Button {
 }
 
 impl SelectableButton for Button {
-    fn selected_style(mut self, style: ButtonVariant) -> Self {
-        self.selected_style = Some(style);
+    fn selected_background(mut self, background: Hsla) -> Self {
+        self.selected_background = Some(background);
         self
     }
 }
@@ -546,10 +546,7 @@ impl ButtonCommon for Button {
 impl RenderOnce for Button {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let disabled = self.disabled;
-        let variant = self
-            .selected_style
-            .filter(|_| self.selected)
-            .unwrap_or(self.variant);
+        let variant = self.variant;
         let style = if self.disabled {
             variant.disabled(cx)
         } else {
@@ -557,6 +554,11 @@ impl RenderOnce for Button {
         };
         let hovered_style = variant.hovered(cx);
         let active_style = variant.active(cx);
+        let background = if self.selected && !self.disabled {
+            self.selected_background.unwrap_or(style.background)
+        } else {
+            style.background
+        };
         let is_outlined = matches!(
             self.variant,
             ButtonVariant::Outline | ButtonVariant::OutlinedGhost
@@ -640,7 +642,7 @@ impl RenderOnce for Button {
             })
             .rounded_md()
             .border_color(style.border_color)
-            .bg(style.background)
+            .bg(background)
             .text_color(label_text_color)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
             .when(self.disabled, |this| {

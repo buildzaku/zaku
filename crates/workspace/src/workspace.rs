@@ -1095,6 +1095,7 @@ pub fn client_side_decorations(
 }
 
 pub enum WorkspaceEvent {
+    ActiveItemChanged,
     PaneRestored(Entity<Pane>),
 }
 
@@ -1706,10 +1707,17 @@ impl Workspace {
     }
 
     fn active_item_path_changed(&mut self, cx: &mut Context<Self>) {
+        cx.emit(WorkspaceEvent::ActiveItemChanged);
         let active_entry = self.active_project_path(cx);
         self.project.update(cx, |project, cx| {
-            project.set_active_path(active_entry, cx);
+            project.set_active_path(active_entry.clone(), cx);
         });
+        if let Some(project_path) = &active_entry {
+            let git_store = self.project.read(cx).git_store().clone();
+            git_store.update(cx, |git_store, cx| {
+                git_store.set_active_repo_for_path(project_path, cx);
+            });
+        }
     }
 
     fn handle_pane_event(
@@ -1728,6 +1736,10 @@ impl Workspace {
             PaneEvent::ActivateItem { .. } | PaneEvent::ChangeItemTitle
         ) {
             self.active_item_path_changed(cx);
+        }
+
+        if matches!(event, PaneEvent::RemovedItem { .. }) {
+            cx.emit(WorkspaceEvent::ActiveItemChanged);
         }
 
         self.serialize_workspace(window, cx);
@@ -1822,24 +1834,29 @@ impl Workspace {
     pub fn capture_dock_state(&self, _window: &Window, cx: &App) -> DockStructure {
         let left_dock = self.left_dock.read(cx);
         let left_visible = left_dock.is_open();
-        let left_active_panel = left_dock
-            .active_panel()
-            .map(|panel| panel.persistent_name().to_string());
+        let left_active_panel = left_dock.active_panel();
+        let left_auto_hidden =
+            !left_visible && left_active_panel.is_some_and(|panel| panel.auto_hidden(cx));
+        let left_active_panel = left_active_panel.map(|panel| panel.persistent_name().to_string());
 
         let bottom_dock = self.bottom_dock.read(cx);
         let bottom_visible = bottom_dock.is_open();
-        let bottom_active_panel = bottom_dock
-            .active_panel()
-            .map(|panel| panel.persistent_name().to_string());
+        let bottom_active_panel = bottom_dock.active_panel();
+        let bottom_auto_hidden =
+            !bottom_visible && bottom_active_panel.is_some_and(|panel| panel.auto_hidden(cx));
+        let bottom_active_panel =
+            bottom_active_panel.map(|panel| panel.persistent_name().to_string());
 
         DockStructure {
             left: DockData {
                 visible: left_visible,
                 active_panel: left_active_panel,
+                auto_hidden: left_auto_hidden,
             },
             bottom: DockData {
                 visible: bottom_visible,
                 active_panel: bottom_active_panel,
+                auto_hidden: bottom_auto_hidden,
             },
         }
     }

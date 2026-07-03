@@ -48,23 +48,27 @@ impl Column for DockStructure {
 pub struct DockData {
     pub visible: bool,
     pub active_panel: Option<String>,
+    pub auto_hidden: bool,
 }
 
 impl Bind for DockData {
     fn bind(&self, statement: &Statement<'_>, start_index: i32) -> anyhow::Result<i32> {
         let next_index = statement.bind(&self.visible, start_index)?;
-        statement.bind(&self.active_panel, next_index)
+        let next_index = statement.bind(&self.active_panel, next_index)?;
+        statement.bind(&self.auto_hidden, next_index)
     }
 }
 
 impl Column for DockData {
     fn column(row: &mut Row<'_, '_>, start_index: i32) -> anyhow::Result<(Self, i32)> {
-        let (visible, next_index) = Option::<bool>::column(row, start_index)?;
+        let (visible, next_index) = bool::column(row, start_index)?;
         let (active_panel, next_index) = Option::<String>::column(row, next_index)?;
+        let (auto_hidden, next_index) = bool::column(row, next_index)?;
         Ok((
             DockData {
-                visible: visible.unwrap_or(false),
+                visible,
                 active_panel,
+                auto_hidden,
             },
             next_index,
         ))

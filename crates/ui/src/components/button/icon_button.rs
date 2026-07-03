@@ -1,5 +1,5 @@
 use gpui::{
-    AnyView, App, ClickEvent, CursorStyle, DefiniteLength, ElementId, SharedString, Window,
+    AnyView, App, ClickEvent, CursorStyle, DefiniteLength, ElementId, Hsla, SharedString, Window,
     prelude::*,
 };
 
@@ -27,6 +27,7 @@ pub struct IconButton {
     selected_icon: Option<IconName>,
     icon_color: Color,
     selected_icon_color: Option<Color>,
+    hover_icon_color: Option<Color>,
 }
 
 impl IconButton {
@@ -39,6 +40,7 @@ impl IconButton {
             selected_icon: None,
             icon_color: Color::Default,
             selected_icon_color: None,
+            hover_icon_color: None,
         }
     }
 
@@ -67,6 +69,11 @@ impl IconButton {
         self
     }
 
+    pub fn hover_icon_color(mut self, hover_icon_color: impl Into<Option<Color>>) -> Self {
+        self.hover_icon_color = hover_icon_color.into();
+        self
+    }
+
     pub fn selected_icon(mut self, selected_icon: impl Into<Option<IconName>>) -> Self {
         self.selected_icon = selected_icon.into();
         self
@@ -88,8 +95,8 @@ impl Toggleable for IconButton {
 }
 
 impl SelectableButton for IconButton {
-    fn selected_style(mut self, style: ButtonVariant) -> Self {
-        self.base = self.base.selected_style(style);
+    fn selected_background(mut self, background: Hsla) -> Self {
+        self.base = self.base.selected_background(background);
         self
     }
 }
@@ -165,6 +172,7 @@ impl RenderOnce for IconButton {
                     .color(self.icon_color)
                     .selected_icon(self.selected_icon)
                     .selected_icon_color(self.selected_icon_color)
+                    .hover_icon_color(self.hover_icon_color)
                     .disabled(is_disabled)
                     .toggle_state(is_selected),
             )
