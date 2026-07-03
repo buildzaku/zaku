@@ -159,6 +159,8 @@ impl RenderOnce for ButtonLike {
             .unwrap_or(self.variant);
         let style = if self.disabled {
             variant.disabled(cx)
+        } else if self.selected && self.selected_style.is_none() {
+            variant.active(cx)
         } else {
             variant.enabled(cx)
         };

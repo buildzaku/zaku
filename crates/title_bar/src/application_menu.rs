@@ -1,8 +1,8 @@
 use gpui::{Action, App, Context, Entity, Window, prelude::*};
 
 use ui::{
-    ButtonCommon, ButtonVariant, ContextMenu, IconButton, IconButtonShape, IconName, IconSize,
-    PopoverMenu, PopoverMenuHandle, Tooltip,
+    Color, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu,
+    PopoverMenuHandle, Tooltip,
 };
 
 pub(crate) struct ApplicationMenu {
@@ -44,9 +44,9 @@ impl Render for ApplicationMenu {
                     .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                     .trigger_with_tooltip(
                         IconButton::new("application-menu-trigger", IconName::Menu)
-                            .variant(ButtonVariant::Ghost)
                             .shape(IconButtonShape::Square)
-                            .icon_size(IconSize::Small),
+                            .icon_size(IconSize::Small)
+                            .selected_icon_color(Color::Default),
                         Tooltip::text("Open Application Menu"),
                     )
                     .with_handle(handle),

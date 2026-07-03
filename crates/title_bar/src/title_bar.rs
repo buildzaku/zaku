@@ -133,7 +133,7 @@ impl TitleBar {
             gpui::div()
                 .flex()
                 .items_center()
-                .gap_px()
+                .gap_1()
                 .child(
                     Icon::new(IconName::GitBranch)
                         .size(IconSize::XSmall)

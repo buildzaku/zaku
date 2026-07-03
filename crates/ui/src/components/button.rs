@@ -224,7 +224,7 @@ impl ButtonVariant {
             ButtonVariant::Subtle => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.ghost_element_active,
+                    background: colors.ghost_element_hover,
                     border_color: gpui::transparent_black(),
                     label_color: colors.text,
                     icon_color: colors.text,
@@ -552,6 +552,8 @@ impl RenderOnce for Button {
             .unwrap_or(self.variant);
         let style = if self.disabled {
             variant.disabled(cx)
+        } else if self.selected && self.selected_style.is_none() {
+            variant.active(cx)
         } else {
             variant.enabled(cx)
         };
