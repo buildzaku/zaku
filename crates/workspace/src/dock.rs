@@ -29,6 +29,10 @@ pub trait Panel: Focusable + Render + Sized {
         false
     }
     fn set_active(&mut self, _active: bool, _window: &mut Window, _cx: &mut Context<Self>) {}
+    fn auto_hidden(&self) -> bool {
+        false
+    }
+    fn set_auto_hidden(&mut self, _: bool, _: &mut Context<Self>) {}
     fn activation_priority(&self) -> u32;
     fn enabled(&self, _cx: &App) -> bool {
         true
@@ -44,6 +48,8 @@ pub trait PanelHandle: Send + Sync {
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self, window: &Window, cx: &App) -> Box<dyn Action>;
     fn set_active(&self, active: bool, window: &mut Window, cx: &mut App);
+    fn auto_hidden(&self, cx: &App) -> bool;
+    fn set_auto_hidden(&self, auto_hidden: bool, cx: &mut App);
     fn activation_priority(&self, cx: &App) -> u32;
     fn enabled(&self, cx: &App) -> bool;
     fn panel_focus_handle(&self, cx: &App) -> FocusHandle;
@@ -84,6 +90,14 @@ where
 
     fn set_active(&self, active: bool, window: &mut Window, cx: &mut App) {
         self.update(cx, |this, cx| this.set_active(active, window, cx));
+    }
+
+    fn auto_hidden(&self, cx: &App) -> bool {
+        self.read(cx).auto_hidden()
+    }
+
+    fn set_auto_hidden(&self, auto_hidden: bool, cx: &mut App) {
+        self.update(cx, |this, cx| this.set_auto_hidden(auto_hidden, cx));
     }
 
     fn activation_priority(&self, cx: &App) -> u32 {
@@ -314,11 +328,16 @@ impl Dock {
 
     pub fn restore_state(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if let Some(serialized) = self.serialized_dock.clone() {
-            if let Some(active_panel) = serialized.active_panel.filter(|_| serialized.visible)
-                && let Some(panel_index) =
-                    self.panel_index_for_persistent_name(active_panel.as_str())
+            if let Some(active_panel) = serialized.active_panel.as_deref()
+                && let Some(panel_index) = self.panel_index_for_persistent_name(active_panel)
             {
-                self.activate_panel(panel_index, window, cx);
+                if let Some(panel) = self.panel_entries.get(panel_index).map(PanelEntry::panel) {
+                    panel.set_auto_hidden(serialized.auto_hidden, cx);
+                }
+
+                if serialized.visible {
+                    self.activate_panel(panel_index, window, cx);
+                }
             }
 
             self.set_open(serialized.visible, window, cx);

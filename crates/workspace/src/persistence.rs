@@ -238,7 +238,14 @@ pub struct WorkspaceDb(ThreadSafeConnection);
 impl WorkspaceDb {
     query! {
         pub async fn next_id() -> anyhow::Result<WorkspaceId> {
-            INSERT INTO workspace DEFAULT VALUES RETURNING id
+            INSERT INTO workspace(
+                left_dock_open,
+                left_dock_auto_hidden,
+                bottom_dock_open,
+                bottom_dock_auto_hidden
+            )
+            VALUES (0, 0, 0, 0)
+            RETURNING id
         }
     }
 
@@ -273,8 +280,10 @@ impl WorkspaceDb {
                                 location,
                                 left_dock_open,
                                 left_dock_active_panel,
+                                left_dock_auto_hidden,
                                 bottom_dock_open,
                                 bottom_dock_active_panel,
+                                bottom_dock_auto_hidden,
                                 session_id,
                                 window_id,
                                 activation_order,
@@ -289,6 +298,8 @@ impl WorkspaceDb {
                                 ?6,
                                 ?7,
                                 ?8,
+                                ?9,
+                                ?10,
                                 (SELECT COALESCE(MAX(activation_order), 0) + 1 FROM workspace),
                                 CURRENT_TIMESTAMP
                             )
@@ -297,8 +308,10 @@ impl WorkspaceDb {
                                 location = excluded.location,
                                 left_dock_open = excluded.left_dock_open,
                                 left_dock_active_panel = excluded.left_dock_active_panel,
+                                left_dock_auto_hidden = excluded.left_dock_auto_hidden,
                                 bottom_dock_open = excluded.bottom_dock_open,
                                 bottom_dock_active_panel = excluded.bottom_dock_active_panel,
+                                bottom_dock_auto_hidden = excluded.bottom_dock_auto_hidden,
                                 session_id = excluded.session_id,
                                 window_id = excluded.window_id,
                                 timestamp = CURRENT_TIMESTAMP
@@ -422,10 +435,12 @@ impl WorkspaceDb {
                                 window_width REAL,
                                 window_height REAL,
                                 display BLOB,
-                                left_dock_open INTEGER,
+                                left_dock_open INTEGER NOT NULL,
                                 left_dock_active_panel TEXT,
-                                bottom_dock_open INTEGER,
+                                left_dock_auto_hidden INTEGER NOT NULL,
+                                bottom_dock_open INTEGER NOT NULL,
                                 bottom_dock_active_panel TEXT,
+                                bottom_dock_auto_hidden INTEGER NOT NULL,
                                 session_id TEXT,
                                 window_id INTEGER,
                                 activation_order INTEGER NOT NULL DEFAULT 0,
@@ -594,8 +609,10 @@ impl WorkspaceDb {
                         display,
                         left_dock_open,
                         left_dock_active_panel,
+                        left_dock_auto_hidden,
                         bottom_dock_open,
                         bottom_dock_active_panel,
+                        bottom_dock_auto_hidden,
                         session_id,
                         window_id
                     FROM workspace
@@ -1311,10 +1328,12 @@ mod tests {
             left: model::DockData {
                 visible: true,
                 active_panel: Some("ProjectPanel".to_string()),
+                auto_hidden: false,
             },
             bottom: model::DockData {
                 visible: false,
                 active_panel: Some("ResponsePanel".to_string()),
+                auto_hidden: true,
             },
         };
 

@@ -1089,6 +1089,17 @@ impl Panel for ResponsePanel {
         actions::response_panel::ToggleFocus.boxed_clone()
     }
 
+    fn auto_hidden(&self) -> bool {
+        self.auto_hidden
+    }
+
+    fn set_auto_hidden(&mut self, auto_hidden: bool, cx: &mut Context<Self>) {
+        if self.auto_hidden != auto_hidden {
+            self.auto_hidden = auto_hidden;
+            cx.notify();
+        }
+    }
+
     fn activation_priority(&self) -> u32 {
         2
     }
