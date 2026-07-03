@@ -9,7 +9,11 @@ use gpui::{
 use smallvec::SmallVec;
 use std::ffi::OsStr;
 
-use project::{Project, git_store::GitStoreEvent, repo_identity_path};
+use project::{
+    Project,
+    git_store::{GitStoreEvent, RepositoryEvent},
+    repo_identity_path,
+};
 use ui::{
     ActiveTheme, Color, DynamicSpacing, Graphic, GraphicName, Icon, IconName, IconSize,
     PlatformStyle, Text, TextCommon, TextSize,
@@ -60,7 +64,9 @@ impl TitleBar {
             .map(|workspace_entity| cx.observe(&workspace_entity, |_, _, cx| cx.notify()));
         let git_store_subscription = cx.subscribe(&git_store, |_, _, event, cx| match event {
             GitStoreEvent::ActiveRepositoryChanged(_)
-            | GitStoreEvent::RepositoryUpdated(_, _, true) => cx.notify(),
+            | GitStoreEvent::RepositoryUpdated(_, RepositoryEvent::HeadChanged, true) => {
+                cx.notify();
+            }
             _ => {}
         });
         let button_layout_subscription =
@@ -102,10 +108,10 @@ impl TitleBar {
         repository: &Entity<project::git_store::Repository>,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let (branch_name, icon_info) = {
+        let branch_name = {
             let repository = repository.read(cx).snapshot();
 
-            let branch_name = repository
+            repository
                 .branch
                 .as_ref()
                 .map(|branch| branch.name())
@@ -118,27 +124,10 @@ impl TitleBar {
                             .take(MAX_SHORT_SHA_LENGTH)
                             .collect::<String>()
                     })
-                });
-
-            let status = repository.status_summary();
-            let tracked = status.index + status.worktree;
-            let icon_info = if status.conflict > 0 {
-                (IconName::Warning, Color::Conflict)
-            } else if tracked.modified > 0 {
-                (IconName::SquareDot, Color::Modified)
-            } else if tracked.added > 0 || status.untracked > 0 {
-                (IconName::SquarePlus, Color::Created)
-            } else if tracked.deleted > 0 {
-                (IconName::SquareMinus, Color::Deleted)
-            } else {
-                (IconName::GitBranch, Color::Muted)
-            };
-
-            (branch_name, icon_info)
+                })
         };
 
         let branch_name = branch_name?;
-        let (branch_icon, branch_icon_color) = icon_info;
 
         Some(
             gpui::div()
@@ -146,9 +135,9 @@ impl TitleBar {
                 .items_center()
                 .gap_px()
                 .child(
-                    Icon::new(branch_icon)
+                    Icon::new(IconName::GitBranch)
                         .size(IconSize::XSmall)
-                        .color(branch_icon_color),
+                        .color(Color::Muted),
                 )
                 .child(
                     Text::new(branch_name)
@@ -202,7 +191,6 @@ impl Render for TitleBar {
         let branch = repository
             .as_ref()
             .and_then(|repository| self.render_branch(repository, cx));
-        let show_separator = project_name.is_some() && branch.is_some();
         let menu_controls_on_left = match platform_style {
             PlatformStyle::Linux => {
                 let supported_controls = window.window_controls();
@@ -230,20 +218,10 @@ impl Render for TitleBar {
             .min_w_0()
             .overflow_x_hidden()
             .flex_1()
-            .gap_0p5()
-            .on_mouse_down(MouseButton::Left, |_event, _window, cx| {
-                cx.stop_propagation();
-            })
+            .pl_1()
+            .gap_2p5()
             .when_some(project_name, |this, project_name| {
                 this.child(self.render_project_name(Some(project_name), window, cx))
-            })
-            .when(show_separator, |this| {
-                this.child(
-                    Text::new("/")
-                        .size(TextSize::Small)
-                        .color(Color::Muted)
-                        .alpha(0.25),
-                )
             })
             .when_some(branch, |this, branch| this.child(branch))
             .into_any_element();
