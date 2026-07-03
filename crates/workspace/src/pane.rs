@@ -62,6 +62,7 @@ pub struct Pane {
     active_item_index: usize,
     preview_item_id: Option<EntityId>,
     tab_bar_scroll_handle: ScrollHandle,
+    suppress_scroll: bool,
     save_modals_spawned: HashSet<EntityId>,
     _focus_subscriptions: Vec<Subscription>,
     _settings_subscription: Subscription,
@@ -94,6 +95,7 @@ impl Pane {
             active_item_index: 0,
             preview_item_id: None,
             tab_bar_scroll_handle: ScrollHandle::new(),
+            suppress_scroll: false,
             save_modals_spawned: HashSet::default(),
             _focus_subscriptions: focus_subscriptions,
             _settings_subscription: settings_subscription,
@@ -472,6 +474,7 @@ impl Pane {
     }
 
     fn update_active_tab(&mut self, item_index: usize) {
+        self.suppress_scroll = false;
         self.tab_bar_scroll_handle.scroll_to_item(item_index);
     }
 
@@ -828,9 +831,20 @@ impl Pane {
             .collect::<Vec<_>>();
 
         TabBar::new("tab-bar")
-            .track_scroll(&self.tab_bar_scroll_handle)
-            .children(tab_items)
-            .child(Self::render_tab_bar_drop_target(cx))
+            .child(
+                gpui::div()
+                    .id("tab-bar-content")
+                    .flex()
+                    .items_center()
+                    .overflow_x_scroll()
+                    .w_full()
+                    .track_scroll(&self.tab_bar_scroll_handle)
+                    .on_scroll_wheel(cx.listener(|this, _, _, _| {
+                        this.suppress_scroll = true;
+                    }))
+                    .children(tab_items)
+                    .child(Self::render_tab_bar_drop_target(cx)),
+            )
             .into_any_element()
     }
 
@@ -1056,7 +1070,7 @@ impl Pane {
     fn focus_in(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.was_focused {
             self.was_focused = true;
-            if self.items.get(self.active_item_index).is_some() {
+            if !self.suppress_scroll && self.items.get(self.active_item_index).is_some() {
                 self.update_active_tab(self.active_item_index);
             }
             cx.notify();
