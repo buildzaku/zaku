@@ -523,7 +523,7 @@ impl ResponsePanel {
             active_tab: ResponsePanelTab::Body,
             on_active_tab_change: None,
             has_response_context: false,
-            auto_hidden: false,
+            auto_hidden: true,
             response_subscription: None,
             _focus_subscription: focus_subscription,
         }

@@ -982,11 +982,6 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
     )
     .await;
 
-    cx.dispatch_action(
-        open_result.window.into(),
-        actions::response_panel::ToggleFocus,
-    );
-
     let response_panel = open_result
         .workspace
         .read_with(cx, |workspace, cx| workspace.panel::<ResponsePanel>(cx))
@@ -1187,6 +1182,14 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     let settings_path = ProjectPath::from((worktree_id, rel_path("settings.json")));
 
     open_path(&open_result, valid_request_path.clone(), cx).await;
+
+    assert!(open_result.workspace.read_with(cx, |workspace, cx| {
+        workspace.is_panel_open::<ResponsePanel>(cx)
+    }));
+    assert!(response_panel.read_with(cx, |response_panel, _| {
+        response_panel.has_response_context()
+    }));
+
     cx.dispatch_action(open_result.window.into(), actions::workspace::SendRequest);
     cx.run_until_parked();
 
