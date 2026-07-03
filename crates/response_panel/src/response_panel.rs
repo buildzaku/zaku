@@ -927,23 +927,18 @@ impl ResponsePanel {
             .into_any_element()
     }
 
-    fn render_response_summary(response_summary: ResponseSummary, cx: &App) -> impl IntoElement {
+    fn render_response_summary(response_summary: ResponseSummary) -> impl IntoElement {
         gpui::div()
             .flex()
             .items_center()
-            .gap_1()
+            .gap_2()
             .child(
-                gpui::div()
-                    .min_w(DynamicSpacing::Base40.px(cx))
-                    .flex()
-                    .justify_center()
-                    .items_center()
-                    .child(
-                        Text::new(response_summary.text)
-                            .size(TextSize::Small)
-                            .color(response_summary.color)
-                            .single_line(),
-                    ),
+                gpui::div().flex().justify_center().items_center().child(
+                    Text::new(response_summary.text)
+                        .size(TextSize::Small)
+                        .color(response_summary.color)
+                        .single_line(),
+                ),
             )
             .child(
                 Indicator::dot()
@@ -951,17 +946,12 @@ impl ResponsePanel {
                     .color(Color::Muted),
             )
             .child(
-                gpui::div()
-                    .min_w(DynamicSpacing::Base40.px(cx))
-                    .flex()
-                    .justify_center()
-                    .items_center()
-                    .child(
-                        Label::new(response_summary.elapsed_duration)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .single_line(),
-                    ),
+                gpui::div().flex().justify_center().items_center().child(
+                    Label::new(response_summary.elapsed_duration)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .single_line(),
+                ),
             )
             .child(
                 Indicator::dot()
@@ -969,17 +959,12 @@ impl ResponsePanel {
                     .color(Color::Muted),
             )
             .child(
-                gpui::div()
-                    .min_w(DynamicSpacing::Base40.px(cx))
-                    .flex()
-                    .justify_center()
-                    .items_center()
-                    .child(
-                        Label::new(response_summary.bytes_received)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .single_line(),
-                    ),
+                gpui::div().flex().justify_center().items_center().child(
+                    Label::new(response_summary.bytes_received)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .single_line(),
+                ),
             )
     }
 
@@ -1079,7 +1064,7 @@ impl ResponsePanel {
             )
             .when_some(response_summary, |this, response_summary| {
                 this.pr_3()
-                    .child(Self::render_response_summary(response_summary, cx))
+                    .child(Self::render_response_summary(response_summary))
             })
             .into_any_element()
     }
