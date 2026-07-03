@@ -12,9 +12,9 @@ use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
-    Color, ColumnWidthConfig, DynamicSpacing, IconName, KeyBinding, Label, LabelCommon, LabelSize,
-    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState, Text,
-    TextCommon, TextSize,
+    Color, ColumnWidthConfig, DynamicSpacing, IconName, Indicator, KeyBinding, Label, LabelCommon,
+    LabelSize, LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState,
+    Text, TextCommon, TextSize,
 };
 use workspace::{Panel, Workspace};
 
@@ -945,7 +945,11 @@ impl ResponsePanel {
                             .single_line(),
                     ),
             )
-            .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
+            .child(
+                Indicator::dot()
+                    .size(ui::rems_from_px(3.0))
+                    .color(Color::Muted),
+            )
             .child(
                 gpui::div()
                     .min_w(DynamicSpacing::Base40.px(cx))
@@ -959,7 +963,11 @@ impl ResponsePanel {
                             .single_line(),
                     ),
             )
-            .child(Label::new("·").size(LabelSize::Small).color(Color::Muted))
+            .child(
+                Indicator::dot()
+                    .size(ui::rems_from_px(3.0))
+                    .color(Color::Muted),
+            )
             .child(
                 gpui::div()
                     .min_w(DynamicSpacing::Base40.px(cx))
