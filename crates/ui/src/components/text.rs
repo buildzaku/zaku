@@ -1,5 +1,9 @@
+mod interaction;
+mod selectable;
 mod selection;
 
+pub use interaction::TextInteractionState;
+pub use selectable::{SelectableText, SelectableTextGroup};
 pub use selection::{TextSelectionPoint, TextSelectionState, paint_text_selection};
 
 use gpui::{

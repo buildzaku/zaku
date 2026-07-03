@@ -48,6 +48,12 @@ impl<T: Copy + Ord> TextSelection<T> {
     }
 }
 
+#[derive(Clone, Copy)]
+struct PointForPosition<T> {
+    nearest_valid: TextSelectionPoint<T>,
+    is_text_hovered: bool,
+}
+
 #[derive(Clone)]
 struct TextLayoutEntry<T> {
     id: T,
@@ -102,6 +108,7 @@ pub struct TextSelectionState<T> {
     selection: Option<TextSelection<T>>,
     is_selecting: bool,
     layouts: Vec<TextLayoutEntry<T>>,
+    selection_bounds: Option<Bounds<Pixels>>,
 }
 
 impl<T: Copy + Ord> TextSelectionState<T> {
@@ -110,6 +117,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
             selection: None,
             is_selecting: false,
             layouts: Vec::new(),
+            selection_bounds: None,
         }
     }
 
@@ -120,6 +128,7 @@ impl<T: Copy + Ord> TextSelectionState<T> {
 
     pub fn clear_layouts(&mut self) {
         self.layouts.clear();
+        self.selection_bounds = None;
     }
 
     pub(crate) fn has_registered_layouts(&self) -> bool {
@@ -132,10 +141,8 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         was_selecting
     }
 
-    pub fn has_non_empty_selection(&self) -> bool {
-        self.selection
-            .as_ref()
-            .is_some_and(|selection| !selection.is_empty())
+    pub fn selection_is_empty(&self) -> bool {
+        self.selection.as_ref().is_none_or(TextSelection::is_empty)
     }
 
     pub fn register_layout(&mut self, id: T, text: SharedString, layout: &TextLayout) {
@@ -152,17 +159,50 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         }
     }
 
+    pub fn set_selection_bounds(&mut self, bounds: Bounds<Pixels>) {
+        self.selection_bounds = Some(bounds);
+    }
+
     pub fn selected_range_for_id(&self, id: T, text: &str) -> Option<Range<usize>> {
         let range = selection_range_for_id(self.selection.as_ref()?, id, text.len())?;
         valid_selection_range(text, range)
     }
 
+    pub fn begin_selection_at_position(
+        &mut self,
+        position: Point<Pixels>,
+        click_count: usize,
+    ) -> bool {
+        let Some(point_for_position) = self.point_for_position(position) else {
+            return false;
+        };
+        let click_count = if point_for_position.is_text_hovered {
+            click_count
+        } else {
+            1
+        };
+
+        self.begin_selection_at_point(point_for_position.nearest_valid, click_count)
+    }
+
     pub fn begin_selection(&mut self, id: T, position: Point<Pixels>, click_count: usize) -> bool {
+        let Some(layout) = self.layout_for_id(id) else {
+            return false;
+        };
+        let point = self.point_for_layout(id, layout, position);
+
+        self.begin_selection_at_point(point, click_count)
+    }
+
+    fn begin_selection_at_point(
+        &mut self,
+        point: TextSelectionPoint<T>,
+        click_count: usize,
+    ) -> bool {
         let selection = {
-            let Some(layout) = self.layout_for_id(id) else {
+            let Some(layout) = self.layout_for_id(point.id) else {
                 return false;
             };
-            let point = self.point_for_layout(id, layout, position);
 
             match click_count {
                 1 => TextSelection {
@@ -172,8 +212,8 @@ impl<T: Copy + Ord> TextSelectionState<T> {
                 },
                 2 => {
                     let word_range = surrounding_word(layout.text.as_ref(), point.offset);
-                    let start = TextSelectionPoint::new(id, word_range.start);
-                    let end = TextSelectionPoint::new(id, word_range.end);
+                    let start = TextSelectionPoint::new(point.id, word_range.start);
+                    let end = TextSelectionPoint::new(point.id, word_range.end);
                     TextSelection {
                         anchor: start,
                         head: end,
@@ -181,8 +221,8 @@ impl<T: Copy + Ord> TextSelectionState<T> {
                     }
                 }
                 _ => {
-                    let start = TextSelectionPoint::new(id, 0);
-                    let end = TextSelectionPoint::new(id, layout.text.len());
+                    let start = TextSelectionPoint::new(point.id, 0);
+                    let end = TextSelectionPoint::new(point.id, layout.text.len());
                     TextSelection {
                         anchor: start,
                         head: end,
@@ -199,6 +239,15 @@ impl<T: Copy + Ord> TextSelectionState<T> {
     }
 
     pub fn update_selection(&mut self, id: T, position: Point<Pixels>) -> bool {
+        let Some(layout) = self.layout_for_id(id) else {
+            return false;
+        };
+        let point = self.point_for_layout(id, layout, position);
+
+        self.update_selection_to_point(point)
+    }
+
+    fn update_selection_to_point(&mut self, point: TextSelectionPoint<T>) -> bool {
         if !self.is_selecting {
             return false;
         }
@@ -206,10 +255,9 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         let Some(selection) = self.selection else {
             return false;
         };
-        let Some(layout) = self.layout_for_id(id) else {
+        let Some(layout) = self.layout_for_id(point.id) else {
             return false;
         };
-        let point = self.point_for_layout(id, layout, position);
 
         let (anchor, head) = match selection.mode {
             TextSelectionMode::Character => (selection.anchor, point),
@@ -219,8 +267,8 @@ impl<T: Copy + Ord> TextSelectionState<T> {
                 (anchor, head)
             }
             TextSelectionMode::Block { start, end } => {
-                let block_start = TextSelectionPoint::new(id, 0);
-                let block_end = TextSelectionPoint::new(id, layout.text.len());
+                let block_start = TextSelectionPoint::new(point.id, 0);
+                let block_end = TextSelectionPoint::new(point.id, layout.text.len());
                 let head = if point <= start {
                     block_start
                 } else {
@@ -242,6 +290,14 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         false
     }
 
+    pub fn update_selection_at_position(&mut self, position: Point<Pixels>) -> bool {
+        let Some(point_for_position) = self.point_for_position(position) else {
+            return false;
+        };
+
+        self.update_selection_to_point(point_for_position.nearest_valid)
+    }
+
     pub fn end_selection(&mut self, id: T, position: Point<Pixels>) -> bool {
         let was_selecting = self.is_selecting;
         let updated = self.update_selection(id, position);
@@ -260,6 +316,83 @@ impl<T: Copy + Ord> TextSelectionState<T> {
 
     fn layout_for_id(&self, id: T) -> Option<&TextLayoutEntry<T>> {
         self.layouts.iter().find(|layout| layout.id == id)
+    }
+
+    fn point_for_position(&self, position: Point<Pixels>) -> Option<PointForPosition<T>> {
+        let mut layouts = self.layouts.iter().collect::<Vec<_>>();
+        layouts.sort_by_key(|layout| layout.id);
+
+        let first_layout = *layouts.first()?;
+        let last_layout = *layouts.last()?;
+        let mut top = first_layout.layout.bounds.top();
+        let mut bottom = first_layout.layout.bounds.bottom();
+
+        for layout in &layouts {
+            top = top.min(layout.layout.bounds.top());
+            bottom = bottom.max(layout.layout.bounds.bottom());
+        }
+
+        if let Some(selection_bounds) = self.selection_bounds {
+            top = selection_bounds.top();
+            bottom = selection_bounds.bottom();
+        }
+
+        if position.y < top {
+            return Some(PointForPosition {
+                nearest_valid: TextSelectionPoint::new(first_layout.id, 0),
+                is_text_hovered: false,
+            });
+        }
+        if position.y > bottom {
+            return Some(PointForPosition {
+                nearest_valid: TextSelectionPoint::new(last_layout.id, last_layout.text.len()),
+                is_text_hovered: false,
+            });
+        }
+
+        for (index, layout) in layouts.iter().enumerate() {
+            if position.x < layout.layout.bounds.left() {
+                if let Some(previous_layout) =
+                    index.checked_sub(1).and_then(|index| layouts.get(index))
+                {
+                    let previous_right = previous_layout.layout.bounds.right();
+                    let next_left = layout.layout.bounds.left();
+                    if position.x - previous_right < next_left - position.x {
+                        return Some(PointForPosition {
+                            nearest_valid: TextSelectionPoint::new(
+                                previous_layout.id,
+                                previous_layout.text.len(),
+                            ),
+                            is_text_hovered: false,
+                        });
+                    }
+                }
+
+                return Some(PointForPosition {
+                    nearest_valid: TextSelectionPoint::new(layout.id, 0),
+                    is_text_hovered: false,
+                });
+            }
+
+            if position.x <= layout.layout.bounds.right() {
+                let is_text_hovered = position.y >= layout.layout.bounds.top()
+                    && position.y <= layout.layout.bounds.bottom();
+                let position = if is_text_hovered {
+                    position
+                } else {
+                    gpui::point(position.x, layout.layout.bounds.top())
+                };
+                return Some(PointForPosition {
+                    nearest_valid: self.point_for_layout(layout.id, layout, position),
+                    is_text_hovered,
+                });
+            }
+        }
+
+        Some(PointForPosition {
+            nearest_valid: TextSelectionPoint::new(last_layout.id, last_layout.text.len()),
+            is_text_hovered: false,
+        })
     }
 
     fn point_for_layout(

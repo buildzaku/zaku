@@ -13,8 +13,8 @@ use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
     Color, ColumnWidthConfig, DynamicSpacing, IconName, Indicator, KeyBinding, Label, LabelCommon,
-    LabelSize, LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState,
-    Text, TextCommon, TextSize,
+    LabelSize, LineHeightStyle, ScrollAxes, Scrollbars, SelectableText, SelectableTextGroup, Table,
+    TableCell, TableInteractionState, TextCommon, TextInteractionState, TextSize,
 };
 use workspace::{Panel, Workspace};
 
@@ -94,6 +94,13 @@ struct ResponseSummary {
     color: Color,
     elapsed_duration: SharedString,
     bytes_received: SharedString,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ResponseSummaryTextId {
+    Status,
+    ElapsedDuration,
+    BytesReceived,
 }
 
 #[derive(Clone)]
@@ -270,6 +277,7 @@ pub struct Response {
     state: ResponseState,
     editor: Entity<Editor>,
     payload: Entity<MultiBuffer>,
+    summary_text: Entity<TextInteractionState<ResponseSummaryTextId>>,
     headers: Vec<ResponseHeader>,
     headers_table: Entity<TableInteractionState>,
     headers_list_state: ListState,
@@ -282,6 +290,8 @@ impl Response {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let (editor, payload) = Self::new_editor(window, cx);
         let response_id = cx.entity_id();
+        let summary_text: Entity<TextInteractionState<ResponseSummaryTextId>> =
+            cx.new(|cx| TextInteractionState::new(cx));
         let headers_table = cx.new(move |cx| {
             TableInteractionState::new(cx).with_custom_scrollbar(
                 Scrollbars::new(ScrollAxes::Vertical)
@@ -302,6 +312,7 @@ impl Response {
             state: ResponseState::default(),
             editor,
             payload,
+            summary_text,
             headers: Vec::new(),
             headers_table,
             headers_list_state,
@@ -327,6 +338,13 @@ impl Response {
 
     fn summary(&self) -> Option<ResponseSummary> {
         self.state.summary()
+    }
+
+    fn clear_summary_text_selection(&self, cx: &mut App) {
+        self.summary_text.update(cx, |text, cx| {
+            text.clear_text_selection();
+            cx.notify();
+        });
     }
 
     fn editor(&self) -> Entity<Editor> {
@@ -440,6 +458,7 @@ impl Response {
         self.cookies.clear();
         self.headers_list_state.reset(0);
         self.cookies_list_state.reset(0);
+        self.clear_summary_text_selection(cx);
         self.clear_headers_text_selection(cx);
         self.clear_cookies_text_selection(cx);
         self.editor = editor;
@@ -467,6 +486,7 @@ impl Response {
         }
 
         self.state = state;
+        self.clear_summary_text_selection(cx);
         cx.notify();
         true
     }
@@ -592,6 +612,7 @@ impl ResponsePanel {
         }
         if let Some(response) = self.response.clone() {
             response.update(cx, |response, cx| {
+                response.clear_summary_text_selection(cx);
                 response.clear_headers_text_selection(cx);
                 response.clear_cookies_text_selection(cx);
             });
@@ -675,6 +696,7 @@ impl ResponsePanel {
             self.active_tab = active_tab;
             if let Some(response) = self.response.clone() {
                 response.update(cx, |response, cx| {
+                    response.clear_summary_text_selection(cx);
                     response.clear_headers_text_selection(cx);
                     response.clear_cookies_text_selection(cx);
                 });
@@ -927,53 +949,101 @@ impl ResponsePanel {
             .into_any_element()
     }
 
-    fn render_response_summary(response_summary: ResponseSummary) -> impl IntoElement {
-        gpui::div()
+    fn render_response_summary(
+        response_summary: ResponseSummary,
+        summary_text: &Entity<TextInteractionState<ResponseSummaryTextId>>,
+    ) -> impl IntoElement {
+        let status = response_summary.text;
+        let status_color = response_summary.color;
+        let elapsed_duration = response_summary.elapsed_duration;
+        let bytes_received = response_summary.bytes_received;
+
+        SelectableTextGroup::new(summary_text)
             .flex()
+            .flex_1()
             .items_center()
-            .gap_2()
+            .justify_end()
+            .h_full()
+            .pr_3()
+            .selection_order([
+                ResponseSummaryTextId::Status,
+                ResponseSummaryTextId::ElapsedDuration,
+                ResponseSummaryTextId::BytesReceived,
+            ])
+            .copy_separator("\t")
+            .text_for_selection({
+                let status = status.clone();
+                let elapsed_duration = elapsed_duration.clone();
+                let bytes_received = bytes_received.clone();
+
+                move |text_id, _, _| match text_id {
+                    ResponseSummaryTextId::Status => Some(status.clone()),
+                    ResponseSummaryTextId::ElapsedDuration => Some(elapsed_duration.clone()),
+                    ResponseSummaryTextId::BytesReceived => Some(bytes_received.clone()),
+                }
+            })
             .child(
-                gpui::div().flex().justify_center().items_center().child(
-                    Text::new(response_summary.text)
-                        .size(TextSize::Small)
-                        .color(response_summary.color)
-                        .single_line(),
-                ),
-            )
-            .child(
-                Indicator::dot()
-                    .size(ui::rems_from_px(3.0))
-                    .color(Color::Muted),
-            )
-            .child(
-                gpui::div().flex().justify_center().items_center().child(
-                    Label::new(response_summary.elapsed_duration)
-                        .size(LabelSize::Small)
-                        .color(Color::Muted)
-                        .single_line(),
-                ),
-            )
-            .child(
-                Indicator::dot()
-                    .size(ui::rems_from_px(3.0))
-                    .color(Color::Muted),
-            )
-            .child(
-                gpui::div().flex().justify_center().items_center().child(
-                    Label::new(response_summary.bytes_received)
-                        .size(LabelSize::Small)
-                        .color(Color::Muted)
-                        .single_line(),
-                ),
+                gpui::div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        gpui::div().flex().justify_center().items_center().child(
+                            SelectableText::new(
+                                summary_text,
+                                ResponseSummaryTextId::Status,
+                                status,
+                            )
+                            .size(TextSize::Small)
+                            .color(status_color)
+                            .single_line(),
+                        ),
+                    )
+                    .child(
+                        Indicator::dot()
+                            .size(ui::rems_from_px(3.0))
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        gpui::div().flex().justify_center().items_center().child(
+                            SelectableText::new(
+                                summary_text,
+                                ResponseSummaryTextId::ElapsedDuration,
+                                elapsed_duration,
+                            )
+                            .size(TextSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                        ),
+                    )
+                    .child(
+                        Indicator::dot()
+                            .size(ui::rems_from_px(3.0))
+                            .color(Color::Muted),
+                    )
+                    .child(
+                        gpui::div().flex().justify_center().items_center().child(
+                            SelectableText::new(
+                                summary_text,
+                                ResponseSummaryTextId::BytesReceived,
+                                bytes_received,
+                            )
+                            .size(TextSize::Small)
+                            .color(Color::Muted)
+                            .single_line(),
+                        ),
+                    ),
             )
     }
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
         let active_tab = self.active_tab();
-        let response_summary = self
-            .response
-            .as_ref()
-            .and_then(|response| response.read(cx).summary());
+        let response_summary = self.response.as_ref().and_then(|entity| {
+            let response = entity.read(cx);
+            response
+                .summary()
+                .map(|summary| (summary, response.summary_text.clone()))
+        });
         let colors = cx.theme().colors();
 
         let render_tab =
@@ -993,6 +1063,11 @@ impl ResponsePanel {
                     .cursor_pointer()
                     .on_click(cx.listener(move |response_panel, _, _, cx| {
                         cx.stop_propagation();
+                        if let Some(response) = response_panel.response.clone() {
+                            response.update(cx, |response, cx| {
+                                response.clear_summary_text_selection(cx);
+                            });
+                        }
                         response_panel.set_active_tab(set_active_tab, cx);
                     }))
                     .child(
@@ -1031,7 +1106,6 @@ impl ResponsePanel {
             .id("response-panel-tabs")
             .flex()
             .items_center()
-            .justify_between()
             .w_full()
             .h(DynamicSpacing::Base36.px(cx))
             .border_b_1()
@@ -1062,10 +1136,15 @@ impl ResponsePanel {
                         ResponsePanelTab::Cookies,
                     )),
             )
-            .when_some(response_summary, |this, response_summary| {
-                this.pr_3()
-                    .child(Self::render_response_summary(response_summary))
-            })
+            .when_some(
+                response_summary,
+                |this, (response_summary, summary_text)| {
+                    this.child(Self::render_response_summary(
+                        response_summary,
+                        &summary_text,
+                    ))
+                },
+            )
             .into_any_element()
     }
 }

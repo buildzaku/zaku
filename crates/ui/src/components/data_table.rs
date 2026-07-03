@@ -377,7 +377,7 @@ impl TableInteractionState {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<String> {
-        if !self.text_selection.has_non_empty_selection() {
+        if self.text_selection.selection_is_empty() {
             return None;
         }
 
