@@ -13,7 +13,8 @@ use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
     Color, ColumnWidthConfig, DynamicSpacing, IconName, KeyBinding, Label, LabelCommon, LabelSize,
-    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState, TextSize,
+    LineHeightStyle, ScrollAxes, Scrollbars, Table, TableCell, TableInteractionState, Text,
+    TextCommon, TextSize,
 };
 use workspace::{Panel, Workspace};
 
@@ -89,7 +90,8 @@ pub enum ResponsePanelTab {
 
 #[derive(Clone)]
 struct ResponseSummary {
-    label: SharedString,
+    text: SharedString,
+    color: Color,
     elapsed_duration: SharedString,
     bytes_received: SharedString,
 }
@@ -207,13 +209,28 @@ pub enum ResponseState {
 
 impl ResponseState {
     fn summary(&self) -> Option<ResponseSummary> {
+        let status_color = |status_code: StatusCode| {
+            if status_code.is_informational() {
+                Color::Info
+            } else if status_code.is_success() {
+                Color::Success
+            } else if status_code.is_redirection() {
+                Color::Warning
+            } else if status_code.is_client_error() || status_code.is_server_error() {
+                Color::Error
+            } else {
+                Color::Muted
+            }
+        };
+
         match self {
             ResponseState::Idle => None,
             ResponseState::Fetching {
                 bytes_received,
                 elapsed_duration,
             } => Some(ResponseSummary {
-                label: "Fetching".into(),
+                text: "Fetching".into(),
+                color: Color::Muted,
                 elapsed_duration: format_elapsed_duration(*elapsed_duration),
                 bytes_received: format_bytes_received(*bytes_received),
             }),
@@ -222,14 +239,15 @@ impl ResponseState {
                 bytes_received,
                 elapsed_duration,
             } => {
-                let label = if let Some(reason_phrase) = status_code.canonical_reason() {
+                let text = if let Some(reason_phrase) = status_code.canonical_reason() {
                     format!("{} {reason_phrase}", status_code.as_u16()).into()
                 } else {
                     status_code.as_u16().to_string().into()
                 };
 
                 Some(ResponseSummary {
-                    label,
+                    text,
+                    color: status_color(*status_code),
                     elapsed_duration: format_elapsed_duration(*elapsed_duration),
                     bytes_received: format_bytes_received(*bytes_received),
                 })
@@ -238,7 +256,8 @@ impl ResponseState {
                 bytes_received,
                 elapsed_duration,
             } => Some(ResponseSummary {
-                label: "Error".into(),
+                text: "Error".into(),
+                color: Color::Error,
                 elapsed_duration: format_elapsed_duration(*elapsed_duration),
                 bytes_received: format_bytes_received(*bytes_received),
             }),
@@ -920,9 +939,9 @@ impl ResponsePanel {
                     .justify_center()
                     .items_center()
                     .child(
-                        Label::new(response_summary.label)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
+                        Text::new(response_summary.text)
+                            .size(TextSize::Small)
+                            .color(response_summary.color)
                             .single_line(),
                     ),
             )
