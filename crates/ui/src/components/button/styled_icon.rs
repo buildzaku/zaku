@@ -15,6 +15,7 @@ pub(super) struct StyledIcon {
     selected: bool,
     selected_icon: Option<IconName>,
     selected_icon_color: Option<Color>,
+    hover_icon_color: Option<Color>,
 }
 
 impl StyledIcon {
@@ -27,6 +28,7 @@ impl StyledIcon {
             selected: false,
             selected_icon: None,
             selected_icon_color: None,
+            hover_icon_color: None,
         }
     }
 
@@ -54,6 +56,11 @@ impl StyledIcon {
         self.selected_icon_color = color.into();
         self
     }
+
+    pub(super) fn hover_icon_color(mut self, color: impl Into<Option<Color>>) -> Self {
+        self.hover_icon_color = color.into();
+        self
+    }
 }
 
 impl Disableable for StyledIcon {
@@ -78,6 +85,15 @@ impl RenderOnce for StyledIcon {
             self.color
         };
 
-        Icon::new(icon).size(self.size).color(icon_color)
+        let hover_icon_color = if self.disabled {
+            None
+        } else {
+            self.hover_icon_color
+        };
+
+        Icon::new(icon)
+            .size(self.size)
+            .color(icon_color)
+            .group_hover_color("button-like", hover_icon_color)
     }
 }

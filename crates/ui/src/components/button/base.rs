@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, AnyView, App, ClickEvent, CursorStyle, DefiniteLength, Div, ElementId, MouseButton,
-    SharedString, Window, prelude::*,
+    AnyElement, AnyView, App, ClickEvent, CursorStyle, DefiniteLength, Div, ElementId, Hsla,
+    MouseButton, SharedString, Window, prelude::*,
 };
 use smallvec::SmallVec;
 
@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub trait SelectableButton: Toggleable {
-    fn selected_style(self, style: ButtonVariant) -> Self;
+    fn selected_background(self, background: Hsla) -> Self;
 }
 
 pub trait ButtonCommon: Clickable + Disableable {
@@ -32,7 +32,7 @@ pub struct ButtonLike {
     variant: ButtonVariant,
     pub(super) disabled: bool,
     pub(super) selected: bool,
-    pub(super) selected_style: Option<ButtonVariant>,
+    selected_background: Option<Hsla>,
     cursor_style: CursorStyle,
     width: Option<DefiniteLength>,
     height: Option<DefiniteLength>,
@@ -51,7 +51,7 @@ impl ButtonLike {
             variant: ButtonVariant::default(),
             disabled: false,
             selected: false,
-            selected_style: None,
+            selected_background: None,
             cursor_style: CursorStyle::PointingHand,
             width: None,
             height: None,
@@ -94,8 +94,8 @@ impl Toggleable for ButtonLike {
 }
 
 impl SelectableButton for ButtonLike {
-    fn selected_style(mut self, style: ButtonVariant) -> Self {
-        self.selected_style = Some(style);
+    fn selected_background(mut self, background: Hsla) -> Self {
+        self.selected_background = Some(background);
         self
     }
 }
@@ -153,19 +153,19 @@ impl ParentElement for ButtonLike {
 
 impl RenderOnce for ButtonLike {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let variant = self
-            .selected_style
-            .filter(|_| self.selected)
-            .unwrap_or(self.variant);
+        let variant = self.variant;
         let style = if self.disabled {
             variant.disabled(cx)
-        } else if self.selected && self.selected_style.is_none() {
-            variant.active(cx)
         } else {
             variant.enabled(cx)
         };
         let hovered_style = variant.hovered(cx);
         let active_style = variant.active(cx);
+        let background = if self.selected && !self.disabled {
+            self.selected_background.unwrap_or(style.background)
+        } else {
+            style.background
+        };
         let is_outlined = matches!(
             self.variant,
             ButtonVariant::Outline | ButtonVariant::OutlinedGhost
@@ -173,6 +173,7 @@ impl RenderOnce for ButtonLike {
 
         self.base
             .id(self.id.clone())
+            .group("button-like")
             .when_some(self.tooltip, |this, tooltip| {
                 this.tooltip_show_delay(TOOLTIP_SHOW_DELAY)
                     .tooltip(move |window, cx| tooltip(window, cx))
@@ -198,7 +199,7 @@ impl RenderOnce for ButtonLike {
                 this.border_1().border_color(style.border_color)
             })
             .border_color(style.border_color)
-            .bg(style.background)
+            .bg(background)
             .text_color(style.label_color)
             .when(self.disabled, |this| {
                 if self.cursor_style == CursorStyle::PointingHand {

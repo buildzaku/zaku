@@ -632,6 +632,7 @@ impl Render for PanelButtons {
                         .icon_size(IconSize::Small)
                         .shape(IconButtonShape::Square)
                         .icon_color(Color::Muted)
+                        .hover_icon_color(Color::Selected)
                         .disabled(is_disabled)
                         .toggle_state(is_active_button)
                         .tooltip(Tooltip::for_action_title(tooltip, action.as_ref()))

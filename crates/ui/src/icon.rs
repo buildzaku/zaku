@@ -60,6 +60,7 @@ impl IconSize {
 pub struct Icon {
     path: SharedString,
     color: Color,
+    group_hover_color: Option<(SharedString, Color)>,
     size: Rems,
     transformation: Transformation,
 }
@@ -69,6 +70,7 @@ impl Icon {
         Self {
             path: icon.path().into(),
             color: Color::default(),
+            group_hover_color: None,
             size: IconSize::default().rems(),
             transformation: Transformation::default(),
         }
@@ -78,6 +80,7 @@ impl Icon {
         Self {
             path: path.into(),
             color: Color::default(),
+            group_hover_color: None,
             size: IconSize::default().rems(),
             transformation: Transformation::default(),
         }
@@ -85,6 +88,15 @@ impl Icon {
 
     pub fn color(mut self, color: Color) -> Self {
         self.color = color;
+        self
+    }
+
+    pub(crate) fn group_hover_color(
+        mut self,
+        group_name: impl Into<SharedString>,
+        color: impl Into<Option<Color>>,
+    ) -> Self {
+        self.group_hover_color = color.into().map(|color| (group_name.into(), color));
         self
     }
 
@@ -97,12 +109,19 @@ impl Icon {
 impl RenderOnce for Icon {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let color = self.color.color(cx);
+        let group_hover_color = self
+            .group_hover_color
+            .map(|(group_name, color)| (group_name, color.color(cx)));
+
         gpui::svg()
             .with_transformation(self.transformation)
             .size(self.size)
             .flex_none()
             .path(self.path)
             .text_color(color)
+            .when_some(group_hover_color, |this, (group_name, color)| {
+                this.group_hover(group_name, |style| style.text_color(color))
+            })
             .into_any_element()
     }
 }
