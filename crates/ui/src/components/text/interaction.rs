@@ -89,28 +89,10 @@ impl<T: Copy + Ord + 'static> TextInteractionState<T> {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<String> {
-        if self.text_selection.selection_is_empty() {
-            return None;
-        }
-
-        let mut selected_text = Vec::new();
-
-        for id in selection_order {
-            let Some(text) = text_for_selection(*id, window, cx) else {
-                continue;
-            };
-            let text: &str = text.as_ref();
-            let Some(range) = self.text_selection.selected_range_for_id(*id, text) else {
-                continue;
-            };
-
-            if let Some(text) = text.get(range) {
-                selected_text.push(text.to_string());
-            }
-        }
-
-        let selected_text = selected_text.join(copy_separator);
-        (!selected_text.is_empty()).then_some(selected_text)
+        self.text_selection
+            .selected_text(selection_order, copy_separator, |id| {
+                text_for_selection(id, window, cx)
+            })
     }
 
     pub(super) fn copy_selected_text(

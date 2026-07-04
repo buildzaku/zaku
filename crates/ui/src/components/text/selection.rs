@@ -1,6 +1,6 @@
 use gpui::{Bounds, Hsla, Pixels, Point, SharedString, TextLayout, Window, WrappedLineLayout};
 use smallvec::SmallVec;
-use std::{ops::Range, sync::Arc};
+use std::{cmp::Ordering, ops::Range, sync::Arc};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextSelectionPoint<T> {
@@ -14,37 +14,52 @@ impl<T> TextSelectionPoint<T> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum TextSelectionMode<T> {
     Character,
-    Word {
-        start: TextSelectionPoint<T>,
-        end: TextSelectionPoint<T>,
-    },
-    Block {
-        start: TextSelectionPoint<T>,
-        end: TextSelectionPoint<T>,
-    },
+    Word(Range<TextSelectionPoint<T>>),
+    Line(Range<TextSelectionPoint<T>>),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, PartialEq, Eq)]
 struct TextSelection<T> {
-    anchor: TextSelectionPoint<T>,
-    head: TextSelectionPoint<T>,
+    start: TextSelectionPoint<T>,
+    end: TextSelectionPoint<T>,
+    reversed: bool,
     mode: TextSelectionMode<T>,
 }
 
 impl<T: Copy + Ord> TextSelection<T> {
-    fn range(&self) -> (TextSelectionPoint<T>, TextSelectionPoint<T>) {
-        if self.anchor <= self.head {
-            (self.anchor, self.head)
+    fn head(&self) -> TextSelectionPoint<T> {
+        if self.reversed { self.start } else { self.end }
+    }
+
+    fn tail(&self) -> TextSelectionPoint<T> {
+        if self.reversed { self.end } else { self.start }
+    }
+
+    fn set_head(&mut self, head: TextSelectionPoint<T>) {
+        if head.cmp(&self.tail()) < Ordering::Equal {
+            if !self.reversed {
+                self.end = self.start;
+                self.reversed = true;
+            }
+            self.start = head;
         } else {
-            (self.head, self.anchor)
+            if self.reversed {
+                self.start = self.end;
+                self.reversed = false;
+            }
+            self.end = head;
         }
     }
 
     fn is_empty(&self) -> bool {
-        self.anchor == self.head
+        self.head() == self.tail()
+    }
+
+    fn range(&self) -> Range<TextSelectionPoint<T>> {
+        self.start..self.end
     }
 }
 
@@ -164,8 +179,58 @@ impl<T: Copy + Ord> TextSelectionState<T> {
     }
 
     pub fn selected_range_for_id(&self, id: T, text: &str) -> Option<Range<usize>> {
-        let range = selection_range_for_id(self.selection.as_ref()?, id, text.len())?;
-        valid_selection_range(text, range)
+        let selection_range = self.selection.as_ref()?.range();
+        let text_len = text.len();
+        let cell_start = TextSelectionPoint::new(id, 0);
+        let cell_end = TextSelectionPoint::new(id, text_len);
+        if selection_range.end <= cell_start || selection_range.start >= cell_end {
+            return None;
+        }
+
+        let selected_start = if selection_range.start.id == id {
+            selection_range.start.offset.min(text_len)
+        } else {
+            0
+        };
+        let selected_end = if selection_range.end.id == id {
+            selection_range.end.offset.min(text_len)
+        } else {
+            text_len
+        };
+        let selected_start = previous_char_boundary(text, selected_start);
+        let selected_end = previous_char_boundary(text, selected_end);
+
+        (selected_start < selected_end).then_some(selected_start..selected_end)
+    }
+
+    pub(super) fn selected_text(
+        &self,
+        selection_order: &[T],
+        copy_separator: &str,
+        mut text_for_selection: impl FnMut(T) -> Option<SharedString>,
+    ) -> Option<String> {
+        if self.selection_is_empty() {
+            return None;
+        }
+
+        let mut selected_text = Vec::new();
+
+        for id in selection_order {
+            let Some(text) = text_for_selection(*id) else {
+                continue;
+            };
+            let text: &str = text.as_ref();
+            let Some(range) = self.selected_range_for_id(*id, text) else {
+                continue;
+            };
+
+            if let Some(text) = text.get(range) {
+                selected_text.push(text.to_string());
+            }
+        }
+
+        let selected_text = selected_text.join(copy_separator);
+        (!selected_text.is_empty()).then_some(selected_text)
     }
 
     pub fn begin_selection_at_position(
@@ -199,35 +264,41 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         point: TextSelectionPoint<T>,
         click_count: usize,
     ) -> bool {
-        let selection = {
-            let Some(layout) = self.layout_for_id(point.id) else {
-                return false;
-            };
+        if self.layout_for_id(point.id).is_none() {
+            return false;
+        }
 
-            match click_count {
-                1 => TextSelection {
-                    anchor: point,
-                    head: point,
-                    mode: TextSelectionMode::Character,
-                },
-                2 => {
-                    let word_range = surrounding_word(layout.text.as_ref(), point.offset);
-                    let start = TextSelectionPoint::new(point.id, word_range.start);
-                    let end = TextSelectionPoint::new(point.id, word_range.end);
-                    TextSelection {
-                        anchor: start,
-                        head: end,
-                        mode: TextSelectionMode::Word { start, end },
-                    }
+        let selection = match click_count {
+            1 => TextSelection {
+                start: point,
+                end: point,
+                reversed: false,
+                mode: TextSelectionMode::Character,
+            },
+            2 => {
+                let Some(word_range) = self.surrounding_word_range(point) else {
+                    return false;
+                };
+                let start = word_range.start;
+                let end = word_range.end;
+                TextSelection {
+                    start,
+                    end,
+                    reversed: false,
+                    mode: TextSelectionMode::Word(start..end),
                 }
-                _ => {
-                    let start = TextSelectionPoint::new(point.id, 0);
-                    let end = TextSelectionPoint::new(point.id, layout.text.len());
-                    TextSelection {
-                        anchor: start,
-                        head: end,
-                        mode: TextSelectionMode::Block { start, end },
-                    }
+            }
+            _ => {
+                let Some(line_range) = self.surrounding_line_range(point) else {
+                    return false;
+                };
+                let start = line_range.start;
+                let end = line_range.end;
+                TextSelection {
+                    start,
+                    end,
+                    reversed: false,
+                    mode: TextSelectionMode::Line(start..end),
                 }
             }
         };
@@ -252,42 +323,70 @@ impl<T: Copy + Ord> TextSelectionState<T> {
             return false;
         }
 
-        let Some(selection) = self.selection else {
+        let Some(mut selection) = self.selection.clone() else {
             return false;
         };
-        let Some(layout) = self.layout_for_id(point.id) else {
-            return false;
-        };
+        let old_selection = selection.clone();
 
-        let (anchor, head) = match selection.mode {
-            TextSelectionMode::Character => (selection.anchor, point),
-            TextSelectionMode::Word { start, end } => {
-                let head = word_selection_head(layout.text.as_ref(), point, start, end);
-                let anchor = if head <= start { end } else { start };
-                (anchor, head)
-            }
-            TextSelectionMode::Block { start, end } => {
-                let block_start = TextSelectionPoint::new(point.id, 0);
-                let block_end = TextSelectionPoint::new(point.id, layout.text.len());
-                let head = if point <= start {
-                    block_start
+        match selection.mode.clone() {
+            TextSelectionMode::Character => selection.set_head(point),
+            TextSelectionMode::Word(original_range) | TextSelectionMode::Line(original_range) => {
+                let head_range = if matches!(&selection.mode, TextSelectionMode::Word(_)) {
+                    self.surrounding_word_range(point)
                 } else {
-                    block_end
+                    self.surrounding_line_range(point)
                 };
-                let anchor = if head <= start { end } else { start };
-                (anchor, head)
-            }
-        };
+                let Some(head_range) = head_range else {
+                    return false;
+                };
 
-        if let Some(selection) = self.selection.as_mut()
-            && (selection.anchor != anchor || selection.head != head)
-        {
-            selection.anchor = anchor;
-            selection.head = head;
+                if point < original_range.start {
+                    selection.start = head_range.start;
+                    selection.end = original_range.end;
+                    selection.reversed = true;
+                } else if point >= original_range.end {
+                    selection.start = original_range.start;
+                    selection.end = head_range.end;
+                    selection.reversed = false;
+                } else {
+                    selection.start = original_range.start;
+                    selection.end = original_range.end;
+                    selection.reversed = false;
+                }
+            }
+        }
+
+        if selection != old_selection {
+            self.selection = Some(selection);
             return true;
         }
 
         false
+    }
+
+    fn surrounding_word_range(
+        &self,
+        point: TextSelectionPoint<T>,
+    ) -> Option<Range<TextSelectionPoint<T>>> {
+        let layout = self.layout_for_id(point.id)?;
+        let range = surrounding_word_range_for_text(layout.text.as_ref(), point.offset);
+
+        Some(
+            TextSelectionPoint::new(point.id, range.start)
+                ..TextSelectionPoint::new(point.id, range.end),
+        )
+    }
+
+    fn surrounding_line_range(
+        &self,
+        point: TextSelectionPoint<T>,
+    ) -> Option<Range<TextSelectionPoint<T>>> {
+        let layout = self.layout_for_id(point.id)?;
+
+        Some(
+            TextSelectionPoint::new(point.id, 0)
+                ..TextSelectionPoint::new(point.id, layout.text.len()),
+        )
     }
 
     pub fn update_selection_at_position(&mut self, position: Point<Pixels>) -> bool {
@@ -305,10 +404,14 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         updated || was_selecting
     }
 
-    pub fn select_all(&mut self, anchor: TextSelectionPoint<T>, head: TextSelectionPoint<T>) {
+    pub fn select_all(&mut self, tail: TextSelectionPoint<T>, head: TextSelectionPoint<T>) {
+        let reversed = head < tail;
+        let (start, end) = if reversed { (head, tail) } else { (tail, head) };
+
         self.selection = Some(TextSelection {
-            anchor,
-            head,
+            start,
+            end,
+            reversed,
             mode: TextSelectionMode::Character,
         });
         self.is_selecting = false;
@@ -415,53 +518,6 @@ impl<T: Copy + Ord> Default for TextSelectionState<T> {
     }
 }
 
-fn selection_range_for_id<T: Copy + Ord>(
-    selection: &TextSelection<T>,
-    id: T,
-    text_len: usize,
-) -> Option<Range<usize>> {
-    let (start, end) = selection.range();
-    let cell_start = TextSelectionPoint::new(id, 0);
-    let cell_end = TextSelectionPoint::new(id, text_len);
-    if end <= cell_start || start >= cell_end {
-        return None;
-    }
-
-    let selected_start = if start.id == id {
-        start.offset.min(text_len)
-    } else {
-        0
-    };
-    let selected_end = if end.id == id {
-        end.offset.min(text_len)
-    } else {
-        text_len
-    };
-
-    (selected_start < selected_end).then_some(selected_start..selected_end)
-}
-
-fn word_selection_head<T: Copy + Ord>(
-    text: &str,
-    point: TextSelectionPoint<T>,
-    start: TextSelectionPoint<T>,
-    end: TextSelectionPoint<T>,
-) -> TextSelectionPoint<T> {
-    let offset = if is_inside_word(text, point.offset) || (start <= point && point < end) {
-        let word_range = surrounding_word(text, point.offset);
-        let word_start = TextSelectionPoint::new(point.id, word_range.start);
-        if word_start < start {
-            word_range.start
-        } else {
-            word_range.end
-        }
-    } else {
-        point.offset
-    };
-
-    TextSelectionPoint::new(point.id, offset)
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum CharKind {
     Whitespace,
@@ -469,7 +525,19 @@ enum CharKind {
     Word,
 }
 
-fn surrounding_word(text: &str, offset: usize) -> Range<usize> {
+impl From<char> for CharKind {
+    fn from(character: char) -> Self {
+        if character == '_' || character.is_alphanumeric() {
+            return Self::Word;
+        }
+        if character.is_whitespace() {
+            return Self::Whitespace;
+        }
+        Self::Punctuation
+    }
+}
+
+fn surrounding_word_range_for_text(text: &str, offset: usize) -> Range<usize> {
     let offset = previous_char_boundary(text, offset.min(text.len()));
     let mut start = offset;
     let mut end = offset;
@@ -477,16 +545,16 @@ fn surrounding_word(text: &str, offset: usize) -> Range<usize> {
     let previous_kind = text
         .get(..offset)
         .and_then(|text| text.chars().next_back())
-        .map(char_kind);
+        .map(CharKind::from);
     let next_kind = text
         .get(offset..)
         .and_then(|text| text.chars().next())
-        .map(char_kind);
+        .map(CharKind::from);
     let word_kind = std::cmp::max(previous_kind, next_kind);
 
     if let Some(text_before_offset) = text.get(..offset) {
         for character in text_before_offset.chars().rev().take(128) {
-            if Some(char_kind(character)) == word_kind && character != '\n' {
+            if Some(CharKind::from(character)) == word_kind && character != '\n' {
                 start -= character.len_utf8();
             } else {
                 break;
@@ -496,7 +564,7 @@ fn surrounding_word(text: &str, offset: usize) -> Range<usize> {
 
     if let Some(text_after_offset) = text.get(offset..) {
         for character in text_after_offset.chars().take(128) {
-            if Some(char_kind(character)) == word_kind && character != '\n' {
+            if Some(CharKind::from(character)) == word_kind && character != '\n' {
                 end += character.len_utf8();
             } else {
                 break;
@@ -507,42 +575,11 @@ fn surrounding_word(text: &str, offset: usize) -> Range<usize> {
     start..end
 }
 
-fn is_inside_word(text: &str, offset: usize) -> bool {
-    let offset = previous_char_boundary(text, offset.min(text.len()));
-    let next_char_kind = text
-        .get(offset..)
-        .and_then(|text| text.chars().next())
-        .map(char_kind);
-    let previous_char_kind = text
-        .get(..offset)
-        .and_then(|text| text.chars().next_back())
-        .map(char_kind);
-
-    previous_char_kind.zip(next_char_kind) == Some((CharKind::Word, CharKind::Word))
-}
-
-fn char_kind(character: char) -> CharKind {
-    if character == '_' || character.is_alphanumeric() {
-        return CharKind::Word;
-    }
-    if character.is_whitespace() {
-        return CharKind::Whitespace;
-    }
-    CharKind::Punctuation
-}
-
 fn previous_char_boundary(text: &str, mut offset: usize) -> usize {
     while !text.is_char_boundary(offset) {
         offset = offset.saturating_sub(1);
     }
     offset
-}
-
-fn valid_selection_range(text: &str, range: Range<usize>) -> Option<Range<usize>> {
-    let start = previous_char_boundary(text, range.start.min(text.len()));
-    let end = previous_char_boundary(text, range.end.min(text.len()));
-
-    (start < end).then_some(start..end)
 }
 
 pub fn paint_text_selection(
@@ -617,5 +654,100 @@ pub fn paint_text_selection(
 
         line_origin.y += line_layout.size(line_height).height;
         line_start_index += line_layout.len() + 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_selected_text_tracks_forward_and_backward_selection() {
+        let items = [(10, "foo"), (20, "bar"), (30, "baz")];
+        let [(first_id, _), (second_id, _), (third_id, _)] = items;
+        let selection_order = items.map(|(id, _)| id);
+        let mut text_for_selection = |id| {
+            items.iter().copied().find_map(|(item_id, text)| {
+                if item_id == id {
+                    Some(SharedString::from(text))
+                } else {
+                    None
+                }
+            })
+        };
+        let state = TextSelectionState {
+            selection: Some(TextSelection {
+                start: TextSelectionPoint::new(second_id, 1),
+                end: TextSelectionPoint::new(third_id, 2),
+                reversed: false,
+                mode: TextSelectionMode::Character,
+            }),
+            is_selecting: false,
+            layouts: Vec::new(),
+            selection_bounds: None,
+        };
+
+        assert_eq!(
+            state.selected_text(&selection_order, "\t", &mut text_for_selection),
+            Some("ar\tba".to_string()),
+        );
+
+        let state = TextSelectionState {
+            selection: Some(TextSelection {
+                start: TextSelectionPoint::new(first_id, 1),
+                end: TextSelectionPoint::new(second_id, 1),
+                reversed: true,
+                mode: TextSelectionMode::Character,
+            }),
+            is_selecting: false,
+            layouts: Vec::new(),
+            selection_bounds: None,
+        };
+
+        assert_eq!(
+            state.selected_text(&selection_order, "\t", &mut text_for_selection),
+            Some("oo\tb".to_string()),
+        );
+    }
+
+    #[test]
+    fn test_update_selection_to_point_stops_after_selection_drag_ends() {
+        let items = [(10, "foo"), (20, "bar"), (30, "baz")];
+        let [(first_id, _), (second_id, _), (third_id, _)] = items;
+        let mut state = TextSelectionState {
+            selection: Some(TextSelection {
+                start: TextSelectionPoint::new(first_id, 1),
+                end: TextSelectionPoint::new(second_id, 1),
+                reversed: true,
+                mode: TextSelectionMode::Character,
+            }),
+            is_selecting: true,
+            layouts: Vec::new(),
+            selection_bounds: None,
+        };
+
+        assert!(state.update_selection_to_point(TextSelectionPoint::new(third_id, 2)));
+
+        let selection = state.selection.as_ref().unwrap();
+        assert!(selection.tail() == TextSelectionPoint::new(second_id, 1));
+        assert!(selection.head() == TextSelectionPoint::new(third_id, 2));
+        assert!(!selection.reversed);
+
+        assert!(state.end_selection_drag());
+        assert!(!state.update_selection_to_point(TextSelectionPoint::new(first_id, 1)));
+
+        let selection = state.selection.as_ref().unwrap();
+        assert!(selection.tail() == TextSelectionPoint::new(second_id, 1));
+        assert!(selection.head() == TextSelectionPoint::new(third_id, 2));
+        assert!(!selection.reversed);
+    }
+
+    #[test]
+    fn test_surrounding_word_uses_adjacent_word_at_boundary() {
+        assert_eq!(surrounding_word_range_for_text("foo bar baz", 1), 0..3);
+        assert_eq!(surrounding_word_range_for_text("foo bar baz", 4), 4..7);
+        assert_eq!(surrounding_word_range_for_text("foo bar baz", 6), 4..7);
+        assert_eq!(surrounding_word_range_for_text("foo bar baz", 10), 8..11);
+        assert_eq!(surrounding_word_range_for_text("foo bar baz", 3), 0..3);
     }
 }
