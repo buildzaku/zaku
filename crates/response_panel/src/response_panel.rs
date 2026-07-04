@@ -92,6 +92,7 @@ pub enum ResponsePanelTab {
 struct ResponseSummary {
     text: SharedString,
     color: Color,
+    selectable: bool,
     elapsed_duration: SharedString,
     bytes_received: SharedString,
 }
@@ -238,6 +239,7 @@ impl ResponseState {
             } => Some(ResponseSummary {
                 text: "Fetching".into(),
                 color: Color::Muted,
+                selectable: false,
                 elapsed_duration: format_elapsed_duration(*elapsed_duration),
                 bytes_received: format_bytes_received(*bytes_received),
             }),
@@ -255,6 +257,7 @@ impl ResponseState {
                 Some(ResponseSummary {
                     text,
                     color: status_color(*status_code),
+                    selectable: true,
                     elapsed_duration: format_elapsed_duration(*elapsed_duration),
                     bytes_received: format_bytes_received(*bytes_received),
                 })
@@ -265,6 +268,7 @@ impl ResponseState {
             } => Some(ResponseSummary {
                 text: "Error".into(),
                 color: Color::Error,
+                selectable: true,
                 elapsed_duration: format_elapsed_duration(*elapsed_duration),
                 bytes_received: format_bytes_received(*bytes_received),
             }),
@@ -955,10 +959,12 @@ impl ResponsePanel {
     ) -> impl IntoElement {
         let status = response_summary.text;
         let status_color = response_summary.color;
+        let selectable = response_summary.selectable;
         let elapsed_duration = response_summary.elapsed_duration;
         let bytes_received = response_summary.bytes_received;
 
         SelectableTextGroup::new(summary_text)
+            .selectable(selectable)
             .flex()
             .flex_1()
             .items_center()
@@ -994,6 +1000,7 @@ impl ResponsePanel {
                                 ResponseSummaryTextId::Status,
                                 status,
                             )
+                            .selectable(selectable)
                             .size(TextSize::Small)
                             .color(status_color)
                             .single_line(),
@@ -1011,6 +1018,7 @@ impl ResponsePanel {
                                 ResponseSummaryTextId::ElapsedDuration,
                                 elapsed_duration,
                             )
+                            .selectable(selectable)
                             .size(TextSize::Small)
                             .color(Color::Muted)
                             .single_line(),
@@ -1028,6 +1036,7 @@ impl ResponsePanel {
                                 ResponseSummaryTextId::BytesReceived,
                                 bytes_received,
                             )
+                            .selectable(selectable)
                             .size(TextSize::Small)
                             .color(Color::Muted)
                             .single_line(),

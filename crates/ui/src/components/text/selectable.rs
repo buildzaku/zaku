@@ -19,6 +19,7 @@ use super::{
 pub struct SelectableText<T: Copy + Ord + 'static> {
     base: Div,
     interaction_state: WeakEntity<TextInteractionState<T>>,
+    selectable: bool,
     id: T,
     text: SharedString,
     style: TextStyle,
@@ -33,6 +34,7 @@ impl<T: Copy + Ord + 'static> SelectableText<T> {
         Self {
             base: gpui::div(),
             interaction_state: interaction_state.downgrade(),
+            selectable: true,
             id,
             text: text.into(),
             style: TextStyle::default(),
@@ -45,6 +47,11 @@ impl<T: Copy + Ord + 'static> SelectableText<T> {
 
     pub fn truncate_start(mut self) -> Self {
         self.style.truncate_start = true;
+        self
+    }
+
+    pub fn selectable(mut self, selectable: bool) -> Self {
+        self.selectable = selectable;
         self
     }
 
@@ -132,11 +139,16 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableText<T> {
         let Self {
             base,
             interaction_state,
+            selectable,
             id,
             text,
             style,
         } = self;
-        let interaction_state = interaction_state.upgrade();
+        let interaction_state = if selectable {
+            interaction_state.upgrade()
+        } else {
+            None
+        };
         let selected_range = interaction_state
             .as_ref()
             .and_then(|state| state.read(cx).selected_range_for_text(id, text.as_ref()));
@@ -146,6 +158,7 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableText<T> {
             text: text.clone(),
             styled_text: StyledText::new(text),
             selected_range,
+            selectable,
         };
         style.apply(base, cx).child(element)
     }
@@ -157,6 +170,7 @@ struct SelectableTextElement<T: Copy + Ord + 'static> {
     text: SharedString,
     styled_text: StyledText,
     selected_range: Option<Range<usize>>,
+    selectable: bool,
 }
 
 impl<T: Copy + Ord + 'static> Element for SelectableTextElement<T> {
@@ -193,7 +207,11 @@ impl<T: Copy + Ord + 'static> Element for SelectableTextElement<T> {
     ) -> Self::PrepaintState {
         self.styled_text
             .prepaint(None, inspector_id, bounds, state, window, cx);
-        insert_text_hitboxes(self.styled_text.layout(), window)
+        if self.selectable {
+            insert_text_hitboxes(self.styled_text.layout(), window)
+        } else {
+            Vec::new()
+        }
     }
 
     fn paint(
@@ -207,25 +225,27 @@ impl<T: Copy + Ord + 'static> Element for SelectableTextElement<T> {
         cx: &mut App,
     ) {
         let text_layout = self.styled_text.layout();
-        for hitbox in hitboxes.as_slice() {
-            window.set_cursor_style(CursorStyle::IBeam, hitbox);
-        }
+        if self.selectable {
+            for hitbox in hitboxes.as_slice() {
+                window.set_cursor_style(CursorStyle::IBeam, hitbox);
+            }
 
-        if let Some(interaction_state) = self.interaction_state.as_ref()
-            && let Err(error) = interaction_state.update(cx, |state, _| {
-                state.register_text_layout(self.id, self.text.clone(), text_layout);
-            })
-        {
-            log::trace!("Failed to register selectable text layout: {error:?}");
-        }
+            if let Some(interaction_state) = self.interaction_state.as_ref()
+                && let Err(error) = interaction_state.update(cx, |state, _| {
+                    state.register_text_layout(self.id, self.text.clone(), text_layout);
+                })
+            {
+                log::trace!("Failed to register selectable text layout: {error:?}");
+            }
 
-        if let Some(selected_range) = self.selected_range.clone() {
-            paint_text_selection(
-                selected_range,
-                text_layout,
-                cx.theme().colors().element_selection_background,
-                window,
-            );
+            if let Some(selected_range) = self.selected_range.clone() {
+                paint_text_selection(
+                    selected_range,
+                    text_layout,
+                    cx.theme().colors().element_selection_background,
+                    window,
+                );
+            }
         }
 
         self.styled_text
@@ -245,6 +265,7 @@ impl<T: Copy + Ord + 'static> IntoElement for SelectableTextElement<T> {
 pub struct SelectableTextGroup<T: Copy + Ord + 'static> {
     base: Div,
     interaction_state: WeakEntity<TextInteractionState<T>>,
+    selectable: bool,
     selection_order: Vec<T>,
     copy_separator: SharedString,
     text_for_selection: Option<Rc<dyn Fn(T, &mut Window, &mut App) -> Option<SharedString>>>,
@@ -256,6 +277,7 @@ impl<T: Copy + Ord + 'static> SelectableTextGroup<T> {
         Self {
             base: gpui::div().relative(),
             interaction_state: interaction_state.downgrade(),
+            selectable: true,
             selection_order: Vec::new(),
             copy_separator: SharedString::from(""),
             text_for_selection: None,
@@ -285,6 +307,11 @@ impl<T: Copy + Ord + 'static> SelectableTextGroup<T> {
         self.child = Some(child.into_any_element());
         self
     }
+
+    pub fn selectable(mut self, selectable: bool) -> Self {
+        self.selectable = selectable;
+        self
+    }
 }
 
 impl<T: Copy + Ord + 'static> Styled for SelectableTextGroup<T> {
@@ -298,20 +325,29 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
         let Self {
             base,
             interaction_state,
+            selectable,
             selection_order,
             copy_separator,
             text_for_selection,
             child,
         } = self;
         let interaction_state = interaction_state.upgrade();
-        let focus_handle = interaction_state
-            .as_ref()
-            .map(|state| state.read(cx).focus_handle());
+        let focus_handle = if selectable {
+            interaction_state
+                .as_ref()
+                .map(|state| state.read(cx).focus_handle())
+        } else {
+            None
+        };
         if let Some(interaction_state) = interaction_state.as_ref() {
             interaction_state.update(cx, |state, _| {
                 state.clear_text_layouts();
+                if !selectable {
+                    state.clear_text_selection();
+                }
             });
         }
+        let interaction_state = if selectable { interaction_state } else { None };
         let selection_order = Rc::new(selection_order);
 
         base.when_some(focus_handle.as_ref(), |this, focus_handle| {
