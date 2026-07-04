@@ -457,8 +457,8 @@ impl TableInteractionState {
         let focus_handle = self.focus_handle.clone();
         let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
             menu.context(focus_handle)
-                .action_disabled_when(!has_selected_text, "Copy", Box::new(actions::editor::Copy))
-                .action("Select All", Box::new(actions::editor::SelectAll))
+                .action_disabled_when(!has_selected_text, "Copy", Box::new(actions::text::Copy))
+                .action("Select All", Box::new(actions::text::SelectAll))
         });
 
         window.focus(&context_menu.focus_handle(cx), cx);
@@ -1385,7 +1385,7 @@ impl RenderOnce for Table {
                             let interaction_state = interaction_state.clone();
                             let text_for_selection = text_for_selection.clone();
 
-                            move |_: &actions::editor::Copy, window: &mut Window, cx: &mut App| {
+                            move |_: &actions::text::Copy, window: &mut Window, cx: &mut App| {
                                 interaction_state.update(cx, |state, cx| {
                                     state.copy_selected_text(
                                         row_count,
@@ -1400,7 +1400,7 @@ impl RenderOnce for Table {
                         .on_action({
                             let interaction_state = interaction_state.clone();
 
-                            move |_: &actions::editor::SelectAll, _: &mut Window, cx: &mut App| {
+                            move |_: &actions::text::SelectAll, _: &mut Window, cx: &mut App| {
                                 interaction_state.update(cx, |state, cx| {
                                     state.select_all_text(row_count, cx);
                                 });

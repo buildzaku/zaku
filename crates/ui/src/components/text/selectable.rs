@@ -384,7 +384,7 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
                         let copy_separator = copy_separator.clone();
                         let text_for_selection = text_for_selection.clone();
 
-                        move |_: &actions::editor::Copy, window: &mut Window, cx: &mut App| {
+                        move |_: &actions::text::Copy, window: &mut Window, cx: &mut App| {
                             interaction_state.update(cx, |state, cx| {
                                 state.copy_selected_text(
                                     selection_order.as_ref(),
@@ -400,7 +400,7 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
                         let interaction_state = interaction_state.clone();
                         let selection_order = selection_order.clone();
 
-                        move |_: &actions::editor::SelectAll, _: &mut Window, cx: &mut App| {
+                        move |_: &actions::text::SelectAll, _: &mut Window, cx: &mut App| {
                             interaction_state.update(cx, |state, cx| {
                                 state.select_all_text(selection_order.as_ref(), cx);
                             });
@@ -597,7 +597,7 @@ mod tests {
         let (view, cx) = cx.add_window_view(move |_, cx| TestSelectableTextGroup::new(items, cx));
         let group_bounds = cx.debug_bounds("selectable-text-group").unwrap();
         cx.simulate_click(group_bounds.center(), Modifiers::default());
-        cx.dispatch_action(actions::editor::SelectAll);
+        cx.dispatch_action(actions::text::SelectAll);
 
         assert_selection(Some("foo\tbar\tbaz"), &view, cx);
     }
