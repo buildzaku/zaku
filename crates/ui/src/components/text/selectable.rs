@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, App, Bounds, CursorStyle, DispatchPhase, Div, Element, ElementId, Entity,
+    Anchor, AnyElement, App, Bounds, CursorStyle, DispatchPhase, Div, Element, ElementId, Entity,
     FontWeight, GlobalElementId, Hitbox, InspectorElementId, InteractiveElement, Interactivity,
     LayoutId, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, RenderOnce, SharedString,
     StyleRefinement, Styled, StyledText, WeakEntity, Window, prelude::*,
@@ -345,6 +345,13 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
         } else {
             None
         };
+        let context_menu = if selectable {
+            interaction_state
+                .as_ref()
+                .and_then(|state| state.read(cx).context_menu())
+        } else {
+            None
+        };
         if let Some(interaction_state) = interaction_state.as_ref() {
             interaction_state.update(cx, |state, _| {
                 state.clear_text_layouts();
@@ -370,6 +377,27 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
                                 state.begin_text_selection_at_position(
                                     event.position,
                                     event.click_count,
+                                    window,
+                                    cx,
+                                );
+                            });
+                            cx.stop_propagation();
+                            window.prevent_default();
+                        }
+                    })
+                    .on_mouse_down(MouseButton::Right, {
+                        let interaction_state = interaction_state.clone();
+                        let selection_order = selection_order.clone();
+                        let copy_separator = copy_separator.clone();
+                        let text_for_selection = text_for_selection.clone();
+
+                        move |event, window, cx| {
+                            interaction_state.update(cx, |state, cx| {
+                                state.deploy_text_context_menu(
+                                    selection_order.as_ref(),
+                                    copy_separator.as_ref(),
+                                    text_for_selection.as_ref(),
+                                    event.position,
                                     window,
                                     cx,
                                 );
@@ -451,6 +479,26 @@ impl<T: Copy + Ord + 'static> RenderOnce for SelectableTextGroup<T> {
             },
         )
         .children(child)
+        .when(context_menu.is_some(), |this| {
+            this.child(
+                gpui::div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .left_0()
+                    .occlude(),
+            )
+        })
+        .children(context_menu.as_ref().map(|(menu, position)| {
+            gpui::deferred(
+                gpui::anchored()
+                    .position(*position)
+                    .anchor(Anchor::TopLeft)
+                    .child(menu.clone()),
+            )
+            .with_priority(3)
+        }))
     }
 }
 
