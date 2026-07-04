@@ -1120,6 +1120,9 @@ impl ResponsePanel {
             .border_b_1()
             .border_color(colors.border)
             .bg(colors.panel_tab_bar_background)
+            .capture_any_mouse_down(|_, window, _| {
+                window.prevent_default();
+            })
             .child(
                 gpui::div()
                     .flex()
