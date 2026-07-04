@@ -790,7 +790,7 @@ fn text_cell_style(base: Div, text_cell: &TableTextCell, cx: &App) -> Div {
 
     base.text_ui_size(text_cell.size, cx)
         .when(
-            text_cell.line_height_style == LineHeightStyle::UiLabel,
+            text_cell.line_height_style == LineHeightStyle::Compact,
             |this| this.line_height(gpui::relative(1.0)),
         )
         .text_color(color)

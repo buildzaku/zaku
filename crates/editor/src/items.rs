@@ -187,7 +187,7 @@ fn path_for_file<'a>(
     }
 }
 
-pub fn entry_label_color(selected: bool) -> Color {
+pub fn entry_text_color(selected: bool) -> Color {
     if selected {
         Color::Default
     } else {
@@ -195,7 +195,7 @@ pub fn entry_label_color(selected: bool) -> Color {
     }
 }
 
-pub fn entry_git_aware_label_color(git_status: GitSummary, ignored: bool, selected: bool) -> Color {
+pub fn entry_git_aware_text_color(git_status: GitSummary, ignored: bool, selected: bool) -> Color {
     let tracked = git_status.index + git_status.worktree;
     if git_status.conflict > 0 {
         Color::Conflict
@@ -208,7 +208,7 @@ pub fn entry_git_aware_label_color(git_status: GitSummary, ignored: bool, select
     } else if ignored {
         Color::Ignored
     } else {
-        entry_label_color(selected)
+        entry_text_color(selected)
     }
 }
 

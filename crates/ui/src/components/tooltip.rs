@@ -6,9 +6,9 @@ use std::{borrow::Borrow, rc::Rc};
 
 use theme::ThemeSettings;
 
-use super::label::{Label, LabelCommon, LabelSize};
-
-use crate::{ActiveTheme, Color, KeyBinding, StyledExt, StyledTypography};
+use crate::{
+    ActiveTheme, Color, KeyBinding, StyledExt, StyledTypography, Text, TextCommon, TextSize,
+};
 
 #[derive(Clone, IntoElement)]
 enum Title {
@@ -250,7 +250,7 @@ impl Render for Tooltip {
                                 Some(max_w) => this.max_w(max_w),
                                 None => this.max_w_72(),
                             })
-                            .child(Label::new(meta).size(LabelSize::Small).color(Color::Muted)),
+                            .child(Text::new(meta).size(TextSize::Small).color(Color::Muted)),
                     )
                 })
         })
@@ -313,8 +313,8 @@ impl Render for LinkPreview {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         tooltip_container(cx, |element, _| {
             element.child(
-                Label::new(self.link.clone())
-                    .size(LabelSize::XSmall)
+                Text::new(self.link.clone())
+                    .size(TextSize::XSmall)
                     .color(Color::Muted),
             )
         })

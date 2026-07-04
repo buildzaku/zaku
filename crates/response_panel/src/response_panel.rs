@@ -12,9 +12,9 @@ use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
-    Color, ColumnWidthConfig, DynamicSpacing, IconName, Indicator, KeyBinding, Label, LabelCommon,
-    LabelSize, LineHeightStyle, ScrollAxes, Scrollbars, SelectableText, SelectableTextGroup, Table,
-    TableCell, TableInteractionState, TextCommon, TextInteractionState, TextSize,
+    Color, ColumnWidthConfig, DynamicSpacing, IconName, Indicator, KeyBinding, LineHeightStyle,
+    ScrollAxes, Scrollbars, SelectableText, SelectableTextGroup, Table, TableCell,
+    TableInteractionState, Text, TextCommon, TextInteractionState, TextSize,
 };
 use workspace::{Panel, Workspace};
 
@@ -724,8 +724,8 @@ impl ResponsePanel {
             .justify_center()
             .gap_1()
             .child(
-                Label::new("Send Request")
-                    .size(LabelSize::Small)
+                Text::new("Send Request")
+                    .size(TextSize::Small)
                     .color(Color::Muted),
             )
             .child(KeyBinding::for_action_in(
@@ -794,8 +794,8 @@ impl ResponsePanel {
 
             return empty_content
                 .child(
-                    Label::new("No headers received.")
-                        .size(LabelSize::Small)
+                    Text::new("No headers received.")
+                        .size(TextSize::Small)
                         .color(Color::Muted),
                 )
                 .into_any_element();
@@ -882,8 +882,8 @@ impl ResponsePanel {
 
             return empty_content
                 .child(
-                    Label::new("No cookies received.")
-                        .size(LabelSize::Small)
+                    Text::new("No cookies received.")
+                        .size(TextSize::Small)
                         .color(Color::Muted),
                 )
                 .into_any_element();
@@ -1056,7 +1056,7 @@ impl ResponsePanel {
         let colors = cx.theme().colors();
 
         let render_tab =
-            |id: ElementId, active: bool, label: SharedString, set_active_tab: ResponsePanelTab| {
+            |id: ElementId, active: bool, title: SharedString, set_active_tab: ResponsePanelTab| {
                 let colors = cx.theme().colors();
 
                 gpui::div()
@@ -1097,9 +1097,9 @@ impl ResponsePanel {
                                 )
                             })
                             .child(
-                                Label::new(label)
-                                    .size(LabelSize::Small)
-                                    .line_height_style(LineHeightStyle::UiLabel)
+                                Text::new(title)
+                                    .size(TextSize::Small)
+                                    .line_height_style(LineHeightStyle::Compact)
                                     .weight(FontWeight::MEDIUM)
                                     .color(if active {
                                         Color::Custom(colors.panel_tab_active_foreground)
@@ -1226,8 +1226,8 @@ impl Render for ResponsePanel {
                 .items_center()
                 .justify_center()
                 .child(
-                    Label::new("No response available.")
-                        .size(LabelSize::Small)
+                    Text::new("No response available.")
+                        .size(TextSize::Small)
                         .color(Color::Muted),
                 )
                 .into_any_element()

@@ -10,7 +10,7 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use ui::{ButtonCommon, Clickable, IconButton, IconName, Label, StyledExt, Tooltip};
+use ui::{ButtonCommon, Clickable, IconButton, IconName, StyledExt, Text, Tooltip};
 
 use crate::{Root, Toast, Workspace};
 
@@ -442,9 +442,7 @@ impl RenderOnce for NotificationFrame {
                             .flex()
                             .flex_col()
                             .gap_0p5()
-                            .when_some(self.title.clone(), |div, title| {
-                                div.child(Label::new(title))
-                            })
+                            .when_some(self.title.clone(), |div, title| div.child(Text::new(title)))
                             .child(gpui::div().max_w_96().children(self.contents)),
                     )
                     .when(self.show_close_button, |this| {
@@ -493,8 +491,8 @@ pub mod simple_message_notification {
     use std::sync::Arc;
 
     use ui::{
-        Button, ButtonCommon, ButtonVariant, Clickable, Color, Icon, IconName, IconSize, Label,
-        LabelSize, WithScrollbar,
+        Button, ButtonCommon, ButtonVariant, Clickable, Color, Icon, IconName, IconSize, Text,
+        TextSize, WithScrollbar,
     };
 
     use crate::notifications::NotificationFrame;
@@ -527,7 +525,7 @@ pub mod simple_message_notification {
         {
             let message = message.into();
             Self::new_from_builder(cx, move |_, _| {
-                Label::new(message.clone()).into_any_element()
+                Text::new(message.clone()).into_any_element()
             })
         }
 
@@ -705,7 +703,7 @@ pub mod simple_message_notification {
                         .gap_1p5()
                         .children(self.primary_message.iter().map(|message| {
                             let mut button = Button::new(message.clone(), message.clone())
-                                .label_size(LabelSize::Small)
+                                .text_size(TextSize::Small)
                                 .variant(ButtonVariant::Solid)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(on_click) = this.primary_on_click.as_ref() {
@@ -726,7 +724,7 @@ pub mod simple_message_notification {
                         }))
                         .children(self.secondary_message.iter().map(|message| {
                             let mut button = Button::new(message.clone(), message.clone())
-                                .label_size(LabelSize::Small)
+                                .text_size(TextSize::Small)
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     if let Some(on_click) = this.secondary_on_click.as_ref() {
                                         (on_click)(window, cx);
@@ -757,7 +755,7 @@ pub mod simple_message_notification {
                                         .map(|(message, url)| {
                                             let url = url.clone();
                                             Button::new(message.clone(), message.clone())
-                                                .label_size(LabelSize::Small)
+                                                .text_size(TextSize::Small)
                                                 .variant(ButtonVariant::Solid)
                                                 .end_icon(
                                                     Icon::new(IconName::ArrowUpRight)

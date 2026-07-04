@@ -2,7 +2,7 @@ use gpui::{App, FocusHandle, Focusable, Hsla, Length, SharedString, Window, prel
 use std::sync::Arc;
 
 use theme::ActiveTheme;
-use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
+use ui::{Color, Icon, IconName, IconSize, Text, TextCommon, TextSize};
 
 use crate::ErasedEditor;
 
@@ -16,7 +16,7 @@ pub(crate) struct InputFieldStyle {
 
 pub struct InputField {
     label: Option<SharedString>,
-    label_size: LabelSize,
+    label_size: TextSize,
     placeholder: SharedString,
     editor: Arc<dyn ErasedEditor>,
     start_icon: Option<IconName>,
@@ -36,12 +36,12 @@ impl InputField {
 
         Self {
             label: None,
-            label_size: LabelSize::Small,
+            label_size: TextSize::Small,
             placeholder: SharedString::new(placeholder_text),
             editor,
             start_icon: None,
             muted: false,
-            min_width: gpui::px(192.).into(),
+            min_width: gpui::px(192.0).into(),
             tab_index: None,
             tab_stop: true,
         }
@@ -72,12 +72,12 @@ impl InputField {
         self
     }
 
-    pub fn label_size(mut self, size: LabelSize) -> Self {
+    pub fn label_size(mut self, size: TextSize) -> Self {
         self.label_size = size;
         self
     }
 
-    pub fn label_min_width(mut self, width: impl Into<Length>) -> Self {
+    pub fn min_width(mut self, width: impl Into<Length>) -> Self {
         self.min_width = width.into();
         self
     }
@@ -100,7 +100,7 @@ impl InputField {
         &self.editor
     }
 
-    pub fn text(&self, cx: &App) -> String {
+    pub fn value(&self, cx: &App) -> String {
         self.editor().text(cx)
     }
 
@@ -108,8 +108,8 @@ impl InputField {
         self.editor().clear(window, cx);
     }
 
-    pub fn set_text(&self, text: &str, window: &mut Window, cx: &mut App) {
-        self.editor().set_text(text, window, cx);
+    pub fn set_value(&self, value: &str, window: &mut Window, cx: &mut App) {
+        self.editor().set_text(value, window, cx);
     }
 }
 
@@ -170,7 +170,7 @@ impl Render for InputField {
             .w_full()
             .gap_1()
             .when_some(self.label.clone(), |this, label| {
-                this.child(Label::new(label).size(self.label_size).color(label_color))
+                this.child(Text::new(label).size(self.label_size).color(label_color))
             })
             .child(
                 gpui::div()

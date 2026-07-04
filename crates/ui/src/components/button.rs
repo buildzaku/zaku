@@ -15,18 +15,16 @@ use gpui::{
 use icons::IconName;
 use theme::ActiveTheme;
 
-use super::label::LabelSize;
-
 use crate::{
     Clickable, Color, Disableable, DynamicSpacing, FixedWidth, Icon, IconSize, StyledTypography,
-    TOOLTIP_SHOW_DELAY, Toggleable,
+    TOOLTIP_SHOW_DELAY, TextSize, Toggleable,
 };
 
 #[derive(Debug, Clone)]
 pub struct ButtonStyle {
     pub background: Hsla,
     pub border_color: Hsla,
-    pub label_color: Hsla,
+    pub text_color: Hsla,
     pub icon_color: Hsla,
 }
 
@@ -45,25 +43,25 @@ impl TintColor {
             TintColor::Info => ButtonStyle {
                 background: cx.theme().status().info_background,
                 border_color: cx.theme().status().info_border,
-                label_color: cx.theme().colors().text,
+                text_color: cx.theme().colors().text,
                 icon_color: cx.theme().colors().text,
             },
             TintColor::Error => ButtonStyle {
                 background: cx.theme().status().error_background,
                 border_color: cx.theme().status().error_border,
-                label_color: cx.theme().colors().text,
+                text_color: cx.theme().colors().text,
                 icon_color: cx.theme().colors().text,
             },
             TintColor::Warning => ButtonStyle {
                 background: cx.theme().status().warning_background,
                 border_color: cx.theme().status().warning_border,
-                label_color: cx.theme().colors().text,
+                text_color: cx.theme().colors().text,
                 icon_color: cx.theme().colors().text,
             },
             TintColor::Success => ButtonStyle {
                 background: cx.theme().status().success_background,
                 border_color: cx.theme().status().success_border,
-                label_color: cx.theme().colors().text,
+                text_color: cx.theme().colors().text,
                 icon_color: cx.theme().colors().text,
             },
         }
@@ -101,7 +99,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_background,
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -110,7 +108,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.element_background,
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -119,7 +117,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.text_accent.opacity(0.8),
                     border_color: gpui::transparent_black(),
-                    label_color: colors.panel_background,
+                    text_color: colors.panel_background,
                     icon_color: colors.panel_background,
                 }
             }
@@ -128,7 +126,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_background,
                     border_color: colors.border_variant,
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -137,7 +135,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: colors.border_variant,
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -146,7 +144,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -161,7 +159,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_hover,
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -170,7 +168,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.element_hover,
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -179,7 +177,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.text_accent.opacity(0.8),
                     border_color: gpui::transparent_black(),
-                    label_color: colors.panel_background,
+                    text_color: colors.panel_background,
                     icon_color: colors.panel_background,
                 }
             }
@@ -188,7 +186,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_hover,
                     border_color: colors.border,
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -197,7 +195,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: colors.border_variant,
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -206,7 +204,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -226,7 +224,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_hover,
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -235,7 +233,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.element_active,
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -244,7 +242,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.text_accent.opacity(0.8),
                     border_color: gpui::transparent_black(),
-                    label_color: colors.panel_background,
+                    text_color: colors.panel_background,
                     icon_color: colors.panel_background,
                 }
             }
@@ -253,7 +251,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_active,
                     border_color: colors.border_variant,
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -262,7 +260,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: colors.border_variant,
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -271,7 +269,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text,
+                    text_color: colors.text,
                     icon_color: colors.text,
                 }
             }
@@ -286,7 +284,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.ghost_element_disabled,
                     border_color: colors.border_disabled,
-                    label_color: colors.text_disabled,
+                    text_color: colors.text_disabled,
                     icon_color: colors.text_disabled,
                 }
             }
@@ -295,7 +293,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: colors.element_disabled,
                     border_color: colors.border_disabled,
-                    label_color: colors.text_disabled,
+                    text_color: colors.text_disabled,
                     icon_color: colors.text_disabled,
                 }
             }
@@ -304,7 +302,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: colors.border_disabled,
-                    label_color: colors.text_disabled,
+                    text_color: colors.text_disabled,
                     icon_color: colors.text_disabled,
                 }
             }
@@ -313,7 +311,7 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    label_color: colors.text_disabled,
+                    text_color: colors.text_disabled,
                     icon_color: colors.text_disabled,
                 }
             }
@@ -371,9 +369,9 @@ pub struct Button {
     variant: ButtonVariant,
     selected: bool,
     selected_background: Option<Hsla>,
-    label: SharedString,
-    label_color: Option<Color>,
-    label_size: Option<LabelSize>,
+    text: SharedString,
+    text_color: Option<Color>,
+    text_size: Option<TextSize>,
     base: Div,
     cursor_style: CursorStyle,
     width: Option<DefiniteLength>,
@@ -393,15 +391,15 @@ pub struct Button {
 }
 
 impl Button {
-    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+    pub fn new(id: impl Into<ElementId>, text: impl Into<SharedString>) -> Self {
         Self {
             id: id.into(),
             variant: ButtonVariant::default(),
             selected: false,
             selected_background: None,
-            label: label.into(),
-            label_color: None,
-            label_size: None,
+            text: text.into(),
+            text_color: None,
+            text_size: None,
             base: gpui::div(),
             cursor_style: CursorStyle::PointingHand,
             width: None,
@@ -421,13 +419,13 @@ impl Button {
         }
     }
 
-    pub fn color(mut self, label_color: impl Into<Option<Color>>) -> Self {
-        self.label_color = label_color.into();
+    pub fn color(mut self, text_color: impl Into<Option<Color>>) -> Self {
+        self.text_color = text_color.into();
         self
     }
 
-    pub fn label_size(mut self, label_size: impl Into<Option<LabelSize>>) -> Self {
-        self.label_size = label_size.into();
+    pub fn text_size(mut self, text_size: impl Into<Option<TextSize>>) -> Self {
+        self.text_size = text_size.into();
         self
     }
 
@@ -517,7 +515,7 @@ impl FixedWidth for Button {
     }
 
     fn full_width(mut self) -> Self {
-        self.width = Some(gpui::relative(1.));
+        self.width = Some(gpui::relative(1.0));
         self
     }
 }
@@ -572,20 +570,12 @@ impl RenderOnce for Button {
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
         let text_color = if self.disabled {
-            style.label_color
+            style.text_color
         } else if self.selected {
             text_accent
         } else {
-            style.label_color
-        };
-
-        let label_text_color = if self.disabled {
-            style.label_color
-        } else if self.selected {
-            text_accent
-        } else {
-            self.label_color
-                .map_or(style.label_color, |color| color.color(cx))
+            self.text_color
+                .map_or(style.text_color, |color| color.color(cx))
         };
 
         let icon_color = if self.disabled || self.selected {
@@ -612,7 +602,7 @@ impl RenderOnce for Button {
             }
         }
 
-        let label_size = self.label_size.unwrap_or_default();
+        let text_size = self.text_size.unwrap_or_default();
 
         self.base
             .id(self.id)
@@ -627,12 +617,7 @@ impl RenderOnce for Button {
             .gap(DynamicSpacing::Base04.rems(cx))
             .h(self.height.unwrap_or(self.size.rems().into()))
             .when_some(self.width, |this, width| this.w(width).justify_center())
-            .map(|this| match label_size {
-                LabelSize::Large => this.text_ui_lg(cx),
-                LabelSize::Default => this.text_ui(cx),
-                LabelSize::Small => this.text_ui_sm(cx),
-                LabelSize::XSmall => this.text_ui_xs(cx),
-            })
+            .text_ui_size(text_size, cx)
             .map(|this| match self.size {
                 ButtonSize::Large | ButtonSize::Medium => this.px(DynamicSpacing::Base12.rems(cx)),
                 ButtonSize::Default | ButtonSize::Compact => {
@@ -643,7 +628,7 @@ impl RenderOnce for Button {
             .rounded_md()
             .border_color(style.border_color)
             .bg(background)
-            .text_color(label_text_color)
+            .text_color(text_color)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
             .when(self.disabled, |this| {
                 if self.cursor_style == CursorStyle::PointingHand {
@@ -679,7 +664,7 @@ impl RenderOnce for Button {
                     icon
                 })
             })
-            .child(self.label)
+            .child(self.text)
             .when_some(end_icon, |this, icon| {
                 this.child(if disabled {
                     icon.color(Color::Disabled)

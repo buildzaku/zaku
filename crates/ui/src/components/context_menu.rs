@@ -8,8 +8,8 @@ use theme::ThemeSettings;
 
 use crate::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, Disableable, Icon,
-    IconButton, IconButtonShape, IconName, IconPosition, IconSize, KeyBinding, Label, LabelCommon,
-    LabelSize, List, ListItem, ListSeparator, ListSubHeader, StyledExt, Toggleable, Tooltip,
+    IconButton, IconButtonShape, IconName, IconPosition, IconSize, KeyBinding, List, ListItem,
+    ListSeparator, ListSubHeader, StyledExt, Text, TextCommon, TextSize, Toggleable, Tooltip,
     VisibleOnHover, utils::WithRemSize,
 };
 
@@ -17,7 +17,7 @@ pub enum ContextMenuItem {
     Separator,
     Header(SharedString),
     HeaderWithLink(SharedString, SharedString, SharedString),
-    Label(SharedString),
+    Text(SharedString),
     Entry(ContextMenuEntry),
 }
 
@@ -27,7 +27,7 @@ impl ContextMenuItem {
             ContextMenuItem::Header(_)
             | ContextMenuItem::HeaderWithLink(_, _, _)
             | ContextMenuItem::Separator
-            | ContextMenuItem::Label(_) => false,
+            | ContextMenuItem::Text(_) => false,
             ContextMenuItem::Entry(ContextMenuEntry { disabled, .. }) => !disabled,
         }
     }
@@ -41,7 +41,7 @@ impl From<ContextMenuEntry> for ContextMenuItem {
 
 pub struct ContextMenuEntry {
     toggle: Option<(IconPosition, bool)>,
-    label: SharedString,
+    text: SharedString,
     icon: Option<IconName>,
     icon_position: IconPosition,
     icon_size: IconSize,
@@ -57,10 +57,10 @@ pub struct ContextMenuEntry {
 }
 
 impl ContextMenuEntry {
-    pub fn new(label: impl Into<SharedString>) -> Self {
+    pub fn new(text: impl Into<SharedString>) -> Self {
         ContextMenuEntry {
             toggle: None,
-            label: label.into(),
+            text: text.into(),
             icon: None,
             icon_position: IconPosition::Start,
             icon_size: IconSize::Small,
@@ -279,12 +279,12 @@ impl ContextMenu {
     pub fn header_with_link(
         mut self,
         title: impl Into<SharedString>,
-        link_label: impl Into<SharedString>,
+        link_text: impl Into<SharedString>,
         link_url: impl Into<SharedString>,
     ) -> Self {
         self.items.push(ContextMenuItem::HeaderWithLink(
             title.into(),
-            link_label.into(),
+            link_text.into(),
             link_url.into(),
         ));
         self
@@ -311,13 +311,13 @@ impl ContextMenu {
 
     pub fn entry(
         mut self,
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         action: Option<Box<dyn Action>>,
         handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
-            label: label.into(),
+            text: text.into(),
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -336,7 +336,7 @@ impl ContextMenu {
 
     pub fn entry_with_end_slot(
         mut self,
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         action: Option<Box<dyn Action>>,
         handler: impl Fn(&mut Window, &mut App) + 'static,
         end_slot_icon: IconName,
@@ -345,7 +345,7 @@ impl ContextMenu {
     ) -> Self {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
-            label: label.into(),
+            text: text.into(),
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -364,7 +364,7 @@ impl ContextMenu {
 
     pub fn entry_with_end_slot_on_hover(
         mut self,
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         action: Option<Box<dyn Action>>,
         handler: impl Fn(&mut Window, &mut App) + 'static,
         end_slot_icon: IconName,
@@ -373,7 +373,7 @@ impl ContextMenu {
     ) -> Self {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
-            label: label.into(),
+            text: text.into(),
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -392,7 +392,7 @@ impl ContextMenu {
 
     pub fn toggleable_entry(
         mut self,
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         toggled: bool,
         position: IconPosition,
         action: Option<Box<dyn Action>>,
@@ -400,7 +400,7 @@ impl ContextMenu {
     ) -> Self {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: Some((position, toggled)),
-            label: label.into(),
+            text: text.into(),
             handler: Rc::new(move |_, window, cx| handler(window, cx)),
             secondary_handler: None,
             icon: None,
@@ -417,18 +417,18 @@ impl ContextMenu {
         self
     }
 
-    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.items.push(ContextMenuItem::Label(label.into()));
+    pub fn text(mut self, text: impl Into<SharedString>) -> Self {
+        self.items.push(ContextMenuItem::Text(text.into()));
         self
     }
 
-    pub fn action(self, label: impl Into<SharedString>, action: Box<dyn Action>) -> Self {
-        self.action_checked(label, action, false)
+    pub fn action(self, text: impl Into<SharedString>, action: Box<dyn Action>) -> Self {
+        self.action_checked(text, action, false)
     }
 
     pub fn action_checked(
         mut self,
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         action: Box<dyn Action>,
         checked: bool,
     ) -> Self {
@@ -438,7 +438,7 @@ impl ContextMenu {
             } else {
                 None
             },
-            label: label.into(),
+            text: text.into(),
             action: Some(action.boxed_clone()),
             handler: Rc::new(move |context, window, cx| {
                 if let Some(context) = &context {
@@ -463,12 +463,12 @@ impl ContextMenu {
     pub fn action_disabled_when(
         mut self,
         disabled: bool,
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         action: Box<dyn Action>,
     ) -> Self {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
-            label: label.into(),
+            text: text.into(),
             action: Some(action.boxed_clone()),
             handler: Rc::new(move |context, window, cx| {
                 if let Some(context) = &context {
@@ -490,19 +490,19 @@ impl ContextMenu {
         self
     }
 
-    pub fn link(self, label: impl Into<SharedString>, action: Box<dyn Action>) -> Self {
-        self.link_with_handler(label, action, |_, _| {})
+    pub fn link(self, text: impl Into<SharedString>, action: Box<dyn Action>) -> Self {
+        self.link_with_handler(text, action, |_, _| {})
     }
 
     pub fn link_with_handler(
         mut self,
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         action: Box<dyn Action>,
         handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
         self.items.push(ContextMenuItem::Entry(ContextMenuEntry {
             toggle: None,
-            label: label.into(),
+            text: text.into(),
             action: Some(action.boxed_clone()),
             handler: Rc::new(move |_, window, cx| {
                 handler(window, cx);
@@ -796,15 +796,15 @@ impl ContextMenu {
             ContextMenuItem::Header(header) => ListSubHeader::new(header.clone())
                 .inset(true)
                 .into_any_element(),
-            ContextMenuItem::HeaderWithLink(header, label, url) => {
+            ContextMenuItem::HeaderWithLink(header, text, url) => {
                 let url = url.clone();
                 let link_id = ElementId::Name(format!("link-{url}").into());
                 ListSubHeader::new(header.clone())
                     .inset(true)
                     .end_slot(
-                        Button::new(link_id, label.clone())
+                        Button::new(link_id, text.clone())
                             .color(Color::Muted)
-                            .label_size(LabelSize::Small)
+                            .text_size(TextSize::Small)
                             .size(ButtonSize::None)
                             .variant(ButtonVariant::Ghost)
                             .on_click(move |_, _, cx| {
@@ -815,10 +815,10 @@ impl ContextMenu {
                     )
                     .into_any_element()
             }
-            ContextMenuItem::Label(label) => ListItem::new(idx)
+            ContextMenuItem::Text(text) => ListItem::new(idx)
                 .inset(true)
                 .disabled(true)
-                .child(Label::new(label.clone()))
+                .child(Text::new(text.clone()))
                 .into_any_element(),
             ContextMenuItem::Entry(entry) => {
                 self.render_menu_entry(idx, entry, cx).into_any_element()
@@ -834,7 +834,7 @@ impl ContextMenu {
     ) -> impl IntoElement {
         let ContextMenuEntry {
             toggle,
-            label,
+            text,
             handler,
             icon,
             icon_position,
@@ -861,13 +861,13 @@ impl ContextMenu {
             icon_color.unwrap_or(Color::Default)
         };
 
-        let label_color = if *disabled {
+        let text_color = if *disabled {
             Color::Disabled
         } else {
             Color::Default
         };
 
-        let label_element = if let Some(icon_name) = icon {
+        let content = if let Some(icon_name) = icon {
             gpui::div()
                 .flex()
                 .items_center()
@@ -876,14 +876,14 @@ impl ContextMenu {
                     *icon_position == IconPosition::Start && toggle.is_none(),
                     |flex| flex.child(Icon::new(*icon_name).size(*icon_size).color(icon_color)),
                 )
-                .child(Label::new(label.clone()).color(label_color).truncate())
+                .child(Text::new(text.clone()).color(text_color).truncate())
                 .when(*icon_position == IconPosition::End, |flex| {
                     flex.child(Icon::new(*icon_name).size(*icon_size).color(icon_color))
                 })
                 .into_any_element()
         } else {
-            Label::new(label.clone())
-                .color(label_color)
+            Text::new(text.clone())
+                .color(text_color)
                 .truncate()
                 .into_any_element()
         };
@@ -892,7 +892,7 @@ impl ContextMenu {
             .id(("context-menu-child", idx))
             .child(
                 ListItem::new(idx)
-                    .group_name("label-container")
+                    .group_name("text-container")
                     .inset(true)
                     .disabled(*disabled)
                     .toggle_state(Some(idx) == self.selected_index)
@@ -925,8 +925,8 @@ impl ContextMenu {
                             .items_center()
                             .w_full()
                             .justify_between()
-                            .child(label_element)
-                            .debug_selector(|| format!("MENU_ITEM-{label}"))
+                            .child(content)
+                            .debug_selector(|| format!("MENU_ITEM-{text}"))
                             .children(action.as_ref().map(|action| {
                                 let binding = self.action_context.as_ref().map_or_else(
                                     || KeyBinding::for_action(action.as_ref(), cx),
@@ -980,7 +980,7 @@ impl ContextMenu {
 
                                 if *show_end_slot_on_hover {
                                     gpui::div()
-                                        .visible_on_hover("label-container")
+                                        .visible_on_hover("text-container")
                                         .child(icon_button)
                                         .into_any_element()
                                 } else {

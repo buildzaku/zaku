@@ -882,7 +882,7 @@ impl Pane {
         let is_last_item = item_index + 1 == self.items.len();
         let position_relative_to_active_item = item_index.cmp(&self.active_item_index);
 
-        let label = item.tab_content(
+        let content = item.tab_content(
             TabContentParams {
                 detail: Some(detail),
                 selected: is_active,
@@ -1014,7 +1014,7 @@ impl Pane {
                     .items_center()
                     .gap_2()
                     .when_some(icon, |this, icon| this.child(icon))
-                    .child(label),
+                    .child(content),
             )
             .when(!capability.editable(), |this| {
                 this.child(
@@ -1112,7 +1112,7 @@ impl Focusable for Pane {
 
 impl Render for DraggedTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let label = self.item.tab_content(
+        let content = self.item.tab_content(
             TabContentParams {
                 detail: Some(self.detail),
                 selected: false,
@@ -1127,7 +1127,7 @@ impl Render for DraggedTab {
         Tab::new("dragged-tab")
             .toggle_state(self.is_active)
             .font(ui_font)
-            .child(label)
+            .child(content)
             .render(window, cx)
     }
 }

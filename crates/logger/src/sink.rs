@@ -111,7 +111,7 @@ pub fn submit(mut record: Record) {
         record.line.take();
     }
 
-    let (label, ansi_color) = match record.level {
+    let (text, ansi_color) = match record.level {
         Level::Error => ("ERROR", ANSI_RED),
         Level::Warn => ("WARN ", ANSI_YELLOW),
         Level::Info => ("INFO ", ANSI_GREEN),
@@ -126,7 +126,7 @@ pub fn submit(mut record: Record) {
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
             Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
             ansi_color,
-            label,
+            text,
             SourceFmt {
                 scope: record.scope,
                 module_path: record.module_path,
@@ -142,7 +142,7 @@ pub fn submit(mut record: Record) {
             "{} {ANSI_BOLD}{}{}{ANSI_RESET} {} {}",
             Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
             ansi_color,
-            label,
+            text,
             SourceFmt {
                 scope: record.scope,
                 module_path: record.module_path,
@@ -182,7 +182,7 @@ pub fn submit(mut record: Record) {
                 &mut writer,
                 "{} {} {} {}",
                 Zoned::now().strftime("%Y-%m-%dT%H:%M:%S%:z"),
-                label,
+                text,
                 SourceFmt {
                     scope: record.scope,
                     module_path: record.module_path,

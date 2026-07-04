@@ -4,12 +4,12 @@ use std::sync::Arc;
 use theme::ThemeSettings;
 
 use crate::{
-    ActiveTheme, Color, Disclosure, DynamicSpacing, Label, LabelCommon, Toggleable, VisibleOnHover,
+    ActiveTheme, Color, Disclosure, DynamicSpacing, Text, TextCommon, Toggleable, VisibleOnHover,
 };
 
 #[derive(IntoElement)]
 pub struct ListHeader {
-    label: SharedString,
+    text: SharedString,
     start_slot: Option<AnyElement>,
     end_slot: Option<AnyElement>,
     end_hover_slot: Option<AnyElement>,
@@ -20,9 +20,9 @@ pub struct ListHeader {
 }
 
 impl ListHeader {
-    pub fn new(label: impl Into<SharedString>) -> Self {
+    pub fn new(text: impl Into<SharedString>) -> Self {
         Self {
-            label: label.into(),
+            text: text.into(),
             start_slot: None,
             end_slot: None,
             end_hover_slot: None,
@@ -79,7 +79,7 @@ impl RenderOnce for ListHeader {
         let ui_density = ThemeSettings::get_global(cx).ui_density;
 
         gpui::div()
-            .id(self.label.clone())
+            .id(self.text.clone())
             .flex()
             .items_center()
             .w_full()
@@ -112,12 +112,12 @@ impl RenderOnce for ListHeader {
                             }))
                             .child(
                                 gpui::div()
-                                    .id("label-container")
+                                    .id("text-container")
                                     .flex()
                                     .gap(DynamicSpacing::Base04.rems(cx))
                                     .items_center()
                                     .children(self.start_slot)
-                                    .child(Label::new(self.label.clone()).color(Color::Muted))
+                                    .child(Text::new(self.text.clone()).color(Color::Muted))
                                     .when_some(self.on_toggle, |this, on_toggle| {
                                         this.on_click(move |event, window, cx| {
                                             on_toggle(event, window, cx);

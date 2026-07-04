@@ -1,8 +1,8 @@
 use gpui::{Context, IntoElement, ParentElement, Render, Window, prelude::*};
 
 use ui::{
-    Color, Disableable, Label, LabelCommon, ListItem, ListItemSpacing, ScrollAxes, Scrollbars,
-    StyledExt, WithScrollbar,
+    Color, Disableable, ListItem, ListItemSpacing, ScrollAxes, Scrollbars, StyledExt, Text,
+    TextCommon, WithScrollbar,
 };
 
 use crate::{ElementContainer, Picker, PickerDelegate, PickerEditorPosition, head::Head};
@@ -107,7 +107,7 @@ impl<D: PickerDelegate> Picker<D> {
                                     .inset(true)
                                     .spacing(ListItemSpacing::Sparse)
                                     .disabled(true)
-                                    .child(Label::new(text).color(Color::Muted)),
+                                    .child(Text::new(text).color(Color::Muted)),
                             ),
                         )
                     },

@@ -2,24 +2,24 @@ use gpui::{App, IntoElement, SharedString, Window, prelude::*};
 
 use super::{ButtonCommon, ButtonLike, ButtonSize};
 
-use crate::{Clickable, Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
+use crate::{Clickable, Color, Icon, IconName, IconSize, Text, TextCommon, TextSize};
 
 #[derive(IntoElement)]
 pub struct LinkButton {
-    label: SharedString,
-    label_size: LabelSize,
-    label_color: Color,
+    text: SharedString,
+    text_size: TextSize,
+    text_color: Color,
     link: String,
     no_icon: bool,
 }
 
 impl LinkButton {
-    pub fn new(label: impl Into<SharedString>, link: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<SharedString>, link: impl Into<String>) -> Self {
         Self {
             link: link.into(),
-            label: label.into(),
-            label_size: LabelSize::Default,
-            label_color: Color::Default,
+            text: text.into(),
+            text_size: TextSize::Default,
+            text_color: Color::Default,
             no_icon: false,
         }
     }
@@ -29,20 +29,20 @@ impl LinkButton {
         self
     }
 
-    pub fn label_size(mut self, label_size: LabelSize) -> Self {
-        self.label_size = label_size;
+    pub fn text_size(mut self, text_size: TextSize) -> Self {
+        self.text_size = text_size;
         self
     }
 
-    pub fn label_color(mut self, label_color: Color) -> Self {
-        self.label_color = label_color;
+    pub fn text_color(mut self, text_color: Color) -> Self {
+        self.text_color = text_color;
         self
     }
 }
 
 impl RenderOnce for LinkButton {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let id = format!("{}-{}", self.label, self.link);
+        let id = format!("{}-{}", self.text, self.link);
 
         ButtonLike::new(id)
             .size(ButtonSize::None)
@@ -52,9 +52,9 @@ impl RenderOnce for LinkButton {
                     .items_center()
                     .gap_0p5()
                     .child(
-                        Label::new(self.label)
-                            .size(self.label_size)
-                            .color(self.label_color)
+                        Text::new(self.text)
+                            .size(self.text_size)
+                            .color(self.text_color)
                             .underline(),
                     )
                     .when(!self.no_icon, |this| {

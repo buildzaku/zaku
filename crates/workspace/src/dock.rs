@@ -130,7 +130,7 @@ pub enum DockPosition {
 }
 
 impl DockPosition {
-    pub fn label(&self) -> &'static str {
+    pub fn display_name(&self) -> &'static str {
         match self {
             DockPosition::Left => "Left",
             DockPosition::Bottom => "Bottom",
@@ -384,7 +384,7 @@ impl Dock {
             .with_context(|| {
                 format!(
                     "Couldn't find any enabled panel for the {} dock.",
-                    self.position.label()
+                    self.position.display_name()
                 )
             })
     }
@@ -616,7 +616,10 @@ impl Render for PanelButtons {
                 let is_active_button = Some(index) == active_index && is_open;
                 let (action, tooltip) = if is_active_button {
                     let action = dock.toggle_action();
-                    (action, format!("Close {} Dock", dock.position().label()))
+                    (
+                        action,
+                        format!("Close {} Dock", dock.position().display_name()),
+                    )
                 } else {
                     let action = entry.panel().toggle_action(window, cx);
                     (action, icon_tooltip.to_string())

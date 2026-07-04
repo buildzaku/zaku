@@ -13,9 +13,7 @@ pub use list_sub_header::*;
 use gpui::{AnyElement, App, SharedString, Window, prelude::*};
 use smallvec::SmallVec;
 
-use super::label::{Label, LabelCommon};
-
-use crate::{Color, DynamicSpacing};
+use crate::{Color, DynamicSpacing, Text, TextCommon};
 
 pub enum EmptyMessage {
     Text(SharedString),
@@ -99,7 +97,7 @@ impl RenderOnce for List {
                 (true, Some(false)) => this,
                 (true, _) => match self.empty_message {
                     EmptyMessage::Text(text) => {
-                        this.px_2().child(Label::new(text).color(Color::Muted))
+                        this.px_2().child(Text::new(text).color(Color::Muted))
                     }
                     EmptyMessage::Element(element) => this.child(element),
                 },
