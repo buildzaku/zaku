@@ -2,7 +2,7 @@ use gpui::{Bounds, Hsla, Pixels, Point, SharedString, TextLayout, Window, Wrappe
 use smallvec::SmallVec;
 use std::{cmp::Ordering, ops::Range, sync::Arc};
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TextSelectionPoint<T> {
     id: T,
     offset: usize,
@@ -117,6 +117,30 @@ impl TextLayoutSnapshot {
 
         line_start_index.saturating_sub(1)
     }
+
+    #[cfg(test)]
+    fn position_for_offset(&self, text: &str, offset: usize) -> Option<Point<Pixels>> {
+        let offset = previous_char_boundary(text, offset.min(text.len()));
+        let mut line_origin = self.bounds.origin;
+        let mut line_start_index = 0;
+
+        for line_layout in &self.lines {
+            let line_end_index = line_start_index + line_layout.len();
+            if offset <= line_end_index {
+                let position =
+                    line_layout.position_for_index(offset - line_start_index, self.line_height)?;
+                return Some(gpui::point(
+                    line_origin.x + position.x,
+                    line_origin.y + position.y,
+                ));
+            }
+
+            line_origin.y += line_layout.size(self.line_height).height;
+            line_start_index += line_layout.len() + 1;
+        }
+
+        None
+    }
 }
 
 pub struct TextSelectionState<T> {
@@ -201,6 +225,14 @@ impl<T: Copy + Ord> TextSelectionState<T> {
         let selected_end = previous_char_boundary(text, selected_end);
 
         (selected_start < selected_end).then_some(selected_start..selected_end)
+    }
+
+    #[cfg(test)]
+    pub(super) fn position_for_id_offset(&self, id: T, offset: usize) -> Option<Point<Pixels>> {
+        let layout = self.layout_for_id(id)?;
+        layout
+            .layout
+            .position_for_offset(layout.text.as_ref(), offset)
     }
 
     pub(super) fn selected_text(
@@ -663,11 +695,12 @@ mod tests {
 
     #[test]
     fn test_selected_text_tracks_forward_and_backward_selection() {
-        let items = [(10, "foo"), (20, "bar"), (30, "baz")];
-        let [(first_id, _), (second_id, _), (third_id, _)] = items;
+        let items = [(0, "foo"), (1, "bar"), (2, "baz")];
+        let [(foo_id, _), (bar_id, _), (baz_id, _)] = items;
         let selection_order = items.map(|(id, _)| id);
+        let copy_separator = "\t";
         let mut text_for_selection = |id| {
-            items.iter().copied().find_map(|(item_id, text)| {
+            items.iter().find_map(|&(item_id, text)| {
                 if item_id == id {
                     Some(SharedString::from(text))
                 } else {
@@ -675,10 +708,13 @@ mod tests {
                 }
             })
         };
+        let foo_byte_offset = 1;
+        let bar_byte_offset = 1;
+        let baz_byte_offset = 2;
         let state = TextSelectionState {
             selection: Some(TextSelection {
-                start: TextSelectionPoint::new(second_id, 1),
-                end: TextSelectionPoint::new(third_id, 2),
+                start: TextSelectionPoint::new(bar_id, bar_byte_offset),
+                end: TextSelectionPoint::new(baz_id, baz_byte_offset),
                 reversed: false,
                 mode: TextSelectionMode::Character,
             }),
@@ -688,14 +724,14 @@ mod tests {
         };
 
         assert_eq!(
-            state.selected_text(&selection_order, "\t", &mut text_for_selection),
+            state.selected_text(&selection_order, copy_separator, &mut text_for_selection),
             Some("ar\tba".to_string()),
         );
 
         let state = TextSelectionState {
             selection: Some(TextSelection {
-                start: TextSelectionPoint::new(first_id, 1),
-                end: TextSelectionPoint::new(second_id, 1),
+                start: TextSelectionPoint::new(foo_id, foo_byte_offset),
+                end: TextSelectionPoint::new(bar_id, bar_byte_offset),
                 reversed: true,
                 mode: TextSelectionMode::Character,
             }),
@@ -705,19 +741,22 @@ mod tests {
         };
 
         assert_eq!(
-            state.selected_text(&selection_order, "\t", &mut text_for_selection),
+            state.selected_text(&selection_order, copy_separator, &mut text_for_selection),
             Some("oo\tb".to_string()),
         );
     }
 
     #[test]
     fn test_update_selection_to_point_stops_after_selection_drag_ends() {
-        let items = [(10, "foo"), (20, "bar"), (30, "baz")];
-        let [(first_id, _), (second_id, _), (third_id, _)] = items;
+        let items = [(0, "foo"), (1, "bar"), (2, "baz")];
+        let [(foo_id, _), (bar_id, _), (baz_id, _)] = items;
+        let foo_byte_offset = 1;
+        let bar_byte_offset = 1;
+        let baz_byte_offset = 2;
         let mut state = TextSelectionState {
             selection: Some(TextSelection {
-                start: TextSelectionPoint::new(first_id, 1),
-                end: TextSelectionPoint::new(second_id, 1),
+                start: TextSelectionPoint::new(foo_id, foo_byte_offset),
+                end: TextSelectionPoint::new(bar_id, bar_byte_offset),
                 reversed: true,
                 mode: TextSelectionMode::Character,
             }),
@@ -726,19 +765,31 @@ mod tests {
             selection_bounds: None,
         };
 
-        assert!(state.update_selection_to_point(TextSelectionPoint::new(third_id, 2)));
+        assert!(state.update_selection_to_point(TextSelectionPoint::new(baz_id, baz_byte_offset)));
 
         let selection = state.selection.as_ref().unwrap();
-        assert!(selection.tail() == TextSelectionPoint::new(second_id, 1));
-        assert!(selection.head() == TextSelectionPoint::new(third_id, 2));
+        assert_eq!(
+            selection.tail(),
+            TextSelectionPoint::new(bar_id, bar_byte_offset)
+        );
+        assert_eq!(
+            selection.head(),
+            TextSelectionPoint::new(baz_id, baz_byte_offset)
+        );
         assert!(!selection.reversed);
 
         assert!(state.end_selection_drag());
-        assert!(!state.update_selection_to_point(TextSelectionPoint::new(first_id, 1)));
+        assert!(!state.update_selection_to_point(TextSelectionPoint::new(foo_id, foo_byte_offset)));
 
         let selection = state.selection.as_ref().unwrap();
-        assert!(selection.tail() == TextSelectionPoint::new(second_id, 1));
-        assert!(selection.head() == TextSelectionPoint::new(third_id, 2));
+        assert_eq!(
+            selection.tail(),
+            TextSelectionPoint::new(bar_id, bar_byte_offset)
+        );
+        assert_eq!(
+            selection.head(),
+            TextSelectionPoint::new(baz_id, baz_byte_offset)
+        );
         assert!(!selection.reversed);
     }
 

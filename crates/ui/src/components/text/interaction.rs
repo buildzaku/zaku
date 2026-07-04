@@ -48,6 +48,11 @@ impl<T: Copy + Ord + 'static> TextInteractionState<T> {
         self.text_selection.selected_range_for_id(id, text)
     }
 
+    #[cfg(test)]
+    pub(super) fn position_for_text_offset(&self, id: T, offset: usize) -> Option<Point<Pixels>> {
+        self.text_selection.position_for_id_offset(id, offset)
+    }
+
     pub(super) fn begin_text_selection_at_position(
         &mut self,
         position: Point<Pixels>,
@@ -81,7 +86,7 @@ impl<T: Copy + Ord + 'static> TextInteractionState<T> {
         }
     }
 
-    fn selected_text(
+    pub(super) fn selected_text(
         &self,
         selection_order: &[T],
         copy_separator: &str,

@@ -28,3 +28,7 @@ strum = { workspace = true }
 theme = { workspace = true }
 ui_macros = { workspace = true }
 util = { workspace = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+settings = { workspace = true, features = ["test"] }
