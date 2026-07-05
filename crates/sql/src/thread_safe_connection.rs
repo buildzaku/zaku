@@ -242,10 +242,14 @@ impl<M: Migrator> ThreadSafeConnectionBuilder<M> {
                         .and_then(|mut stmt| stmt())?;
                 }
 
-                let foreign_keys_enabled = connection.select_row::<i32>("PRAGMA foreign_keys")?()?
+                let foreign_keys_enabled = connection
+                    .select_row::<i32>("PRAGMA foreign_keys")
+                    .and_then(|mut stmt| stmt())?
                     .is_some_and(|enabled| enabled != 0);
 
-                connection.exec("PRAGMA foreign_keys = OFF;")?()?;
+                connection
+                    .exec("PRAGMA foreign_keys = OFF;")
+                    .and_then(|mut stmt| stmt())?;
 
                 let mut migration_result =
                     anyhow::Result::<()>::Err(anyhow!("Migration never run"));
@@ -260,7 +264,9 @@ impl<M: Migrator> ThreadSafeConnectionBuilder<M> {
                 }
 
                 if foreign_keys_enabled {
-                    connection.exec("PRAGMA foreign_keys = ON;")?()?;
+                    connection
+                        .exec("PRAGMA foreign_keys = ON;")
+                        .and_then(|mut stmt| stmt())?;
                 }
 
                 migration_result
