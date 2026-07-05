@@ -154,14 +154,10 @@ impl ParentElement for ButtonLike {
 impl RenderOnce for ButtonLike {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let variant = self.variant;
-        let style = if self.disabled {
-            variant.disabled(cx)
-        } else {
-            variant.enabled(cx)
-        };
+        let style = variant.enabled(cx);
         let hovered_style = variant.hovered(cx);
-        let active_style = variant.active(cx);
-        let background = if self.selected && !self.disabled {
+        let selected = self.selected && !self.disabled;
+        let background = if selected {
             self.selected_background.unwrap_or(style.background)
         } else {
             style.background
@@ -202,16 +198,11 @@ impl RenderOnce for ButtonLike {
             .bg(background)
             .text_color(style.text_color)
             .when(self.disabled, |this| {
-                if self.cursor_style == CursorStyle::PointingHand {
-                    this.cursor_not_allowed()
-                } else {
-                    this.cursor(self.cursor_style)
-                }
+                this.cursor(CursorStyle::Arrow).opacity(0.4)
             })
             .when(!self.disabled, |this| {
                 this.cursor(self.cursor_style)
                     .hover(|style| style.bg(hovered_style.background))
-                    .active(|style| style.bg(active_style.background))
             })
             .when_some(
                 self.on_click.filter(|_| !self.disabled),

@@ -1,9 +1,8 @@
-use gpui::{FontFeatures, FontStyle, FontWeight, Pixels, SharedString, WindowBackgroundAppearance};
+use gpui::{FontFeatures, FontStyle, FontWeight, Pixels, SharedString};
 use std::sync::Arc;
 
 use settings_content::{
     FontFamilyName, FontFeaturesContent, FontSize, FontStyleContent, FontWeightContent,
-    WindowBackgroundContent,
 };
 
 pub trait IntoGpui {
@@ -53,18 +52,6 @@ impl IntoGpui for FontFeaturesContent {
 
     fn into_gpui(self) -> Self::Output {
         FontFeatures(Arc::new(self.0.into_iter().collect()))
-    }
-}
-
-impl IntoGpui for WindowBackgroundContent {
-    type Output = WindowBackgroundAppearance;
-
-    fn into_gpui(self) -> Self::Output {
-        match self {
-            Self::Opaque => WindowBackgroundAppearance::Opaque,
-            Self::Transparent => WindowBackgroundAppearance::Transparent,
-            Self::Blurred => WindowBackgroundAppearance::Blurred,
-        }
     }
 }
 

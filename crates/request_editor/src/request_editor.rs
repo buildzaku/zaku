@@ -1858,7 +1858,12 @@ impl RequestEditor {
                     .child(gpui::div().flex_1().child(url))
                     .child(
                         Button::new("request-send", "Send")
-                            .variant(ButtonVariant::Accent)
+                            .variant(ButtonVariant::Custom {
+                                background: colors.text_accent.opacity(0.8),
+                                foreground: colors.surface_background,
+                                hover_background: colors.text_accent.opacity(0.8),
+                                border: gpui::transparent_black(),
+                            })
                             .size(ButtonSize::Large)
                             .width(ui::rems_from_px(60.0))
                             .font_weight(FontWeight::MEDIUM)

@@ -1,14 +1,13 @@
-use gpui::{Hsla, WindowBackgroundAppearance};
-use refineable::Refineable;
+use gpui::Hsla;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{StatusColors, StatusColorsRefinement, SyntaxTheme, fallback};
+use refineable::Refineable;
+
+use crate::{StatusColors, StatusColorsRefinement, SyntaxTheme, Theme};
 
 #[derive(Debug, Clone, PartialEq, Refineable)]
 pub struct ThemeStyles {
-    pub window_background_appearance: WindowBackgroundAppearance,
-
     #[refineable]
     pub colors: ThemeColors,
 
@@ -18,7 +17,7 @@ pub struct ThemeStyles {
     pub syntax: Arc<SyntaxTheme>,
 }
 
-#[derive(Debug, Clone, PartialEq, Refineable)]
+#[derive(Debug, Clone, Default, PartialEq, Refineable)]
 #[refineable(Debug, Deserialize)]
 pub struct ThemeColors {
     pub background: Hsla,
@@ -44,6 +43,15 @@ pub struct ThemeColors {
     pub icon_muted: Hsla,
     pub icon_disabled: Hsla,
     pub icon_accent: Hsla,
+
+    pub button_background: Hsla,
+    pub button_foreground: Hsla,
+    pub button_hover_background: Hsla,
+    pub button_border: Hsla,
+    pub button_secondary_background: Hsla,
+    pub button_secondary_foreground: Hsla,
+    pub button_secondary_hover_background: Hsla,
+    pub button_secondary_border: Hsla,
 
     pub element_background: Hsla,
     pub element_hover: Hsla,
@@ -89,10 +97,10 @@ pub struct ThemeColors {
 
 impl ThemeColors {
     pub fn dark() -> Self {
-        fallback::fallback_dark_theme().styles.colors
+        Theme::default_dark().styles.colors
     }
 
     pub fn light() -> Self {
-        fallback::fallback_light_theme().styles.colors
+        Theme::default_light().styles.colors
     }
 }

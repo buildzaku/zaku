@@ -72,14 +72,10 @@ impl Disableable for StyledIcon {
 
 impl RenderOnce for StyledIcon {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let icon = self
-            .selected_icon
-            .filter(|_| self.selected)
-            .unwrap_or(self.icon);
+        let selected = self.selected && !self.disabled;
+        let icon = self.selected_icon.filter(|_| selected).unwrap_or(self.icon);
 
-        let icon_color = if self.disabled {
-            Color::Disabled
-        } else if self.selected {
+        let icon_color = if selected {
             self.selected_icon_color.unwrap_or(Color::Selected)
         } else {
             self.color
