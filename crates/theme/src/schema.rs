@@ -1,10 +1,10 @@
 pub use settings::{
-    FontStyleContent, FontWeightContent, HighlightStyleContent, StatusColorsContent,
-    ThemeColorsContent, ThemeStyleContent, WindowBackgroundContent,
+    FontStyleContent, FontWeightContent, HighlightStyleContent, ThemeColorsContent,
+    ThemeStyleContent,
 };
 
 use anyhow::Context;
-use gpui::{HighlightStyle, Hsla, Rgba, WindowBackgroundAppearance};
+use gpui::{HighlightStyle, Hsla, Rgba};
 use palette::FromColor;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -83,18 +83,14 @@ pub struct ThemeContent {
 impl ThemeContent {
     fn into_theme(self, style: &ThemeStyleContent) -> Theme {
         let syntax_theme = Arc::new(SyntaxTheme::new(syntax_overrides(style)));
-        let window_background_appearance = style
-            .window_background_appearance
-            .map_or(WindowBackgroundAppearance::Opaque, IntoGpui::into_gpui);
 
         Theme {
             id: uuid::Uuid::new_v4().to_string(),
             name: self.name.into(),
             appearance: self.appearance.into(),
             styles: ThemeStyles {
-                window_background_appearance,
                 colors: theme_colors(&style.colors),
-                status: status_colors(&style.status),
+                status: status_colors(&style.colors),
                 syntax: syntax_theme,
             },
         }
@@ -119,7 +115,7 @@ fn syntax_overrides(this: &ThemeStyleContent) -> Vec<(String, HighlightStyle)> {
         .collect()
 }
 
-fn status_colors(colors: &StatusColorsContent) -> StatusColors {
+fn status_colors(colors: &ThemeColorsContent) -> StatusColors {
     let color = |color: &Option<String>| {
         parse_color(color.as_deref().expect("theme color should be present"))
     };

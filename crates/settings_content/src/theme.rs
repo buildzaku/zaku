@@ -147,14 +147,8 @@ pub struct ThemeSettingsContent {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
 #[serde(default)]
 pub struct ThemeStyleContent {
-    #[serde(rename = "background.appearance")]
-    pub window_background_appearance: Option<WindowBackgroundContent>,
-
-    #[serde(flatten, default)]
+    #[serde(default)]
     pub colors: ThemeColorsContent,
-
-    #[serde(flatten, default)]
-    pub status: StatusColorsContent,
 
     #[serde(default)]
     pub syntax: IndexMap<String, HighlightStyleContent>,
@@ -343,12 +337,7 @@ pub struct ThemeColorsContent {
     pub scrollbar_thumb_active_background: Option<String>,
     #[serde(rename = "scrollbar.thumb.border")]
     pub scrollbar_thumb_border: Option<String>,
-}
 
-#[with_fallible_options]
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, MergeFrom)]
-#[serde(default)]
-pub struct StatusColorsContent {
     #[serde(rename = "conflict")]
     pub conflict: Option<String>,
     #[serde(rename = "conflict.background")]
@@ -439,14 +428,6 @@ pub struct StatusColorsContent {
     pub warning_background: Option<String>,
     #[serde(rename = "warning.border")]
     pub warning_border: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, MergeFrom)]
-#[serde(rename_all = "snake_case")]
-pub enum WindowBackgroundContent {
-    Opaque,
-    Transparent,
-    Blurred,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, MergeFrom)]

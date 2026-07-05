@@ -4,15 +4,13 @@ mod styles;
 
 pub use schema::{
     AppearanceContent, FontStyleContent, FontWeightContent, HighlightStyleContent,
-    StatusColorsContent, ThemeColorsContent, ThemeContent, ThemeFamilyContent, ThemeStyleContent,
-    WindowBackgroundContent, parse_color,
+    ThemeColorsContent, ThemeContent, ThemeFamilyContent, ThemeStyleContent, parse_color,
 };
 pub use settings::*;
 pub use styles::*;
 
 use gpui::{
     App, AssetSource, BorrowAppContext, Global, Hsla, Pixels, SharedString, WindowAppearance,
-    WindowBackgroundAppearance,
 };
 use palette::{FromColor, Hsl, Okhsl};
 use parking_lot::RwLock;
@@ -176,10 +174,6 @@ impl Theme {
 
     pub fn appearance(&self) -> Appearance {
         self.appearance
-    }
-
-    pub fn window_background_appearance(&self) -> WindowBackgroundAppearance {
-        self.styles.window_background_appearance
     }
 
     pub fn status(&self) -> &StatusColors {

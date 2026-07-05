@@ -1,4 +1,4 @@
-use gpui::{Hsla, WindowBackgroundAppearance};
+use gpui::Hsla;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -8,8 +8,6 @@ use crate::{StatusColors, StatusColorsRefinement, SyntaxTheme, Theme};
 
 #[derive(Debug, Clone, PartialEq, Refineable)]
 pub struct ThemeStyles {
-    pub window_background_appearance: WindowBackgroundAppearance,
-
     #[refineable]
     pub colors: ThemeColors,
 

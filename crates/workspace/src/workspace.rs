@@ -36,8 +36,8 @@ use gpui::{
     Div, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Global,
     HitboxBehavior, Hsla, KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions,
     Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling,
-    TitlebarOptions, WeakEntity, Window, WindowBounds, WindowHandle, WindowId, WindowOptions,
-    prelude::*,
+    TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle,
+    WindowId, WindowOptions, prelude::*,
 };
 #[cfg(any(test, feature = "test"))]
 use gpui::{TestAppContext, VisualTestContext};
@@ -536,7 +536,6 @@ fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptio
             .into_iter()
             .find(|display| display.uuid().ok() == Some(uuid))
     });
-    let window_background = cx.theme().window_background_appearance();
     let window_decorations = {
         #[cfg(target_os = "linux")]
         {
@@ -566,7 +565,7 @@ fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptio
             traffic_light_position,
         }),
         display_id: display.map(|display| display.id()),
-        window_background,
+        window_background: WindowBackgroundAppearance::Opaque,
         window_decorations,
         app_id: Some(ZAKU_IDENTIFIER.to_owned()),
         ..WindowOptions::default()
