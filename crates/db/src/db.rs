@@ -77,7 +77,7 @@ pub fn file_db_failed() -> bool {
 
 async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
     log::trace!("Opening database {}", path.display());
-    ThreadSafeConnection::builder(ConnectionTarget::file(path))
+    ThreadSafeConnection::builder::<()>(ConnectionTarget::file(path))
         .with_db_init_query(DB_INIT_QUERY)
         .with_connection_init_query(CONNECTION_INIT_QUERY)
         .build()
@@ -94,7 +94,7 @@ async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
 
 async fn open_fallback_db() -> ThreadSafeConnection {
     log::warn!("Opening fallback in-memory database");
-    ThreadSafeConnection::builder(ConnectionTarget::memory(FALLBACK_MEMORY_DB_NAME))
+    ThreadSafeConnection::builder::<()>(ConnectionTarget::memory(FALLBACK_MEMORY_DB_NAME))
         .with_db_init_query(DB_INIT_QUERY)
         .with_connection_init_query(CONNECTION_INIT_QUERY)
         .build()
@@ -104,7 +104,7 @@ async fn open_fallback_db() -> ThreadSafeConnection {
 
 #[cfg(any(test, feature = "test"))]
 pub async fn open_test_db(db_name: &str) -> ThreadSafeConnection {
-    ThreadSafeConnection::builder(ConnectionTarget::memory(db_name))
+    ThreadSafeConnection::builder::<()>(ConnectionTarget::memory(db_name))
         .with_db_init_query(DB_INIT_QUERY)
         .with_connection_init_query(CONNECTION_INIT_QUERY)
         .with_write_queue_constructor(thread_safe_connection::locking_queue())
@@ -252,10 +252,10 @@ mod tests {
             .write(|connection| {
                 connection
                     .exec(sql!(CREATE TABLE test(value TEXT) STRICT))
-                    .and_then(|mut f| f())?;
+                    .and_then(|mut stmt| stmt())?;
                 connection
                     .exec_bound::<&str>(sql!(INSERT INTO test(value) VALUES (?1)))
-                    .and_then(|mut f| f("ok"))?;
+                    .and_then(|mut stmt| stmt("ok"))?;
                 Ok(())
             })
             .await
@@ -265,7 +265,7 @@ mod tests {
             .read(|connection| {
                 connection
                     .select_row::<String>(sql!(SELECT value FROM test))
-                    .and_then(|mut f| f())
+                    .and_then(|mut stmt| stmt())
                     .context("test value query returned no row")
             })
             .unwrap();
@@ -294,10 +294,10 @@ mod tests {
             .write(|connection| {
                 connection
                     .exec(sql!(CREATE TABLE test(value TEXT) STRICT))
-                    .and_then(|mut f| f())?;
+                    .and_then(|mut stmt| stmt())?;
                 connection
                     .exec_bound::<&str>(sql!(INSERT INTO test(value) VALUES (?1)))
-                    .and_then(|mut f| f("ok"))?;
+                    .and_then(|mut stmt| stmt("ok"))?;
                 Ok(())
             })
             .await
@@ -307,7 +307,7 @@ mod tests {
             .read(|connection| {
                 connection
                     .select_row::<String>(sql!(SELECT value FROM test))
-                    .and_then(|mut f| f())
+                    .and_then(|mut stmt| stmt())
                     .context("test value query returned no row")
             })
             .unwrap();
