@@ -300,6 +300,38 @@ pub fn theme_colors_refinement(colors: &ThemeColorsContent) -> ThemeColorsRefine
             .icon_accent
             .as_ref()
             .and_then(|color| theme::try_parse_color(color).ok()),
+        button_background: colors
+            .button_background
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
+        button_foreground: colors
+            .button_foreground
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
+        button_hover_background: colors
+            .button_hover_background
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
+        button_border: colors
+            .button_border
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
+        button_secondary_background: colors
+            .button_secondary_background
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
+        button_secondary_foreground: colors
+            .button_secondary_foreground
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
+        button_secondary_hover_background: colors
+            .button_secondary_hover_background
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
+        button_secondary_border: colors
+            .button_secondary_border
+            .as_ref()
+            .and_then(|color| theme::try_parse_color(color).ok()),
         element_background: colors
             .element_background
             .as_ref()

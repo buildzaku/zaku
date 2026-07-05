@@ -84,10 +84,15 @@ pub enum ButtonVariant {
     #[default]
     Subtle,
     Solid,
-    Accent,
     Outline,
     OutlinedGhost,
     Ghost,
+    Custom {
+        background: Hsla,
+        foreground: Hsla,
+        hover_background: Hsla,
+        border: Hsla,
+    },
     Tinted(TintColor),
 }
 
@@ -97,46 +102,37 @@ impl ButtonVariant {
             ButtonVariant::Subtle => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.ghost_element_background,
+                    background: colors.button_secondary_background,
                     border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Solid => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.element_background,
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
-                }
-            }
-            ButtonVariant::Accent => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.text_accent.opacity(0.8),
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.panel_background,
-                    icon_color: colors.panel_background,
+                    background: colors.button_background,
+                    border_color: colors.button_border,
+                    text_color: colors.button_foreground,
+                    icon_color: colors.button_foreground,
                 }
             }
             ButtonVariant::Outline => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.ghost_element_background,
-                    border_color: colors.border_variant,
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    background: colors.button_secondary_background,
+                    border_color: colors.button_secondary_border,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::OutlinedGhost => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
                     background: gpui::transparent_black(),
-                    border_color: colors.border_variant,
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    border_color: colors.button_secondary_border,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Ghost => {
@@ -144,10 +140,21 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
+            ButtonVariant::Custom {
+                background,
+                foreground,
+                border,
+                ..
+            } => ButtonStyle {
+                background,
+                border_color: border,
+                text_color: foreground,
+                icon_color: foreground,
+            },
             ButtonVariant::Tinted(tint) => tint.button_style(cx),
         }
     }
@@ -157,46 +164,37 @@ impl ButtonVariant {
             ButtonVariant::Subtle => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.ghost_element_hover,
+                    background: colors.button_secondary_hover_background,
                     border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Solid => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.element_hover,
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
-                }
-            }
-            ButtonVariant::Accent => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.text_accent.opacity(0.8),
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.panel_background,
-                    icon_color: colors.panel_background,
+                    background: colors.button_hover_background,
+                    border_color: colors.button_border,
+                    text_color: colors.button_foreground,
+                    icon_color: colors.button_foreground,
                 }
             }
             ButtonVariant::Outline => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
-                    background: colors.ghost_element_hover,
-                    border_color: colors.border,
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    background: colors.button_secondary_hover_background,
+                    border_color: colors.button_secondary_border,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::OutlinedGhost => {
                 let colors = cx.theme().colors();
                 ButtonStyle {
                     background: gpui::transparent_black(),
-                    border_color: colors.border_variant,
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    border_color: colors.button_secondary_border,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
             ButtonVariant::Ghost => {
@@ -204,118 +202,27 @@ impl ButtonVariant {
                 ButtonStyle {
                     background: gpui::transparent_black(),
                     border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
+                    text_color: colors.button_secondary_foreground,
+                    icon_color: colors.button_secondary_foreground,
                 }
             }
+            ButtonVariant::Custom {
+                foreground,
+                hover_background,
+                border,
+                ..
+            } => ButtonStyle {
+                background: hover_background,
+                border_color: border,
+                text_color: foreground,
+                icon_color: foreground,
+            },
             ButtonVariant::Tinted(tint) => {
                 let mut styles = tint.button_style(cx);
                 let theme = cx.theme();
                 styles.background = theme.darken(styles.background, 0.05, 0.2);
                 styles
             }
-        }
-    }
-
-    pub fn active(self, cx: &mut App) -> ButtonStyle {
-        match self {
-            ButtonVariant::Subtle => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.ghost_element_hover,
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
-                }
-            }
-            ButtonVariant::Solid => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.element_active,
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
-                }
-            }
-            ButtonVariant::Accent => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.text_accent.opacity(0.8),
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.panel_background,
-                    icon_color: colors.panel_background,
-                }
-            }
-            ButtonVariant::Outline => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.ghost_element_active,
-                    border_color: colors.border_variant,
-                    text_color: colors.text,
-                    icon_color: colors.text,
-                }
-            }
-            ButtonVariant::OutlinedGhost => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: gpui::transparent_black(),
-                    border_color: colors.border_variant,
-                    text_color: colors.text,
-                    icon_color: colors.text,
-                }
-            }
-            ButtonVariant::Ghost => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: gpui::transparent_black(),
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.text,
-                    icon_color: colors.text,
-                }
-            }
-            ButtonVariant::Tinted(tint) => tint.button_style(cx),
-        }
-    }
-
-    pub fn disabled(self, cx: &mut App) -> ButtonStyle {
-        match self {
-            ButtonVariant::Subtle => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.ghost_element_disabled,
-                    border_color: colors.border_disabled,
-                    text_color: colors.text_disabled,
-                    icon_color: colors.text_disabled,
-                }
-            }
-            ButtonVariant::Solid | ButtonVariant::Accent | ButtonVariant::Outline => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: colors.element_disabled,
-                    border_color: colors.border_disabled,
-                    text_color: colors.text_disabled,
-                    icon_color: colors.text_disabled,
-                }
-            }
-            ButtonVariant::OutlinedGhost => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: gpui::transparent_black(),
-                    border_color: colors.border_disabled,
-                    text_color: colors.text_disabled,
-                    icon_color: colors.text_disabled,
-                }
-            }
-            ButtonVariant::Ghost => {
-                let colors = cx.theme().colors();
-                ButtonStyle {
-                    background: gpui::transparent_black(),
-                    border_color: gpui::transparent_black(),
-                    text_color: colors.text_disabled,
-                    icon_color: colors.text_disabled,
-                }
-            }
-            ButtonVariant::Tinted(tint) => tint.button_style(cx),
         }
     }
 }
@@ -325,10 +232,10 @@ impl From<ButtonVariant> for Color {
         match variant {
             ButtonVariant::Subtle
             | ButtonVariant::Solid
-            | ButtonVariant::Accent
             | ButtonVariant::Outline
             | ButtonVariant::OutlinedGhost
             | ButtonVariant::Ghost => Color::Default,
+            ButtonVariant::Custom { foreground, .. } => foreground.into(),
             ButtonVariant::Tinted(tint) => tint.into(),
         }
     }
@@ -543,16 +450,10 @@ impl ButtonCommon for Button {
 
 impl RenderOnce for Button {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let disabled = self.disabled;
         let variant = self.variant;
-        let style = if self.disabled {
-            variant.disabled(cx)
-        } else {
-            variant.enabled(cx)
-        };
+        let style = variant.enabled(cx);
         let hovered_style = variant.hovered(cx);
-        let active_style = variant.active(cx);
-        let background = if self.selected && !self.disabled {
+        let background = if self.selected {
             self.selected_background.unwrap_or(style.background)
         } else {
             style.background
@@ -569,16 +470,14 @@ impl RenderOnce for Button {
         });
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
-        let text_color = if self.disabled {
-            style.text_color
-        } else if self.selected {
+        let text_color = if self.selected {
             text_accent
         } else {
             self.text_color
                 .map_or(style.text_color, |color| color.color(cx))
         };
 
-        let icon_color = if self.disabled || self.selected {
+        let icon_color = if self.selected {
             text_color.into()
         } else {
             self.icon_color.unwrap_or_else(|| style.icon_color.into())
@@ -631,16 +530,11 @@ impl RenderOnce for Button {
             .text_color(text_color)
             .when_some(self.font_weight, |this, weight| this.font_weight(weight))
             .when(self.disabled, |this| {
-                if self.cursor_style == CursorStyle::PointingHand {
-                    this.cursor_not_allowed()
-                } else {
-                    this.cursor(self.cursor_style)
-                }
+                this.cursor(CursorStyle::Arrow).opacity(0.4)
             })
             .when(!self.disabled, |this| {
                 this.cursor(self.cursor_style)
                     .hover(|style| style.bg(hovered_style.background))
-                    .active(|style| style.bg(active_style.background))
             })
             .when_some(
                 self.on_click.filter(|_| !self.disabled),
@@ -657,20 +551,8 @@ impl RenderOnce for Button {
             .when(is_outlined, |this| {
                 this.border_1().border_color(style.border_color)
             })
-            .when_some(start_icon, |this, icon| {
-                this.child(if disabled {
-                    icon.color(Color::Disabled)
-                } else {
-                    icon
-                })
-            })
+            .when_some(start_icon, |this, icon| this.child(icon))
             .child(self.text)
-            .when_some(end_icon, |this, icon| {
-                this.child(if disabled {
-                    icon.color(Color::Disabled)
-                } else {
-                    icon
-                })
-            })
+            .when_some(end_icon, |this, icon| this.child(icon))
     }
 }

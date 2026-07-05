@@ -77,9 +77,7 @@ impl RenderOnce for StyledIcon {
             .filter(|_| self.selected)
             .unwrap_or(self.icon);
 
-        let icon_color = if self.disabled {
-            Color::Disabled
-        } else if self.selected {
+        let icon_color = if self.selected {
             self.selected_icon_color.unwrap_or(Color::Selected)
         } else {
             self.color

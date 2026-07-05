@@ -45,6 +45,15 @@ pub struct ThemeColors {
     pub icon_disabled: Hsla,
     pub icon_accent: Hsla,
 
+    pub button_background: Hsla,
+    pub button_foreground: Hsla,
+    pub button_hover_background: Hsla,
+    pub button_border: Hsla,
+    pub button_secondary_background: Hsla,
+    pub button_secondary_foreground: Hsla,
+    pub button_secondary_hover_background: Hsla,
+    pub button_secondary_border: Hsla,
+
     pub element_background: Hsla,
     pub element_hover: Hsla,
     pub element_active: Hsla,

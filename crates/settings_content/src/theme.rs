@@ -250,6 +250,23 @@ pub struct ThemeColorsContent {
     #[serde(rename = "icon.accent")]
     pub icon_accent: Option<String>,
 
+    #[serde(rename = "button.background")]
+    pub button_background: Option<String>,
+    #[serde(rename = "button.foreground")]
+    pub button_foreground: Option<String>,
+    #[serde(rename = "button.hover_background")]
+    pub button_hover_background: Option<String>,
+    #[serde(rename = "button.border")]
+    pub button_border: Option<String>,
+    #[serde(rename = "button.secondary_background")]
+    pub button_secondary_background: Option<String>,
+    #[serde(rename = "button.secondary_foreground")]
+    pub button_secondary_foreground: Option<String>,
+    #[serde(rename = "button.secondary_hover_background")]
+    pub button_secondary_hover_background: Option<String>,
+    #[serde(rename = "button.secondary_border")]
+    pub button_secondary_border: Option<String>,
+
     #[serde(rename = "element.background")]
     pub element_background: Option<String>,
     #[serde(rename = "element.hover")]
