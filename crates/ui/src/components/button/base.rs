@@ -156,7 +156,8 @@ impl RenderOnce for ButtonLike {
         let variant = self.variant;
         let style = variant.enabled(cx);
         let hovered_style = variant.hovered(cx);
-        let background = if self.selected {
+        let selected = self.selected && !self.disabled;
+        let background = if selected {
             self.selected_background.unwrap_or(style.background)
         } else {
             style.background

@@ -453,7 +453,8 @@ impl RenderOnce for Button {
         let variant = self.variant;
         let style = variant.enabled(cx);
         let hovered_style = variant.hovered(cx);
-        let background = if self.selected {
+        let selected = self.selected && !self.disabled;
+        let background = if selected {
             self.selected_background.unwrap_or(style.background)
         } else {
             style.background
@@ -470,14 +471,14 @@ impl RenderOnce for Button {
         });
         let icon_position = self.icon_position.unwrap_or(IconPosition::Start);
 
-        let text_color = if self.selected {
+        let text_color = if selected {
             text_accent
         } else {
             self.text_color
                 .map_or(style.text_color, |color| color.color(cx))
         };
 
-        let icon_color = if self.selected {
+        let icon_color = if selected {
             text_color.into()
         } else {
             self.icon_color.unwrap_or_else(|| style.icon_color.into())
