@@ -2,7 +2,7 @@ pub mod kv;
 pub mod query;
 
 pub use anyhow;
-pub use gpui::{self, App};
+pub use gpui::App;
 pub use sql::{
     self,
     bindable::{Bind, Column, StaticColumnCount},
@@ -15,6 +15,7 @@ pub use sql_macros;
 use anyhow::Context;
 use gpui::Global;
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     sync::{
         LazyLock,
@@ -22,10 +23,66 @@ use std::{
     },
 };
 
-#[cfg(any(test, feature = "test"))]
-use sql::thread_safe_connection;
-use sql::thread_safe_connection::ConnectionTarget;
+use sql::{domain::Migrator, thread_safe_connection::ConnectionTarget};
 use sql_macros::sql;
+
+pub struct DomainMigration {
+    pub name: &'static str,
+    pub migrations: &'static [&'static str],
+    pub dependencies: &'static [&'static str],
+    pub should_allow_migration_change: fn(usize, &str, &str) -> bool,
+}
+
+inventory::collect!(DomainMigration);
+
+pub struct AppMigrator;
+
+impl Migrator for AppMigrator {
+    fn migrate(connection: &Connection) -> anyhow::Result<()> {
+        let registrations: Vec<&DomainMigration> = inventory::iter::<DomainMigration>().collect();
+        let sorted = topological_sort(&registrations);
+        for registration in &sorted {
+            let mut should_allow_migration_change = registration.should_allow_migration_change;
+            connection.migrate(
+                registration.name,
+                registration.migrations,
+                &mut should_allow_migration_change,
+            )?;
+        }
+        Ok(())
+    }
+}
+
+fn topological_sort<'a>(registrations: &[&'a DomainMigration]) -> Vec<&'a DomainMigration> {
+    fn visit<'a>(
+        name: &str,
+        registrations: &[&'a DomainMigration],
+        sorted: &mut Vec<&'a DomainMigration>,
+        visited: &mut HashSet<&'a str>,
+    ) {
+        if visited.contains(name) {
+            return;
+        }
+        if let Some(registration) = registrations
+            .iter()
+            .find(|registration| registration.name == name)
+        {
+            for dependency in registration.dependencies {
+                visit(dependency, registrations, sorted, visited);
+            }
+            visited.insert(registration.name);
+            sorted.push(registration);
+        }
+    }
+
+    let mut sorted: Vec<&'a DomainMigration> = Vec::new();
+    let mut visited: HashSet<&str> = HashSet::new();
+
+    for registration in registrations {
+        visit(registration.name, registrations, &mut sorted, &mut visited);
+    }
+    sorted
+}
 
 const CONNECTION_INIT_QUERY: &str = sql!(
     PRAGMA foreign_keys = ON;
@@ -46,21 +103,21 @@ static TEST_APP_DATABASE: LazyLock<AppDatabase> = LazyLock::new(AppDatabase::tes
 
 static FILE_DB_FAILED: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(false));
 
-pub async fn open_db(db_dir: &Path) -> ThreadSafeConnection {
-    if let Some(connection) = try_open_db(db_dir).await {
+pub async fn open_db<M: Migrator + 'static>(db_dir: &Path) -> ThreadSafeConnection {
+    if let Some(connection) = try_open_db::<M>(db_dir).await {
         return connection;
     }
 
     FILE_DB_FAILED.store(true, Ordering::Release);
-    open_fallback_db().await
+    open_fallback_db::<M>().await
 }
 
-async fn try_open_db(db_dir: &Path) -> Option<ThreadSafeConnection> {
+async fn try_open_db<M: Migrator>(db_dir: &Path) -> Option<ThreadSafeConnection> {
     match ensure_directory(db_dir)
         .await
         .and_then(|()| database_path(db_dir))
     {
-        Ok(db_path) => open_main_db(&db_path).await,
+        Ok(db_path) => open_main_db::<M>(&db_path).await,
         Err(error) => {
             log::error!(
                 "Failed to prepare sqlite database directory {}: {error}",
@@ -75,9 +132,9 @@ pub fn file_db_failed() -> bool {
     FILE_DB_FAILED.load(Ordering::Acquire)
 }
 
-async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
+async fn open_main_db<M: Migrator>(path: &Path) -> Option<ThreadSafeConnection> {
     log::trace!("Opening database {}", path.display());
-    ThreadSafeConnection::builder::<()>(ConnectionTarget::file(path))
+    ThreadSafeConnection::builder::<M>(ConnectionTarget::file(path))
         .with_db_init_query(DB_INIT_QUERY)
         .with_connection_init_query(CONNECTION_INIT_QUERY)
         .build()
@@ -92,9 +149,9 @@ async fn open_main_db(path: &Path) -> Option<ThreadSafeConnection> {
         .ok()
 }
 
-async fn open_fallback_db() -> ThreadSafeConnection {
+async fn open_fallback_db<M: Migrator>() -> ThreadSafeConnection {
     log::warn!("Opening fallback in-memory database");
-    ThreadSafeConnection::builder::<()>(ConnectionTarget::memory(FALLBACK_MEMORY_DB_NAME))
+    ThreadSafeConnection::builder::<M>(ConnectionTarget::memory(FALLBACK_MEMORY_DB_NAME))
         .with_db_init_query(DB_INIT_QUERY)
         .with_connection_init_query(CONNECTION_INIT_QUERY)
         .build()
@@ -103,11 +160,11 @@ async fn open_fallback_db() -> ThreadSafeConnection {
 }
 
 #[cfg(any(test, feature = "test"))]
-pub async fn open_test_db(db_name: &str) -> ThreadSafeConnection {
-    ThreadSafeConnection::builder::<()>(ConnectionTarget::memory(db_name))
+pub async fn open_test_db<M: Migrator>(db_name: &str) -> ThreadSafeConnection {
+    ThreadSafeConnection::builder::<M>(ConnectionTarget::memory(db_name))
         .with_db_init_query(DB_INIT_QUERY)
         .with_connection_init_query(CONNECTION_INIT_QUERY)
-        .with_write_queue_constructor(thread_safe_connection::locking_queue())
+        .with_write_queue_constructor(sql::thread_safe_connection::locking_queue())
         .build()
         .await
         .expect("test in-memory database should open")
@@ -136,7 +193,7 @@ pub struct AppDatabase(pub ThreadSafeConnection);
 impl AppDatabase {
     pub fn new() -> Self {
         let db_dir = database_dir();
-        let connection = smol::block_on(open_db(&db_dir));
+        let connection = smol::block_on(open_db::<AppMigrator>(&db_dir));
         let app_db = Self(connection);
         smol::block_on(kv::KeyValueStore::open(&app_db).initialize_schema())
             .expect("key-value store schema should initialize");
@@ -146,7 +203,7 @@ impl AppDatabase {
     #[cfg(any(test, feature = "test"))]
     pub fn test_new() -> Self {
         let name = format!("test-db-{}", uuid::Uuid::new_v4());
-        let connection = smol::block_on(open_test_db(&name));
+        let connection = smol::block_on(open_test_db::<AppMigrator>(&name));
         let app_db = Self(connection);
         smol::block_on(kv::KeyValueStore::open(&app_db).initialize_schema())
             .expect("key-value store schema should initialize");
@@ -206,7 +263,7 @@ macro_rules! static_connection {
 
             #[cfg(any(test, feature = "test"))]
             pub async fn test_open(name: &'static str) -> Self {
-                let connection = $t($crate::open_test_db(name).await);
+                let connection = $t($crate::open_test_db::<()>(name).await);
                 connection
                     .initialize_schema()
                     .await
@@ -235,13 +292,13 @@ mod tests {
         assert!(!db_dir.exists());
 
         {
-            let connection = open_db(&db_dir).await;
+            let connection = open_db::<AppMigrator>(&db_dir).await;
             assert!(matches!(connection.target(), ConnectionTarget::File(_)));
             assert!(db_path.exists());
         }
         std::fs::write(&db_path, b"not a sqlite database").unwrap();
 
-        let recreated_connection = open_db(&db_dir).await;
+        let recreated_connection = open_db::<AppMigrator>(&db_dir).await;
         assert!(matches!(
             recreated_connection.target(),
             ConnectionTarget::Memory(_)
@@ -283,7 +340,7 @@ mod tests {
 
         std::fs::create_dir_all(&db_path).unwrap();
 
-        let recovered_connection = open_db(&db_dir).await;
+        let recovered_connection = open_db::<AppMigrator>(&db_dir).await;
         assert!(matches!(
             recovered_connection.target(),
             ConnectionTarget::Memory(_)

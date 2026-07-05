@@ -34,24 +34,24 @@ impl Connection {
     ) -> anyhow::Result<()> {
         self.with_savepoint("migrating", || {
             self.exec(indoc! {"
-                CREATE TABLE IF NOT EXISTS migrations (
-                    domain TEXT,
-                    step INTEGER,
-                    migration TEXT
-                )
-            "})
+                    CREATE TABLE IF NOT EXISTS migration (
+                        domain TEXT,
+                        step INTEGER,
+                        statement TEXT
+                    )
+                "})
                 .and_then(|mut stmt| stmt())?;
 
             let completed_migrations = self
                 .select_bound::<&str, (String, usize, String)>(indoc! {"
-                    SELECT domain, step, migration FROM migrations
+                    SELECT domain, step, statement FROM migration
                     WHERE domain = ?
                     ORDER BY step
                 "})
                 .and_then(|mut stmt| stmt(domain))?;
 
             let mut store_completed_migration = self
-                .exec_bound("INSERT INTO migrations (domain, step, migration) VALUES (?, ?, ?)")?;
+                .exec_bound("INSERT INTO migration (domain, step, statement) VALUES (?, ?, ?)")?;
 
             let mut did_migrate = false;
             for (index, migration) in migrations.iter().enumerate() {
@@ -162,7 +162,7 @@ mod tests {
 
         assert_eq!(
             &connection
-                .select::<String>("SELECT (migration) FROM migrations")
+                .select::<String>("SELECT (statement) FROM migration")
                 .and_then(|mut stmt| stmt())
                 .unwrap()[..],
             &[indoc! {"CREATE TABLE test1 (a TEXT, b TEXT)"}],
@@ -191,7 +191,7 @@ mod tests {
 
         assert_eq!(
             &connection
-                .select::<String>("SELECT (migration) FROM migrations")
+                .select::<String>("SELECT (statement) FROM migration")
                 .and_then(|mut stmt| stmt())
                 .unwrap()[..],
             &[
@@ -207,10 +207,10 @@ mod tests {
 
         connection
             .exec(indoc! {"
-                CREATE TABLE IF NOT EXISTS migrations (
+                CREATE TABLE IF NOT EXISTS migration (
                     domain TEXT,
                     step INTEGER,
-                    migration TEXT
+                    statement TEXT
                 );
             "})
             .and_then(|mut stmt| stmt())
@@ -218,7 +218,7 @@ mod tests {
 
         let mut store_completed_migration = connection
             .exec_bound(indoc! {"
-                INSERT INTO migrations (domain, step, migration)
+                INSERT INTO migration (domain, step, statement)
                 VALUES (?, ?, ?)
             "})
             .unwrap();

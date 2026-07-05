@@ -20,6 +20,7 @@ test = []
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
+inventory = { workspace = true }
 log = { workspace = true }
 path = { workspace = true }
 smol = { workspace = true }

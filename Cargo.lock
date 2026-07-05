@@ -1468,6 +1468,7 @@ dependencies = [
  "anyhow",
  "fs",
  "gpui",
+ "inventory",
  "log",
  "path",
  "smol",
