@@ -65,35 +65,34 @@ pub fn set_mode(content: &mut SettingsContent, mode: ThemeAppearanceMode) {
 }
 
 pub fn load_bundled_themes(registry: &ThemeRegistry) {
-    let theme_paths = match registry.assets().list("themes/") {
-        Ok(theme_paths) => theme_paths,
+    let path = "themes/zaku/zaku.json";
+    let bytes = match registry.assets().load(path) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => {
+            log::error!("Failed to load theme at path {path:?}: asset not found");
+            return;
+        }
         Err(error) => {
-            log::error!("Failed to list theme assets: {error:?}");
+            log::error!("Failed to load theme at path {path:?}: {error:?}");
             return;
         }
     };
-    let theme_paths = theme_paths
-        .into_iter()
-        .filter(|path| path.ends_with(".json"));
 
-    for path in theme_paths {
-        let theme = match registry.assets().load(&path) {
-            Ok(Some(theme)) => theme,
-            Ok(None) => continue,
-            Err(error) => {
-                log::error!("Failed to load theme at path {path:?}: {error:?}");
-                continue;
-            }
-        };
+    let Some((theme_directory, _)) = path.rsplit_once('/') else {
+        return;
+    };
 
-        let refined = match ThemeFamily::from_bytes(&theme) {
-            Ok(theme_family) => theme_family,
-            Err(error) => {
-                log::error!("Failed to parse theme at path {path:?}: {error:?}");
-                continue;
-            }
-        };
+    let theme_family = match ThemeFamily::from_bytes(&bytes, |theme_path| {
+        let theme_path = format!("{theme_directory}/{theme_path}");
+        let theme = registry.assets().load(&theme_path)?;
+        Ok(theme)
+    }) {
+        Ok(theme_family) => theme_family,
+        Err(error) => {
+            log::error!("Failed to parse theme at path {path:?}: {error:?}");
+            return;
+        }
+    };
 
-        registry.insert_theme_families([refined]);
-    }
+    registry.insert_theme_families([theme_family]);
 }

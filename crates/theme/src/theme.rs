@@ -18,6 +18,7 @@ use palette::{FromColor, Hsl, Okhsl};
 use parking_lot::RwLock;
 use serde::Deserialize;
 use std::{
+    borrow::Cow,
     collections::HashMap,
     fmt,
     sync::{Arc, LazyLock},
@@ -28,10 +29,17 @@ pub(crate) const DEFAULT_DARK_THEME: &str = "Zaku Dark";
 pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = gpui::px(10.0);
 pub const CLIENT_SIDE_DECORATION_SHADOW: Pixels = gpui::px(10.0);
 
-const ZAKU_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku.json");
+const ZAKU_THEME_FAMILY: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku.json");
+const ZAKU_DARK_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku-dark.json");
+const ZAKU_LIGHT_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku-light.json");
 
 static ZAKU_DEFAULT_THEMES: LazyLock<ZakuDefaultThemes> = LazyLock::new(|| {
-    let family = ThemeFamily::from_bytes(ZAKU_THEME).expect("bundled Zaku theme should parse");
+    let family = ThemeFamily::from_bytes(ZAKU_THEME_FAMILY, |path| match path {
+        "zaku-dark.json" => Ok(Some(Cow::Borrowed(ZAKU_DARK_THEME))),
+        "zaku-light.json" => Ok(Some(Cow::Borrowed(ZAKU_LIGHT_THEME))),
+        _ => Ok(None),
+    })
+    .expect("bundled Zaku theme should parse");
     let dark_theme = family
         .themes
         .iter()
@@ -204,9 +212,12 @@ pub struct ThemeFamily {
 }
 
 impl ThemeFamily {
-    pub fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+    pub fn from_bytes(
+        bytes: &[u8],
+        loader: impl FnMut(&str) -> anyhow::Result<Option<Cow<'static, [u8]>>>,
+    ) -> anyhow::Result<Self> {
         let content: ThemeFamilyContent = serde_json::from_slice(bytes)?;
-        Ok(content.into_theme_family())
+        content.into_theme_family(loader)
     }
 
     pub(crate) fn zaku_default() -> Self {

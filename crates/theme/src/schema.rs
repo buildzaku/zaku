@@ -3,11 +3,12 @@ pub use settings::{
     ThemeColorsContent, ThemeStyleContent, WindowBackgroundContent,
 };
 
+use anyhow::Context;
 use gpui::{HighlightStyle, Hsla, Rgba, WindowBackgroundAppearance};
 use palette::FromColor;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use settings::IntoGpui;
 
@@ -49,17 +50,26 @@ pub struct ThemeFamilyContent {
 }
 
 impl ThemeFamilyContent {
-    pub(crate) fn into_theme_family(self) -> ThemeFamily {
+    pub(crate) fn into_theme_family(
+        self,
+        mut loader: impl FnMut(&str) -> anyhow::Result<Option<Cow<'static, [u8]>>>,
+    ) -> anyhow::Result<ThemeFamily> {
         let mut themes = Vec::with_capacity(self.themes.len());
         for theme_content in self.themes {
-            themes.push(theme_content.into_theme());
+            let theme_path = theme_content.path.clone();
+            let Some(theme) = loader(&theme_path)? else {
+                anyhow::bail!("theme file not found at path {theme_path:?}");
+            };
+            let style = serde_json::from_slice(&theme)
+                .with_context(|| format!("failed to parse theme file at path {theme_path:?}"))?;
+            themes.push(theme_content.into_theme(&style));
         }
 
-        ThemeFamily {
+        Ok(ThemeFamily {
             id: uuid::Uuid::new_v4().to_string(),
             name: self.name.into(),
             themes,
-        }
+        })
     }
 }
 
@@ -67,14 +77,13 @@ impl ThemeFamilyContent {
 pub struct ThemeContent {
     pub name: String,
     pub appearance: AppearanceContent,
-    pub style: ThemeStyleContent,
+    pub path: String,
 }
 
 impl ThemeContent {
-    fn into_theme(self) -> Theme {
-        let syntax_theme = Arc::new(SyntaxTheme::new(syntax_overrides(&self.style)));
-        let window_background_appearance = self
-            .style
+    fn into_theme(self, style: &ThemeStyleContent) -> Theme {
+        let syntax_theme = Arc::new(SyntaxTheme::new(syntax_overrides(style)));
+        let window_background_appearance = style
             .window_background_appearance
             .map_or(WindowBackgroundAppearance::Opaque, IntoGpui::into_gpui);
 
@@ -84,8 +93,8 @@ impl ThemeContent {
             appearance: self.appearance.into(),
             styles: ThemeStyles {
                 window_background_appearance,
-                colors: theme_colors(&self.style.colors),
-                status: status_colors(&self.style.status),
+                colors: theme_colors(&style.colors),
+                status: status_colors(&style.status),
                 syntax: syntax_theme,
             },
         }
