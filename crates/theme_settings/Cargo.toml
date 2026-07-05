@@ -15,12 +15,7 @@ path = "src/theme_settings.rs"
 workspace = true
 
 [dependencies]
-anyhow = { workspace = true }
 gpui = { workspace = true }
 log = { workspace = true }
-refineable = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
 settings = { workspace = true }
 theme = { workspace = true }
-uuid = { workspace = true }

@@ -1,10 +1,11 @@
 use gpui::Hsla;
-use refineable::Refineable;
 use serde::Deserialize;
 
-use crate::fallback;
+use refineable::Refineable;
 
-#[derive(Debug, Clone, PartialEq, Refineable)]
+use crate::Theme;
+
+#[derive(Debug, Clone, Default, PartialEq, Refineable)]
 #[refineable(Debug, Deserialize)]
 pub struct StatusColors {
     pub conflict: Hsla,
@@ -62,10 +63,10 @@ pub struct StatusColors {
 
 impl StatusColors {
     pub fn dark() -> Self {
-        fallback::fallback_dark_theme().styles.status
+        Theme::default_dark().styles.status
     }
 
     pub fn light() -> Self {
-        fallback::fallback_light_theme().styles.status
+        Theme::default_light().styles.status
     }
 }

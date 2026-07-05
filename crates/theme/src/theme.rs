@@ -1,10 +1,12 @@
-mod fallback;
 mod schema;
 mod settings;
 mod styles;
 
-pub use fallback::apply_status_color_defaults;
-pub use schema::*;
+pub use schema::{
+    AppearanceContent, FontStyleContent, FontWeightContent, HighlightStyleContent,
+    StatusColorsContent, ThemeColorsContent, ThemeContent, ThemeFamilyContent, ThemeStyleContent,
+    WindowBackgroundContent, parse_color,
+};
 pub use settings::*;
 pub use styles::*;
 
@@ -15,12 +17,46 @@ use gpui::{
 use palette::{FromColor, Hsl, Okhsl};
 use parking_lot::RwLock;
 use serde::Deserialize;
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt,
+    sync::{Arc, LazyLock},
+};
 
 pub(crate) const DEFAULT_LIGHT_THEME: &str = "Zaku Light";
 pub(crate) const DEFAULT_DARK_THEME: &str = "Zaku Dark";
 pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = gpui::px(10.0);
 pub const CLIENT_SIDE_DECORATION_SHADOW: Pixels = gpui::px(10.0);
+
+const ZAKU_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku.json");
+
+static ZAKU_DEFAULT_THEMES: LazyLock<ZakuDefaultThemes> = LazyLock::new(|| {
+    let family = ThemeFamily::from_bytes(ZAKU_THEME).expect("bundled Zaku theme should parse");
+    let dark_theme = family
+        .themes
+        .iter()
+        .find(|theme| theme.name.as_ref() == DEFAULT_DARK_THEME)
+        .cloned()
+        .expect("bundled Zaku theme should include Zaku Dark");
+    let light_theme = family
+        .themes
+        .iter()
+        .find(|theme| theme.name.as_ref() == DEFAULT_LIGHT_THEME)
+        .cloned()
+        .expect("bundled Zaku theme should include Zaku Light");
+
+    ZakuDefaultThemes {
+        family,
+        dark_theme,
+        light_theme,
+    }
+});
+
+struct ZakuDefaultThemes {
+    family: ThemeFamily,
+    dark_theme: Theme,
+    light_theme: Theme,
+}
 
 pub fn default_theme(appearance: Appearance) -> &'static str {
     match appearance {
@@ -101,7 +137,7 @@ pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
     let registry = ThemeRegistry::global(cx);
     let theme = registry
         .get(DEFAULT_DARK_THEME)
-        .unwrap_or_else(|_| Arc::new(fallback::fallback_dark_theme()));
+        .unwrap_or_else(|_| Arc::new(Theme::default_dark()));
     cx.set_global(GlobalTheme::new(theme));
 }
 
@@ -114,6 +150,14 @@ pub struct Theme {
 }
 
 impl Theme {
+    pub(crate) fn default_dark() -> Self {
+        ZAKU_DEFAULT_THEMES.dark_theme.clone()
+    }
+
+    pub(crate) fn default_light() -> Self {
+        ZAKU_DEFAULT_THEMES.light_theme.clone()
+    }
+
     pub fn colors(&self) -> &ThemeColors {
         &self.styles.colors
     }
@@ -152,10 +196,22 @@ impl Theme {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ThemeFamily {
     pub id: String,
     pub name: SharedString,
     pub themes: Vec<Theme>,
+}
+
+impl ThemeFamily {
+    pub fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+        let content: ThemeFamilyContent = serde_json::from_slice(bytes)?;
+        Ok(content.into_theme_family())
+    }
+
+    pub(crate) fn zaku_default() -> Self {
+        ZAKU_DEFAULT_THEMES.family.clone()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -196,7 +252,7 @@ impl ThemeRegistry {
             assets,
         };
 
-        registry.insert_theme_families([fallback::zaku_default_themes()]);
+        registry.insert_theme_families([ThemeFamily::zaku_default()]);
 
         registry
     }

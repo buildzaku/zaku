@@ -1,9 +1,10 @@
 use gpui::{Hsla, WindowBackgroundAppearance};
-use refineable::Refineable;
 use serde::Deserialize;
 use std::sync::Arc;
 
-use crate::{StatusColors, StatusColorsRefinement, SyntaxTheme, fallback};
+use refineable::Refineable;
+
+use crate::{StatusColors, StatusColorsRefinement, SyntaxTheme, Theme};
 
 #[derive(Debug, Clone, PartialEq, Refineable)]
 pub struct ThemeStyles {
@@ -18,7 +19,7 @@ pub struct ThemeStyles {
     pub syntax: Arc<SyntaxTheme>,
 }
 
-#[derive(Debug, Clone, PartialEq, Refineable)]
+#[derive(Debug, Clone, Default, PartialEq, Refineable)]
 #[refineable(Debug, Deserialize)]
 pub struct ThemeColors {
     pub background: Hsla,
@@ -98,10 +99,10 @@ pub struct ThemeColors {
 
 impl ThemeColors {
     pub fn dark() -> Self {
-        fallback::fallback_dark_theme().styles.colors
+        Theme::default_dark().styles.colors
     }
 
     pub fn light() -> Self {
-        fallback::fallback_light_theme().styles.colors
+        Theme::default_light().styles.colors
     }
 }

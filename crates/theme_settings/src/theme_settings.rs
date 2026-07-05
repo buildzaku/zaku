@@ -1,21 +1,10 @@
-mod schema;
-
-pub use crate::schema::{
-    FontStyleContent, FontWeightContent, HighlightStyleContent, StatusColorsContent,
-    ThemeColorsContent, ThemeContent, ThemeFamilyContent, ThemeStyleContent,
-    WindowBackgroundContent, status_colors_refinement, syntax_overrides, theme_colors_refinement,
-};
-
-use anyhow::Context;
-use gpui::{App, WindowBackgroundAppearance};
-use refineable::Refineable;
+use gpui::App;
 use std::sync::Arc;
 
-use settings::{IntoGpui, SettingsContent, SettingsStore, ThemeAppearanceMode};
+use settings::{SettingsContent, SettingsStore, ThemeAppearanceMode};
 use theme::{
-    Appearance, AppearanceContent, GlobalTheme, LoadThemes, StatusColors, SyntaxTheme,
-    SystemAppearance, Theme, ThemeColors, ThemeFamily, ThemeRegistry, ThemeStyles,
-    apply_status_color_defaults, default_theme,
+    Appearance, GlobalTheme, LoadThemes, SystemAppearance, Theme, ThemeFamily, ThemeRegistry,
+    default_theme,
 };
 
 pub fn init(themes_to_load: LoadThemes, cx: &mut App) {
@@ -97,71 +86,14 @@ pub fn load_bundled_themes(registry: &ThemeRegistry) {
             }
         };
 
-        let theme_family = match serde_json::from_slice(&theme)
-            .with_context(|| format!("failed to parse theme at path \"{path}\""))
-        {
+        let refined = match ThemeFamily::from_bytes(&theme) {
             Ok(theme_family) => theme_family,
             Err(error) => {
-                log::error!("{error:?}");
+                log::error!("Failed to parse theme at path {path:?}: {error:?}");
                 continue;
             }
         };
 
-        let refined = refine_theme_family(theme_family);
         registry.insert_theme_families([refined]);
-    }
-}
-
-pub fn refine_theme_family(theme_family_content: ThemeFamilyContent) -> ThemeFamily {
-    let mut themes = Vec::with_capacity(theme_family_content.themes.len());
-    for theme_content in &theme_family_content.themes {
-        themes.push(refine_theme(theme_content));
-    }
-
-    ThemeFamily {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: theme_family_content.name.into(),
-        themes,
-    }
-}
-
-pub fn refine_theme(theme: &ThemeContent) -> Theme {
-    let appearance = match theme.appearance {
-        AppearanceContent::Light => Appearance::Light,
-        AppearanceContent::Dark => Appearance::Dark,
-    };
-
-    let mut refined_status_colors = match theme.appearance {
-        AppearanceContent::Light => StatusColors::light(),
-        AppearanceContent::Dark => StatusColors::dark(),
-    };
-    let mut status_colors_refinement = status_colors_refinement(&theme.style.status);
-    apply_status_color_defaults(&mut status_colors_refinement);
-    refined_status_colors.refine(&status_colors_refinement);
-
-    let mut refined_theme_colors = match theme.appearance {
-        AppearanceContent::Light => ThemeColors::light(),
-        AppearanceContent::Dark => ThemeColors::dark(),
-    };
-    let theme_colors_refinement = theme_colors_refinement(&theme.style.colors);
-    refined_theme_colors.refine(&theme_colors_refinement);
-
-    let syntax_theme = Arc::new(SyntaxTheme::new(syntax_overrides(&theme.style)));
-
-    let window_background_appearance = theme
-        .style
-        .window_background_appearance
-        .map_or(WindowBackgroundAppearance::Opaque, IntoGpui::into_gpui);
-
-    Theme {
-        id: uuid::Uuid::new_v4().to_string(),
-        name: theme.name.clone().into(),
-        appearance,
-        styles: ThemeStyles {
-            window_background_appearance,
-            colors: refined_theme_colors,
-            status: refined_status_colors,
-            syntax: syntax_theme,
-        },
     }
 }

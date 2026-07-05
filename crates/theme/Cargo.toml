@@ -23,5 +23,6 @@ refineable = { workspace = true }
 schemars = { workspace = true }
 settings = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 syntax_theme = { workspace = true }
 uuid = { workspace = true }
