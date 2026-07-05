@@ -23,7 +23,7 @@ pub enum DropdownVariant {
     Ghost,
 }
 
-enum LabelKind {
+enum DropdownTitle {
     Text(SharedString),
     Element(AnyElement),
 }
@@ -31,7 +31,7 @@ enum LabelKind {
 #[derive(IntoElement)]
 pub struct DropdownMenu {
     id: ElementId,
-    label: LabelKind,
+    title: DropdownTitle,
     trigger_size: ButtonSize,
     trigger_tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
     trigger_icon: Option<IconName>,
@@ -49,12 +49,12 @@ pub struct DropdownMenu {
 impl DropdownMenu {
     pub fn new(
         id: impl Into<ElementId>,
-        label: impl Into<SharedString>,
+        title: impl Into<SharedString>,
         menu: Entity<ContextMenu>,
     ) -> Self {
         Self {
             id: id.into(),
-            label: LabelKind::Text(label.into()),
+            title: DropdownTitle::Text(title.into()),
             trigger_size: ButtonSize::Default,
             trigger_tooltip: None,
             trigger_icon: Some(IconName::CaretUpDown),
@@ -72,12 +72,12 @@ impl DropdownMenu {
 
     pub fn new_with_element(
         id: impl Into<ElementId>,
-        label: AnyElement,
+        title: AnyElement,
         menu: Entity<ContextMenu>,
     ) -> Self {
         Self {
             id: id.into(),
-            label: LabelKind::Element(label),
+            title: DropdownTitle::Element(title),
             trigger_size: ButtonSize::Default,
             trigger_tooltip: None,
             trigger_icon: Some(IconName::CaretUpDown),
@@ -167,10 +167,10 @@ impl RenderOnce for DropdownMenu {
         let full_width = self.full_width;
         let trigger_size = self.trigger_size;
 
-        let (text_button, element_button) = match self.label {
-            LabelKind::Text(text) => (
+        let (title_button, element_button) = match self.title {
+            DropdownTitle::Text(title) => (
                 Some(
-                    Button::new(self.id.clone(), text)
+                    Button::new(self.id.clone(), title)
                         .variant(button_variant)
                         .when(self.caret, |this| {
                             this.icon(self.trigger_icon)
@@ -185,7 +185,7 @@ impl RenderOnce for DropdownMenu {
                 ),
                 None,
             ),
-            LabelKind::Element(element) => (
+            DropdownTitle::Element(element) => (
                 None,
                 Some(
                     ButtonLike::new(self.id.clone())
@@ -210,11 +210,11 @@ impl RenderOnce for DropdownMenu {
             .full_width(self.full_width)
             .menu(move |_window, _cx| Some(self.menu.clone()));
 
-        popover = match (text_button, element_button, self.trigger_tooltip) {
-            (Some(text_button), None, Some(tooltip)) => {
-                popover.trigger_with_tooltip(text_button, tooltip)
+        popover = match (title_button, element_button, self.trigger_tooltip) {
+            (Some(title_button), None, Some(tooltip)) => {
+                popover.trigger_with_tooltip(title_button, tooltip)
             }
-            (Some(text_button), None, None) => popover.trigger(text_button),
+            (Some(title_button), None, None) => popover.trigger(title_button),
             (None, Some(element_button), Some(tooltip)) => {
                 popover.trigger_with_tooltip(element_button, tooltip)
             }

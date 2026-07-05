@@ -1,15 +1,28 @@
+mod highlighted_text;
+mod interaction;
+mod selectable;
 mod selection;
 
+pub use highlighted_text::HighlightedText;
+pub use interaction::TextInteractionState;
+pub use selectable::{SelectableText, SelectableTextGroup};
 pub use selection::{TextSelectionPoint, TextSelectionState, paint_text_selection};
 
 use gpui::{
-    App, Bounds, Div, FontWeight, Hitbox, HitboxBehavior, Pixels, RenderOnce, SharedString,
+    App, Bounds, Div, FontWeight, Hitbox, HitboxBehavior, Hsla, Pixels, RenderOnce, SharedString,
     StyleRefinement, StyledText, TextAlign, TextLayout, UnderlineStyle, Window, prelude::*,
 };
 
 use theme::{ActiveTheme, ThemeSettings};
 
-use crate::{Color, LineHeightStyle, StyledTypography, TextSize};
+use crate::{Color, StyledTypography, TextSize};
+
+#[derive(Clone, Copy, Default, PartialEq)]
+pub enum LineHeightStyle {
+    #[default]
+    Default,
+    Compact,
+}
 
 pub trait TextCommon {
     fn size(self, size: TextSize) -> Self;
@@ -43,13 +56,8 @@ struct TextStyle {
 
 impl TextStyle {
     fn apply(&self, base: Div, cx: &mut App) -> Div {
-        let mut color = self.color.color(cx);
-        if let Some(alpha) = self.alpha {
-            color.fade_out(1.0 - alpha);
-        }
-
         base.text_ui_size(self.size, cx)
-            .when(self.line_height_style == LineHeightStyle::UiLabel, |this| {
+            .when(self.line_height_style == LineHeightStyle::Compact, |this| {
                 this.line_height(gpui::relative(1.0))
             })
             .when(self.italic, |this| this.italic())
@@ -75,11 +83,19 @@ impl TextStyle {
                     .whitespace_nowrap()
                     .text_ellipsis_start()
             })
-            .text_color(color)
+            .text_color(self.text_color(cx))
             .font_weight(
                 self.weight
                     .unwrap_or(ThemeSettings::get_global(cx).ui_font.weight),
             )
+    }
+
+    fn text_color(&self, cx: &App) -> Hsla {
+        let mut color = self.color.color(cx);
+        if let Some(alpha) = self.alpha {
+            color.fade_out(1.0 - alpha);
+        }
+        color
     }
 }
 

@@ -200,7 +200,7 @@ impl RenderOnce for ButtonLike {
             })
             .border_color(style.border_color)
             .bg(background)
-            .text_color(style.label_color)
+            .text_color(style.text_color)
             .when(self.disabled, |this| {
                 if self.cursor_style == CursorStyle::PointingHand {
                     this.cursor_not_allowed()

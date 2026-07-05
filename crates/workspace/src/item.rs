@@ -7,7 +7,7 @@ use std::{any::Any, sync::Arc};
 
 use language::Capability;
 use project::{Project, ProjectEntryId, ProjectPath};
-use ui::{Color, Icon, Label, LabelCommon};
+use ui::{Color, Icon, Text, TextCommon};
 
 use crate::{
     SerializableItemRegistry, Workspace, WorkspaceId, pane::Pane, persistence::model::ItemId,
@@ -55,9 +55,9 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
         let text = self.tab_content_text(params.detail.unwrap_or_default(), cx);
 
-        Label::new(text)
+        Text::new(text)
             .color(params.text_color())
-            .when(params.preview, |label| label.italic())
+            .when(params.preview, |text| text.italic())
             .into_any_element()
     }
 

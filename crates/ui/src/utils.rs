@@ -6,7 +6,7 @@ pub use with_rem_size::*;
 use gpui::App;
 use gpui::Pixels;
 
-pub fn reveal_in_file_manager_label() -> &'static str {
+pub fn reveal_in_file_manager_title() -> &'static str {
     if cfg!(target_os = "macos") {
         "Reveal in Finder"
     } else if cfg!(target_os = "windows") {

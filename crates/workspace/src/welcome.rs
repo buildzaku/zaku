@@ -9,7 +9,7 @@ use metadata::{ZAKU_DESCRIPTION, ZAKU_NAME};
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, FixedWidth, Icon, IconName, IconSize,
-    KeyBinding, Label, LabelCommon, LabelSize,
+    KeyBinding, Text, TextCommon, TextSize,
 };
 
 use crate::{OpenMode, Workspace, WorkspaceDb, WorkspaceId};
@@ -36,10 +36,10 @@ impl RenderOnce for SectionHeader {
             .mb_2()
             .gap_2()
             .child(
-                Label::new(self.title.to_ascii_uppercase())
+                Text::new(self.title.to_ascii_uppercase())
                     .font_buffer(cx)
                     .color(Color::Muted)
-                    .size(LabelSize::XSmall),
+                    .size(TextSize::XSmall),
             )
             .child(
                 gpui::div()
@@ -54,14 +54,14 @@ impl RenderOnce for SectionHeader {
 struct SectionButton {
     focus_handle: FocusHandle,
     tab_index: usize,
-    label: SharedString,
+    text: SharedString,
     icon: IconName,
     action: Box<dyn Action>,
 }
 
 impl SectionButton {
     fn new(
-        label: impl Into<SharedString>,
+        text: impl Into<SharedString>,
         icon: IconName,
         action: &dyn Action,
         tab_index: usize,
@@ -70,7 +70,7 @@ impl SectionButton {
         Self {
             focus_handle,
             tab_index,
-            label: label.into(),
+            text: text.into(),
             icon,
             action: action.boxed_clone(),
         }
@@ -79,7 +79,7 @@ impl SectionButton {
 
 impl RenderOnce for SectionButton {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let id = format!("welcome-button-{}-{}", self.label, self.tab_index);
+        let id = format!("welcome-button-{}-{}", self.text, self.tab_index);
         let action_ref = self.action.as_ref();
         let tab_index = isize::try_from(self.tab_index).expect("tab index should fit in isize");
 
@@ -103,7 +103,7 @@ impl RenderOnce for SectionButton {
                                     .color(Color::Muted)
                                     .size(IconSize::Small),
                             )
-                            .child(Label::new(self.label)),
+                            .child(Text::new(self.text)),
                     )
                     .child(
                         KeyBinding::for_action_in(action_ref, &self.focus_handle, cx)
@@ -335,13 +335,13 @@ impl Render for WelcomePage {
                             .flex_col()
                             .items_center()
                             .child(
-                                Label::new(format!("Welcome to {ZAKU_NAME}"))
-                                    .size(LabelSize::Large)
+                                Text::new(format!("Welcome to {ZAKU_NAME}"))
+                                    .size(TextSize::Large)
                                     .weight(FontWeight::MEDIUM),
                             )
                             .child(
-                                Label::new(ZAKU_DESCRIPTION)
-                                    .size(LabelSize::Small)
+                                Text::new(ZAKU_DESCRIPTION)
+                                    .size(TextSize::Small)
                                     .color(Color::Muted)
                                     .italic(),
                             ),

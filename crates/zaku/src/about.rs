@@ -8,8 +8,8 @@ use metadata::{
     ZAKU_COMMIT_SHA, ZAKU_DESCRIPTION, ZAKU_IDENTIFIER, ZAKU_NAME, ZAKU_REPOSITORY, ZAKU_VERSION,
 };
 use ui::{
-    ActiveTheme, Button, ButtonCommon, ButtonVariant, Clickable, Headline, Label, LabelCommon,
-    LabelSize, Link, StyledTypography, TextSize,
+    ActiveTheme, Button, ButtonCommon, ButtonVariant, Clickable, Headline, Link, StyledTypography,
+    Text, TextCommon, TextSize,
 };
 
 struct AboutWindow {
@@ -57,7 +57,7 @@ impl Render for AboutWindow {
                     .items_center()
                     .child(gpui::img(self.app_icon.clone()).size_32().flex_none())
                     .child(Headline::new(ZAKU_NAME))
-                    .child(Label::new(ZAKU_DESCRIPTION).size(LabelSize::XSmall))
+                    .child(Text::new(ZAKU_DESCRIPTION).size(TextSize::XSmall))
                     .child(gpui::div().h_5())
                     .child(
                         gpui::div()
@@ -68,18 +68,18 @@ impl Render for AboutWindow {
                             .child(
                                 gpui::div()
                                     .text_right()
-                                    .child(Label::new("Version").size(LabelSize::Small)),
+                                    .child(Text::new("Version").size(TextSize::Small)),
                             )
                             .child(
                                 gpui::div()
                                     .text_left()
                                     .font_buffer(cx)
-                                    .child(Label::new(ZAKU_VERSION).size(LabelSize::Small)),
+                                    .child(Text::new(ZAKU_VERSION).size(TextSize::Small)),
                             )
                             .child(
                                 gpui::div()
                                     .text_right()
-                                    .child(Label::new("Commit").size(LabelSize::Small)),
+                                    .child(Text::new("Commit").size(TextSize::Small)),
                             )
                             .child(
                                 gpui::div().flex().flex_shrink_1().child(
@@ -103,7 +103,7 @@ impl Render for AboutWindow {
                             .child(
                                 Button::new("about-github-repository", "GitHub")
                                     .variant(ButtonVariant::Solid)
-                                    .label_size(LabelSize::Small)
+                                    .text_size(TextSize::Small)
                                     .on_click(|_, _, cx| cx.open_url(ZAKU_REPOSITORY)),
                             ),
                     ),

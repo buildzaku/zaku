@@ -16,7 +16,7 @@ use std::{
 
 use command_palette_hooks::CommandPaletteFilter;
 use picker::{Direction, Picker, PickerDelegate};
-use ui::{ActiveTheme, HighlightedLabel, KeyBinding, ListItem, ListItemSpacing, Toggleable};
+use ui::{ActiveTheme, HighlightedText, KeyBinding, ListItem, ListItemSpacing, Toggleable};
 use workspace::{ModalView, Workspace};
 
 use crate::persistence::CommandPaletteDB;
@@ -540,7 +540,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                         .w_full()
                         .py_px()
                         .justify_between()
-                        .child(HighlightedLabel::new(
+                        .child(HighlightedText::new(
                             command.name.clone(),
                             matching_command.positions.clone(),
                         ))

@@ -5,7 +5,7 @@ pub use language::DiskState;
 pub use request::{
     REQUEST_FILE_VERSION, RequestFile, RequestFileBody, RequestFileBodyType, RequestFileHeader,
     RequestFileHttp, RequestFileMeta, RequestFileParam, RequestFileState, parse_request_file,
-    request_method_label, serialize_request_file,
+    request_method_short_name, serialize_request_file,
 };
 pub use settings::WorktreeId;
 

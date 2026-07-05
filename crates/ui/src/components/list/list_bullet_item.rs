@@ -1,25 +1,25 @@
 use gpui::{AnyElement, App, IntoElement, ParentElement, SharedString, Window, prelude::*};
 
-use crate::{Color, Icon, IconName, IconSize, Label, LabelCommon, ListItem};
+use crate::{Color, Icon, IconName, IconSize, ListItem, Text, TextCommon};
 
 #[derive(IntoElement)]
 pub struct ListBulletItem {
-    label: SharedString,
-    label_color: Option<Color>,
+    text: SharedString,
+    text_color: Option<Color>,
     children: Vec<AnyElement>,
 }
 
 impl ListBulletItem {
-    pub fn new(label: impl Into<SharedString>) -> Self {
+    pub fn new(text: impl Into<SharedString>) -> Self {
         Self {
-            label: label.into(),
-            label_color: None,
+            text: text.into(),
+            text_color: None,
             children: Vec::new(),
         }
     }
 
-    pub fn label_color(mut self, color: Color) -> Self {
-        self.label_color = Some(color);
+    pub fn text_color(mut self, color: Color) -> Self {
+        self.text_color = Some(color);
         self
     }
 }
@@ -60,8 +60,8 @@ impl RenderOnce for ListBulletItem {
                         if self.children.is_empty() {
                             this.child(
                                 gpui::div().w_full().min_w_0().child(
-                                    Label::new(self.label)
-                                        .color(self.label_color.unwrap_or(Color::Default)),
+                                    Text::new(self.text)
+                                        .color(self.text_color.unwrap_or(Color::Default)),
                                 ),
                             )
                         } else {

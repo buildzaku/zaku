@@ -86,6 +86,17 @@ pub enum RequestFileBodyType {
     Xml,
 }
 
+impl RequestFileBodyType {
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Text => "Text",
+            Self::Json => "JSON",
+            Self::Html => "HTML",
+            Self::Xml => "XML",
+        }
+    }
+}
+
 pub fn serialize_request_file(request_file: &RequestFile) -> anyhow::Result<String> {
     let mut document = toml_edit::ser::to_document(request_file)?;
     promote_to_table(document.as_table_mut(), "meta")
@@ -123,7 +134,7 @@ pub fn parse_request_file(contents: &str) -> RequestFileState {
     }
 }
 
-pub fn request_method_label(method: &str) -> String {
+pub fn request_method_short_name(method: &str) -> String {
     let method = method.trim().to_ascii_uppercase();
     match method.as_str() {
         "GET" => "GET".to_string(),

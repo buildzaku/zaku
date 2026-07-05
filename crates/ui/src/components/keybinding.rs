@@ -327,14 +327,14 @@ pub fn render_modifiers(
 
 #[derive(IntoElement)]
 pub struct Key {
-    label: SharedString,
+    key: SharedString,
     color: Option<Color>,
     size: Option<AbsoluteLength>,
 }
 
 impl RenderOnce for Key {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let single_char = self.label.len() == 1;
+        let single_char = self.key.len() == 1;
         let size = self
             .size
             .unwrap_or_else(|| TextSize::default().rems(cx).into());
@@ -352,14 +352,14 @@ impl RenderOnce for Key {
             .text_size(size)
             .line_height(gpui::relative(1.0))
             .text_color(self.color.unwrap_or(Color::Muted).color(cx))
-            .child(self.label)
+            .child(self.key)
     }
 }
 
 impl Key {
-    pub fn new(label: impl Into<SharedString>, color: Option<Color>) -> Self {
+    pub fn new(key: impl Into<SharedString>, color: Option<Color>) -> Self {
         Self {
-            label: label.into(),
+            key: key.into(),
             color,
             size: None,
         }

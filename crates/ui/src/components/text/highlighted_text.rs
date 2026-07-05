@@ -1,103 +1,122 @@
 use gpui::{
-    App, FontWeight, HighlightStyle, RenderOnce, SharedString, StyledText, Window, prelude::*,
+    App, Div, FontWeight, HighlightStyle, RenderOnce, SharedString, StyleRefinement, StyledText,
+    Window, prelude::*,
 };
 use std::ops::Range;
 
-use theme::ActiveTheme;
+use theme::{ActiveTheme, ThemeSettings};
 
-use super::label_like::{LabelCommon, LabelLike, LabelSize, LineHeightStyle};
+use crate::{Color, LineHeightStyle, TextSize};
 
-use crate::Color;
+use super::{TextCommon, TextStyle};
 
 #[derive(IntoElement)]
-pub struct HighlightedLabel {
-    base: LabelLike,
-    label: SharedString,
+pub struct HighlightedText {
+    base: Div,
+    text: SharedString,
     highlight_indices: Vec<usize>,
+    style: TextStyle,
 }
 
-impl HighlightedLabel {
-    pub fn new(label: impl Into<SharedString>, mut highlight_indices: Vec<usize>) -> Self {
-        let label = label.into();
+impl HighlightedText {
+    pub fn new(text: impl Into<SharedString>, mut highlight_indices: Vec<usize>) -> Self {
+        let text = text.into();
 
         if highlight_indices
             .iter()
-            .any(|index| !label.is_char_boundary(*index))
+            .any(|index| !text.is_char_boundary(*index))
         {
             highlight_indices.clear();
         }
 
         Self {
-            base: LabelLike::new(),
-            label,
+            base: gpui::div(),
+            text,
             highlight_indices,
+            style: TextStyle::default(),
         }
     }
+
+    fn style(&mut self) -> &mut StyleRefinement {
+        self.base.style()
+    }
+
+    gpui::margin_style_methods!({
+        visibility: pub
+    });
 }
 
-impl LabelCommon for HighlightedLabel {
-    fn size(mut self, size: LabelSize) -> Self {
-        self.base = self.base.size(size);
+impl TextCommon for HighlightedText {
+    fn size(mut self, size: TextSize) -> Self {
+        self.style.size = size;
         self
     }
 
     fn weight(mut self, weight: FontWeight) -> Self {
-        self.base = self.base.weight(weight);
+        self.style.weight = Some(weight);
         self
     }
 
     fn line_height_style(mut self, line_height_style: LineHeightStyle) -> Self {
-        self.base = self.base.line_height_style(line_height_style);
+        self.style.line_height_style = line_height_style;
         self
     }
 
     fn color(mut self, color: Color) -> Self {
-        self.base = self.base.color(color);
+        self.style.color = color;
         self
     }
 
     fn strikethrough(mut self) -> Self {
-        self.base = self.base.strikethrough();
+        self.style.strikethrough = true;
         self
     }
 
     fn italic(mut self) -> Self {
-        self.base = self.base.italic();
+        self.style.italic = true;
         self
     }
 
     fn underline(mut self) -> Self {
-        self.base = self.base.underline();
+        self.style.underline = true;
         self
     }
 
     fn alpha(mut self, alpha: f32) -> Self {
-        self.base = self.base.alpha(alpha);
+        self.style.alpha = Some(alpha);
         self
     }
 
     fn truncate(mut self) -> Self {
-        self.base = self.base.truncate();
+        self.style.truncate = true;
         self
     }
 
     fn single_line(mut self) -> Self {
-        self.base = self.base.single_line();
+        self.text = SharedString::from(self.text.replace('\n', "\u{23ce}"));
+        self.style.single_line = true;
         self
     }
 
     fn font_buffer(mut self, cx: &App) -> Self {
-        self.base = self.base.font_buffer(cx);
+        self.base = self
+            .base
+            .font(ThemeSettings::get_global(cx).buffer_font.clone());
         self
     }
 
     fn inline_code(mut self, cx: &App) -> Self {
-        self.base = self.base.inline_code(cx);
+        self.base = self
+            .base
+            .font(ThemeSettings::get_global(cx).buffer_font.clone())
+            .bg(cx.theme().colors().element_background)
+            .rounded_sm()
+            .px_0p5();
         self
     }
 }
 
-pub fn highlight_ranges(
+fn highlight_ranges(
     text: &str,
     indices: &[usize],
     style: HighlightStyle,
@@ -124,11 +143,11 @@ pub fn highlight_ranges(
     highlights
 }
 
-impl RenderOnce for HighlightedLabel {
+impl RenderOnce for HighlightedText {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let highlight_color = cx.theme().colors().text_accent;
         let highlights = highlight_ranges(
-            &self.label,
+            &self.text,
             &self.highlight_indices,
             HighlightStyle {
                 color: Some(highlight_color),
@@ -137,9 +156,10 @@ impl RenderOnce for HighlightedLabel {
         );
 
         let mut text_style = window.text_style();
-        text_style.color = self.base.color.color(cx);
+        text_style.color = self.style.text_color(cx);
 
-        self.base
-            .child(StyledText::new(self.label).with_default_highlights(&text_style, highlights))
+        self.style
+            .apply(self.base, cx)
+            .child(StyledText::new(self.text).with_default_highlights(&text_style, highlights))
     }
 }

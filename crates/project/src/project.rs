@@ -12,7 +12,7 @@ pub use worktree::{
     Entry, EntryKind, File, ProjectEntryId, REQUEST_FILE_VERSION, RequestFile, RequestFileBody,
     RequestFileBodyType, RequestFileHeader, RequestFileHttp, RequestFileMeta, RequestFileParam,
     RequestFileState, Snapshot, UpdatedEntriesSet, UpdatedGitRepositoriesSet, UpdatedGitRepository,
-    Worktree, WorktreeId, request_method_label,
+    Worktree, WorktreeId, request_method_short_name,
 };
 
 use anyhow::anyhow;
@@ -90,7 +90,7 @@ impl<P: Into<Arc<RelPath>>> From<(WorktreeId, P)> for ProjectPath {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntryMetadata {
-    pub prefix_label: Option<String>,
+    pub prefix: Option<String>,
     pub is_invalid: bool,
 }
 
@@ -666,7 +666,7 @@ impl Project {
                             EntryMetadataState::Loaded {
                                 version: version_for_task.clone(),
                                 metadata: EntryMetadata {
-                                    prefix_label: Some(worktree::request_method_label(
+                                    prefix: Some(worktree::request_method_short_name(
                                         &request_file.http.method,
                                     )),
                                     is_invalid: false,
@@ -680,7 +680,7 @@ impl Project {
                             EntryMetadataState::Loaded {
                                 version: version_for_task.clone(),
                                 metadata: EntryMetadata {
-                                    prefix_label: None,
+                                    prefix: None,
                                     is_invalid: true,
                                 },
                             },

@@ -1,13 +1,13 @@
 use gpui::{AnyElement, App, SharedString, Window, prelude::*};
 
 use crate::{
-    ActiveTheme, Color, DynamicSpacing, Icon, IconName, IconSize, Label, LabelCommon, LabelSize,
+    ActiveTheme, Color, DynamicSpacing, Icon, IconName, IconSize, Text, TextCommon, TextSize,
     Toggleable,
 };
 
 #[derive(IntoElement)]
 pub struct ListSubHeader {
-    label: SharedString,
+    text: SharedString,
     start_slot: Option<IconName>,
     end_slot: Option<AnyElement>,
     inset: bool,
@@ -15,9 +15,9 @@ pub struct ListSubHeader {
 }
 
 impl ListSubHeader {
-    pub fn new(label: impl Into<SharedString>) -> Self {
+    pub fn new(text: impl Into<SharedString>) -> Self {
         Self {
-            label: label.into(),
+            text: text.into(),
             start_slot: None,
             end_slot: None,
             inset: false,
@@ -80,9 +80,9 @@ impl RenderOnce for ListSubHeader {
                                 Icon::new(icon).color(Color::Muted).size(IconSize::Small)
                             }))
                             .child(
-                                Label::new(self.label.clone())
+                                Text::new(self.text.clone())
                                     .color(Color::Muted)
-                                    .size(LabelSize::Small),
+                                    .size(TextSize::Small),
                             ),
                     )
                     .children(self.end_slot),

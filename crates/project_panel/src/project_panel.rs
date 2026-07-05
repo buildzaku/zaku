@@ -17,7 +17,7 @@ use std::{
 
 use editor::{
     Editor, EditorEvent, MultiBufferOffset, SelectionEffects,
-    items::{entry_git_aware_label_color, entry_label_color},
+    items::{entry_git_aware_text_color, entry_text_color},
 };
 use git::status::GitSummary;
 use path::{PathStyle, RelPath, SortMode, SortOrder};
@@ -31,9 +31,8 @@ use theme::ActiveTheme;
 use ui::{
     ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, ContextMenu, DynamicSpacing,
     FixedWidth, Icon, IconButton, IconButtonShape, IconName, IconSize, IndentGuideColors,
-    IndentGuideLayout, Indicator, KeyBinding, Label, LabelCommon, LabelSize, ListItem,
-    ListItemSpacing, RenderedIndentGuide, ScrollAxes, Scrollbars, Tooltip, TrackLayout,
-    WithScrollbar,
+    IndentGuideLayout, Indicator, KeyBinding, ListItem, ListItemSpacing, RenderedIndentGuide,
+    ScrollAxes, Scrollbars, Text, TextCommon, TextSize, Tooltip, TrackLayout, WithScrollbar,
 };
 use util::ResultExt;
 use workspace::{Panel, Workspace, WorkspaceEvent};
@@ -77,7 +76,7 @@ struct TreeState {
 
 struct EntryDetails {
     file_name: String,
-    prefix_label: Option<String>,
+    prefix: Option<String>,
     depth: u16,
     kind: EntryKind,
     is_expanded: bool,
@@ -438,17 +437,17 @@ impl ProjectPanel {
         let is_expanded = entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_ok();
         let file_name = file_name_for_entry(snapshot, entry);
         let depth = u16::try_from(display_depth(entry)).unwrap_or(u16::MAX);
-        let mut prefix_label = None;
+        let mut prefix = None;
         let mut is_invalid = false;
         if let Some(metadata) = self.project.read(cx).entry_metadata(entry) {
-            prefix_label.clone_from(&metadata.prefix_label);
+            prefix.clone_from(&metadata.prefix);
             is_invalid = metadata.is_invalid;
         }
         let selection = SelectedEntry(entry.id);
 
         EntryDetails {
             file_name,
-            prefix_label,
+            prefix,
             depth,
             kind: entry.kind,
             is_expanded,
@@ -560,10 +559,10 @@ impl ProjectPanel {
 
                     let mut max_width_item = None;
                     for (index, entry) in entries.iter().enumerate() {
-                        let entry_label = file_name_for_entry(&snapshot, entry);
+                        let file_name = file_name_for_entry(&snapshot, entry);
                         let width_estimate = item_width_estimate(
                             display_depth(entry),
-                            entry_label.chars().count(),
+                            file_name.chars().count(),
                             false,
                         );
 
@@ -889,7 +888,7 @@ impl ProjectPanel {
                 )
                 .separator()
                 .action(
-                    ui::utils::reveal_in_file_manager_label(),
+                    ui::utils::reveal_in_file_manager_title(),
                     Box::new(actions::project_panel::RevealInFileManager),
                 )
                 .separator()
@@ -2331,8 +2330,8 @@ impl ProjectPanel {
             .bg(colors.panel_background)
             .child(
                 gpui::div().flex_1().min_w_0().child(
-                    Label::new(root_name.to_ascii_uppercase())
-                        .size(LabelSize::Small)
+                    Text::new(root_name.to_ascii_uppercase())
+                        .size(TextSize::Small)
                         .truncate(),
                 ),
             )
@@ -2446,7 +2445,7 @@ impl ProjectPanel {
                         ),
                 )
                 .into_any_element()
-        } else if let Some(prefix_label) = details.prefix_label.as_ref() {
+        } else if let Some(prefix) = details.prefix.as_ref() {
             gpui::div()
                 .flex_none()
                 .flex()
@@ -2461,8 +2460,8 @@ impl ProjectPanel {
                         .items_center()
                         .justify_end()
                         .child(
-                            Label::new(prefix_label.clone())
-                                .size(LabelSize::Small)
+                            Text::new(prefix.clone())
+                                .size(TextSize::Small)
                                 .weight(FontWeight::MEDIUM)
                                 .color(Color::Muted)
                                 .alpha(0.7)
@@ -2509,10 +2508,10 @@ impl ProjectPanel {
         let is_selected = details.is_selected && !show_editor;
         let git_settings = GitSettings::get_global(cx);
         let git_status_enabled = git_settings.is_git_status_enabled();
-        let label_color = if git_status_enabled && git_settings.status.project_panel.colors {
-            entry_git_aware_label_color(details.git_status, details.is_ignored, is_marked)
+        let text_color = if git_status_enabled && git_settings.status.project_panel.colors {
+            entry_git_aware_text_color(details.git_status, details.is_ignored, is_marked)
         } else {
-            entry_label_color(is_marked)
+            entry_text_color(is_marked)
         };
         let git_indicator =
             (!show_editor && git_status_enabled && git_settings.status.project_panel.indicators)
@@ -2600,15 +2599,15 @@ impl ProjectPanel {
                     .indent_step_size(Self::entry_indent_size(window))
                     .spacing(ListItemSpacing::Dense)
                     .selectable(false)
-                    .when_some(git_indicator, |this, (label, color)| {
+                    .when_some(git_indicator, |this, (text, color)| {
                         this.end_slot(gpui::div().flex().items_center().flex_none().pr_3().child(
                             if details.kind.is_dir() {
                                 Indicator::dot()
-                                    .color(Color::Custom(label_color.color(cx).opacity(0.5)))
+                                    .color(Color::Custom(text_color.color(cx).opacity(0.5)))
                                     .into_any_element()
                             } else {
-                                Label::new(label)
-                                    .size(LabelSize::Small)
+                                Text::new(text)
+                                    .size(TextSize::Small)
                                     .color(color)
                                     .into_any_element()
                             },
@@ -2633,8 +2632,8 @@ impl ProjectPanel {
                             .child(self.file_name_editor.clone())
                     } else {
                         gpui::div().flex().items_center().h_6().child(
-                            Label::new(details.file_name.clone())
-                                .color(label_color)
+                            Text::new(details.file_name.clone())
+                                .color(text_color)
                                 .single_line(),
                         )
                     })
@@ -2663,9 +2662,9 @@ impl ProjectPanel {
                         .border_color(color)
                         .bg(cx.theme().colors().background)
                         .child(
-                            Label::new(message)
+                            Text::new(message)
                                 .color(Color::from(color))
-                                .size(LabelSize::Small),
+                                .size(TextSize::Small),
                         ),
                 ))
             })
@@ -3040,8 +3039,8 @@ impl Render for ProjectPanel {
                                 .gap_1p5()
                                 .child(
                                     gpui::div().text_center().child(
-                                        Label::new("Open a project to get started.")
-                                            .size(LabelSize::Small)
+                                        Text::new("Open a project to get started.")
+                                            .size(TextSize::Small)
                                             .color(Color::Muted),
                                     ),
                                 )
@@ -3054,7 +3053,7 @@ impl Render for ProjectPanel {
                                                 .flex()
                                                 .items_center()
                                                 .gap(DynamicSpacing::Base08.rems(cx))
-                                                .child(Label::new("Open Project"))
+                                                .child(Text::new("Open Project"))
                                                 .child(
                                                     KeyBinding::for_action_in(
                                                         &actions::workspace::Open::DEFAULT,

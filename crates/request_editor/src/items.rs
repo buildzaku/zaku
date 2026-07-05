@@ -4,11 +4,11 @@ use gpui::{
     WeakEntity, Window, prelude::*,
 };
 
-use editor::items::{entry_git_aware_label_color, entry_label_color};
+use editor::items::{entry_git_aware_text_color, entry_text_color};
 use path::PathExt;
 use project::{Project, RequestBuffer, RequestFileState};
 use settings::{GitSettings, Settings};
-use ui::{Color, Icon, IconName, IconSize, Label, LabelCommon, LabelSize};
+use ui::{Color, Icon, IconName, IconSize, Text, TextCommon, TextSize};
 use util::truncate_and_trailoff;
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
@@ -43,16 +43,16 @@ impl Item for RequestEditor {
     }
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
-        let selected_method_label = match &self.request {
-            RequestEditorState::Ready(request) => {
-                Some(project::request_method_label(request.http.method.as_str()))
-            }
+        let request_method = match &self.request {
+            RequestEditorState::Ready(request) => Some(project::request_method_short_name(
+                request.http.method.as_str(),
+            )),
             RequestEditorState::Invalid { .. } => None,
         };
         let git_settings = GitSettings::get_global(cx);
         let git_status_enabled =
             git_settings.is_git_status_enabled() && git_settings.status.tabs.colors;
-        let label_color = if git_status_enabled {
+        let text_color = if git_status_enabled {
             project::ProjectItem::project_path(self.buffer.read(cx), cx)
                 .and_then(|project_path| {
                     let project = self.project.read(cx);
@@ -62,18 +62,18 @@ impl Item for RequestEditor {
                         .map(|status| status.summary())
                         .unwrap_or_default();
 
-                    Some(entry_git_aware_label_color(
+                    Some(entry_git_aware_text_color(
                         git_status,
                         entry.is_ignored,
                         params.selected,
                     ))
                 })
-                .unwrap_or_else(|| entry_label_color(params.selected))
+                .unwrap_or_else(|| entry_text_color(params.selected))
         } else {
-            entry_label_color(params.selected)
+            entry_text_color(params.selected)
         };
-        let title = Label::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
-            .color(label_color)
+        let title = Text::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
+            .color(text_color)
             .when(params.preview, |this| this.italic());
         let description = params.detail.and_then(|detail| {
             let path = self.path_for_request(detail, false, cx)?;
@@ -103,11 +103,11 @@ impl Item for RequestEditor {
                     )
                 },
             )
-            .when_some(selected_method_label, |this, method| {
+            .when_some(request_method, |this, request_method| {
                 this.child(
                     gpui::div().flex_none().flex().items_center().child(
-                        Label::new(method)
-                            .size(LabelSize::Small)
+                        Text::new(request_method)
+                            .size(TextSize::Small)
                             .weight(FontWeight::MEDIUM)
                             .color(Color::Muted)
                             .alpha(0.7)
@@ -118,8 +118,8 @@ impl Item for RequestEditor {
             .child(title)
             .when_some(description, |this, description| {
                 this.child(
-                    Label::new(description)
-                        .size(LabelSize::XSmall)
+                    Text::new(description)
+                        .size(TextSize::XSmall)
                         .color(Color::Muted),
                 )
             })
@@ -410,7 +410,7 @@ mod tests {
 
             assert_eq!(request.http.method.as_str(), "POST");
             assert_eq!(
-                request.http.url.read(cx).text(cx),
+                request.http.url.read(cx).value(cx),
                 "https://api.zaku.dev/create"
             );
             assert_eq!(

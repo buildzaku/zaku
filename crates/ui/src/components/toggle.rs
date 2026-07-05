@@ -2,9 +2,10 @@ use gpui::{AnyView, App, ClickEvent, ElementId, Hsla, Pixels, SharedString, Wind
 
 use theme::ActiveTheme;
 
-use super::label::{Label, LabelCommon, LabelSize};
-
-use crate::{Color, DynamicSpacing, Icon, IconName, IconSize, TOOLTIP_SHOW_DELAY, ToggleState};
+use crate::{
+    Color, DynamicSpacing, Icon, IconName, IconSize, TOOLTIP_SHOW_DELAY, Text, TextCommon,
+    TextSize, ToggleState,
+};
 
 pub fn checkbox(id: impl Into<ElementId>, toggle_state: ToggleState) -> Checkbox {
     Checkbox::new(id, toggle_state)
@@ -15,9 +16,9 @@ pub struct Checkbox {
     id: ElementId,
     toggle_state: ToggleState,
     disabled: bool,
-    label: Option<SharedString>,
-    label_size: LabelSize,
-    label_color: Color,
+    text: Option<SharedString>,
+    text_size: TextSize,
+    text_color: Color,
     tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView>>,
     on_click: Option<Box<dyn Fn(&ToggleState, &ClickEvent, &mut Window, &mut App) + 'static>>,
 }
@@ -28,9 +29,9 @@ impl Checkbox {
             id: id.into(),
             toggle_state: checked,
             disabled: false,
-            label: None,
-            label_size: LabelSize::Default,
-            label_color: Color::Muted,
+            text: None,
+            text_size: TextSize::Default,
+            text_color: Color::Muted,
             tooltip: None,
             on_click: None,
         }
@@ -64,18 +65,18 @@ impl Checkbox {
         self
     }
 
-    pub fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.label = Some(label.into());
+    pub fn text(mut self, text: impl Into<SharedString>) -> Self {
+        self.text = Some(text.into());
         self
     }
 
-    pub fn label_size(mut self, size: LabelSize) -> Self {
-        self.label_size = size;
+    pub fn text_size(mut self, size: TextSize) -> Self {
+        self.text_size = size;
         self
     }
 
-    pub fn label_color(mut self, color: Color) -> Self {
-        self.label_color = color;
+    pub fn text_color(mut self, color: Color) -> Self {
+        self.text_color = color;
         self
     }
 
@@ -165,12 +166,8 @@ impl RenderOnce for Checkbox {
             })
             .gap(DynamicSpacing::Base06.rems(cx))
             .child(checkbox)
-            .when_some(self.label, |this, label| {
-                this.child(
-                    Label::new(label)
-                        .color(self.label_color)
-                        .size(self.label_size),
-                )
+            .when_some(self.text, |this, text| {
+                this.child(Text::new(text).color(self.text_color).size(self.text_size))
             })
             .when_some(self.tooltip, |this, tooltip| {
                 this.tooltip_show_delay(TOOLTIP_SHOW_DELAY)

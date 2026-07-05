@@ -32,7 +32,7 @@ use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
     DropdownVariant, DynamicSpacing, FixedWidth, IconButton, IconButtonShape, IconName,
-    IconPosition, IconSize, Label, LabelCommon, LabelSize, LineHeightStyle, ScrollAxes, Scrollbars,
+    IconPosition, IconSize, LineHeightStyle, ScrollAxes, Scrollbars, Text, TextCommon, TextSize,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
 use workspace::{AppState, Workspace, WorkspaceEvent, pane::Pane};
@@ -251,16 +251,6 @@ fn normalize_url(url: &str) -> Option<Url> {
     Url::parse(&url).ok()
 }
 
-fn body_type_label(r#type: Option<RequestBodyType>) -> &'static str {
-    match r#type {
-        None => "None",
-        Some(RequestBodyType::Text) => "Text",
-        Some(RequestBodyType::Json) => "JSON",
-        Some(RequestBodyType::Html) => "HTML",
-        Some(RequestBodyType::Xml) => "XML",
-    }
-}
-
 enum RequestEditorState {
     Ready(Request),
     Invalid {
@@ -316,17 +306,17 @@ impl Request {
             )
         })?;
         let url = cx.new(|cx| InputField::new(window, cx, "https://example.com"));
-        url.update(cx, |url, cx| {
-            url.set_text(&request_file.http.url, window, cx);
+        url.update(cx, |field, cx| {
+            field.set_value(&request_file.http.url, window, cx);
         });
         let mut params = Vec::new();
         for param in &request_file.http.params {
             let mut request_param = RequestParam::new(window, cx);
-            request_param.name.update(cx, |name, cx| {
-                name.set_text(&param.name, window, cx);
+            request_param.name.update(cx, |field, cx| {
+                field.set_value(&param.name, window, cx);
             });
-            request_param.value.update(cx, |value, cx| {
-                value.set_text(&param.value, window, cx);
+            request_param.value.update(cx, |field, cx| {
+                field.set_value(&param.value, window, cx);
             });
             if param.disabled {
                 request_param.set_disabled(true, window, cx);
@@ -336,11 +326,11 @@ impl Request {
         let mut headers = Vec::new();
         for header in &request_file.http.headers {
             let mut request_header = RequestHeader::new(window, cx);
-            request_header.name.update(cx, |name, cx| {
-                name.set_text(&header.name, window, cx);
+            request_header.name.update(cx, |field, cx| {
+                field.set_value(&header.name, window, cx);
             });
-            request_header.value.update(cx, |value, cx| {
-                value.set_text(&header.value, window, cx);
+            request_header.value.update(cx, |field, cx| {
+                field.set_value(&header.value, window, cx);
             });
             if header.disabled {
                 request_header.set_disabled(true, window, cx);
@@ -395,14 +385,14 @@ impl RequestSnapshot {
             meta: request.meta.clone(),
             http: RequestFileHttp {
                 method: request.http.method.as_str().to_owned(),
-                url: request.http.url.read(cx).text(cx),
+                url: request.http.url.read(cx).value(cx),
                 params: request
                     .http
                     .params
                     .iter()
                     .map(|param| RequestFileParam {
-                        name: param.name.read(cx).text(cx),
-                        value: param.value.read(cx).text(cx),
+                        name: param.name.read(cx).value(cx),
+                        value: param.value.read(cx).value(cx),
                         disabled: param.disabled,
                     })
                     .collect(),
@@ -411,8 +401,8 @@ impl RequestSnapshot {
                     .headers
                     .iter()
                     .map(|header| RequestFileHeader {
-                        name: header.name.read(cx).text(cx),
-                        value: header.value.read(cx).text(cx),
+                        name: header.name.read(cx).value(cx),
+                        value: header.value.read(cx).value(cx),
                         disabled: header.disabled,
                     })
                     .collect(),
@@ -449,9 +439,9 @@ impl RequestParam {
     fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
         self.disabled = disabled;
         self.name
-            .update(cx, |name, cx| name.set_muted(disabled, window, cx));
+            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
         self.value
-            .update(cx, |value, cx| value.set_muted(disabled, window, cx));
+            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
     }
 }
 
@@ -473,9 +463,9 @@ impl RequestHeader {
     fn set_disabled(&mut self, disabled: bool, window: &mut Window, cx: &mut App) {
         self.disabled = disabled;
         self.name
-            .update(cx, |name, cx| name.set_muted(disabled, window, cx));
+            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
         self.value
-            .update(cx, |value, cx| value.set_muted(disabled, window, cx));
+            .update(cx, |field, cx| field.set_muted(disabled, window, cx));
     }
 }
 
@@ -990,7 +980,7 @@ impl RequestEditor {
         };
 
         let request_method = request.http.method.clone();
-        let request_url = request.http.url.read(cx).text(cx);
+        let request_url = request.http.url.read(cx).value(cx);
         let request_params = request
             .http
             .params
@@ -1000,12 +990,12 @@ impl RequestEditor {
                     return None;
                 }
 
-                let name = param.name.read(cx).text(cx).trim().to_string();
+                let name = param.name.read(cx).value(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = param.value.read(cx).text(cx);
+                let value = param.value.read(cx).value(cx);
                 Some((name, value))
             })
             .collect::<Vec<_>>();
@@ -1018,12 +1008,12 @@ impl RequestEditor {
                     return None;
                 }
 
-                let name = header.name.read(cx).text(cx).trim().to_string();
+                let name = header.name.read(cx).value(cx).trim().to_string();
                 if name.is_empty() {
                     return None;
                 }
 
-                let value = header.value.read(cx).text(cx);
+                let value = header.value.read(cx).value(cx);
                 Some((name, value))
             })
             .collect::<Vec<_>>();
@@ -1343,11 +1333,11 @@ impl RequestEditor {
             .p_3()
             .bg(cx.theme().colors().panel_background)
             .child(
-                Label::new("Invalid Request")
-                    .size(LabelSize::Large)
+                Text::new("Invalid Request")
+                    .size(TextSize::Large)
                     .color(Color::Error),
             )
-            .child(Label::new(error.to_string()).color(Color::Muted))
+            .child(Text::new(error.to_string()).color(Color::Muted))
     }
 
     fn render_tab_bar(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -1355,7 +1345,7 @@ impl RequestEditor {
         let colors = cx.theme().colors();
 
         let render_tab =
-            |id: ElementId, active: bool, label: SharedString, set_active_tab: RequestEditorTab| {
+            |id: ElementId, active: bool, title: SharedString, set_active_tab: RequestEditorTab| {
                 let colors = cx.theme().colors();
 
                 gpui::div()
@@ -1394,9 +1384,9 @@ impl RequestEditor {
                                 )
                             })
                             .child(
-                                Label::new(label)
-                                    .size(LabelSize::Small)
-                                    .line_height_style(LineHeightStyle::UiLabel)
+                                Text::new(title)
+                                    .size(TextSize::Small)
+                                    .line_height_style(LineHeightStyle::Compact)
                                     .weight(FontWeight::MEDIUM)
                                     .color(if active {
                                         Color::Custom(colors.panel_tab_active_foreground)
@@ -1681,13 +1671,16 @@ impl RequestEditor {
     }
 
     fn render_body(request: &Request, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let selected_body_type = request.http.body_type;
-        let selected_body_type_label = body_type_label(selected_body_type);
-        let body = selected_body_type.and(request.http.body.as_ref());
+        let body_type = request.http.body_type;
+        let body_type_display_name = body_type.map_or("None", |body_type| body_type.display_name());
+        let body = match body_type {
+            Some(_) => request.http.body.as_ref(),
+            None => None,
+        };
         let request_editor = cx.weak_entity();
         let context_menu = ContextMenu::build(window, cx, move |menu, _, _| {
             let mut menu = menu;
-            for body_type in [
+            for type_option in [
                 None,
                 Some(RequestBodyType::Text),
                 Some(RequestBodyType::Json),
@@ -1695,14 +1688,15 @@ impl RequestEditor {
                 Some(RequestBodyType::Xml),
             ] {
                 let request_editor = request_editor.clone();
+                let display_name = type_option.map_or("None", |body_type| body_type.display_name());
                 menu = menu.toggleable_entry(
-                    body_type_label(body_type),
-                    body_type == selected_body_type,
+                    display_name,
+                    type_option == body_type,
                     IconPosition::End,
                     None,
                     move |window, cx| {
                         if let Err(error) = request_editor.update(cx, |request_editor, cx| {
-                            request_editor.set_body_type(body_type, window, cx);
+                            request_editor.set_body_type(type_option, window, cx);
                         }) {
                             log::debug!("Failed to update request body type: {error:?}");
                         }
@@ -1733,13 +1727,13 @@ impl RequestEditor {
                     .border_color(colors.border)
                     .bg(colors.panel_tab_bar_background.opacity(0.5))
                     .child(
-                        Label::new("Content Type")
-                            .size(LabelSize::Small)
+                        Text::new("Content Type")
+                            .size(TextSize::Small)
                             .color(Color::Muted)
                             .single_line(),
                     )
                     .child(
-                        DropdownMenu::new("body-type", selected_body_type_label, context_menu)
+                        DropdownMenu::new("body-type", body_type_display_name, context_menu)
                             .variant(DropdownVariant::OutlinedGhost)
                             .attach(Anchor::BottomLeft)
                             .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
@@ -1832,7 +1826,7 @@ impl RequestEditor {
                         .w_full()
                         .px_3()
                         .pt_2()
-                        .child(Label::new(request_relative_path)),
+                        .child(Text::new(request_relative_path)),
                 )
             })
             .child(
@@ -2115,8 +2109,8 @@ mod tests {
             let RequestEditorState::Ready(request) = &mut editor.request else {
                 panic!("Expected request editor to be ready");
             };
-            request.http.url.update(cx, |url, cx| {
-                url.set_text("https://api.zaku.dev/me/edit", window, cx);
+            request.http.url.update(cx, |field, cx| {
+                field.set_value("https://api.zaku.dev/me/edit", window, cx);
             });
             editor.mark_edited(cx);
         });

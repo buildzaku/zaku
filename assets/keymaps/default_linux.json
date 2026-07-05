@@ -112,8 +112,8 @@
   {
     "context": "ResponsePanel > Text",
     "bindings": {
-      "ctrl-a": "editor::SelectAll",
-      "ctrl-c": "editor::Copy"
+      "ctrl-a": "text::SelectAll",
+      "ctrl-c": "text::Copy"
     }
   },
   {
