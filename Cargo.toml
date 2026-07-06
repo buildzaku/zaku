@@ -203,8 +203,8 @@ workspace = { path = "crates/workspace" }
 worktree = { path = "crates/worktree" }
 
 [patch.crates-io]
-async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d671357" }
-async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e" }
+async-process = { git = "https://github.com/zed-industries/async-process", rev = "0b6d671357" }
+async-task = { git = "https://github.com/smol-rs/async-task", rev = "b4486cd71e" }
 
 [workspace.lints.rust]
 # Visibility.
