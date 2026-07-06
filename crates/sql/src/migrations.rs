@@ -1,10 +1,62 @@
 use anyhow::Context;
 use indoc::{formatdoc, indoc};
 use libsqlite3_sys as sqlite3;
-use sqlformat::{FormatOptions, QueryParams};
-use std::ffi::CString;
+use sha2::{Digest, Sha256};
+use std::{borrow::Cow, ffi::CString, fmt};
 
 use crate::connection::Connection;
+
+fn normalize_migration(migration: &str) -> Cow<'_, str> {
+    let migration = migration.trim();
+    if !migration.as_bytes().contains(&b'\r') {
+        return Cow::Borrowed(migration);
+    }
+
+    let mut normalized = String::with_capacity(migration.len());
+    let mut characters = migration.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == '\r' {
+            if characters.peek() == Some(&'\n') {
+                characters.next();
+            }
+            normalized.push('\n');
+        } else {
+            normalized.push(character);
+        }
+    }
+    Cow::Owned(normalized)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct MigrationChecksum([u8; 32]);
+
+impl MigrationChecksum {
+    fn new(migration: &str) -> Self {
+        Self(Sha256::digest(migration.as_bytes()).into())
+    }
+
+    fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl From<&[u8; 32]> for MigrationChecksum {
+    fn from(checksum: &[u8; 32]) -> Self {
+        Self(*checksum)
+    }
+}
+
+impl fmt::Display for MigrationChecksum {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&hex::encode(self.0))
+    }
+}
+
+fn prepare_migration(migration: &str) -> (Cow<'_, str>, MigrationChecksum) {
+    let migration = normalize_migration(migration);
+    let checksum = MigrationChecksum::new(&migration);
+    (migration, checksum)
+}
 
 impl Connection {
     fn eager_exec(&self, sql: &str) -> anyhow::Result<()> {
@@ -35,54 +87,55 @@ impl Connection {
         self.with_savepoint("migrating", || {
             self.exec(indoc! {"
                     CREATE TABLE IF NOT EXISTS migration (
-                        domain TEXT,
-                        step INTEGER,
-                        statement TEXT
+                        id INTEGER PRIMARY KEY,
+                        domain TEXT NOT NULL,
+                        step INTEGER NOT NULL,
+                        checksum BLOB NOT NULL,
+                        UNIQUE(domain, step)
                     )
                 "})
                 .and_then(|mut stmt| stmt())?;
 
             let completed_migrations = self
-                .select_bound::<&str, (String, usize, String)>(indoc! {"
-                    SELECT domain, step, statement FROM migration
+                .select_bound::<&str, (String, usize, [u8; 32])>(indoc! {"
+                    SELECT domain, step, checksum FROM migration
                     WHERE domain = ?
                     ORDER BY step
                 "})
                 .and_then(|mut stmt| stmt(domain))?;
 
-            let mut store_completed_migration = self
-                .exec_bound("INSERT INTO migration (domain, step, statement) VALUES (?, ?, ?)")?;
+            let mut store_completed_migration =
+                self.exec_bound("INSERT INTO migration (domain, step, checksum) VALUES (?, ?, ?)")?;
 
             let mut did_migrate = false;
             for (index, migration) in migrations.iter().enumerate() {
-                let migration =
-                    sqlformat::format(migration, &QueryParams::None, &FormatOptions::default());
-                if let Some((_, _, completed_migration)) = completed_migrations.get(index) {
-                    let completed_migration = sqlformat::format(
-                        completed_migration,
-                        &QueryParams::None,
-                        &FormatOptions::default(),
-                    );
-                    if completed_migration == migration
-                        || should_allow_migration_change(index, &completed_migration, &migration)
-                    {
+                let (migration, proposed_checksum) = prepare_migration(migration);
+                if let Some((_, _, stored_checksum)) = completed_migrations.get(index) {
+                    let stored_checksum = MigrationChecksum::from(stored_checksum);
+                    if stored_checksum == proposed_checksum {
+                        continue;
+                    }
+
+                    let stored_checksum = stored_checksum.to_string();
+                    let proposed_checksum = proposed_checksum.to_string();
+                    if should_allow_migration_change(index, &stored_checksum, &proposed_checksum) {
                         continue;
                     }
 
                     anyhow::bail!(formatdoc! {"
                         Migration changed for {domain} at step {index}
 
-                        Stored migration:
-                        {completed_migration}
+                        Stored checksum:
+                        {stored_checksum}
 
-                        Proposed migration:
-                        {migration}
+                        Proposed checksum:
+                        {proposed_checksum}
                     "});
                 }
 
                 self.eager_exec(&migration)?;
                 did_migrate = true;
-                store_completed_migration((domain, index, migration))?;
+                store_completed_migration((domain, index, proposed_checksum.as_bytes()))?;
             }
 
             if did_migrate {
@@ -139,65 +192,54 @@ impl Connection {
 mod tests {
     use super::*;
 
-    fn disallow_migration_change(_index: usize, _old: &str, _new: &str) -> bool {
+    fn disallow_migration_change(_index: usize, _old_checksum: &str, _new_checksum: &str) -> bool {
         false
     }
 
     #[test]
     fn test_migrations_are_added_to_table() {
         let connection = Connection::open_memory(Some("test_migrations_are_added_to_table"));
+        let first_migration = indoc! {"
+            CREATE TABLE test1 (
+                a TEXT,
+                b TEXT
+            )
+        "};
+        let second_migration = indoc! {"
+            CREATE TABLE test2 (
+                c TEXT,
+                d TEXT
+            )
+        "};
 
         connection
-            .migrate(
-                "test",
-                &[indoc! {"
-                    CREATE TABLE test1 (
-                        a TEXT,
-                        b TEXT
-                    )
-                "}],
-                &mut disallow_migration_change,
-            )
+            .migrate("test", &[first_migration], &mut disallow_migration_change)
             .unwrap();
 
+        let (_, first_checksum) = prepare_migration(first_migration);
         assert_eq!(
             &connection
-                .select::<String>("SELECT (statement) FROM migration")
+                .select::<[u8; 32]>("SELECT (checksum) FROM migration")
                 .and_then(|mut stmt| stmt())
                 .unwrap()[..],
-            &[indoc! {"CREATE TABLE test1 (a TEXT, b TEXT)"}],
+            &[*first_checksum.as_bytes()],
         );
 
         connection
             .migrate(
                 "test",
-                &[
-                    indoc! {"
-                        CREATE TABLE test1 (
-                            a TEXT,
-                            b TEXT
-                        )
-                    "},
-                    indoc! {"
-                        CREATE TABLE test2 (
-                            c TEXT,
-                            d TEXT
-                        )
-                    "},
-                ],
+                &[first_migration, second_migration],
                 &mut disallow_migration_change,
             )
             .unwrap();
 
+        let (_, second_checksum) = prepare_migration(second_migration);
         assert_eq!(
             &connection
-                .select::<String>("SELECT (statement) FROM migration")
+                .select::<[u8; 32]>("SELECT (checksum) FROM migration")
                 .and_then(|mut stmt| stmt())
                 .unwrap()[..],
-            &[
-                indoc! {"CREATE TABLE test1 (a TEXT, b TEXT)"},
-                indoc! {"CREATE TABLE test2 (c TEXT, d TEXT)"},
-            ],
+            &[*first_checksum.as_bytes(), *second_checksum.as_bytes()],
         );
     }
 
@@ -208,9 +250,11 @@ mod tests {
         connection
             .exec(indoc! {"
                 CREATE TABLE IF NOT EXISTS migration (
-                    domain TEXT,
-                    step INTEGER,
-                    statement TEXT
+                    id INTEGER PRIMARY KEY,
+                    domain TEXT NOT NULL,
+                    step INTEGER NOT NULL,
+                    checksum BLOB NOT NULL,
+                    UNIQUE(domain, step)
                 );
             "})
             .and_then(|mut stmt| stmt())
@@ -218,7 +262,7 @@ mod tests {
 
         let mut store_completed_migration = connection
             .exec_bound(indoc! {"
-                INSERT INTO migration (domain, step, statement)
+                INSERT INTO migration (domain, step, checksum)
                 VALUES (?, ?, ?)
             "})
             .unwrap();
@@ -232,8 +276,8 @@ mod tests {
                 .and_then(|mut stmt| stmt())
                 .unwrap();
 
-            store_completed_migration((domain, migration_index, migration_index.to_string()))
-                .unwrap();
+            let checksum = [u8::try_from(migration_index).unwrap(); 32];
+            store_completed_migration((domain, migration_index, &checksum)).unwrap();
         }
     }
 
@@ -305,29 +349,29 @@ mod tests {
     #[test]
     fn test_changed_migration_fails() {
         let connection = Connection::open_memory(Some("test_changed_migration_fails"));
+        let old_migration = "CREATE TABLE test (col INTEGER)";
+        let new_migration = "CREATE TABLE test (color INTEGER)";
 
         connection
             .migrate(
                 "test migration",
-                &[
-                    "CREATE TABLE test (col INTEGER)",
-                    "INSERT INTO test (col) VALUES (1)",
-                ],
+                &[old_migration, "INSERT INTO test (col) VALUES (1)"],
                 &mut disallow_migration_change,
             )
             .unwrap();
 
         let mut migration_changed = false;
+        let (_, old_checksum) = prepare_migration(old_migration);
+        let (_, new_checksum) = prepare_migration(new_migration);
+        let old_checksum = old_checksum.to_string();
+        let new_checksum = new_checksum.to_string();
 
         let second_migration_result = connection.migrate(
             "test migration",
-            &[
-                "CREATE TABLE test (color INTEGER)",
-                "INSERT INTO test (color) VALUES (1)",
-            ],
+            &[new_migration, "INSERT INTO test (color) VALUES (1)"],
             &mut |_index, old, new| {
-                assert_eq!(old, "CREATE TABLE test (col INTEGER)");
-                assert_eq!(new, "CREATE TABLE test (color INTEGER)");
+                assert_eq!(old, old_checksum.as_str());
+                assert_eq!(new, new_checksum.as_str());
                 migration_changed = true;
                 false
             },

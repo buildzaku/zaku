@@ -4,7 +4,11 @@ pub trait Domain: 'static {
     const NAME: &str;
     const MIGRATIONS: &[&str];
 
-    fn should_allow_migration_change(_index: usize, _old: &str, _new: &str) -> bool {
+    fn should_allow_migration_change(
+        _index: usize,
+        _old_checksum: &str,
+        _new_checksum: &str,
+    ) -> bool {
         false
     }
 }
