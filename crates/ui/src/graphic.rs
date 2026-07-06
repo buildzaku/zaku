@@ -18,7 +18,7 @@ pub enum GraphicName {
 impl GraphicName {
     pub fn path(&self) -> Arc<str> {
         let file_stem: &'static str = self.into();
-        format!("graphics/{file_stem}.svg").into()
+        format!("svg/{file_stem}.svg").into()
     }
 
     fn aspect_ratio(self) -> f32 {

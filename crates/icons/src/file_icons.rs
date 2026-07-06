@@ -5,9 +5,9 @@ const FILE_SUFFIXES_BY_ICON_KEY: &[(&str, &[&str])] =
     &[("json", &["json", "jsonc"]), ("log", &["log"])];
 
 const FILE_ICONS: &[(&str, &str)] = &[
-    ("default", "icons/file/toml.svg"),
-    ("json", "icons/file/code.svg"),
-    ("log", "icons/file/info.svg"),
+    ("default", "svg/icons/file/toml.svg"),
+    ("json", "svg/icons/file/code.svg"),
+    ("log", "svg/icons/file/info.svg"),
 ];
 
 #[derive(Debug)]

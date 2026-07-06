@@ -56,6 +56,6 @@ pub enum IconName {
 impl IconName {
     pub fn path(&self) -> Arc<str> {
         let file_stem: &'static str = self.into();
-        format!("icons/{file_stem}.svg").into()
+        format!("svg/icons/{file_stem}.svg").into()
     }
 }
