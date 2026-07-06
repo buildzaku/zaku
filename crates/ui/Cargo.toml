@@ -17,7 +17,6 @@ workspace = true
 [dependencies]
 actions = { workspace = true }
 gpui = { workspace = true }
-icons = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
 schemars = { workspace = true }
@@ -25,6 +24,7 @@ serde = { workspace = true }
 settings = { workspace = true }
 smallvec = { workspace = true }
 strum = { workspace = true }
+svg = { workspace = true }
 theme = { workspace = true }
 ui_macros = { workspace = true }
 util = { workspace = true }

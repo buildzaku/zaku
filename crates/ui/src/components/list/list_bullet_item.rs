@@ -1,6 +1,6 @@
 use gpui::{AnyElement, App, IntoElement, ParentElement, SharedString, Window, prelude::*};
 
-use crate::{Color, Icon, IconName, IconSize, ListItem, Text, TextCommon};
+use crate::{Color, Icon, IconAsset, IconSize, ListItem, Text, TextCommon};
 
 #[derive(IntoElement)]
 pub struct ListBulletItem {
@@ -51,7 +51,7 @@ impl RenderOnce for ListBulletItem {
                             .h(line_height)
                             .justify_center()
                             .child(
-                                Icon::new(IconName::Dash)
+                                Icon::new(IconAsset::Dash)
                                     .size(IconSize::XSmall)
                                     .color(Color::Hidden),
                             ),

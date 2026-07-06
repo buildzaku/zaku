@@ -14,7 +14,7 @@ use project::{Project, ProjectEntryId, ProjectPath};
 use settings::SettingsStore;
 use theme::{ActiveTheme, ThemeSettings};
 use ui::{
-    ButtonCommon, ButtonSize, Clickable, Color, Icon, IconButton, IconButtonShape, IconName,
+    ButtonCommon, ButtonSize, Clickable, Color, Icon, IconAsset, IconButton, IconButtonShape,
     IconSize, Indicator, TOOLTIP_SHOW_DELAY, Tab, TabBar, TabPosition, Toggleable, Tooltip,
     VisibleOnHover,
 };
@@ -900,7 +900,7 @@ impl Pane {
         let tab_tooltip_content = item.tab_tooltip_content(cx);
         let tab_control_group_name = format!("tab-control-{item_index}");
 
-        let close_button = IconButton::new(("close-tab", item_index), IconName::Close)
+        let close_button = IconButton::new(("close-tab", item_index), IconAsset::Close)
             .shape(IconButtonShape::Square)
             .icon_color(Color::Muted)
             .size(ButtonSize::None)
@@ -1018,7 +1018,7 @@ impl Pane {
             )
             .when(!capability.editable(), |this| {
                 this.child(
-                    Icon::new(IconName::FileLock)
+                    Icon::new(IconAsset::FileLock)
                         .size(IconSize::Small)
                         .color(Color::Disabled),
                 )

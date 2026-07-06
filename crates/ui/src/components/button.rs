@@ -12,7 +12,7 @@ use gpui::{
     MouseButton, Rems, SharedString, Window, prelude::*,
 };
 
-use icons::IconName;
+use ::svg::IconAsset;
 use theme::ActiveTheme;
 
 use crate::{
@@ -285,7 +285,7 @@ pub struct Button {
     height: Option<DefiniteLength>,
     size: ButtonSize,
     disabled: bool,
-    icon: Option<IconName>,
+    icon: Option<IconAsset>,
     icon_position: Option<IconPosition>,
     icon_size: Option<IconSize>,
     icon_color: Option<Color>,
@@ -341,7 +341,7 @@ impl Button {
         self
     }
 
-    pub fn icon(mut self, icon: impl Into<Option<IconName>>) -> Self {
+    pub fn icon(mut self, icon: impl Into<Option<IconAsset>>) -> Self {
         self.icon = icon.into();
         self
     }

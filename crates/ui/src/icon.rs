@@ -1,6 +1,6 @@
 use gpui::{App, IntoElement, Pixels, Rems, SharedString, Transformation, Window, prelude::*};
 
-use icons::IconName;
+use ::svg::IconAsset;
 
 use crate::{Color, DynamicSpacing};
 
@@ -66,7 +66,7 @@ pub struct Icon {
 }
 
 impl Icon {
-    pub fn new(icon: IconName) -> Self {
+    pub fn new(icon: IconAsset) -> Self {
         Self {
             path: icon.path().into(),
             color: Color::default(),

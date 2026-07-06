@@ -1010,7 +1010,7 @@ mod tests {
     #[gpui::test]
     fn test_formatted_chunks(cx: &mut App) {
         let buffer = cx.new(|cx| {
-            Buffer::local(r#"{ "ui": { "font_size": 13 } }"#, cx).with_language(json_lang(), cx)
+            Buffer::local(r#"{ "ui": { "font_size": 14 } }"#, cx).with_language(json_lang(), cx)
         });
         let snapshot = buffer.read(cx).snapshot();
 

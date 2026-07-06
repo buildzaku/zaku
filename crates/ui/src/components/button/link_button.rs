@@ -2,7 +2,7 @@ use gpui::{App, IntoElement, SharedString, Window, prelude::*};
 
 use super::{ButtonCommon, ButtonLike, ButtonSize};
 
-use crate::{Clickable, Color, Icon, IconName, IconSize, Text, TextCommon, TextSize};
+use crate::{Clickable, Color, Icon, IconAsset, IconSize, Text, TextCommon, TextSize};
 
 #[derive(IntoElement)]
 pub struct LinkButton {
@@ -59,7 +59,7 @@ impl RenderOnce for LinkButton {
                     )
                     .when(!self.no_icon, |this| {
                         this.child(
-                            Icon::new(IconName::ArrowUpRight)
+                            Icon::new(IconAsset::ArrowUpRight)
                                 .size(IconSize::Small)
                                 .color(Color::Muted),
                         )

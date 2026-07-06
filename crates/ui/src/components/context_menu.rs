@@ -8,7 +8,7 @@ use theme::ThemeSettings;
 
 use crate::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, Disableable, Icon,
-    IconButton, IconButtonShape, IconName, IconPosition, IconSize, KeyBinding, List, ListItem,
+    IconAsset, IconButton, IconButtonShape, IconPosition, IconSize, KeyBinding, List, ListItem,
     ListSeparator, ListSubHeader, StyledExt, Text, TextCommon, TextSize, Toggleable, Tooltip,
     VisibleOnHover, utils::WithRemSize,
 };
@@ -42,7 +42,7 @@ impl From<ContextMenuEntry> for ContextMenuItem {
 pub struct ContextMenuEntry {
     toggle: Option<(IconPosition, bool)>,
     text: SharedString,
-    icon: Option<IconName>,
+    icon: Option<IconAsset>,
     icon_position: IconPosition,
     icon_size: IconSize,
     icon_color: Option<Color>,
@@ -50,7 +50,7 @@ pub struct ContextMenuEntry {
     secondary_handler: Option<Rc<dyn Fn(Option<&FocusHandle>, &mut Window, &mut App)>>,
     action: Option<Box<dyn Action>>,
     disabled: bool,
-    end_slot_icon: Option<IconName>,
+    end_slot_icon: Option<IconAsset>,
     end_slot_title: Option<SharedString>,
     end_slot_handler: Option<Rc<dyn Fn(Option<&FocusHandle>, &mut Window, &mut App)>>,
     show_end_slot_on_hover: bool,
@@ -81,7 +81,7 @@ impl ContextMenuEntry {
         self
     }
 
-    pub fn icon(mut self, icon: IconName) -> Self {
+    pub fn icon(mut self, icon: IconAsset) -> Self {
         self.icon = Some(icon);
         self
     }
@@ -339,7 +339,7 @@ impl ContextMenu {
         text: impl Into<SharedString>,
         action: Option<Box<dyn Action>>,
         handler: impl Fn(&mut Window, &mut App) + 'static,
-        end_slot_icon: IconName,
+        end_slot_icon: IconAsset,
         end_slot_title: SharedString,
         end_slot_handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
@@ -367,7 +367,7 @@ impl ContextMenu {
         text: impl Into<SharedString>,
         action: Option<Box<dyn Action>>,
         handler: impl Fn(&mut Window, &mut App) + 'static,
-        end_slot_icon: IconName,
+        end_slot_icon: IconAsset,
         end_slot_title: SharedString,
         end_slot_handler: impl Fn(&mut Window, &mut App) + 'static,
     ) -> Self {
@@ -509,7 +509,7 @@ impl ContextMenu {
                 window.dispatch_action(action.boxed_clone(), cx);
             }),
             secondary_handler: None,
-            icon: Some(IconName::ArrowUpRight),
+            icon: Some(IconAsset::ArrowUpRight),
             icon_size: IconSize::XSmall,
             icon_position: IconPosition::End,
             icon_color: None,
@@ -867,18 +867,18 @@ impl ContextMenu {
             Color::Default
         };
 
-        let content = if let Some(icon_name) = icon {
+        let content = if let Some(icon_asset) = icon {
             gpui::div()
                 .flex()
                 .items_center()
                 .gap_1p5()
                 .when(
                     *icon_position == IconPosition::Start && toggle.is_none(),
-                    |flex| flex.child(Icon::new(*icon_name).size(*icon_size).color(icon_color)),
+                    |flex| flex.child(Icon::new(*icon_asset).size(*icon_size).color(icon_color)),
                 )
                 .child(Text::new(text.clone()).color(text_color).truncate())
                 .when(*icon_position == IconPosition::End, |flex| {
-                    flex.child(Icon::new(*icon_name).size(*icon_size).color(icon_color))
+                    flex.child(Icon::new(*icon_asset).size(*icon_size).color(icon_color))
                 })
                 .into_any_element()
         } else {
@@ -908,7 +908,7 @@ impl ContextMenu {
                         let contents = gpui::div()
                             .flex_none()
                             .child(
-                                Icon::new(icon.unwrap_or(IconName::Check))
+                                Icon::new(icon.unwrap_or(IconAsset::Check))
                                     .color(icon_color)
                                     .size(*icon_size),
                             )

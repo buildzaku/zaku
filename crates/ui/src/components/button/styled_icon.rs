@@ -1,25 +1,23 @@
 use gpui::{App, IntoElement, RenderOnce, Window};
 
-use icons::IconName;
+use ::svg::IconAsset;
 
-use crate::{Color, Icon, IconSize};
-
-use crate::Disableable;
+use crate::{Color, Disableable, Icon, IconSize};
 
 #[derive(IntoElement)]
 pub(super) struct StyledIcon {
-    icon: IconName,
+    icon: IconAsset,
     size: IconSize,
     color: Color,
     disabled: bool,
     selected: bool,
-    selected_icon: Option<IconName>,
+    selected_icon: Option<IconAsset>,
     selected_icon_color: Option<Color>,
     hover_icon_color: Option<Color>,
 }
 
 impl StyledIcon {
-    pub(super) fn new(icon: IconName) -> Self {
+    pub(super) fn new(icon: IconAsset) -> Self {
         Self {
             icon,
             size: IconSize::default(),
@@ -47,7 +45,7 @@ impl StyledIcon {
         self
     }
 
-    pub(super) fn selected_icon(mut self, icon: impl Into<Option<IconName>>) -> Self {
+    pub(super) fn selected_icon(mut self, icon: impl Into<Option<IconAsset>>) -> Self {
         self.selected_icon = icon.into();
         self
     }

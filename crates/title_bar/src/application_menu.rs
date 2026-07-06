@@ -1,7 +1,7 @@
 use gpui::{Action, App, Context, Entity, Window, prelude::*};
 
 use ui::{
-    ActiveTheme, Color, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu,
+    ActiveTheme, Color, ContextMenu, IconAsset, IconButton, IconButtonShape, IconSize, PopoverMenu,
     PopoverMenuHandle, SelectableButton, Tooltip,
 };
 
@@ -44,7 +44,7 @@ impl Render for ApplicationMenu {
                     .menu(move |window, cx| Some(Self::build_menu(window, cx)))
                     .offset(gpui::point(gpui::px(0.0), gpui::px(0.5)))
                     .trigger_with_tooltip(
-                        IconButton::new("application-menu-trigger", IconName::Menu)
+                        IconButton::new("application-menu-trigger", IconAsset::Menu)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::Small)
                             .selected_background(selected_background)

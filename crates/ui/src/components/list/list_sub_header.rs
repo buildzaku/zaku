@@ -1,14 +1,14 @@
 use gpui::{AnyElement, App, SharedString, Window, prelude::*};
 
 use crate::{
-    ActiveTheme, Color, DynamicSpacing, Icon, IconName, IconSize, Text, TextCommon, TextSize,
+    ActiveTheme, Color, DynamicSpacing, Icon, IconAsset, IconSize, Text, TextCommon, TextSize,
     Toggleable,
 };
 
 #[derive(IntoElement)]
 pub struct ListSubHeader {
     text: SharedString,
-    start_slot: Option<IconName>,
+    start_slot: Option<IconAsset>,
     end_slot: Option<AnyElement>,
     inset: bool,
     selected: bool,
@@ -25,7 +25,7 @@ impl ListSubHeader {
         }
     }
 
-    pub fn left_icon(mut self, left_icon: Option<IconName>) -> Self {
+    pub fn left_icon(mut self, left_icon: Option<IconAsset>) -> Self {
         self.start_slot = left_icon;
         self
     }

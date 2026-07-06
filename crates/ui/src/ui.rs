@@ -1,15 +1,15 @@
 mod components;
-mod graphic;
 mod icon;
 mod styles;
+mod svg;
 pub mod traits;
 pub mod utils;
 
+pub use ::svg::{IconAsset, SvgAsset};
 pub use components::*;
-pub use graphic::*;
 pub use icon::*;
-pub use icons::IconName;
 pub use styles::*;
+pub use svg::*;
 pub use theme::ActiveTheme;
 pub use traits::*;
 

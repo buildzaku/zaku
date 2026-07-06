@@ -15,8 +15,8 @@ use project::{
     repo_identity_path,
 };
 use ui::{
-    ActiveTheme, Color, DynamicSpacing, Graphic, GraphicName, Icon, IconName, IconSize,
-    PlatformStyle, Text, TextCommon, TextSize,
+    ActiveTheme, Color, DynamicSpacing, Icon, IconAsset, IconSize, PlatformStyle, Svg, SvgAsset,
+    Text, TextCommon, TextSize,
 };
 use workspace::Workspace;
 
@@ -135,7 +135,7 @@ impl TitleBar {
                 .items_center()
                 .gap_1()
                 .child(
-                    Icon::new(IconName::GitBranch)
+                    Icon::new(IconAsset::GitBranch)
                         .size(IconSize::XSmall)
                         .color(Color::Muted),
                 )
@@ -234,7 +234,7 @@ impl Render for TitleBar {
                 PlatformStyle::Linux | PlatformStyle::Windows => this.px(gpui::rems(0.5)),
             })
             .child(
-                Graphic::with_height(GraphicName::Zaku, IconSize::Small.rems())
+                Svg::with_height(SvgAsset::Zaku, IconSize::Small.rems())
                     .color(Color::Custom(text_color)),
             )
             .into_any_element();

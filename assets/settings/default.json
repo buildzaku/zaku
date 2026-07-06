@@ -4,14 +4,14 @@
   },
   "ui": {
     "density": "default",
-    "font_size": 13,
-    "font_family": "Source Code Pro",
+    "font_size": 14,
+    "font_family": "Figtree",
     "font_fallbacks": null,
     "font_features": { "calt": false },
     "font_weight": 400
   },
   "editor": {
-    "font_size": 13,
+    "font_size": 12,
     "font_family": "Source Code Pro",
     "font_fallbacks": null,
     "font_features": { "calt": false },

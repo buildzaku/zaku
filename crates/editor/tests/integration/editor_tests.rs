@@ -1822,7 +1822,7 @@ fn test_move_cursor_multibyte(cx: &mut TestAppContext) {
 
     cx.dispatch_action(actions::editor::MoveUp);
     cx.assert_state(indoc! {"
-        🌑ˇ🌒🌓🌔🌕🌖
+        🌑🌒ˇ🌓🌔🌕🌖
         abcde
         абвгд
     "});

@@ -31,7 +31,7 @@ use response_panel::{
 use theme::ActiveTheme;
 use ui::{
     Button, ButtonCommon, ButtonSize, ButtonVariant, Clickable, Color, ContextMenu, DropdownMenu,
-    DropdownVariant, DynamicSpacing, FixedWidth, IconButton, IconButtonShape, IconName,
+    DropdownVariant, DynamicSpacing, FixedWidth, IconAsset, IconButton, IconButtonShape,
     IconPosition, IconSize, LineHeightStyle, ScrollAxes, Scrollbars, Text, TextCommon, TextSize,
     ToggleState, Tooltip, TrackLayout, WithScrollbar,
 };
@@ -1466,7 +1466,7 @@ impl RequestEditor {
                     }
                 },
             ));
-            let delete_button = IconButton::new(("param-delete", index), IconName::Trash)
+            let delete_button = IconButton::new(("param-delete", index), IconAsset::Trash)
                 .shape(IconButtonShape::Square)
                 .variant(ButtonVariant::Outline)
                 .icon_color(Color::Muted)
@@ -1504,7 +1504,7 @@ impl RequestEditor {
         }
 
         let add_button = Button::new("param-add", "Add Parameter")
-            .icon(IconName::Plus)
+            .icon(IconAsset::Plus)
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
             .variant(ButtonVariant::OutlinedGhost)
@@ -1580,7 +1580,7 @@ impl RequestEditor {
                     }
                 },
             ));
-            let delete_button = IconButton::new(("header-delete", index), IconName::Trash)
+            let delete_button = IconButton::new(("header-delete", index), IconAsset::Trash)
                 .shape(IconButtonShape::Square)
                 .variant(ButtonVariant::Outline)
                 .icon_color(Color::Muted)
@@ -1618,7 +1618,7 @@ impl RequestEditor {
         }
 
         let add_button = Button::new("header-add", "Add Header")
-            .icon(IconName::Plus)
+            .icon(IconAsset::Plus)
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
             .variant(ButtonVariant::OutlinedGhost)

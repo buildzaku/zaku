@@ -28,7 +28,6 @@ anyhow = { workspace = true }
 db = { workspace = true }
 git = { workspace = true }
 gpui = { workspace = true }
-icons = { workspace = true }
 input = { workspace = true }
 itertools = { workspace = true }
 language = { workspace = true }
@@ -40,6 +39,7 @@ project = { workspace = true }
 serde = { workspace = true }
 settings = { workspace = true }
 smallvec = { workspace = true }
+svg = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }

@@ -2,7 +2,7 @@ use gpui::{App, ClickEvent, CursorStyle, ElementId, SharedString, Window, prelud
 use std::sync::Arc;
 
 use crate::{
-    Clickable, Color, Disableable, IconButton, IconButtonShape, IconName, IconSize, Toggleable,
+    Clickable, Color, Disableable, IconAsset, IconButton, IconButtonShape, IconSize, Toggleable,
     VisibleOnHover,
 };
 
@@ -14,8 +14,8 @@ pub struct Disclosure {
     disabled: bool,
     on_toggle_expanded: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
     cursor_style: CursorStyle,
-    opened_icon: IconName,
-    closed_icon: IconName,
+    opened_icon: IconAsset,
+    closed_icon: IconAsset,
     visible_on_hover: Option<SharedString>,
 }
 
@@ -28,8 +28,8 @@ impl Disclosure {
             disabled: false,
             on_toggle_expanded: None,
             cursor_style: CursorStyle::PointingHand,
-            opened_icon: IconName::CaretDown,
-            closed_icon: IconName::CaretRight,
+            opened_icon: IconAsset::CaretDown,
+            closed_icon: IconAsset::CaretRight,
             visible_on_hover: None,
         }
     }
@@ -42,12 +42,12 @@ impl Disclosure {
         self
     }
 
-    pub fn opened_icon(mut self, icon: IconName) -> Self {
+    pub fn opened_icon(mut self, icon: IconAsset) -> Self {
         self.opened_icon = icon;
         self
     }
 
-    pub fn closed_icon(mut self, icon: IconName) -> Self {
+    pub fn closed_icon(mut self, icon: IconAsset) -> Self {
         self.closed_icon = icon;
         self
     }

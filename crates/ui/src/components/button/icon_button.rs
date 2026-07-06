@@ -3,7 +3,7 @@ use gpui::{
     prelude::*,
 };
 
-use icons::IconName;
+use ::svg::IconAsset;
 
 use super::{
     ButtonCommon, ButtonLike, ButtonSize, ButtonVariant, SelectableButton, styled_icon::StyledIcon,
@@ -23,15 +23,15 @@ pub struct IconButton {
     base: ButtonLike,
     shape: IconButtonShape,
     icon_size: IconSize,
-    icon: IconName,
-    selected_icon: Option<IconName>,
+    icon: IconAsset,
+    selected_icon: Option<IconAsset>,
     icon_color: Color,
     selected_icon_color: Option<Color>,
     hover_icon_color: Option<Color>,
 }
 
 impl IconButton {
-    pub fn new(id: impl Into<ElementId>, icon: IconName) -> Self {
+    pub fn new(id: impl Into<ElementId>, icon: IconAsset) -> Self {
         Self {
             base: ButtonLike::new(id),
             shape: IconButtonShape::default(),
@@ -74,7 +74,7 @@ impl IconButton {
         self
     }
 
-    pub fn selected_icon(mut self, selected_icon: impl Into<Option<IconName>>) -> Self {
+    pub fn selected_icon(mut self, selected_icon: impl Into<Option<IconAsset>>) -> Self {
         self.selected_icon = selected_icon.into();
         self
     }

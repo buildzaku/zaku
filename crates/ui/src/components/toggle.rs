@@ -3,7 +3,7 @@ use gpui::{AnyView, App, ClickEvent, ElementId, Hsla, Pixels, SharedString, Wind
 use theme::ActiveTheme;
 
 use crate::{
-    Color, DynamicSpacing, Icon, IconName, IconSize, TOOLTIP_SHOW_DELAY, Text, TextCommon,
+    Color, DynamicSpacing, Icon, IconAsset, IconSize, TOOLTIP_SHOW_DELAY, Text, TextCommon,
     TextSize, ToggleState,
 };
 
@@ -117,13 +117,15 @@ impl RenderOnce for Checkbox {
 
         let icon = match self.toggle_state {
             ToggleState::Selected => Some(
-                Icon::new(IconName::Check)
+                Icon::new(IconAsset::Check)
                     .size(IconSize::Small)
                     .color(color),
             ),
-            ToggleState::Indeterminate => {
-                Some(Icon::new(IconName::Dash).size(IconSize::Small).color(color))
-            }
+            ToggleState::Indeterminate => Some(
+                Icon::new(IconAsset::Dash)
+                    .size(IconSize::Small)
+                    .color(color),
+            ),
             ToggleState::Unselected => None,
         };
 

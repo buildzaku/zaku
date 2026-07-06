@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use metadata::{ZAKU_DESCRIPTION, ZAKU_NAME};
 use theme::ActiveTheme;
 use ui::{
-    ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, FixedWidth, Icon, IconName, IconSize,
+    ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, FixedWidth, Icon, IconAsset, IconSize,
     KeyBinding, Text, TextCommon, TextSize,
 };
 
@@ -55,14 +55,14 @@ struct SectionButton {
     focus_handle: FocusHandle,
     tab_index: usize,
     text: SharedString,
-    icon: IconName,
+    icon: IconAsset,
     action: Box<dyn Action>,
 }
 
 impl SectionButton {
     fn new(
         text: impl Into<SharedString>,
-        icon: IconName,
+        icon: IconAsset,
         action: &dyn Action,
         tab_index: usize,
         focus_handle: FocusHandle,
@@ -117,7 +117,7 @@ impl RenderOnce for SectionButton {
 }
 
 struct SectionEntry {
-    icon: IconName,
+    icon: IconAsset,
     title: &'static str,
     action: &'static dyn Action,
 }
@@ -158,7 +158,7 @@ impl<const COLS: usize> Section<COLS> {
 const CONTENT: Section<1> = Section {
     title: "Get Started",
     entries: [SectionEntry {
-        icon: IconName::FolderOpen,
+        icon: IconAsset::FolderOpen,
         title: "Open Project",
         action: &actions::workspace::Open::DEFAULT,
     }],
@@ -283,7 +283,7 @@ impl WelcomePage {
 
         SectionButton::new(
             title,
-            IconName::Folder,
+            IconAsset::Folder,
             &actions::workspace::OpenRecentProject {
                 index: project_index,
             },
