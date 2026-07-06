@@ -133,6 +133,7 @@ impl Connection {
                     "});
                 }
 
+                log::info!("Running migration {domain} step {index} ({proposed_checksum})");
                 self.eager_exec(&migration)?;
                 did_migrate = true;
                 store_completed_migration((domain, index, proposed_checksum.as_bytes()))?;
