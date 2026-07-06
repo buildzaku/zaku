@@ -3,6 +3,7 @@ pub mod query;
 
 pub use anyhow;
 pub use gpui::App;
+pub use inventory;
 pub use sql::{
     self,
     bindable::{Bind, Column, StaticColumnCount},
@@ -194,20 +195,14 @@ impl AppDatabase {
     pub fn new() -> Self {
         let db_dir = database_dir();
         let connection = smol::block_on(open_db::<AppMigrator>(&db_dir));
-        let app_db = Self(connection);
-        smol::block_on(kv::KeyValueStore::open(&app_db).initialize_schema())
-            .expect("key-value store schema should initialize");
-        app_db
+        Self(connection)
     }
 
     #[cfg(any(test, feature = "test"))]
     pub fn test_new() -> Self {
         let name = format!("test-db-{}", uuid::Uuid::new_v4());
         let connection = smol::block_on(open_test_db::<AppMigrator>(&name));
-        let app_db = Self(connection);
-        smol::block_on(kv::KeyValueStore::open(&app_db).initialize_schema())
-            .expect("key-value store schema should initialize");
-        app_db
+        Self(connection)
     }
 
     pub fn global(cx: &App) -> &ThreadSafeConnection {
@@ -263,12 +258,16 @@ macro_rules! static_connection {
 
             #[cfg(any(test, feature = "test"))]
             pub async fn test_open(name: &'static str) -> Self {
-                let connection = $t($crate::open_test_db::<()>(name).await);
-                connection
-                    .initialize_schema()
-                    .await
-                    .expect("database schema should initialize");
-                connection
+                $t($crate::open_test_db::<$t>(name).await)
+            }
+        }
+
+        $crate::inventory::submit! {
+            $crate::DomainMigration {
+                name: <$t as $crate::sql::domain::Domain>::NAME,
+                migrations: <$t as $crate::sql::domain::Domain>::MIGRATIONS,
+                dependencies: &[$(<$d as $crate::sql::domain::Domain>::NAME),*],
+                should_allow_migration_change: <$t as $crate::sql::domain::Domain>::should_allow_migration_change,
             }
         }
     };

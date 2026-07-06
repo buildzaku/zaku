@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use db::{
     Bind, Column, Connection, Row, Statement, StaticColumnCount, ThreadSafeConnection,
-    kv::KeyValueStore, query, sql_macros::sql,
+    kv::KeyValueStore, query, sql::domain::Domain, sql_macros::sql,
 };
 use fs::Fs;
 use serde::{Deserialize, Serialize};
@@ -420,98 +420,6 @@ impl WorkspaceDb {
         Ok(workspaces)
     }
 
-    pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
-        self.0
-            .write(|connection| {
-                connection.with_savepoint("initialize_workspace_schema", || {
-                    connection
-                        .exec(sql!(
-                            CREATE TABLE IF NOT EXISTS workspace(
-                                id INTEGER PRIMARY KEY,
-                                location BLOB UNIQUE,
-                                window_state TEXT,
-                                window_x REAL,
-                                window_y REAL,
-                                window_width REAL,
-                                window_height REAL,
-                                display BLOB,
-                                left_dock_open INTEGER NOT NULL,
-                                left_dock_active_panel TEXT,
-                                left_dock_auto_hidden INTEGER NOT NULL,
-                                bottom_dock_open INTEGER NOT NULL,
-                                bottom_dock_active_panel TEXT,
-                                bottom_dock_auto_hidden INTEGER NOT NULL,
-                                session_id TEXT,
-                                window_id INTEGER,
-                                activation_order INTEGER NOT NULL DEFAULT 0,
-                                timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                            ) STRICT
-                        ))
-                        .context("failed to set up workspace table initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize workspace persistence table")?;
-
-                    connection
-                        .exec(sql!(
-                            CREATE TABLE IF NOT EXISTS pane(
-                                id INTEGER PRIMARY KEY,
-                                workspace_id INTEGER NOT NULL UNIQUE,
-                                active INTEGER NOT NULL,
-                                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
-                                ON DELETE CASCADE
-                                ON UPDATE CASCADE
-                            ) STRICT
-                        ))
-                        .context("failed to set up pane table initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize pane table")?;
-
-                    connection
-                        .exec(sql!(
-                            CREATE TABLE IF NOT EXISTS item(
-                                id INTEGER NOT NULL,
-                                workspace_id INTEGER NOT NULL,
-                                pane_id INTEGER NOT NULL,
-                                kind TEXT NOT NULL,
-                                position INTEGER NOT NULL,
-                                active INTEGER NOT NULL,
-                                preview INTEGER NOT NULL,
-                                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
-                                ON DELETE CASCADE
-                                ON UPDATE CASCADE,
-                                FOREIGN KEY(pane_id) REFERENCES pane(id)
-                                ON DELETE CASCADE,
-                                PRIMARY KEY(id, workspace_id)
-                            ) STRICT
-                        ))
-                        .context("failed to set up item table initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize item table")?;
-
-                    connection
-                        .exec(sql!(
-                            CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
-                            ON workspace(activation_order DESC)
-                        ))
-                        .context("failed to set up workspace activation order index initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize workspace activation order index")?;
-
-                    connection
-                        .exec(sql!(
-                            CREATE INDEX IF NOT EXISTS workspace_timestamp_idx
-                            ON workspace(timestamp DESC)
-                        ))
-                        .context("failed to set up workspace timestamp index initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize workspace persistence index")?;
-
-                    Ok(())
-                })
-            })
-            .await
-    }
-
     fn recent_workspaces(&self) -> anyhow::Result<Vec<(WorkspaceId, PathBuf, Timestamp)>> {
         Ok(self
             .recent_workspaces_query()?
@@ -741,6 +649,63 @@ impl WorkspaceDb {
             SELECT COUNT(*) FROM workspace
         }
     }
+}
+
+impl Domain for WorkspaceDb {
+    const NAME: &str = stringify!(WorkspaceDb);
+    const MIGRATIONS: &[&str] = &[sql!(
+        CREATE TABLE IF NOT EXISTS workspace(
+            id INTEGER PRIMARY KEY,
+            location BLOB UNIQUE,
+            window_state TEXT,
+            window_x REAL,
+            window_y REAL,
+            window_width REAL,
+            window_height REAL,
+            display BLOB,
+            left_dock_open INTEGER NOT NULL,
+            left_dock_active_panel TEXT,
+            left_dock_auto_hidden INTEGER NOT NULL,
+            bottom_dock_open INTEGER NOT NULL,
+            bottom_dock_active_panel TEXT,
+            bottom_dock_auto_hidden INTEGER NOT NULL,
+            session_id TEXT,
+            window_id INTEGER,
+            activation_order INTEGER NOT NULL DEFAULT 0,
+            timestamp TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS pane(
+            id INTEGER PRIMARY KEY,
+            workspace_id INTEGER NOT NULL UNIQUE,
+            active INTEGER NOT NULL,
+            FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS item(
+            id INTEGER NOT NULL,
+            workspace_id INTEGER NOT NULL,
+            pane_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            active INTEGER NOT NULL,
+            preview INTEGER NOT NULL,
+            FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE,
+            FOREIGN KEY(pane_id) REFERENCES pane(id)
+            ON DELETE CASCADE,
+            PRIMARY KEY(id, workspace_id)
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS workspace_activation_order_idx
+        ON workspace(activation_order DESC);
+
+        CREATE INDEX IF NOT EXISTS workspace_timestamp_idx
+        ON workspace(timestamp DESC);
+    )];
 }
 
 db::static_connection!(WorkspaceDb, []);

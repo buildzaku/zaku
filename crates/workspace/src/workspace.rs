@@ -239,8 +239,6 @@ impl Global for GlobalAppState {}
 
 pub fn init(app_state: Arc<AppState>, cx: &mut App) {
     AppState::set_global(app_state.clone(), cx);
-    smol::block_on(WorkspaceDb::global(cx).initialize_schema())
-        .expect("workspace persistence schema should initialize");
 
     cx.observe_new({
         move |workspace: &mut Workspace, window, cx| {

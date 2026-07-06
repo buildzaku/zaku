@@ -1,7 +1,6 @@
-use anyhow::Context;
 use jiff::Timestamp;
 
-use db::{Column, Row, ThreadSafeConnection, query, sql_macros::sql};
+use db::{Column, Row, ThreadSafeConnection, query, sql::domain::Domain, sql_macros::sql};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SerializedCommandUsage {
@@ -56,29 +55,6 @@ impl Column for SerializedCommandInvocation {
 pub(crate) struct CommandPaletteDB(ThreadSafeConnection);
 
 impl CommandPaletteDB {
-    pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
-        self.0
-            .write(|connection| {
-                connection.with_savepoint("initialize_command_palette_schema", || {
-                    connection
-                        .exec(sql!(
-                            CREATE TABLE IF NOT EXISTS command_invocation(
-                                id INTEGER PRIMARY KEY,
-                                command_name TEXT NOT NULL,
-                                user_query TEXT NOT NULL,
-                                last_invoked INTEGER DEFAULT (unixepoch()) NOT NULL
-                            ) STRICT
-                        ))
-                        .context("failed to set up command invocation table initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize command invocation table")?;
-
-                    Ok(())
-                })
-            })
-            .await
-    }
-
     pub(crate) async fn write_command_invocation(
         &self,
         command_name: impl Into<String>,
@@ -150,6 +126,18 @@ impl CommandPaletteDB {
             LIMIT 1
         }
     }
+}
+
+impl Domain for CommandPaletteDB {
+    const NAME: &str = stringify!(CommandPaletteDB);
+    const MIGRATIONS: &[&str] = &[sql!(
+        CREATE TABLE IF NOT EXISTS command_invocation(
+            id INTEGER PRIMARY KEY,
+            command_name TEXT NOT NULL,
+            user_query TEXT NOT NULL,
+            last_invoked INTEGER DEFAULT (unixepoch()) NOT NULL
+        ) STRICT;
+    )];
 }
 
 db::static_connection!(CommandPaletteDB, []);

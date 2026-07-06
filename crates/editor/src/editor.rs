@@ -49,9 +49,6 @@ use crate::{
 pub const DEFAULT_TAB_SIZE: NonZeroU32 = NonZeroU32::new(4).unwrap();
 
 pub fn init(cx: &mut App) {
-    smol::block_on(persistence::EditorDb::global(cx).initialize_schema())
-        .expect("editor persistence schema should initialize");
-
     workspace::register_project_item::<Editor>(cx);
     workspace::register_serializable_item::<Editor>(cx);
 
