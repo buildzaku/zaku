@@ -37,12 +37,7 @@ use ui::{
 };
 use workspace::{AppState, Workspace, WorkspaceEvent, pane::Pane};
 
-use crate::persistence::RequestEditorDb;
-
 pub fn init(cx: &mut App) {
-    smol::block_on(RequestEditorDb::global(cx).initialize_schema())
-        .expect("request editor persistence schema should initialize");
-
     workspace::register_project_item::<RequestEditor>(cx);
     workspace::register_serializable_item::<RequestEditor>(cx);
 

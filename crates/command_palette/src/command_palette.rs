@@ -27,9 +27,6 @@ pub fn init(cx: &mut App) {
         filter.hide_action_types(&[TypeId::of::<actions::command_palette::Toggle>()]);
     });
 
-    smol::block_on(CommandPaletteDB::global(cx).initialize_schema())
-        .expect("command palette persistence schema should initialize");
-
     cx.observe_new(CommandPalette::register).detach();
 }
 

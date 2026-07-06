@@ -13,7 +13,7 @@ impl<'conn> SavepointGuard<'conn> {
         let name = name.into();
         connection
             .exec(&format!("SAVEPOINT {name}"))
-            .and_then(|mut f| f())?;
+            .and_then(|mut stmt| stmt())?;
 
         Ok(Self {
             connection,
@@ -29,7 +29,7 @@ impl<'conn> SavepointGuard<'conn> {
 
         self.connection
             .exec(&format!("RELEASE {}", self.name))
-            .and_then(|mut f| f())?;
+            .and_then(|mut stmt| stmt())?;
         self.finished = true;
         Ok(())
     }
@@ -44,7 +44,7 @@ impl<'conn> SavepointGuard<'conn> {
                 ROLLBACK TO {name};
                 RELEASE {name}
             ", name = self.name.as_str()})
-            .and_then(|mut f| f())?;
+            .and_then(|mut stmt| stmt())?;
         self.finished = true;
         Ok(())
     }
@@ -126,7 +126,7 @@ mod tests {
 
         connection
             .exec("CREATE TABLE text (text TEXT, idx INTEGER) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         let first_savepoint_text = "test save1";
@@ -136,7 +136,7 @@ mod tests {
             .with_savepoint("first", || {
                 connection
                     .exec_bound("INSERT INTO text(text, idx) VALUES (?1, ?2)")
-                    .and_then(|mut f| f((first_savepoint_text, 1)))
+                    .and_then(|mut stmt| stmt((first_savepoint_text, 1)))
                     .unwrap();
 
                 assert!(
@@ -144,12 +144,12 @@ mod tests {
                         .with_savepoint("second", || -> anyhow::Result<Option<()>> {
                             connection
                                 .exec_bound("INSERT INTO text(text, idx) VALUES (?1, ?2)")
-                                .and_then(|mut f| f((second_savepoint_text, 2)))?;
+                                .and_then(|mut stmt| stmt((second_savepoint_text, 2)))?;
 
                             assert_eq!(
                                 connection
                                     .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
-                                    .and_then(|mut f| f())
+                                    .and_then(|mut stmt| stmt())
                                     .unwrap(),
                                 vec![first_savepoint_text, second_savepoint_text],
                             );
@@ -163,7 +163,7 @@ mod tests {
                 assert_eq!(
                     connection
                         .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
-                        .and_then(|mut f| f())
+                        .and_then(|mut stmt| stmt())
                         .unwrap(),
                     vec![first_savepoint_text],
                 );
@@ -172,13 +172,13 @@ mod tests {
                     .with_savepoint_rollback::<(), _>("second", || {
                         connection
                             .exec_bound("INSERT INTO text(text, idx) VALUES (?1, ?2)")
-                            .and_then(|mut f| f((second_savepoint_text, 2)))
+                            .and_then(|mut stmt| stmt((second_savepoint_text, 2)))
                             .unwrap();
 
                         assert_eq!(
                             connection
                                 .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
-                                .and_then(|mut f| f())
+                                .and_then(|mut stmt| stmt())
                                 .unwrap(),
                             vec![first_savepoint_text, second_savepoint_text],
                         );
@@ -190,7 +190,7 @@ mod tests {
                 assert_eq!(
                     connection
                         .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
-                        .and_then(|mut f| f())
+                        .and_then(|mut stmt| stmt())
                         .unwrap(),
                     vec![first_savepoint_text],
                 );
@@ -199,13 +199,13 @@ mod tests {
                     .with_savepoint_rollback("second", || {
                         connection
                             .exec_bound("INSERT INTO text(text, idx) VALUES (?1, ?2)")
-                            .and_then(|mut f| f((second_savepoint_text, 2)))
+                            .and_then(|mut stmt| stmt((second_savepoint_text, 2)))
                             .unwrap();
 
                         assert_eq!(
                             connection
                                 .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
-                                .and_then(|mut f| f())
+                                .and_then(|mut stmt| stmt())
                                 .unwrap(),
                             vec![first_savepoint_text, second_savepoint_text],
                         );
@@ -217,7 +217,7 @@ mod tests {
                 assert_eq!(
                     connection
                         .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
-                        .and_then(|mut f| f())
+                        .and_then(|mut stmt| stmt())
                         .unwrap(),
                     vec![first_savepoint_text, second_savepoint_text],
                 );
@@ -229,7 +229,7 @@ mod tests {
         assert_eq!(
             connection
                 .select::<String>("SELECT text FROM text ORDER BY text.idx ASC")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             vec![first_savepoint_text, second_savepoint_text],
         );
@@ -241,7 +241,7 @@ mod tests {
 
         connection
             .exec("CREATE TABLE test(value INTEGER) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -249,7 +249,7 @@ mod tests {
                 .with_savepoint("panic_savepoint", || -> anyhow::Result<()> {
                     connection
                         .exec("INSERT INTO test(value) VALUES (1)")
-                        .and_then(|mut f| f())?;
+                        .and_then(|mut stmt| stmt())?;
                     panic!("panic inside savepoint");
                 })
                 .unwrap();
@@ -259,7 +259,7 @@ mod tests {
         assert_eq!(
             connection
                 .select::<i32>("SELECT value FROM test")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Vec::<i32>::new(),
         );

@@ -40,7 +40,6 @@ project = { workspace = true }
 serde = { workspace = true }
 settings = { workspace = true }
 smallvec = { workspace = true }
-smol = { workspace = true }
 text = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }

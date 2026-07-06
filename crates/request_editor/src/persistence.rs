@@ -1,8 +1,8 @@
-use anyhow::Context;
 use std::path::PathBuf;
 
 use db::{
-    Bind, Column, Row, Statement, StaticColumnCount, ThreadSafeConnection, query, sql_macros::sql,
+    Bind, Column, Row, Statement, StaticColumnCount, ThreadSafeConnection, query,
+    sql::domain::Domain, sql_macros::sql,
 };
 use workspace::{ItemId, WorkspaceId};
 
@@ -29,30 +29,6 @@ impl Column for SerializedRequestEditor {
 pub(crate) struct RequestEditorDb(ThreadSafeConnection);
 
 impl RequestEditorDb {
-    pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
-        self.0
-            .write(|connection| {
-                connection.with_savepoint("initialize_request_editor_schema", || {
-                    connection
-                        .exec(sql!(
-                            CREATE TABLE IF NOT EXISTS request_editor(
-                                id INTEGER NOT NULL,
-                                workspace_id INTEGER NOT NULL,
-                                path BLOB NOT NULL,
-                                PRIMARY KEY(id, workspace_id),
-                                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
-                                ON DELETE CASCADE
-                                ON UPDATE CASCADE
-                            ) STRICT
-                        ))
-                        .context("failed to set up request editor table initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize request editor table")
-                })
-            })
-            .await
-    }
-
     query! {
         pub(crate) fn load_serialized_request_editor(
             item_id: ItemId,
@@ -77,6 +53,21 @@ impl RequestEditorDb {
                 path = excluded.path
         }
     }
+}
+
+impl Domain for RequestEditorDb {
+    const NAME: &str = stringify!(RequestEditorDb);
+    const MIGRATIONS: &[&str] = &[sql!(
+        CREATE TABLE IF NOT EXISTS request_editor(
+            id INTEGER NOT NULL,
+            workspace_id INTEGER NOT NULL,
+            path BLOB NOT NULL,
+            PRIMARY KEY(id, workspace_id),
+            FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        ) STRICT;
+    )];
 }
 
 db::static_connection!(RequestEditorDb, [workspace::WorkspaceDb]);

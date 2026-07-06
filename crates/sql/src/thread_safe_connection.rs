@@ -4,14 +4,16 @@ use parking_lot::{Mutex, RwLock};
 use std::{
     cell::RefCell,
     collections::HashMap,
+    marker::PhantomData,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, mpsc},
     time::Duration,
 };
 use thread_local::ThreadLocal;
 
-use crate::Connection;
+use crate::{Connection, domain::Migrator};
 
+const MIGRATION_RETRIES: usize = 10;
 const CONNECTION_INITIALIZE_RETRIES: usize = 50;
 const CONNECTION_INITIALIZE_RETRY_DELAY: Duration = Duration::from_millis(1);
 
@@ -61,7 +63,7 @@ impl ThreadSafeConnection {
         connection
     }
 
-    pub fn builder(target: ConnectionTarget) -> ThreadSafeConnectionBuilder {
+    pub fn builder<M: Migrator>(target: ConnectionTarget) -> ThreadSafeConnectionBuilder<M> {
         ThreadSafeConnectionBuilder {
             db_init_query: None,
             write_queue_constructor: None,
@@ -70,6 +72,7 @@ impl ThreadSafeConnection {
                 connection_init_query: None,
                 connections: Arc::default(),
             },
+            _migrator: PhantomData,
         }
     }
 
@@ -169,7 +172,7 @@ impl ThreadSafeConnection {
                     .with_context(|| {
                         format!("connection initialize query failed to execute: {init_query}")
                     })
-                    .and_then(|mut f| f())
+                    .and_then(|mut stmt| stmt())
                 {
                     Ok(()) => {
                         schema_lock_error = None;
@@ -197,13 +200,14 @@ impl ThreadSafeConnection {
     }
 }
 
-pub struct ThreadSafeConnectionBuilder {
+pub struct ThreadSafeConnectionBuilder<M: Migrator + 'static = ()> {
     db_init_query: Option<&'static str>,
     write_queue_constructor: Option<WriteQueueConstructor>,
     connection: ThreadSafeConnection,
+    _migrator: PhantomData<*mut M>,
 }
 
-impl ThreadSafeConnectionBuilder {
+impl<M: Migrator> ThreadSafeConnectionBuilder<M> {
     pub fn with_connection_init_query(mut self, connection_init_query: &'static str) -> Self {
         self.connection.connection_init_query = Some(connection_init_query);
         self
@@ -235,10 +239,37 @@ impl ThreadSafeConnectionBuilder {
                         .with_context(|| {
                             format!("database initialize query failed to execute: {db_init_query}")
                         })
-                        .and_then(|mut f| f())?;
+                        .and_then(|mut stmt| stmt())?;
                 }
 
-                Ok(())
+                let foreign_keys_enabled = connection
+                    .select_row::<i32>("PRAGMA foreign_keys")
+                    .and_then(|mut stmt| stmt())?
+                    .is_some_and(|enabled| enabled != 0);
+
+                connection
+                    .exec("PRAGMA foreign_keys = OFF;")
+                    .and_then(|mut stmt| stmt())?;
+
+                let mut migration_result =
+                    anyhow::Result::<()>::Err(anyhow!("Migration never run"));
+
+                for _ in 0..MIGRATION_RETRIES {
+                    migration_result = connection
+                        .with_savepoint("thread_safe_multi_migration", || M::migrate(connection));
+
+                    if migration_result.is_ok() {
+                        break;
+                    }
+                }
+
+                if foreign_keys_enabled {
+                    connection
+                        .exec("PRAGMA foreign_keys = ON;")
+                        .and_then(|mut stmt| stmt())?;
+                }
+
+                migration_result
             })
             .await?;
 
@@ -302,7 +333,7 @@ mod tests {
     "};
 
     async fn open_test_db(db_name: &str) -> ThreadSafeConnection {
-        ThreadSafeConnection::builder(ConnectionTarget::memory(db_name))
+        ThreadSafeConnection::builder::<()>(ConnectionTarget::memory(db_name))
             .with_db_init_query(DB_INIT_QUERY)
             .with_connection_init_query(CONNECTION_INIT_QUERY)
             .with_write_queue_constructor(locking_queue())
@@ -317,7 +348,7 @@ mod tests {
 
         for _ in 0..100 {
             handles.push(std::thread::spawn(|| {
-                let builder = ThreadSafeConnectionBuilder {
+                let builder = ThreadSafeConnectionBuilder::<()> {
                     db_init_query: None,
                     write_queue_constructor: None,
                     connection: ThreadSafeConnection {
@@ -325,6 +356,7 @@ mod tests {
                         connection_init_query: None,
                         connections: Arc::default(),
                     },
+                    _migrator: PhantomData,
                 }
                 .with_db_init_query(DB_INIT_QUERY)
                 .with_connection_init_query(CONNECTION_INIT_QUERY);
@@ -344,18 +376,18 @@ mod tests {
         let locking_connection = Connection::open_memory(Some(name));
         locking_connection
             .exec("BEGIN IMMEDIATE")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
         locking_connection
             .exec("CREATE TABLE test(value TEXT)")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         let releaser = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(10));
             locking_connection
                 .exec("ROLLBACK")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap();
         });
 
@@ -374,7 +406,7 @@ mod tests {
         smol::block_on(connection.write(|connection| {
             connection
                 .exec("CREATE TABLE test(value TEXT) STRICT;")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             Ok(())
         }))
         .unwrap();
@@ -382,7 +414,7 @@ mod tests {
         let write_attempt = connection.read(|connection| {
             connection
                 .select_row::<i64>("INSERT INTO test(value) VALUES ('nope') RETURNING rowid")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             Ok(())
         });
         assert!(write_attempt.is_err());
@@ -391,7 +423,7 @@ mod tests {
             .read(|connection| {
                 connection
                     .select_row::<i64>("SELECT COUNT(*) FROM test")
-                    .and_then(|mut f| f())
+                    .and_then(|mut stmt| stmt())
                     .context("test count query returned no row")
             })
             .unwrap();
@@ -405,13 +437,13 @@ mod tests {
         smol::block_on(connection.write(|connection| {
             connection
                 .exec("CREATE TABLE test(value INTEGER) STRICT")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             connection
                 .exec("INSERT INTO test(value) VALUES (1)")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             connection
                 .exec("INSERT INTO test(value) VALUES (2)")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             Ok(())
         }))
         .unwrap();
@@ -420,7 +452,7 @@ mod tests {
             .read(|connection| {
                 connection
                     .select_row::<i64>("SELECT value FROM test WHERE value = 3")
-                    .and_then(|mut f| f())
+                    .and_then(|mut stmt| stmt())
             })
             .unwrap();
         assert!(missing_value.is_none());
@@ -428,7 +460,7 @@ mod tests {
         let multiple_rows = connection.read(|connection| {
             connection
                 .select_row::<i64>("SELECT value FROM test ORDER BY value")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
         });
         multiple_rows.unwrap_err();
     }
@@ -453,10 +485,10 @@ mod tests {
                         j INTEGER
                     ) STRICT
                 "})
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             connection
                 .exec("INSERT INTO test(a, b, c, d, e, f, g, h, i, j) VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             Ok(())
         }))
         .unwrap();
@@ -467,7 +499,7 @@ mod tests {
                     .select_row::<(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)>(
                         "SELECT a, b, c, d, e, f, g, h, i, j FROM test",
                     )
-                    .and_then(|mut f| f())
+                    .and_then(|mut stmt| stmt())
                     .context("ten-column query returned no row")
             })
             .unwrap();
@@ -477,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_db_init_query_applies_to_worker_connection() {
-        let connection = ThreadSafeConnectionBuilder {
+        let connection = ThreadSafeConnectionBuilder::<()> {
             db_init_query: None,
             write_queue_constructor: None,
             connection: ThreadSafeConnection {
@@ -485,6 +517,7 @@ mod tests {
                 connection_init_query: None,
                 connections: Arc::default(),
             },
+            _migrator: PhantomData,
         }
         .with_db_init_query(DB_INIT_QUERY)
         .with_connection_init_query(CONNECTION_INIT_QUERY)
@@ -495,7 +528,7 @@ mod tests {
         let busy_timeout = smol::block_on(connection.write(|connection| {
             connection
                 .select_row::<i64>("PRAGMA busy_timeout")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
         }))
         .unwrap();
 
@@ -522,10 +555,10 @@ mod tests {
         smol::block_on(connection.write(|connection| {
             connection
                 .exec("CREATE TABLE test(value TEXT) STRICT")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             connection
                 .exec("INSERT INTO test(value) VALUES ('ok')")
-                .and_then(|mut f| f())?;
+                .and_then(|mut stmt| stmt())?;
             Ok(())
         }))
         .unwrap();
@@ -534,7 +567,7 @@ mod tests {
             .read(|connection| {
                 connection
                     .select_row::<String>("SELECT value FROM test")
-                    .and_then(|mut f| f())
+                    .and_then(|mut stmt| stmt())
                     .context("test value query returned no row")
             })
             .unwrap();

@@ -1,8 +1,8 @@
-use anyhow::Context;
 use std::path::PathBuf;
 
 use db::{
-    Bind, Column, Row, Statement, StaticColumnCount, ThreadSafeConnection, query, sql_macros::sql,
+    Bind, Column, Row, Statement, StaticColumnCount, ThreadSafeConnection, query,
+    sql::domain::Domain, sql_macros::sql,
 };
 use workspace::{ItemId, WorkspaceId};
 
@@ -29,32 +29,6 @@ impl Column for SerializedEditor {
 pub(crate) struct EditorDb(ThreadSafeConnection);
 
 impl EditorDb {
-    pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
-        self.0
-            .write(|connection| {
-                connection.with_savepoint("initialize_editor_schema", || {
-                    connection
-                        .exec(sql!(
-                            CREATE TABLE IF NOT EXISTS editor(
-                                id INTEGER NOT NULL,
-                                workspace_id INTEGER NOT NULL,
-                                path BLOB NOT NULL,
-                                PRIMARY KEY(id, workspace_id),
-                                FOREIGN KEY(workspace_id) REFERENCES workspace(id)
-                                ON DELETE CASCADE
-                                ON UPDATE CASCADE
-                            ) STRICT
-                        ))
-                        .context("failed to set up editor table initialization")
-                        .and_then(|mut f| f())
-                        .context("failed to initialize editor table")?;
-
-                    Ok(())
-                })
-            })
-            .await
-    }
-
     query! {
         pub(crate) fn load_serialized_editor(
             item_id: ItemId,
@@ -83,6 +57,21 @@ impl EditorDb {
                 path = excluded.path
         }
     }
+}
+
+impl Domain for EditorDb {
+    const NAME: &str = stringify!(EditorDb);
+    const MIGRATIONS: &[&str] = &[sql!(
+        CREATE TABLE IF NOT EXISTS editor(
+            id INTEGER NOT NULL,
+            workspace_id INTEGER NOT NULL,
+            path BLOB NOT NULL,
+            PRIMARY KEY(id, workspace_id),
+            FOREIGN KEY(workspace_id) REFERENCES workspace(id)
+            ON DELETE CASCADE
+            ON UPDATE CASCADE
+        ) STRICT;
+    )];
 }
 
 db::static_connection!(EditorDb, [workspace::WorkspaceDb]);

@@ -34,7 +34,6 @@ path = { workspace = true }
 project = { workspace = true }
 response_panel = { workspace = true }
 settings = { workspace = true }
-smol = { workspace = true }
 theme = { workspace = true }
 ui = { workspace = true }
 util = { workspace = true }

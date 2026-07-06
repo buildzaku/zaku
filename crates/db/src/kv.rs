@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use sql_macros::sql;
 
-use crate::{ThreadSafeConnection, query};
+use crate::{ThreadSafeConnection, query, sql::domain::Domain};
 
 pub struct KeyValueStore(ThreadSafeConnection);
 
@@ -31,39 +31,26 @@ impl KeyValueStore {
             namespace,
         }
     }
+}
 
-    pub(crate) async fn initialize_schema(&self) -> anyhow::Result<()> {
-        self.write(|connection| {
-            connection.with_savepoint("initialize_key_value_store_schema", || {
-                connection
-                    .exec(sql!(
-                        CREATE TABLE IF NOT EXISTS kv_store(
-                            key TEXT PRIMARY KEY,
-                            value TEXT NOT NULL
-                        ) STRICT
-                    ))
-                    .context("failed to prepare key-value store table initialization")
-                    .and_then(|mut f| f())
-                    .context("failed to initialize key-value store table")?;
-
-                connection
-                    .exec(sql!(
-                        CREATE TABLE IF NOT EXISTS scoped_kv_store(
-                            namespace TEXT NOT NULL,
-                            key TEXT NOT NULL,
-                            value TEXT NOT NULL,
-                            PRIMARY KEY(namespace, key)
-                        ) STRICT
-                    ))
-                    .context("failed to prepare scoped key-value store table initialization")
-                    .and_then(|mut f| f())
-                    .context("failed to initialize scoped key-value store table")?;
-
-                Ok(())
-            })
-        })
-        .await
-    }
+impl Domain for KeyValueStore {
+    const NAME: &str = stringify!(KeyValueStore);
+    const MIGRATIONS: &[&str] = &[
+        sql!(
+            CREATE TABLE IF NOT EXISTS kv_store(
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            ) STRICT;
+        ),
+        sql!(
+            CREATE TABLE IF NOT EXISTS scoped_kv_store(
+                namespace TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY(namespace, key)
+            ) STRICT;
+        ),
+    ];
 }
 
 crate::static_connection!(KeyValueStore, []);
@@ -81,7 +68,7 @@ impl ScopedKeyValueStore<'_> {
                     sql!(SELECT value FROM scoped_kv_store WHERE namespace = (?) AND key = (?)),
                 )
                 .context("Failed to read from scoped_kv_store")
-                .and_then(|mut f| f((self.namespace, key)))
+                .and_then(|mut stmt| stmt((self.namespace, key)))
                 .context("Failed to read from scoped_kv_store")
         })
     }

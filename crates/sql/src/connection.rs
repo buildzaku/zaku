@@ -142,7 +142,10 @@ impl Connection {
                 if let Some((table_to_alter, column)) = alter_table {
                     let temp_connection = Self::open_memory(None);
                     let create_table = format!("CREATE TABLE {table_to_alter}({column})");
-                    if let Err(error) = temp_connection.exec(&create_table).and_then(|mut f| f()) {
+                    if let Err(error) = temp_connection
+                        .exec(&create_table)
+                        .and_then(|mut stmt| stmt())
+                    {
                         return Some((format!("{error:#}"), 0));
                     }
 
@@ -342,18 +345,18 @@ mod tests {
 
         connection
             .exec("CREATE TABLE test(value INTEGER) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         connection
             .exec("INSERT INTO test(value) VALUES (2)")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         assert_eq!(
             connection
                 .select_row::<usize>("SELECT value FROM test")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some(2)
         );
@@ -415,7 +418,7 @@ mod tests {
                     updated_at INTEGER
                 ) STRICT
             "})
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         connection
@@ -423,8 +426,8 @@ mod tests {
                 INSERT INTO test(uuid, session_id, name, enabled, location, payload, created_at, updated_at)
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
             "})
-            .and_then(|mut f| {
-                f((
+            .and_then(|mut stmt| {
+                stmt((
                     uuid,
                     None,
                     "Test",
@@ -443,7 +446,7 @@ mod tests {
                     SELECT uuid, session_id, name, enabled, location, payload, created_at, updated_at
                     FROM test
                 "})
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some((
                 uuid,
@@ -465,13 +468,13 @@ mod tests {
 
         connection
             .exec("CREATE TABLE test(value INTEGER) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         assert!(
             connection
                 .exec_bound::<u64>("INSERT INTO test(value) VALUES (?1)")
-                .and_then(|mut f| f(u64::MAX))
+                .and_then(|mut stmt| stmt(u64::MAX))
                 .is_err()
         );
     }
@@ -484,18 +487,18 @@ mod tests {
 
         connection
             .exec("CREATE TABLE test(location BLOB) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         connection
             .exec_bound::<&Path>("INSERT INTO test(location) VALUES (?1)")
-            .and_then(|mut f| f(location.as_path()))
+            .and_then(|mut stmt| stmt(location.as_path()))
             .unwrap();
 
         assert_eq!(
             connection
                 .select_row::<PathBuf>("SELECT location FROM test")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some(location)
         );
@@ -508,19 +511,19 @@ mod tests {
 
         connection
             .select_row::<u64>("SELECT -1")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap_err();
         connection
             .select_row::<u32>("SELECT 5000000000")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap_err();
         connection
             .select_row::<u16>("SELECT 70000")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap_err();
         connection
             .select_row::<usize>("SELECT -1")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap_err();
     }
 
@@ -531,37 +534,37 @@ mod tests {
 
         connection
             .select_row::<String>("SELECT CAST(NULL AS TEXT)")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap_err();
         assert_eq!(
             connection
                 .select_row::<Option<String>>("SELECT CAST(NULL AS TEXT)")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some(None)
         );
         assert_eq!(
             connection
                 .select_row::<String>("SELECT ''")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some(String::new())
         );
         connection
             .select_row::<Vec<u8>>("SELECT CAST(NULL AS BLOB)")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap_err();
         assert_eq!(
             connection
                 .select_row::<Option<Vec<u8>>>("SELECT CAST(NULL AS BLOB)")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some(None)
         );
         assert_eq!(
             connection
                 .select_row::<Vec<u8>>("SELECT zeroblob(0)")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some(Vec::new())
         );
