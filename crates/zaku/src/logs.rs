@@ -5,9 +5,9 @@ use gpui::{
 use std::{any::Any, collections::VecDeque, sync::Arc};
 
 use editor::{Editor, EditorEvent};
-use icons::FileIcons;
 use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
+use svg::FileIcons;
 use ui::Icon;
 use workspace::{
     Item, ItemEvent, Workspace,

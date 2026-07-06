@@ -30,7 +30,7 @@ use settings::{GitSettings, Settings, SettingsStore};
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, ContextMenu, DynamicSpacing,
-    FixedWidth, Icon, IconButton, IconButtonShape, IconName, IconSize, IndentGuideColors,
+    FixedWidth, Icon, IconAsset, IconButton, IconButtonShape, IconSize, IndentGuideColors,
     IndentGuideLayout, Indicator, KeyBinding, ListItem, ListItemSpacing, RenderedIndentGuide,
     ScrollAxes, Scrollbars, Text, TextCommon, TextSize, Tooltip, TrackLayout, WithScrollbar,
 };
@@ -2342,7 +2342,7 @@ impl ProjectPanel {
                     .items_center()
                     .gap_0p5()
                     .child(
-                        IconButton::new("project-panel-new-request", IconName::FileTomlPlus)
+                        IconButton::new("project-panel-new-request", IconAsset::FileTomlPlus)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::Medium)
                             .icon_color(Color::Muted)
@@ -2360,7 +2360,7 @@ impl ProjectPanel {
                             })),
                     )
                     .child(
-                        IconButton::new("project-panel-new-collection", IconName::FolderPlus)
+                        IconButton::new("project-panel-new-collection", IconAsset::FolderPlus)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::Medium)
                             .icon_color(Color::Muted)
@@ -2386,14 +2386,14 @@ impl ProjectPanel {
 
         if details.kind.is_dir() {
             let icon = if details.is_expanded {
-                IconName::FolderOpen
+                IconAsset::FolderOpen
             } else {
-                IconName::FolderClose
+                IconAsset::FolderClose
             };
             let disclosure_icon = if details.is_expanded {
-                IconName::CaretDown
+                IconAsset::CaretDown
             } else {
-                IconName::CaretRight
+                IconAsset::CaretRight
             };
 
             gpui::div()
@@ -2439,7 +2439,7 @@ impl ProjectPanel {
                         .items_center()
                         .justify_end()
                         .child(
-                            Icon::new(IconName::WarningCircle)
+                            Icon::new(IconAsset::WarningCircle)
                                 .size(IconSize::Small)
                                 .color(Color::Error),
                         ),
@@ -2484,7 +2484,7 @@ impl ProjectPanel {
                         .items_center()
                         .justify_end()
                         .child(
-                            Icon::new(IconName::FileToml)
+                            Icon::new(IconAsset::FileToml)
                                 .size(IconSize::Medium)
                                 .color(Color::Muted),
                         ),
@@ -2692,8 +2692,8 @@ impl Panel for ProjectPanel {
         Self::DEFAULT_SIZE
     }
 
-    fn icon(&self, _window: &Window, _: &App) -> Option<IconName> {
-        Some(IconName::Tree)
+    fn icon(&self, _window: &Window, _: &App) -> Option<IconAsset> {
+        Some(IconAsset::Tree)
     }
 
     fn icon_tooltip(&self, _window: &Window, _: &App) -> Option<&'static str> {

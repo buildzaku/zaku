@@ -12,7 +12,6 @@ members = [
   "crates/git",
   "crates/grammars",
   "crates/http_client",
-  "crates/icons",
   "crates/input",
   "crates/language",
   "crates/language_core",
@@ -37,6 +36,7 @@ members = [
   "crates/settings_macros",
   "crates/sql",
   "crates/sql_macros",
+  "crates/svg",
   "crates/syntax_theme",
   "crates/system_specs",
   "crates/theme",
@@ -165,7 +165,6 @@ fs = { path = "crates/fs" }
 git = { path = "crates/git" }
 grammars = { path = "crates/grammars" }
 http_client = { path = "crates/http_client" }
-icons = { path = "crates/icons" }
 input = { path = "crates/input" }
 language = { path = "crates/language" }
 language_core = { path = "crates/language_core" }
@@ -190,6 +189,7 @@ settings_content = { path = "crates/settings_content" }
 settings_macros = { path = "crates/settings_macros" }
 sql = { path = "crates/sql" }
 sql_macros = { path = "crates/sql_macros" }
+svg = { path = "crates/svg" }
 syntax_theme = { path = "crates/syntax_theme" }
 system_specs = { path = "crates/system_specs" }
 theme = { path = "crates/theme" }

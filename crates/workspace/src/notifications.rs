@@ -10,7 +10,7 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use ui::{ButtonCommon, Clickable, IconButton, IconName, StyledExt, Text, Tooltip};
+use ui::{ButtonCommon, Clickable, IconAsset, IconButton, StyledExt, Text, Tooltip};
 
 use crate::{Root, Toast, Workspace};
 
@@ -418,9 +418,9 @@ impl RenderOnce for NotificationFrame {
         let show_suppress_button = self.show_suppress_button;
         let suppress = show_suppress_button && window.modifiers().shift;
         let (close_id, close_icon) = if suppress {
-            ("suppress", IconName::Minimize)
+            ("suppress", IconAsset::Minimize)
         } else {
-            ("close", IconName::Close)
+            ("close", IconAsset::Close)
         };
 
         gpui::div()
@@ -491,7 +491,7 @@ pub mod simple_message_notification {
     use std::sync::Arc;
 
     use ui::{
-        Button, ButtonCommon, ButtonVariant, Clickable, Color, Icon, IconName, IconSize, Text,
+        Button, ButtonCommon, ButtonVariant, Clickable, Color, Icon, IconAsset, IconSize, Text,
         TextSize, WithScrollbar,
     };
 
@@ -503,11 +503,11 @@ pub mod simple_message_notification {
         focus_handle: FocusHandle,
         build_content: Box<dyn Fn(&mut Window, &mut Context<Self>) -> AnyElement>,
         primary_message: Option<SharedString>,
-        primary_icon: Option<IconName>,
+        primary_icon: Option<IconAsset>,
         primary_icon_color: Option<Color>,
         primary_on_click: Option<Arc<dyn Fn(&mut Window, &mut Context<Self>)>>,
         secondary_message: Option<SharedString>,
-        secondary_icon: Option<IconName>,
+        secondary_icon: Option<IconAsset>,
         secondary_icon_color: Option<Color>,
         secondary_on_click: Option<Arc<dyn Fn(&mut Window, &mut Context<Self>)>>,
         more_info_message: Option<SharedString>,
@@ -561,7 +561,7 @@ pub mod simple_message_notification {
             self
         }
 
-        pub fn primary_icon(mut self, icon: IconName) -> Self {
+        pub fn primary_icon(mut self, icon: IconAsset) -> Self {
             self.primary_icon = Some(icon);
             self
         }
@@ -595,7 +595,7 @@ pub mod simple_message_notification {
             self
         }
 
-        pub fn secondary_icon(mut self, icon: IconName) -> Self {
+        pub fn secondary_icon(mut self, icon: IconAsset) -> Self {
             self.secondary_icon = Some(icon);
             self
         }
@@ -758,7 +758,7 @@ pub mod simple_message_notification {
                                                 .text_size(TextSize::Small)
                                                 .variant(ButtonVariant::Solid)
                                                 .end_icon(
-                                                    Icon::new(IconName::ArrowUpRight)
+                                                    Icon::new(IconAsset::ArrowUpRight)
                                                         .size(IconSize::Indicator)
                                                         .color(Color::Muted),
                                                 )

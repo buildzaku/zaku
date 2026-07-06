@@ -22,7 +22,7 @@ pub trait Panel: Focusable + Render + Sized {
     fn persistent_name() -> &'static str;
     fn panel_key() -> &'static str;
     fn default_size(&self, window: &Window, cx: &App) -> Pixels;
-    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
+    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconAsset>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self) -> Box<dyn Action>;
     fn starts_open(&self, _window: &Window, _cx: &App) -> bool {
@@ -44,7 +44,7 @@ pub trait PanelHandle: Send + Sync {
     fn persistent_name(&self) -> &'static str;
     fn panel_key(&self) -> &'static str;
     fn default_size(&self, window: &Window, cx: &App) -> Pixels;
-    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName>;
+    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconAsset>;
     fn icon_tooltip(&self, window: &Window, cx: &App) -> Option<&'static str>;
     fn toggle_action(&self, window: &Window, cx: &App) -> Box<dyn Action>;
     fn set_active(&self, active: bool, window: &mut Window, cx: &mut App);
@@ -76,7 +76,7 @@ where
         self.read(cx).default_size(window, cx)
     }
 
-    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconName> {
+    fn icon(&self, window: &Window, cx: &App) -> Option<ui::IconAsset> {
         self.read(cx).icon(window, cx)
     }
 
@@ -709,7 +709,7 @@ pub mod test {
             self.default_size
         }
 
-        fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconName> {
+        fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconAsset> {
             None
         }
 

@@ -2,7 +2,7 @@ use gpui::{App, FocusHandle, Focusable, Hsla, Length, SharedString, Window, prel
 use std::sync::Arc;
 
 use theme::ActiveTheme;
-use ui::{Color, Icon, IconName, IconSize, Text, TextCommon, TextSize};
+use ui::{Color, Icon, IconAsset, IconSize, Text, TextCommon, TextSize};
 
 use crate::ErasedEditor;
 
@@ -19,7 +19,7 @@ pub struct InputField {
     label_size: TextSize,
     placeholder: SharedString,
     editor: Arc<dyn ErasedEditor>,
-    start_icon: Option<IconName>,
+    start_icon: Option<IconAsset>,
     muted: bool,
     min_width: Length,
     tab_index: Option<isize>,
@@ -47,7 +47,7 @@ impl InputField {
         }
     }
 
-    pub fn start_icon(mut self, icon: IconName) -> Self {
+    pub fn start_icon(mut self, icon: IconAsset) -> Self {
         self.start_icon = Some(icon);
         self
     }

@@ -9,7 +9,7 @@ use super::{
 };
 
 use crate::{
-    Button, ButtonCommon, Color, ContextMenu, Disableable, FixedWidth, Icon, IconName,
+    Button, ButtonCommon, Color, ContextMenu, Disableable, FixedWidth, Icon, IconAsset,
     IconPosition, IconSize, PopoverMenu,
 };
 
@@ -34,7 +34,7 @@ pub struct DropdownMenu {
     title: DropdownTitle,
     trigger_size: ButtonSize,
     trigger_tooltip: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyView + 'static>>,
-    trigger_icon: Option<IconName>,
+    trigger_icon: Option<IconAsset>,
     variant: DropdownVariant,
     menu: Entity<ContextMenu>,
     full_width: bool,
@@ -57,7 +57,7 @@ impl DropdownMenu {
             title: DropdownTitle::Text(title.into()),
             trigger_size: ButtonSize::Default,
             trigger_tooltip: None,
-            trigger_icon: Some(IconName::CaretUpDown),
+            trigger_icon: Some(IconAsset::CaretUpDown),
             variant: DropdownVariant::default(),
             menu,
             full_width: false,
@@ -80,7 +80,7 @@ impl DropdownMenu {
             title: DropdownTitle::Element(title),
             trigger_size: ButtonSize::Default,
             trigger_tooltip: None,
-            trigger_icon: Some(IconName::CaretUpDown),
+            trigger_icon: Some(IconAsset::CaretUpDown),
             variant: DropdownVariant::default(),
             menu,
             full_width: false,
@@ -111,7 +111,7 @@ impl DropdownMenu {
         self
     }
 
-    pub fn trigger_icon(mut self, icon: IconName) -> Self {
+    pub fn trigger_icon(mut self, icon: IconAsset) -> Self {
         self.trigger_icon = Some(icon);
         self
     }
@@ -193,7 +193,7 @@ impl RenderOnce for DropdownMenu {
                         .variant(button_variant)
                         .when(self.caret, |this| {
                             this.child(
-                                Icon::new(IconName::CaretUpDown)
+                                Icon::new(IconAsset::CaretUpDown)
                                     .size(IconSize::XSmall)
                                     .color(Color::Muted),
                             )

@@ -1714,7 +1714,6 @@ dependencies = [
  "fs",
  "git",
  "gpui",
- "icons",
  "indoc",
  "input",
  "itertools 0.14.0",
@@ -1729,6 +1728,7 @@ dependencies = [
  "serde_json",
  "settings",
  "smallvec",
+ "svg",
  "text",
  "theme",
  "ui",
@@ -3115,15 +3115,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "icons"
-version = "0.0.0"
-dependencies = [
- "gpui",
- "serde",
- "strum 0.28.0",
 ]
 
 [[package]]
@@ -6846,6 +6837,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "svg"
+version = "0.0.0"
+dependencies = [
+ "gpui",
+ "serde",
+ "strum 0.28.0",
+]
+
+[[package]]
 name = "svg_fmt"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7611,7 +7611,6 @@ version = "0.0.0"
 dependencies = [
  "actions",
  "gpui",
- "icons",
  "itertools 0.14.0",
  "log",
  "schemars",
@@ -7619,6 +7618,7 @@ dependencies = [
  "settings",
  "smallvec",
  "strum 0.28.0",
+ "svg",
  "theme",
  "ui_macros",
  "util 0.0.0",
@@ -9218,7 +9218,6 @@ dependencies = [
  "gpui",
  "gpui_platform",
  "http_client 0.0.0",
- "icons",
  "indoc",
  "language",
  "languages",
@@ -9237,6 +9236,7 @@ dependencies = [
  "serde_json",
  "session",
  "settings",
+ "svg",
  "system_specs",
  "theme",
  "theme_settings",

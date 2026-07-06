@@ -12,7 +12,7 @@ use language::{Buffer, Language, PLAIN_TEXT};
 use multi_buffer::MultiBuffer;
 use theme::ActiveTheme;
 use ui::{
-    Color, ColumnWidthConfig, DynamicSpacing, IconName, Indicator, KeyBinding, LineHeightStyle,
+    Color, ColumnWidthConfig, DynamicSpacing, IconAsset, Indicator, KeyBinding, LineHeightStyle,
     ScrollAxes, Scrollbars, SelectableText, SelectableTextGroup, Table, TableCell,
     TableInteractionState, Text, TextCommon, TextInteractionState, TextSize,
 };
@@ -1180,8 +1180,8 @@ impl Panel for ResponsePanel {
         Self::DEFAULT_SIZE
     }
 
-    fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconName> {
-        Some(IconName::Network)
+    fn icon(&self, _window: &Window, _: &App) -> Option<ui::IconAsset> {
+        Some(IconAsset::Network)
     }
 
     fn icon_tooltip(&self, _window: &Window, _: &App) -> Option<&'static str> {

@@ -1,5 +1,5 @@
 [package]
-name = "icons"
+name = "svg"
 version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,8 +8,8 @@ rust-version.workspace = true
 publish.workspace = true
 
 [lib]
-name = "icons"
-path = "src/icons.rs"
+name = "svg"
+path = "src/svg.rs"
 
 [lints]
 workspace = true

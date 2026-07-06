@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use theme::{ActiveTheme, Appearance};
-use ui::IconName;
+use ui::IconAsset;
 
 #[derive(IntoElement)]
 pub struct LinuxWindowControls {
@@ -94,12 +94,12 @@ pub enum WindowControlType {
 }
 
 impl WindowControlType {
-    pub fn icon(self) -> IconName {
+    pub fn icon(self) -> IconAsset {
         match self {
-            WindowControlType::Minimize => IconName::LinuxMinimize,
-            WindowControlType::Restore => IconName::LinuxRestore,
-            WindowControlType::Maximize => IconName::LinuxMaximize,
-            WindowControlType::Close => IconName::LinuxClose,
+            WindowControlType::Minimize => IconAsset::LinuxMinimize,
+            WindowControlType::Restore => IconAsset::LinuxRestore,
+            WindowControlType::Maximize => IconAsset::LinuxMaximize,
+            WindowControlType::Close => IconAsset::LinuxClose,
         }
     }
 }

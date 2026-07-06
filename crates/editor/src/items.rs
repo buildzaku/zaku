@@ -3,11 +3,11 @@ use gpui::{App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakE
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use git::status::GitSummary;
-use icons::FileIcons;
 use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
 use path::PathExt;
 use project::Project;
+use svg::FileIcons;
 use ui::{Color, Icon};
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, Workspace, WorkspaceId,

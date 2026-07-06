@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="./assets/graphics/zaku_logo.svg" alt="Zaku" width="128px">
+  <img src="./assets/svg/zaku_logo.svg" alt="Zaku" width="128px">
   <br>
   <span>Zaku</span>
 </h1>

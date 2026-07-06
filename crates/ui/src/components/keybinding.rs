@@ -5,7 +5,7 @@ use gpui::{
 use std::rc::Rc;
 
 use crate::{
-    ActiveTheme, Color, DynamicSpacing, Icon, IconName, IconSize, PlatformStyle, TextSize,
+    ActiveTheme, Color, DynamicSpacing, Icon, IconAsset, IconSize, PlatformStyle, TextSize,
 };
 
 #[derive(Debug)]
@@ -215,14 +215,14 @@ pub fn render_keybinding_keystroke(
     }
 }
 
-fn icon_for_key(key: &str, platform_style: PlatformStyle) -> Option<IconName> {
+fn icon_for_key(key: &str, platform_style: PlatformStyle) -> Option<IconAsset> {
     match key {
-        "backspace" | "delete" => Some(IconName::Backspace),
-        "enter" => Some(IconName::Return),
-        "shift" if platform_style == PlatformStyle::Mac => Some(IconName::Shift),
-        "control" | "function" if platform_style == PlatformStyle::Mac => Some(IconName::Control),
-        "platform" if platform_style == PlatformStyle::Mac => Some(IconName::Command),
-        "alt" if platform_style == PlatformStyle::Mac => Some(IconName::Option),
+        "backspace" | "delete" => Some(IconAsset::Backspace),
+        "enter" => Some(IconAsset::Return),
+        "shift" if platform_style == PlatformStyle::Mac => Some(IconAsset::Shift),
+        "control" | "function" if platform_style == PlatformStyle::Mac => Some(IconAsset::Control),
+        "platform" if platform_style == PlatformStyle::Mac => Some(IconAsset::Command),
+        "alt" if platform_style == PlatformStyle::Mac => Some(IconAsset::Option),
         _ => None,
     }
 }
@@ -238,7 +238,7 @@ pub fn render_modifiers(
     enum KeyOrIcon {
         Key(&'static str),
         Plus,
-        Icon(IconName),
+        Icon(IconAsset),
     }
 
     struct Modifier {
@@ -258,25 +258,25 @@ pub fn render_modifiers(
             },
             Modifier {
                 enabled: modifiers.control,
-                mac: KeyOrIcon::Icon(IconName::Control),
+                mac: KeyOrIcon::Icon(IconAsset::Control),
                 linux: KeyOrIcon::Key("Ctrl"),
                 windows: KeyOrIcon::Key("Ctrl"),
             },
             Modifier {
                 enabled: modifiers.alt,
-                mac: KeyOrIcon::Icon(IconName::Option),
+                mac: KeyOrIcon::Icon(IconAsset::Option),
                 linux: KeyOrIcon::Key("Alt"),
                 windows: KeyOrIcon::Key("Alt"),
             },
             Modifier {
                 enabled: modifiers.platform,
-                mac: KeyOrIcon::Icon(IconName::Command),
+                mac: KeyOrIcon::Icon(IconAsset::Command),
                 linux: KeyOrIcon::Key("Super"),
                 windows: KeyOrIcon::Key("Win"),
             },
             Modifier {
                 enabled: modifiers.shift,
-                mac: KeyOrIcon::Icon(IconName::Shift),
+                mac: KeyOrIcon::Icon(IconAsset::Shift),
                 linux: KeyOrIcon::Key("Shift"),
                 windows: KeyOrIcon::Key("Shift"),
             },
@@ -373,7 +373,7 @@ impl Key {
 
 #[derive(IntoElement)]
 pub struct KeyIcon {
-    icon: IconName,
+    icon: IconAsset,
     color: Option<Color>,
     size: Option<AbsoluteLength>,
 }
@@ -389,7 +389,7 @@ impl RenderOnce for KeyIcon {
 }
 
 impl KeyIcon {
-    pub fn new(icon: IconName, color: Option<Color>) -> Self {
+    pub fn new(icon: IconAsset, color: Option<Color>) -> Self {
         Self {
             icon,
             color,
