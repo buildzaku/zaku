@@ -7,7 +7,7 @@ use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
 use path::PathExt;
 use project::Project;
-use svg::FileIcons;
+use svg::FileIcon;
 use ui::{Color, Icon};
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, Workspace, WorkspaceId,
@@ -65,8 +65,7 @@ impl Item for Editor {
 
     fn tab_icon(&self, _: &Window, cx: &App) -> Option<Icon> {
         path_for_buffer(&self.buffer, 0, true, cx)
-            .and_then(|path| FileIcons::get_icon(Path::new(path.as_ref()), cx))
-            .map(Icon::from_path)
+            .map(|path| Icon::from_path(FileIcon::for_path(Path::new(path.as_ref()))))
     }
 
     fn for_each_project_item(

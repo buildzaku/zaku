@@ -7,7 +7,7 @@ use std::{any::Any, collections::VecDeque, sync::Arc};
 use editor::{Editor, EditorEvent};
 use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
-use svg::FileIcons;
+use svg::FileIcon;
 use ui::Icon;
 use workspace::{
     Item, ItemEvent, Workspace,
@@ -61,8 +61,8 @@ impl Item for LogsView {
         self.editor.read(cx).tab_tooltip_text(cx)
     }
 
-    fn tab_icon(&self, _: &Window, cx: &App) -> Option<Icon> {
-        FileIcons::get_icon(path::log_file(), cx).map(Icon::from_path)
+    fn tab_icon(&self, _: &Window, _: &App) -> Option<Icon> {
+        Some(Icon::from_path(FileIcon::for_path(path::log_file())))
     }
 
     fn capability(&self, cx: &App) -> Capability {

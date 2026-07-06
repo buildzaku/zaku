@@ -1,4 +1,3 @@
-use gpui::{App, SharedString};
 use serde::{Deserialize, Serialize};
 use std::{path::Path, sync::Arc};
 use strum::{EnumIter, EnumString, IntoStaticStr};
@@ -80,59 +79,54 @@ impl IconAsset {
     }
 }
 
-const FILE_SUFFIXES_BY_ICON_KEY: &[(&str, &[&str])] =
-    &[("json", &["json", "jsonc"]), ("log", &["log"])];
-
-const FILE_ICONS: &[(&str, &str)] = &[
-    ("default", "svg/icons/file/toml.svg"),
-    ("json", "svg/icons/file/code.svg"),
-    ("log", "svg/icons/file/info.svg"),
-];
-
 #[derive(Debug)]
-pub struct FileIcons;
+pub struct FileIcon;
 
-impl FileIcons {
-    pub fn get_icon(path: &Path, _: &App) -> Option<SharedString> {
-        let get_icon_from_suffix = |suffix: &str| -> Option<SharedString> {
-            icon_key_for_suffix(suffix).and_then(icon_for_type)
+impl FileIcon {
+    const EXTENSIONS_BY_KIND: &[(&str, &[&str])] = &[
+        ("json", &["json", "jsonc"]),
+        ("log", &["log"]),
+        ("toml", &["toml"]),
+    ];
+
+    const PATHS_BY_KIND: &[(&str, &str)] = &[
+        ("json", "svg/icons/file/code.svg"),
+        ("log", "svg/icons/file/info.svg"),
+        ("toml", "svg/icons/file/toml.svg"),
+    ];
+
+    pub fn for_path(path: &Path) -> Arc<str> {
+        let icon_path_for_extension = |extension: &str| -> Option<Arc<str>> {
+            Self::EXTENSIONS_BY_KIND
+                .iter()
+                .find_map(|(kind, extensions)| extensions.contains(&extension).then_some(*kind))
+                .and_then(|kind| {
+                    Self::PATHS_BY_KIND.iter().find_map(|(path_kind, path)| {
+                        (*path_kind == kind).then_some(Arc::from(*path))
+                    })
+                })
         };
 
-        if let Some(mut typ) = path.file_name().and_then(|typ| typ.to_str()) {
-            let maybe_path = get_icon_from_suffix(typ);
-            if maybe_path.is_some() {
-                return maybe_path;
+        if let Some(mut file_name) = path.file_name().and_then(|file_name| file_name.to_str()) {
+            if let Some(icon_path) = icon_path_for_extension(file_name) {
+                return icon_path;
             }
 
-            while let Some((_, suffix)) = typ.split_once('.') {
-                let maybe_path = get_icon_from_suffix(suffix);
-                if maybe_path.is_some() {
-                    return maybe_path;
+            while let Some((_, extension)) = file_name.split_once('.') {
+                if let Some(icon_path) = icon_path_for_extension(extension) {
+                    return icon_path;
                 }
-                typ = suffix;
+                file_name = extension;
             }
         }
 
         let extension = path.extension().and_then(|extension| extension.to_str());
-        if let Some(extension) = extension {
-            let maybe_path = get_icon_from_suffix(extension);
-            if maybe_path.is_some() {
-                return maybe_path;
-            }
+        if let Some(extension) = extension
+            && let Some(icon_path) = icon_path_for_extension(extension)
+        {
+            return icon_path;
         }
 
-        icon_for_type("default")
+        IconAsset::File.path()
     }
-}
-
-fn icon_key_for_suffix(suffix: &str) -> Option<&'static str> {
-    FILE_SUFFIXES_BY_ICON_KEY
-        .iter()
-        .find_map(|(icon_key, suffixes)| suffixes.contains(&suffix).then_some(*icon_key))
-}
-
-fn icon_for_type(typ: &str) -> Option<SharedString> {
-    FILE_ICONS
-        .iter()
-        .find_map(|(icon_type, path)| (*icon_type == typ).then_some((*path).into()))
 }

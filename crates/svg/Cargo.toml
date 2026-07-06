@@ -15,6 +15,5 @@ path = "src/svg.rs"
 workspace = true
 
 [dependencies]
-gpui = { workspace = true }
 serde = { workspace = true }
 strum = { workspace = true }
