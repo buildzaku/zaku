@@ -220,10 +220,12 @@ mod tests {
         let (_, first_checksum) = prepare_migration(first_migration);
         assert_eq!(
             &connection
-                .select::<[u8; 32]>("SELECT (checksum) FROM migration")
+                .select::<(String, usize, [u8; 32])>(
+                    "SELECT domain, step, checksum FROM migration ORDER BY id",
+                )
                 .and_then(|mut stmt| stmt())
                 .unwrap()[..],
-            &[*first_checksum.as_bytes()],
+            &[("test".to_string(), 0, *first_checksum.as_bytes())],
         );
 
         connection
@@ -237,10 +239,15 @@ mod tests {
         let (_, second_checksum) = prepare_migration(second_migration);
         assert_eq!(
             &connection
-                .select::<[u8; 32]>("SELECT (checksum) FROM migration")
+                .select::<(String, usize, [u8; 32])>(
+                    "SELECT domain, step, checksum FROM migration ORDER BY id",
+                )
                 .and_then(|mut stmt| stmt())
                 .unwrap()[..],
-            &[*first_checksum.as_bytes(), *second_checksum.as_bytes()],
+            &[
+                ("test".to_string(), 0, *first_checksum.as_bytes()),
+                ("test".to_string(), 1, *second_checksum.as_bytes()),
+            ],
         );
     }
 
@@ -348,8 +355,8 @@ mod tests {
     }
 
     #[test]
-    fn test_changed_migration_fails() {
-        let connection = Connection::open_memory(Some("test_changed_migration_fails"));
+    fn test_migration_checksum_mismatch_fails() {
+        let connection = Connection::open_memory(Some("test_migration_checksum_mismatch_fails"));
         let old_migration = "CREATE TABLE test (col INTEGER)";
         let new_migration = "CREATE TABLE test (color INTEGER)";
 
@@ -364,15 +371,15 @@ mod tests {
         let mut migration_changed = false;
         let (_, old_checksum) = prepare_migration(old_migration);
         let (_, new_checksum) = prepare_migration(new_migration);
-        let old_checksum = old_checksum.to_string();
-        let new_checksum = new_checksum.to_string();
+        let expected_old_checksum = old_checksum.to_string();
+        let expected_new_checksum = new_checksum.to_string();
 
         let second_migration_result = connection.migrate(
             "test migration",
             &[new_migration, "INSERT INTO test (color) VALUES (1)"],
-            &mut |_index, old, new| {
-                assert_eq!(old, old_checksum.as_str());
-                assert_eq!(new, new_checksum.as_str());
+            &mut |_index, old_checksum, new_checksum| {
+                assert_eq!(old_checksum, expected_old_checksum.as_str());
+                assert_eq!(new_checksum, expected_new_checksum.as_str());
                 migration_changed = true;
                 false
             },
@@ -380,6 +387,45 @@ mod tests {
 
         assert!(migration_changed);
         assert!(second_migration_result.is_err());
+    }
+
+    #[test]
+    fn test_migration_checksum_mismatch_succeeds_if_explicitly_allowed() {
+        let connection = Connection::open_memory(Some(
+            "test_migration_checksum_mismatch_succeeds_if_explicitly_allowed",
+        ));
+        let old_migration = "CREATE TABLE test (old INTEGER)";
+        let new_migration = "CREATE TABLE test (new INTEGER)";
+
+        connection
+            .migrate("test", &[old_migration], &mut disallow_migration_change)
+            .unwrap();
+
+        let should_allow_migration_change = true;
+        let mut checksum_changed = false;
+        connection
+            .migrate(
+                "test",
+                &[new_migration],
+                &mut |index, old_checksum, new_checksum| {
+                    assert_eq!(index, 0);
+                    assert_ne!(old_checksum, new_checksum);
+                    checksum_changed = true;
+                    should_allow_migration_change
+                },
+            )
+            .unwrap();
+
+        assert!(checksum_changed);
+    }
+
+    #[test]
+    fn test_migration_checksum_normalizes_line_endings() {
+        let (_, lf_checksum) = prepare_migration("  \nCREATE TABLE test (\n    value TEXT\n);\n  ");
+        let (_, crlf_checksum) =
+            prepare_migration("\r\nCREATE TABLE test (\r\n    value TEXT\r\n);\r\n");
+
+        assert_eq!(lf_checksum.to_string(), crlf_checksum.to_string());
     }
 
     #[test]
