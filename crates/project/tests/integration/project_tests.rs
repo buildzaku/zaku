@@ -140,8 +140,8 @@ async fn test_open_buffer_at_uses_hidden_worktree_for_external_file(cx: &mut Tes
     temp_fs.insert_tree(path!("project"), Value::default());
     let settings_content = indoc! {r#"
         {
-          "ui": { "font_size": 13 },
-          "editor": { "font_size": 13 }
+          "ui": { "font_size": 14 },
+          "editor": { "font_size": 12 }
         }
     "#};
     temp_fs.insert_tree(path!("settings.json"), json!(settings_content));
