@@ -68,7 +68,7 @@ impl ScopedKeyValueStore<'_> {
                     sql!(SELECT value FROM scoped_kv_store WHERE namespace = (?) AND key = (?)),
                 )
                 .context("Failed to read from scoped_kv_store")
-                .and_then(|mut f| f((self.namespace, key)))
+                .and_then(|mut stmt| stmt((self.namespace, key)))
                 .context("Failed to read from scoped_kv_store")
         })
     }

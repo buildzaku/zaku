@@ -625,18 +625,18 @@ mod tests {
 
         connection
             .exec("CREATE TABLE test(name TEXT, count INTEGER) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         connection
             .exec("INSERT INTO test(name, count) VALUES ('workspace', 3)")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         assert_eq!(
             connection
                 .select_row::<Pair>("SELECT name, count FROM test")
-                .and_then(|mut f| f())
+                .and_then(|mut stmt| stmt())
                 .unwrap(),
             Some(Pair {
                 name: "workspace".to_string(),
@@ -651,7 +651,7 @@ mod tests {
 
         connection
             .exec("CREATE TABLE test(col INTEGER) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         let statement = Statement::prepare(
@@ -674,12 +674,12 @@ mod tests {
 
         connection
             .exec("CREATE TABLE test(value INTEGER) STRICT")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         connection
             .exec("INSERT INTO test(value) VALUES (7)")
-            .and_then(|mut f| f())
+            .and_then(|mut stmt| stmt())
             .unwrap();
 
         let mut statement = Statement::prepare(&connection, "SELECT value FROM test").unwrap();

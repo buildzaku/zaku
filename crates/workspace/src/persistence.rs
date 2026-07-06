@@ -261,7 +261,7 @@ impl WorkspaceDb {
                             WHERE workspace_id = ?1
                         ))
                         .context("failed to prepare old pane cleanup query")
-                        .and_then(|mut f| f(workspace.id))
+                        .and_then(|mut stmt| stmt(workspace.id))
                         .context("failed to clear old pane")?;
 
                     connection
@@ -270,7 +270,7 @@ impl WorkspaceDb {
                             WHERE id != ?1 AND location = ?2
                         ))
                         .context("failed to prepare old workspace location cleanup query")
-                        .and_then(|mut f| f((workspace.id, workspace_location)))
+                        .and_then(|mut stmt| stmt((workspace.id, workspace_location)))
                         .context("failed to clear old workspace locations")?;
 
                     connection
@@ -317,8 +317,8 @@ impl WorkspaceDb {
                                 timestamp = CURRENT_TIMESTAMP
                         ))
                         .context("failed to prepare workspace upsert query")
-                        .and_then(|mut f| {
-                            f((
+                        .and_then(|mut stmt| {
+                            stmt((
                                 workspace.id,
                                 workspace_location,
                                 workspace.docks.clone(),
@@ -528,7 +528,7 @@ impl WorkspaceDb {
                     LIMIT 1
                 ))
                 .context("failed to prepare workspace by path query")
-                .and_then(|mut f| f(path.as_ref()))
+                .and_then(|mut stmt| stmt(path.as_ref()))
                 .context("failed to query workspace by path")
                 .map(|workspace| {
                     workspace.and_then(
@@ -573,7 +573,7 @@ impl WorkspaceDb {
                 WHERE workspace_id = ?
             ))
             .context("failed to prepare center pane query")
-            .and_then(|mut f| f(workspace_id))
+            .and_then(|mut stmt| stmt(workspace_id))
             .context("failed to query center pane")?;
 
         if let Some((pane_id, active)) = pane {
@@ -597,7 +597,7 @@ impl WorkspaceDb {
                 ORDER BY position
             ))
             .context("failed to prepare items query")
-            .and_then(|mut f| f(pane_id))
+            .and_then(|mut stmt| stmt(pane_id))
             .context("failed to query items")
     }
 
@@ -613,7 +613,7 @@ impl WorkspaceDb {
                 RETURNING id
             ))
             .context("failed to prepare pane insertion")
-            .and_then(|mut f| f((workspace_id, pane.active)))
+            .and_then(|mut stmt| stmt((workspace_id, pane.active)))
             .context("failed to insert pane")?
             .context("failed to retrieve id from inserted pane")?;
 
