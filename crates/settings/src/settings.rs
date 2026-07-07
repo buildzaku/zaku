@@ -81,11 +81,11 @@ pub fn init(cx: &mut App) {
 }
 
 pub fn default_settings() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("settings/default.json")
+    asset_str::<SettingsAssets>("settings/default.jsonc")
 }
 
 pub fn initial_user_settings() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("settings/initial_user.json")
+    asset_str::<SettingsAssets>("settings/initial_user.jsonc")
 }
 
 pub fn initial_user_keymap() -> Cow<'static, str> {

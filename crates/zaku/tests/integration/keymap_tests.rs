@@ -113,7 +113,7 @@ async fn test_basic_keymap(cx: &mut TestAppContext) {
         .read_with(cx, |root, _| root.workspace().clone())
         .unwrap();
 
-    let settings_path = PathBuf::from("settings.json");
+    let settings_path = PathBuf::from("settings.jsonc");
     let keymap_path = PathBuf::from("keymap.json");
 
     temp_fs.write(&settings_path, br"{}").await.unwrap();
@@ -211,7 +211,7 @@ async fn test_disabled_keymap_binding(cx: &mut TestAppContext) {
         })
         .unwrap();
 
-    let settings_path = PathBuf::from("settings.json");
+    let settings_path = PathBuf::from("settings.jsonc");
     let keymap_path = PathBuf::from("keymap.json");
     temp_fs.write(&settings_path, br"{}").await.unwrap();
     temp_fs

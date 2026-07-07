@@ -4702,7 +4702,7 @@ mod tests {
                     },
                 },
                 "request.toml": "",
-                "settings.json": "{}",
+                "settings.jsonc": "{}",
             }),
         );
 
@@ -4715,7 +4715,7 @@ mod tests {
         let non_request_files_are_indexed = panel.update(cx, |panel, cx| {
             let worktree = panel.project.read(cx).root_worktree(cx).unwrap();
             let worktree = worktree.read(cx);
-            let settings = worktree.entry_for_path(rel_path("settings.json")).unwrap();
+            let settings = worktree.entry_for_path(rel_path("settings.jsonc")).unwrap();
             let script = worktree
                 .entry_for_path(rel_path("collection/scripts/index.js"))
                 .unwrap();

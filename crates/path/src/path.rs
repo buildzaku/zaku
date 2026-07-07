@@ -550,10 +550,10 @@ pub fn old_log_file() -> &'static PathBuf {
     OLD_LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log.old"))
 }
 
-/// Returns the path to the `settings.json` file.
+/// Returns the path to the `settings.jsonc` file.
 pub fn settings_file() -> &'static PathBuf {
     static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
-    SETTINGS_FILE.get_or_init(|| config_dir().join("settings.json"))
+    SETTINGS_FILE.get_or_init(|| config_dir().join("settings.jsonc"))
 }
 
 /// Returns the path to the `keymap.json` file.
@@ -729,12 +729,12 @@ mod tests {
         let path = home_dir()
             .join(".config")
             .join("zaku")
-            .join("settings.json");
+            .join("settings.jsonc");
 
         if cfg!(any(target_os = "linux", target_os = "macos")) {
             assert_eq!(
                 path.compact().to_str(),
-                Some("~/.config/zaku/settings.json")
+                Some("~/.config/zaku/settings.jsonc")
             );
         } else {
             assert_eq!(path.compact().to_str(), path.to_str());

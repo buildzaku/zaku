@@ -66,7 +66,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let settings_path = temp_fs.path().join("settings.json");
+        let settings_path = temp_fs.path().join("settings.jsonc");
         let (mut receiver, _watcher) =
             watch_config_file(&cx.background_executor, temp_fs, settings_path);
 
@@ -78,7 +78,7 @@ mod tests {
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
-        let settings_path = temp_fs.path().join("settings.json");
+        let settings_path = temp_fs.path().join("settings.jsonc");
         temp_fs
             .write(
                 &settings_path,
@@ -136,7 +136,7 @@ mod tests {
                 ".config": {},
                 "dotfiles": {
                     "zaku": {
-                        "settings.json": "A",
+                        "settings.jsonc": "A",
                     },
                 },
             }),
@@ -150,12 +150,12 @@ mod tests {
         let (mut receiver, _watcher) = watch_config_file(
             &cx.background_executor,
             temp_fs.clone(),
-            config_dir_path.join("settings.json"),
+            config_dir_path.join("settings.jsonc"),
         );
 
         assert_eq!(receiver.next().await.as_deref(), Some("A"));
         temp_fs
-            .write(&target_dir_path.join("settings.json"), b"B")
+            .write(&target_dir_path.join("settings.jsonc"), b"B")
             .await
             .unwrap();
         assert_eq!(receiver.next().await.as_deref(), Some("B"));
