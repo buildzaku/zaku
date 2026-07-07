@@ -24,13 +24,13 @@ futures = { workspace = true }
 gpui = { workspace = true }
 indexmap = { workspace = true }
 inventory = { workspace = true }
+jsonc-parser = { workspace = true }
 logger = { workspace = true }
 log = { workspace = true }
 path = { workspace = true }
 rust-embed = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_path_to_error = { workspace = true }
 settings_content = { workspace = true }
 settings_macros = { workspace = true }
 util = { workspace = true }

@@ -311,9 +311,9 @@ pub fn handle_keymap_file_changes(
                     log::error!("Failed to load user keymap: {error_message}");
                     show_keymap_file_load_error(notification_id.clone(), &error_message, cx);
                 }
-                KeymapFileLoadResult::JsonParseFailure { error } => {
+                KeymapFileLoadResult::JsoncParseFailure { error } => {
                     log::error!("Failed to parse user keymap: {error}");
-                    show_keymap_file_json_error(notification_id.clone(), &error, cx);
+                    show_keymap_file_jsonc_error(notification_id.clone(), &error, cx);
                 }
             });
         }
@@ -332,13 +332,13 @@ fn reload_keymaps(cx: &mut App, user_key_bindings: Vec<KeyBinding>) {
 
 fn load_default_keymap(cx: &mut App) {
     #[cfg(target_os = "linux")]
-    let asset_path = "keymaps/default_linux.json";
+    let asset_path = "keymaps/default_linux.jsonc";
 
     #[cfg(target_os = "macos")]
-    let asset_path = "keymaps/default_macos.json";
+    let asset_path = "keymaps/default_macos.jsonc";
 
     #[cfg(target_os = "windows")]
-    let asset_path = "keymaps/default_windows.json";
+    let asset_path = "keymaps/default_windows.jsonc";
 
     let key_bindings = KeymapFile::load_asset(asset_path, cx).expect("default keymap should load");
     cx.bind_keys(key_bindings);
@@ -368,7 +368,7 @@ fn notify_settings_file_errors(result: &settings::ParseStatus, cx: &mut App) {
     }
 }
 
-fn show_keymap_file_json_error(
+fn show_keymap_file_jsonc_error(
     notification_id: NotificationId,
     error: &anyhow::Error,
     cx: &mut App,

@@ -5,11 +5,13 @@ use gpui::{
 };
 use indexmap::IndexMap;
 use serde::Deserialize;
-use serde_json::{Deserializer, Value};
+use serde_json::Value;
 use std::{fmt::Write, rc::Rc};
 
-use crate::SettingsAssets;
+use ::settings_content::JSONC_PARSE_OPTIONS;
 use util::asset_str;
+
+use crate::SettingsAssets;
 
 gpui::register_action!(ActionSequence);
 
@@ -118,7 +120,7 @@ pub enum KeymapFileLoadResult {
         key_bindings: Vec<KeyBinding>,
         error_message: String,
     },
-    JsonParseFailure {
+    JsoncParseFailure {
         error: anyhow::Error,
     },
 }
@@ -133,10 +135,8 @@ impl KeymapFile {
             return Ok(Self(Vec::new()));
         }
 
-        let mut deserializer = Deserializer::from_str(content);
-        let keymap_file = serde_path_to_error::deserialize(&mut deserializer)?;
-        deserializer.end()?;
-        Ok(keymap_file)
+        jsonc_parser::parse_to_serde_value::<Self>(content, &JSONC_PARSE_OPTIONS)
+            .map_err(|error| anyhow!("{error}"))
     }
 
     pub fn load_asset(asset_path: &str, cx: &App) -> anyhow::Result<Vec<KeyBinding>> {
@@ -145,8 +145,8 @@ impl KeymapFile {
             KeymapFileLoadResult::SomeFailedToLoad { error_message, .. } => {
                 anyhow::bail!("Error loading built-in keymap \"{asset_path}\": {error_message}");
             }
-            KeymapFileLoadResult::JsonParseFailure { error } => {
-                anyhow::bail!("JSON parse error in built-in keymap \"{asset_path}\": {error}");
+            KeymapFileLoadResult::JsoncParseFailure { error } => {
+                anyhow::bail!("JSONC parse error in built-in keymap \"{asset_path}\": {error}");
             }
         }
     }
@@ -154,7 +154,7 @@ impl KeymapFile {
     pub fn load(content: &str, cx: &App) -> KeymapFileLoadResult {
         let keymap_file = match Self::parse(content) {
             Ok(keymap_file) => keymap_file,
-            Err(error) => return KeymapFileLoadResult::JsonParseFailure { error },
+            Err(error) => return KeymapFileLoadResult::JsoncParseFailure { error },
         };
 
         let mut errors = Vec::new();
@@ -411,8 +411,8 @@ mod tests {
             KeymapFileLoadResult::SomeFailedToLoad { error_message, .. } => {
                 panic!("{error_message}");
             }
-            KeymapFileLoadResult::JsonParseFailure { error } => {
-                panic!("JSON parse error: {error}");
+            KeymapFileLoadResult::JsoncParseFailure { error } => {
+                panic!("JSONC parse error: {error}");
             }
         };
 

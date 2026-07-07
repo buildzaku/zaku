@@ -556,10 +556,10 @@ pub fn settings_file() -> &'static PathBuf {
     SETTINGS_FILE.get_or_init(|| config_dir().join("settings.jsonc"))
 }
 
-/// Returns the path to the `keymap.json` file.
+/// Returns the path to the `keymap.jsonc` file.
 pub fn keymap_file() -> &'static PathBuf {
     static KEYMAP_FILE: OnceLock<PathBuf> = OnceLock::new();
-    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.json"))
+    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.jsonc"))
 }
 
 /// In memory, this is identical to `Path`. On non-Windows conversions to this

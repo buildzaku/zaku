@@ -89,5 +89,5 @@ pub fn initial_user_settings() -> Cow<'static, str> {
 }
 
 pub fn initial_user_keymap() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("keymaps/initial_user.json")
+    asset_str::<SettingsAssets>("keymaps/initial_user.jsonc")
 }
