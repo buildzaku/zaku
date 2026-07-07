@@ -12,7 +12,7 @@ pub mod settings_content {
 }
 
 pub mod fallible_options {
-    pub use ::settings_content::{FallibleOption, parse_json};
+    pub use ::settings_content::{FallibleOption, parse_jsonc};
 }
 
 #[doc(hidden)]

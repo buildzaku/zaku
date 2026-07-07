@@ -9,7 +9,7 @@ use std::{
 };
 
 use fs::Fs;
-use settings_content::{ParseStatus, SettingsContent, merge_from::MergeFrom, parse_json};
+use settings_content::{ParseStatus, SettingsContent, merge_from::MergeFrom, parse_jsonc};
 
 pub struct RegisteredSetting {
     pub id: fn() -> TypeId,
@@ -51,9 +51,9 @@ pub struct SettingsStore {
 }
 
 impl SettingsStore {
-    pub fn new(cx: &mut App, default_settings_json: impl AsRef<str>) -> Self {
+    pub fn new(cx: &mut App, default_settings_jsonc: impl AsRef<str>) -> Self {
         let (default_settings, parse_status) =
-            parse_json::<SettingsContent>(default_settings_json.as_ref());
+            parse_jsonc::<SettingsContent>(default_settings_jsonc.as_ref());
         let default_settings = match (default_settings, parse_status) {
             (Some(default_settings), ParseStatus::Success) => Ok(default_settings),
             (Some(_), ParseStatus::Failed { error }) => {
@@ -96,7 +96,7 @@ impl SettingsStore {
 
     pub fn set_default_settings(&mut self, default_settings_content: &str, cx: &mut App) {
         let (default_settings, parse_status) =
-            parse_json::<SettingsContent>(default_settings_content);
+            parse_jsonc::<SettingsContent>(default_settings_content);
         let default_settings = match (default_settings, parse_status) {
             (Some(default_settings), ParseStatus::Success) => default_settings,
             (Some(default_settings), ParseStatus::Failed { error }) => {
@@ -120,9 +120,9 @@ impl SettingsStore {
     #[must_use]
     pub fn set_user_settings(&mut self, user_settings_content: &str, cx: &mut App) -> ParseStatus {
         let (user_settings, parse_status) = if user_settings_content.is_empty() {
-            parse_json::<SettingsContent>("{}")
+            parse_jsonc::<SettingsContent>("{}")
         } else {
-            parse_json::<SettingsContent>(user_settings_content)
+            parse_jsonc::<SettingsContent>(user_settings_content)
         };
 
         if let Some(user_settings) = user_settings {
@@ -196,9 +196,9 @@ impl SettingsStore {
         update: impl FnOnce(&mut SettingsContent),
     ) -> anyhow::Result<String> {
         let (old_content, parse_status) = if old_text.trim().is_empty() {
-            parse_json::<SettingsContent>("{}")
+            parse_jsonc::<SettingsContent>("{}")
         } else {
-            parse_json::<SettingsContent>(old_text)
+            parse_jsonc::<SettingsContent>(old_text)
         };
         if let ParseStatus::Failed { error } = &parse_status {
             log::error!("Failed to parse settings for update: {error}");

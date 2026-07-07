@@ -3573,6 +3573,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonc-parser"
+version = "0.32.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "840785e1a8b4fdb27be18440a35a81af64820dc185c3973ff8b012d4c6282512"
+dependencies = [
+ "serde",
+ "unicode-width",
+]
+
+[[package]]
 name = "khronos-egl"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6374,6 +6384,7 @@ dependencies = [
  "anyhow",
  "indexmap",
  "indoc",
+ "jsonc-parser",
  "log",
  "serde",
  "serde_json",

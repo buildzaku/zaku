@@ -17,6 +17,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 indexmap = { workspace = true }
+jsonc-parser = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
