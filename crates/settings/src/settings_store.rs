@@ -1,6 +1,8 @@
 use anyhow::{Context, anyhow};
 use futures::{FutureExt, StreamExt, channel::mpsc, future::LocalBoxFuture};
 use gpui::{App, AsyncApp, Global, Task};
+use jsonc_parser::cst::{CstContainerNode, CstInputValue, CstLeafNode, CstNode, CstRootNode};
+use serde_json::Value;
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
@@ -9,7 +11,9 @@ use std::{
 };
 
 use fs::Fs;
-use settings_content::{ParseStatus, SettingsContent, merge_from::MergeFrom, parse_jsonc};
+use settings_content::{
+    JSONC_PARSE_OPTIONS, ParseStatus, SettingsContent, merge_from::MergeFrom, parse_jsonc,
+};
 
 pub struct RegisteredSetting {
     pub id: fn() -> TypeId,
@@ -170,7 +174,7 @@ impl SettingsStore {
                         fs.write(settings_path, new_text.as_bytes())
                             .await
                             .with_context(|| {
-                                format!("Failed to write settings file {}", settings_path.display())
+                                format!("failed to write settings file {}", settings_path.display())
                             })?;
 
                         cx.update_global(|store: &mut SettingsStore, cx| {
@@ -203,10 +207,33 @@ impl SettingsStore {
         if let ParseStatus::Failed { error } = &parse_status {
             log::error!("Failed to parse settings for update: {error}");
         }
-        let mut new_content = old_content
-            .context("Settings file could not be parsed. Fix syntax errors before updating.")?;
+        let old_content = old_content
+            .context("settings file could not be parsed; fix syntax errors before updating.")?;
+        let mut new_content = old_content.clone();
         update(&mut new_content);
-        serde_json::to_string_pretty(&new_content).context("Failed to serialize settings")
+
+        let old_value =
+            serde_json::to_value(&old_content).context("failed to serialize settings")?;
+        let new_value =
+            serde_json::to_value(&new_content).context("failed to serialize settings")?;
+        if old_value == new_value {
+            return Ok(old_text.to_string());
+        }
+
+        let old_text = if old_text.trim().is_empty() {
+            "{}"
+        } else {
+            old_text
+        };
+        let root_node = CstRootNode::parse(old_text, &JSONC_PARSE_OPTIONS)
+            .context("settings file could not be parsed; fix syntax errors before updating.")?;
+        let root_value = root_node
+            .value()
+            .context("settings file could not be parsed: missing value")?;
+
+        update_value_in_jsonc_node(root_value, &old_value, &new_value)?;
+
+        Ok(root_node.to_string())
     }
 
     pub fn register_setting<T: Settings>(&mut self) {
@@ -269,6 +296,117 @@ impl SettingsStore {
 }
 
 impl Global for SettingsStore {}
+
+fn update_value_in_jsonc_node(
+    node: CstNode,
+    old_value: &Value,
+    new_value: &Value,
+) -> anyhow::Result<()> {
+    if let (Value::Object(old_object), Value::Object(new_object)) = (old_value, new_value) {
+        let CstNode::Container(CstContainerNode::Object(object)) = &node else {
+            return replace_jsonc_node(node, cst_value_from_json(new_value));
+        };
+
+        for (old_key, _) in old_object {
+            if !new_object.contains_key(old_key)
+                && let Some(property) = object.get(old_key)
+            {
+                property.remove();
+            }
+        }
+
+        for (new_key_index, (new_key, new_property_value)) in new_object.iter().enumerate() {
+            let old_property_value = old_object.get(new_key);
+
+            match (object.get(new_key), old_property_value) {
+                (Some(property), Some(old_property_value)) => {
+                    if let Some(value) = property.value() {
+                        update_value_in_jsonc_node(value, old_property_value, new_property_value)?;
+                    } else {
+                        property.set_value(cst_value_from_json(new_property_value));
+                    }
+                }
+                (Some(property), None) => {
+                    property.set_value(cst_value_from_json(new_property_value));
+                }
+                (None, _) => {
+                    let insert_index = new_key_index.min(object.properties().len());
+                    object.insert(
+                        insert_index,
+                        new_key,
+                        cst_value_from_json(new_property_value),
+                    );
+                }
+            }
+        }
+
+        return Ok(());
+    }
+
+    if old_value != new_value {
+        replace_jsonc_node(node, cst_value_from_json(new_value))?;
+    }
+
+    Ok(())
+}
+
+fn cst_value_from_json(value: &Value) -> CstInputValue {
+    match value {
+        Value::Null => CstInputValue::Null,
+        Value::Bool(value) => CstInputValue::Bool(*value),
+        Value::Number(value) => CstInputValue::Number(value.to_string()),
+        Value::String(value) => CstInputValue::String(value.clone()),
+        Value::Array(values) => {
+            CstInputValue::Array(values.iter().map(cst_value_from_json).collect())
+        }
+        Value::Object(properties) => CstInputValue::Object(
+            properties
+                .iter()
+                .map(|(name, value)| (name.clone(), cst_value_from_json(value)))
+                .collect(),
+        ),
+    }
+}
+
+fn replace_jsonc_node(node: CstNode, value: CstInputValue) -> anyhow::Result<()> {
+    match node {
+        CstNode::Container(CstContainerNode::Root(root)) => root.set_value(value),
+        CstNode::Container(CstContainerNode::Object(object)) => {
+            object.replace_with(value);
+        }
+        CstNode::Container(CstContainerNode::ObjectProp(property)) => {
+            property.set_value(value);
+        }
+        CstNode::Container(CstContainerNode::Array(array)) => {
+            array.replace_with(value);
+        }
+        CstNode::Leaf(CstLeafNode::NullKeyword(value_node)) => {
+            value_node.replace_with(value);
+        }
+        CstNode::Leaf(CstLeafNode::BooleanLit(value_node)) => {
+            value_node.replace_with(value);
+        }
+        CstNode::Leaf(CstLeafNode::NumberLit(value_node)) => {
+            value_node.replace_with(value);
+        }
+        CstNode::Leaf(CstLeafNode::StringLit(value_node)) => {
+            value_node.replace_with(value);
+        }
+        CstNode::Leaf(CstLeafNode::WordLit(value_node)) => {
+            value_node.replace_with(value);
+        }
+        CstNode::Leaf(
+            CstLeafNode::Token(_)
+            | CstLeafNode::Whitespace(_)
+            | CstLeafNode::Newline(_)
+            | CstLeafNode::Comment(_),
+        ) => {
+            anyhow::bail!("failed to update settings JSONC: unexpected trivia")
+        }
+    }
+
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -334,8 +472,8 @@ mod tests {
                    * Block comment.
                    */
                   "ui": { "density": "compact" }
-                }"#
-            }
+                }
+            "#}
         );
     }
 }
