@@ -65,7 +65,7 @@ pub fn set_mode(content: &mut SettingsContent, mode: ThemeAppearanceMode) {
 }
 
 pub fn load_bundled_themes(registry: &ThemeRegistry) {
-    let path = "themes/zaku/zaku.json";
+    let path = "themes/zaku/zaku.jsonc";
     let bytes = match registry.assets().load(path) {
         Ok(Some(bytes)) => bytes,
         Ok(None) => {

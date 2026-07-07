@@ -17,12 +17,12 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 gpui = { workspace = true }
+jsonc-parser = { workspace = true }
 palette = { workspace = true }
 parking_lot = { workspace = true }
 refineable = { workspace = true }
 schemars = { workspace = true }
 settings = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 syntax_theme = { workspace = true }
 uuid = { workspace = true }

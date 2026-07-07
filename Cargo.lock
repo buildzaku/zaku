@@ -7075,12 +7075,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "jsonc-parser",
  "palette",
  "parking_lot",
  "refineable 0.0.0",
  "schemars",
  "serde",
- "serde_json",
  "settings",
  "syntax_theme",
  "uuid",
