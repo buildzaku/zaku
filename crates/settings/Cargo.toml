@@ -39,4 +39,5 @@ util = { workspace = true }
 fs = { workspace = true, features = ["test"] }
 gpui = { workspace = true, features = ["test-support"] }
 indoc = { workspace = true }
+pretty_assertions = { workspace = true }
 util_macros = { workspace = true }

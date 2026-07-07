@@ -275,25 +275,65 @@ mod tests {
     use super::*;
 
     use indoc::indoc;
+    use pretty_assertions::assert_eq;
 
     use settings_content::ThemeAppearanceMode;
 
     #[gpui::test]
     fn test_update_theme_settings(cx: &mut App) {
-        let store = SettingsStore::test_new(cx);
-        let actual = store
+        let settings_store = SettingsStore::test_new(cx);
+        let updated_settings = settings_store
             .new_text_for_update("{}", |content| {
                 content.theme.get_or_insert_default().mode = Some(ThemeAppearanceMode::Dark);
             })
             .unwrap();
 
         assert_eq!(
-            actual,
+            updated_settings,
             indoc! {r#"
                 {
                   "theme": {
                     "mode": "dark"
                   }
+                }"#
+            }
+        );
+    }
+
+    #[gpui::test]
+    fn test_update_settings_preserves_jsonc_comments(cx: &mut App) {
+        let settings_store = SettingsStore::test_new(cx);
+        let old_settings = indoc! {r#"
+            {
+              // Line comment.
+              "theme": {
+                "mode": "system" // Trailing comment.
+              },
+              /*
+               * Block comment.
+               */
+              "ui": { "density": "compact" }
+            }
+        "#};
+
+        let updated_settings = settings_store
+            .new_text_for_update(old_settings, |content| {
+                content.theme.get_or_insert_default().mode = Some(ThemeAppearanceMode::Dark);
+            })
+            .unwrap();
+
+        assert_eq!(
+            updated_settings,
+            indoc! {r#"
+                {
+                  // Line comment.
+                  "theme": {
+                    "mode": "dark" // Trailing comment.
+                  },
+                  /*
+                   * Block comment.
+                   */
+                  "ui": { "density": "compact" }
                 }"#
             }
         );

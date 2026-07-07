@@ -6357,6 +6357,7 @@ dependencies = [
  "log",
  "logger",
  "path",
+ "pretty_assertions",
  "rust-embed",
  "serde",
  "serde_json",
