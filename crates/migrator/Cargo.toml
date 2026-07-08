@@ -16,7 +16,9 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+jsonc-parser = { workspace = true }
 serde_json = { workspace = true }
+settings_content = { workspace = true }
 settings_jsonc = { workspace = true }
 
 [dev-dependencies]

@@ -4029,8 +4029,10 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "indoc",
+ "jsonc-parser",
  "pretty_assertions",
  "serde_json",
+ "settings_content",
  "settings_jsonc",
 ]
 
@@ -9249,6 +9251,7 @@ dependencies = [
  "log",
  "logger",
  "metadata",
+ "migrator",
  "mimalloc",
  "multi_buffer",
  "parking_lot",

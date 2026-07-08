@@ -11,6 +11,7 @@ use gpui::{
 };
 use std::{borrow::Cow, path::Path, sync::Arc};
 
+use migrator::migrate_keymap;
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use settings::{KeymapFile, KeymapFileLoadResult, SettingsParseResult, SettingsStore};
@@ -291,7 +292,11 @@ pub fn handle_keymap_file_changes(
                 _ = keyboard_layout_rx.next() => {},
                 content = user_keymap_file_rx.next() => {
                     if let Some(content) = content {
-                        user_keymap_content = content;
+                        if let Ok(Some(migrated_content)) = migrate_keymap(&content) {
+                            user_keymap_content = migrated_content;
+                        } else {
+                            user_keymap_content = content;
+                        }
                     }
                 }
             }
