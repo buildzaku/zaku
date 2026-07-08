@@ -26,7 +26,7 @@ pub use git_settings::*;
 pub use into_gpui::IntoGpui;
 pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
 pub use settings_file::{update_settings_file, watch_config_file};
-pub use settings_store::{Settings, SettingsStore};
+pub use settings_store::{MigrationStatus, Settings, SettingsParseResult, SettingsStore};
 
 use gpui::App;
 use rust_embed::RustEmbed;

@@ -3579,6 +3579,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "840785e1a8b4fdb27be18440a35a81af64820dc185c3973ff8b012d4c6282512"
 dependencies = [
  "serde",
+ "serde_json",
  "unicode-width",
 ]
 
@@ -4020,6 +4021,17 @@ dependencies = [
  "log",
  "objc",
  "paste",
+]
+
+[[package]]
+name = "migrator"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "indoc",
+ "pretty_assertions",
+ "serde_json",
+ "settings_jsonc",
 ]
 
 [[package]]
@@ -6356,12 +6368,14 @@ dependencies = [
  "jsonc-parser",
  "log",
  "logger",
+ "migrator",
  "path",
  "pretty_assertions",
  "rust-embed",
  "serde",
  "serde_json",
  "settings_content",
+ "settings_jsonc",
  "settings_macros",
  "util 0.0.0",
  "util_macros 0.0.0",
@@ -6379,6 +6393,17 @@ dependencies = [
  "serde",
  "serde_json",
  "settings_macros",
+]
+
+[[package]]
+name = "settings_jsonc"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "jsonc-parser",
+ "serde",
+ "serde_json",
+ "settings_content",
 ]
 
 [[package]]

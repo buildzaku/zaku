@@ -122,12 +122,12 @@ mod tests {
     fn test_parse_jsonc_allows_comments() {
         let input = indoc! {r#"
             {
-              // Line comment
+              // Line comment.
               "string": "text",
               /*
-               * Block comment
+               * Block comment.
                */
-              "number": 1,
+              "number": 999,
               "boolean": true
             }
         "#};
@@ -139,7 +139,7 @@ mod tests {
             value,
             Some(TestSettings {
                 string: Some("text".into()),
-                number: Some(1),
+                number: Some(999),
                 boolean: Some(true),
             })
         );

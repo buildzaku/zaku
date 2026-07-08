@@ -1,0 +1,22 @@
+[package]
+name = "settings_jsonc"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "settings_jsonc"
+path = "src/settings_jsonc.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+jsonc-parser = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+settings_content = { workspace = true }

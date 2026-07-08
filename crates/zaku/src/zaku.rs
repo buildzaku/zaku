@@ -13,7 +13,7 @@ use std::{borrow::Cow, path::Path, sync::Arc};
 
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
-use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
+use settings::{KeymapFile, KeymapFileLoadResult, SettingsParseResult, SettingsStore};
 use system_specs::SystemSpecs;
 use workspace::{
     AppState, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace, Toast, Workspace,
@@ -344,13 +344,10 @@ fn load_default_keymap(cx: &mut App) {
     cx.bind_keys(key_bindings);
 }
 
-fn notify_settings_file_errors(result: &settings::ParseStatus, cx: &mut App) {
+fn notify_settings_file_errors(result: &SettingsParseResult, cx: &mut App) {
     let id = NotificationId::named("failed-to-parse-settings".into());
-    match result {
-        settings::ParseStatus::Success => {
-            dismiss_app_notification(&id, cx);
-        }
-        settings::ParseStatus::Failed { error } => {
+    match result.parse_error() {
+        Some(error) => {
             log::error!("Failed to load user settings: {error}");
             let message = format!("Invalid user settings file\n{error}");
             show_app_notification(id, cx, move |cx| {
@@ -364,6 +361,9 @@ fn notify_settings_file_errors(result: &settings::ParseStatus, cx: &mut App) {
                         })
                 })
             });
+        }
+        None => {
+            dismiss_app_notification(&id, cx);
         }
     }
 }
