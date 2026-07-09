@@ -7,11 +7,13 @@ use gpui::BackgroundExecutor;
 use is_executable::IsExecutable;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tempfile::{NamedTempFile, TempDir};
-
 #[cfg(feature = "test")]
 use serde_json::Value;
-
+#[cfg(target_os = "macos")]
+use std::{
+    ffi::{CStr, OsStr},
+    mem::MaybeUninit,
+};
 use std::{
     io::{self, Write},
     path::{Path, PathBuf},
@@ -23,56 +25,49 @@ use std::{
     task,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::ffi::CString;
-
+use tempfile::TempDir;
 #[cfg(target_os = "windows")]
-use util::command::new_command;
+use {
+    smol::fs::windows::OpenOptionsExt as SmolOpenOptionsExt,
+    std::{
+        ffi::OsString,
+        mem::MaybeUninit,
+        os::windows::{
+            ffi::{OsStrExt, OsStringExt},
+            fs::OpenOptionsExt,
+            io::AsRawHandle,
+        },
+    },
+    util::command::new_command,
+    windows::{
+        Win32::{
+            Foundation::HANDLE,
+            Storage::FileSystem::{
+                BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, FILE_NAME_NORMALIZED,
+                GetFileInformationByHandle, GetFinalPathNameByHandleW, GetVolumePathNameW,
+                MOVE_FILE_FLAGS, MoveFileExW, REPLACE_FILE_FLAGS, ReplaceFileW,
+            },
+        },
+        core::{HSTRING, PCWSTR},
+    },
+};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use {
+    std::{
+        ffi::CString,
+        os::{
+            fd::{AsFd, AsRawFd},
+            unix::{
+                ffi::OsStrExt,
+                fs::{FileTypeExt, MetadataExt},
+            },
+        },
+    },
+    tempfile::NamedTempFile,
+};
 
 use path::SanitizedPath;
 use util::ResultExt;
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::os::fd::{AsFd, AsRawFd};
-
-#[cfg(target_os = "macos")]
-use std::ffi::{CStr, OsStr};
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::os::unix::fs::{FileTypeExt, MetadataExt};
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-use std::os::unix::ffi::OsStrExt;
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use std::mem::MaybeUninit;
-
-#[cfg(target_os = "windows")]
-use smol::fs::windows::OpenOptionsExt as SmolOpenOptionsExt;
-
-#[cfg(target_os = "windows")]
-use windows::{
-    Win32::{
-        Foundation::HANDLE,
-        Storage::FileSystem::{
-            BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, FILE_NAME_NORMALIZED,
-            GetFileInformationByHandle, GetFinalPathNameByHandleW, GetVolumePathNameW,
-            MOVE_FILE_FLAGS, MoveFileExW, REPLACE_FILE_FLAGS, ReplaceFileW,
-        },
-    },
-    core::{HSTRING, PCWSTR},
-};
-
-#[cfg(target_os = "windows")]
-use std::{
-    ffi::OsString,
-    os::windows::{
-        ffi::{OsStrExt, OsStringExt},
-        fs::OpenOptionsExt,
-        io::AsRawHandle,
-    },
-};
 
 use crate::fs_watcher::FsWatcher;
 
