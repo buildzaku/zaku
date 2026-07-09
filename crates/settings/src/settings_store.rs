@@ -9,7 +9,7 @@ use std::{
 };
 
 use fs::Fs;
-use settings_content::{ParseStatus, SettingsContent, merge_from::MergeFrom, parse_json};
+use settings_content::{SettingsContent, SettingsLoadStatus, merge_from::MergeFrom, parse_jsonc};
 
 pub struct RegisteredSetting {
     pub id: fn() -> TypeId,
@@ -38,6 +38,59 @@ pub trait Settings: 'static + Send + Sync + Sized {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MigrationStatus {
+    NotNeeded,
+    Succeeded,
+    Failed { error: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingsLoadResult {
+    pub status: SettingsLoadStatus,
+    pub migration_status: MigrationStatus,
+}
+
+impl SettingsLoadResult {
+    pub fn result(self) -> anyhow::Result<bool> {
+        let migration_result = match self.migration_status {
+            MigrationStatus::NotNeeded => Ok(false),
+            MigrationStatus::Succeeded => Ok(true),
+            MigrationStatus::Failed { error } => {
+                Err(anyhow::Error::msg(error)).context("failed to migrate settings")
+            }
+        };
+
+        let load_result = match self.status {
+            SettingsLoadStatus::Loaded => Ok(()),
+            SettingsLoadStatus::PartiallyLoaded { error_message } => {
+                Err(anyhow::Error::msg(error_message)).context("failed to load settings")
+            }
+            SettingsLoadStatus::FailedToParseJsonc { error } => {
+                Err(anyhow::Error::msg(error)).context("failed to parse settings")
+            }
+            SettingsLoadStatus::FailedToLoad { error } => {
+                Err(anyhow::Error::msg(error)).context("failed to load settings")
+            }
+        };
+
+        match (migration_result, load_result) {
+            (migration_result @ Ok(_), Ok(())) => migration_result,
+            (Err(migration_error), Ok(())) => Err(migration_error),
+            (_, Err(load_error)) => Err(load_error),
+        }
+    }
+}
+
+impl Default for SettingsLoadResult {
+    fn default() -> Self {
+        Self {
+            status: SettingsLoadStatus::Loaded,
+            migration_status: MigrationStatus::NotNeeded,
+        }
+    }
+}
+
 pub struct SettingsStore {
     default_settings: SettingsContent,
     user_settings: Option<SettingsContent>,
@@ -51,20 +104,22 @@ pub struct SettingsStore {
 }
 
 impl SettingsStore {
-    pub fn new(cx: &mut App, default_settings_json: impl AsRef<str>) -> Self {
-        let (default_settings, parse_status) =
-            parse_json::<SettingsContent>(default_settings_json.as_ref());
-        let default_settings = match (default_settings, parse_status) {
-            (Some(default_settings), ParseStatus::Success) => Ok(default_settings),
-            (Some(_), ParseStatus::Failed { error }) => {
-                Err(anyhow!("invalid default settings: {error}"))
+    pub fn new(cx: &mut App, default_settings_jsonc: impl AsRef<str>) -> Self {
+        let (default_settings, status) =
+            parse_jsonc::<SettingsContent>(default_settings_jsonc.as_ref());
+        let default_settings = match status {
+            SettingsLoadStatus::Loaded => {
+                default_settings.context("failed to load default settings: missing parsed value")
             }
-            (None, ParseStatus::Failed { error }) => {
+            SettingsLoadStatus::PartiallyLoaded { error_message } => {
+                Err(anyhow!("invalid default settings: {error_message}"))
+            }
+            SettingsLoadStatus::FailedToParseJsonc { error } => {
                 Err(anyhow!("failed to parse default settings: {error}"))
             }
-            (None, ParseStatus::Success) => Err(anyhow!(
-                "failed to parse default settings: missing parsed value"
-            )),
+            SettingsLoadStatus::FailedToLoad { error } => {
+                Err(anyhow!("failed to load default settings: {error}"))
+            }
         }
         .expect("failed to load default settings");
 
@@ -95,22 +150,25 @@ impl SettingsStore {
     }
 
     pub fn set_default_settings(&mut self, default_settings_content: &str, cx: &mut App) {
-        let (default_settings, parse_status) =
-            parse_json::<SettingsContent>(default_settings_content);
-        let default_settings = match (default_settings, parse_status) {
-            (Some(default_settings), ParseStatus::Success) => default_settings,
-            (Some(default_settings), ParseStatus::Failed { error }) => {
-                log::error!("Invalid default settings: {error}");
+        let (default_settings, status) = parse_jsonc::<SettingsContent>(default_settings_content);
+        let default_settings = match status {
+            SettingsLoadStatus::Loaded => default_settings,
+            SettingsLoadStatus::PartiallyLoaded { error_message } => {
+                log::error!("Invalid default settings: {error_message}");
                 default_settings
             }
-            (None, ParseStatus::Failed { error }) => {
+            SettingsLoadStatus::FailedToParseJsonc { error } => {
                 log::error!("Failed to parse default settings: {error}");
                 return;
             }
-            (None, ParseStatus::Success) => {
-                log::error!("Failed to parse default settings: missing parsed value");
+            SettingsLoadStatus::FailedToLoad { error } => {
+                log::error!("Failed to load default settings: {error}");
                 return;
             }
+        };
+        let Some(default_settings) = default_settings else {
+            log::error!("Failed to load default settings: missing parsed value");
+            return;
         };
 
         self.default_settings = default_settings;
@@ -118,11 +176,31 @@ impl SettingsStore {
     }
 
     #[must_use]
-    pub fn set_user_settings(&mut self, user_settings_content: &str, cx: &mut App) -> ParseStatus {
-        let (user_settings, parse_status) = if user_settings_content.is_empty() {
-            parse_json::<SettingsContent>("{}")
+    pub fn set_user_settings(
+        &mut self,
+        user_settings_content: &str,
+        cx: &mut App,
+    ) -> SettingsLoadResult {
+        let (user_settings, status, migration_status) = if user_settings_content.is_empty() {
+            let (user_settings, status) = parse_jsonc::<SettingsContent>("{}");
+            (user_settings, status, MigrationStatus::NotNeeded)
         } else {
-            parse_json::<SettingsContent>(user_settings_content)
+            let migration_result = migrator::migrate_settings(user_settings_content);
+            let migration_status = match &migration_result {
+                Ok(Some(_)) => MigrationStatus::Succeeded,
+                Ok(None) => MigrationStatus::NotNeeded,
+                Err(error) => MigrationStatus::Failed {
+                    error: error.to_string(),
+                },
+            };
+
+            let content = match &migration_result {
+                Ok(Some(content)) => content.as_str(),
+                Ok(None) | Err(_) => user_settings_content,
+            };
+
+            let (user_settings, status) = parse_jsonc::<SettingsContent>(content);
+            (user_settings, status, migration_status)
         };
 
         if let Some(user_settings) = user_settings {
@@ -130,7 +208,10 @@ impl SettingsStore {
             self.recompute_values(cx);
         }
 
-        parse_status
+        SettingsLoadResult {
+            status,
+            migration_status,
+        }
     }
 
     #[cfg(any(test, feature = "test"))]
@@ -170,14 +251,20 @@ impl SettingsStore {
                         fs.write(settings_path, new_text.as_bytes())
                             .await
                             .with_context(|| {
-                                format!("Failed to write settings file {}", settings_path.display())
+                                format!("failed to write settings file {}", settings_path.display())
                             })?;
 
                         cx.update_global(|store: &mut SettingsStore, cx| {
                             let result = store.set_user_settings(&new_text, cx);
-                            match result {
-                                ParseStatus::Success => anyhow::Ok(()),
-                                ParseStatus::Failed { error } => anyhow::bail!(error),
+                            match result.status {
+                                SettingsLoadStatus::Loaded => anyhow::Ok(()),
+                                SettingsLoadStatus::PartiallyLoaded { error_message } => {
+                                    anyhow::bail!(error_message)
+                                }
+                                SettingsLoadStatus::FailedToParseJsonc { error }
+                                | SettingsLoadStatus::FailedToLoad { error } => {
+                                    anyhow::bail!(error)
+                                }
                             }
                         })?;
 
@@ -195,18 +282,53 @@ impl SettingsStore {
         old_text: &str,
         update: impl FnOnce(&mut SettingsContent),
     ) -> anyhow::Result<String> {
-        let (old_content, parse_status) = if old_text.trim().is_empty() {
-            parse_json::<SettingsContent>("{}")
+        let (old_content, status) = if old_text.trim().is_empty() {
+            parse_jsonc::<SettingsContent>("{}")
         } else {
-            parse_json::<SettingsContent>(old_text)
+            parse_jsonc::<SettingsContent>(old_text)
         };
-        if let ParseStatus::Failed { error } = &parse_status {
-            log::error!("Failed to parse settings for update: {error}");
+        match &status {
+            SettingsLoadStatus::Loaded => {}
+            SettingsLoadStatus::PartiallyLoaded { error_message } => {
+                log::error!("Failed to load settings for update: {error_message}");
+            }
+            SettingsLoadStatus::FailedToParseJsonc { error } => {
+                log::error!("Failed to parse settings for update: {error}");
+            }
+            SettingsLoadStatus::FailedToLoad { error } => {
+                log::error!("Failed to load settings for update: {error}");
+            }
         }
-        let mut new_content = old_content
-            .context("Settings file could not be parsed. Fix syntax errors before updating.")?;
+        let Some(old_content) = old_content else {
+            match status {
+                SettingsLoadStatus::FailedToParseJsonc { error } => {
+                    anyhow::bail!(
+                        "settings file could not be parsed; fix syntax errors before updating: {error}"
+                    );
+                }
+                SettingsLoadStatus::FailedToLoad { error } => {
+                    anyhow::bail!(
+                        "settings file could not be loaded; fix errors before updating: {error}"
+                    );
+                }
+                SettingsLoadStatus::Loaded | SettingsLoadStatus::PartiallyLoaded { .. } => {
+                    anyhow::bail!("settings file could not be loaded; missing parsed value");
+                }
+            }
+        };
+        let mut new_content = old_content.clone();
         update(&mut new_content);
-        serde_json::to_string_pretty(&new_content).context("Failed to serialize settings")
+
+        let old_value =
+            serde_json::to_value(&old_content).context("failed to serialize settings")?;
+        let new_value =
+            serde_json::to_value(&new_content).context("failed to serialize settings")?;
+        if old_value == new_value {
+            return Ok(old_text.to_string());
+        }
+
+        settings_jsonc::update_jsonc_content(old_text, &old_value, &new_value)
+            .map(|text| text.unwrap_or_else(|| old_text.to_string()))
     }
 
     pub fn register_setting<T: Settings>(&mut self) {
@@ -280,15 +402,15 @@ mod tests {
 
     #[gpui::test]
     fn test_update_theme_settings(cx: &mut App) {
-        let store = SettingsStore::test_new(cx);
-        let actual = store
+        let settings_store = SettingsStore::test_new(cx);
+        let updated_settings = settings_store
             .new_text_for_update("{}", |content| {
                 content.theme.get_or_insert_default().mode = Some(ThemeAppearanceMode::Dark);
             })
             .unwrap();
 
-        assert_eq!(
-            actual,
+        pretty_assertions::assert_eq!(
+            updated_settings,
             indoc! {r#"
                 {
                   "theme": {
@@ -296,6 +418,45 @@ mod tests {
                   }
                 }"#
             }
+        );
+    }
+
+    #[gpui::test]
+    fn test_update_settings_preserves_jsonc_comments(cx: &mut App) {
+        let settings_store = SettingsStore::test_new(cx);
+        let old_settings = indoc! {r#"
+            {
+              // Line comment.
+              "theme": {
+                "mode": "system" // Trailing comment.
+              },
+              /*
+               * Block comment.
+               */
+              "ui": { "density": "compact" }
+            }
+        "#};
+
+        let updated_settings = settings_store
+            .new_text_for_update(old_settings, |content| {
+                content.theme.get_or_insert_default().mode = Some(ThemeAppearanceMode::Dark);
+            })
+            .unwrap();
+
+        pretty_assertions::assert_eq!(
+            updated_settings,
+            indoc! {r#"
+                {
+                  // Line comment.
+                  "theme": {
+                    "mode": "dark" // Trailing comment.
+                  },
+                  /*
+                   * Block comment.
+                   */
+                  "ui": { "density": "compact" }
+                }
+            "#}
         );
     }
 }

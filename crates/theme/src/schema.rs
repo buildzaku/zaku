@@ -3,14 +3,14 @@ pub use settings::{
     ThemeStyleContent,
 };
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use gpui::{HighlightStyle, Hsla, Rgba};
 use palette::FromColor;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, sync::Arc};
 
-use settings::IntoGpui;
+use ::settings::{IntoGpui, JSONC_PARSE_OPTIONS};
 
 use crate::{Appearance, StatusColors, SyntaxTheme, Theme, ThemeColors, ThemeFamily, ThemeStyles};
 
@@ -60,7 +60,10 @@ impl ThemeFamilyContent {
             let Some(theme) = loader(&theme_path)? else {
                 anyhow::bail!("theme file not found at path {theme_path:?}");
             };
-            let style = serde_json::from_slice(&theme)
+            let theme_jsonc = std::str::from_utf8(theme.as_ref())
+                .with_context(|| format!("theme file at path {theme_path:?} is not valid UTF-8"))?;
+            let style = jsonc_parser::parse_to_serde_value(theme_jsonc, &JSONC_PARSE_OPTIONS)
+                .map_err(|error| anyhow!("{error}"))
                 .with_context(|| format!("failed to parse theme file at path {theme_path:?}"))?;
             themes.push(theme_content.into_theme(&style));
         }

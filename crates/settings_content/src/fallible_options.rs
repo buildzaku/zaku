@@ -1,55 +1,75 @@
 use anyhow::anyhow;
-use serde::Deserialize;
+use jsonc_parser::ParseOptions;
+use serde::de::DeserializeOwned;
 use std::cell::RefCell;
 
-use crate::ParseStatus;
+use crate::SettingsLoadStatus;
 
 thread_local! {
     static ERRORS: RefCell<Option<Vec<anyhow::Error>>> = const { RefCell::new(None) };
 }
 
-pub fn parse_json<'de, T>(json: &'de str) -> (Option<T>, ParseStatus)
-where
-    T: Deserialize<'de>,
-{
-    ERRORS.with_borrow_mut(|errors| {
-        errors.replace(Vec::default());
-    });
+pub const JSONC_PARSE_OPTIONS: ParseOptions = ParseOptions {
+    allow_comments: true,
+    allow_loose_object_property_names: false,
+    allow_trailing_commas: false,
+    allow_missing_commas: false,
+    allow_single_quoted_strings: false,
+    allow_hexadecimal_numbers: false,
+    allow_unary_plus_numbers: false,
+};
 
-    let mut deserializer = serde_json::Deserializer::from_str(json);
-    let value = T::deserialize(&mut deserializer);
+pub fn parse_jsonc<T>(jsonc: &str) -> (Option<T>, SettingsLoadStatus)
+where
+    T: DeserializeOwned,
+{
+    let value =
+        jsonc_parser::parse_to_serde_value::<serde_json::Value>(jsonc, &JSONC_PARSE_OPTIONS);
     let value = match value {
         Ok(value) => value,
         Err(error) => {
             return (
                 None,
-                ParseStatus::Failed {
+                SettingsLoadStatus::FailedToParseJsonc {
                     error: error.to_string(),
                 },
             );
         }
     };
 
-    if let Err(error) = deserializer.end() {
-        return (
-            None,
-            ParseStatus::Failed {
-                error: error.to_string(),
-            },
-        );
-    }
+    ERRORS.with_borrow_mut(|errors| {
+        errors.replace(Vec::default());
+    });
+
+    let value = match serde_json::from_value::<T>(value) {
+        Ok(value) => value,
+        Err(error) => {
+            ERRORS.with_borrow_mut(|errors| {
+                errors.take();
+            });
+            return (
+                None,
+                SettingsLoadStatus::FailedToLoad {
+                    error: error.to_string(),
+                },
+            );
+        }
+    };
 
     if let Some(errors) = ERRORS.with_borrow_mut(|errors| errors.take().filter(|e| !e.is_empty())) {
-        let error = errors
+        let error_message = errors
             .into_iter()
             .map(|e| e.to_string())
             .flat_map(|e| ["\n".to_owned(), e])
             .skip(1)
             .collect::<String>();
-        return (Some(value), ParseStatus::Failed { error });
+        return (
+            Some(value),
+            SettingsLoadStatus::PartiallyLoaded { error_message },
+        );
     }
 
-    (Some(value), ParseStatus::Success)
+    (Some(value), SettingsLoadStatus::Loaded)
 }
 
 pub(crate) fn deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -78,43 +98,97 @@ mod tests {
     use super::*;
 
     use indoc::indoc;
+    use serde::Deserialize;
     use settings_macros::with_fallible_options;
 
     #[with_fallible_options]
     #[derive(Debug, PartialEq, Deserialize)]
-    struct FooSettings {
-        foo: Option<String>,
-        bar: Option<usize>,
-        baz: Option<bool>,
+    struct TestSettings {
+        string: Option<String>,
+        number: Option<usize>,
+        boolean: Option<bool>,
     }
 
     #[test]
     fn test_fallible() {
         let input = indoc! {r#"
             {
-              "foo": "bar",
-              "bar": "foo",
-              "baz": 3
+              "string": "text",
+              "number": "not a number",
+              "boolean": 999
             }
         "#};
 
-        let (value, parse_status) = parse_json::<FooSettings>(input);
-        let value = value.expect("Expected partial settings value");
-        let ParseStatus::Failed { error } = parse_status else {
-            panic!("Expected parse to fail")
+        let (value, status) = parse_jsonc::<TestSettings>(input);
+        let value = value.expect("expected partial settings value");
+        let SettingsLoadStatus::PartiallyLoaded { error_message } = status else {
+            panic!("expected fallible option errors")
         };
 
         assert_eq!(
             value,
-            FooSettings {
-                foo: Some("bar".into()),
-                bar: None,
-                baz: None,
+            TestSettings {
+                string: Some("text".into()),
+                number: None,
+                boolean: None,
             }
         );
+        assert!(error_message.contains("invalid type: string \"not a number\", expected usize"));
+        assert!(error_message.contains("invalid type: integer `999`, expected a boolean"));
+    }
+
+    #[test]
+    fn test_parse_jsonc_allows_comments() {
+        let input = indoc! {r#"
+            {
+              // Line comment.
+              "string": "text",
+              /*
+               * Block comment.
+               */
+              "number": 999,
+              "boolean": true
+            }
+        "#};
+
+        let (value, status) = parse_jsonc::<TestSettings>(input);
+
+        assert_eq!(status, SettingsLoadStatus::Loaded);
         assert_eq!(
-            error,
-            "invalid type: string \"foo\", expected usize at line 3 column 14\ninvalid type: integer `3`, expected a boolean at line 4 column 10".to_string()
+            value,
+            Some(TestSettings {
+                string: Some("text".into()),
+                number: Some(999),
+                boolean: Some(true),
+            })
         );
+    }
+
+    #[test]
+    fn test_parse_jsonc_uses_strict_options() {
+        let inputs = [
+            ("loose property names", r#"{ string: "text" }"#),
+            ("trailing commas", r#"{ "string": "text", }"#),
+            ("missing commas", r#"{ "string": "text" "number": 1 }"#),
+            ("single quoted strings", r#"{ "string": 'text' }"#),
+            ("hexadecimal numbers", r#"{ "number": 0x10 }"#),
+            ("unary plus numbers", r#"{ "number": +1 }"#),
+        ];
+
+        for (description, input) in inputs {
+            let (value, status) = parse_jsonc::<TestSettings>(input);
+
+            assert_eq!(
+                value, None,
+                "expected {description} to fail before deserialization"
+            );
+            let SettingsLoadStatus::FailedToParseJsonc { error } = status else {
+                panic!("expected {description} to fail")
+            };
+            assert!(
+                !error.trim().is_empty(),
+                "expected {description} to report an error"
+            );
+        }
     }
 }

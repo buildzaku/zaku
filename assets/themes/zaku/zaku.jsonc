@@ -4,12 +4,12 @@
     {
       "name": "Zaku Dark",
       "appearance": "dark",
-      "path": "zaku-dark.json"
+      "path": "zaku-dark.jsonc"
     },
     {
       "name": "Zaku Light",
       "appearance": "light",
-      "path": "zaku-light.json"
+      "path": "zaku-light.jsonc"
     }
   ]
 }

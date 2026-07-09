@@ -1,4 +1,5 @@
 {
   "printWidth": 120,
+  "trailingComma": "none",
   "overrides": [{ "files": "*.svg", "options": { "parser": "html" } }]
 }

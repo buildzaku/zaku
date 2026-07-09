@@ -352,7 +352,7 @@ mod tests {
             path!("project"),
             json!({
                 ".zaku": {
-                    "settings.json": r#"{ "ui": { "density": "default" } }"#
+                    "settings.jsonc": r#"{ "ui": { "density": "default" } }"#
                 }
             }),
         );
@@ -365,7 +365,7 @@ mod tests {
         let workspace_id = workspace_db.next_id().await.unwrap();
         let item_id: ItemId = 1;
         let serialized_editor = SerializedEditor {
-            absolute_path: project_path.join(path!(".zaku/settings.json")),
+            absolute_path: project_path.join(path!(".zaku/settings.jsonc")),
         };
 
         editor_db
@@ -408,7 +408,7 @@ mod tests {
             path!("outside"),
             json!({
                 ".zaku": {
-                    "settings.json": r#"{ "ui": { "density": "default" } }"#
+                    "settings.jsonc": r#"{ "ui": { "density": "default" } }"#
                 }
             }),
         );
@@ -422,7 +422,7 @@ mod tests {
         let workspace_id = workspace_db.next_id().await.unwrap();
         let item_id: ItemId = 1;
         let serialized_editor = SerializedEditor {
-            absolute_path: temp_fs.path().join(path!("outside/.zaku/settings.json")),
+            absolute_path: temp_fs.path().join(path!("outside/.zaku/settings.jsonc")),
         };
 
         editor_db

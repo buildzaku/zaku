@@ -5,11 +5,20 @@ use gpui::{
 };
 use indexmap::IndexMap;
 use serde::Deserialize;
-use serde_json::{Deserializer, Value};
-use std::{fmt::Write, rc::Rc};
+use serde_json::Value;
+use std::{
+    error::Error,
+    fmt::{self, Write},
+    io,
+    rc::Rc,
+    sync::Arc,
+};
+
+use ::settings_content::JSONC_PARSE_OPTIONS;
+use fs::Fs;
+use util::asset_str;
 
 use crate::SettingsAssets;
-use util::asset_str;
 
 gpui::register_action!(ActionSequence);
 
@@ -110,18 +119,37 @@ pub(crate) struct UnbindTargetAction(Value);
 
 #[derive(Debug)]
 #[must_use]
-pub enum KeymapFileLoadResult {
-    Success {
+pub enum KeymapLoadResult {
+    Loaded {
         key_bindings: Vec<KeyBinding>,
     },
-    SomeFailedToLoad {
+    PartiallyLoaded {
         key_bindings: Vec<KeyBinding>,
         error_message: String,
     },
-    JsonParseFailure {
-        error: anyhow::Error,
+    FailedToParseJsonc {
+        error: String,
+    },
+    FailedToLoad {
+        error: String,
     },
 }
+
+#[derive(Debug)]
+enum KeymapFileError {
+    Syntax { error: String },
+    Schema { error: String },
+}
+
+impl fmt::Display for KeymapFileError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Syntax { error } | Self::Schema { error } => formatter.write_str(error),
+        }
+    }
+}
+
+impl Error for KeymapFileError {}
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(transparent)]
@@ -129,32 +157,48 @@ pub struct KeymapFile(Vec<KeymapSection>);
 
 impl KeymapFile {
     pub fn parse(content: &str) -> anyhow::Result<Self> {
+        Ok(Self::parse_jsonc(content)?)
+    }
+
+    fn parse_jsonc(content: &str) -> Result<Self, KeymapFileError> {
         if content.trim().is_empty() {
             return Ok(Self(Vec::new()));
         }
 
-        let mut deserializer = Deserializer::from_str(content);
-        let keymap_file = serde_path_to_error::deserialize(&mut deserializer)?;
-        deserializer.end()?;
-        Ok(keymap_file)
+        let value = jsonc_parser::parse_to_serde_value::<Value>(content, &JSONC_PARSE_OPTIONS)
+            .map_err(|error| KeymapFileError::Syntax {
+                error: error.to_string(),
+            })?;
+
+        serde_json::from_value(value).map_err(|error| KeymapFileError::Schema {
+            error: error.to_string(),
+        })
     }
 
     pub fn load_asset(asset_path: &str, cx: &App) -> anyhow::Result<Vec<KeyBinding>> {
         match Self::load(asset_str::<SettingsAssets>(asset_path).as_ref(), cx) {
-            KeymapFileLoadResult::Success { key_bindings } => Ok(key_bindings),
-            KeymapFileLoadResult::SomeFailedToLoad { error_message, .. } => {
-                anyhow::bail!("Error loading built-in keymap \"{asset_path}\": {error_message}");
+            KeymapLoadResult::Loaded { key_bindings } => Ok(key_bindings),
+            KeymapLoadResult::PartiallyLoaded { error_message, .. } => {
+                anyhow::bail!("error loading built-in keymap \"{asset_path}\": {error_message}");
             }
-            KeymapFileLoadResult::JsonParseFailure { error } => {
-                anyhow::bail!("JSON parse error in built-in keymap \"{asset_path}\": {error}");
+            KeymapLoadResult::FailedToParseJsonc { error } => {
+                anyhow::bail!("jsonc parse error in built-in keymap \"{asset_path}\": {error}");
+            }
+            KeymapLoadResult::FailedToLoad { error } => {
+                anyhow::bail!("error loading built-in keymap \"{asset_path}\": {error}");
             }
         }
     }
 
-    pub fn load(content: &str, cx: &App) -> KeymapFileLoadResult {
-        let keymap_file = match Self::parse(content) {
+    pub fn load(content: &str, cx: &App) -> KeymapLoadResult {
+        let keymap_file = match Self::parse_jsonc(content) {
             Ok(keymap_file) => keymap_file,
-            Err(error) => return KeymapFileLoadResult::JsonParseFailure { error },
+            Err(KeymapFileError::Syntax { error }) => {
+                return KeymapLoadResult::FailedToParseJsonc { error };
+            }
+            Err(KeymapFileError::Schema { error }) => {
+                return KeymapLoadResult::FailedToLoad { error };
+            }
         };
 
         let mut errors = Vec::new();
@@ -231,7 +275,7 @@ impl KeymapFile {
         }
 
         if errors.is_empty() {
-            KeymapFileLoadResult::Success { key_bindings }
+            KeymapLoadResult::Loaded { key_bindings }
         } else {
             let mut error_message = String::from("Errors in user keymap file.");
 
@@ -247,9 +291,23 @@ impl KeymapFile {
                     .expect("writing to string should not fail");
             }
 
-            KeymapFileLoadResult::SomeFailedToLoad {
+            KeymapLoadResult::PartiallyLoaded {
                 key_bindings,
                 error_message,
+            }
+        }
+    }
+
+    pub async fn load_keymap_file(fs: &Arc<dyn Fs>) -> anyhow::Result<String> {
+        match fs.load(path::keymap_file()).await {
+            result @ Ok(_) => result,
+            Err(error) => {
+                if let Some(error) = error.downcast_ref::<io::Error>()
+                    && error.kind() == io::ErrorKind::NotFound
+                {
+                    return Ok(crate::initial_user_keymap().to_string());
+                }
+                Err(error)
             }
         }
     }
@@ -394,25 +452,28 @@ mod tests {
         let key_bindings = match KeymapFile::load(
             indoc! {r#"
                 [
-                    {
-                        "unbind": {
-                            "ctrl-a": "test_only::StringAction",
-                            "ctrl-b": ["test_only::InputAction", {}]
-                        },
-                        "bindings": {
-                            "ctrl-c": "test_only::StringAction"
-                        }
+                  {
+                    "unbind": {
+                      "ctrl-a": "test_only::StringAction",
+                      "ctrl-b": ["test_only::InputAction", {}]
+                    },
+                    "bindings": {
+                      "ctrl-c": "test_only::StringAction"
                     }
+                  }
                 ]
             "#},
             cx,
         ) {
-            KeymapFileLoadResult::Success { key_bindings } => key_bindings,
-            KeymapFileLoadResult::SomeFailedToLoad { error_message, .. } => {
+            KeymapLoadResult::Loaded { key_bindings } => key_bindings,
+            KeymapLoadResult::PartiallyLoaded { error_message, .. } => {
                 panic!("{error_message}");
             }
-            KeymapFileLoadResult::JsonParseFailure { error } => {
-                panic!("JSON parse error: {error}");
+            KeymapLoadResult::FailedToParseJsonc { error } => {
+                panic!("jsonc parse error: {error}");
+            }
+            KeymapLoadResult::FailedToLoad { error } => {
+                panic!("failed to load keymap: {error}");
             }
         };
 
@@ -443,17 +504,17 @@ mod tests {
         let key_bindings = match KeymapFile::load(
             indoc! {r#"
                 [
-                    {
-                        "unbind": {
-                            "ctrl-a": ["test_only::InputAction", {}]
-                        }
+                  {
+                    "unbind": {
+                      "ctrl-a": ["test_only::InputAction", {}]
                     }
+                  }
                 ]
             "#},
             cx,
         ) {
-            KeymapFileLoadResult::Success { key_bindings } => key_bindings,
-            other => panic!("expected Success, got {other:?}"),
+            KeymapLoadResult::Loaded { key_bindings } => key_bindings,
+            other => panic!("expected loaded, got {other:?}"),
         };
 
         assert_eq!(key_bindings.len(), 1);
@@ -476,16 +537,16 @@ mod tests {
         match KeymapFile::load(
             indoc! {r#"
                 [
-                    {
-                        "unbind": {
-                            "ctrl-a": null
-                        }
+                  {
+                    "unbind": {
+                      "ctrl-a": null
                     }
+                  }
                 ]
             "#},
             cx,
         ) {
-            KeymapFileLoadResult::SomeFailedToLoad {
+            KeymapLoadResult::PartiallyLoaded {
                 key_bindings,
                 error_message,
             } => {
@@ -494,7 +555,7 @@ mod tests {
                     error_message.contains("Expected action name string or [name, input] array.")
                 );
             }
-            other => panic!("expected SomeFailedToLoad, got {other:?}"),
+            other => panic!("expected partially loaded, got {other:?}"),
         }
     }
 
@@ -502,17 +563,17 @@ mod tests {
     fn test_keymap_unbind_rejects_unbind_action(cx: &mut App) {
         let keymap = indoc! {r#"
             [
-                {
-                    "unbind": {
-                        "ctrl-a": ["__UNBIND__", "test_only::StringAction"]
-                    }
+              {
+                "unbind": {
+                  "ctrl-a": ["__UNBIND__", "test_only::StringAction"]
                 }
+              }
             ]
         "#}
         .replace("__UNBIND__", Unbind::name_for_type());
 
         match KeymapFile::load(&keymap, cx) {
-            KeymapFileLoadResult::SomeFailedToLoad {
+            KeymapLoadResult::PartiallyLoaded {
                 key_bindings,
                 error_message,
             } => {
@@ -522,7 +583,7 @@ mod tests {
                     Unbind::name_for_type()
                 )));
             }
-            other => panic!("expected SomeFailedToLoad, got {other:?}"),
+            other => panic!("expected partially loaded, got {other:?}"),
         }
     }
 }

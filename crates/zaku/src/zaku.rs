@@ -1,31 +1,25 @@
 mod about;
 mod app_menu;
 mod logs;
+mod settings;
 
 pub use app_menu::app_menu;
+pub use settings::{handle_keymap_file_changes, handle_settings_file_changes};
 
-use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
-use gpui::{
-    Action, App, AsyncApp, ClipboardItem, Context, DismissEvent, KeyBinding, PromptLevel, Task,
-    Window, prelude::*,
-};
+use gpui::{App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Window, prelude::*};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
+use ::settings::{initial_user_keymap, initial_user_settings};
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
-use settings::{KeymapFile, KeymapFileLoadResult, SettingsStore};
 use system_specs::SystemSpecs;
 use workspace::{
     AppState, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace, Toast, Workspace,
-    WorkspaceDb, create_and_open_file,
-    notifications::{
-        NotificationId, dismiss_app_notification, show_app_notification,
-        simple_message_notification::MessageNotification,
-    },
+    WorkspaceDb, WorkspaceEvent, create_and_open_file, notifications::NotificationId, pane::Pane,
     with_active_or_new_workspace,
 };
 
-use crate::logs::open_log_file;
+use crate::{logs::open_log_file, settings::migrate::MigrationBanner};
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
@@ -34,6 +28,17 @@ pub fn init(cx: &mut App) {
         let Some(window) = window else {
             return;
         };
+
+        let workspace_handle = cx.entity();
+        let center_pane = workspace.pane().clone();
+        initialize_pane_toolbar(&center_pane, window, cx);
+
+        cx.subscribe_in(&workspace_handle, window, move |_, _, event, window, cx| {
+            if let WorkspaceEvent::PaneAdded(pane) = event {
+                initialize_pane_toolbar(pane, window, cx);
+            }
+        })
+        .detach();
 
         let project_panel = ProjectPanel::new(workspace, window, cx);
         let project_panel_should_start_open = project_panel.read(cx).starts_open(window, cx);
@@ -107,6 +112,17 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
+fn initialize_pane_toolbar(pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Workspace>) {
+    let workspace_handle = cx.weak_entity();
+    pane.update(cx, |pane, cx| {
+        pane.toolbar().update(cx, |toolbar, cx| {
+            let migration_banner =
+                cx.new(move |inner_cx| MigrationBanner::new(workspace_handle, inner_cx));
+            toolbar.add_item(migration_banner, window, cx);
+        });
+    });
+}
+
 fn register_actions(cx: &mut App) {
     #[cfg(target_os = "macos")]
     {
@@ -159,22 +175,12 @@ fn register_actions(cx: &mut App) {
     .on_action(|_: &actions::zaku::About, cx| about::open_window(cx))
     .on_action(|_: &actions::zaku::OpenSettingsFile, cx| {
         with_active_or_new_workspace(cx, |_, window, cx| {
-            open_settings_file(
-                path::settings_file(),
-                settings::initial_user_settings,
-                window,
-                cx,
-            );
+            open_settings_file(path::settings_file(), initial_user_settings, window, cx);
         });
     })
     .on_action(|_: &actions::zaku::OpenKeymapFile, cx| {
         with_active_or_new_workspace(cx, |_, window, cx| {
-            open_settings_file(
-                path::keymap_file(),
-                settings::initial_user_keymap,
-                window,
-                cx,
-            );
+            open_settings_file(path::keymap_file(), initial_user_keymap, window, cx);
         });
     })
     .on_action(|_: &actions::zaku::OpenLogs, cx| {
@@ -209,199 +215,6 @@ fn open_settings_file(
         anyhow::Ok(())
     })
     .detach_and_log_err(cx);
-}
-
-pub fn handle_settings_file_changes(
-    mut user_settings_file_rx: UnboundedReceiver<String>,
-    user_settings_watcher: Task<()>,
-    cx: &mut App,
-) {
-    let user_content = cx
-        .foreground_executor()
-        .block_on(user_settings_file_rx.next())
-        .expect("user settings file should be loaded");
-
-    cx.update_global::<SettingsStore, _>(|store, cx| {
-        let result = store.set_user_settings(&user_content, cx);
-        notify_settings_file_errors(&result, cx);
-    });
-
-    cx.spawn(async move |cx| {
-        let _user_settings_watcher = user_settings_watcher;
-        while let Some(content) = user_settings_file_rx.next().await {
-            cx.update_global(|store: &mut SettingsStore, cx| {
-                let result = store.set_user_settings(&content, cx);
-                notify_settings_file_errors(&result, cx);
-                cx.refresh_windows();
-            });
-        }
-    })
-    .detach();
-}
-
-pub fn handle_keymap_file_changes(
-    mut user_keymap_file_rx: UnboundedReceiver<String>,
-    user_keymap_watcher: Task<()>,
-    cx: &mut App,
-) {
-    struct KeymapParseErrorNotification;
-
-    let (keyboard_layout_tx, mut keyboard_layout_rx) = futures::channel::mpsc::unbounded();
-
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
-    {
-        let mut current_mapping = cx.keyboard_mapper().get_key_equivalents().cloned();
-        cx.on_keyboard_layout_change(move |cx| {
-            let next_mapping = cx.keyboard_mapper().get_key_equivalents();
-            if current_mapping.as_ref() != next_mapping {
-                current_mapping = next_mapping.cloned();
-                if keyboard_layout_tx.unbounded_send(()).is_err() {
-                    log::trace!("Keyboard layout update receiver dropped");
-                }
-            }
-        })
-        .detach();
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        let mut current_layout_id = cx.keyboard_layout().id().to_string();
-        cx.on_keyboard_layout_change(move |cx| {
-            let next_layout_id = cx.keyboard_layout().id();
-            if next_layout_id != current_layout_id {
-                current_layout_id = next_layout_id.to_string();
-                if keyboard_layout_tx.unbounded_send(()).is_err() {
-                    log::trace!("Keyboard layout update receiver dropped");
-                }
-            }
-        })
-        .detach();
-    }
-
-    load_default_keymap(cx);
-
-    let notification_id = NotificationId::unique::<KeymapParseErrorNotification>();
-
-    cx.spawn(async move |cx| {
-        let _user_keymap_watcher = user_keymap_watcher;
-        let mut user_keymap_content = String::new();
-
-        loop {
-            futures::select_biased! {
-                _ = keyboard_layout_rx.next() => {},
-                content = user_keymap_file_rx.next() => {
-                    if let Some(content) = content {
-                        user_keymap_content = content;
-                    }
-                }
-            }
-
-            cx.update(|cx| match KeymapFile::load(&user_keymap_content, cx) {
-                KeymapFileLoadResult::Success { key_bindings } => {
-                    reload_keymaps(cx, key_bindings);
-                    dismiss_app_notification(&notification_id.clone(), cx);
-                }
-                KeymapFileLoadResult::SomeFailedToLoad {
-                    key_bindings,
-                    error_message,
-                } => {
-                    if !key_bindings.is_empty() {
-                        reload_keymaps(cx, key_bindings);
-                    }
-                    log::error!("Failed to load user keymap: {error_message}");
-                    show_keymap_file_load_error(notification_id.clone(), &error_message, cx);
-                }
-                KeymapFileLoadResult::JsonParseFailure { error } => {
-                    log::error!("Failed to parse user keymap: {error}");
-                    show_keymap_file_json_error(notification_id.clone(), &error, cx);
-                }
-            });
-        }
-    })
-    .detach();
-}
-
-fn reload_keymaps(cx: &mut App, user_key_bindings: Vec<KeyBinding>) {
-    cx.clear_key_bindings();
-    load_default_keymap(cx);
-    cx.bind_keys(user_key_bindings);
-
-    let menus = app_menu(cx);
-    cx.set_menus(menus);
-}
-
-fn load_default_keymap(cx: &mut App) {
-    #[cfg(target_os = "linux")]
-    let asset_path = "keymaps/default_linux.json";
-
-    #[cfg(target_os = "macos")]
-    let asset_path = "keymaps/default_macos.json";
-
-    #[cfg(target_os = "windows")]
-    let asset_path = "keymaps/default_windows.json";
-
-    let key_bindings = KeymapFile::load_asset(asset_path, cx).expect("default keymap should load");
-    cx.bind_keys(key_bindings);
-}
-
-fn notify_settings_file_errors(result: &settings::ParseStatus, cx: &mut App) {
-    let id = NotificationId::named("failed-to-parse-settings".into());
-    match result {
-        settings::ParseStatus::Success => {
-            dismiss_app_notification(&id, cx);
-        }
-        settings::ParseStatus::Failed { error } => {
-            log::error!("Failed to load user settings: {error}");
-            let message = format!("Invalid user settings file\n{error}");
-            show_app_notification(id, cx, move |cx| {
-                cx.new(|cx| {
-                    MessageNotification::new(message.clone(), cx)
-                        .primary_message("Open Settings File")
-                        .primary_on_click(|window, cx| {
-                            window
-                                .dispatch_action(actions::zaku::OpenSettingsFile.boxed_clone(), cx);
-                            cx.emit(DismissEvent);
-                        })
-                })
-            });
-        }
-    }
-}
-
-fn show_keymap_file_json_error(
-    notification_id: NotificationId,
-    error: &anyhow::Error,
-    cx: &mut App,
-) {
-    let message = format!("Invalid user keymap file\n{error}");
-    show_app_notification(notification_id, cx, move |cx| {
-        cx.new(|cx| {
-            MessageNotification::new(message.clone(), cx)
-                .primary_message("Open Keymap File")
-                .primary_on_click(|window, cx| {
-                    window.dispatch_action(actions::zaku::OpenKeymapFile.boxed_clone(), cx);
-                    cx.emit(DismissEvent);
-                })
-        })
-    });
-}
-
-fn show_keymap_file_load_error(notification_id: NotificationId, error_message: &str, cx: &mut App) {
-    let error_message = error_message
-        .strip_prefix("Errors in user keymap file.")
-        .unwrap_or(error_message)
-        .trim_start();
-    let message = format!("Invalid user keymap file\n{error_message}");
-    show_app_notification(notification_id, cx, move |cx| {
-        cx.new(|cx| {
-            MessageNotification::new(message.clone(), cx)
-                .primary_message("Open Keymap File")
-                .primary_on_click(|window, cx| {
-                    window.dispatch_action(actions::zaku::OpenKeymapFile.boxed_clone(), cx);
-                    cx.emit(DismissEvent);
-                })
-        })
-    });
 }
 
 pub async fn restore_or_create_workspace(

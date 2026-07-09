@@ -9,6 +9,7 @@ pub use schema::{
 pub use settings::*;
 pub use styles::*;
 
+use anyhow::anyhow;
 use gpui::{
     App, AssetSource, BorrowAppContext, Global, Hsla, Pixels, SharedString, WindowAppearance,
 };
@@ -22,19 +23,21 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+use ::settings::JSONC_PARSE_OPTIONS;
+
 pub(crate) const DEFAULT_LIGHT_THEME: &str = "Zaku Light";
 pub(crate) const DEFAULT_DARK_THEME: &str = "Zaku Dark";
 pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = gpui::px(10.0);
 pub const CLIENT_SIDE_DECORATION_SHADOW: Pixels = gpui::px(10.0);
 
-const ZAKU_THEME_FAMILY: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku.json");
-const ZAKU_DARK_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku-dark.json");
-const ZAKU_LIGHT_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku-light.json");
+const ZAKU_THEME_FAMILY: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku.jsonc");
+const ZAKU_DARK_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku-dark.jsonc");
+const ZAKU_LIGHT_THEME: &[u8] = include_bytes!("../../../assets/themes/zaku/zaku-light.jsonc");
 
 static ZAKU_DEFAULT_THEMES: LazyLock<ZakuDefaultThemes> = LazyLock::new(|| {
     let family = ThemeFamily::from_bytes(ZAKU_THEME_FAMILY, |path| match path {
-        "zaku-dark.json" => Ok(Some(Cow::Borrowed(ZAKU_DARK_THEME))),
-        "zaku-light.json" => Ok(Some(Cow::Borrowed(ZAKU_LIGHT_THEME))),
+        "zaku-dark.jsonc" => Ok(Some(Cow::Borrowed(ZAKU_DARK_THEME))),
+        "zaku-light.jsonc" => Ok(Some(Cow::Borrowed(ZAKU_LIGHT_THEME))),
         _ => Ok(None),
     })
     .expect("bundled Zaku theme should parse");
@@ -210,7 +213,10 @@ impl ThemeFamily {
         bytes: &[u8],
         loader: impl FnMut(&str) -> anyhow::Result<Option<Cow<'static, [u8]>>>,
     ) -> anyhow::Result<Self> {
-        let content: ThemeFamilyContent = serde_json::from_slice(bytes)?;
+        let content = std::str::from_utf8(bytes)?;
+        let content: ThemeFamilyContent =
+            jsonc_parser::parse_to_serde_value(content, &JSONC_PARSE_OPTIONS)
+                .map_err(|error| anyhow!("{error}"))?;
         content.into_theme_family(loader)
     }
 

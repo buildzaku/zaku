@@ -5,6 +5,7 @@ pub mod notifications;
 pub mod pane;
 mod persistence;
 pub mod status_bar;
+pub mod toolbar;
 pub mod welcome;
 
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
@@ -20,6 +21,7 @@ pub use persistence::{
         SessionWorkspace,
     },
 };
+pub use toolbar::{Toolbar, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView};
 
 use anyhow::anyhow;
 use futures::{
@@ -1092,6 +1094,7 @@ pub fn client_side_decorations(
 }
 
 pub enum WorkspaceEvent {
+    PaneAdded(Entity<Pane>),
     ActiveItemChanged,
     PaneRestored(Entity<Pane>),
 }
@@ -1655,6 +1658,8 @@ impl Workspace {
 
         let focus_handle = pane.read(cx).focus_handle(cx);
         window.focus(&focus_handle, cx);
+
+        cx.emit(WorkspaceEvent::PaneAdded(pane.clone()));
 
         pane
     }

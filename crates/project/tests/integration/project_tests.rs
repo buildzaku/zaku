@@ -144,10 +144,10 @@ async fn test_open_buffer_at_uses_hidden_worktree_for_external_file(cx: &mut Tes
           "editor": { "font_size": 12 }
         }
     "#};
-    temp_fs.insert_tree(path!("settings.json"), json!(settings_content));
+    temp_fs.insert_tree(path!("settings.jsonc"), json!(settings_content));
 
     let project_path = temp_fs.path().join("project");
-    let settings_path = temp_fs.path().join("settings.json");
+    let settings_path = temp_fs.path().join("settings.jsonc");
 
     let languages = Arc::new(LanguageRegistry::test_new(cx.executor()));
     let project = cx

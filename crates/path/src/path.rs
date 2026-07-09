@@ -483,6 +483,36 @@ pub fn config_dir() -> &'static PathBuf {
     })
 }
 
+/// Returns the path to the temp directory.
+pub fn temp_dir() -> &'static PathBuf {
+    static TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
+    TEMP_DIR.get_or_init(|| {
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(flatpak_xdg_cache) = std::env::var("FLATPAK_XDG_CACHE_HOME") {
+                PathBuf::from(flatpak_xdg_cache)
+            } else {
+                dirs::cache_dir().expect("failed to determine XDG_CACHE_HOME directory")
+            }
+            .join("zaku")
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            dirs::cache_dir()
+                .expect("failed to determine cachesDirectory directory")
+                .join("Zaku")
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            dirs::cache_dir()
+                .expect("failed to determine LocalAppData directory")
+                .join("Zaku")
+        }
+    })
+}
+
 /// Returns the path to the data directory.
 ///
 /// - Linux: `$XDG_DATA_HOME/zaku` (or `~/.local/share/zaku`), with Flatpak override.
@@ -550,16 +580,28 @@ pub fn old_log_file() -> &'static PathBuf {
     OLD_LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log.old"))
 }
 
-/// Returns the path to the `settings.json` file.
+/// Returns the path to the `settings.jsonc` file.
 pub fn settings_file() -> &'static PathBuf {
     static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();
-    SETTINGS_FILE.get_or_init(|| config_dir().join("settings.json"))
+    SETTINGS_FILE.get_or_init(|| config_dir().join("settings.jsonc"))
 }
 
-/// Returns the path to the `keymap.json` file.
+/// Returns the path to the `settings_backup.jsonc` file.
+pub fn settings_backup_file() -> &'static PathBuf {
+    static SETTINGS_BACKUP_FILE: OnceLock<PathBuf> = OnceLock::new();
+    SETTINGS_BACKUP_FILE.get_or_init(|| config_dir().join("settings_backup.jsonc"))
+}
+
+/// Returns the path to the `keymap.jsonc` file.
 pub fn keymap_file() -> &'static PathBuf {
     static KEYMAP_FILE: OnceLock<PathBuf> = OnceLock::new();
-    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.json"))
+    KEYMAP_FILE.get_or_init(|| config_dir().join("keymap.jsonc"))
+}
+
+/// Returns the path to the `keymap_backup.jsonc` file.
+pub fn keymap_backup_file() -> &'static PathBuf {
+    static KEYMAP_BACKUP_FILE: OnceLock<PathBuf> = OnceLock::new();
+    KEYMAP_BACKUP_FILE.get_or_init(|| config_dir().join("keymap_backup.jsonc"))
 }
 
 /// In memory, this is identical to `Path`. On non-Windows conversions to this
@@ -729,12 +771,12 @@ mod tests {
         let path = home_dir()
             .join(".config")
             .join("zaku")
-            .join("settings.json");
+            .join("settings.jsonc");
 
         if cfg!(any(target_os = "linux", target_os = "macos")) {
             assert_eq!(
                 path.compact().to_str(),
-                Some("~/.config/zaku/settings.json")
+                Some("~/.config/zaku/settings.jsonc")
             );
         } else {
             assert_eq!(path.compact().to_str(), path.to_str());

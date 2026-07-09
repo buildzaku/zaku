@@ -954,7 +954,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
                     url = "https://api.zaku.dev/second"
                 "#}
             },
-            "settings.json": "{}",
+            "settings.jsonc": "{}",
         }),
     );
 
@@ -965,7 +965,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
 
     open_path(
         &open_result,
-        ProjectPath::from((worktree_id, rel_path("settings.json"))),
+        ProjectPath::from((worktree_id, rel_path("settings.jsonc"))),
         cx,
     )
     .await;
@@ -994,7 +994,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         response_panel.has_response_context()
     }));
 
-    activate_item_for_path(&open_result, "settings.json", cx);
+    activate_item_for_path(&open_result, "settings.jsonc", cx);
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1033,7 +1033,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         pane.read_with(cx, |pane, cx| {
             pane.active_item().and_then(|item| item.project_path(cx))
         }),
-        Some(ProjectPath::from((worktree_id, rel_path("settings.json"))))
+        Some(ProjectPath::from((worktree_id, rel_path("settings.jsonc"))))
     );
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1054,7 +1054,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "response panel should reflect restored request tab"
     );
 
-    activate_item_for_path(&open_result, "settings.json", cx);
+    activate_item_for_path(&open_result, "settings.jsonc", cx);
 
     cx.dispatch_action(
         open_result.window.into(),
@@ -1081,7 +1081,7 @@ async fn test_restored_request_editor_tabs_preserve_response_panel_context(
         "second response"
     );
 
-    activate_item_for_path(&open_result, "settings.json", cx);
+    activate_item_for_path(&open_result, "settings.jsonc", cx);
 
     assert!(!open_result.workspace.read_with(cx, |workspace, cx| {
         workspace.is_panel_open::<ResponsePanel>(cx)
@@ -1160,7 +1160,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
                 "#},
                 "invalid.toml": "",
             },
-            "settings.json": "{}",
+            "settings.jsonc": "{}",
         }),
     );
 
@@ -1179,7 +1179,7 @@ async fn test_response_panel_auto_hidden_without_context(cx: &mut TestAppContext
     let valid_request_path = ProjectPath::from((worktree_id, rel_path("collection/valid.toml")));
     let invalid_request_path =
         ProjectPath::from((worktree_id, rel_path("collection/invalid.toml")));
-    let settings_path = ProjectPath::from((worktree_id, rel_path("settings.json")));
+    let settings_path = ProjectPath::from((worktree_id, rel_path("settings.jsonc")));
 
     open_path(&open_result, valid_request_path.clone(), cx).await;
 

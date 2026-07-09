@@ -12,7 +12,7 @@ pub mod settings_content {
 }
 
 pub mod fallible_options {
-    pub use ::settings_content::{FallibleOption, parse_json};
+    pub use ::settings_content::{FallibleOption, parse_jsonc};
 }
 
 #[doc(hidden)]
@@ -24,9 +24,9 @@ pub mod private {
 pub use ::settings_content::*;
 pub use git_settings::*;
 pub use into_gpui::IntoGpui;
-pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
+pub use keymap_file::{ActionSequence, KeymapFile, KeymapLoadResult};
 pub use settings_file::{update_settings_file, watch_config_file};
-pub use settings_store::{Settings, SettingsStore};
+pub use settings_store::{MigrationStatus, Settings, SettingsLoadResult, SettingsStore};
 
 use gpui::App;
 use rust_embed::RustEmbed;
@@ -81,13 +81,13 @@ pub fn init(cx: &mut App) {
 }
 
 pub fn default_settings() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("settings/default.json")
+    asset_str::<SettingsAssets>("settings/default.jsonc")
 }
 
 pub fn initial_user_settings() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("settings/initial_user.json")
+    asset_str::<SettingsAssets>("settings/initial_user.jsonc")
 }
 
 pub fn initial_user_keymap() -> Cow<'static, str> {
-    asset_str::<SettingsAssets>("keymaps/initial_user.json")
+    asset_str::<SettingsAssets>("keymaps/initial_user.jsonc")
 }

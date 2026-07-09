@@ -3573,6 +3573,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonc-parser"
+version = "0.32.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "840785e1a8b4fdb27be18440a35a81af64820dc185c3973ff8b012d4c6282512"
+dependencies = [
+ "serde",
+ "serde_json",
+ "unicode-width",
+]
+
+[[package]]
 name = "khronos-egl"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4010,6 +4021,19 @@ dependencies = [
  "log",
  "objc",
  "paste",
+]
+
+[[package]]
+name = "migrator"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "indoc",
+ "jsonc-parser",
+ "pretty_assertions",
+ "serde_json",
+ "settings_content",
+ "settings_jsonc",
 ]
 
 [[package]]
@@ -6281,17 +6305,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_path_to_error"
-version = "0.1.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10a9ff822e371bb5403e391ecd83e182e0e77ba7f6fe0160b795797109d1b457"
-dependencies = [
- "itoa",
- "serde",
- "serde_core",
-]
-
-[[package]]
 name = "serde_repr"
 version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6354,14 +6367,17 @@ dependencies = [
  "indexmap",
  "indoc",
  "inventory",
+ "jsonc-parser",
  "log",
  "logger",
+ "migrator",
  "path",
+ "pretty_assertions",
  "rust-embed",
  "serde",
  "serde_json",
- "serde_path_to_error",
  "settings_content",
+ "settings_jsonc",
  "settings_macros",
  "util 0.0.0",
  "util_macros 0.0.0",
@@ -6374,10 +6390,22 @@ dependencies = [
  "anyhow",
  "indexmap",
  "indoc",
+ "jsonc-parser",
  "log",
  "serde",
  "serde_json",
  "settings_macros",
+]
+
+[[package]]
+name = "settings_jsonc"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "jsonc-parser",
+ "serde",
+ "serde_json",
+ "settings_content",
 ]
 
 [[package]]
@@ -7075,12 +7103,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "jsonc-parser",
  "palette",
  "parking_lot",
  "refineable 0.0.0",
  "schemars",
  "serde",
- "serde_json",
  "settings",
  "syntax_theme",
  "uuid",
@@ -9223,6 +9251,7 @@ dependencies = [
  "log",
  "logger",
  "metadata",
+ "migrator",
  "mimalloc",
  "multi_buffer",
  "parking_lot",
