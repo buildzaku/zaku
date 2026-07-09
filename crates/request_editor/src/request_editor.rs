@@ -53,7 +53,7 @@ pub fn init(cx: &mut App) {
                         WorkspaceEvent::ActiveItemChanged => {
                             update_response_panel(workspace, window, cx);
                         }
-                        WorkspaceEvent::PaneRestored(_) => {}
+                        WorkspaceEvent::PaneAdded(_) | WorkspaceEvent::PaneRestored(_) => {}
                     },
                 )
                 .detach();

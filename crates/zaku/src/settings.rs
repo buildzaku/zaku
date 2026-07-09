@@ -1,3 +1,5 @@
+pub(crate) mod migrate;
+
 use futures::{StreamExt, channel::mpsc::UnboundedReceiver};
 use gpui::{Action, App, DismissEvent, KeyBinding, Task, prelude::*};
 
@@ -11,11 +13,15 @@ use workspace::notifications::{
     simple_message_notification::MessageNotification,
 };
 
+use crate::settings::migrate::{MigrationEvent, MigrationNotification, MigrationType};
+
 pub fn handle_settings_file_changes(
     mut user_settings_file_rx: UnboundedReceiver<String>,
     user_settings_watcher: Task<()>,
     cx: &mut App,
 ) {
+    MigrationNotification::set_global(cx.new(|_| MigrationNotification), cx);
+
     let user_content = cx
         .foreground_executor()
         .block_on(user_settings_file_rx.next())
@@ -24,6 +30,17 @@ pub fn handle_settings_file_changes(
     cx.update_global::<SettingsStore, _>(|store, cx| {
         let result = store.set_user_settings(&user_content, cx);
         let did_show_settings_error_notification = sync_settings_error_notification(&result, cx);
+        if let Some(notifier) = MigrationNotification::try_global(cx) {
+            notifier.update(cx, |_, cx| {
+                cx.emit(MigrationEvent::ContentChanged {
+                    migration_type: MigrationType::Settings,
+                    using_in_memory_migration: matches!(
+                        &result.migration_status,
+                        MigrationStatus::Succeeded
+                    ),
+                });
+            });
+        }
         sync_settings_migration_notification(
             &result.migration_status,
             did_show_settings_error_notification,
@@ -38,6 +55,17 @@ pub fn handle_settings_file_changes(
                 let result = store.set_user_settings(&content, cx);
                 let did_show_settings_error_notification =
                     sync_settings_error_notification(&result, cx);
+                if let Some(notifier) = MigrationNotification::try_global(cx) {
+                    notifier.update(cx, |_, cx| {
+                        cx.emit(MigrationEvent::ContentChanged {
+                            migration_type: MigrationType::Settings,
+                            using_in_memory_migration: matches!(
+                                &result.migration_status,
+                                MigrationStatus::Succeeded
+                            ),
+                        });
+                    });
+                }
                 sync_settings_migration_notification(
                     &result.migration_status,
                     did_show_settings_error_notification,
@@ -131,6 +159,17 @@ pub fn handle_keymap_file_changes(
 
             cx.update(|cx| {
                 let load_result = KeymapFile::load(&user_keymap_content, cx);
+                if let Some(notifier) = MigrationNotification::try_global(cx) {
+                    notifier.update(cx, |_, cx| {
+                        cx.emit(MigrationEvent::ContentChanged {
+                            migration_type: MigrationType::Keymap,
+                            using_in_memory_migration: matches!(
+                                user_keymap_migration_status,
+                                MigrationStatus::Succeeded
+                            ),
+                        });
+                    });
+                }
                 let did_show_keymap_error_notification =
                     sync_keymap_error_notification(load_result, error_notification_id.clone(), cx);
 

@@ -9,10 +9,13 @@ use serde_json::Value;
 use std::{
     error::Error,
     fmt::{self, Write},
+    io,
     rc::Rc,
+    sync::Arc,
 };
 
 use ::settings_content::JSONC_PARSE_OPTIONS;
+use fs::Fs;
 use util::asset_str;
 
 use crate::SettingsAssets;
@@ -291,6 +294,20 @@ impl KeymapFile {
             KeymapLoadResult::PartiallyLoaded {
                 key_bindings,
                 error_message,
+            }
+        }
+    }
+
+    pub async fn load_keymap_file(fs: &Arc<dyn Fs>) -> anyhow::Result<String> {
+        match fs.load(path::keymap_file()).await {
+            result @ Ok(_) => result,
+            Err(error) => {
+                if let Some(error) = error.downcast_ref::<io::Error>()
+                    && error.kind() == io::ErrorKind::NotFound
+                {
+                    return Ok(crate::initial_user_keymap().to_string());
+                }
+                Err(error)
             }
         }
     }

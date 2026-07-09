@@ -6,7 +6,7 @@ mod settings;
 pub use app_menu::app_menu;
 pub use settings::{handle_keymap_file_changes, handle_settings_file_changes};
 
-use gpui::{App, AsyncApp, ClipboardItem, Context, PromptLevel, Window, prelude::*};
+use gpui::{App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Window, prelude::*};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use ::settings::{initial_user_keymap, initial_user_settings};
@@ -15,10 +15,11 @@ use response_panel::ResponsePanel;
 use system_specs::SystemSpecs;
 use workspace::{
     AppState, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace, Toast, Workspace,
-    WorkspaceDb, create_and_open_file, notifications::NotificationId, with_active_or_new_workspace,
+    WorkspaceDb, WorkspaceEvent, create_and_open_file, notifications::NotificationId, pane::Pane,
+    with_active_or_new_workspace,
 };
 
-use crate::logs::open_log_file;
+use crate::{logs::open_log_file, settings::migrate::MigrationBanner};
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
@@ -27,6 +28,17 @@ pub fn init(cx: &mut App) {
         let Some(window) = window else {
             return;
         };
+
+        let workspace_handle = cx.entity();
+        let center_pane = workspace.pane().clone();
+        initialize_pane_toolbar(&center_pane, window, cx);
+
+        cx.subscribe_in(&workspace_handle, window, move |_, _, event, window, cx| {
+            if let WorkspaceEvent::PaneAdded(pane) = event {
+                initialize_pane_toolbar(pane, window, cx);
+            }
+        })
+        .detach();
 
         let project_panel = ProjectPanel::new(workspace, window, cx);
         let project_panel_should_start_open = project_panel.read(cx).starts_open(window, cx);
@@ -98,6 +110,17 @@ pub fn init(cx: &mut App) {
         }
     })
     .detach();
+}
+
+fn initialize_pane_toolbar(pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Workspace>) {
+    let workspace_handle = cx.weak_entity();
+    pane.update(cx, |pane, cx| {
+        pane.toolbar().update(cx, |toolbar, cx| {
+            let migration_banner =
+                cx.new(move |inner_cx| MigrationBanner::new(workspace_handle, inner_cx));
+            toolbar.add_item(migration_banner, window, cx);
+        });
+    });
 }
 
 fn register_actions(cx: &mut App) {

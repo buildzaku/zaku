@@ -7,13 +7,13 @@ use gpui::BackgroundExecutor;
 use is_executable::IsExecutable;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use tempfile::TempDir;
+use tempfile::{NamedTempFile, TempDir};
 
 #[cfg(feature = "test")]
 use serde_json::Value;
 
 use std::{
-    io,
+    io::{self, Write},
     path::{Path, PathBuf},
     pin::Pin,
     sync::{
@@ -58,7 +58,7 @@ use windows::{
         Storage::FileSystem::{
             BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS, FILE_NAME_NORMALIZED,
             GetFileInformationByHandle, GetFinalPathNameByHandleW, GetVolumePathNameW,
-            MOVE_FILE_FLAGS, MoveFileExW,
+            MOVE_FILE_FLAGS, MoveFileExW, REPLACE_FILE_FLAGS, ReplaceFileW,
         },
     },
     core::{HSTRING, PCWSTR},
@@ -156,6 +156,7 @@ pub trait Fs: Send + Sync {
     async fn metadata(&self, path: &Path) -> anyhow::Result<Option<Metadata>>;
     async fn load(&self, path: &Path) -> anyhow::Result<String>;
     async fn load_bytes(&self, path: &Path) -> anyhow::Result<Vec<u8>>;
+    async fn atomic_write(&self, path: PathBuf, content: String) -> anyhow::Result<()>;
     async fn open_handle(&self, path: &Path) -> anyhow::Result<Arc<dyn FileHandle>>;
     async fn read_link(&self, path: &Path) -> anyhow::Result<PathBuf>;
     async fn read_dir(
@@ -826,6 +827,57 @@ impl Fs for NativeFs {
             .await
     }
 
+    async fn atomic_write(&self, path: PathBuf, content: String) -> anyhow::Result<()> {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            smol::unblock(move || {
+                let mut temp_file =
+                    NamedTempFile::new_in(path.parent().unwrap_or_else(|| path::temp_dir()))?;
+                temp_file.write_all(content.as_bytes())?;
+                temp_file.persist(path)?;
+                anyhow::Ok(())
+            })
+            .await?;
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            smol::unblock(move || {
+                let temp_dir = TempDir::new_in(path.parent().unwrap_or_else(|| path::temp_dir()))?;
+                let temp_file = {
+                    let temp_file_path = temp_dir.path().join("temp_file");
+                    let mut file = std::fs::File::create_new(&temp_file_path)?;
+                    file.write_all(content.as_bytes())?;
+                    temp_file_path
+                };
+
+                match std::fs::File::create_new(path.as_path()) {
+                    Ok(_) => {}
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                    Err(error) => return Err(error.into()),
+                }
+
+                // SAFETY: Paths are converted to owned Windows strings that remain valid
+                // for the duration of the call.
+                unsafe {
+                    ReplaceFileW(
+                        &HSTRING::from(path.to_string_lossy().into_owned()),
+                        &HSTRING::from(temp_file.to_string_lossy().into_owned()),
+                        None,
+                        REPLACE_FILE_FLAGS::default(),
+                        None,
+                        None,
+                    )?;
+                }
+
+                anyhow::Ok(())
+            })
+            .await?;
+        }
+
+        Ok(())
+    }
+
     async fn is_case_sensitive(&self) -> bool {
         const UNINITIALIZED: u8 = 0;
         const CASE_SENSITIVE: u8 = 1;
@@ -969,6 +1021,13 @@ impl Fs for TempFs {
         let absolute_path = resolve_path(self.path(), path);
         NativeFs::new(self.executor.clone())
             .load_bytes(&absolute_path)
+            .await
+    }
+
+    async fn atomic_write(&self, path: PathBuf, content: String) -> anyhow::Result<()> {
+        let absolute_path = resolve_path(self.path(), &path);
+        NativeFs::new(self.executor.clone())
+            .atomic_write(absolute_path, content)
             .await
     }
 

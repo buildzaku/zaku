@@ -1094,6 +1094,7 @@ pub fn client_side_decorations(
 }
 
 pub enum WorkspaceEvent {
+    PaneAdded(Entity<Pane>),
     ActiveItemChanged,
     PaneRestored(Entity<Pane>),
 }
@@ -1657,6 +1658,8 @@ impl Workspace {
 
         let focus_handle = pane.read(cx).focus_handle(cx);
         window.focus(&focus_handle, cx);
+
+        cx.emit(WorkspaceEvent::PaneAdded(pane.clone()));
 
         pane
     }

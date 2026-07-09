@@ -195,7 +195,6 @@ impl ProjectPanel {
                 &workspace_entity,
                 window,
                 |this: &mut ProjectPanel, _, event, window, cx| match event {
-                    WorkspaceEvent::ActiveItemChanged => {}
                     WorkspaceEvent::PaneRestored(pane) => {
                         let entry_ids = {
                             let project = this.project.read(cx);
@@ -220,6 +219,7 @@ impl ProjectPanel {
                         this.update_visible_entries(None, false, false, window, cx);
                         cx.notify();
                     }
+                    WorkspaceEvent::PaneAdded(_) | WorkspaceEvent::ActiveItemChanged => {}
                 },
             )
             .detach();
