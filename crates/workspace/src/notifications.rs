@@ -10,7 +10,9 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use ui::{ButtonCommon, Clickable, IconAsset, IconButton, StyledExt, Text, Tooltip};
+use ui::{
+    ButtonCommon, Clickable, IconAsset, IconButton, IconButtonShape, StyledExt, Text, Tooltip,
+};
 
 use crate::{Root, Toast, Workspace};
 
@@ -449,6 +451,7 @@ impl RenderOnce for NotificationFrame {
                         this.on_modifiers_changed(move |_, _, cx| cx.notify(entity))
                             .child(
                                 IconButton::new(close_id, close_icon)
+                                    .shape(IconButtonShape::Square)
                                     .tooltip(move |_window, cx| {
                                         if suppress {
                                             Tooltip::with_meta(
