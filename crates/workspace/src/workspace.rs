@@ -5,6 +5,7 @@ pub mod notifications;
 pub mod pane;
 mod persistence;
 pub mod status_bar;
+pub mod toolbar;
 pub mod welcome;
 
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
@@ -20,6 +21,7 @@ pub use persistence::{
         SessionWorkspace,
     },
 };
+pub use toolbar::{Toolbar, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView};
 
 use anyhow::anyhow;
 use futures::{

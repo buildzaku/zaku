@@ -21,8 +21,8 @@ use ui::{
 use util::ResultExt;
 
 use crate::{
-    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, WeakItemHandle,
-    Workspace, WorkspaceItemBuilder, welcome::WelcomePage,
+    ItemBufferKind, ItemEvent, ItemHandle, TabContentParams, TabTooltipContent, Toolbar,
+    WeakItemHandle, Workspace, WorkspaceItemBuilder, welcome::WelcomePage,
 };
 
 pub enum PaneEvent {
@@ -58,6 +58,7 @@ pub struct Pane {
     welcome_page: Option<Entity<WelcomePage>>,
     workspace: WeakEntity<Workspace>,
     project: WeakEntity<Project>,
+    toolbar: Entity<Toolbar>,
     items: Vec<Box<dyn ItemHandle>>,
     active_item_index: usize,
     preview_item_id: Option<EntityId>,
@@ -91,6 +92,7 @@ impl Pane {
             welcome_page: None,
             workspace,
             project: project.downgrade(),
+            toolbar: cx.new(|_| Toolbar::new()),
             items: vec![],
             active_item_index: 0,
             preview_item_id: None,
@@ -104,6 +106,10 @@ impl Pane {
 
     pub fn workspace(&self) -> WeakEntity<Workspace> {
         self.workspace.clone()
+    }
+
+    pub fn toolbar(&self) -> &Entity<Toolbar> {
+        &self.toolbar
     }
 
     pub fn has_focus(&self, window: &Window, cx: &App) -> bool {
@@ -413,6 +419,7 @@ impl Pane {
         if activate && was_active && !self.items.is_empty() {
             self.activate_item(self.active_item_index, false, focus_item, window, cx);
         } else {
+            self.update_toolbar(window, cx);
             cx.notify();
         }
 
@@ -469,8 +476,19 @@ impl Pane {
         cx.emit(PaneEvent::ActivateItem {
             focus_changed: focus_item,
         });
+        self.update_toolbar(window, cx);
         self.update_active_tab(item_index);
         cx.notify();
+    }
+
+    fn update_toolbar(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let active_item = self
+            .items
+            .get(self.active_item_index)
+            .map(|item| item.as_ref());
+        self.toolbar.update(cx, |toolbar, cx| {
+            toolbar.set_active_item(active_item, window, cx);
+        });
     }
 
     fn update_active_tab(&mut self, item_index: usize) {
@@ -1076,6 +1094,10 @@ impl Pane {
             cx.notify();
         }
 
+        self.toolbar.update(cx, |toolbar, cx| {
+            toolbar.focus_changed(true, window, cx);
+        });
+
         if let Some(active_item) = self.active_item() {
             if self.focus_handle.is_focused(window) {
                 cx.on_next_frame(window, |_, _, cx| {
@@ -1096,8 +1118,11 @@ impl Pane {
         }
     }
 
-    fn focus_out(&mut self, _event: FocusOutEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    fn focus_out(&mut self, _: FocusOutEvent, window: &mut Window, cx: &mut Context<Self>) {
         self.was_focused = false;
+        self.toolbar.update(cx, |toolbar, cx| {
+            toolbar.focus_changed(false, window, cx);
+        });
         cx.notify();
     }
 }
@@ -1180,7 +1205,11 @@ impl Render for Pane {
                 let placeholder = gpui::div().flex_1().overflow_hidden();
 
                 if let Some(active_item) = active_item {
-                    placeholder.child(active_item.to_any_view())
+                    placeholder
+                        .flex()
+                        .flex_col()
+                        .child(self.toolbar.clone())
+                        .child(active_item.to_any_view())
                 } else if let Some(welcome_page) = welcome_page {
                     placeholder.child(
                         gpui::div()
