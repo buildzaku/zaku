@@ -18,9 +18,11 @@ use std::collections::HashMap;
 use settings_macros::{MergeFrom, with_fallible_options};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ParseStatus {
-    Success,
-    Failed { error: String },
+pub enum SettingsLoadStatus {
+    Loaded,
+    PartiallyLoaded { error_message: String },
+    FailedToParseJsonc { error: String },
+    FailedToLoad { error: String },
 }
 
 #[with_fallible_options]

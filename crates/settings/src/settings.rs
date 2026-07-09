@@ -24,9 +24,9 @@ pub mod private {
 pub use ::settings_content::*;
 pub use git_settings::*;
 pub use into_gpui::IntoGpui;
-pub use keymap_file::{ActionSequence, KeymapFile, KeymapFileLoadResult};
+pub use keymap_file::{ActionSequence, KeymapFile, KeymapLoadResult};
 pub use settings_file::{update_settings_file, watch_config_file};
-pub use settings_store::{MigrationStatus, Settings, SettingsParseResult, SettingsStore};
+pub use settings_store::{MigrationStatus, Settings, SettingsLoadResult, SettingsStore};
 
 use gpui::App;
 use rust_embed::RustEmbed;
