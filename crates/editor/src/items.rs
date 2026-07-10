@@ -1,5 +1,8 @@
 use anyhow::anyhow;
-use gpui::{App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window};
+use gpui::{
+    AnyElement, App, AppContext, Context, Entity, EntityId, SharedString, Task, WeakEntity, Window,
+    prelude::*,
+};
 use std::{borrow::Cow, path::Path, sync::Arc};
 
 use git::status::GitSummary;
@@ -8,10 +11,11 @@ use multi_buffer::MultiBuffer;
 use path::PathExt;
 use project::Project;
 use svg::FileIcon;
-use ui::{Color, Icon};
+use ui::{Color, Icon, LineHeightStyle, Text, TextCommon, TextSize};
+use util::truncate_and_trailoff;
 use workspace::{
-    Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, Workspace, WorkspaceId,
-    delete_unloaded_items, pane::Pane,
+    Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
+    ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items, pane::Pane,
 };
 
 use crate::{
@@ -20,17 +24,42 @@ use crate::{
     scroll::Autoscroll,
 };
 
+const MAX_TAB_TITLE_LEN: usize = 24;
+
 impl Item for Editor {
     type Event = EditorEvent;
 
     fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
         match event {
-            EditorEvent::Saved | EditorEvent::TitleChanged | EditorEvent::DirtyChanged => {
+            EditorEvent::Saved | EditorEvent::TitleChanged => {
                 emitter(ItemEvent::UpdateTab);
+                emitter(ItemEvent::UpdateBreadcrumbs);
             }
+            EditorEvent::DirtyChanged => emitter(ItemEvent::UpdateTab),
             EditorEvent::BufferEdited => emitter(ItemEvent::Edit),
             EditorEvent::Blurred | EditorEvent::FileHandleChanged => {}
         }
+    }
+
+    fn breadcrumb_location(&self, cx: &App) -> ToolbarItemLocation {
+        if self.buffer.read(cx).as_singleton().is_some() {
+            ToolbarItemLocation::PrimaryLeft
+        } else {
+            ToolbarItemLocation::Hidden
+        }
+    }
+
+    fn breadcrumbs(&self, cx: &App) -> Option<Vec<SharedString>> {
+        let multi_buffer = self.buffer.read(cx);
+        let buffer = multi_buffer.as_singleton()?;
+        let snapshot = buffer.read(cx).snapshot();
+        let include_context = project::File::from_dyn(snapshot.file())
+            .is_some_and(|file| !file.worktree.read(cx).is_visible());
+        let text = snapshot
+            .resolve_file_path(include_context, cx)
+            .unwrap_or_else(|| multi_buffer.title(cx).into_owned());
+
+        Some(vec![text.into()])
     }
 
     fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
@@ -39,6 +68,41 @@ impl Item for Editor {
         } else {
             self.buffer.read(cx).title(cx).to_string().into()
         }
+    }
+
+    fn tab_content(&self, params: TabContentParams, _: &Window, cx: &App) -> AnyElement {
+        let title = self.buffer.read(cx).title(cx).into_owned();
+        let title = Text::new(truncate_and_trailoff(&title, MAX_TAB_TITLE_LEN))
+            .color(entry_text_color(params.selected))
+            .when(params.preview, |this| this.italic())
+            .when(self.buffer.read(cx).has_deleted_file(cx), |this| {
+                this.strikethrough()
+            });
+        let description = params.detail.and_then(|detail| {
+            let path = path_for_buffer(&self.buffer, detail, false, cx)?;
+            let description = path.trim();
+            if description.is_empty() {
+                return None;
+            }
+
+            Some(truncate_and_trailoff(description, MAX_TAB_TITLE_LEN))
+        });
+
+        gpui::div()
+            .flex()
+            .items_center()
+            .min_w_0()
+            .gap_1()
+            .child(title)
+            .when_some(description, |this, description| {
+                this.child(
+                    Text::new(description)
+                        .size(TextSize::XSmall)
+                        .line_height_style(LineHeightStyle::Compact)
+                        .color(Color::Muted),
+                )
+            })
+            .into_any_element()
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
@@ -455,5 +519,58 @@ mod tests {
             pane.read_with(cx, |pane, _| pane.items_len()),
             pane_items_before
         );
+    }
+
+    #[gpui::test]
+    async fn test_settings_file_breadcrumbs(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(path!("project"), json!(null));
+        temp_fs.insert_tree(
+            path!("config"),
+            json!({
+                "settings.jsonc": r#"{ "ui": { "density": "default" } }"#
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let config_dir = temp_fs.path().join(path!("config"));
+        let settings_path = config_dir.join(path!("settings.jsonc"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(&config_dir, false, cx)
+            })
+            .await
+            .unwrap();
+        let buffer = project
+            .update(cx, |project, cx| project.open_buffer_at(&settings_path, cx))
+            .await
+            .unwrap();
+        let (workspace, cx) = build_workspace(&project, cx);
+        let editor = workspace.update_in(cx, |_, window, cx| {
+            cx.new(|cx| Editor::for_buffer(buffer, window, cx))
+        });
+
+        editor.update(cx, |editor, cx| {
+            assert_eq!(
+                editor.breadcrumb_location(cx),
+                ToolbarItemLocation::PrimaryLeft
+            );
+            pretty_assertions::assert_eq!(
+                editor.breadcrumbs(cx),
+                Some(vec![
+                    settings_path
+                        .compact()
+                        .to_string_lossy()
+                        .into_owned()
+                        .into()
+                ])
+            );
+        });
     }
 }

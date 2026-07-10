@@ -55,7 +55,7 @@ use git::{
     REBASE_APPLY_DIR, REBASE_MERGE_DIR, REPO_EXCLUDE, SEQUENCER_DIR, status::GitSummary,
 };
 use language::{LineEnding, Rope};
-use path::{PathStyle, RelPath, SanitizedPath};
+use path::{PathExt, PathStyle, RelPath, SanitizedPath};
 use util::ResultExt;
 
 use crate::ignore::{IgnoreKind, IgnoreStack};
@@ -177,11 +177,15 @@ impl Worktree {
     }
 
     pub fn full_path(&self, worktree_relative_path: &RelPath) -> PathBuf {
-        self.root_name()
-            .join(worktree_relative_path)
-            .display(self.path_style())
-            .to_string()
-            .into()
+        if self.is_visible() {
+            self.root_name()
+                .join(worktree_relative_path)
+                .display(self.path_style())
+                .to_string()
+                .into()
+        } else {
+            self.absolutize(worktree_relative_path).compact()
+        }
     }
 
     pub fn write_request_file(
