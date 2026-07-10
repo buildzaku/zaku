@@ -8,7 +8,7 @@ use editor::items::{entry_git_aware_text_color, entry_text_color};
 use path::PathExt;
 use project::{Project, RequestBuffer, RequestFileState};
 use settings::{GitSettings, Settings};
-use ui::{Color, Icon, IconAsset, IconSize, Text, TextCommon, TextSize};
+use ui::{Color, Icon, IconAsset, IconSize, LineHeightStyle, Text, TextCommon, TextSize};
 use util::truncate_and_trailoff;
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
@@ -135,6 +135,7 @@ impl Item for RequestEditor {
                 this.child(
                     Text::new(description)
                         .size(TextSize::XSmall)
+                        .line_height_style(LineHeightStyle::Compact)
                         .color(Color::Muted),
                 )
             })
