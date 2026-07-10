@@ -52,12 +52,14 @@ impl Item for Editor {
     fn breadcrumbs(&self, cx: &App) -> Option<Vec<SharedString>> {
         let multi_buffer = self.buffer.read(cx);
         let buffer = multi_buffer.as_singleton()?;
-        let snapshot = buffer.read(cx).snapshot();
-        let include_context = project::File::from_dyn(snapshot.file())
-            .is_some_and(|file| !file.worktree.read(cx).is_visible());
-        let text = snapshot
-            .resolve_file_path(include_context, cx)
-            .unwrap_or_else(|| multi_buffer.title(cx).into_owned());
+        let text = self.breadcrumb_header.clone().unwrap_or_else(|| {
+            let snapshot = buffer.read(cx).snapshot();
+            let include_context = project::File::from_dyn(snapshot.file())
+                .is_some_and(|file| !file.worktree.read(cx).is_visible());
+            snapshot
+                .resolve_file_path(include_context, cx)
+                .unwrap_or_else(|| multi_buffer.title(cx).into_owned())
+        });
 
         Some(vec![text.into()])
     }

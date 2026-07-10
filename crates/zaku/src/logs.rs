@@ -7,10 +7,11 @@ use std::{any::Any, collections::VecDeque, sync::Arc};
 use editor::{Editor, EditorEvent};
 use language::{Buffer, Capability};
 use multi_buffer::MultiBuffer;
+use path::PathExt;
 use svg::FileIcon;
 use ui::Icon;
 use workspace::{
-    Item, ItemEvent, Workspace,
+    Item, ItemEvent, ToolbarItemLocation, Workspace,
     notifications::{NotificationId, simple_message_notification::MessageNotification},
 };
 
@@ -55,6 +56,14 @@ impl Item for LogsView {
 
     fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
         self.editor.read(cx).tab_content_text(detail, cx)
+    }
+
+    fn breadcrumb_location(&self, cx: &App) -> ToolbarItemLocation {
+        self.editor.read(cx).breadcrumb_location(cx)
+    }
+
+    fn breadcrumbs(&self, cx: &App) -> Option<Vec<SharedString>> {
+        self.editor.read(cx).breadcrumbs(cx)
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
@@ -157,6 +166,10 @@ pub(crate) fn open_log_file(
             let editor = cx.new(|cx| {
                 let mut editor = Editor::for_multibuffer(buffer, window, cx);
                 editor.set_read_only(true);
+                editor.set_breadcrumb_header(format!(
+                    "Last {MAX_LINES} lines in {}",
+                    path::log_file().compact().display()
+                ));
                 editor.move_selection_to_end(cx);
                 editor
             });
