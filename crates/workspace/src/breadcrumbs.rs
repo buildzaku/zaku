@@ -36,7 +36,7 @@ impl Render for Breadcrumbs {
             .id("breadcrumb-container")
             .flex()
             .flex_grow_1()
-            .h_8()
+            .h_6()
             .items_center()
             .overflow_x_scroll()
             .text_ui(cx);
