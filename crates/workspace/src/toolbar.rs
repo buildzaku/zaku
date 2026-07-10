@@ -198,7 +198,7 @@ impl Render for Toolbar {
                         .when(has_left_items, |row| {
                             row.child(
                                 gpui::div()
-                                    .min_h_8()
+                                    .min_h_6()
                                     .flex()
                                     .flex_1()
                                     .justify_start()
@@ -209,7 +209,7 @@ impl Render for Toolbar {
                         .when(has_right_items, |row| {
                             row.child(
                                 gpui::div()
-                                    .h_8()
+                                    .h_6()
                                     .flex()
                                     .flex_row_reverse()
                                     .when(has_left_items, |right_items| right_items.flex_none())

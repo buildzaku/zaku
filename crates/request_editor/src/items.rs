@@ -8,11 +8,11 @@ use editor::items::{entry_git_aware_text_color, entry_text_color};
 use path::PathExt;
 use project::{Project, RequestBuffer, RequestFileState};
 use settings::{GitSettings, Settings};
-use ui::{Color, Icon, IconAsset, IconSize, Text, TextCommon, TextSize};
+use ui::{Color, Icon, IconAsset, IconSize, LineHeightStyle, Text, TextCommon, TextSize};
 use util::truncate_and_trailoff;
 use workspace::{
     Item, ItemBufferKind, ItemEvent, ItemId, ProjectItem, SerializableItem, TabContentParams,
-    Workspace, WorkspaceId, delete_unloaded_items, pane::Pane,
+    ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items, pane::Pane,
 };
 
 use crate::{
@@ -27,14 +27,27 @@ impl Item for RequestEditor {
 
     fn to_item_events(event: &Self::Event, emitter: &mut dyn FnMut(ItemEvent)) {
         match event {
-            RequestEditorEvent::Saved
-            | RequestEditorEvent::TitleChanged
-            | RequestEditorEvent::DirtyChanged => {
+            RequestEditorEvent::TitleChanged => {
+                emitter(ItemEvent::UpdateTab);
+                emitter(ItemEvent::UpdateBreadcrumbs);
+            }
+            RequestEditorEvent::Saved | RequestEditorEvent::DirtyChanged => {
                 emitter(ItemEvent::UpdateTab);
             }
             RequestEditorEvent::RequestBufferEdited => emitter(ItemEvent::Edit),
             RequestEditorEvent::FileHandleChanged => {}
         }
+    }
+
+    fn breadcrumb_location(&self, _: &App) -> ToolbarItemLocation {
+        ToolbarItemLocation::PrimaryLeft
+    }
+
+    fn breadcrumbs(&self, cx: &App) -> Option<Vec<SharedString>> {
+        let project_path = self.project_path(cx)?;
+        let path = project_path.path.display(self.path_style(cx)).into_owned();
+
+        Some(vec![path.into()])
     }
 
     fn tab_content_text(&self, detail: usize, cx: &App) -> SharedString {
@@ -72,9 +85,11 @@ impl Item for RequestEditor {
         } else {
             entry_text_color(params.selected)
         };
+        let was_deleted = self.buffer.read(cx).file().disk_state.is_deleted();
         let title = Text::new(truncate_and_trailoff(&self.title(cx), MAX_TAB_TITLE_LEN))
             .color(text_color)
-            .when(params.preview, |this| this.italic());
+            .when(params.preview, |this| this.italic())
+            .when(was_deleted, |this| this.strikethrough());
         let description = params.detail.and_then(|detail| {
             let path = self.path_for_request(detail, false, cx)?;
             let description = path.trim();
@@ -120,6 +135,7 @@ impl Item for RequestEditor {
                 this.child(
                     Text::new(description)
                         .size(TextSize::XSmall)
+                        .line_height_style(LineHeightStyle::Compact)
                         .color(Color::Muted),
                 )
             })
@@ -330,7 +346,7 @@ mod tests {
     use std::sync::Arc;
 
     use fs::TempFs;
-    use path::rel_path;
+    use path::{PathStyle, rel_path};
     use settings::SettingsStore;
     use theme::LoadThemes;
     use util_macros::path;
@@ -416,6 +432,66 @@ mod tests {
             assert_eq!(
                 request_editor.buffer.read(cx).file().path.as_ref(),
                 rel_path("collection/request.toml")
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_breadcrumbs(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+
+        let temp_fs = TempFs::new(cx.executor());
+        let app_state = cx.update(|cx| AppState::test_new(temp_fs.clone(), None, cx));
+        init_test(app_state, cx);
+
+        temp_fs.insert_tree(
+            path!("project"),
+            json!({
+                "collection": {
+                    "request.toml": indoc! {r#"
+                        [meta]
+                        version = 1
+
+                        [http]
+                        method = "GET"
+                        url = "https://api.zaku.dev"
+                    "#}
+                }
+            }),
+        );
+
+        let project_path = temp_fs.path().join(path!("project"));
+        let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
+        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let (workspace, cx) = build_workspace(&project, cx);
+        let request_editor = workspace
+            .update_in(cx, |workspace, window, cx| {
+                workspace.open_path(
+                    (worktree_id, rel_path("collection/request.toml")).into(),
+                    None,
+                    true,
+                    window,
+                    cx,
+                )
+            })
+            .await
+            .unwrap()
+            .downcast::<RequestEditor>()
+            .unwrap();
+
+        request_editor.read_with(cx, |request_editor, cx| {
+            assert_eq!(
+                request_editor.breadcrumb_location(cx),
+                ToolbarItemLocation::PrimaryLeft
+            );
+            assert_eq!(
+                request_editor.breadcrumbs(cx),
+                Some(vec![
+                    rel_path("collection/request.toml")
+                        .display(PathStyle::local())
+                        .into_owned()
+                        .into()
+                ])
             );
         });
     }

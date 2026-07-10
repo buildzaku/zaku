@@ -1754,9 +1754,6 @@ impl RequestEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
-        let request_relative_path = self.project_path(cx).map(|project_path| {
-            SharedString::from(project_path.path.display(self.path_style(cx)).into_owned())
-        });
         let url = request.http.url.clone();
         let request_method_menu = {
             let available_request_methods = [
@@ -1813,17 +1810,6 @@ impl RequestEditor {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(colors.panel_background)
-            .when_some(request_relative_path, |this, request_relative_path| {
-                this.child(
-                    gpui::div()
-                        .flex()
-                        .items_center()
-                        .w_full()
-                        .px_3()
-                        .pt_2()
-                        .child(Text::new(request_relative_path)),
-                )
-            })
             .child(
                 gpui::div()
                     .flex()

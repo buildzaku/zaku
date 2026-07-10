@@ -401,6 +401,7 @@ pub struct Editor {
     scroll_manager: scroll::ScrollManager,
     mode: EditorMode,
     placeholder: SharedString,
+    breadcrumb_header: Option<String>,
     defer_selection_effects: bool,
     deferred_selection_effects_state: Option<DeferredSelectionEffectsState>,
     last_position_map: Option<Rc<PositionMap>>,
@@ -522,6 +523,7 @@ impl Editor {
             scroll_manager,
             mode,
             placeholder: SharedString::default(),
+            breadcrumb_header: None,
             defer_selection_effects: false,
             deferred_selection_effects_state: None,
             last_position_map: None,
@@ -1319,6 +1321,10 @@ impl Editor {
 
     pub fn set_read_only(&mut self, read_only: bool) {
         self.read_only = read_only;
+    }
+
+    pub fn set_breadcrumb_header(&mut self, new_header: String) {
+        self.breadcrumb_header = Some(new_header);
     }
 
     pub fn set_current_line_highlight(

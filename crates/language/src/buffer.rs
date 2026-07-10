@@ -65,6 +65,15 @@ impl BufferSnapshot {
         self.file.as_ref()
     }
 
+    pub fn resolve_file_path(&self, include_context: bool, cx: &App) -> Option<String> {
+        let file = self.file()?;
+        if file.path().file_name().is_none() || include_context {
+            Some(file.full_path(cx).to_string_lossy().into_owned())
+        } else {
+            Some(file.path().display(file.path_style(cx)).to_string())
+        }
+    }
+
     pub fn non_text_state_update_count(&self) -> usize {
         self.non_text_state_update_count
     }
