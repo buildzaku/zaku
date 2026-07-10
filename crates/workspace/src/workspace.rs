@@ -1,3 +1,4 @@
+mod breadcrumbs;
 pub mod dock;
 pub mod item;
 mod modal_layer;
@@ -8,6 +9,7 @@ pub mod status_bar;
 pub mod toolbar;
 pub mod welcome;
 
+pub use breadcrumbs::Breadcrumbs;
 pub use dock::{DockPosition, DraggedDock, Panel, PanelHandle};
 pub use item::{
     Item, ItemBufferKind, ItemEvent, ItemHandle, ProjectItem, SerializableItem,

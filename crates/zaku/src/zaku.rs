@@ -14,9 +14,9 @@ use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use system_specs::SystemSpecs;
 use workspace::{
-    AppState, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace, Toast, Workspace,
-    WorkspaceDb, WorkspaceEvent, create_and_open_file, notifications::NotificationId, pane::Pane,
-    with_active_or_new_workspace,
+    AppState, Breadcrumbs, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace,
+    Toast, Workspace, WorkspaceDb, WorkspaceEvent, create_and_open_file,
+    notifications::NotificationId, pane::Pane, with_active_or_new_workspace,
 };
 
 use crate::{logs::open_log_file, settings::migrate::MigrationBanner};
@@ -116,6 +116,9 @@ fn initialize_pane_toolbar(pane: &Entity<Pane>, window: &mut Window, cx: &mut Co
     let workspace_handle = cx.weak_entity();
     pane.update(cx, |pane, cx| {
         pane.toolbar().update(cx, |toolbar, cx| {
+            let breadcrumbs = cx.new(|_| Breadcrumbs::new());
+            toolbar.add_item(breadcrumbs, window, cx);
+
             let migration_banner =
                 cx.new(move |inner_cx| MigrationBanner::new(workspace_handle, inner_cx));
             toolbar.add_item(migration_banner, window, cx);

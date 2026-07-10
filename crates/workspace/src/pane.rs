@@ -826,6 +826,7 @@ impl Pane {
                 cx.emit(PaneEvent::ChangeItemTitle);
                 cx.notify();
             }
+            ItemEvent::UpdateBreadcrumbs => {}
             ItemEvent::Edit => {
                 self.handle_item_edit(item_id, cx);
                 cx.notify();

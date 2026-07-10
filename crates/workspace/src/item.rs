@@ -10,13 +10,15 @@ use project::{Project, ProjectEntryId, ProjectPath};
 use ui::{Color, Icon, Text, TextCommon};
 
 use crate::{
-    SerializableItemRegistry, Workspace, WorkspaceId, pane::Pane, persistence::model::ItemId,
+    SerializableItemRegistry, ToolbarItemLocation, Workspace, WorkspaceId, pane::Pane,
+    persistence::model::ItemId,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ItemEvent {
     CloseItem,
     UpdateTab,
+    UpdateBreadcrumbs,
     Edit,
 }
 
@@ -73,6 +75,14 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
 
     fn tab_tooltip_content(&self, cx: &App) -> Option<TabTooltipContent> {
         self.tab_tooltip_text(cx).map(TabTooltipContent::Text)
+    }
+
+    fn breadcrumb_location(&self, _: &App) -> ToolbarItemLocation {
+        ToolbarItemLocation::Hidden
+    }
+
+    fn breadcrumbs(&self, _: &App) -> Option<Vec<SharedString>> {
+        None
     }
 
     fn to_item_events(_event: &Self::Event, _emitter: &mut dyn FnMut(ItemEvent)) {}
@@ -223,6 +233,8 @@ pub trait ItemHandle: 'static + Send {
     fn tab_icon(&self, window: &Window, cx: &App) -> Option<Icon>;
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString>;
     fn tab_tooltip_content(&self, cx: &App) -> Option<TabTooltipContent>;
+    fn breadcrumb_location(&self, cx: &App) -> ToolbarItemLocation;
+    fn breadcrumbs(&self, cx: &App) -> Option<Vec<SharedString>>;
     fn project_path(&self, cx: &App) -> Option<ProjectPath>;
     fn project_entry_ids(&self, cx: &App) -> SmallVec<[ProjectEntryId; 3]>;
     fn for_each_project_item(
@@ -313,6 +325,14 @@ impl<T: Item> ItemHandle for Entity<T> {
         self.read(cx).tab_tooltip_content(cx)
     }
 
+    fn breadcrumb_location(&self, cx: &App) -> ToolbarItemLocation {
+        self.read(cx).breadcrumb_location(cx)
+    }
+
+    fn breadcrumbs(&self, cx: &App) -> Option<Vec<SharedString>> {
+        self.read(cx).breadcrumbs(cx)
+    }
+
     fn project_path(&self, cx: &App) -> Option<ProjectPath> {
         let this = self.read(cx);
         let mut result = None;
@@ -392,6 +412,17 @@ impl<T: Item> ItemHandle for Entity<T> {
                     }
 
                     T::to_item_events(event, &mut |item_event| {
+                        if let ItemEvent::UpdateBreadcrumbs = item_event {
+                            let is_active_item = &pane == workspace.pane()
+                                && pane.read(cx).active_item().is_some_and(|active_item| {
+                                    active_item.item_id() == item.item_id()
+                                });
+                            if is_active_item {
+                                workspace.active_item_path_changed(cx);
+                            }
+                            return;
+                        }
+
                         pane.update(cx, |pane, cx| {
                             pane.handle_item_event(item.item_id(), item_event, window, cx);
                         });
