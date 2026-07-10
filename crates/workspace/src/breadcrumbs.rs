@@ -2,7 +2,7 @@ use gpui::{
     Context, EventEmitter, IntoElement, ParentElement, Render, Subscription, Window, prelude::*,
 };
 
-use ui::{Color, StyledTypography, Text, TextCommon};
+use ui::{Color, StyledTypography, Text, TextCommon, TextSize};
 
 use crate::{ItemEvent, ItemHandle, ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView};
 
@@ -58,12 +58,16 @@ impl Render for Breadcrumbs {
         let segment_elements = segments.into_iter().map(|segment| {
             Text::new(segment.replace('\n', " "))
                 .color(Color::Muted)
+                .size(TextSize::Editor)
                 .font_buffer(cx)
                 .into_any_element()
         });
 
         let breadcrumb_elements = itertools::intersperse_with(segment_elements, || {
-            Text::new("›").color(Color::Placeholder).into_any_element()
+            Text::new("›")
+                .color(Color::Placeholder)
+                .size(TextSize::Editor)
+                .into_any_element()
         });
 
         let breadcrumbs = gpui::div()
