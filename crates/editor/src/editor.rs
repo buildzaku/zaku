@@ -2925,6 +2925,13 @@ impl ErasedEditor for ErasedEditorImpl {
         });
     }
 
+    fn set_read_only(&self, read_only: bool, cx: &mut App) {
+        self.0.update(cx, |editor, cx| {
+            editor.set_read_only(read_only);
+            cx.notify();
+        });
+    }
+
     fn set_muted(&self, muted: bool, _: &mut Window, cx: &mut App) {
         self.0.update(cx, |editor, _cx| {
             editor.set_muted(muted);

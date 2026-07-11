@@ -1,5 +1,7 @@
-use anyhow::Context;
-use gpui::{App, Entity, EventEmitter, Global, SharedString, Task, WeakEntity, Window, prelude::*};
+use anyhow::Context as _;
+use gpui::{
+    App, Context, Entity, EventEmitter, Global, SharedString, Task, WeakEntity, Window, prelude::*,
+};
 use std::sync::Arc;
 
 use fs::Fs;
@@ -55,7 +57,7 @@ pub(crate) struct MigrationBanner {
 }
 
 impl MigrationBanner {
-    pub(crate) fn new(workspace: WeakEntity<Workspace>, cx: &mut gpui::Context<Self>) -> Self {
+    pub(crate) fn new(workspace: WeakEntity<Workspace>, cx: &mut Context<Self>) -> Self {
         if let Some(notifier) = MigrationNotification::try_global(cx) {
             cx.subscribe(
                 &notifier,
@@ -73,7 +75,7 @@ impl MigrationBanner {
         }
     }
 
-    fn handle_notification(&mut self, event: &MigrationEvent, cx: &mut gpui::Context<Self>) {
+    fn handle_notification(&mut self, event: &MigrationEvent, cx: &mut Context<Self>) {
         match event {
             MigrationEvent::ContentChanged {
                 migration_type,
@@ -92,7 +94,7 @@ impl MigrationBanner {
         }
     }
 
-    fn show(&mut self, cx: &mut gpui::Context<Self>) {
+    fn show(&mut self, cx: &mut Context<Self>) {
         let (file_type, backup_file_name) = match self.migration_type {
             Some(MigrationType::Keymap) => (
                 "keymap",
@@ -127,7 +129,7 @@ impl MigrationBanner {
         cx.notify();
     }
 
-    fn reset(&mut self, cx: &mut gpui::Context<Self>) {
+    fn reset(&mut self, cx: &mut Context<Self>) {
         self.should_migrate_task.take();
         self.migration_type.take();
         self.message.take();
@@ -142,7 +144,7 @@ impl ToolbarItemView for MigrationBanner {
         &mut self,
         active_pane_item: Option<&dyn ItemHandle>,
         window: &mut Window,
-        cx: &mut gpui::Context<Self>,
+        cx: &mut Context<Self>,
     ) -> ToolbarItemLocation {
         self.reset(cx);
 
@@ -190,7 +192,7 @@ impl ToolbarItemView for MigrationBanner {
 }
 
 impl Render for MigrationBanner {
-    fn render(&mut self, _: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let migration_type = self.migration_type;
 
         gpui::div()

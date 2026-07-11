@@ -39,6 +39,8 @@ gpui::actions!(
         CopyPath,
         /// Copy the selected item's relative path.
         CopyRelativePath,
+        /// Create a new project.
+        NewProject,
         /// Open a new window.
         NewWindow,
         /// Save the active item.

@@ -1,4 +1,5 @@
 mod breadcrumbs;
+mod create_project;
 pub mod dock;
 pub mod item;
 mod modal_layer;
@@ -75,6 +76,7 @@ use util::ResultExt;
 use session::Session;
 
 use crate::{
+    create_project::CreateProjectModal,
     dock::{Dock, PanelButtons},
     notifications::{DetachAndPromptErr, NotificationId, Notifications},
     pane::{Pane, PaneEvent},
@@ -489,6 +491,14 @@ fn register_actions(
                 cx,
             );
         })
+        .register_action(
+            |workspace, _: &actions::workspace::NewProject, window, cx| {
+                let workspace_handle = workspace.weak_handle();
+                workspace.toggle_modal(window, cx, move |window, cx| {
+                    CreateProjectModal::new(workspace_handle, window, cx)
+                });
+            },
+        )
         .register_action({
             move |_, _: &actions::workspace::NewWindow, _, cx| {
                 open_new(app_state.clone(), cx).detach_and_log_err(cx);

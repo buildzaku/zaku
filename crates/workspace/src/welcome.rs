@@ -155,13 +155,20 @@ impl<const COLS: usize> Section<COLS> {
     }
 }
 
-const CONTENT: Section<1> = Section {
+const CONTENT: Section<2> = Section {
     title: "Get Started",
-    entries: [SectionEntry {
-        icon: IconAsset::FolderOpen,
-        title: "Open Project",
-        action: &actions::workspace::Open::DEFAULT,
-    }],
+    entries: [
+        SectionEntry {
+            icon: IconAsset::Plus,
+            title: "New Project",
+            action: &actions::workspace::NewProject,
+        },
+        SectionEntry {
+            icon: IconAsset::FolderOpen,
+            title: "Open Project",
+            action: &actions::workspace::Open::DEFAULT,
+        },
+    ],
 };
 
 pub struct WelcomePage {

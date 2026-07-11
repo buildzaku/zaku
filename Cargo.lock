@@ -9013,6 +9013,7 @@ dependencies = [
  "gpui",
  "http_client 0.0.0",
  "indoc",
+ "input",
  "itertools 0.14.0",
  "jiff",
  "language",
