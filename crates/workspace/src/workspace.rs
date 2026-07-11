@@ -39,10 +39,10 @@ use gpui::WindowDecorations;
 use gpui::{
     Action, AnyView, App, AsyncWindowContext, Bounds, BoxShadow, Context, CursorStyle, Decorations,
     Div, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Global,
-    HitboxBehavior, Hsla, KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions,
-    Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling,
-    TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle,
-    WindowId, WindowOptions, prelude::*,
+    HitboxBehavior, Hsla, KeyContext, ManagedView, MouseButton, PathPromptOptions, Pixels, Point,
+    PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions,
+    WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowId,
+    WindowOptions, prelude::*,
 };
 #[cfg(any(test, feature = "test"))]
 use gpui::{TestAppContext, VisualTestContext};
@@ -2684,15 +2684,6 @@ impl Render for Workspace {
                     }
                 }),
             )
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|workspace, _: &MouseDownEvent, window, cx| {
-                    if !window.default_prevented() {
-                        let focus_handle = workspace.focus_handle(cx);
-                        window.focus(&focus_handle, cx);
-                    }
-                }),
-            )
             .children(self.titlebar_item.clone())
             .child(
                 gpui::div()
@@ -2771,7 +2762,7 @@ impl Focusable for Workspace {
 mod tests {
     use super::*;
 
-    use gpui::{Modifiers, MouseMoveEvent, MouseUpEvent, TestAppContext};
+    use gpui::{Modifiers, MouseDownEvent, MouseMoveEvent, MouseUpEvent, TestAppContext};
     use indoc::indoc;
     use serde_json::{Value, json};
     use std::sync::Arc;

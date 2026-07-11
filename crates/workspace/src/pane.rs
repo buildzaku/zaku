@@ -1067,7 +1067,6 @@ impl Pane {
             window,
             cx,
         );
-        window.focus(&self.focus_handle(cx), cx);
     }
 
     pub fn set_should_display_welcome_page(&mut self, should_display_welcome_page: bool) {

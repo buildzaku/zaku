@@ -188,6 +188,9 @@ impl Render for Toolbar {
             .border_b_1()
             .border_color(colors.border_variant)
             .bg(colors.panel_background)
+            .on_any_mouse_down(|_, window, _| {
+                window.prevent_default();
+            })
             .when(has_left_items || has_right_items, |toolbar| {
                 toolbar.gap(DynamicSpacing::Base06.rems(cx)).child(
                     gpui::div()
