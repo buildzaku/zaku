@@ -86,7 +86,7 @@ use crate::{
 const KEY_CONTEXT: &str = "Workspace";
 const MIN_CENTER_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
-const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
+const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1200.0), gpui::px(800.0));
 pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
