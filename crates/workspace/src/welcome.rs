@@ -155,7 +155,7 @@ impl<const COLS: usize> Section<COLS> {
     }
 }
 
-const CONTENT: Section<2> = Section {
+const CONTENT: Section<3> = Section {
     title: "Get Started",
     entries: [
         SectionEntry {
@@ -167,6 +167,11 @@ const CONTENT: Section<2> = Section {
             icon: IconAsset::FolderOpen,
             title: "Open Project",
             action: &actions::workspace::Open::DEFAULT,
+        },
+        SectionEntry {
+            icon: IconAsset::ListSearch,
+            title: "Open Command Palette",
+            action: &actions::command_palette::Toggle,
         },
     ],
 };
