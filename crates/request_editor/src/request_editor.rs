@@ -1898,6 +1898,7 @@ mod tests {
     use theme::LoadThemes;
     use util_macros::path;
     use workspace::{AppState, DockPosition, Item, Root};
+    use worktree::WorktreeModelHandle;
 
     fn init_test(app_state: Arc<AppState>, cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -2078,7 +2079,8 @@ mod tests {
 
         let project_path = temp_fs.path().join(path!("project"));
         let project = Project::test_new(temp_fs.clone(), &project_path, cx).await;
-        let worktree_id = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap().read(cx).id());
+        let worktree = cx.update(|cx| project.read(cx).root_worktree(cx).unwrap());
+        let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
         let (workspace, _, cx) = build_workspace(&project, cx);
 
         let request_path = ProjectPath {
@@ -2113,7 +2115,7 @@ mod tests {
             })
             .await
             .unwrap();
-        cx.run_until_parked();
+        worktree.flush_fs_events(cx).await;
 
         assert!(!request_editor.read_with(cx, |editor, cx| { editor.is_dirty(cx) }));
 
