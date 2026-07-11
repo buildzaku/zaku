@@ -101,6 +101,9 @@ impl RenderOnce for TabBar {
             .w_full()
             .h(Tab::container_height(cx))
             .bg(colors.tab_bar_background)
+            .on_any_mouse_down(|_, window, _| {
+                window.prevent_default();
+            })
             .when(!self.start_children.is_empty(), |this| {
                 this.child(
                     gpui::div()

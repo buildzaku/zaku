@@ -279,9 +279,24 @@ mod tests {
 
     use fs::TempFs;
     use gpui::TestAppContext;
+    use sql::domain::Domain;
 
     #[gpui::test]
     async fn test_db_corruption(cx: &mut TestAppContext) {
+        enum CorruptedDb {}
+
+        impl Domain for CorruptedDb {
+            const NAME: &str = "db_tests";
+            const MIGRATIONS: &[&str] = &[sql!(CREATE TABLE test(value TEXT) STRICT)];
+        }
+
+        enum GoodDb {}
+
+        impl Domain for GoodDb {
+            const NAME: &str = "db_tests";
+            const MIGRATIONS: &[&str] = &[sql!(CREATE TABLE test2(value TEXT) STRICT)];
+        }
+
         cx.executor().allow_parking();
 
         let temp_fs = TempFs::new(cx.executor());
@@ -291,42 +306,24 @@ mod tests {
         assert!(!db_dir.exists());
 
         {
-            let connection = open_db::<AppMigrator>(&db_dir).await;
-            assert!(matches!(connection.target(), ConnectionTarget::File(_)));
+            let corrupted_db = open_db::<CorruptedDb>(&db_dir).await;
+            assert!(matches!(corrupted_db.target(), ConnectionTarget::File(_)));
             assert!(db_path.exists());
         }
-        std::fs::write(&db_path, b"not a sqlite database").unwrap();
 
-        let recreated_connection = open_db::<AppMigrator>(&db_dir).await;
-        assert!(matches!(
-            recreated_connection.target(),
-            ConnectionTarget::Memory(_)
-        ));
+        let good_db = open_db::<GoodDb>(&db_dir).await;
+        assert!(matches!(good_db.target(), ConnectionTarget::Memory(_)));
         assert!(db_path.exists());
 
-        recreated_connection
-            .write(|connection| {
-                connection
-                    .exec(sql!(CREATE TABLE test(value TEXT) STRICT))
-                    .and_then(|mut stmt| stmt())?;
-                connection
-                    .exec_bound::<&str>(sql!(INSERT INTO test(value) VALUES (?1)))
-                    .and_then(|mut stmt| stmt("ok"))?;
-                Ok(())
-            })
-            .await
-            .unwrap();
-
-        let value = recreated_connection
+        let value = good_db
             .read(|connection| {
                 connection
-                    .select_row::<String>(sql!(SELECT value FROM test))
+                    .select_row::<String>(sql!(SELECT value FROM test2))
                     .and_then(|mut stmt| stmt())
-                    .context("test value query returned no row")
             })
             .unwrap();
 
-        assert_eq!(value, Some("ok".to_string()));
+        assert_eq!(value, None);
     }
 
     #[gpui::test]

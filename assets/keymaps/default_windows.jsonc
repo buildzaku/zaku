@@ -50,6 +50,7 @@
     "context": "Welcome",
     "use_key_equivalents": true,
     "bindings": {
+      "alt-n": "workspace::NewProject",
       "ctrl-1": ["welcome::OpenRecentProject", 0],
       "ctrl-2": ["welcome::OpenRecentProject", 1],
       "ctrl-3": ["welcome::OpenRecentProject", 2],

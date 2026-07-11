@@ -1,4 +1,5 @@
 mod breadcrumbs;
+mod create_project;
 pub mod dock;
 pub mod item;
 mod modal_layer;
@@ -38,10 +39,10 @@ use gpui::WindowDecorations;
 use gpui::{
     Action, AnyView, App, AsyncWindowContext, Bounds, BoxShadow, Context, CursorStyle, Decorations,
     Div, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Global,
-    HitboxBehavior, Hsla, KeyContext, ManagedView, MouseButton, MouseDownEvent, PathPromptOptions,
-    Pixels, Point, PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling,
-    TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle,
-    WindowId, WindowOptions, prelude::*,
+    HitboxBehavior, Hsla, KeyContext, ManagedView, MouseButton, PathPromptOptions, Pixels, Point,
+    PromptLevel, ResizeEdge, Size, Stateful, Subscription, Task, Tiling, TitlebarOptions,
+    WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowId,
+    WindowOptions, prelude::*,
 };
 #[cfg(any(test, feature = "test"))]
 use gpui::{TestAppContext, VisualTestContext};
@@ -75,6 +76,7 @@ use util::ResultExt;
 use session::Session;
 
 use crate::{
+    create_project::CreateProjectModal,
     dock::{Dock, PanelButtons},
     notifications::{DetachAndPromptErr, NotificationId, Notifications},
     pane::{Pane, PaneEvent},
@@ -84,7 +86,7 @@ use crate::{
 const KEY_CONTEXT: &str = "Workspace";
 const MIN_CENTER_PANE_HEIGHT: Pixels = gpui::px(180.0);
 const MIN_RESPONSE_PANE_HEIGHT: Pixels = gpui::px(110.0);
-const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1180.0), gpui::px(760.0));
+const DEFAULT_WINDOW_SIZE: Size<Pixels> = gpui::size(gpui::px(1200.0), gpui::px(800.0));
 pub const SERIALIZATION_THROTTLE_TIME: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -489,6 +491,14 @@ fn register_actions(
                 cx,
             );
         })
+        .register_action(
+            |workspace, _: &actions::workspace::NewProject, window, cx| {
+                let workspace_handle = workspace.weak_handle();
+                workspace.toggle_modal(window, cx, move |window, cx| {
+                    CreateProjectModal::new(workspace_handle, window, cx)
+                });
+            },
+        )
         .register_action({
             move |_, _: &actions::workspace::NewWindow, _, cx| {
                 open_new(app_state.clone(), cx).detach_and_log_err(cx);
@@ -2674,15 +2684,6 @@ impl Render for Workspace {
                     }
                 }),
             )
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|workspace, _: &MouseDownEvent, window, cx| {
-                    if !window.default_prevented() {
-                        let focus_handle = workspace.focus_handle(cx);
-                        window.focus(&focus_handle, cx);
-                    }
-                }),
-            )
             .children(self.titlebar_item.clone())
             .child(
                 gpui::div()
@@ -2761,7 +2762,7 @@ impl Focusable for Workspace {
 mod tests {
     use super::*;
 
-    use gpui::{Modifiers, MouseMoveEvent, MouseUpEvent, TestAppContext};
+    use gpui::{Modifiers, MouseDownEvent, MouseMoveEvent, MouseUpEvent, TestAppContext};
     use indoc::indoc;
     use serde_json::{Value, json};
     use std::sync::Arc;

@@ -52,3 +52,4 @@ settings = { workspace = true, features = ["test"] }
 toml = { workspace = true }
 util_macros = { workspace = true }
 workspace = { workspace = true, features = ["test"] }
+worktree = { workspace = true, features = ["test"] }

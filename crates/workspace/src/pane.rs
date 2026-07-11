@@ -1067,7 +1067,6 @@ impl Pane {
             window,
             cx,
         );
-        window.focus(&self.focus_handle(cx), cx);
     }
 
     pub fn set_should_display_welcome_page(&mut self, should_display_welcome_page: bool) {
@@ -1170,7 +1169,11 @@ impl Render for Pane {
             if active_item.is_none() && !has_worktrees && self.should_display_welcome_page() {
                 if self.welcome_page.is_none() {
                     let workspace = self.workspace.clone();
-                    self.welcome_page = Some(cx.new(|cx| WelcomePage::new(workspace, window, cx)));
+                    let welcome_page = cx.new(|cx| WelcomePage::new(workspace, window, cx));
+                    if self.focus_handle.is_focused(window) {
+                        welcome_page.read(cx).focus_handle(cx).focus(window, cx);
+                    }
+                    self.welcome_page = Some(welcome_page);
                 }
 
                 self.welcome_page.clone()

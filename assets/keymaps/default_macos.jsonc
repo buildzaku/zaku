@@ -47,6 +47,7 @@
     "context": "Welcome",
     "use_key_equivalents": true,
     "bindings": {
+      "alt-cmd-n": "workspace::NewProject",
       "cmd-1": ["welcome::OpenRecentProject", 0],
       "cmd-2": ["welcome::OpenRecentProject", 1],
       "cmd-3": ["welcome::OpenRecentProject", 2],

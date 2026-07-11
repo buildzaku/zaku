@@ -56,6 +56,7 @@ pub enum IconAsset {
     LinuxMaximize,
     LinuxMinimize,
     LinuxRestore,
+    ListSearch,
     Menu,
     Minimize,
     Network,
