@@ -3032,17 +3032,53 @@ impl Render for ProjectPanel {
                         .justify_center()
                         .child(
                             gpui::div()
-                                .w_48()
+                                .w_56()
                                 .max_w_full()
                                 .flex()
                                 .flex_col()
-                                .gap_1p5()
+                                .gap_0p5()
                                 .child(
-                                    gpui::div().text_center().child(
-                                        Text::new("Open a project to get started.")
+                                    gpui::div().text_center().mb_1p5().child(
+                                        Text::new("Create or open a project to get started.")
                                             .size(TextSize::Small)
                                             .color(Color::Muted),
                                     ),
+                                )
+                                .child(
+                                    ButtonLike::new("project-panel-new-project")
+                                        .size(ButtonSize::Medium)
+                                        .full_width()
+                                        .child(Text::new("New Project"))
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.focus_handle.dispatch_action(
+                                                &actions::workspace::NewProject,
+                                                window,
+                                                cx,
+                                            );
+                                        })),
+                                )
+                                .child(
+                                    gpui::div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(
+                                            gpui::div()
+                                                .h_px()
+                                                .flex_1()
+                                                .bg(cx.theme().colors().border_variant),
+                                        )
+                                        .child(
+                                            Text::new("or".to_ascii_uppercase())
+                                                .size(TextSize::XSmall)
+                                                .color(Color::Muted),
+                                        )
+                                        .child(
+                                            gpui::div()
+                                                .h_px()
+                                                .flex_1()
+                                                .bg(cx.theme().colors().border_variant),
+                                        ),
                                 )
                                 .child(
                                     ButtonLike::new("project-panel-open-project")
