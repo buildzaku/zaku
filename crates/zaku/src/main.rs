@@ -56,6 +56,7 @@ fn main() {
     ));
 
     app.run(move |cx: &mut App| {
+        metadata::init(cx);
         cx.set_global(app_db);
         settings::init(cx);
         settings::log_settings::init(cx);
@@ -110,17 +111,22 @@ fn main() {
 }
 
 fn init_paths() -> HashMap<ErrorKind, Vec<&'static Path>> {
-    [path::config_dir(), path::data_dir(), path::logs_dir()]
-        .into_iter()
-        .fold(HashMap::default(), |mut errors, path| {
-            if let Err(error) = std::fs::create_dir_all(path) {
-                errors
-                    .entry(error.kind())
-                    .or_insert_with(Vec::new)
-                    .push(path);
-            }
+    [
+        path::config_dir(),
+        path::data_dir(),
+        path::logs_dir(),
+        path::cache_dir(),
+    ]
+    .into_iter()
+    .fold(HashMap::default(), |mut errors, path| {
+        if let Err(error) = std::fs::create_dir_all(path) {
             errors
-        })
+                .entry(error.kind())
+                .or_insert_with(Vec::new)
+                .push(path);
+        }
+        errors
+    })
 }
 
 fn register_embedded_fonts(cx: &App) {

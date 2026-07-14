@@ -827,7 +827,7 @@ impl Fs for NativeFs {
         {
             smol::unblock(move || {
                 let mut temp_file =
-                    NamedTempFile::new_in(path.parent().unwrap_or_else(|| path::temp_dir()))?;
+                    NamedTempFile::new_in(path.parent().unwrap_or_else(|| path::cache_dir()))?;
                 temp_file.write_all(content.as_bytes())?;
                 temp_file.persist(path)?;
                 anyhow::Ok(())
@@ -838,7 +838,7 @@ impl Fs for NativeFs {
         #[cfg(target_os = "windows")]
         {
             smol::unblock(move || {
-                let temp_dir = TempDir::new_in(path.parent().unwrap_or_else(|| path::temp_dir()))?;
+                let temp_dir = TempDir::new_in(path.parent().unwrap_or_else(|| path::cache_dir()))?;
                 let temp_file = {
                     let temp_file_path = temp_dir.path().join("temp_file");
                     let mut file = std::fs::File::create_new(&temp_file_path)?;

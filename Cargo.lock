@@ -513,6 +513,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "auto_update"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "db",
+ "futures",
+ "gpui",
+ "http_client 0.0.0",
+ "log",
+ "metadata",
+ "parking_lot",
+ "semver",
+ "serde",
+ "serde_json",
+ "smol",
+ "tempfile",
+ "util 0.0.0",
+ "which 8.0.4",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4004,6 +4025,8 @@ dependencies = [
 name = "metadata"
 version = "0.0.0"
 dependencies = [
+ "gpui",
+ "semver",
  "serde",
  "toml 1.1.2+spec-1.1.0",
 ]

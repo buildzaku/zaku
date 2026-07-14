@@ -1,5 +1,6 @@
 [package]
 name = "zaku"
+description = "Fast, open-source API client with fangs."
 version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -9,9 +10,6 @@ publish.workspace = true
 
 [package.metadata.bundle]
 name = "Zaku"
-description = "Fast, open-source API client with fangs."
-version = "Unreleased"
-repository = "https://github.com/buildzaku/zaku"
 identifier = "dev.zaku.Zaku"
 icon = ["resources/app-icon.png", "resources/app-icon@2x.png"]
 

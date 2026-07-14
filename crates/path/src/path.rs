@@ -483,10 +483,10 @@ pub fn config_dir() -> &'static PathBuf {
     })
 }
 
-/// Returns the path to the temp directory.
-pub fn temp_dir() -> &'static PathBuf {
-    static TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
-    TEMP_DIR.get_or_init(|| {
+/// Returns the path to the cache directory.
+pub fn cache_dir() -> &'static PathBuf {
+    static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
+    CACHE_DIR.get_or_init(|| {
         #[cfg(target_os = "linux")]
         {
             if let Ok(flatpak_xdg_cache) = std::env::var("FLATPAK_XDG_CACHE_HOME") {
