@@ -12,7 +12,7 @@ impl Indicator {
     pub fn dot() -> Self {
         Self {
             color: Color::Default,
-            size: crate::rems_from_px(8.0),
+            size: crate::rems_from_px(8.0_f32),
         }
     }
 

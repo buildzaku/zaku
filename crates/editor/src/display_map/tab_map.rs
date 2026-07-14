@@ -472,22 +472,19 @@ impl<'a> Iterator for TabChunks<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.chunk.text.is_empty() {
-            if let Some(chunk) = self.raw_chunks.next() {
-                self.chunk = chunk;
-                if self.inside_leading_tab {
-                    self.chunk.text = self
-                        .chunk
-                        .text
-                        .strip_prefix('\t')
-                        .expect("leading tab chunk should start with tab");
-                    self.chunk.tabs >>= 1;
-                    self.chunk.chars >>= 1;
-                    self.chunk.newlines >>= 1;
-                    self.inside_leading_tab = false;
-                    self.input_column += 1;
-                }
-            } else {
-                return None;
+            let chunk = self.raw_chunks.next()?;
+            self.chunk = chunk;
+            if self.inside_leading_tab {
+                self.chunk.text = self
+                    .chunk
+                    .text
+                    .strip_prefix('\t')
+                    .expect("leading tab chunk should start with tab");
+                self.chunk.tabs >>= 1;
+                self.chunk.chars >>= 1;
+                self.chunk.newlines >>= 1;
+                self.inside_leading_tab = false;
+                self.input_column += 1;
             }
         }
 

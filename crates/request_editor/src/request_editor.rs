@@ -1850,7 +1850,7 @@ impl RequestEditor {
                                 border: gpui::transparent_black(),
                             })
                             .size(ButtonSize::Large)
-                            .width(ui::rems_from_px(60.0))
+                            .width(ui::rems_from_px(60.0_f32))
                             .font_weight(FontWeight::MEDIUM)
                             .on_click(cx.listener(move |request_editor, _, window, cx| {
                                 request_editor.unpreview_tab(cx);

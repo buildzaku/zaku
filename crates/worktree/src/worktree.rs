@@ -921,13 +921,7 @@ impl Snapshot {
     pub fn entry_for_path(&self, path: &RelPath) -> Option<&Entry> {
         self.traverse_from_path(true, true, path)
             .entry()
-            .and_then(|entry| {
-                if entry.path.as_ref() == path {
-                    Some(entry)
-                } else {
-                    None
-                }
-            })
+            .filter(|&entry| entry.path.as_ref() == path)
     }
 
     pub fn entry_for_id(&self, id: ProjectEntryId) -> Option<&Entry> {
