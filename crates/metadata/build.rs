@@ -49,6 +49,9 @@ fn main() {
         "cargo:rustc-env=ZAKU_IDENTIFIER={}",
         package.metadata.bundle.identifier
     );
+    if let Some(build_id) = option_env!("GITHUB_RUN_NUMBER") {
+        println!("cargo:rustc-env=ZAKU_BUILD_ID={build_id}");
+    }
     println!("cargo:rustc-env=ZAKU_COMMIT_SHA={commit_sha}");
 }
 
