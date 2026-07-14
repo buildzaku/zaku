@@ -36,5 +36,8 @@
       }
     }
   },
+  "update": {
+    "automatic": true
+  },
   "log": {}
 }

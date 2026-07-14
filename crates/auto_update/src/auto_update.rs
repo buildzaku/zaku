@@ -20,6 +20,7 @@ use std::{
 use db::kv::KeyValueStore;
 use http_client::{AsyncBody, HttpClient};
 use metadata::{AppVersion, ZAKU_SERVER_URL};
+use settings::{RegisterSetting, Settings, SettingsStore};
 
 const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "auto-updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_hours(1);
@@ -134,6 +135,23 @@ async fn unmount_disk_image(mount_path: &Path) {
     }
 }
 
+#[derive(Debug, Clone, Copy, RegisterSetting)]
+struct UpdateSettings {
+    automatic: bool,
+}
+
+impl Settings for UpdateSettings {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        let update = content.update.as_ref();
+
+        Self {
+            automatic: update
+                .and_then(|update| update.automatic)
+                .expect("update automatic should be defaulted"),
+        }
+    }
+}
+
 #[derive(Default)]
 struct GlobalAutoUpdate(Option<Entity<AutoUpdater>>);
 
@@ -141,7 +159,25 @@ impl Global for GlobalAutoUpdate {}
 
 pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     let version = AppVersion::global(cx);
-    let auto_updater = cx.new(|cx| AutoUpdater::new(version, client, cache_dir, cx));
+    let auto_updater = cx.new(|cx| {
+        let updater = AutoUpdater::new(version, client, cache_dir, cx);
+        let mut update_subscription = UpdateSettings::get_global(cx)
+            .automatic
+            .then(|| updater.start_polling(cx));
+
+        cx.observe_global::<SettingsStore>(move |updater, cx| {
+            if UpdateSettings::get_global(cx).automatic {
+                if update_subscription.is_none() {
+                    update_subscription = Some(updater.start_polling(cx));
+                }
+            } else {
+                update_subscription.take();
+            }
+        })
+        .detach();
+
+        updater
+    });
     cx.set_global(GlobalAutoUpdate(Some(auto_updater)));
 }
 
@@ -472,9 +508,9 @@ impl AutoUpdater {
 
     fn target_path(installer_dir: &InstallerDir) -> anyhow::Result<PathBuf> {
         let filename = match OS {
-            "macos" => anyhow::Ok("Zaku.dmg"),
+            "macos" => "Zaku.dmg",
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
-        }?;
+        };
 
         Ok(installer_dir.path().join(filename))
     }
@@ -634,7 +670,7 @@ async fn install_release_macos(
     );
 
     let unmounter = MacOsUnmounter {
-        mount_path: mount_path.clone(),
+        mount_path,
         background_executor,
     };
 
@@ -709,8 +745,15 @@ async fn cleanup_stale_installer_dirs(cache_dir: PathBuf) {
 mod tests {
     use super::*;
 
-    use gpui::TestAppContext;
-    use std::{cell::RefCell, rc::Rc};
+    use futures::channel::oneshot;
+    use gpui::{BorrowAppContext, TestAppContext};
+    use parking_lot::Mutex;
+    use serde_json::json;
+    use std::{
+        cell::RefCell,
+        rc::Rc,
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
     use tempfile::tempdir;
 
     use http_client::{FakeHttpClient, Response};
@@ -720,6 +763,249 @@ mod tests {
     );
 
     impl Global for InstallOverride {}
+
+    #[gpui::test]
+    fn test_auto_update_defaults_to_true(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            settings::init(cx);
+            assert!(
+                UpdateSettings::get_global(cx).automatic,
+                "automatic updates should default to true"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn test_auto_update(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+
+        let release_available = Arc::new(AtomicBool::new(false));
+        let (download_tx, download_rx) = oneshot::channel::<Vec<u8>>();
+        let cache_dir = tempdir().unwrap();
+
+        cx.update(|cx| {
+            settings::init(cx);
+            metadata::init_test(Version::new(26, 0, 0), cx);
+
+            let release_available = Arc::clone(&release_available);
+            let download_rx = Arc::new(Mutex::new(Some(download_rx)));
+            let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
+            let artifact_extension = match OS {
+                "linux" => "tar.gz",
+                "macos" => "dmg",
+                "windows" => "exe",
+                unsupported_os => panic!("not supported: {unsupported_os}"),
+            };
+            let artifact_path = format!(
+                "/releases/stable/26.1.0/{OS}-{ARCH}/Zaku-26.1.0-{ARCH}.{artifact_extension}"
+            );
+            let http_client = FakeHttpClient::create(move |request| {
+                let download_rx = download_rx.clone();
+                let discovery_path = discovery_path.clone();
+                let artifact_path = artifact_path.clone();
+                let release_available = release_available.load(Ordering::Relaxed);
+                async move {
+                    let path = request.uri().path();
+                    if path == discovery_path {
+                        let version = if release_available {
+                            "26.1.0"
+                        } else {
+                            "26.0.0"
+                        };
+                        let url = format!(
+                            "{ZAKU_SERVER_URL}/releases/stable/{version}/{OS}-{ARCH}/Zaku-{version}-{ARCH}.{artifact_extension}"
+                        );
+                        Ok(Response::builder()
+                            .status(200)
+                            .body(json!({ "version": version, "url": url }).to_string().into())
+                            .unwrap())
+                    } else if path == artifact_path {
+                        let download_rx = download_rx.lock().take().unwrap();
+                        Ok(Response::builder()
+                            .status(200)
+                            .body(download_rx.await.unwrap().into())
+                            .unwrap())
+                    } else {
+                        panic!("unexpected update request path: {path}");
+                    }
+                }
+            });
+            crate::init(http_client, cache_dir.path().to_path_buf(), cx);
+        });
+
+        let auto_updater = cx.update(|cx| AutoUpdater::get(cx).unwrap());
+        cx.background_executor.run_until_parked();
+
+        auto_updater.read_with(cx, |updater, _| {
+            assert_eq!(updater.status(), AutoUpdateStatus::Idle);
+            assert_eq!(updater.current_version(), Version::new(26, 0, 0));
+        });
+
+        release_available.store(true, Ordering::SeqCst);
+        cx.background_executor.advance_clock(POLL_INTERVAL);
+        cx.background_executor.run_until_parked();
+
+        let status = auto_updater.read_with(cx, |updater, _| updater.status());
+        assert!(
+            matches!(
+                &status,
+                AutoUpdateStatus::Downloading {
+                    version,
+                    progress: None,
+                } if version == &Version::new(26, 1, 0)
+            ),
+            "status should be downloading without progress, got {status:?}"
+        );
+
+        let installed_dir = Arc::new(tempdir().unwrap());
+        cx.update(|cx| {
+            cx.set_global(InstallOverride(Rc::new({
+                let installed_dir = installed_dir.clone();
+                move |target_path, _| {
+                    let installed_path = installed_dir.path().join("zaku");
+                    std::fs::copy(target_path, &installed_path)?;
+                    Ok(Some(installed_path))
+                }
+            })));
+        });
+
+        let update_contents = b"fake-zaku-update".to_vec();
+        download_tx.send(update_contents.clone()).unwrap();
+
+        loop {
+            cx.run_until_parked();
+            let status = auto_updater.read_with(cx, |updater, _| updater.status());
+            if !matches!(status, AutoUpdateStatus::Downloading { .. }) {
+                break;
+            }
+        }
+
+        assert_eq!(
+            auto_updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Updated {
+                version: Version::new(26, 1, 0),
+            }
+        );
+
+        let will_restart = cx.expect_restart();
+        cx.update(|cx| cx.restart());
+        let installed_path = will_restart.await.unwrap().unwrap();
+        assert_eq!(installed_path, installed_dir.path().join("zaku"));
+        assert_eq!(std::fs::read(installed_path).unwrap(), update_contents);
+    }
+
+    #[gpui::test]
+    fn test_auto_update_watches_user_setting(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+
+        let request_count = Arc::new(AtomicUsize::new(0));
+        let (release_tx, release_rx) = oneshot::channel::<()>();
+        let cache_dir = tempdir().unwrap();
+
+        cx.update(|cx| {
+            settings::init(cx);
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "automatic": false } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
+            metadata::init_test(Version::new(26, 0, 0), cx);
+
+            let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+            let request_count = Arc::clone(&request_count);
+            let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
+            let artifact_extension = match OS {
+                "linux" => "tar.gz",
+                "macos" => "dmg",
+                "windows" => "exe",
+                unsupported_os => panic!("not supported: {unsupported_os}"),
+            };
+            let http_client = FakeHttpClient::create(move |request| {
+                let release_rx = release_rx.clone();
+                let discovery_path = discovery_path.clone();
+                let request_count = request_count.clone();
+                async move {
+                    let path = request.uri().path();
+                    assert_eq!(path, discovery_path, "update request path should match");
+                    request_count.fetch_add(1, Ordering::SeqCst);
+                    let release_rx = release_rx.lock().take().unwrap();
+                    release_rx.await.unwrap();
+                    let url = format!(
+                        "{ZAKU_SERVER_URL}/releases/stable/26.0.0/{OS}-{ARCH}/Zaku-26.0.0-{ARCH}.{artifact_extension}"
+                    );
+                    Ok(Response::builder()
+                        .status(200)
+                        .body(
+                            json!({ "version": "26.0.0", "url": url })
+                                .to_string()
+                                .into(),
+                        )
+                        .unwrap())
+                }
+            });
+            crate::init(http_client, cache_dir.path().to_path_buf(), cx);
+        });
+
+        let auto_updater = cx.update(|cx| AutoUpdater::get(cx).unwrap());
+        cx.background_executor.run_until_parked();
+        assert_eq!(
+            request_count.load(Ordering::SeqCst),
+            0,
+            "automatic updates should not poll when disabled"
+        );
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "automatic": true } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
+        });
+        cx.background_executor.run_until_parked();
+        assert_eq!(
+            auto_updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Checking
+        );
+        assert_eq!(
+            request_count.load(Ordering::SeqCst),
+            1,
+            "enabling automatic updates should poll immediately"
+        );
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(r#"{ "update": { "automatic": false } }"#, cx)
+                    .result()
+                    .unwrap();
+            });
+        });
+        cx.run_until_parked();
+        release_tx.send(()).unwrap();
+
+        loop {
+            cx.run_until_parked();
+            let status = auto_updater.read_with(cx, |updater, _| updater.status());
+            if !matches!(status, AutoUpdateStatus::Checking) {
+                break;
+            }
+        }
+        assert_eq!(
+            auto_updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Idle,
+            "disabling automatic updates should not cancel an active check"
+        );
+
+        cx.background_executor.advance_clock(POLL_INTERVAL);
+        cx.background_executor.run_until_parked();
+        assert_eq!(
+            request_count.load(Ordering::SeqCst),
+            1,
+            "automatic updates should stop polling when disabled"
+        );
+    }
 
     #[test]
     fn test_stable_does_not_update_when_fetched_version_is_not_higher() {
@@ -739,7 +1025,7 @@ mod tests {
     #[test]
     fn test_stable_does_update_when_fetched_version_is_higher() {
         let installed_version = Version::new(26, 0, 0);
-        let fetched_version = Version::new(26, 0, 1);
+        let fetched_version = Version::new(26, 1, 0);
 
         let newer_version = AutoUpdater::check_if_fetched_version_is_newer(
             installed_version,
@@ -754,9 +1040,9 @@ mod tests {
     fn test_stable_does_not_update_when_fetched_version_is_not_higher_than_cached() {
         let installed_version = Version::new(26, 0, 0);
         let status = AutoUpdateStatus::Updated {
-            version: Version::new(26, 0, 1),
+            version: Version::new(26, 1, 0),
         };
-        let fetched_version = Version::new(26, 0, 1);
+        let fetched_version = Version::new(26, 1, 0);
 
         let newer_version = AutoUpdater::check_if_fetched_version_is_newer(
             installed_version,
@@ -771,9 +1057,9 @@ mod tests {
     fn test_stable_does_update_when_fetched_version_is_higher_than_cached() {
         let installed_version = Version::new(26, 0, 0);
         let status = AutoUpdateStatus::Updated {
-            version: Version::new(26, 0, 1),
+            version: Version::new(26, 1, 0),
         };
-        let fetched_version = Version::new(26, 0, 2);
+        let fetched_version = Version::new(26, 1, 1);
 
         let newer_version = AutoUpdater::check_if_fetched_version_is_newer(
             installed_version,
@@ -805,10 +1091,17 @@ mod tests {
         });
         let temp_dir = tempdir().unwrap();
         let target_path = temp_dir.path().join("zaku-download");
+        let artifact_extension = match OS {
+            "linux" => "tar.gz",
+            "macos" => "dmg",
+            "windows" => "exe",
+            unsupported_os => panic!("not supported: {unsupported_os}"),
+        };
         let release = ReleaseAsset {
-            version: "26.0.1".to_string(),
-            url: "https://zaku.dev/releases/stable/26.0.1/macos-aarch64/Zaku-26.0.1-aarch64.dmg"
-                .to_string(),
+            version: "26.1.0".to_string(),
+            url: format!(
+                "{ZAKU_SERVER_URL}/releases/stable/26.1.0/{OS}-{ARCH}/Zaku-26.1.0-{ARCH}.{artifact_extension}"
+            ),
         };
         let reported = Rc::new(RefCell::new(Vec::new()));
 
@@ -864,10 +1157,17 @@ mod tests {
         });
         let temp_dir = tempdir().unwrap();
         let target_path = temp_dir.path().join("zaku-download");
+        let artifact_extension = match OS {
+            "linux" => "tar.gz",
+            "macos" => "dmg",
+            "windows" => "exe",
+            unsupported_os => panic!("not supported: {unsupported_os}"),
+        };
         let release = ReleaseAsset {
-            version: "26.0.1".to_string(),
-            url: "https://zaku.dev/releases/stable/26.0.1/macos-aarch64/Zaku-26.0.1-aarch64.dmg"
-                .to_string(),
+            version: "26.1.0".to_string(),
+            url: format!(
+                "{ZAKU_SERVER_URL}/releases/stable/26.1.0/{OS}-{ARCH}/Zaku-26.1.0-{ARCH}.{artifact_extension}"
+            ),
         };
         let reported = Rc::new(RefCell::new(Vec::new()));
 
