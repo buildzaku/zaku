@@ -826,6 +826,47 @@ impl Render for Root {
     }
 }
 
+pub fn reload(cx: &mut App) {
+    let mut workspace_windows = cx
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<Root>())
+        .collect::<Vec<_>>();
+    workspace_windows.sort_by_key(|window| window.is_active(cx) == Some(false));
+
+    cx.spawn(async move |cx| {
+        for window in workspace_windows {
+            let prepare_task = match window.update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.prepare_to_close(CloseIntent::Quit, window, cx)
+                })
+            }) {
+                Ok(prepare_task) => prepare_task,
+                Err(error) => {
+                    log::error!("Failed to prepare workspace for restart: {error}");
+                    return anyhow::Ok(());
+                }
+            };
+
+            let should_restart = match prepare_task.await {
+                Ok(should_restart) => should_restart,
+                Err(error) => {
+                    log::error!("Failed to prepare workspace for restart: {error}");
+                    return anyhow::Ok(());
+                }
+            };
+
+            if !should_restart {
+                return anyhow::Ok(());
+            }
+        }
+
+        cx.update(|cx| cx.restart());
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
+}
+
 #[cfg(any(test, feature = "test"))]
 pub fn build_workspace<'a>(
     project: &Entity<Project>,
@@ -1213,6 +1254,10 @@ impl Workspace {
 
     pub fn app_state(&self) -> &Arc<AppState> {
         &self.app_state
+    }
+
+    pub fn status_bar(&self) -> &Entity<StatusBar> {
+        &self.status_bar
     }
 
     pub fn database_id(&self) -> Option<WorkspaceId> {

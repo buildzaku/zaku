@@ -516,6 +516,7 @@ dependencies = [
 name = "auto_update"
 version = "0.0.0"
 dependencies = [
+ "actions",
  "anyhow",
  "db",
  "futures",
@@ -530,8 +531,10 @@ dependencies = [
  "settings",
  "smol",
  "tempfile",
+ "ui",
  "util 0.0.0",
  "which 8.0.4",
+ "workspace",
 ]
 
 [[package]]

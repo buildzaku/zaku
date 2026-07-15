@@ -1,8 +1,13 @@
+mod update_version;
+
 use anyhow::Context as _;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use futures::StreamExt;
 use futures::{AsyncReadExt, AsyncWriteExt};
-use gpui::{App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, Global, Task, TaskExt};
+use gpui::{
+    App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, Global, PromptLevel, Task,
+    TaskExt, Window,
+};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
@@ -21,6 +26,9 @@ use db::kv::KeyValueStore;
 use http_client::{AsyncBody, HttpClient};
 use metadata::{AppVersion, ZAKU_SERVER_URL};
 use settings::{RegisterSetting, Settings, SettingsStore};
+use workspace::Workspace;
+
+use crate::update_version::UpdateVersion;
 
 const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "auto-updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_hours(1);
@@ -42,7 +50,7 @@ pub enum AutoUpdateStatus {
     Updated {
         version: Version,
     },
-    Errored {
+    Failed {
         error: Arc<anyhow::Error>,
     },
 }
@@ -71,8 +79,8 @@ impl PartialEq for AutoUpdateStatus {
                 AutoUpdateStatus::Updated { version: v2 },
             ) => v1 == v2,
             (
-                AutoUpdateStatus::Errored { error: error1 },
-                AutoUpdateStatus::Errored { error: error2 },
+                AutoUpdateStatus::Failed { error: error1 },
+                AutoUpdateStatus::Failed { error: error2 },
             ) => error1.to_string() == error2.to_string(),
             _ => false,
         }
@@ -158,6 +166,35 @@ struct GlobalAutoUpdate(Option<Entity<AutoUpdater>>);
 impl Global for GlobalAutoUpdate {}
 
 pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
+    cx.observe_new(|workspace: &mut Workspace, window, cx| {
+        let Some(window) = window else {
+            return;
+        };
+
+        let update_version = cx.new(|cx| UpdateVersion::new(window, cx));
+        workspace.register_action({
+            let update_version = update_version.clone();
+            move |_, action, window, cx| {
+                update_version.update(cx, |update_version, _| {
+                    update_version.start_manual_check();
+                });
+                check_for_updates(action, window, cx);
+            }
+        });
+        workspace.register_action({
+            let update_version = update_version.clone();
+            move |_, _: &actions::auto_update::SimulateUpdateAvailable, _, cx| {
+                update_version.update(cx, |update_version, cx| {
+                    update_version.update_simulation(cx);
+                });
+            }
+        });
+        workspace.status_bar().update(cx, |status_bar, cx| {
+            status_bar.add_left_item(update_version, window, cx);
+        });
+    })
+    .detach();
+
     let version = AppVersion::global(cx);
     let auto_updater = cx.new(|cx| {
         let updater = AutoUpdater::new(version, client, cache_dir, cx);
@@ -179,6 +216,22 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
         updater
     });
     cx.set_global(GlobalAutoUpdate(Some(auto_updater)));
+}
+
+pub fn check_for_updates(_: &actions::auto_update::Check, window: &mut Window, cx: &mut App) {
+    if let Some(updater) = AutoUpdater::get(cx) {
+        updater.update(cx, |updater, cx| {
+            updater.poll(UpdateCheckType::Manual, cx);
+        });
+    } else {
+        drop(window.prompt(
+            PromptLevel::Warning,
+            "Couldn't check for updates",
+            Some("Zaku couldn't check for updates. Check your internet connection and try again."),
+            &["OK"],
+            cx,
+        ));
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -289,7 +342,7 @@ impl AutoUpdater {
                         }
                         UpdateCheckType::Manual => {
                             log::error!("Auto update failed: {error:?}");
-                            AutoUpdateStatus::Errored {
+                            AutoUpdateStatus::Failed {
                                 error: Arc::new(error),
                             }
                         }

@@ -3,5 +3,7 @@ gpui::actions!(
     [
         /// Check for available updates.
         Check,
+        /// Simulate an available update.
+        SimulateUpdateAvailable,
     ]
 );

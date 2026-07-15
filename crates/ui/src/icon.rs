@@ -2,7 +2,7 @@ use gpui::{App, IntoElement, Pixels, Rems, SharedString, Transformation, Window,
 
 use ::svg::IconAsset;
 
-use crate::{Color, DynamicSpacing};
+use crate::{Color, DynamicSpacing, Transformable};
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub enum IconSize {
@@ -102,6 +102,13 @@ impl Icon {
 
     pub fn size(mut self, size: IconSize) -> Self {
         self.size = size.rems();
+        self
+    }
+}
+
+impl Transformable for Icon {
+    fn transform(mut self, transformation: Transformation) -> Self {
+        self.transformation = transformation;
         self
     }
 }
