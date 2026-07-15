@@ -1,11 +1,12 @@
 use gpui::{
-    AnyElement, AnyView, App, ClickEvent, ElementId, IntoElement, SharedString, Window, prelude::*,
+    AnyElement, AnyView, App, ClickEvent, CursorStyle, ElementId, IntoElement, SharedString,
+    Window, prelude::*,
 };
 use std::fmt::Display;
 
 use crate::{
-    ActiveTheme, ButtonCommon, ButtonLike, CircularProgress, Clickable, Color, CommonAnimationExt,
-    Disableable, Icon, IconAsset, IconButton, IconSize, Text, TextCommon, TextSize, Tooltip,
+    ActiveTheme, ButtonCommon, ButtonLike, ButtonVariant, CircularProgress, Clickable, Color,
+    CommonAnimationExt, Icon, IconAsset, IconButton, IconSize, Text, TextCommon, TextSize, Tooltip,
 };
 
 const CIRCLE_NOTCH_GLYPH_VIEWBOX: f32 = 32.0;
@@ -144,10 +145,23 @@ impl UpdateButton {
 
 impl RenderOnce for UpdateButton {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let border_color = if self.disabled {
-            cx.theme().colors().border
-        } else {
-            cx.theme().colors().text.opacity(0.15)
+        let colors = cx.theme().colors();
+        let background = colors
+            .status_bar_background
+            .blend(colors.button_background.opacity(0.5));
+        let hover_background = colors
+            .status_bar_background
+            .blend(colors.button_hover_background.opacity(0.7));
+        let border_color = colors.text.opacity(0.15);
+        let button_variant = ButtonVariant::Custom {
+            background,
+            foreground: colors.button_foreground,
+            hover_background: if self.disabled {
+                background
+            } else {
+                hover_background
+            },
+            border: colors.button_border,
         };
 
         let icon_element: AnyElement = if let Some(progress) = self.progress {
@@ -187,14 +201,22 @@ impl RenderOnce for UpdateButton {
             .items_center()
             .mr_2()
             .rounded_sm()
+            .overflow_hidden()
             .border_1()
             .border_color(border_color)
+            .bg(background)
             .child(
                 ButtonLike::new(button_id)
+                    .variant(button_variant)
                     .child(label)
                     .when_some(self.tooltip, |button, tooltip| button.tooltip(tooltip))
-                    .disabled(self.disabled)
-                    .when_some(self.on_click, |button, handler| button.on_click(handler)),
+                    .when(self.disabled, |button| {
+                        button.cursor_style(CursorStyle::Arrow)
+                    })
+                    .when_some(
+                        self.on_click.filter(|_| !self.disabled),
+                        |button, handler| button.on_click(handler),
+                    ),
             )
             .when(self.show_dismiss, |this| {
                 this.child(

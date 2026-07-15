@@ -1,5 +1,8 @@
 use anyhow::anyhow;
-use gpui::{Context, Empty, Entity, IntoElement, PromptLevel, Render, TaskExt, Window};
+use gpui::{
+    AnyView, App, AppContext, Context, Empty, Entity, IntoElement, PromptLevel, Render, TaskExt,
+    Window,
+};
 use semver::Version;
 use std::sync::Arc;
 
@@ -203,16 +206,24 @@ impl Render for UpdateVersion {
             }
             AutoUpdateStatus::Downloading { version, progress } => {
                 let rendered_version = version.clone();
-                let tooltip = Tooltip::element(move |_, cx| {
-                    let status = AutoUpdater::get(cx).map(|updater| updater.read(cx).status());
-                    let message = match &status {
-                        Some(AutoUpdateStatus::Downloading { version, progress }) => {
-                            UpdateButton::downloading_tooltip_message(version, *progress)
-                        }
-                        _ => Self::version_tooltip_message(&rendered_version),
-                    };
-                    Text::new(message).into_any_element()
-                });
+                let update_version = cx.entity();
+                let tooltip = move |_: &mut Window, cx: &mut App| -> AnyView {
+                    let rendered_version = rendered_version.clone();
+                    let update_version = update_version.clone();
+                    cx.new(move |cx| {
+                        cx.observe(&update_version, |_, _, cx| cx.notify()).detach();
+                        Tooltip::new_element(move |_, cx| {
+                            let message = match &update_version.read(cx).status {
+                                AutoUpdateStatus::Downloading { version, progress } => {
+                                    UpdateButton::downloading_tooltip_message(version, *progress)
+                                }
+                                _ => Self::version_tooltip_message(&rendered_version),
+                            };
+                            Text::new(message).into_any_element()
+                        })
+                    })
+                    .into()
+                };
                 UpdateButton::downloading(*progress)
                     .tooltip_fn(tooltip)
                     .into_any_element()

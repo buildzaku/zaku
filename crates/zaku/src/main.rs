@@ -88,7 +88,13 @@ fn main() {
             }
         })
         .detach();
-        let app_state = Arc::new(AppState::new(fs, http_client, app_session, languages));
+        let app_state = Arc::new(AppState::new(
+            fs,
+            http_client.clone(),
+            app_session,
+            languages,
+        ));
+        auto_update::init(http_client, path::cache_dir().clone(), cx);
         workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);

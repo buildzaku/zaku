@@ -9266,6 +9266,7 @@ dependencies = [
  "anyhow",
  "ashpd",
  "assets",
+ "auto_update",
  "command_palette",
  "db",
  "editor",

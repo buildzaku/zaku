@@ -36,6 +36,7 @@ mimalloc = ["dep:mimalloc"]
 actions = { workspace = true }
 anyhow = { workspace = true }
 assets = { workspace = true }
+auto_update = { workspace = true }
 command_palette = { workspace = true }
 db = { workspace = true }
 editor = { workspace = true }
