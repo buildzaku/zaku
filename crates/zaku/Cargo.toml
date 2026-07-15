@@ -12,6 +12,7 @@ publish.workspace = true
 name = "Zaku"
 identifier = "dev.zaku.Zaku"
 icon = ["resources/app-icon.png", "resources/app-icon@2x.png"]
+osx_minimum_system_version = "14.0"
 
 [lib]
 name = "zaku"

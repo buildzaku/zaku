@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+CARGO_BUNDLE_VERSION="0.11.0"
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "macOS application bundles must be built on macOS"
+  exit 1
+fi
+
+target_triple="${1:-}"
+if [[ -z "$target_triple" ]]; then
+  target_triple=$(rustc --version --verbose | sed -n 's/^host: //p')
+fi
+
+case "$target_triple" in
+aarch64-apple-darwin)
+  architecture="aarch64"
+  ;;
+x86_64-apple-darwin)
+  architecture="x86_64"
+  ;;
+*)
+  echo "unsupported macOS target: $target_triple"
+  exit 1
+  ;;
+esac
+
+cargo_bundle_version=$("${CARGO:-cargo}" bundle --version 2>/dev/null || true)
+if [[ "$cargo_bundle_version" != "cargo-bundle v${CARGO_BUNDLE_VERSION}" ]]; then
+  "${CARGO:-cargo}" install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
+fi
+
+rustup target add "$target_triple"
+
+echo "Compiling Zaku"
+"${CARGO:-cargo}" build --release --package zaku --target "$target_triple"
+
+echo "Creating application bundle"
+app_path=$(
+  cd crates/zaku
+  CARGO_BUNDLE_SKIP_BUILD=true "${CARGO:-cargo}" bundle --release --format osx --target "$target_triple" | sed -n '$s/^[[:space:]]*//p'
+)
+
+if [[ ! -d "$app_path" ]]; then
+  echo "application bundle was not created at $app_path"
+  exit 1
+fi
+
+info_plist="${app_path}/Contents/Info.plist"
+if [[ -n "${GITHUB_RUN_NUMBER:-}" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" "$info_plist"
+fi
+
+version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$info_plist")
+release_directory=$(dirname "$(dirname "$(dirname "$app_path")")")
+dmg_path="${release_directory}/Zaku-${version}-${architecture}.dmg"
+dmg_source_directory=$(mktemp -d)
+dmg_output_directory=$(mktemp -d "${release_directory}/.zaku-dmg.XXXXXX")
+temporary_dmg_path="${dmg_output_directory}/$(basename "$dmg_path")"
+
+cleanup() {
+  rm -rf "$dmg_source_directory" "$dmg_output_directory"
+}
+
+trap cleanup EXIT
+
+ditto "$app_path" "${dmg_source_directory}/Zaku.app"
+ln -s /Applications "${dmg_source_directory}/Applications"
+
+echo "Creating ${dmg_path}"
+hdiutil create -volname Zaku -srcfolder "$dmg_source_directory" -ov -format UDZO "$temporary_dmg_path"
+hdiutil verify "$temporary_dmg_path"
+mv "$temporary_dmg_path" "$dmg_path"
+
+echo "Created application bundle: $app_path"
+echo "Created disk image: $dmg_path"
