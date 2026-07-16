@@ -168,7 +168,9 @@ impl UpdateVersion {
         let prompt = window.prompt(
             PromptLevel::Warning,
             "Couldn't check for updates",
-            Some("Zaku couldn't check for updates. Check your internet connection and try again."),
+            Some(
+                "Zaku couldn't check for updates. Please check your internet connection or try again later.",
+            ),
             &["Open Logs", "OK"],
             cx,
         );
@@ -246,10 +248,11 @@ impl Render for UpdateVersion {
                     .on_dismiss(cx.listener(|this, _, _, cx| this.dismiss(cx)))
                     .into_any_element()
             }
-            AutoUpdateStatus::Failed { error } => UpdateButton::failed(error.to_string())
-                .on_click(|_, window, cx| {
+            AutoUpdateStatus::Failed { .. } => UpdateButton::failed()
+                .on_click(cx.listener(|this, _, window, cx| {
                     window.dispatch_action(Box::new(actions::zaku::OpenLogs), cx);
-                })
+                    this.dismiss(cx);
+                }))
                 .on_dismiss(cx.listener(|this, _, _, cx| this.dismiss(cx)))
                 .into_any_element(),
             AutoUpdateStatus::Idle | AutoUpdateStatus::Checking => Empty.into_any_element(),
@@ -415,7 +418,7 @@ mod tests {
             cx.pending_prompt(),
             Some((
                 "Couldn't check for updates".to_string(),
-                "Zaku couldn't check for updates. Check your internet connection and try again."
+                "Zaku couldn't check for updates. Please check your internet connection or try again later."
                     .to_string(),
             )),
             "manual failure should show error prompt"
@@ -426,6 +429,10 @@ mod tests {
         assert!(
             !cx.has_pending_prompt(),
             "only window 1 should show an error prompt"
+        );
+        assert!(
+            !update_version2.read_with(cx, |update_version, _| update_version.is_dismissed()),
+            "closing the prompt should keep the failure visible"
         );
     }
 
@@ -476,7 +483,7 @@ mod tests {
             cx.pending_prompt(),
             Some((
                 "Couldn't check for updates".to_string(),
-                "Zaku couldn't check for updates. Check your internet connection and try again."
+                "Zaku couldn't check for updates. Please check your internet connection or try again later."
                     .to_string(),
             )),
             "a repeated error should complete the new manual check"

@@ -123,10 +123,10 @@ impl UpdateButton {
             .with_dismiss()
     }
 
-    pub fn failed(error: impl Into<SharedString>) -> Self {
+    pub fn failed() -> Self {
         Self::new(IconAsset::Warning, "Failed to Update")
             .icon_color(Color::Warning)
-            .tooltip(error)
+            .tooltip("Zaku couldn't update. Click to open logs.")
             .with_dismiss()
     }
 

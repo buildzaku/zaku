@@ -18,7 +18,18 @@ impl ApplicationMenu {
 
     fn build_menu(window: &mut Window, cx: &mut App) -> Entity<ContextMenu> {
         ContextMenu::build(window, cx, |menu, _window, _cx| {
-            menu.action(
+            menu.when(
+                cfg!(any(target_os = "linux", target_os = "windows")),
+                |menu| {
+                    menu.action("About Zaku", actions::zaku::About.boxed_clone())
+                        .action(
+                            "Check for Updates",
+                            actions::auto_update::Check.boxed_clone(),
+                        )
+                        .separator()
+                },
+            )
+            .action(
                 "Open Settings File",
                 actions::zaku::OpenSettingsFile.boxed_clone(),
             )
