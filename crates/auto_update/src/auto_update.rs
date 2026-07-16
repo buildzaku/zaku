@@ -11,6 +11,8 @@ use gpui::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
+#[cfg(target_os = "linux")]
+use std::{error, fmt};
 #[cfg(target_os = "macos")]
 use std::mem;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -30,10 +32,73 @@ use workspace::Workspace;
 
 use crate::update_version::UpdateVersion;
 
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+struct MissingDependencyError(String);
+
+#[cfg(target_os = "linux")]
+impl fmt::Display for MissingDependencyError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.0)
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl error::Error for MissingDependencyError {}
+
 const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "auto-updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_hours(1);
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const INSTALLER_DIR_PREFIX: &str = "zaku-auto-update";
+
+#[cfg(target_os = "linux")]
+fn linux_rsync_install_hint() -> &'static str {
+    let os_release = match std::fs::read_to_string("/etc/os-release") {
+        Ok(os_release) => os_release,
+        Err(_) => return "Please install rsync using your package manager",
+    };
+
+    let mut distribution_ids = Vec::new();
+    for line in os_release.lines() {
+        let line = line.trim();
+        if let Some(value) = line.strip_prefix("ID=") {
+            distribution_ids.push(value.trim_matches('"').to_ascii_lowercase());
+        } else if let Some(value) = line.strip_prefix("ID_LIKE=") {
+            for distribution_id in value.trim_matches('"').split_whitespace() {
+                distribution_ids.push(distribution_id.to_ascii_lowercase());
+            }
+        }
+    }
+
+    let package_manager_hint = if distribution_ids
+        .iter()
+        .any(|distribution_id| distribution_id == "arch")
+    {
+        Some("Install it with: sudo pacman -S rsync")
+    } else if distribution_ids
+        .iter()
+        .any(|distribution_id| distribution_id == "debian" || distribution_id == "ubuntu")
+    {
+        Some("Install it with: sudo apt install rsync")
+    } else if distribution_ids.iter().any(|distribution_id| {
+        distribution_id == "fedora"
+            || distribution_id == "rhel"
+            || distribution_id == "centos"
+            || distribution_id == "rocky"
+            || distribution_id == "almalinux"
+    }) {
+        Some("Install it with: sudo dnf install rsync")
+    } else if distribution_ids
+        .iter()
+        .any(|distribution_id| distribution_id == "nixos")
+    {
+        Some("Install pkgs.rsync from nixpkgs")
+    } else {
+        None
+    };
+
+    package_manager_hint.unwrap_or("Please install rsync using your package manager")
+}
 
 #[derive(Debug, Clone)]
 pub enum AutoUpdateStatus {
@@ -336,7 +401,17 @@ impl AutoUpdater {
             match this.update(cx, |this, cx| {
                 this.pending_poll = None;
                 if let Err(error) = result {
+                    #[cfg(target_os = "linux")]
+                    let is_missing_dependency =
+                        error.downcast_ref::<MissingDependencyError>().is_some();
                     this.status = match this.update_check_type {
+                        #[cfg(target_os = "linux")]
+                        UpdateCheckType::Automatic if is_missing_dependency => {
+                            log::warn!("Auto update: {error}");
+                            AutoUpdateStatus::Failed {
+                                error: Arc::new(error),
+                            }
+                        }
                         UpdateCheckType::Automatic => {
                             log::info!("Auto update check failed: {error:?}");
                             AutoUpdateStatus::Idle
@@ -551,6 +626,15 @@ impl AutoUpdater {
     }
 
     fn check_dependencies() -> anyhow::Result<()> {
+        #[cfg(target_os = "linux")]
+        if which::which("rsync").is_err() {
+            let install_hint = linux_rsync_install_hint();
+            return Err(MissingDependencyError(format!(
+                "rsync is required for auto-updates but is not installed. {install_hint}"
+            ))
+            .into());
+        }
+
         #[cfg(target_os = "macos")]
         anyhow::ensure!(
             which::which("rsync").is_ok(),
@@ -562,6 +646,7 @@ impl AutoUpdater {
 
     fn target_path(installer_dir: &InstallerDir) -> anyhow::Result<PathBuf> {
         let filename = match OS {
+            "linux" => "Zaku.tar.gz",
             "macos" => "Zaku.dmg",
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         };
@@ -573,9 +658,12 @@ impl AutoUpdater {
         installer_dir: InstallerDir,
         target_path: PathBuf,
         running_app_path: PathBuf,
-        background_executor: BackgroundExecutor,
+        #[cfg(any(target_os = "linux", target_os = "windows"))] _: BackgroundExecutor,
+        #[cfg(target_os = "macos")] background_executor: BackgroundExecutor,
     ) -> anyhow::Result<Option<PathBuf>> {
         match OS {
+            #[cfg(target_os = "linux")]
+            "linux" => install_release_linux(&installer_dir, &target_path, running_app_path).await,
             #[cfg(target_os = "macos")]
             "macos" => {
                 install_release_macos(
@@ -689,6 +777,73 @@ async fn download_release(
     log::info!("Downloaded update to {}", target_path.display());
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn install_release_linux(
+    installer_dir: &InstallerDir,
+    downloaded_tar_gz: &Path,
+    running_app_path: PathBuf,
+) -> anyhow::Result<Option<PathBuf>> {
+    let home_dir = PathBuf::from(
+        std::env::var("HOME").context("no HOME environment variable set")?,
+    );
+
+    let extracted = installer_dir.path().join("zaku");
+    smol::fs::create_dir_all(&extracted)
+        .await
+        .context("failed to create directory into which to extract update")?;
+
+    let mut command = util::command::new_command("tar");
+    command
+        .arg("-xzf")
+        .arg(downloaded_tar_gz)
+        .arg("-C")
+        .arg(&extracted);
+    let output = command
+        .output()
+        .await
+        .with_context(|| format!("failed to extract: {command:?}"))?;
+
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to extract {} to {}: {:?}",
+        downloaded_tar_gz.display(),
+        extracted.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let app_folder_name = "zaku.app";
+    let from = extracted.join(app_folder_name);
+    let mut to = home_dir.join(".local");
+    let expected_suffix = format!("{app_folder_name}/libexec/zaku");
+
+    if let Some(prefix) = running_app_path
+        .to_str()
+        .and_then(|path| path.strip_suffix(&expected_suffix))
+    {
+        to = PathBuf::from(prefix);
+    }
+    smol::fs::create_dir_all(&to)
+        .await
+        .with_context(|| format!("failed to create installation prefix {}", to.display()))?;
+
+    let mut command = util::command::new_command("rsync");
+    command.args(["-av", "--delete"]).arg(&from).arg(&to);
+    let output = command
+        .output()
+        .await
+        .with_context(|| format!("failed to rsync: {command:?}"))?;
+
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to copy Zaku update from {} to {}: {:?}",
+        from.display(),
+        to.display(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    Ok(Some(to.join(expected_suffix)))
 }
 
 #[cfg(target_os = "macos")]
