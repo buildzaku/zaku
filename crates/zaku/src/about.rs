@@ -5,8 +5,8 @@ use gpui::{
 use std::sync::Arc;
 
 use metadata::{
-    ZAKU_BUILD_ID, ZAKU_COMMIT_SHA, ZAKU_DESCRIPTION, ZAKU_IDENTIFIER, ZAKU_NAME, ZAKU_REPOSITORY,
-    ZAKU_VERSION,
+    AppVersion, ZAKU_BUILD_ID, ZAKU_COMMIT_SHA, ZAKU_DESCRIPTION, ZAKU_IDENTIFIER, ZAKU_NAME,
+    ZAKU_REPOSITORY,
 };
 use ui::{
     ActiveTheme, Button, ButtonCommon, ButtonVariant, Clickable, Headline, Link, StyledTypography,
@@ -72,10 +72,9 @@ impl Render for AboutWindow {
                                     .child(Text::new("Version").size(TextSize::Small)),
                             )
                             .child(
-                                gpui::div()
-                                    .text_left()
-                                    .font_buffer(cx)
-                                    .child(Text::new(ZAKU_VERSION).size(TextSize::Small)),
+                                gpui::div().text_left().font_buffer(cx).child(
+                                    Text::new(AppVersion::display(cx)).size(TextSize::Small),
+                                ),
                             )
                             .when_some(ZAKU_BUILD_ID, |this, build_id| {
                                 this.child(

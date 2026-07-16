@@ -4,7 +4,7 @@ use std::env;
 
 pub const ZAKU_NAME: &str = env!("ZAKU_NAME");
 pub const ZAKU_DESCRIPTION: &str = env!("ZAKU_DESCRIPTION");
-pub const ZAKU_VERSION: &str = env!("CARGO_PKG_VERSION");
+const ZAKU_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const ZAKU_IDENTIFIER: &str = env!("ZAKU_IDENTIFIER");
 pub const ZAKU_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 pub const ZAKU_BUILD_ID: Option<&str> = option_env!("ZAKU_BUILD_ID");
