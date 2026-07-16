@@ -11,7 +11,7 @@ pub fn app_menu(_cx: &mut App) -> Vec<Menu> {
             disabled: false,
             items: vec![
                 MenuItem::action(format!("About {ZAKU_NAME}"), actions::zaku::About),
-                MenuItem::action("Check for Updates", actions::auto_update::Check),
+                MenuItem::action("Check for Updates", actions::updater::Check),
                 MenuItem::separator(),
                 MenuItem::submenu(Menu {
                     name: "Settings".into(),

@@ -1,5 +1,5 @@
 gpui::actions!(
-    auto_update,
+    updater,
     [
         /// Check for available updates.
         Check,

@@ -513,31 +513,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "auto_update"
-version = "0.0.0"
-dependencies = [
- "actions",
- "anyhow",
- "db",
- "futures",
- "gpui",
- "http_client 0.0.0",
- "log",
- "metadata",
- "parking_lot",
- "semver",
- "serde",
- "serde_json",
- "settings",
- "smol",
- "tempfile",
- "ui",
- "util 0.0.0",
- "which 8.0.4",
- "workspace",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7778,6 +7753,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "updater"
+version = "0.0.0"
+dependencies = [
+ "actions",
+ "anyhow",
+ "db",
+ "futures",
+ "gpui",
+ "http_client 0.0.0",
+ "log",
+ "metadata",
+ "parking_lot",
+ "semver",
+ "serde",
+ "serde_json",
+ "settings",
+ "smol",
+ "tempfile",
+ "ui",
+ "util 0.0.0",
+ "which 8.0.4",
+ "workspace",
+]
+
+[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9266,7 +9266,6 @@ dependencies = [
  "anyhow",
  "ashpd",
  "assets",
- "auto_update",
  "command_palette",
  "db",
  "editor",
@@ -9300,6 +9299,7 @@ dependencies = [
  "theme_settings",
  "title_bar",
  "ui",
+ "updater",
  "uuid",
  "workspace",
  "worktree",

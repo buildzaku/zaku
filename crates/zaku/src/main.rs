@@ -94,7 +94,7 @@ fn main() {
             app_session,
             languages,
         ));
-        auto_update::init(http_client, path::cache_dir().clone(), cx);
+        updater::init(http_client, path::cache_dir().clone(), cx);
         workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);

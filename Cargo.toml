@@ -3,7 +3,6 @@ resolver = "3"
 members = [
   "crates/actions",
   "crates/assets",
-  "crates/auto_update",
   "crates/collections",
   "crates/command_palette",
   "crates/command_palette_hooks",
@@ -47,6 +46,7 @@ members = [
   "crates/title_bar",
   "crates/ui",
   "crates/ui_macros",
+  "crates/updater",
   "crates/util",
   "crates/util_macros",
   "crates/workspace",
@@ -165,7 +165,6 @@ windows = { version = "0.62", features = [
 ##################################################
 actions = { path = "crates/actions" }
 assets = { path = "crates/assets" }
-auto_update = { path = "crates/auto_update" }
 collections = { path = "crates/collections" }
 command_palette = { path = "crates/command_palette" }
 command_palette_hooks = { path = "crates/command_palette_hooks" }
@@ -209,6 +208,7 @@ theme_settings = { path = "crates/theme_settings" }
 title_bar = { path = "crates/title_bar" }
 ui = { path = "crates/ui" }
 ui_macros = { path = "crates/ui_macros" }
+updater = { path = "crates/updater" }
 util = { path = "crates/util" }
 util_macros = { path = "crates/util_macros" }
 workspace = { path = "crates/workspace" }

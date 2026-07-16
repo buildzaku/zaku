@@ -22,10 +22,7 @@ impl ApplicationMenu {
                 cfg!(any(target_os = "linux", target_os = "windows")),
                 |menu| {
                     menu.action("About Zaku", actions::zaku::About.boxed_clone())
-                        .action(
-                            "Check for Updates",
-                            actions::auto_update::Check.boxed_clone(),
-                        )
+                        .action("Check for Updates", actions::updater::Check.boxed_clone())
                         .separator()
                 },
             )

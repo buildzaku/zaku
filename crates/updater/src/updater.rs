@@ -11,8 +11,6 @@ use gpui::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
-#[cfg(target_os = "linux")]
-use std::{error, fmt};
 #[cfg(target_os = "macos")]
 use std::mem;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -23,6 +21,8 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+#[cfg(target_os = "linux")]
+use std::{error, fmt};
 
 use db::kv::KeyValueStore;
 use http_client::{AsyncBody, HttpClient};
@@ -46,10 +46,10 @@ impl fmt::Display for MissingDependencyError {
 #[cfg(target_os = "linux")]
 impl error::Error for MissingDependencyError {}
 
-const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "auto-updater-should-show-updated-notification";
+const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "updater-should-show-updated-notification";
 const POLL_INTERVAL: Duration = Duration::from_hours(1);
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-const INSTALLER_DIR_PREFIX: &str = "zaku-auto-update";
+const INSTALLER_DIR_PREFIX: &str = "zaku-updater";
 
 #[cfg(target_os = "linux")]
 fn linux_rsync_install_hint() -> &'static str {
@@ -101,7 +101,7 @@ fn linux_rsync_install_hint() -> &'static str {
 }
 
 #[derive(Debug, Clone)]
-pub enum AutoUpdateStatus {
+pub enum UpdateStatus {
     Idle,
     Checking,
     Downloading {
@@ -120,33 +120,31 @@ pub enum AutoUpdateStatus {
     },
 }
 
-impl AutoUpdateStatus {
+impl UpdateStatus {
     pub fn is_updated(&self) -> bool {
         matches!(self, Self::Updated { .. })
     }
 }
 
-impl PartialEq for AutoUpdateStatus {
+impl PartialEq for UpdateStatus {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (AutoUpdateStatus::Idle, AutoUpdateStatus::Idle)
-            | (AutoUpdateStatus::Checking, AutoUpdateStatus::Checking) => true,
+            (UpdateStatus::Idle, UpdateStatus::Idle)
+            | (UpdateStatus::Checking, UpdateStatus::Checking) => true,
             (
-                AutoUpdateStatus::Downloading { version: v1, .. },
-                AutoUpdateStatus::Downloading { version: v2, .. },
+                UpdateStatus::Downloading { version: v1, .. },
+                UpdateStatus::Downloading { version: v2, .. },
             )
             | (
-                AutoUpdateStatus::Installing { version: v1 },
-                AutoUpdateStatus::Installing { version: v2 },
+                UpdateStatus::Installing { version: v1 },
+                UpdateStatus::Installing { version: v2 },
             )
-            | (
-                AutoUpdateStatus::Updated { version: v1 },
-                AutoUpdateStatus::Updated { version: v2 },
-            ) => v1 == v2,
-            (
-                AutoUpdateStatus::Failed { error: error1 },
-                AutoUpdateStatus::Failed { error: error2 },
-            ) => error1.to_string() == error2.to_string(),
+            | (UpdateStatus::Updated { version: v1 }, UpdateStatus::Updated { version: v2 }) => {
+                v1 == v2
+            }
+            (UpdateStatus::Failed { error: error1 }, UpdateStatus::Failed { error: error2 }) => {
+                error1.to_string() == error2.to_string()
+            }
             _ => false,
         }
     }
@@ -226,9 +224,9 @@ impl Settings for UpdateSettings {
 }
 
 #[derive(Default)]
-struct GlobalAutoUpdate(Option<Entity<AutoUpdater>>);
+struct GlobalUpdater(Option<Entity<Updater>>);
 
-impl Global for GlobalAutoUpdate {}
+impl Global for GlobalUpdater {}
 
 pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     cx.observe_new(|workspace: &mut Workspace, window, cx| {
@@ -248,7 +246,7 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
         });
         workspace.register_action({
             let update_version = update_version.clone();
-            move |_, _: &actions::auto_update::SimulateUpdateAvailable, _, cx| {
+            move |_, _: &actions::updater::SimulateUpdateAvailable, _, cx| {
                 update_version.update(cx, |update_version, cx| {
                     update_version.update_simulation(cx);
                 });
@@ -261,8 +259,8 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     .detach();
 
     let version = AppVersion::global(cx);
-    let auto_updater = cx.new(|cx| {
-        let updater = AutoUpdater::new(version, client, cache_dir, cx);
+    let updater = cx.new(|cx| {
+        let updater = Updater::new(version, client, cache_dir, cx);
         let mut update_subscription = UpdateSettings::get_global(cx)
             .automatic
             .then(|| updater.start_polling(cx));
@@ -280,12 +278,12 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
 
         updater
     });
-    cx.set_global(GlobalAutoUpdate(Some(auto_updater)));
+    cx.set_global(GlobalUpdater(Some(updater)));
     update_version::notify_if_app_was_updated(cx);
 }
 
-pub fn check_for_updates(_: &actions::auto_update::Check, window: &mut Window, cx: &mut App) {
-    if let Some(updater) = AutoUpdater::get(cx) {
+pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &mut App) {
+    if let Some(updater) = Updater::get(cx) {
         updater.update(cx, |updater, cx| {
             updater.poll(UpdateCheckType::Manual, cx);
         });
@@ -330,19 +328,19 @@ impl UpdateCheckType {
     }
 }
 
-pub struct AutoUpdater {
-    status: AutoUpdateStatus,
+pub struct Updater {
+    status: UpdateStatus,
     current_version: Version,
     client: Arc<dyn HttpClient>,
     cache_dir: PathBuf,
     pending_poll: Option<Task<Option<()>>>,
     update_check_type: UpdateCheckType,
-    dismissed_status: Option<AutoUpdateStatus>,
+    dismissed_status: Option<UpdateStatus>,
 }
 
-impl AutoUpdater {
+impl Updater {
     pub fn get(cx: &mut App) -> Option<Entity<Self>> {
-        cx.default_global::<GlobalAutoUpdate>().0.clone()
+        cx.default_global::<GlobalUpdater>().0.clone()
     }
 
     fn new(
@@ -352,7 +350,7 @@ impl AutoUpdater {
         _: &mut Context<Self>,
     ) -> Self {
         Self {
-            status: AutoUpdateStatus::Idle,
+            status: UpdateStatus::Idle,
             current_version,
             client,
             cache_dir,
@@ -407,18 +405,18 @@ impl AutoUpdater {
                     this.status = match this.update_check_type {
                         #[cfg(target_os = "linux")]
                         UpdateCheckType::Automatic if is_missing_dependency => {
-                            log::warn!("Auto update: {error}");
-                            AutoUpdateStatus::Failed {
+                            log::warn!("Updater: {error}");
+                            UpdateStatus::Failed {
                                 error: Arc::new(error),
                             }
                         }
                         UpdateCheckType::Automatic => {
-                            log::info!("Auto update check failed: {error:?}");
-                            AutoUpdateStatus::Idle
+                            log::info!("Updater check failed: {error:?}");
+                            UpdateStatus::Idle
                         }
                         UpdateCheckType::Manual => {
-                            log::error!("Auto update failed: {error:?}");
-                            AutoUpdateStatus::Failed {
+                            log::error!("Updater failed: {error:?}");
+                            UpdateStatus::Failed {
                                 error: Arc::new(error),
                             }
                         }
@@ -436,24 +434,24 @@ impl AutoUpdater {
         self.current_version.clone()
     }
 
-    pub fn status(&self) -> AutoUpdateStatus {
+    pub fn status(&self) -> UpdateStatus {
         self.status.clone()
     }
 
-    pub fn dismissed_status(&self) -> Option<AutoUpdateStatus> {
+    pub fn dismissed_status(&self) -> Option<UpdateStatus> {
         self.dismissed_status.clone()
     }
 
-    pub fn dismiss_status(&mut self, status: AutoUpdateStatus, cx: &mut Context<Self>) {
+    pub fn dismiss_status(&mut self, status: UpdateStatus, cx: &mut Context<Self>) {
         self.dismissed_status = Some(status);
         cx.notify();
     }
 
     pub fn dismiss(&mut self, cx: &mut Context<Self>) -> bool {
-        if let AutoUpdateStatus::Idle = self.status {
+        if let UpdateStatus::Idle = self.status {
             return false;
         }
-        self.status = AutoUpdateStatus::Idle;
+        self.status = UpdateStatus::Idle;
         cx.notify();
         true
     }
@@ -499,8 +497,8 @@ impl AutoUpdater {
             });
 
         this.update(cx, |this, cx| {
-            this.status = AutoUpdateStatus::Checking;
-            log::info!("Auto update: checking for updates");
+            this.status = UpdateStatus::Checking;
+            log::info!("Updater: checking for updates");
             cx.notify();
         });
 
@@ -514,8 +512,8 @@ impl AutoUpdater {
         let Some(newer_version) = newer_version else {
             this.update(cx, |this, cx| {
                 let status = match previous_status {
-                    AutoUpdateStatus::Updated { .. } => previous_status,
-                    _ => AutoUpdateStatus::Idle,
+                    UpdateStatus::Updated { .. } => previous_status,
+                    _ => UpdateStatus::Idle,
                 };
                 this.status = status;
                 cx.notify();
@@ -524,7 +522,7 @@ impl AutoUpdater {
         };
 
         this.update(cx, |this, cx| {
-            this.status = AutoUpdateStatus::Downloading {
+            this.status = UpdateStatus::Downloading {
                 version: newer_version.clone(),
                 progress: None,
             };
@@ -542,7 +540,7 @@ impl AutoUpdater {
             client,
             move |progress| {
                 progress_entity.update(&mut progress_cx, |this, cx| {
-                    if let AutoUpdateStatus::Downloading {
+                    if let UpdateStatus::Downloading {
                         progress: current_progress,
                         ..
                     } = &mut this.status
@@ -557,7 +555,7 @@ impl AutoUpdater {
         .with_context(|| format!("failed to download update to {}", target_path.display()))?;
 
         this.update(cx, |this, cx| {
-            this.status = AutoUpdateStatus::Installing {
+            this.status = UpdateStatus::Installing {
                 version: newer_version.clone(),
             };
             cx.notify();
@@ -592,7 +590,7 @@ impl AutoUpdater {
         this.update(cx, |this, cx| {
             this.set_should_show_update_notification(true, cx)
                 .detach_and_log_err(cx);
-            this.status = AutoUpdateStatus::Updated {
+            this.status = UpdateStatus::Updated {
                 version: newer_version,
             };
             cx.notify();
@@ -603,7 +601,7 @@ impl AutoUpdater {
     fn check_if_fetched_version_is_newer(
         installed_version: Version,
         fetched_version: &str,
-        status: AutoUpdateStatus,
+        status: UpdateStatus,
     ) -> anyhow::Result<Option<Version>> {
         let fetched_version = fetched_version
             .parse::<Version>()
@@ -614,7 +612,7 @@ impl AutoUpdater {
             "stable release version must not contain prerelease or build metadata"
         );
 
-        let current_version = if let AutoUpdateStatus::Updated { version } = status {
+        let current_version = if let UpdateStatus::Updated { version } = status {
             version
         } else {
             installed_version
@@ -785,9 +783,8 @@ async fn install_release_linux(
     downloaded_tar_gz: &Path,
     running_app_path: PathBuf,
 ) -> anyhow::Result<Option<PathBuf>> {
-    let home_dir = PathBuf::from(
-        std::env::var("HOME").context("no HOME environment variable set")?,
-    );
+    let home_dir =
+        PathBuf::from(std::env::var("HOME").context("no HOME environment variable set")?);
 
     let extracted = installer_dir.path().join("zaku");
     smol::fs::create_dir_all(&extracted)
@@ -974,7 +971,7 @@ mod tests {
     impl Global for InstallOverride {}
 
     #[gpui::test]
-    fn test_auto_update_defaults_to_true(cx: &mut TestAppContext) {
+    fn test_updater_defaults_to_true(cx: &mut TestAppContext) {
         cx.update(|cx| {
             settings::init(cx);
             assert!(
@@ -985,7 +982,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn test_auto_update(cx: &mut TestAppContext) {
+    async fn test_updater(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
         let release_available = Arc::new(AtomicBool::new(false));
@@ -1042,11 +1039,11 @@ mod tests {
             crate::init(http_client, cache_dir.path().to_path_buf(), cx);
         });
 
-        let auto_updater = cx.update(|cx| AutoUpdater::get(cx).unwrap());
+        let updater = cx.update(|cx| Updater::get(cx).unwrap());
         cx.background_executor.run_until_parked();
 
-        auto_updater.read_with(cx, |updater, _| {
-            assert_eq!(updater.status(), AutoUpdateStatus::Idle);
+        updater.read_with(cx, |updater, _| {
+            assert_eq!(updater.status(), UpdateStatus::Idle);
             assert_eq!(updater.current_version(), Version::new(26, 0, 0));
         });
 
@@ -1054,11 +1051,11 @@ mod tests {
         cx.background_executor.advance_clock(POLL_INTERVAL);
         cx.background_executor.run_until_parked();
 
-        let status = auto_updater.read_with(cx, |updater, _| updater.status());
+        let status = updater.read_with(cx, |updater, _| updater.status());
         assert!(
             matches!(
                 &status,
-                AutoUpdateStatus::Downloading {
+                UpdateStatus::Downloading {
                     version,
                     progress: None,
                 } if version == &Version::new(26, 1, 0)
@@ -1083,15 +1080,15 @@ mod tests {
 
         loop {
             cx.run_until_parked();
-            let status = auto_updater.read_with(cx, |updater, _| updater.status());
-            if !matches!(status, AutoUpdateStatus::Downloading { .. }) {
+            let status = updater.read_with(cx, |updater, _| updater.status());
+            if !matches!(status, UpdateStatus::Downloading { .. }) {
                 break;
             }
         }
 
         assert_eq!(
-            auto_updater.read_with(cx, |updater, _| updater.status()),
-            AutoUpdateStatus::Updated {
+            updater.read_with(cx, |updater, _| updater.status()),
+            UpdateStatus::Updated {
                 version: Version::new(26, 1, 0),
             }
         );
@@ -1104,7 +1101,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_auto_update_watches_user_setting(cx: &mut TestAppContext) {
+    fn test_updater_watches_user_setting(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
         let request_count = Arc::new(AtomicUsize::new(0));
@@ -1156,7 +1153,7 @@ mod tests {
             crate::init(http_client, cache_dir.path().to_path_buf(), cx);
         });
 
-        let auto_updater = cx.update(|cx| AutoUpdater::get(cx).unwrap());
+        let updater = cx.update(|cx| Updater::get(cx).unwrap());
         cx.background_executor.run_until_parked();
         assert_eq!(
             request_count.load(Ordering::SeqCst),
@@ -1174,8 +1171,8 @@ mod tests {
         });
         cx.background_executor.run_until_parked();
         assert_eq!(
-            auto_updater.read_with(cx, |updater, _| updater.status()),
-            AutoUpdateStatus::Checking
+            updater.read_with(cx, |updater, _| updater.status()),
+            UpdateStatus::Checking
         );
         assert_eq!(
             request_count.load(Ordering::SeqCst),
@@ -1196,14 +1193,14 @@ mod tests {
 
         loop {
             cx.run_until_parked();
-            let status = auto_updater.read_with(cx, |updater, _| updater.status());
-            if !matches!(status, AutoUpdateStatus::Checking) {
+            let status = updater.read_with(cx, |updater, _| updater.status());
+            if !matches!(status, UpdateStatus::Checking) {
                 break;
             }
         }
         assert_eq!(
-            auto_updater.read_with(cx, |updater, _| updater.status()),
-            AutoUpdateStatus::Idle,
+            updater.read_with(cx, |updater, _| updater.status()),
+            UpdateStatus::Idle,
             "disabling automatic updates should not cancel an active check"
         );
 
@@ -1221,10 +1218,10 @@ mod tests {
         let installed_version = Version::new(26, 0, 0);
 
         for fetched_version in ["25.9.9", "26.0.0"] {
-            let newer_version = AutoUpdater::check_if_fetched_version_is_newer(
+            let newer_version = Updater::check_if_fetched_version_is_newer(
                 installed_version.clone(),
                 fetched_version,
-                AutoUpdateStatus::Idle,
+                UpdateStatus::Idle,
             );
 
             assert_eq!(newer_version.unwrap(), None);
@@ -1236,10 +1233,10 @@ mod tests {
         let installed_version = Version::new(26, 0, 0);
         let fetched_version = Version::new(26, 1, 0);
 
-        let newer_version = AutoUpdater::check_if_fetched_version_is_newer(
+        let newer_version = Updater::check_if_fetched_version_is_newer(
             installed_version,
             &fetched_version.to_string(),
-            AutoUpdateStatus::Idle,
+            UpdateStatus::Idle,
         );
 
         assert_eq!(newer_version.unwrap(), Some(fetched_version));
@@ -1248,12 +1245,12 @@ mod tests {
     #[test]
     fn test_stable_does_not_update_when_fetched_version_is_not_higher_than_cached() {
         let installed_version = Version::new(26, 0, 0);
-        let status = AutoUpdateStatus::Updated {
+        let status = UpdateStatus::Updated {
             version: Version::new(26, 1, 0),
         };
         let fetched_version = Version::new(26, 1, 0);
 
-        let newer_version = AutoUpdater::check_if_fetched_version_is_newer(
+        let newer_version = Updater::check_if_fetched_version_is_newer(
             installed_version,
             &fetched_version.to_string(),
             status,
@@ -1265,12 +1262,12 @@ mod tests {
     #[test]
     fn test_stable_does_update_when_fetched_version_is_higher_than_cached() {
         let installed_version = Version::new(26, 0, 0);
-        let status = AutoUpdateStatus::Updated {
+        let status = UpdateStatus::Updated {
             version: Version::new(26, 1, 0),
         };
         let fetched_version = Version::new(26, 1, 1);
 
-        let newer_version = AutoUpdater::check_if_fetched_version_is_newer(
+        let newer_version = Updater::check_if_fetched_version_is_newer(
             installed_version,
             &fetched_version.to_string(),
             status,

@@ -1,5 +1,5 @@
 [package]
-name = "auto_update"
+name = "updater"
 version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -8,8 +8,8 @@ rust-version.workspace = true
 publish.workspace = true
 
 [lib]
-name = "auto_update"
-path = "src/auto_update.rs"
+name = "updater"
+path = "src/updater.rs"
 
 [lints]
 workspace = true

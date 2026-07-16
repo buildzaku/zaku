@@ -1,4 +1,3 @@
-pub mod auto_update;
 pub mod command_palette;
 pub mod editor;
 pub mod menu;
@@ -8,5 +7,6 @@ pub mod projects;
 pub mod response_panel;
 pub mod text;
 pub mod theme;
+pub mod updater;
 pub mod workspace;
 pub mod zaku;
