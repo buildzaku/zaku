@@ -216,6 +216,7 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
         updater
     });
     cx.set_global(GlobalAutoUpdate(Some(auto_updater)));
+    update_version::notify_if_app_was_updated(cx);
 }
 
 pub fn check_for_updates(_: &actions::auto_update::Check, window: &mut Window, cx: &mut App) {

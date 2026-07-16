@@ -6,7 +6,8 @@ use std::fmt::Display;
 
 use crate::{
     ActiveTheme, ButtonCommon, ButtonLike, ButtonVariant, CircularProgress, Clickable, Color,
-    CommonAnimationExt, Icon, IconAsset, IconButton, IconSize, Text, TextCommon, TextSize, Tooltip,
+    CommonAnimationExt, FixedWidth, Icon, IconAsset, IconButton, IconSize, Text, TextCommon,
+    TextSize, Tooltip,
 };
 
 const CIRCLE_NOTCH_GLYPH_VIEWBOX: f32 = 32.0;
@@ -117,7 +118,9 @@ impl UpdateButton {
     }
 
     pub fn updated(version: impl Into<SharedString>) -> Self {
-        Self::new(IconAsset::Download, "Restart to Update").tooltip(version)
+        Self::new(IconAsset::Download, "Restart to Update")
+            .tooltip(version)
+            .with_dismiss()
     }
 
     pub fn failed(error: impl Into<SharedString>) -> Self {
@@ -154,15 +157,12 @@ impl RenderOnce for UpdateButton {
             .blend(colors.button_hover_background.opacity(0.7));
         let border_color = colors.text.opacity(0.15);
         let button_variant = ButtonVariant::Custom {
-            background,
+            background: gpui::transparent_black(),
             foreground: colors.button_foreground,
-            hover_background: if self.disabled {
-                background
-            } else {
-                hover_background
-            },
+            hover_background: gpui::transparent_black(),
             border: colors.button_border,
         };
+        let button_size = IconSize::Small.square(window, cx);
 
         let icon_element: AnyElement = if let Some(progress) = self.progress {
             let icon_box = IconSize::XSmall.rems().to_pixels(window.rem_size());
@@ -200,32 +200,54 @@ impl RenderOnce for UpdateButton {
             .flex()
             .items_center()
             .mr_2()
+            .h(button_size)
             .rounded_sm()
             .overflow_hidden()
             .border_1()
             .border_color(border_color)
             .bg(background)
             .child(
-                ButtonLike::new(button_id)
-                    .variant(button_variant)
-                    .child(label)
-                    .when_some(self.tooltip, |button, tooltip| button.tooltip(tooltip))
-                    .when(self.disabled, |button| {
-                        button.cursor_style(CursorStyle::Arrow)
+                gpui::div()
+                    .h_full()
+                    .rounded_l_sm()
+                    .when(!self.disabled, |segment| {
+                        segment.hover(move |style| style.bg(hover_background))
                     })
-                    .when_some(
-                        self.on_click.filter(|_| !self.disabled),
-                        |button, handler| button.on_click(handler),
+                    .child(
+                        ButtonLike::new(button_id)
+                            .height(gpui::relative(1.0))
+                            .variant(button_variant)
+                            .child(label)
+                            .when_some(self.tooltip, |button, tooltip| button.tooltip(tooltip))
+                            .when(self.disabled, |button| {
+                                button.cursor_style(CursorStyle::Arrow)
+                            })
+                            .when_some(
+                                self.on_click.filter(|_| !self.disabled),
+                                |button, handler| button.on_click(handler),
+                            ),
                     ),
             )
             .when(self.show_dismiss, |this| {
                 this.child(
-                    gpui::div().border_l_1().border_color(border_color).child(
-                        IconButton::new(dismiss_button_id, IconAsset::Close)
-                            .icon_size(IconSize::Indicator)
-                            .when_some(self.on_dismiss, |button, handler| button.on_click(handler))
-                            .tooltip(Tooltip::text("Dismiss")),
-                    ),
+                    gpui::div()
+                        .h_full()
+                        .w(button_size)
+                        .rounded_r_sm()
+                        .border_l_1()
+                        .border_color(border_color)
+                        .hover(move |style| style.bg(hover_background))
+                        .child(
+                            IconButton::new(dismiss_button_id, IconAsset::Close)
+                                .icon_size(IconSize::Indicator)
+                                .full_width()
+                                .height(gpui::relative(1.0))
+                                .variant(button_variant)
+                                .when_some(self.on_dismiss, |button, handler| {
+                                    button.on_click(handler)
+                                })
+                                .tooltip(Tooltip::text("Dismiss")),
+                        ),
                 )
             })
     }

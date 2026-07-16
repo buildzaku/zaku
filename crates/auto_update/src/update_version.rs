@@ -1,15 +1,24 @@
 use anyhow::anyhow;
 use gpui::{
-    AnyView, App, AppContext, Context, Empty, Entity, IntoElement, PromptLevel, Render, TaskExt,
-    Window,
+    AnyView, App, AppContext, Context, DismissEvent, Empty, Entity, IntoElement, PromptLevel,
+    Render, TaskExt, Window,
 };
 use semver::Version;
 use std::sync::Arc;
 
+use metadata::{AppVersion, ZAKU_NAME, ZAKU_REPOSITORY};
 use ui::{Text, Tooltip, UpdateButton};
-use workspace::{pane::Pane, status_bar::StatusItemView};
+use workspace::{
+    notifications::{
+        NotificationId, show_app_notification, simple_message_notification::MessageNotification,
+    },
+    pane::Pane,
+    status_bar::StatusItemView,
+};
 
 use crate::{AutoUpdateStatus, AutoUpdater, UpdateCheckType};
+
+struct UpdateNotification;
 
 struct ManualUpdateCheck {
     initial_status: AutoUpdateStatus,
@@ -234,6 +243,7 @@ impl Render for UpdateVersion {
             AutoUpdateStatus::Updated { version } => {
                 UpdateButton::updated(Self::version_tooltip_message(version))
                     .on_click(|_, _, cx| workspace::reload(cx))
+                    .on_dismiss(cx.listener(|this, _, _, cx| this.dismiss(cx)))
                     .into_any_element()
             }
             AutoUpdateStatus::Failed { error } => UpdateButton::failed(error.to_string())
@@ -249,6 +259,49 @@ impl Render for UpdateVersion {
 
 impl StatusItemView for UpdateVersion {
     fn set_active_pane(&mut self, _: &Entity<Pane>, _: &mut Window, _: &mut Context<Self>) {}
+}
+
+pub(crate) fn show_update_notification(cx: &mut App) {
+    let version = AppVersion::display(cx);
+    show_app_notification(
+        NotificationId::unique::<UpdateNotification>(),
+        cx,
+        move |cx| {
+            let version = version.clone();
+            cx.new(move |cx| {
+                MessageNotification::new(format!("Updated to {ZAKU_NAME} {version}"), cx)
+                    .primary_message("View Release")
+                    .primary_on_click(move |_, cx| {
+                        cx.open_url(&format!("{ZAKU_REPOSITORY}/releases/tag/{version}"));
+                        cx.emit(DismissEvent);
+                    })
+                    .show_suppress_button(false)
+            })
+        },
+    );
+}
+
+pub(crate) fn notify_if_app_was_updated(cx: &mut App) {
+    let Some(updater) = AutoUpdater::get(cx) else {
+        return;
+    };
+
+    let should_show_notification = updater.read(cx).should_show_update_notification(cx);
+
+    cx.spawn(async move |cx| {
+        if should_show_notification.await? {
+            cx.update(|cx| {
+                show_update_notification(cx);
+                updater.update(cx, |updater, cx| {
+                    updater
+                        .set_should_show_update_notification(false, cx)
+                        .detach_and_log_err(cx);
+                });
+            });
+        }
+        anyhow::Ok(())
+    })
+    .detach();
 }
 
 #[cfg(test)]

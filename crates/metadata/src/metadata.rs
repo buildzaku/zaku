@@ -34,6 +34,21 @@ impl AppVersion {
     pub fn global(cx: &App) -> Version {
         cx.global::<GlobalAppVersion>().0.clone()
     }
+
+    pub fn display(cx: &App) -> String {
+        let Version {
+            major,
+            minor,
+            patch,
+            ..
+        } = &cx.global::<GlobalAppVersion>().0;
+
+        if *patch == 0 {
+            format!("{major}.{minor}")
+        } else {
+            format!("{major}.{minor}.{patch}")
+        }
+    }
 }
 
 pub fn init(cx: &mut App) {
