@@ -151,7 +151,8 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     // SAFETY: `window_class` and the resources it references remain valid for the duration of
     // this call.
     if unsafe { RegisterClassW(&window_class) } == 0 {
-        return Err(WindowsError::from_win32()).context("failed to register updater window class");
+        return Err(WindowsError::from_thread())
+            .context("failed to register updater window class");
     }
 
     let mut desktop = RECT::default();
@@ -271,7 +272,7 @@ unsafe extern "system" fn window_proc(
                     let text = HSTRING::from("Updating Zaku...");
                     // SAFETY: `paint.device_context` is a valid `HDC`.
                     if let Err(error) =
-                        unsafe { TextOutW(paint.device_context, 20, 15, text.as_wide()).ok() }
+                        unsafe { TextOutW(paint.device_context, 20, 15, &text).ok() }
                     {
                         log::error!("Failed to draw updater window text: {error}");
                     }

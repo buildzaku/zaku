@@ -81,7 +81,7 @@ cfg_select! {
                 let BOOL(message_status) = unsafe { GetMessageW(&mut message, None, 0, 0) };
                 match message_status {
                     -1 => {
-                        return Err(WindowsError::from_win32())
+                        return Err(WindowsError::from_thread())
                             .context("failed to read updater window message");
                     }
                     0 => break,
