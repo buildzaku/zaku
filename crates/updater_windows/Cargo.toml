@@ -1,0 +1,29 @@
+[package]
+name = "updater_windows"
+version.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "updater_windows"
+path = "src/updater_windows.rs"
+
+[lints]
+workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+anyhow = { workspace = true }
+log = { workspace = true }
+logger = { workspace = true }
+path = { workspace = true }
+scopeguard = { workspace = true }
+windows = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dev-dependencies]
+tempfile = { workspace = true }
+
+[build-dependencies]
+resources = { workspace = true }

@@ -1,13 +1,15 @@
-#[cfg(target_os = "linux")]
-use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
 
 use anyhow::anyhow;
+#[cfg(target_os = "linux")]
+use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
 use indoc::formatdoc;
-
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
-
 use std::{
     collections::HashMap,
     io::{ErrorKind, IsTerminal},
@@ -15,11 +17,15 @@ use std::{
     sync::Arc,
 };
 use uuid::Uuid;
+#[cfg(target_os = "windows")]
+use windows::{Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID, core::HSTRING};
 
 use assets::Assets;
 use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
 use language::LanguageRegistry;
+#[cfg(target_os = "windows")]
+use metadata::ZAKU_IDENTIFIER;
 use reqwest_client::ReqwestClient;
 use session::{AppSession, Session};
 use theme::{ActiveTheme, GlobalTheme, LoadThemes};
@@ -40,11 +46,21 @@ fn main() {
     if std::io::stdout().is_terminal() {
         logger::init_output_stdout();
     } else {
-        let result = logger::init_output_file(path::log_file(), Some(path::old_log_file()));
+        let result =
+            logger::init_output_file(path::log_file().clone(), Some(path::old_log_file().clone()));
         if let Err(error) = result {
             eprintln!("Could not open log file: {error}... Defaulting to stdout");
             logger::init_output_stdout();
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    // SAFETY: `HSTRING::from(ZAKU_IDENTIFIER)` provides a valid UTF-16 buffer for the duration of
+    // this call.
+    if let Err(error) =
+        unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(ZAKU_IDENTIFIER)) }
+    {
+        log::error!("Failed to set Windows application user model ID: {error}");
     }
 
     let app =

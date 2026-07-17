@@ -4,6 +4,8 @@ use anyhow::Context as _;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use futures::StreamExt;
 use futures::{AsyncReadExt, AsyncWriteExt};
+#[cfg(target_os = "windows")]
+use gpui::Subscription;
 use gpui::{
     App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, Global, PromptLevel, Task,
     TaskExt, Window,
@@ -11,6 +13,8 @@ use gpui::{
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
+#[cfg(target_os = "windows")]
+use std::io;
 #[cfg(target_os = "macos")]
 use std::mem;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -316,6 +320,37 @@ impl InstallerDir {
     }
 }
 
+#[cfg(target_os = "windows")]
+struct InstallerDir(PathBuf);
+
+#[cfg(target_os = "windows")]
+impl InstallerDir {
+    async fn new() -> anyhow::Result<Self> {
+        let installer_dir = std::env::current_exe()?
+            .parent()
+            .context("no parent directory for Zaku.exe")?
+            .join("updates");
+        match smol::fs::metadata(&installer_dir).await {
+            Ok(_) => smol::fs::remove_dir_all(&installer_dir).await?,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "failed to read update directory metadata {}",
+                        installer_dir.display()
+                    )
+                });
+            }
+        }
+        smol::fs::create_dir(&installer_dir).await?;
+        Ok(Self(installer_dir))
+    }
+
+    fn path(&self) -> &Path {
+        self.0.as_path()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UpdateCheckType {
     Automatic,
@@ -332,8 +367,14 @@ pub struct Updater {
     status: UpdateStatus,
     current_version: Version,
     client: Arc<dyn HttpClient>,
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     cache_dir: PathBuf,
     pending_poll: Option<Task<Option<()>>>,
+    // Windows cannot replace the running executable, so this keeps the quit callback
+    // subscribed to launch the updater helper after Zaku exits. On restart, the
+    // subscription is removed because the restart path launches the helper instead.
+    #[cfg(target_os = "windows")]
+    quit_subscription: Option<Subscription>,
     update_check_type: UpdateCheckType,
     dismissed_status: Option<UpdateStatus>,
 }
@@ -346,15 +387,29 @@ impl Updater {
     fn new(
         current_version: Version,
         client: Arc<dyn HttpClient>,
-        cache_dir: PathBuf,
-        _: &mut Context<Self>,
+        #[cfg(any(target_os = "linux", target_os = "macos"))] cache_dir: PathBuf,
+        #[cfg(target_os = "windows")] _: PathBuf,
+        #[cfg(any(target_os = "linux", target_os = "macos"))] _: &mut Context<Self>,
+        #[cfg(target_os = "windows")] cx: &mut Context<Self>,
     ) -> Self {
+        #[cfg(target_os = "windows")]
+        let quit_subscription = Some(cx.on_app_quit(|_, _| finalize_update_on_quit()));
+
+        #[cfg(target_os = "windows")]
+        cx.on_app_restart(|this, _| {
+            this.quit_subscription.take();
+        })
+        .detach();
+
         Self {
             status: UpdateStatus::Idle,
             current_version,
             client,
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             cache_dir,
             pending_poll: None,
+            #[cfg(target_os = "windows")]
+            quit_subscription,
             update_check_type: UpdateCheckType::Automatic,
             dismissed_status: None,
         }
@@ -366,6 +421,11 @@ impl Updater {
             .detach();
 
         cx.spawn(async move |this, cx| {
+            #[cfg(target_os = "windows")]
+            if let Err(error) = cleanup_windows().await {
+                log::warn!("Failed to clean up old update directories: {error:#}");
+            }
+
             loop {
                 this.update(cx, |this, cx| {
                     this.poll(UpdateCheckType::Automatic, cx);
@@ -486,15 +546,15 @@ impl Updater {
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> anyhow::Result<()> {
         Self::check_dependencies()?;
 
-        let (client, cache_dir, installed_version, previous_status) =
-            this.read_with(cx, |this, _| {
-                (
-                    this.client.clone(),
-                    this.cache_dir.clone(),
-                    this.current_version.clone(),
-                    this.status.clone(),
-                )
-            });
+        let (client, installed_version, previous_status) = this.read_with(cx, |this, _| {
+            (
+                this.client.clone(),
+                this.current_version.clone(),
+                this.status.clone(),
+            )
+        });
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let cache_dir = this.read_with(cx, |this, _| this.cache_dir.clone());
 
         this.update(cx, |this, cx| {
             this.status = UpdateStatus::Checking;
@@ -529,8 +589,13 @@ impl Updater {
             cx.notify();
         });
 
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let installer_dir =
             InstallerDir::new(&cache_dir).context("failed to create installer dir")?;
+        #[cfg(target_os = "windows")]
+        let installer_dir = InstallerDir::new()
+            .await
+            .context("failed to create installer dir")?;
         let target_path = Self::target_path(&installer_dir)?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
@@ -646,6 +711,7 @@ impl Updater {
         let filename = match OS {
             "linux" => "Zaku.tar.gz",
             "macos" => "Zaku.dmg",
+            "windows" => "Zaku.exe",
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         };
 
@@ -653,9 +719,11 @@ impl Updater {
     }
 
     async fn install_release(
-        installer_dir: InstallerDir,
+        #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
+        #[cfg(target_os = "windows")] _: InstallerDir,
         target_path: PathBuf,
-        running_app_path: PathBuf,
+        #[cfg(any(target_os = "linux", target_os = "macos"))] running_app_path: PathBuf,
+        #[cfg(target_os = "windows")] _: PathBuf,
         #[cfg(any(target_os = "linux", target_os = "windows"))] _: BackgroundExecutor,
         #[cfg(target_os = "macos")] background_executor: BackgroundExecutor,
     ) -> anyhow::Result<Option<PathBuf>> {
@@ -672,6 +740,8 @@ impl Updater {
                 )
                 .await
             }
+            #[cfg(target_os = "windows")]
+            "windows" => install_release_windows(&target_path).await,
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         }
     }
@@ -737,9 +807,21 @@ async fn download_release(
     let total_bytes = response
         .headers()
         .get(http_client::http::header::CONTENT_LENGTH)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|total_bytes| *total_bytes > 0);
+        .map(|value| -> anyhow::Result<u64> {
+            value
+                .to_str()
+                .context("content length should be valid text")?
+                .parse::<u64>()
+                .context("content length should be a valid integer")
+        })
+        .transpose();
+    let total_bytes = match total_bytes {
+        Ok(total_bytes) => total_bytes.filter(|total_bytes| *total_bytes > 0),
+        Err(error) => {
+            log::warn!("Failed to read update content length: {error:#}");
+            None
+        }
+    };
 
     let mut downloaded_bytes = 0_u64;
     let mut last_reported_percent = None;
@@ -899,6 +981,83 @@ async fn install_release_macos(
     );
 
     Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+async fn cleanup_windows() -> anyhow::Result<()> {
+    let app_dir = std::env::current_exe()?
+        .parent()
+        .context("no parent directory for Zaku.exe")?
+        .to_path_buf();
+
+    for directory in ["updates", "install", "old"] {
+        let directory = app_dir.join(directory);
+        match smol::fs::remove_dir_all(&directory).await {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to remove update directory {}", directory.display())
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+async fn install_release_windows(downloaded_installer: &Path) -> anyhow::Result<Option<PathBuf>> {
+    let mut command = util::command::new_command(downloaded_installer);
+    command
+        .arg("/verysilent")
+        .arg("/update=true")
+        .arg("/MERGETASKS=!desktopicon")
+        .arg("/NORESTART");
+    let output = command.output().await?;
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to start installer: {:?}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let helper_path = std::env::current_exe()?
+        .parent()
+        .context("no parent directory for Zaku.exe")?
+        .join("tools")
+        .join("updater_windows.exe");
+    Ok(Some(helper_path))
+}
+
+#[cfg(target_os = "windows")]
+pub async fn finalize_update_on_quit() {
+    let current_exe = match std::env::current_exe() {
+        Ok(current_exe) => current_exe,
+        Err(error) => {
+            log::error!("Failed to locate current executable while finalizing update: {error}");
+            return;
+        }
+    };
+    let Some(application_dir) = current_exe.parent() else {
+        log::error!("Failed to locate application directory while finalizing update");
+        return;
+    };
+    let versions_path = application_dir.join("updates").join("versions.txt");
+    if !versions_path.exists() {
+        return;
+    }
+
+    let helper_path = application_dir.join("tools").join("updater_windows.exe");
+    let mut command = util::command::new_command(helper_path);
+    command.args(["--launch", "false"]);
+    match command.spawn() {
+        Ok(mut child) => {
+            if let Err(error) = child.status().await {
+                log::error!("Failed to wait for Windows update helper: {error}");
+            }
+        }
+        Err(error) => log::error!("Failed to start Windows update helper: {error}"),
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]

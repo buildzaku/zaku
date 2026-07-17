@@ -436,7 +436,8 @@ impl ProjectPanel {
         let expanded_dir_ids = self.tree_state.expanded_dir_ids.as_deref().unwrap_or(&[]);
         let is_expanded = entry.kind.is_dir() && expanded_dir_ids.binary_search(&entry.id).is_ok();
         let file_name = file_name_for_entry(snapshot, entry);
-        let depth = u16::try_from(display_depth(entry)).unwrap_or(u16::MAX);
+        let depth =
+            u16::try_from(display_depth(entry)).expect("project entry depth should fit in u16");
         let mut prefix = None;
         let mut is_invalid = false;
         if let Some(metadata) = self.project.read(cx).entry_metadata(entry) {

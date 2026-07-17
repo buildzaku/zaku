@@ -358,16 +358,11 @@ impl TabSnapshot {
             seek_target = end_column.saturating_sub(cursor.byte_offset());
         }
 
-        let left_over_char_bytes = if cursor.is_char_boundary() {
-            0
-        } else {
-            u32::try_from(cursor.bytes_until_next_char().unwrap_or(0))
-                .expect("char boundary distance should fit in u32")
-        };
+        let remaining_char_bytes = cursor.bytes_to_next_char_boundary();
 
-        let collapsed_bytes = cursor.byte_offset() + left_over_char_bytes;
+        let collapsed_bytes = cursor.byte_offset() + remaining_char_bytes;
         let expanded_bytes =
-            cursor.byte_offset() + expanded_tab_len - tab_count + left_over_char_bytes;
+            cursor.byte_offset() + expanded_tab_len - tab_count + remaining_char_bytes;
 
         expanded_bytes + column.saturating_sub(collapsed_bytes)
     }
@@ -631,35 +626,24 @@ where
         }
     }
 
-    fn bytes_until_next_char(&self) -> Option<usize> {
-        self.current_chunk.as_ref().and_then(|(chunk, index)| {
-            let mut index = *index;
-            let mut diff = 0;
-            while index > 0 && chunk.chars & (1u128.unbounded_shl(index)) == 0 {
-                index -= 1;
-                diff += 1;
-            }
+    fn bytes_to_next_char_boundary(&self) -> u32 {
+        let Some((chunk, index)) = self.current_chunk.as_ref() else {
+            return 0;
+        };
 
-            if chunk.chars & (1 << index) != 0 {
-                let index = usize::try_from(index).expect("chunk byte index should fit in usize");
-                let chunk_text = chunk
-                    .text
-                    .get(index..)
-                    .expect("chunk byte index should be valid");
-                Some((chunk_text.chars().next()?).len_utf8().saturating_sub(diff))
-            } else {
-                None
-            }
-        })
+        let chunk_len = u32::try_from(chunk.text.len()).expect("chunk length should fit in u32");
+        if *index == chunk_len || chunk.chars & 1u128.unbounded_shl(*index) != 0 {
+            return 0;
+        }
+
+        let higher_chars = chunk.chars.unbounded_shr(*index + 1);
+        if higher_chars != 0 {
+            higher_chars.trailing_zeros() + 1
+        } else {
+            chunk_len - *index
+        }
     }
 
-    fn is_char_boundary(&self) -> bool {
-        self.current_chunk
-            .as_ref()
-            .is_some_and(|(chunk, index)| (chunk.chars & 1u128.unbounded_shl(*index)) != 0)
-    }
-
-    /// `distance`: length to move forward while searching for the next tab stop.
     fn seek(&mut self, distance: u32) -> Option<TabStop> {
         if distance == 0 {
             return None;

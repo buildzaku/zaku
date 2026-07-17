@@ -580,6 +580,18 @@ pub fn old_log_file() -> &'static PathBuf {
     OLD_LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log.old"))
 }
 
+/// Returns the path to the `Updater.log` file.
+pub fn updater_log_file() -> &'static PathBuf {
+    static UPDATER_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    UPDATER_LOG_FILE.get_or_init(|| logs_dir().join("Updater.log"))
+}
+
+/// Returns the path to the `Updater.log.old` file.
+pub fn old_updater_log_file() -> &'static PathBuf {
+    static OLD_UPDATER_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    OLD_UPDATER_LOG_FILE.get_or_init(|| logs_dir().join("Updater.log.old"))
+}
+
 /// Returns the path to the `settings.jsonc` file.
 pub fn settings_file() -> &'static PathBuf {
     static SETTINGS_FILE: OnceLock<PathBuf> = OnceLock::new();

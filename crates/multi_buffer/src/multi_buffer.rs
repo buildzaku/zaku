@@ -32,7 +32,7 @@ impl Add<usize> for MultiBufferRow {
     type Output = Self;
 
     fn add(self, rhs: usize) -> Self::Output {
-        let rhs = u32::try_from(rhs).unwrap_or(u32::MAX);
+        let rhs = u32::try_from(rhs).expect("multibuffer row offset should fit in u32");
         MultiBufferRow(self.0.saturating_add(rhs))
     }
 }

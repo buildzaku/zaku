@@ -258,10 +258,12 @@ mod tests {
     use super::*;
 
     use gpui::{Context, Modifiers, Render, TestAppContext};
-    use std::{cell::Cell, rc::Rc, time::Duration};
+    use std::{cell::Cell, rc::Rc};
 
     use settings::SettingsStore;
     use theme::LoadThemes;
+
+    use crate::TOOLTIP_SHOW_DELAY;
 
     struct TestTooltip {
         rendered: Rc<Cell<u32>>,
@@ -330,7 +332,7 @@ mod tests {
         );
         cx.run_until_parked();
 
-        cx.executor().advance_clock(Duration::from_millis(600));
+        cx.executor().advance_clock(TOOLTIP_SHOW_DELAY);
         cx.run_until_parked();
 
         assert!(tooltip_built.get(), "tooltip should have been built");

@@ -5790,6 +5790,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "resources"
+version = "0.0.0"
+dependencies = [
+ "embed-resource",
+ "indoc",
+ "semver",
+]
+
+[[package]]
 name = "response_panel"
 version = "0.0.0"
 dependencies = [
@@ -7778,6 +7787,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "updater_windows"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "logger",
+ "path",
+ "resources",
+ "scopeguard",
+ "tempfile",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9289,6 +9312,7 @@ dependencies = [
  "project_panel",
  "request_editor",
  "reqwest_client",
+ "resources",
  "response_panel",
  "serde_json",
  "session",
@@ -9301,6 +9325,7 @@ dependencies = [
  "ui",
  "updater",
  "uuid",
+ "windows 0.62.2",
  "workspace",
  "worktree",
 ]
