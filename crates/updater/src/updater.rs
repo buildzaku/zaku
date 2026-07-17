@@ -264,7 +264,13 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
 
     let version = AppVersion::global(cx);
     let updater = cx.new(|cx| {
-        let updater = Updater::new(version, client, cache_dir, cx);
+        let updater = Updater::new(
+            version,
+            client,
+            cache_dir,
+            Arc::new(PlatformReleaseInstaller),
+            cx,
+        );
         let mut update_subscription = UpdateSettings::get_global(cx)
             .automatic
             .then(|| updater.start_polling(cx));
@@ -351,6 +357,55 @@ impl InstallerDir {
     }
 }
 
+trait ReleaseInstaller: Send + Sync {
+    fn install(
+        &self,
+        installer_dir: InstallerDir,
+        target_path: PathBuf,
+        cx: &mut AsyncApp,
+    ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>>;
+}
+
+struct PlatformReleaseInstaller;
+
+impl ReleaseInstaller for PlatformReleaseInstaller {
+    fn install(
+        &self,
+        #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
+        #[cfg(target_os = "windows")] _: InstallerDir,
+        target_path: PathBuf,
+        cx: &mut AsyncApp,
+    ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>> {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let running_app_path = cx.update(|cx| cx.app_path())?;
+        let background_executor = cx.background_executor().clone();
+        #[cfg(target_os = "macos")]
+        let install_background_executor = background_executor.clone();
+
+        Ok(background_executor.spawn(async move {
+            match OS {
+                #[cfg(target_os = "linux")]
+                "linux" => {
+                    install_release_linux(&installer_dir, &target_path, running_app_path).await
+                }
+                #[cfg(target_os = "macos")]
+                "macos" => {
+                    install_release_macos(
+                        &installer_dir,
+                        &target_path,
+                        running_app_path,
+                        &install_background_executor,
+                    )
+                    .await
+                }
+                #[cfg(target_os = "windows")]
+                "windows" => install_release_windows(&target_path).await,
+                unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
+            }
+        }))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UpdateCheckType {
     Automatic,
@@ -369,6 +424,7 @@ pub struct Updater {
     client: Arc<dyn HttpClient>,
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     cache_dir: PathBuf,
+    installer: Arc<dyn ReleaseInstaller>,
     pending_poll: Option<Task<Option<()>>>,
     // Windows cannot replace the running executable, so this keeps the quit callback
     // subscribed to launch the updater helper after Zaku exits. On restart, the
@@ -389,6 +445,7 @@ impl Updater {
         client: Arc<dyn HttpClient>,
         #[cfg(any(target_os = "linux", target_os = "macos"))] cache_dir: PathBuf,
         #[cfg(target_os = "windows")] _: PathBuf,
+        installer: Arc<dyn ReleaseInstaller>,
         #[cfg(any(target_os = "linux", target_os = "macos"))] _: &mut Context<Self>,
         #[cfg(target_os = "windows")] cx: &mut Context<Self>,
     ) -> Self {
@@ -407,6 +464,7 @@ impl Updater {
             client,
             #[cfg(any(target_os = "linux", target_os = "macos"))]
             cache_dir,
+            installer,
             pending_poll: None,
             #[cfg(target_os = "windows")]
             quit_subscription,
@@ -546,13 +604,15 @@ impl Updater {
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> anyhow::Result<()> {
         Self::check_dependencies()?;
 
-        let (client, installed_version, previous_status) = this.read_with(cx, |this, _| {
-            (
-                this.client.clone(),
-                this.current_version.clone(),
-                this.status.clone(),
-            )
-        });
+        let (client, installed_version, previous_status, installer) =
+            this.read_with(cx, |this, _| {
+                (
+                    this.client.clone(),
+                    this.current_version.clone(),
+                    this.status.clone(),
+                    this.installer.clone(),
+                )
+            });
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         let cache_dir = this.read_with(cx, |this, _| this.cache_dir.clone());
 
@@ -626,26 +686,9 @@ impl Updater {
             cx.notify();
         });
 
-        #[cfg(test)]
-        let Some(install_result) = cx
-            .try_read_global::<tests::InstallOverride, _>(|global, _| global.0.clone())
-            .map(|test_install| test_install(&target_path, cx))
-        else {
-            return Ok(());
-        };
-
-        #[cfg(not(test))]
-        let install_result = {
-            let running_app_path = cx.update(|cx| cx.app_path())?;
-            let background_executor = cx.background_executor().clone();
-            cx.background_spawn(Self::install_release(
-                installer_dir,
-                target_path.clone(),
-                running_app_path,
-                background_executor,
-            ))
-            .await
-        };
+        let install_result = installer
+            .install(installer_dir, target_path.clone(), cx)?
+            .await;
         let new_binary_path = install_result
             .with_context(|| format!("failed to install update at: {}", target_path.display()))?;
         if let Some(new_binary_path) = new_binary_path {
@@ -716,34 +759,6 @@ impl Updater {
         };
 
         Ok(installer_dir.path().join(filename))
-    }
-
-    async fn install_release(
-        #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
-        #[cfg(target_os = "windows")] _: InstallerDir,
-        target_path: PathBuf,
-        #[cfg(any(target_os = "linux", target_os = "macos"))] running_app_path: PathBuf,
-        #[cfg(target_os = "windows")] _: PathBuf,
-        #[cfg(any(target_os = "linux", target_os = "windows"))] _: BackgroundExecutor,
-        #[cfg(target_os = "macos")] background_executor: BackgroundExecutor,
-    ) -> anyhow::Result<Option<PathBuf>> {
-        match OS {
-            #[cfg(target_os = "linux")]
-            "linux" => install_release_linux(&installer_dir, &target_path, running_app_path).await,
-            #[cfg(target_os = "macos")]
-            "macos" => {
-                install_release_macos(
-                    &installer_dir,
-                    &target_path,
-                    running_app_path,
-                    &background_executor,
-                )
-                .await
-            }
-            #[cfg(target_os = "windows")]
-            "windows" => install_release_windows(&target_path).await,
-            unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
-        }
     }
 
     fn check_if_fetched_version_is_newer_stable(
@@ -1119,15 +1134,32 @@ mod tests {
         rc::Rc,
         sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     };
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
 
     use http_client::{FakeHttpClient, Response};
 
-    pub(super) struct InstallOverride(
-        pub Rc<dyn Fn(&Path, &AsyncApp) -> anyhow::Result<Option<PathBuf>>>,
-    );
+    struct TestReleaseInstaller {
+        installed_dir: Arc<TempDir>,
+    }
 
-    impl Global for InstallOverride {}
+    impl ReleaseInstaller for TestReleaseInstaller {
+        fn install(
+            &self,
+            installer_dir: InstallerDir,
+            target_path: PathBuf,
+            cx: &mut AsyncApp,
+        ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>> {
+            let installed_dir = self.installed_dir.clone();
+            let background_executor = cx.background_executor().clone();
+
+            Ok(background_executor.spawn(async move {
+                let _installer_dir = installer_dir;
+                let installed_path = installed_dir.path().join("zaku");
+                smol::fs::copy(target_path, &installed_path).await?;
+                Ok(Some(installed_path))
+            }))
+        }
+    }
 
     #[gpui::test]
     fn test_updater_defaults_to_true(cx: &mut TestAppContext) {
@@ -1147,11 +1179,9 @@ mod tests {
         let release_available = Arc::new(AtomicBool::new(false));
         let (download_tx, download_rx) = oneshot::channel::<Vec<u8>>();
         let cache_dir = tempdir().unwrap();
+        let installed_dir = Arc::new(tempdir().unwrap());
 
-        cx.update(|cx| {
-            settings::init(cx);
-            metadata::init_test(Version::new(26, 0, 0), cx);
-
+        let (updater, _polling) = cx.update(|cx| {
             let release_available = Arc::clone(&release_available);
             let download_rx = Arc::new(Mutex::new(Some(download_rx)));
             let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
@@ -1195,10 +1225,21 @@ mod tests {
                     }
                 }
             });
-            crate::init(http_client, cache_dir.path().to_path_buf(), cx);
-        });
+            let updater = cx.new(|cx| {
+                Updater::new(
+                    Version::new(26, 0, 0),
+                    http_client,
+                    cache_dir.path().to_path_buf(),
+                    Arc::new(TestReleaseInstaller {
+                        installed_dir: installed_dir.clone(),
+                    }),
+                    cx,
+                )
+            });
+            let polling = updater.update(cx, |updater, cx| updater.start_polling(cx));
 
-        let updater = cx.update(|cx| Updater::get(cx).unwrap());
+            (updater, polling)
+        });
         cx.background_executor.run_until_parked();
 
         updater.read_with(cx, |updater, _| {
@@ -1222,25 +1263,16 @@ mod tests {
             "status should be downloading without progress, got {status:?}"
         );
 
-        let installed_dir = Arc::new(tempdir().unwrap());
-        cx.update(|cx| {
-            cx.set_global(InstallOverride(Rc::new({
-                let installed_dir = installed_dir.clone();
-                move |target_path, _| {
-                    let installed_path = installed_dir.path().join("zaku");
-                    std::fs::copy(target_path, &installed_path)?;
-                    Ok(Some(installed_path))
-                }
-            })));
-        });
-
         let update_contents = b"fake-zaku-update".to_vec();
         download_tx.send(update_contents.clone()).unwrap();
 
         loop {
             cx.run_until_parked();
             let status = updater.read_with(cx, |updater, _| updater.status());
-            if !matches!(status, UpdateStatus::Downloading { .. }) {
+            if !matches!(
+                status,
+                UpdateStatus::Downloading { .. } | UpdateStatus::Installing { .. }
+            ) {
                 break;
             }
         }

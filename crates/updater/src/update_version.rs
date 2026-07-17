@@ -315,6 +315,8 @@ mod tests {
 
     use http_client::FakeHttpClient;
 
+    use crate::PlatformReleaseInstaller;
+
     #[test]
     fn test_version_tooltip_message() {
         let message = UpdateVersion::version_tooltip_message(&Version::new(26, 1, 0));
@@ -343,6 +345,7 @@ mod tests {
                 Version::new(26, 1, 0),
                 FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
                 PathBuf::new(),
+                Arc::new(PlatformReleaseInstaller),
                 cx,
             )
         });
