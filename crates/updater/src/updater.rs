@@ -4,11 +4,12 @@ use anyhow::Context as _;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use futures::StreamExt;
 use futures::{AsyncReadExt, AsyncWriteExt};
+#[cfg(target_os = "macos")]
+use gpui::BackgroundExecutor;
 #[cfg(target_os = "windows")]
 use gpui::Subscription;
 use gpui::{
-    App, AppContext, AsyncApp, BackgroundExecutor, Context, Entity, Global, PromptLevel, Task,
-    TaskExt, Window,
+    App, AppContext, AsyncApp, Context, Entity, Global, PromptLevel, Task, TaskExt, Window,
 };
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -57,9 +58,8 @@ const INSTALLER_DIR_PREFIX: &str = "zaku-updater";
 
 #[cfg(target_os = "linux")]
 fn linux_rsync_install_hint() -> &'static str {
-    let os_release = match std::fs::read_to_string("/etc/os-release") {
-        Ok(os_release) => os_release,
-        Err(_) => return "Please install rsync using your package manager",
+    let Ok(os_release) = std::fs::read_to_string("/etc/os-release") else {
+        return "Please install rsync using your package manager";
     };
 
     let mut distribution_ids = Vec::new();
