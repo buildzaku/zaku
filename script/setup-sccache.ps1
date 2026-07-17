@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
-$SCCACHE_VERSION = "v0.14.0"
+$SCCACHE_VERSION = "v0.16.0"
 $SCCACHE_DIR = "./target/sccache"
 
 function Install-Sccache {
