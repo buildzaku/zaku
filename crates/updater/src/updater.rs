@@ -602,6 +602,7 @@ impl Updater {
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> anyhow::Result<()> {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         Self::check_dependencies()?;
 
         let (client, installed_version, previous_status, installer) =
@@ -731,6 +732,7 @@ impl Updater {
         ))
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn check_dependencies() -> anyhow::Result<()> {
         #[cfg(target_os = "linux")]
         if which::which("rsync").is_err() {
