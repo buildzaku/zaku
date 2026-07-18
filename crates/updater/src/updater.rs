@@ -11,7 +11,6 @@ use gpui::Subscription;
 use gpui::{
     App, AppContext, AsyncApp, Context, Entity, Global, PromptLevel, Task, TaskExt, Window,
 };
-use semver::Version;
 use serde::{Deserialize, Serialize};
 use smol::fs::File;
 #[cfg(target_os = "windows")]
@@ -109,15 +108,15 @@ pub enum UpdateStatus {
     Idle,
     Checking,
     Downloading {
-        version: Version,
+        version: AppVersion,
         /// Download progress in `0.0..=1.0`, or `None` when the size is unknown.
         progress: Option<f32>,
     },
     Installing {
-        version: Version,
+        version: AppVersion,
     },
     Updated {
-        version: Version,
+        version: AppVersion,
     },
     Failed {
         error: Arc<anyhow::Error>,
@@ -156,7 +155,7 @@ impl PartialEq for UpdateStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReleaseAsset {
-    pub version: String,
+    pub version: AppVersion,
     pub url: String,
 }
 
@@ -420,7 +419,7 @@ impl UpdateCheckType {
 
 pub struct Updater {
     status: UpdateStatus,
-    current_version: Version,
+    current_version: AppVersion,
     client: Arc<dyn HttpClient>,
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     cache_dir: PathBuf,
@@ -441,7 +440,7 @@ impl Updater {
     }
 
     fn new(
-        current_version: Version,
+        current_version: AppVersion,
         client: Arc<dyn HttpClient>,
         #[cfg(any(target_os = "linux", target_os = "macos"))] cache_dir: PathBuf,
         #[cfg(target_os = "windows")] _: PathBuf,
@@ -548,7 +547,7 @@ impl Updater {
         }));
     }
 
-    pub fn current_version(&self) -> Version {
+    pub fn current_version(&self) -> AppVersion {
         self.current_version.clone()
     }
 
@@ -626,7 +625,7 @@ impl Updater {
         let fetched_release_data = Self::get_release_asset(&this, OS, ARCH, cx).await?;
         let newer_version = Self::check_if_fetched_version_is_newer(
             installed_version,
-            &fetched_release_data.version,
+            fetched_release_data.version.clone(),
             previous_status.clone(),
         )?;
 
@@ -708,17 +707,13 @@ impl Updater {
     }
 
     fn check_if_fetched_version_is_newer(
-        installed_version: Version,
-        fetched_version: &str,
+        installed_version: AppVersion,
+        fetched_version: AppVersion,
         status: UpdateStatus,
-    ) -> anyhow::Result<Option<Version>> {
-        let fetched_version = fetched_version
-            .parse::<Version>()
-            .context("failed to parse stable release version")?;
+    ) -> anyhow::Result<Option<AppVersion>> {
         anyhow::ensure!(
-            fetched_version.pre == semver::Prerelease::EMPTY
-                && fetched_version.build == semver::BuildMetadata::EMPTY,
-            "stable release version must not contain prerelease or build metadata"
+            fetched_version.is_stable(),
+            "stable release version must not contain a prerelease"
         );
 
         let current_version = if let UpdateStatus::Updated { version } = status {
@@ -727,7 +722,7 @@ impl Updater {
             installed_version
         };
         Ok(Self::check_if_fetched_version_is_newer_stable(
-            current_version,
+            &current_version,
             fetched_version,
         ))
     }
@@ -764,12 +759,10 @@ impl Updater {
     }
 
     fn check_if_fetched_version_is_newer_stable(
-        mut installed_version: Version,
-        fetched_version: Version,
-    ) -> Option<Version> {
-        installed_version.pre = semver::Prerelease::EMPTY;
-        installed_version.build = semver::BuildMetadata::EMPTY;
-        (fetched_version > installed_version).then_some(fetched_version)
+        installed_version: &AppVersion,
+        fetched_version: AppVersion,
+    ) -> Option<AppVersion> {
+        (fetched_version > *installed_version).then_some(fetched_version)
     }
 
     pub fn set_should_show_update_notification(
@@ -1198,7 +1191,7 @@ mod tests {
                 unsupported_os => panic!("not supported: {unsupported_os}"),
             };
             let artifact_path = format!(
-                "/releases/stable/26.1.0/{OS}-{ARCH}/Zaku-26.1.0-{ARCH}.{artifact_extension}"
+                "/releases/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
             );
             let http_client = FakeHttpClient::create(move |request| {
                 let download_rx = download_rx.clone();
@@ -1209,9 +1202,9 @@ mod tests {
                     let path = request.uri().path();
                     if path == discovery_path {
                         let version = if release_available {
-                            "26.1.0"
+                            "26.1"
                         } else {
-                            "26.0.0"
+                            "26.0"
                         };
                         let url = format!(
                             "{ZAKU_SERVER_URL}/releases/stable/{version}/{OS}-{ARCH}/Zaku-{version}-{ARCH}.{artifact_extension}"
@@ -1233,7 +1226,7 @@ mod tests {
             });
             let updater = cx.new(|cx| {
                 Updater::new(
-                    Version::new(26, 0, 0),
+                    "26.0".parse().unwrap(),
                     http_client,
                     cache_dir.path().to_path_buf(),
                     Arc::new(TestReleaseInstaller {
@@ -1250,7 +1243,10 @@ mod tests {
 
         updater.read_with(cx, |updater, _| {
             assert_eq!(updater.status(), UpdateStatus::Idle);
-            assert_eq!(updater.current_version(), Version::new(26, 0, 0));
+            assert_eq!(
+                updater.current_version(),
+                "26.0".parse::<AppVersion>().unwrap()
+            );
         });
 
         release_available.store(true, Ordering::SeqCst);
@@ -1267,7 +1263,7 @@ mod tests {
                 UpdateStatus::Downloading {
                     version,
                     progress: None,
-                } if version == &Version::new(26, 1, 0)
+                } if version == &"26.1".parse::<AppVersion>().unwrap()
             ),
             "status should be downloading without progress, got {status:?}"
         );
@@ -1289,7 +1285,7 @@ mod tests {
         assert_eq!(
             updater.read_with(cx, |updater, _| updater.status()),
             UpdateStatus::Updated {
-                version: Version::new(26, 1, 0),
+                version: "26.1".parse().unwrap(),
             }
         );
 
@@ -1316,7 +1312,7 @@ mod tests {
                     .result()
                     .unwrap();
             });
-            metadata::init_test(Version::new(26, 0, 0), cx);
+            metadata::init_test("26.0".parse().unwrap(), cx);
 
             let release_rx = Arc::new(Mutex::new(Some(release_rx)));
             let request_count = Arc::clone(&request_count);
@@ -1338,12 +1334,12 @@ mod tests {
                     let release_rx = release_rx.lock().take().unwrap();
                     release_rx.await.unwrap();
                     let url = format!(
-                        "{ZAKU_SERVER_URL}/releases/stable/26.0.0/{OS}-{ARCH}/Zaku-26.0.0-{ARCH}.{artifact_extension}"
+                        "{ZAKU_SERVER_URL}/releases/stable/26.0/{OS}-{ARCH}/Zaku-26.0-{ARCH}.{artifact_extension}"
                     );
                     Ok(Response::builder()
                         .status(200)
                         .body(
-                            json!({ "version": "26.0.0", "url": url })
+                            json!({ "version": "26.0", "url": url })
                                 .to_string()
                                 .into(),
                         )
@@ -1418,12 +1414,12 @@ mod tests {
 
     #[test]
     fn test_stable_does_not_update_when_fetched_version_is_not_higher() {
-        let installed_version = Version::new(26, 0, 0);
+        let installed_version = "26.0".parse::<AppVersion>().unwrap();
 
-        for fetched_version in ["25.9.9", "26.0.0"] {
+        for fetched_version in ["25.9.9", "26.0"] {
             let newer_version = Updater::check_if_fetched_version_is_newer(
                 installed_version.clone(),
-                fetched_version,
+                fetched_version.parse().unwrap(),
                 UpdateStatus::Idle,
             );
 
@@ -1433,12 +1429,12 @@ mod tests {
 
     #[test]
     fn test_stable_does_update_when_fetched_version_is_higher() {
-        let installed_version = Version::new(26, 0, 0);
-        let fetched_version = Version::new(26, 1, 0);
+        let installed_version = "26.0".parse::<AppVersion>().unwrap();
+        let fetched_version = "26.1".parse::<AppVersion>().unwrap();
 
         let newer_version = Updater::check_if_fetched_version_is_newer(
             installed_version,
-            &fetched_version.to_string(),
+            fetched_version.clone(),
             UpdateStatus::Idle,
         );
 
@@ -1447,36 +1443,53 @@ mod tests {
 
     #[test]
     fn test_stable_does_not_update_when_fetched_version_is_not_higher_than_cached() {
-        let installed_version = Version::new(26, 0, 0);
+        let installed_version = "26.0".parse::<AppVersion>().unwrap();
         let status = UpdateStatus::Updated {
-            version: Version::new(26, 1, 0),
+            version: "26.1".parse().unwrap(),
         };
-        let fetched_version = Version::new(26, 1, 0);
+        let fetched_version = "26.1".parse::<AppVersion>().unwrap();
 
-        let newer_version = Updater::check_if_fetched_version_is_newer(
-            installed_version,
-            &fetched_version.to_string(),
-            status,
-        );
+        let newer_version =
+            Updater::check_if_fetched_version_is_newer(installed_version, fetched_version, status);
 
         assert_eq!(newer_version.unwrap(), None);
     }
 
     #[test]
     fn test_stable_does_update_when_fetched_version_is_higher_than_cached() {
-        let installed_version = Version::new(26, 0, 0);
+        let installed_version = "26.0".parse::<AppVersion>().unwrap();
         let status = UpdateStatus::Updated {
-            version: Version::new(26, 1, 0),
+            version: "26.1".parse().unwrap(),
         };
-        let fetched_version = Version::new(26, 1, 1);
+        let fetched_version = "26.1.1".parse::<AppVersion>().unwrap();
 
         let newer_version = Updater::check_if_fetched_version_is_newer(
             installed_version,
-            &fetched_version.to_string(),
+            fetched_version.clone(),
             status,
         );
 
         assert_eq!(newer_version.unwrap(), Some(fetched_version));
+    }
+
+    #[test]
+    fn test_stable_update_rejects_prereleases() {
+        for fetched_version in [
+            "26.1-preview.1",
+            "26.1-nightly.2026-07-19",
+            "26.1-dev.1000.aaaaaaaa",
+        ] {
+            let result = Updater::check_if_fetched_version_is_newer(
+                "26.0".parse().unwrap(),
+                fetched_version.parse().unwrap(),
+                UpdateStatus::Idle,
+            );
+
+            assert!(
+                result.is_err(),
+                "{fetched_version} should be rejected for stable updates"
+            );
+        }
     }
 
     #[gpui::test]
@@ -1507,9 +1520,9 @@ mod tests {
             unsupported_os => panic!("not supported: {unsupported_os}"),
         };
         let release = ReleaseAsset {
-            version: "26.1.0".to_string(),
+            version: "26.1".parse().unwrap(),
             url: format!(
-                "{ZAKU_SERVER_URL}/releases/stable/26.1.0/{OS}-{ARCH}/Zaku-26.1.0-{ARCH}.{artifact_extension}"
+                "{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
             ),
         };
         let reported = Rc::new(RefCell::new(Vec::new()));
@@ -1573,9 +1586,9 @@ mod tests {
             unsupported_os => panic!("not supported: {unsupported_os}"),
         };
         let release = ReleaseAsset {
-            version: "26.1.0".to_string(),
+            version: "26.1".parse().unwrap(),
             url: format!(
-                "{ZAKU_SERVER_URL}/releases/stable/26.1.0/{OS}-{ARCH}/Zaku-26.1.0-{ARCH}.{artifact_extension}"
+                "{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
             ),
         };
         let reported = Rc::new(RefCell::new(Vec::new()));

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -eu
+
+if [[ $# -ne 0 ]]; then
+  echo "Usage: $0" >&2
+  exit 1
+fi
+
+version=$("${CARGO:-cargo}" metadata --no-deps --format-version=1 | jq --exit-status --raw-output '.packages[] | select(.name == "zaku") | .version')
+
+if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.0$ ]]; then
+  echo "${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+else
+  echo "$version"
+fi

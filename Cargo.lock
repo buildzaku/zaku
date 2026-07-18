@@ -4005,6 +4005,7 @@ name = "metadata"
 version = "0.0.0"
 dependencies = [
  "gpui",
+ "jiff",
  "semver",
  "serde",
  "toml 1.1.2+spec-1.1.0",
@@ -7774,7 +7775,6 @@ dependencies = [
  "log",
  "metadata",
  "parking_lot",
- "semver",
  "serde",
  "serde_json",
  "settings",

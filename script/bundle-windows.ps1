@@ -80,7 +80,7 @@ $visualStudioHostArchitecture = if ($hostArchitecture -eq "x86_64") { "amd64" } 
 
 Push-Location $workspaceDirectory
 try {
-    $version = & "$PSScriptRoot/get-crate-version.ps1" zaku
+    $version = & "$PSScriptRoot/get-version.ps1"
     if (-not $version) {
         throw "Could not read the Zaku package version"
     }

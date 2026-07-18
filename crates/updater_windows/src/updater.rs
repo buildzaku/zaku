@@ -312,7 +312,7 @@ mod tests {
         std::fs::write(app_dir.path().join("install").join("Zaku.exe"), "new").unwrap();
         std::fs::write(
             app_dir.path().join("updates").join("versions.txt"),
-            "26.1.0",
+            "26.1",
         )
         .unwrap();
         let completed_jobs = AtomicUsize::new(0);

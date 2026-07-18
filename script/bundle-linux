@@ -33,7 +33,7 @@ if [[ "$(uname -m)" != "$machine" ]]; then
 fi
 
 target_directory="${CARGO_TARGET_DIR:-target}"
-version=$(script/get-crate-version zaku)
+version=$(script/get-version)
 
 echo "Compiling Zaku"
 RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib" "${CARGO:-cargo}" build --release --package zaku --target "$target_triple"

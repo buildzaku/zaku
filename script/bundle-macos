@@ -27,7 +27,7 @@ x86_64-apple-darwin)
   ;;
 esac
 
-version=$(script/get-crate-version zaku)
+version=$(script/get-version)
 cargo_bundle_version=$("${CARGO:-cargo}" bundle --version 2>/dev/null || true)
 if [[ "$cargo_bundle_version" != "cargo-bundle v${CARGO_BUNDLE_VERSION}" ]]; then
   "${CARGO:-cargo}" install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
@@ -49,6 +49,7 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${version}" "${app_path}/Contents/Info.plist"
 if [[ -n "${GITHUB_RUN_NUMBER:-}" ]]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" "${app_path}/Contents/Info.plist"
 fi

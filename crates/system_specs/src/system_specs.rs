@@ -25,7 +25,7 @@ impl SystemSpecs {
         os_name: String,
         os_version: String,
     ) -> Task<Self> {
-        let app_version = AppVersion::display(cx);
+        let app_version = AppVersion::global(cx).display();
         let system = System::new_with_specifics(
             RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
         );

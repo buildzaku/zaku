@@ -297,7 +297,7 @@ mod tests {
                         cx.new(|_| TestTooltip { rendered }).into()
                     }),
                 )
-                .child(UpdateButton::updated("Update to Zaku 26.1.0"))
+                .child(UpdateButton::updated("Update to Zaku 26.1"))
         }
     }
 

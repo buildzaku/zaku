@@ -71,11 +71,9 @@ impl Render for AboutWindow {
                                     .text_right()
                                     .child(Text::new("Version").size(TextSize::Small)),
                             )
-                            .child(
-                                gpui::div().text_left().font_buffer(cx).child(
-                                    Text::new(AppVersion::display(cx)).size(TextSize::Small),
-                                ),
-                            )
+                            .child(gpui::div().text_left().font_buffer(cx).child(
+                                Text::new(AppVersion::global(cx).display()).size(TextSize::Small),
+                            ))
                             .when_some(ZAKU_BUILD_ID, |this, build_id| {
                                 this.child(
                                     gpui::div()

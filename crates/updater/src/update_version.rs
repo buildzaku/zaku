@@ -3,7 +3,6 @@ use gpui::{
     AnyView, App, AppContext, Context, DismissEvent, Empty, Entity, IntoElement, PromptLevel,
     Render, TaskExt, Window,
 };
-use semver::Version;
 use std::sync::Arc;
 
 use metadata::{AppVersion, ZAKU_NAME, ZAKU_REPOSITORY};
@@ -66,18 +65,19 @@ impl UpdateVersion {
     }
 
     pub(crate) fn update_simulation(&mut self, cx: &mut Context<Self>) {
+        let version = "26.1"
+            .parse::<AppVersion>()
+            .expect("simulated update version should be valid");
         let next_state = match self.status {
             UpdateStatus::Idle => UpdateStatus::Checking,
             UpdateStatus::Checking => UpdateStatus::Downloading {
-                version: Version::new(26, 1, 0),
+                version: version.clone(),
                 progress: Some(0.5),
             },
             UpdateStatus::Downloading { .. } => UpdateStatus::Installing {
-                version: Version::new(26, 1, 0),
+                version: version.clone(),
             },
-            UpdateStatus::Installing { .. } => UpdateStatus::Updated {
-                version: Version::new(26, 1, 0),
-            },
+            UpdateStatus::Installing { .. } => UpdateStatus::Updated { version },
             UpdateStatus::Updated { .. } => UpdateStatus::Failed {
                 error: Arc::new(anyhow!("network timeout")),
             },
@@ -108,7 +108,7 @@ impl UpdateVersion {
         status: UpdateStatus,
         update_check_type: UpdateCheckType,
         dismissed_status: Option<UpdateStatus>,
-        current_version: &Version,
+        current_version: &AppVersion,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -123,6 +123,7 @@ impl UpdateVersion {
                 }
                 UpdateStatus::Idle if manual_check.has_started => {
                     self.manual_check = None;
+                    let current_version = current_version.display();
                     let detail = format!(
                         "Zaku {current_version} is currently the newest version available."
                     );
@@ -197,8 +198,8 @@ impl UpdateVersion {
         cx.notify();
     }
 
-    fn version_tooltip_message(version: &Version) -> String {
-        UpdateButton::version_tooltip_message(version)
+    fn version_tooltip_message(version: &AppVersion) -> String {
+        UpdateButton::version_tooltip_message(version.display())
     }
 }
 
@@ -223,7 +224,10 @@ impl Render for UpdateVersion {
                         Tooltip::new_element(move |_, cx| {
                             let message = match &update_version.read(cx).status {
                                 UpdateStatus::Downloading { version, progress } => {
-                                    UpdateButton::downloading_tooltip_message(version, *progress)
+                                    UpdateButton::downloading_tooltip_message(
+                                        version.display(),
+                                        *progress,
+                                    )
                                 }
                                 _ => Self::version_tooltip_message(&rendered_version),
                             };
@@ -262,7 +266,7 @@ impl StatusItemView for UpdateVersion {
 }
 
 pub(crate) fn show_update_notification(cx: &mut App) {
-    let version = AppVersion::display(cx);
+    let version = AppVersion::global(cx).display();
     show_app_notification(
         NotificationId::unique::<UpdateNotification>(),
         cx,
@@ -317,30 +321,29 @@ mod tests {
 
     #[test]
     fn test_version_tooltip_message() {
-        let message = UpdateVersion::version_tooltip_message(&Version::new(26, 1, 0));
+        let version = "26.1".parse::<AppVersion>().unwrap();
+        let message = UpdateVersion::version_tooltip_message(&version);
 
-        assert_eq!(message, "Update to Zaku 26.1.0");
+        assert_eq!(message, "Update to Zaku 26.1");
     }
 
     #[test]
     fn test_downloading_tooltip_message() {
-        let version = Version::new(26, 1, 0);
+        let message = UpdateButton::downloading_tooltip_message("26.1", None);
+        assert_eq!(message, "Update to Zaku 26.1");
 
-        let message = UpdateButton::downloading_tooltip_message(&version, None);
-        assert_eq!(message, "Update to Zaku 26.1.0");
+        let message = UpdateButton::downloading_tooltip_message("26.1", Some(0.554));
+        assert_eq!(message, "Update to Zaku 26.1 (55% downloaded)");
 
-        let message = UpdateButton::downloading_tooltip_message(&version, Some(0.554));
-        assert_eq!(message, "Update to Zaku 26.1.0 (55% downloaded)");
-
-        let message = UpdateButton::downloading_tooltip_message(&version, Some(1.5));
-        assert_eq!(message, "Update to Zaku 26.1.0 (100% downloaded)");
+        let message = UpdateButton::downloading_tooltip_message("26.1", Some(1.5));
+        assert_eq!(message, "Update to Zaku 26.1 (100% downloaded)");
     }
 
     #[gpui::test]
     fn test_manual_check_with_multiple_windows(cx: &mut TestAppContext) {
         let updater = cx.new(|cx| {
             Updater::new(
-                Version::new(26, 1, 0),
+                "26.1".parse().unwrap(),
                 FakeHttpClient::create(|_| async { panic!("http client should not be used") }),
                 PathBuf::new(),
                 Arc::new(PlatformReleaseInstaller),
@@ -387,7 +390,7 @@ mod tests {
             cx.pending_prompt(),
             Some((
                 "You're up to date!".to_string(),
-                "Zaku 26.1.0 is currently the newest version available.".to_string(),
+                "Zaku 26.1 is currently the newest version available.".to_string(),
             )),
             "window 1 should show up-to-date prompt"
         );
@@ -456,7 +459,7 @@ mod tests {
                 },
                 UpdateCheckType::Manual,
                 None,
-                &Version::new(26, 1, 0),
+                &"26.1".parse().unwrap(),
                 window,
                 cx,
             );
@@ -473,7 +476,7 @@ mod tests {
                 },
                 UpdateCheckType::Manual,
                 None,
-                &Version::new(26, 1, 0),
+                &"26.1".parse().unwrap(),
                 window,
                 cx,
             );

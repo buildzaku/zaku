@@ -16,7 +16,9 @@ workspace = true
 
 [dependencies]
 gpui = { workspace = true }
+jiff = { workspace = true }
 semver = { workspace = true }
+serde = { workspace = true }
 
 [build-dependencies]
 serde = { workspace = true }
