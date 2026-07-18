@@ -301,7 +301,7 @@ pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &
         drop(window.prompt(
             PromptLevel::Warning,
             "Couldn't check for updates",
-            Some("Zaku couldn't check for updates. Check your internet connection and try again."),
+            Some("Please check your internet connection or try again later."),
             &["OK"],
             cx,
         ));
