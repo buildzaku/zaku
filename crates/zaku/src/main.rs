@@ -9,12 +9,7 @@ use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
-use std::{
-    collections::HashMap,
-    io::{ErrorKind, IsTerminal},
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::HashMap, io::ErrorKind, path::Path, sync::Arc};
 use uuid::Uuid;
 #[cfg(target_os = "windows")]
 use windows::{Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID, core::HSTRING};
@@ -42,7 +37,7 @@ fn main() {
     }
 
     logger::init();
-    if std::io::stdout().is_terminal() {
+    if zaku::stdout_is_terminal() {
         logger::init_output_stdout();
     } else {
         let result =

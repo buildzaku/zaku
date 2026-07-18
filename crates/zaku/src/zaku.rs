@@ -7,7 +7,7 @@ pub use app_menu::app_menu;
 pub use settings::{handle_keymap_file_changes, handle_settings_file_changes};
 
 use gpui::{App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Window, prelude::*};
-use std::{borrow::Cow, path::Path, sync::Arc};
+use std::{borrow::Cow, io::IsTerminal, path::Path, sync::Arc};
 
 use ::settings::{initial_user_keymap, initial_user_settings};
 use project_panel::ProjectPanel;
@@ -186,12 +186,19 @@ fn register_actions(cx: &mut App) {
             open_settings_file(path::keymap_file(), initial_user_keymap, window, cx);
         });
     })
-    .on_action(|_: &actions::zaku::OpenLogs, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            open_log_file(workspace, window, cx);
-        });
-    })
     .on_action(|_: &actions::workspace::CloseWindow, cx| Workspace::close_window(cx));
+
+    if !stdout_is_terminal() {
+        cx.on_action(|_: &actions::zaku::OpenLogs, cx| {
+            with_active_or_new_workspace(cx, |workspace, window, cx| {
+                open_log_file(workspace, window, cx);
+            });
+        });
+    }
+}
+
+pub fn stdout_is_terminal() -> bool {
+    std::io::stdout().is_terminal()
 }
 
 fn open_settings_file(
