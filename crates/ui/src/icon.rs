@@ -23,11 +23,11 @@ pub enum IconSize {
 impl IconSize {
     pub fn rems(self) -> Rems {
         match self {
-            IconSize::Indicator => crate::rems_from_px(10.0),
-            IconSize::XSmall => crate::rems_from_px(12.0),
-            IconSize::Small => crate::rems_from_px(14.0),
-            IconSize::Medium => crate::rems_from_px(16.0),
-            IconSize::XLarge => crate::rems_from_px(48.0),
+            IconSize::Indicator => crate::rems_from_px(10.0_f32),
+            IconSize::XSmall => crate::rems_from_px(12.0_f32),
+            IconSize::Small => crate::rems_from_px(14.0_f32),
+            IconSize::Medium => crate::rems_from_px(16.0_f32),
+            IconSize::XLarge => crate::rems_from_px(48.0_f32),
             IconSize::Custom(size) => size,
         }
     }

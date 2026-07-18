@@ -107,7 +107,7 @@ impl RenderOnce for SectionButton {
                     )
                     .child(
                         KeyBinding::for_action_in(action_ref, &self.focus_handle, cx)
-                            .size(ui::rems_from_px(12.0)),
+                            .size(ui::rems_from_px(12.0_f32)),
                     ),
             )
             .on_click(move |_, window, cx| {

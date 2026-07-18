@@ -3097,7 +3097,7 @@ impl Render for ProjectPanel {
                                                         &self.focus_handle,
                                                         cx,
                                                     )
-                                                    .size(ui::rems_from_px(12.0)),
+                                                    .size(ui::rems_from_px(12.0_f32)),
                                                 ),
                                         )
                                         .on_click(cx.listener(|this, _, window, cx| {

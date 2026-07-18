@@ -1008,7 +1008,7 @@ impl ResponsePanel {
                     )
                     .child(
                         Indicator::dot()
-                            .size(ui::rems_from_px(3.0))
+                            .size(ui::rems_from_px(3.0_f32))
                             .color(Color::Muted),
                     )
                     .child(
@@ -1026,7 +1026,7 @@ impl ResponsePanel {
                     )
                     .child(
                         Indicator::dot()
-                            .size(ui::rems_from_px(3.0))
+                            .size(ui::rems_from_px(3.0_f32))
                             .color(Color::Muted),
                     )
                     .child(
