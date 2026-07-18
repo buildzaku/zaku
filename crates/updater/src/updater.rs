@@ -1147,7 +1147,8 @@ mod tests {
     impl ReleaseInstaller for TestReleaseInstaller {
         fn install(
             &self,
-            installer_dir: InstallerDir,
+            #[cfg(any(target_os = "linux", target_os = "macos"))] installer_dir: InstallerDir,
+            #[cfg(target_os = "windows")] _: InstallerDir,
             target_path: PathBuf,
             cx: &mut AsyncApp,
         ) -> anyhow::Result<Task<anyhow::Result<Option<PathBuf>>>> {
@@ -1155,9 +1156,12 @@ mod tests {
             let background_executor = cx.background_executor().clone();
 
             Ok(background_executor.spawn(async move {
-                let _installer_dir = installer_dir;
                 let installed_path = installed_dir.path().join("zaku");
                 smol::fs::copy(target_path, &installed_path).await?;
+
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                drop(installer_dir);
+
                 Ok(Some(installed_path))
             }))
         }
