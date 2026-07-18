@@ -1117,6 +1117,7 @@ pub struct Workspace {
     registered_actions: Vec<Box<dyn Fn(Div, &Workspace, &mut Window, &mut Context<Self>) -> Div>>,
     database_id: Option<WorkspaceId>,
     session_id: Option<String>,
+    is_close_pending: bool,
     project: Entity<Project>,
     left_dock: Entity<Dock>,
     bottom_dock: Entity<Dock>,
@@ -1191,11 +1192,31 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) -> Task<anyhow::Result<bool>> {
         cx.spawn_in(window, async move |this, cx| {
+            this.update(cx, |this, _| {
+                if close_intent == CloseIntent::CloseWindow {
+                    this.is_close_pending = true;
+                }
+            })?;
+
+            let remaining_workspaces = cx.update(|_window, cx| {
+                cx.windows()
+                    .iter()
+                    .filter_map(|window| window.downcast::<Root>())
+                    .filter_map(|root| {
+                        root.update(cx, |root, _, cx| root.workspace().read(cx).is_close_pending)
+                            .ok()
+                    })
+                    .filter(|is_close_pending| !is_close_pending)
+                    .count()
+            })?;
+            let should_preserve_session =
+                close_intent != CloseIntent::ReplaceWindow && remaining_workspaces == 0;
+
             let flush_task =
                 this.update_in(cx, |this, window, cx| this.flush_serialization(window, cx))?;
             flush_task.await;
 
-            if close_intent != CloseIntent::Quit {
+            if close_intent != CloseIntent::Quit && !should_preserve_session {
                 this.update_in(cx, |this, window, cx| this.remove_from_session(window, cx))?
                     .await;
             }
@@ -2295,6 +2316,7 @@ impl Workspace {
             registered_actions: Vec::default(),
             database_id,
             session_id,
+            is_close_pending: false,
             project,
             left_dock,
             bottom_dock,
