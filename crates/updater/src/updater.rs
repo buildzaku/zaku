@@ -1255,7 +1255,10 @@ mod tests {
 
         release_available.store(true, Ordering::SeqCst);
         cx.background_executor.advance_clock(POLL_INTERVAL);
-        cx.background_executor.run_until_parked();
+        cx.condition(&updater, |updater, _| {
+            matches!(updater.status(), UpdateStatus::Downloading { .. })
+        })
+        .await;
 
         let status = updater.read_with(cx, |updater, _| updater.status());
         assert!(
@@ -1298,7 +1301,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_updater_watches_user_setting(cx: &mut TestAppContext) {
+    async fn test_updater_watches_user_setting(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
         let request_count = Arc::new(AtomicUsize::new(0));
@@ -1366,7 +1369,10 @@ mod tests {
                     .unwrap();
             });
         });
-        cx.background_executor.run_until_parked();
+        cx.condition(&updater, |updater, _| {
+            updater.status() == UpdateStatus::Checking
+        })
+        .await;
         assert_eq!(
             updater.read_with(cx, |updater, _| updater.status()),
             UpdateStatus::Checking
