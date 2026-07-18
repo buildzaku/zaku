@@ -232,7 +232,6 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     })
 }
 
-// SAFETY: Windows invokes this function through the system ABI.
 unsafe extern "system" fn window_proc(
     window: HWND,
     message: u32,
@@ -271,9 +270,9 @@ unsafe extern "system" fn window_proc(
                 {
                     let text = HSTRING::from("Updating Zaku...");
                     // SAFETY: `paint.device_context` is a valid `HDC`.
-                    if let Err(error) =
-                        unsafe { TextOutW(paint.device_context, 20, 15, &text).ok() }
-                    {
+                    let result =
+                        unsafe { TextOutW(paint.device_context, 20, 15, &text).ok() };
+                    if let Err(error) = result {
                         log::error!("Failed to draw updater window text: {error}");
                     }
                 } else {
