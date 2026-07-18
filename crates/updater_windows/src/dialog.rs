@@ -46,7 +46,7 @@ impl PaintSession {
         let mut paint = PAINTSTRUCT::default();
         // SAFETY: `window` is a valid `HWND` and `paint` provides writable storage for
         // `BeginPaint`.
-        let device_context = unsafe { BeginPaint(window, &mut paint) };
+        let device_context = unsafe { BeginPaint(window, &raw mut paint) };
         Self {
             window,
             paint,
@@ -59,7 +59,7 @@ impl Drop for PaintSession {
     fn drop(&mut self) {
         // SAFETY: `self.window` is a valid `HWND` and `self.paint` belongs to the same paint
         // session.
-        if let Err(error) = unsafe { EndPaint(self.window, &self.paint).ok() } {
+        if let Err(error) = unsafe { EndPaint(self.window, &raw const self.paint).ok() } {
             log::error!("Failed to end painting updater window: {error}");
         }
     }
@@ -112,7 +112,7 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     };
     // SAFETY: `controls` remains valid for the duration of this call and its fields satisfy the
     // requirements of `InitCommonControlsEx`.
-    unsafe { InitCommonControlsEx(&controls) }
+    unsafe { InitCommonControlsEx(&raw const controls) }
         .ok()
         .context("failed to initialize Windows common controls")?;
 
@@ -150,7 +150,7 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     };
     // SAFETY: `window_class` and the resources it references remain valid for the duration of
     // this call.
-    if unsafe { RegisterClassW(&window_class) } == 0 {
+    if unsafe { RegisterClassW(&raw const window_class) } == 0 {
         return Err(WindowsError::from_thread())
             .context("failed to register updater window class");
     }
@@ -160,7 +160,7 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     let desktop_window = unsafe { GetDesktopWindow() };
     // SAFETY: `desktop_window` is a valid `HWND` and `desktop` provides writable storage for the
     // returned bounds.
-    unsafe { GetWindowRect(desktop_window, &mut desktop) }
+    unsafe { GetWindowRect(desktop_window, &raw mut desktop) }
         .context("failed to read desktop bounds")?;
     let width = 400;
     let height = 150;
@@ -224,7 +224,7 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     // SAFETY: `progress_bar` is a valid `HWND` and the message parameters satisfy `PBM_SETSTEP`.
     unsafe { SendMessageW(progress_bar, PBM_SETSTEP, Some(WPARAM(1)), None) };
     // SAFETY: `window` is a valid `HWND`.
-    unsafe { ShowWindow(window, SW_SHOW) };
+    unsafe { ShowWindow(window, SW_SHOW) }.as_bool();
 
     Ok(DialogWindow {
         window,

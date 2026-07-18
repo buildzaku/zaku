@@ -126,7 +126,7 @@ fn release_file_handles(app_dir: &Path) -> anyhow::Result<()> {
     // SAFETY: `session` and `session_key` are valid writable outputs.
     let result = unsafe {
         RmStartSession(
-            &mut session,
+            &raw mut session,
             Some(0),
             PWSTR::from_raw(session_key.as_mut_ptr()),
         )
@@ -172,7 +172,15 @@ fn release_file_handles(app_dir: &Path) -> anyhow::Result<()> {
     let mut reboot_reasons = 0;
     // SAFETY: `session` and all writable `RmGetList` arguments remain valid for the duration of
     // this call.
-    let result = unsafe { RmGetList(session, &mut needed, &mut count, None, &mut reboot_reasons) };
+    let result = unsafe {
+        RmGetList(
+            session,
+            &raw mut needed,
+            &raw mut count,
+            None,
+            &raw mut reboot_reasons,
+        )
+    };
     if result != ERROR_SUCCESS && result != ERROR_MORE_DATA {
         anyhow::bail!("restart manager RmGetList failed: {result:?}");
     }
@@ -239,9 +247,7 @@ fn execute_jobs(
     retry_interval: Duration,
     mut job_completed: impl FnMut(),
 ) -> anyhow::Result<()> {
-    let mut applied_jobs = 0;
-
-    for job in jobs {
+    for (applied_jobs, job) in jobs.iter().enumerate() {
         let started_at = Instant::now();
         let result: anyhow::Result<()> = loop {
             let Err(error) = (job.apply)(app_dir) else {
@@ -282,7 +288,6 @@ fn execute_jobs(
             );
         }
 
-        applied_jobs += 1;
         job_completed();
     }
 

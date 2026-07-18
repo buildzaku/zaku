@@ -78,7 +78,8 @@ cfg_select! {
             let mut message = MSG::default();
             loop {
                 // SAFETY: `message` provides writable storage for the duration of this call.
-                let BOOL(message_status) = unsafe { GetMessageW(&mut message, None, 0, 0) };
+                let BOOL(message_status) =
+                    unsafe { GetMessageW(&raw mut message, None, 0, 0) };
                 match message_status {
                     -1 => {
                         return Err(WindowsError::from_thread())
@@ -88,7 +89,7 @@ cfg_select! {
                     _ => {
                         // SAFETY: `message` was populated by `GetMessageW` and remains valid for the
                         // duration of this call.
-                        unsafe { DispatchMessageW(&message) };
+                        unsafe { DispatchMessageW(&raw const message) };
                     }
                 }
             }
