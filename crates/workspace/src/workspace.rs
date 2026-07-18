@@ -1017,12 +1017,8 @@ pub fn client_side_decorations(
                     );
 
                     let edge = cx.try_global::<GlobalResizeEdge>();
-                    if new_edge != edge.map(|edge| edge.0)
-                        && let Err(error) = window.window_handle().update(cx, |root, _, cx| {
-                            cx.notify(root.entity_id());
-                        })
-                    {
-                        log::error!("Failed to notify resize edge change: {error:?}");
+                    if new_edge != edge.map(|edge| edge.0) {
+                        window.refresh();
                     }
                 })
                 .on_mouse_down(MouseButton::Left, move |event, window, _cx| {
