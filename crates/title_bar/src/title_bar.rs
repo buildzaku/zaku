@@ -32,7 +32,7 @@ pub fn init(cx: &mut App) {
             return;
         };
 
-        let item = cx.new(|cx| TitleBar::new("title-bar", workspace, window, cx));
+        let item = cx.new(|cx| TitleBar::new("title-bar", Some(workspace), window, cx));
         workspace.set_titlebar_item(item.into(), window, cx);
     })
     .detach();
@@ -40,34 +40,39 @@ pub fn init(cx: &mut App) {
 
 pub struct TitleBar {
     platform_titlebar: Entity<PlatformTitleBar>,
-    project: Entity<Project>,
-    workspace: WeakEntity<Workspace>,
+    project: Option<Entity<Project>>,
+    workspace: Option<WeakEntity<Workspace>>,
     application_menu: Option<Entity<ApplicationMenu>>,
     _workspace_subscription: Option<Subscription>,
-    _git_store_subscription: Subscription,
+    _git_store_subscription: Option<Subscription>,
     _button_layout_subscription: Subscription,
 }
 
 impl TitleBar {
     pub fn new(
         id: impl Into<ElementId>,
-        workspace: &Workspace,
+        workspace: Option<&Workspace>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let project = workspace.project().clone();
-        let git_store = project.read(cx).git_store().clone();
-        let workspace = workspace.weak_handle();
+        let project = workspace.map(|workspace| workspace.project().clone());
+        let git_store = project
+            .as_ref()
+            .map(|project| project.read(cx).git_store().clone());
+        let workspace = workspace.map(Workspace::weak_handle);
         let application_menu = Some(cx.new(|cx| ApplicationMenu::new(window, cx)));
         let workspace_subscription = workspace
-            .upgrade()
+            .as_ref()
+            .and_then(WeakEntity::upgrade)
             .map(|workspace_entity| cx.observe(&workspace_entity, |_, _, cx| cx.notify()));
-        let git_store_subscription = cx.subscribe(&git_store, |_, _, event, cx| match event {
-            GitStoreEvent::ActiveRepositoryChanged(_)
-            | GitStoreEvent::RepositoryUpdated(_, RepositoryEvent::HeadChanged, true) => {
-                cx.notify();
-            }
-            _ => {}
+        let git_store_subscription = git_store.map(|git_store| {
+            cx.subscribe(&git_store, |_, _, event, cx| match event {
+                GitStoreEvent::ActiveRepositoryChanged(_)
+                | GitStoreEvent::RepositoryUpdated(_, RepositoryEvent::HeadChanged, true) => {
+                    cx.notify();
+                }
+                _ => {}
+            })
         });
         let button_layout_subscription =
             cx.observe_button_layout_changed(window, |_, _, cx| cx.notify());
@@ -153,7 +158,11 @@ impl TitleBar {
 
 impl Render for TitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.workspace.upgrade().is_none() {
+        if self
+            .workspace
+            .as_ref()
+            .is_some_and(|workspace| workspace.upgrade().is_none())
+        {
             self.application_menu = None;
         }
 
@@ -161,19 +170,19 @@ impl Render for TitleBar {
         let mut children = SmallVec::<[AnyElement; 2]>::new();
         let button_layout = cx.button_layout();
         let platform_style = PlatformStyle::platform();
-        let mut project_name = self
-            .project
-            .read(cx)
-            .root_worktree(cx)
-            .and_then(|worktree| {
+        let mut project_name = self.project.as_ref().and_then(|project| {
+            project.read(cx).root_worktree(cx).and_then(|worktree| {
                 worktree
                     .read(cx)
                     .root_name()
                     .file_name()
                     .map(SharedString::from)
-            });
-        let git_store = self.project.read(cx).git_store().clone();
-        let repository = git_store.read(cx).active_repository();
+            })
+        });
+        let repository = self
+            .project
+            .as_ref()
+            .and_then(|project| project.read(cx).git_store().read(cx).active_repository());
         if let Some(repository) = &repository {
             let repository = repository.read(cx).snapshot();
             let identity = repo_identity_path(repository.common_dir_abs_path.as_ref());

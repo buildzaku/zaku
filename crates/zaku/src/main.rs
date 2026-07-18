@@ -6,7 +6,7 @@
 use anyhow::anyhow;
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
-use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
+use gpui::{App, Application, PromptLevel, QuitMode, prelude::*};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
 use std::{collections::HashMap, io::ErrorKind, path::Path, sync::Arc};
@@ -24,6 +24,7 @@ use reqwest_client::ReqwestClient;
 use session::{AppSession, Session};
 use theme::{ActiveTheme, GlobalTheme, LoadThemes};
 use workspace::AppState;
+use zaku::EmptyRoot;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -119,18 +120,29 @@ fn main() {
         cx.set_menus(menus);
 
         cx.activate(true);
-        cx.spawn(async move |cx| {
-            if let Err(error) = zaku::restore_or_create_workspace(app_state, cx).await {
-                log::error!("Failed to restore or create workspace: {error:#}");
-                cx.update(|cx| {
-                    fail_to_open_window(
-                        error,
-                        "Zaku couldn't open a window. Check the logs for more information.",
-                        cx,
-                    );
-                });
-            }
-        })
+        cx.spawn(
+            async move |cx| match zaku::restore_or_create_workspace(app_state, cx).await {
+                Ok(()) => {
+                    cx.update(|cx| {
+                        let menus = zaku::app_menu(cx);
+                        cx.set_menus(menus);
+                    });
+                }
+                Err(error) => {
+                    log::error!("Failed to restore or create workspace: {error:#}");
+                    cx.update(|cx| {
+                        fail_to_open_window(
+                            error,
+                            &format!(
+                                "Unable to open a window. Check the logs for more details:\n\n{}",
+                                path::log_file().display()
+                            ),
+                            cx,
+                        );
+                    });
+                }
+            },
+        )
         .detach();
     });
 }
@@ -219,15 +231,26 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
         .join("\n\n");
 
     eprintln!("{message}: {error_message}");
-    Application::with_platform(gpui_platform::current_platform(false)).run(move |cx| {
-        fail_to_open_window(anyhow!("{message}: {error_message}"), &error_message, cx);
-    });
+    Application::with_platform(gpui_platform::current_platform(false))
+        .with_assets(Assets)
+        .run(move |cx| {
+            settings::init(cx);
+            theme_settings::init(LoadThemes::JustBase, cx);
+            fail_to_open_window(anyhow!("{message}: {error_message}"), &error_message, cx);
+        });
 }
 
 fn fail_to_open_window(error: anyhow::Error, error_message: &str, cx: &mut App) {
     let message = "Zaku failed to launch";
+    let menus = zaku::app_menu(cx);
+    cx.set_menus(menus);
     cx.set_quit_mode(QuitMode::LastWindowClosed);
-    let error = match cx.open_window(WindowOptions::default(), |_, cx| cx.new(|_| Empty)) {
+    let mut window_options = workspace::build_window_options(None, cx);
+    window_options.window_bounds = Some(workspace::default_window_bounds(cx));
+    let error = match cx.open_window(window_options, |window, cx| {
+        window.activate_window();
+        cx.new(|cx| EmptyRoot::new(window, cx))
+    }) {
         Ok(window) => match window.update(cx, |_, window, cx| {
             let response = window.prompt(
                 PromptLevel::Critical,
