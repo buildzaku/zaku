@@ -55,12 +55,14 @@ fn main() {
     }
 
     #[cfg(target_os = "windows")]
-    // SAFETY: `HSTRING::from(ZAKU_IDENTIFIER)` provides a valid UTF-16 buffer for the duration of
-    // this call.
-    if let Err(error) =
-        unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(ZAKU_IDENTIFIER)) }
     {
-        log::error!("Failed to set Windows application user model ID: {error}");
+        // SAFETY: `HSTRING::from(ZAKU_IDENTIFIER)` provides a valid UTF-16 buffer for the duration
+        // of this call.
+        let result =
+            unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(ZAKU_IDENTIFIER)) };
+        if let Err(error) = result {
+            log::error!("Failed to set Windows application user model ID: {error}");
+        }
     }
 
     let app =
