@@ -15,8 +15,12 @@ if (-not $package) {
 }
 
 $version = $package.version
-if ($version -match "^([0-9]+)\.([0-9]+)\.0$") {
-    "$($Matches[1]).$($Matches[2])"
+if ($version.Contains("+")) {
+    throw "Version cannot contain build metadata"
+}
+
+if ($version -match "^([0-9]+)\.([0-9]+)\.0(-.+)?$") {
+    "$($Matches[1]).$($Matches[2])$($Matches[3])"
 }
 else {
     $version

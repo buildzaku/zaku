@@ -84,6 +84,12 @@ try {
     if (-not $version) {
         throw "Could not read the Zaku package version"
     }
+    $versionCore = ($version -split "-", 2)[0]
+    $versionInfoVersion = switch ($versionCore.Split(".").Length) {
+        2 { "$versionCore.0.0" }
+        3 { "$versionCore.0" }
+        default { throw "Invalid Zaku version: $version" }
+    }
 
     Write-Output "Compiling Zaku"
     rustup target add $target
@@ -105,7 +111,7 @@ try {
     Copy-Item (Join-Path $releaseDirectory "updater_windows.exe") (Join-Path $sourceDirectory "tools/updater_windows.exe")
     Copy-Item "crates/zaku/resources/windows/app-icon.ico" (Join-Path $sourceDirectory "app-icon.ico")
 
-    & $iscc "/DArchitecture=$Architecture" "/DVersion=$version" "/DSourceDir=$sourceDirectory" "/DOutputDir=$outputDirectory" "crates/zaku/resources/windows/zaku.iss"
+    & $iscc "/DArchitecture=$Architecture" "/DVersion=$version" "/DVersionInfoVersion=$versionInfoVersion" "/DSourceDir=$sourceDirectory" "/DOutputDir=$outputDirectory" "crates/zaku/resources/windows/zaku.iss"
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create the Zaku installer"
     }
