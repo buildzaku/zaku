@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+#Requires -Version 7.4
 [CmdletBinding()]
 param(
     [Parameter()]
@@ -41,20 +41,19 @@ $iscc = if ($env:ISCC_PATH) {
     $env:ISCC_PATH
 }
 else {
-    $compiler = Join-Path $env:ProgramFiles "Inno Setup 7/ISCC.exe"
-    if (Test-Path $compiler -PathType Leaf) {
+    $compiler = @(
+        (Join-Path $env:ProgramFiles "Inno Setup 7/ISCC.exe")
+        (Join-Path $env:LOCALAPPDATA "Programs/Inno Setup 7/ISCC.exe")
+    ) | Where-Object { Test-Path $_ -PathType Leaf } | Select-Object -First 1
+    if ($compiler) {
         $compiler
     }
     else {
         (Get-Command "ISCC.exe" -ErrorAction SilentlyContinue).Source
     }
 }
-if (-not (Test-Path $iscc -PathType Leaf)) {
-    throw "Inno Setup 7 compiler was not found. Install the 64-bit edition or set ISCC_PATH to ISCC.exe"
-}
-$isccVersionInfo = (Get-Item $iscc).VersionInfo
-if ($isccVersionInfo.FileMajorPart -lt 7) {
-    throw "Inno Setup 7 is required, but $($isccVersionInfo.FileVersion) was found"
+if (-not $iscc -or -not (Test-Path $iscc -PathType Leaf)) {
+    throw "Inno Setup 7 compiler was not found. Install Inno Setup 7 or set ISCC_PATH to ISCC.exe"
 }
 
 $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio/Installer/vswhere.exe"

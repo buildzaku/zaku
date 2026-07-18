@@ -17,6 +17,7 @@ OutputDir={#OutputDir}
 OutputBaseFilename=Zaku-{#Version}-{#Architecture}
 Compression=lzma2
 SolidCompression=yes
+SetupMutex=Zaku-Setup-Mutex
 SetupArchitecture=x64
 SetupIconFile={#SourceDir}\app-icon.ico
 UninstallDisplayIcon={app}\Zaku.exe

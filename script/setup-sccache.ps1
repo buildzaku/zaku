@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+#Requires -Version 7.4
 $ErrorActionPreference = "Stop"
 
 $SCCACHE_VERSION = "v0.14.0"
