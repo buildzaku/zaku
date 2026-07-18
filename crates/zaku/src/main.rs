@@ -7,7 +7,6 @@ use anyhow::anyhow;
 #[cfg(target_os = "linux")]
 use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
 use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
-use indoc::formatdoc;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
 use std::{
@@ -128,6 +127,13 @@ fn main() {
         cx.spawn(async move |cx| {
             if let Err(error) = zaku::restore_or_create_workspace(app_state, cx).await {
                 log::error!("Failed to restore or create workspace: {error:#}");
+                cx.update(|cx| {
+                    fail_to_open_window(
+                        error,
+                        "Zaku couldn't open a window. Check the logs for more information.",
+                        cx,
+                    );
+                });
             }
         })
         .detach();
@@ -187,7 +193,7 @@ fn register_embedded_fonts(cx: &App) {
 
 fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     let message = "Zaku failed to launch";
-    let error_details = errors
+    let error_message = errors
         .into_iter()
         .filter_map(|(kind, paths)| {
             let error_kind_details = match paths.as_slice() {
@@ -217,74 +223,72 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    eprintln!("{message}: {error_details}");
-    Application::with_platform(gpui_platform::current_platform(false))
-        .with_quit_mode(QuitMode::Explicit)
-        .run(move |cx| {
-            if let Ok(window) = cx.open_window(WindowOptions::default(), |_, cx| cx.new(|_| Empty))
+    eprintln!("{message}: {error_message}");
+    Application::with_platform(gpui_platform::current_platform(false)).run(move |cx| {
+        fail_to_open_window(anyhow!("{message}: {error_message}"), &error_message, cx);
+    });
+}
+
+fn fail_to_open_window(error: anyhow::Error, error_message: &str, cx: &mut App) {
+    let message = "Zaku failed to launch";
+    cx.set_quit_mode(QuitMode::LastWindowClosed);
+    let error = match cx.open_window(WindowOptions::default(), |_, cx| cx.new(|_| Empty)) {
+        Ok(window) => match window.update(cx, |_, window, cx| {
+            let response = window.prompt(
+                PromptLevel::Critical,
+                message,
+                Some(error_message),
+                &["Exit"],
+                cx,
+            );
+
+            cx.spawn_in(window, async move |_, cx| {
+                response.await?;
+                cx.update(|_, cx| cx.quit())
+            })
+            .detach_and_log_err(cx);
+        }) {
+            Ok(()) => return,
+            Err(prompt_error) => error.context(format!(
+                "failed to show launch failure prompt: {prompt_error:?}"
+            )),
+        },
+        Err(window_error) => error.context(format!(
+            "failed to open launch failure prompt: {window_error:?}"
+        )),
+    };
+
+    eprintln!("Zaku failed to open a window: {error:?}.");
+
+    #[cfg(target_os = "linux")]
+    {
+        let notification_body = error_message.to_string();
+        cx.spawn(async move |_| {
+            let Ok(proxy) = NotificationProxy::new().await else {
+                std::process::exit(1);
+            };
+
+            let notification_id = "dev.zaku.Oops";
+            if let Err(error) = proxy
+                .add_notification(
+                    notification_id,
+                    Notification::new("Zaku failed to launch")
+                        .body(Some(notification_body.as_str()))
+                        .priority(Priority::High)
+                        .icon(ashpd::desktop::Icon::with_names([
+                            "dialog-question-symbolic",
+                        ])),
+                )
+                .await
             {
-                if let Err(error) = window.update(cx, |_, window, cx| {
-                    let response = window.prompt(
-                        PromptLevel::Critical,
-                        message,
-                        Some(&error_details),
-                        &["Exit"],
-                        cx,
-                    );
-
-                    cx.spawn_in(window, async move |_, cx| {
-                        response.await?;
-                        cx.update(|_, cx| cx.quit())
-                    })
-                    .detach_and_log_err(cx);
-                }) {
-                    let error = anyhow!(formatdoc! {"
-                            {message}: {error_details}
-
-                            Failed to show launch failure prompt: {error:?}
-                        "});
-                    fail_to_open_window(&error, cx);
-                }
-            } else {
-                let error = anyhow!("{message}: {error_details}");
-                fail_to_open_window(&error, cx);
+                eprintln!("Failed to show launch failure notification: {error:?}.");
             }
-        });
-}
 
-#[cfg(target_os = "linux")]
-fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
-    eprintln!("Zaku failed to open a window: {error:?}.");
-
-    let notification_body = format!("{error:?}.");
-    cx.spawn(async move |_| {
-        let Ok(proxy) = NotificationProxy::new().await else {
             std::process::exit(1);
-        };
+        })
+        .detach();
+    }
 
-        let notification_id = "dev.zaku.Oops";
-        if let Err(error) = proxy
-            .add_notification(
-                notification_id,
-                Notification::new("Zaku failed to launch")
-                    .body(Some(notification_body.as_str()))
-                    .priority(Priority::High)
-                    .icon(ashpd::desktop::Icon::with_names([
-                        "dialog-question-symbolic",
-                    ])),
-            )
-            .await
-        {
-            eprintln!("Failed to show launch failure notification: {error:?}.");
-        }
-
-        std::process::exit(1);
-    })
-    .detach();
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
-    eprintln!("Zaku failed to open a window: {error:?}.");
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     std::process::exit(1);
 }
