@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -gt 0 ]]; then
+  echo "Unexpected argument: $1" >&2
+  exit 1
+fi
+
+if [[ $(uname -s) != "Linux" ]]; then
+  echo "Linux dependencies can only be installed on Linux" >&2
+  exit 1
+fi
+
+if [[ $(id -u) -eq 0 ]]; then
+  privilege_command=()
+elif command -v sudo >/dev/null 2>&1; then
+  privilege_command=(sudo)
+elif command -v doas >/dev/null 2>&1; then
+  privilege_command=(doas)
+else
+  echo "Root access, sudo, or doas is required to install Linux dependencies" >&2
+  exit 1
+fi
+
+echo "Installing Linux dependencies"
+if package_manager=$(command -v apt-get); then
+  dependencies=(
+    build-essential
+    clang
+    cmake
+    curl
+    git
+    jq
+    libasound2-dev
+    libfontconfig-dev
+    libssl-dev
+    libvulkan1
+    libwayland-dev
+    libx11-xcb-dev
+    libxkbcommon-x11-dev
+    llvm
+    pkg-config
+    rsync
+    tar
+  )
+  "${privilege_command[@]}" "$package_manager" update
+  "${privilege_command[@]}" "$package_manager" install -y "${dependencies[@]}"
+elif package_manager=$(command -v dnf); then
+  dependencies=(
+    alsa-lib-devel
+    clang
+    cmake
+    curl
+    fontconfig-devel
+    gcc
+    gcc-c++
+    git
+    jq
+    libX11-devel
+    libxcb-devel
+    libxkbcommon-x11-devel
+    llvm
+    make
+    openssl-devel
+    pkgconf-pkg-config
+    rsync
+    tar
+    vulkan-loader
+    wayland-devel
+  )
+  "${privilege_command[@]}" "$package_manager" install -y "${dependencies[@]}"
+elif package_manager=$(command -v zypper); then
+  dependencies=(
+    alsa-devel
+    clang
+    cmake
+    curl
+    fontconfig-devel
+    gcc
+    gcc-c++
+    git
+    jq
+    libopenssl-devel
+    libvulkan1
+    libX11-devel
+    libxcb-devel
+    libxkbcommon-x11-devel
+    llvm
+    make
+    pkg-config
+    rsync
+    tar
+    wayland-devel
+  )
+  "${privilege_command[@]}" "$package_manager" --non-interactive install "${dependencies[@]}"
+elif package_manager=$(command -v pacman); then
+  dependencies=(
+    alsa-lib
+    base-devel
+    clang
+    cmake
+    curl
+    fontconfig
+    git
+    jq
+    libx11
+    libxcb
+    libxkbcommon-x11
+    llvm
+    openssl
+    rsync
+    tar
+    vulkan-icd-loader
+    wayland
+  )
+  "${privilege_command[@]}" "$package_manager" -Syu --needed --noconfirm "${dependencies[@]}"
+else
+  echo "Unsupported Linux distribution" >&2
+  exit 1
+fi
+
+installed_rustup=0
+if ! command -v rustup >/dev/null 2>&1; then
+  curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+  installed_rustup=1
+fi
+
+echo "Installed Linux dependencies"
+if [[ $installed_rustup -eq 1 ]]; then
+  echo "Restart your shell or source \"$HOME/.cargo/env\" before building Zaku"
+fi

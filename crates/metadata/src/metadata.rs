@@ -13,7 +13,7 @@ pub const ZAKU_BUILD_ID: Option<&str> = option_env!("ZAKU_BUILD_ID");
 pub const ZAKU_COMMIT_SHA: &str = env!("ZAKU_COMMIT_SHA");
 pub const ZAKU_SERVER_URL: &str = match option_env!("ZAKU_SERVER_URL") {
     Some(url) => url,
-    None => "https://zaku.dev",
+    None => "https://api.zaku.dev",
 };
 
 struct GlobalAppVersion(AppVersion);

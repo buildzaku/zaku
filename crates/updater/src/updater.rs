@@ -1191,7 +1191,7 @@ mod tests {
                 unsupported_os => panic!("not supported: {unsupported_os}"),
             };
             let artifact_path = format!(
-                "/releases/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
+                "/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
             );
             let http_client = FakeHttpClient::create(move |request| {
                 let download_rx = download_rx.clone();
@@ -1207,7 +1207,7 @@ mod tests {
                             "26.0"
                         };
                         let url = format!(
-                            "{ZAKU_SERVER_URL}/releases/stable/{version}/{OS}-{ARCH}/Zaku-{version}-{ARCH}.{artifact_extension}"
+                            "https://releases.zaku.dev/stable/{version}/{OS}-{ARCH}/Zaku-{version}-{ARCH}.{artifact_extension}"
                         );
                         Ok(Response::builder()
                             .status(200)
@@ -1334,7 +1334,7 @@ mod tests {
                     let release_rx = release_rx.lock().take().unwrap();
                     release_rx.await.unwrap();
                     let url = format!(
-                        "{ZAKU_SERVER_URL}/releases/stable/26.0/{OS}-{ARCH}/Zaku-26.0-{ARCH}.{artifact_extension}"
+                        "https://releases.zaku.dev/stable/26.0/{OS}-{ARCH}/Zaku-26.0-{ARCH}.{artifact_extension}"
                     );
                     Ok(Response::builder()
                         .status(200)
@@ -1522,7 +1522,7 @@ mod tests {
         let release = ReleaseAsset {
             version: "26.1".parse().unwrap(),
             url: format!(
-                "{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
+                "https://releases.zaku.dev/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
             ),
         };
         let reported = Rc::new(RefCell::new(Vec::new()));
@@ -1588,7 +1588,7 @@ mod tests {
         let release = ReleaseAsset {
             version: "26.1".parse().unwrap(),
             url: format!(
-                "{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
+                "https://releases.zaku.dev/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
             ),
         };
         let reported = Rc::new(RefCell::new(Vec::new()));
