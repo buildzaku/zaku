@@ -8,6 +8,11 @@ main() {
   "")
     ;;
   -h | --help)
+    if [ "$#" -ne 1 ]; then
+      echo "Unexpected argument: $2" >&2
+      echo "Usage: ${0##*/} [OPTIONS]" >&2
+      exit 1
+    fi
     echo "Usage: ${0##*/} [OPTIONS]"
     echo "Install Zaku on Linux."
     echo "Options:"

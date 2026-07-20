@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$Cargo = if ($env:CARGO) {
+$cargo = if ($env:CARGO) {
     $env:CARGO
 }
 else {
@@ -15,10 +15,10 @@ if ($args -cnotcontains "-p" -and $args -cnotcontains "--package") {
 }
 
 if ($needAddWorkspace) {
-    & $Cargo clippy @args --workspace --release --all-targets --all-features -- --deny warnings
+    & $cargo clippy @args --workspace --release --all-targets --all-features -- --deny warnings
 }
 else {
-    & $Cargo clippy @args --release --all-targets --all-features -- --deny warnings
+    & $cargo clippy @args --release --all-targets --all-features -- --deny warnings
 }
 
 if (Get-Command typos -ErrorAction Ignore) {

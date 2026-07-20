@@ -24,12 +24,12 @@ if [[ $# -eq 1 && $1 != "--write" ]]; then
 fi
 
 if [[ "${1:-}" == "--write" ]]; then
-  MODE=(--list-different --write)
+  mode=(--list-different --write)
 else
-  MODE=(--check)
+  mode=(--check)
 fi
 
-pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${MODE[@]}" || {
+pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${mode[@]}" || {
   echo "Run ./script/prettier --write" >&2
   false
 }
