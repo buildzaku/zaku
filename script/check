@@ -7,20 +7,21 @@ if [[ $# -eq 1 && ($1 == "-h" || $1 == "--help") ]]; then
   echo "Check shell scripts with ShellCheck."
   exit 0
 fi
+if [[ $# -gt 1 ]]; then
+  echo "Unexpected argument: $2" >&2
+  echo "Usage: ./script/check [--verbose]" >&2
+  exit 1
+fi
+if [[ $# -eq 1 && $1 != "--verbose" ]]; then
+  echo "Unexpected argument: $1" >&2
+  echo "Usage: ./script/check [--verbose]" >&2
+  exit 1
+fi
 
 verbose=false
-for argument in "$@"; do
-  case "$argument" in
-  --verbose)
-    verbose=true
-    ;;
-  *)
-    echo "Unexpected argument: $argument" >&2
-    echo "Usage: ./script/check [--verbose]" >&2
-    exit 1
-    ;;
-  esac
-done
+if [[ "${1:-}" == "--verbose" ]]; then
+  verbose=true
+fi
 
 if ! command -v shellcheck >/dev/null 2>&1; then
   echo "Missing required command: shellcheck" >&2
