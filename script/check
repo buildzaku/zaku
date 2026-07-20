@@ -19,5 +19,6 @@ for path in script/*; do
   fi
 done
 
-echo "Checking ${#shell_scripts[@]} shell scripts"
+printf 'Checking shell scripts:\n'
+printf '  ./%s\n' "${shell_scripts[@]}"
 shellcheck -x --severity=warning "${shell_scripts[@]}"
