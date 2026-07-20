@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -gt 0 ]]; then
+  echo "Unexpected argument: $1" >&2
+  exit 1
+fi
+
+if ! command -v shellcheck >/dev/null 2>&1; then
+  echo "Missing required command: shellcheck" >&2
+  exit 1
+fi
+
+shell_scripts=()
+for path in script/*; do
+  if [[ -f "$path" && "${path##*/}" != *.* ]]; then
+    shell_scripts+=("$path")
+  fi
+done
+
+shellcheck -x --severity=warning "${shell_scripts[@]}"
