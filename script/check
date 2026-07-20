@@ -19,4 +19,5 @@ for path in script/*; do
   fi
 done
 
+echo "Checking ${#shell_scripts[@]} shell scripts"
 shellcheck -x --severity=warning "${shell_scripts[@]}"

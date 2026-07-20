@@ -7,4 +7,6 @@ if ($args.Length -gt 0) {
     exit 1
 }
 
-Invoke-ScriptAnalyzer -Path $PSScriptRoot -Severity Error, Warning -EnableExit
+$powerShellScripts = @(Get-ChildItem -Path $PSScriptRoot -Filter "*.ps1" -File)
+Write-Information "Checking $($powerShellScripts.Count) PowerShell scripts" -InformationAction Continue
+Invoke-ScriptAnalyzer -Path "$PSScriptRoot/*.ps1" -Severity Error, Warning -EnableExit
