@@ -33,8 +33,7 @@ jobs:
         shell: pwsh
 
       - name: "Check PowerShell scripts"
-        run: ./script/check.ps1 -Verbose
-        shell: pwsh
+        run: pwsh -File ./script/check.ps1 -Verbose
 
       - name: "Setup pnpm"
         uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3

@@ -6,14 +6,17 @@ param(
     [switch]$Verbose
 )
 
+$workspaceDirectory = Split-Path -Parent $PSScriptRoot
+$scriptPath = Resolve-Path -LiteralPath $PSCommandPath -RelativeBasePath $workspaceDirectory -Relative
+
 if ($args.Length -gt 0) {
     Write-Error "Unexpected argument: $($args[0])"
-    Write-Error "Usage: .\script\check.ps1 [-Verbose]"
+    Write-Error "Usage: pwsh -File $scriptPath [-Verbose]"
     exit 1
 }
 
 if ($Help) {
-    Write-Output "Usage: .\script\check.ps1 [-Verbose]"
+    Write-Output "Usage: pwsh -File $scriptPath [-Verbose]"
     Write-Output "Check PowerShell scripts with PSScriptAnalyzer."
     exit 0
 }
@@ -24,7 +27,7 @@ $powerShellScripts = @(Get-ChildItem -Path $PSScriptRoot -Filter "*.ps1" -File |
 if ($Verbose) {
     Write-Information "Checking $($powerShellScripts.Count) PowerShell scripts:" -InformationAction Continue
     foreach ($powerShellScript in $powerShellScripts) {
-        Write-Information "  .\script\$($powerShellScript.Name)" -InformationAction Continue
+        Write-Information "  $(Resolve-Path -LiteralPath $powerShellScript.FullName -RelativeBasePath $workspaceDirectory -Relative)" -InformationAction Continue
     }
 }
 Invoke-ScriptAnalyzer -Path "$PSScriptRoot/*.ps1" -Severity Error, Warning -EnableExit
