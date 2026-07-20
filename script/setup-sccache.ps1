@@ -10,18 +10,17 @@ function Install-Sccache {
     $sccachePath = Join-Path $SCCACHE_DIR "sccache.exe"
 
     if (Test-Path $sccachePath) {
-        Write-Host "sccache already cached: $(& $sccachePath --version)"
+        Write-Information "sccache already cached: $(& $sccachePath --version)" -InformationAction Continue
     }
     else {
-        Write-Host "Installing sccache ${SCCACHE_VERSION} from GitHub releases..."
+        Write-Information "Installing sccache ${SCCACHE_VERSION} from GitHub releases..." -InformationAction Continue
 
         $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
         $arch = switch ($architecture) {
             "Arm64" { "aarch64" }
             "X64" { "x86_64" }
             default {
-                Write-Host "Error: Unsupported Windows architecture: $architecture"
-                exit 1
+                throw "Unsupported Windows architecture: $architecture"
             }
         }
         $archive = "sccache-${SCCACHE_VERSION}-${arch}-pc-windows-msvc.zip"
@@ -39,7 +38,7 @@ function Install-Sccache {
             $extractedPath = Join-Path $tempDir $basename "sccache.exe"
             Move-Item -Path $extractedPath -Destination $sccachePath -Force
 
-            Write-Host "Installed sccache: $(& $sccachePath --version)"
+            Write-Information "Installed sccache: $(& $sccachePath --version)" -InformationAction Continue
         }
         finally {
             Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
@@ -54,22 +53,11 @@ function Install-Sccache {
 
     $sccacheCommand = Get-Command sccache -ErrorAction SilentlyContinue
     if (-not $sccacheCommand) {
-        Write-Host "::error::sccache was installed but is not found in PATH"
-        Write-Host "PATH: $env:PATH"
-        Write-Host "Expected location: $absolutePath"
-        if (Test-Path (Join-Path $absolutePath "sccache.exe")) {
-            Write-Host "sccache.exe exists at expected location but is not in PATH"
-            Write-Host "Directory contents:"
-            Get-ChildItem $absolutePath | ForEach-Object { Write-Host "  $_" }
-        }
-        else {
-            Write-Host "sccache.exe NOT found at expected location"
-        }
-        exit 1
+        throw "Could not find sccache in PATH after installing it at $absolutePath"
     }
 }
 
-function Set-SccacheEnvironment {
+function Initialize-SccacheEnvironment {
     $missing = @()
 
     foreach ($name in @("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_SCCACHE_BUCKET")) {
@@ -79,18 +67,16 @@ function Set-SccacheEnvironment {
     }
 
     if ($missing.Length -gt 0) {
-        Write-Host "Missing $($missing -join ', '), skipping sccache configuration"
+        Write-Information "Missing $($missing -join ', '), skipping sccache configuration" -InformationAction Continue
         return
     }
 
     $sccacheCommand = Get-Command sccache -ErrorAction SilentlyContinue
     if (-not $sccacheCommand) {
-        Write-Host "::error::sccache not found in PATH, cannot configure RUSTC_WRAPPER"
-        Write-Host "PATH: $env:PATH"
-        exit 1
+        throw "Could not find sccache in PATH while configuring RUSTC_WRAPPER"
     }
 
-    Write-Host "Configuring sccache with Cloudflare R2..."
+    Write-Information "Configuring sccache with Cloudflare R2..." -InformationAction Continue
 
     $baseDir = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }
     $sccacheBin = $sccacheCommand.Source
@@ -115,37 +101,37 @@ function Set-SccacheEnvironment {
         ) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
     }
 
-    Write-Host "sccache configured with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))"
+    Write-Information "sccache configured with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))" -InformationAction Continue
 }
 
 function Show-SccacheConfiguration {
-    Write-Host "=== sccache configuration ==="
-    Write-Host "sccache version: $(sccache --version)"
-    Write-Host "sccache path: $((Get-Command sccache).Source)"
-    Write-Host "RUSTC_WRAPPER: $($env:RUSTC_WRAPPER ?? '<not set>')"
-    Write-Host "SCCACHE_BUCKET: $($env:SCCACHE_BUCKET ?? '<not set>')"
-    Write-Host "SCCACHE_ENDPOINT: $($env:SCCACHE_ENDPOINT ?? '<not set>')"
-    Write-Host "SCCACHE_REGION: $($env:SCCACHE_REGION ?? '<not set>')"
-    Write-Host "SCCACHE_BASEDIRS: $($env:SCCACHE_BASEDIRS ?? '<not set>')"
+    Write-Output "=== sccache configuration ==="
+    Write-Output "sccache version: $(sccache --version)"
+    Write-Output "sccache path: $((Get-Command sccache).Source)"
+    Write-Output "RUSTC_WRAPPER: $($env:RUSTC_WRAPPER ?? '<not set>')"
+    Write-Output "SCCACHE_BUCKET: $($env:SCCACHE_BUCKET ?? '<not set>')"
+    Write-Output "SCCACHE_ENDPOINT: $($env:SCCACHE_ENDPOINT ?? '<not set>')"
+    Write-Output "SCCACHE_REGION: $($env:SCCACHE_REGION ?? '<not set>')"
+    Write-Output "SCCACHE_BASEDIRS: $($env:SCCACHE_BASEDIRS ?? '<not set>')"
 
     if ($env:AWS_ACCESS_KEY_ID) {
-        Write-Host "AWS_ACCESS_KEY_ID: <set>"
+        Write-Output "AWS_ACCESS_KEY_ID: <set>"
     }
     else {
-        Write-Host "AWS_ACCESS_KEY_ID: <not set>"
+        Write-Output "AWS_ACCESS_KEY_ID: <not set>"
     }
 
     if ($env:AWS_SECRET_ACCESS_KEY) {
-        Write-Host "AWS_SECRET_ACCESS_KEY: <set>"
+        Write-Output "AWS_SECRET_ACCESS_KEY: <set>"
     }
     else {
-        Write-Host "AWS_SECRET_ACCESS_KEY: <not set>"
+        Write-Output "AWS_SECRET_ACCESS_KEY: <not set>"
     }
 
-    Write-Host "=== sccache stats ==="
+    Write-Output "=== sccache stats ==="
     sccache --show-stats
 }
 
 Install-Sccache
-Set-SccacheEnvironment
+Initialize-SccacheEnvironment
 Show-SccacheConfiguration
