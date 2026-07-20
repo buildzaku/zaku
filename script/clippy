@@ -10,5 +10,5 @@ set -x
 
 "${CARGO:-cargo}" clippy "$@" --release --all-targets --all-features -- --deny warnings
 
-which typos >/dev/null 2>&1 || exit 0
+command -v typos >/dev/null 2>&1 || exit 0
 typos

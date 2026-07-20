@@ -4,6 +4,25 @@ set -euo pipefail
 
 PRETTIER_VERSION=3.8.3
 
+if [[ $# -eq 1 && ($1 == "-h" || $1 == "--help") ]]; then
+  echo "Usage: ./script/prettier [OPTIONS]"
+  echo "Check or fix repository formatting."
+  echo "Options:"
+  echo "  --write     Write formatting changes."
+  echo "  -h, --help  Show help."
+  exit 0
+fi
+if [[ $# -gt 1 ]]; then
+  echo "Unexpected argument: $2" >&2
+  echo "Usage: ./script/prettier [OPTIONS]" >&2
+  exit 1
+fi
+if [[ $# -eq 1 && $1 != "--write" ]]; then
+  echo "Unexpected argument: $1" >&2
+  echo "Usage: ./script/prettier [OPTIONS]" >&2
+  exit 1
+fi
+
 if [[ "${1:-}" == "--write" ]]; then
   MODE=(--list-different --write)
 else
@@ -11,6 +30,6 @@ else
 fi
 
 pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${MODE[@]}" || {
-  echo "Run: ./script/prettier --write"
+  echo "Run ./script/prettier --write" >&2
   false
 }

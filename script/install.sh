@@ -8,19 +8,23 @@ main() {
   "")
     ;;
   -h | --help)
-    echo "Usage: ${0##*/} [--version <version>]"
+    echo "Usage: ${0##*/} [OPTIONS]"
+    echo "Install Zaku on Linux."
+    echo "Options:"
+    echo "  --version <version>  [default: latest]"
+    echo "  -h, --help           Show help."
     exit 0
     ;;
   --version)
     if [ "$#" -ne 2 ] || [ -z "$2" ]; then
-      echo "Usage: ${0##*/} [--version <version>]" >&2
+      echo "Usage: ${0##*/} [OPTIONS]" >&2
       exit 1
     fi
     version="$2"
     ;;
   *)
     echo "Unexpected argument: $1" >&2
-    echo "Usage: ${0##*/} [--version <version>]" >&2
+    echo "Usage: ${0##*/} [OPTIONS]" >&2
     exit 1
     ;;
   esac
@@ -38,10 +42,10 @@ main() {
   machine=$(uname -m)
   case "$machine" in
   aarch64 | arm64)
-    architecture="aarch64"
+    arch="aarch64"
     ;;
   x86_64 | amd64)
-    architecture="x86_64"
+    arch="x86_64"
     ;;
   *)
     echo "Unsupported Linux architecture: $machine" >&2
@@ -90,6 +94,7 @@ main() {
   has_binary_backup=0
   has_desktop_backup=0
   committed=0
+  rollback_failed=0
 
   cleanup() {
     status=$?
@@ -97,30 +102,69 @@ main() {
 
     if [ "$committed" -eq 0 ]; then
       if [ "$desktop_installed" -eq 1 ]; then
-        rm -f "$desktop_path"
+        if ! rm -f "$desktop_path"; then
+          echo "Could not remove desktop entry during rollback: $desktop_path" >&2
+          rollback_failed=1
+        fi
       fi
       if [ "$has_desktop_backup" -eq 1 ]; then
-        mv "$desktop_backup" "$desktop_path"
+        if [ -e "$desktop_backup" ] || [ -L "$desktop_backup" ]; then
+          if ! mv "$desktop_backup" "$desktop_path"; then
+            echo "Could not restore desktop entry: $desktop_backup" >&2
+            rollback_failed=1
+          fi
+        elif [ ! -e "$desktop_path" ] && [ ! -L "$desktop_path" ]; then
+          echo "Missing desktop entry backup: $desktop_backup" >&2
+          rollback_failed=1
+        fi
       fi
       if [ "$binary_installed" -eq 1 ]; then
-        rm -f "$binary_path"
+        if ! rm -f "$binary_path"; then
+          echo "Could not remove binary during rollback: $binary_path" >&2
+          rollback_failed=1
+        fi
       fi
       if [ "$has_binary_backup" -eq 1 ]; then
-        mv "$binary_backup" "$binary_path"
+        if [ -e "$binary_backup" ] || [ -L "$binary_backup" ]; then
+          if ! mv "$binary_backup" "$binary_path"; then
+            echo "Could not restore binary: $binary_backup" >&2
+            rollback_failed=1
+          fi
+        elif [ ! -e "$binary_path" ] && [ ! -L "$binary_path" ]; then
+          echo "Missing binary backup: $binary_backup" >&2
+          rollback_failed=1
+        fi
       fi
       if [ "$application_installed" -eq 1 ]; then
-        rm -rf "$application_path"
+        if ! rm -rf "$application_path"; then
+          echo "Could not remove application during rollback: $application_path" >&2
+          rollback_failed=1
+        fi
       fi
       if [ "$has_application_backup" -eq 1 ]; then
-        mv "$application_backup" "$application_path"
+        if [ -e "$application_backup" ] || [ -L "$application_backup" ]; then
+          if ! mv "$application_backup" "$application_path"; then
+            echo "Could not restore application: $application_backup" >&2
+            rollback_failed=1
+          fi
+        elif [ ! -e "$application_path" ] && [ ! -L "$application_path" ]; then
+          echo "Missing application backup: $application_backup" >&2
+          rollback_failed=1
+        fi
       fi
     fi
 
     if [ -n "$temporary_directory" ]; then
-      rm -rf "$temporary_directory"
+      if ! rm -rf "$temporary_directory"; then
+        echo "Could not remove temporary directory: $temporary_directory" >&2
+      fi
     fi
     if [ -n "$transaction_directory" ]; then
-      rm -rf "$transaction_directory"
+      if [ "$rollback_failed" -eq 1 ]; then
+        echo "Rollback incomplete; backups preserved: $transaction_directory" >&2
+      elif ! rm -rf "$transaction_directory"; then
+        echo "Could not remove transaction directory: $transaction_directory" >&2
+      fi
     fi
     return "$status"
   }
@@ -128,9 +172,13 @@ main() {
   trap cleanup 0
   trap 'exit 1' HUP INT TERM
 
-  temporary_directory=$(mktemp -d "${TMPDIR:-/tmp}/zaku-XXXXXX")
+  if [ -n "${TMPDIR:-}" ] && [ -d "$TMPDIR" ]; then
+    temporary_directory=$(mktemp -d "$TMPDIR/zaku-XXXXXX")
+  else
+    temporary_directory=$(mktemp -d "/tmp/zaku-XXXXXX")
+  fi
   transaction_directory=$(mktemp -d "$install_prefix/.zaku-install.XXXXXX")
-  archive_path="$temporary_directory/zaku-linux-$architecture.tar.gz"
+  archive_path="$temporary_directory/zaku-linux-$arch.tar.gz"
   application_backup="$transaction_directory/zaku.previous.app"
   binary_backup="$transaction_directory/zaku.previous"
   desktop_backup="$transaction_directory/dev.zaku.Zaku.previous.desktop"
@@ -143,7 +191,7 @@ main() {
     cp "$ZAKU_BUNDLE_PATH" "$archive_path"
   else
     echo "Downloading Zaku $version"
-    curl -fL "https://api.zaku.dev/releases/stable/$version/linux-$architecture/download" -o "$archive_path"
+    curl -fL "https://api.zaku.dev/releases/stable/$version/linux-$arch/download" -o "$archive_path"
   fi
 
   extracted_directory="$transaction_directory/extracted"
@@ -191,28 +239,28 @@ main() {
   chmod +x "$prepared_desktop"
 
   if [ -e "$application_path" ] || [ -L "$application_path" ]; then
-    mv "$application_path" "$application_backup"
     has_application_backup=1
+    mv "$application_path" "$application_backup"
   fi
   if [ -e "$binary_path" ] || [ -L "$binary_path" ]; then
-    mv "$binary_path" "$binary_backup"
     has_binary_backup=1
+    mv "$binary_path" "$binary_backup"
   fi
   if [ -e "$desktop_path" ] || [ -L "$desktop_path" ]; then
-    mv "$desktop_path" "$desktop_backup"
     has_desktop_backup=1
+    mv "$desktop_path" "$desktop_backup"
   fi
 
-  mv "$staged_application" "$application_path"
   application_installed=1
-  ln -s "$application_path/libexec/zaku" "$binary_path"
+  mv "$staged_application" "$application_path"
   binary_installed=1
-  mv "$prepared_desktop" "$desktop_path"
+  ln -s "$application_path/libexec/zaku" "$binary_path"
   desktop_installed=1
+  mv "$prepared_desktop" "$desktop_path"
   committed=1
 
   echo "Installed Zaku: $binary_directory/zaku"
-  if ! command -v zaku >/dev/null 2>&1; then
+  if [ "$(command -v zaku)" != "$binary_path" ]; then
     echo "Add $binary_directory to PATH to run 'zaku'"
   fi
 }

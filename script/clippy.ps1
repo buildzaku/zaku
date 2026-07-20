@@ -1,25 +1,24 @@
-$ErrorActionPreference = 'Stop'
+#Requires -Version 7.4
+$ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 $Cargo = if ($env:CARGO) {
     $env:CARGO
 }
-elseif ($cmd = Get-Command cargo -ErrorAction Ignore) {
-    $cmd.Source
-}
 else {
-    throw 'Could not find cargo in path.'
+    "cargo"
 }
 
 $needAddWorkspace = $false
-if ($args -notcontains "-p" -and $args -notcontains "--package") {
+if ($args -cnotcontains "-p" -and $args -cnotcontains "--package") {
     $needAddWorkspace = $true
 }
 
 if ($needAddWorkspace) {
-    & $Cargo clippy --workspace --release --all-targets --all-features -- --deny warnings
+    & $Cargo clippy @args --workspace --release --all-targets --all-features -- --deny warnings
 }
 else {
-    & $Cargo clippy --release --all-targets --all-features -- --deny warnings
+    & $Cargo clippy @args --release --all-targets --all-features -- --deny warnings
 }
 
 if (Get-Command typos -ErrorAction Ignore) {

@@ -2,29 +2,43 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [ValidateSet("x86_64", "aarch64")]
-    [string]$Architecture
+    [Alias("h")]
+    [switch]$Help,
+    [Parameter()]
+    [ValidateSet("aarch64", "x86_64", IgnoreCase = $false)]
+    [string]$Arch
 )
 
 $ErrorActionPreference = "Stop"
+$workspaceDirectory = Split-Path -Parent $PSScriptRoot
+$scriptPath = Resolve-Path -LiteralPath $PSCommandPath -RelativeBasePath $workspaceDirectory -Relative
+
+if ($Help) {
+    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Output "Build a Windows installer."
+    Write-Output "Options:"
+    Write-Output "  -Arch <aarch64|x86_64>  [default: current]"
+    Write-Output "  -h, -Help                Show help."
+    exit 0
+}
 
 if (-not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
         [System.Runtime.InteropServices.OSPlatform]::Windows
     )) {
-    throw "Windows application bundles must be built on Windows"
+    throw "Windows installers must be built on Windows"
 }
 
-$hostArchitecture = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
+$osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+$hostArch = switch ($osArch) {
     "X64" { "x86_64" }
     "Arm64" { "aarch64" }
-    default { throw "Unsupported Windows architecture" }
+    default { throw "Unsupported Windows architecture: $osArch" }
 }
-if (-not $Architecture) {
-    $Architecture = $hostArchitecture
+if (-not $Arch) {
+    $Arch = $hostArch
 }
 
-$target = "$Architecture-pc-windows-msvc"
-$workspaceDirectory = Split-Path -Parent $PSScriptRoot
+$target = "$Arch-pc-windows-msvc"
 $targetDirectory = if ($env:CARGO_TARGET_DIR) {
     $env:CARGO_TARGET_DIR
 }
@@ -60,7 +74,7 @@ $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio/Installer
 if (-not (Test-Path $vswhere -PathType Leaf)) {
     throw "Visual Studio Installer could not be found"
 }
-$visualStudioComponent = if ($Architecture -eq "x86_64") {
+$visualStudioComponent = if ($Arch -ceq "x86_64") {
     "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
 }
 else {
@@ -74,9 +88,9 @@ if (-not $visualStudioDirectory) {
     throw "Visual Studio with the MSVC build tools could not be found"
 }
 $developerShell = Join-Path $visualStudioDirectory "Common7/Tools/Launch-VsDevShell.ps1"
-$visualStudioArchitecture = if ($Architecture -eq "x86_64") { "amd64" } else { "arm64" }
-$visualStudioHostArchitecture = if ($hostArchitecture -eq "x86_64") { "amd64" } else { "arm64" }
-& $developerShell -Arch $visualStudioArchitecture -HostArch $visualStudioHostArchitecture -SkipAutomaticLocation
+$visualStudioArch = if ($Arch -ceq "x86_64") { "amd64" } else { "arm64" }
+$visualStudioHostArch = if ($hostArch -ceq "x86_64") { "amd64" } else { "arm64" }
+& $developerShell -Arch $visualStudioArch -HostArch $visualStudioHostArch -SkipAutomaticLocation
 
 Push-Location $workspaceDirectory
 try {
@@ -111,16 +125,17 @@ try {
     Copy-Item (Join-Path $releaseDirectory "updater_windows.exe") (Join-Path $sourceDirectory "tools/updater_windows.exe")
     Copy-Item "crates/zaku/resources/windows/app-icon.ico" (Join-Path $sourceDirectory "app-icon.ico")
 
-    & $iscc "/DArchitecture=$Architecture" "/DVersion=$version" "/DVersionInfoVersion=$versionInfoVersion" "/DSourceDir=$sourceDirectory" "/DOutputDir=$outputDirectory" "crates/zaku/resources/windows/zaku.iss"
+    Write-Output "Creating Windows installer"
+    & $iscc "/DArchitecture=$Arch" "/DVersion=$version" "/DVersionInfoVersion=$versionInfoVersion" "/DSourceDir=$sourceDirectory" "/DOutputDir=$outputDirectory" "crates/zaku/resources/windows/zaku.iss"
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create the Zaku installer"
     }
 
-    $installer = Join-Path $outputDirectory "Zaku-$version-$Architecture.exe"
+    $installer = Join-Path $outputDirectory "Zaku-$version-$Arch.exe"
     if (-not (Test-Path $installer -PathType Leaf)) {
         throw "Zaku installer was not created at $installer"
     }
-    $artifact = Join-Path $releaseDirectory "Zaku-$version-$Architecture.exe"
+    $artifact = Join-Path $releaseDirectory "Zaku-$version-$Arch.exe"
     Move-Item $installer $artifact -Force
     Write-Output "Created Windows installer: $artifact"
 }

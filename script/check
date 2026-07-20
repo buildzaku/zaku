@@ -3,18 +3,21 @@
 set -euo pipefail
 
 if [[ $# -eq 1 && ($1 == "-h" || $1 == "--help") ]]; then
-  echo "Usage: ./script/check [--verbose]"
+  echo "Usage: ./script/check [OPTIONS]"
   echo "Check shell scripts with ShellCheck."
+  echo "Options:"
+  echo "  --verbose   List scripts being checked."
+  echo "  -h, --help  Show help."
   exit 0
 fi
 if [[ $# -gt 1 ]]; then
   echo "Unexpected argument: $2" >&2
-  echo "Usage: ./script/check [--verbose]" >&2
+  echo "Usage: ./script/check [OPTIONS]" >&2
   exit 1
 fi
 if [[ $# -eq 1 && $1 != "--verbose" ]]; then
   echo "Unexpected argument: $1" >&2
-  echo "Usage: ./script/check [--verbose]" >&2
+  echo "Usage: ./script/check [OPTIONS]" >&2
   exit 1
 fi
 

@@ -2,48 +2,82 @@
 
 set -euo pipefail
 
-if [[ "$(uname -s)" != "Linux" ]]; then
-  echo "Linux application bundles must be built on Linux"
+if [[ $# -eq 1 && ($1 == "-h" || $1 == "--help") ]]; then
+  echo "Usage: ./script/bundle-linux [OPTIONS]"
+  echo "Build a Linux application bundle."
+  echo "Options:"
+  echo "  --arch <aarch64|x86_64>  [default: current]"
+  echo "  -h, --help               Show help."
+  exit 0
+fi
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
+  echo "Usage: ./script/bundle-linux [OPTIONS]" >&2
   exit 1
 fi
 
-target_triple="${1:-}"
-if [[ -z "$target_triple" ]]; then
-  target_triple=$(rustc --version --verbose | sed -n 's/^host: //p')
-fi
-
-case "$target_triple" in
-aarch64-unknown-linux-gnu)
-  architecture="aarch64"
-  machine="aarch64"
+arch=""
+case "${1:-}" in
+"")
   ;;
-x86_64-unknown-linux-gnu)
-  architecture="x86_64"
-  machine="x86_64"
+--arch)
+  if [[ $# -ne 2 || -z ${2:-} ]]; then
+    echo "Usage: ./script/bundle-linux [OPTIONS]" >&2
+    exit 1
+  fi
+  arch="$2"
   ;;
 *)
-  echo "unsupported Linux target: $target_triple"
+  echo "Unexpected argument: $1" >&2
+  echo "Usage: ./script/bundle-linux [OPTIONS]" >&2
   exit 1
   ;;
 esac
 
-if [[ "$(uname -m)" != "$machine" ]]; then
-  echo "Linux application bundles must be built natively for $architecture"
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "Linux application bundles must be built on Linux" >&2
   exit 1
 fi
 
+case "$(uname -m)" in
+aarch64 | arm64)
+  host_arch="aarch64"
+  ;;
+x86_64 | amd64)
+  host_arch="x86_64"
+  ;;
+*)
+  echo "Unsupported Linux architecture: $(uname -m)" >&2
+  exit 1
+  ;;
+esac
+
+if [[ -z "$arch" ]]; then
+  arch="$host_arch"
+fi
+if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
+  echo "Unsupported Linux architecture: $arch" >&2
+  exit 1
+fi
+if [[ "$arch" != "$host_arch" ]]; then
+  echo "Linux application bundles must be built natively for $arch" >&2
+  exit 1
+fi
+
+target="${arch}-unknown-linux-gnu"
 target_directory="${CARGO_TARGET_DIR:-target}"
-version=$(script/get-version)
+version=$(./script/get-version)
 
 echo "Compiling Zaku"
-RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib" "${CARGO:-cargo}" build --release --package zaku --target "$target_triple"
+RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib" "${CARGO:-cargo}" build --release --package zaku --target "$target"
 
-binary_path="${target_directory}/${target_triple}/release/zaku"
+binary_path="${target_directory}/${target}/release/zaku"
 if [[ ! -x "$binary_path" ]]; then
-  echo "Zaku executable was not created at $binary_path"
+  echo "Zaku executable was not created at $binary_path" >&2
   exit 1
 fi
 
+echo "Creating Linux application bundle"
 bundle_directory=$(mktemp -d)
 archive_directory=""
 zaku_directory="${bundle_directory}/zaku.app"
@@ -62,8 +96,8 @@ cp "$binary_path" "${zaku_directory}/libexec/zaku"
 
 ldd_output=$(ldd "$binary_path")
 if grep -q '=> not found' <<<"$ldd_output"; then
-  echo "Zaku has unresolved dynamic library dependencies"
-  echo "$ldd_output"
+  echo "Zaku has unresolved dynamic library dependencies" >&2
+  echo "$ldd_output" >&2
   exit 1
 fi
 
@@ -90,8 +124,8 @@ mkdir -p "${zaku_directory}/share/applications"
 cp crates/zaku/resources/dev.zaku.Zaku.desktop "${zaku_directory}/share/applications/dev.zaku.Zaku.desktop"
 chmod +x "${zaku_directory}/share/applications/dev.zaku.Zaku.desktop"
 
-release_directory="${target_directory}/${target_triple}/release"
-archive_path="${release_directory}/Zaku-${version}-${architecture}.tar.gz"
+release_directory="${target_directory}/${target}/release"
+archive_path="${release_directory}/Zaku-${version}-${arch}.tar.gz"
 archive_directory=$(mktemp -d "${release_directory}/.zaku-linux.XXXXXX")
 temporary_archive="${archive_directory}/$(basename "$archive_path")"
 

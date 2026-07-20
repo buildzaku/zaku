@@ -1,31 +1,58 @@
 #Requires -Version 7.4
-$ErrorActionPreference = "Stop"
-
-$SCCACHE_VERSION = "v0.16.0"
+$SCCACHE_VERSION = "0.16.0"
 $SCCACHE_DIR = "./target/sccache"
+
+if ($args.Length -gt 0) {
+    Write-Error "Unexpected argument: $($args[0])"
+    exit 1
+}
+
+$ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 function Install-Sccache {
     New-Item -ItemType Directory -Path $SCCACHE_DIR -Force | Out-Null
 
     $sccachePath = Join-Path $SCCACHE_DIR "sccache.exe"
-
+    $expectedVersion = "sccache $SCCACHE_VERSION"
+    $installedVersion = $null
     if (Test-Path $sccachePath) {
-        Write-Information "sccache already cached: $(& $sccachePath --version)" -InformationAction Continue
+        try {
+            $installedVersion = & $sccachePath --version
+        }
+        catch {
+            Write-Information "Reinstalling invalid sccache binary" -InformationAction Continue
+            $installedVersion = $null
+        }
+    }
+
+    if ($installedVersion -ceq $expectedVersion) {
+        Write-Information "Using $installedVersion" -InformationAction Continue
     }
     else {
-        Write-Information "Installing sccache ${SCCACHE_VERSION} from GitHub releases..." -InformationAction Continue
+        if ($installedVersion) {
+            Write-Information "Stopping $installedVersion" -InformationAction Continue
+            try {
+                & $sccachePath --stop-server *> $null
+            }
+            catch {
+                Write-Information "No running sccache server" -InformationAction Continue
+            }
+        }
 
-        $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
-        $arch = switch ($architecture) {
+        Write-Information "Installing sccache ${SCCACHE_VERSION}" -InformationAction Continue
+
+        $osArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+        $arch = switch ($osArch) {
             "Arm64" { "aarch64" }
             "X64" { "x86_64" }
             default {
-                throw "Unsupported Windows architecture: $architecture"
+                throw "Unsupported Windows architecture: $osArch"
             }
         }
-        $archive = "sccache-${SCCACHE_VERSION}-${arch}-pc-windows-msvc.zip"
-        $basename = "sccache-${SCCACHE_VERSION}-${arch}-pc-windows-msvc"
-        $url = "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${archive}"
+        $archive = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc.zip"
+        $basename = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc"
+        $url = "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
 
         $tempDir = Join-Path $env:TEMP "sccache-install"
         New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
@@ -38,7 +65,18 @@ function Install-Sccache {
             $extractedPath = Join-Path $tempDir $basename "sccache.exe"
             Move-Item -Path $extractedPath -Destination $sccachePath -Force
 
-            Write-Information "Installed sccache: $(& $sccachePath --version)" -InformationAction Continue
+            try {
+                $installedVersion = & $sccachePath --version
+            }
+            catch {
+                Remove-Item $sccachePath -Force
+                throw "Invalid sccache binary: $sccachePath"
+            }
+            if ($installedVersion -cne $expectedVersion) {
+                Remove-Item $sccachePath -Force
+                throw "Unexpected sccache version: $installedVersion"
+            }
+            Write-Information "Installed $installedVersion" -InformationAction Continue
         }
         finally {
             Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
@@ -76,7 +114,7 @@ function Initialize-SccacheEnvironment {
         throw "Could not find sccache in PATH while configuring RUSTC_WRAPPER"
     }
 
-    Write-Information "Configuring sccache with Cloudflare R2..." -InformationAction Continue
+    Write-Information "Configuring sccache with Cloudflare R2" -InformationAction Continue
 
     $baseDir = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }
     $sccacheBin = $sccacheCommand.Source
@@ -101,7 +139,7 @@ function Initialize-SccacheEnvironment {
         ) | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
     }
 
-    Write-Information "sccache configured with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))" -InformationAction Continue
+    Write-Information "Configured sccache with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))" -InformationAction Continue
 }
 
 function Show-SccacheConfiguration {

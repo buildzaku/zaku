@@ -13,7 +13,11 @@ if [[ $(uname -s) != "Linux" ]]; then
 fi
 
 missing_commands=()
-for command in cargo jq rustc rustup; do
+cargo_command="${CARGO:-cargo}"
+if ! command -v "$cargo_command" >/dev/null 2>&1; then
+  missing_commands+=("$cargo_command")
+fi
+for command in jq rustc rustup; do
   if ! command -v "$command" >/dev/null 2>&1; then
     missing_commands+=("$command")
   fi
@@ -26,23 +30,23 @@ if [[ ${#missing_commands[@]} -gt 0 ]]; then
   exit 1
 fi
 
-target_triple=$(rustc --version --verbose | sed -n 's/^host: //p')
-case "$target_triple" in
-aarch64-unknown-linux-gnu)
-  architecture="aarch64"
+case "$(uname -m)" in
+aarch64 | arm64)
+  arch="aarch64"
   ;;
-x86_64-unknown-linux-gnu)
-  architecture="x86_64"
+x86_64 | amd64)
+  arch="x86_64"
   ;;
 *)
-  echo "Unsupported Linux target: $target_triple" >&2
+  echo "Unsupported Linux architecture: $(uname -m)" >&2
   exit 1
   ;;
 esac
 
 echo "Building and installing Zaku"
 version=$(./script/get-version)
-./script/bundle-linux "$target_triple"
+./script/bundle-linux
 
-archive_path="${CARGO_TARGET_DIR:-target}/${target_triple}/release/Zaku-${version}-${architecture}.tar.gz"
+target="${arch}-unknown-linux-gnu"
+archive_path="${CARGO_TARGET_DIR:-target}/${target}/release/Zaku-${version}-${arch}.tar.gz"
 ZAKU_BUNDLE_PATH="$archive_path" ./script/install.sh
