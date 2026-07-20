@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: "Check shell scripts"
-        run: ./script/check
+        run: ./script/check --verbose
         shell: bash
 
       - name: "Install PSScriptAnalyzer"
@@ -33,7 +33,7 @@ jobs:
         shell: pwsh
 
       - name: "Check PowerShell scripts"
-        run: ./script/check.ps1
+        run: ./script/check.ps1 -Verbose
         shell: pwsh
 
       - name: "Setup pnpm"
