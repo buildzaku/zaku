@@ -69,7 +69,7 @@ function Install-Sccache {
     }
 }
 
-function Check-MissingR2Configuration {
+function Set-SccacheEnvironment {
     $missing = @()
 
     foreach ($name in @("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_SCCACHE_BUCKET")) {
@@ -80,14 +80,6 @@ function Check-MissingR2Configuration {
 
     if ($missing.Length -gt 0) {
         Write-Host "Missing $($missing -join ', '), skipping sccache configuration"
-        return $true
-    }
-
-    return $false
-}
-
-function Configure-Sccache {
-    if (Check-MissingR2Configuration) {
         return
     }
 
@@ -126,7 +118,7 @@ function Configure-Sccache {
     Write-Host "sccache configured with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))"
 }
 
-function Show-Config {
+function Show-SccacheConfiguration {
     Write-Host "=== sccache configuration ==="
     Write-Host "sccache version: $(sccache --version)"
     Write-Host "sccache path: $((Get-Command sccache).Source)"
@@ -155,5 +147,5 @@ function Show-Config {
 }
 
 Install-Sccache
-Configure-Sccache
-Show-Config
+Set-SccacheEnvironment
+Show-SccacheConfiguration
