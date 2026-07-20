@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -eq 1 && ($1 == "-h" || $1 == "--help") ]]; then
+  echo "Usage: ./script/check [--verbose]"
+  echo "Check shell scripts with ShellCheck."
+  exit 0
+fi
+if [[ $# -gt 1 ]]; then
+  echo "Unexpected argument: $2" >&2
+  echo "Usage: ./script/check [--verbose]" >&2
+  exit 1
+fi
+if [[ $# -eq 1 && $1 != "--verbose" ]]; then
+  echo "Unexpected argument: $1" >&2
+  echo "Usage: ./script/check [--verbose]" >&2
+  exit 1
+fi
+
+verbose=false
+if [[ "${1:-}" == "--verbose" ]]; then
+  verbose=true
+fi
+
+if ! command -v shellcheck >/dev/null 2>&1; then
+  echo "Missing required command: shellcheck" >&2
+  exit 1
+fi
+
+shell_scripts=()
+for path in script/*; do
+  if [[ -f "$path" && "${path##*/}" != *.* ]]; then
+    shell_scripts+=("$path")
+  fi
+done
+
+if $verbose; then
+  printf 'Checking %d shell scripts:\n' "${#shell_scripts[@]}"
+  printf '  ./%s\n' "${shell_scripts[@]}"
+fi
+shellcheck -x --severity=warning "${shell_scripts[@]}"

@@ -24,6 +24,17 @@ jobs:
       - name: "Checkout repository"
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: "Check shell scripts"
+        run: ./script/check --verbose
+        shell: bash
+
+      - name: "Install PSScriptAnalyzer"
+        run: Install-PSResource -Name PSScriptAnalyzer -Version 1.25.0 -Scope CurrentUser -TrustRepository -Reinstall
+        shell: pwsh
+
+      - name: "Check PowerShell scripts"
+        run: pwsh -File ./script/check.ps1 -Verbose
+
       - name: "Setup pnpm"
         uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
         with:
