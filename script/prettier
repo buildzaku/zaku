@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PRETTIER_VERSION=3.8.3
+PRETTIER_VERSION=3.9.6
 
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   if [[ $# -ne 1 ]]; then
