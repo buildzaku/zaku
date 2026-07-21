@@ -6,22 +6,24 @@ use windows::{
         Graphics::Gdi::{
             BeginPaint, CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, COLOR_WINDOW, CreateFontW,
             DEFAULT_CHARSET, EndPaint, FW_NORMAL, GetSysColorBrush, HDC, HFONT, HGDIOBJ, LOGFONTW,
-            OUT_TT_ONLY_PRECIS, PAINTSTRUCT, SelectObject, TextOutW,
+            InvalidateRect, OUT_TT_ONLY_PRECIS, PAINTSTRUCT, SelectObject, TextOutW,
         },
-        System::LibraryLoader::GetModuleHandleW,
+        System::{LibraryLoader::GetModuleHandleW, WindowsProgramming::MulDiv},
         UI::{
             Controls::{
                 ICC_PROGRESS_CLASS, INITCOMMONCONTROLSEX, InitCommonControlsEx, PBM_SETRANGE32,
                 PBM_SETSTEP, PROGRESS_CLASS,
             },
+            HiDpi::{GetDpiForSystem, GetDpiForWindow},
             WindowsAndMessaging::{
                 CS_HREDRAW, CS_VREDRAW, CreateWindowExW, DefWindowProcW, DestroyWindow,
-                GetDesktopWindow, GetWindowRect, HICON, IDC_ARROW, IMAGE_ICON, LR_DEFAULTSIZE,
-                LR_SHARED, LoadCursorW, LoadImageW, PostQuitMessage, RegisterClassW,
-                SPI_GETICONTITLELOGFONT, SW_SHOW, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-                SendMessageW, ShowWindow, SystemParametersInfoW, WINDOW_EX_STYLE, WM_CLOSE,
-                WM_DESTROY, WM_PAINT, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_TOPMOST, WS_POPUP,
-                WS_VISIBLE,
+                FindWindowExW, GetDesktopWindow, GetWindowRect, HICON, IDC_ARROW, IMAGE_ICON,
+                LR_DEFAULTSIZE, LR_SHARED, LoadCursorW, LoadImageW, PostQuitMessage,
+                RegisterClassW, SPI_GETICONTITLELOGFONT, SWP_NOACTIVATE, SWP_NOZORDER, SW_SHOW,
+                SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SendMessageW, SetWindowPos, ShowWindow,
+                SystemParametersInfoW, USER_DEFAULT_SCREEN_DPI, WINDOW_EX_STYLE, WM_CLOSE,
+                WM_DESTROY, WM_DPICHANGED, WM_PAINT, WNDCLASSW, WS_CAPTION, WS_CHILD,
+                WS_EX_TOPMOST, WS_POPUP, WS_VISIBLE,
             },
         },
     },
@@ -29,6 +31,54 @@ use windows::{
 };
 
 use crate::{WM_TERMINATE, updater::JOBS};
+
+const DIALOG_LAYOUT: DialogLayout = DialogLayout {
+    window_width: 400,
+    window_height: 130,
+    text_x: 20,
+    text_y: 15,
+    font_height: 24,
+    progress_bar_x: 20,
+    progress_bar_y: 50,
+    progress_bar_width: 340,
+    progress_bar_height: 15,
+};
+
+struct DialogLayout {
+    window_width: i32,
+    window_height: i32,
+    text_x: i32,
+    text_y: i32,
+    font_height: i32,
+    progress_bar_x: i32,
+    progress_bar_y: i32,
+    progress_bar_width: i32,
+    progress_bar_height: i32,
+}
+
+impl DialogLayout {
+    fn scaled(&self, dpi: u32) -> Self {
+        let dpi = i32::try_from(dpi).expect("dpi should fit in i32");
+        let default_dpi =
+            i32::try_from(USER_DEFAULT_SCREEN_DPI).expect("default dpi should fit in i32");
+        let scale = |value| {
+            // SAFETY: `default_dpi` is the nonzero Windows default screen DPI.
+            unsafe { MulDiv(value, dpi, default_dpi) }
+        };
+
+        Self {
+            window_width: scale(self.window_width),
+            window_height: scale(self.window_height),
+            text_x: scale(self.text_x),
+            text_y: scale(self.text_y),
+            font_height: scale(self.font_height),
+            progress_bar_x: scale(self.progress_bar_x),
+            progress_bar_y: scale(self.progress_bar_y),
+            progress_bar_width: scale(self.progress_bar_width),
+            progress_bar_height: scale(self.progress_bar_height),
+        }
+    }
+}
 
 pub(crate) struct DialogWindow {
     pub(crate) window: HWND,
@@ -162,8 +212,10 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
     // returned bounds.
     unsafe { GetWindowRect(desktop_window, &raw mut desktop) }
         .context("failed to read desktop bounds")?;
-    let width = 400;
-    let height = 150;
+    // SAFETY: `GetDpiForSystem` has no preconditions.
+    let layout = DIALOG_LAYOUT.scaled(unsafe { GetDpiForSystem() });
+    let window_x = desktop.left + (desktop.right - desktop.left - layout.window_width) / 2;
+    let window_y = desktop.top + (desktop.bottom - desktop.top - layout.window_height) / 2;
     // SAFETY: `class_name`, `module` and the window title remain valid for the duration of
     // this call.
     let window = unsafe {
@@ -172,10 +224,10 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
             class_name,
             windows::core::w!("Zaku"),
             WS_POPUP | WS_CAPTION,
-            desktop.right / 2 - width / 2,
-            desktop.bottom / 2 - height / 2,
-            width,
-            height,
+            window_x,
+            window_y,
+            layout.window_width,
+            layout.window_height,
             None,
             None,
             Some(module.into()),
@@ -192,10 +244,10 @@ pub(crate) fn create_dialog_window() -> anyhow::Result<DialogWindow> {
             PROGRESS_CLASS,
             None,
             WS_CHILD | WS_VISIBLE,
-            20,
-            50,
-            340,
-            35,
+            layout.progress_bar_x,
+            layout.progress_bar_y,
+            layout.progress_bar_width,
+            layout.progress_bar_height,
             Some(window),
             None,
             None,
@@ -244,11 +296,13 @@ unsafe extern "system" fn window_proc(
             if paint.device_context.is_invalid() {
                 log::error!("Failed to begin painting updater window");
             } else {
+                // SAFETY: `window` is a valid `HWND`.
+                let layout = DIALOG_LAYOUT.scaled(unsafe { GetDpiForWindow(window) });
                 let font_name = HSTRING::from(system_ui_font_name());
                 // SAFETY: `font_name` remains valid for the duration of this call.
                 let font = unsafe {
                     CreateFontW(
-                        24,
+                        layout.font_height,
                         0,
                         0,
                         0,
@@ -270,14 +324,75 @@ unsafe extern "system" fn window_proc(
                 {
                     let text = HSTRING::from("Updating Zaku...");
                     // SAFETY: `paint.device_context` is a valid `HDC`.
-                    let result =
-                        unsafe { TextOutW(paint.device_context, 20, 15, &text).ok() };
+                    let result = unsafe {
+                        TextOutW(
+                            paint.device_context,
+                            layout.text_x,
+                            layout.text_y,
+                            &text,
+                        )
+                        .ok()
+                    };
                     if let Err(error) = result {
                         log::error!("Failed to draw updater window text: {error}");
                     }
                 } else {
                     log::error!("Failed to select updater window font");
                 }
+            }
+            LRESULT(0)
+        }
+        WM_DPICHANGED => {
+            // SAFETY: Windows provides `lparam` as a valid `RECT` pointer for this call.
+            let suggested_bounds = unsafe {
+                &*std::ptr::with_exposed_provenance::<RECT>(
+                    usize::try_from(lparam.0)
+                        .expect("suggested bounds address should fit in usize"),
+                )
+            };
+            // SAFETY: `window` is a valid `HWND`.
+            if let Err(error) = unsafe {
+                SetWindowPos(
+                    window,
+                    None,
+                    suggested_bounds.left,
+                    suggested_bounds.top,
+                    suggested_bounds.right - suggested_bounds.left,
+                    suggested_bounds.bottom - suggested_bounds.top,
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                )
+            } {
+                log::error!("Failed to resize updater window for DPI change: {error}");
+            }
+
+            // SAFETY: `window` is a valid `HWND` and `PROGRESS_CLASS` is a valid class name.
+            match unsafe { FindWindowExW(Some(window), None, PROGRESS_CLASS, None::<PCWSTR>) } {
+                Ok(progress_bar) => {
+                    // SAFETY: `window` is a valid `HWND`.
+                    let layout = DIALOG_LAYOUT.scaled(unsafe { GetDpiForWindow(window) });
+                    // SAFETY: `progress_bar` is a valid child `HWND`.
+                    if let Err(error) = unsafe {
+                        SetWindowPos(
+                            progress_bar,
+                            None,
+                            layout.progress_bar_x,
+                            layout.progress_bar_y,
+                            layout.progress_bar_width,
+                            layout.progress_bar_height,
+                            SWP_NOACTIVATE | SWP_NOZORDER,
+                        )
+                    } {
+                        log::error!("Failed to resize updater progress bar for DPI change: {error}");
+                    }
+                }
+                Err(error) => {
+                    log::error!("Failed to find updater progress bar after DPI change: {error}");
+                }
+            }
+
+            // SAFETY: `window` is a valid `HWND`.
+            if let Err(error) = unsafe { InvalidateRect(Some(window), None, true).ok() } {
+                log::error!("Failed to redraw updater window after DPI change: {error}");
             }
             LRESULT(0)
         }
