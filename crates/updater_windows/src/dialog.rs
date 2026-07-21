@@ -37,7 +37,7 @@ const DIALOG_LAYOUT: DialogLayout = DialogLayout {
     window_height: 130,
     text_x: 20,
     text_y: 15,
-    font_height: 24,
+    font_height: -18,
     progress_bar_x: 20,
     progress_bar_y: 50,
     progress_bar_width: 340,
