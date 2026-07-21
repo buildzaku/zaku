@@ -366,7 +366,7 @@ unsafe extern "system" fn window_proc(
             }
 
             // SAFETY: `window` is a valid `HWND` and `PROGRESS_CLASS` is a valid class name.
-            match unsafe { FindWindowExW(Some(window), None, PROGRESS_CLASS, None::<PCWSTR>) } {
+            match unsafe { FindWindowExW(Some(window), None, PROGRESS_CLASS, PCWSTR::null()) } {
                 Ok(progress_bar) => {
                     // SAFETY: `window` is a valid `HWND`.
                     let layout = DIALOG_LAYOUT.scaled(unsafe { GetDpiForWindow(window) });
