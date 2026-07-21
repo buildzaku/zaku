@@ -54,8 +54,7 @@ function Install-Sccache {
         $basename = "sccache-v${SCCACHE_VERSION}-${arch}-pc-windows-msvc"
         $url = "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}"
 
-        $tempDir = Join-Path $env:TEMP "sccache-install"
-        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        $tempDir = [System.IO.Directory]::CreateTempSubdirectory("sccache-").FullName
 
         try {
             $archivePath = Join-Path $tempDir $archive
@@ -79,7 +78,12 @@ function Install-Sccache {
             Write-Information "Installed $installedVersion" -InformationAction Continue
         }
         finally {
-            Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+            try {
+                Remove-Item -Recurse -Force $tempDir
+            }
+            catch {
+                Write-Warning "Could not remove temporary directory: $tempDir"
+            }
         }
     }
 

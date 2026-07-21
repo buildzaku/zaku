@@ -38,8 +38,12 @@ fi
 
 shell_scripts=()
 for path in script/*; do
-  if [[ -f "$path" && "${path##*/}" != *.* ]]; then
-    shell_scripts+=("$path")
+  if [[ -f "$path" ]] && IFS= read -r shebang <"$path"; then
+    case "$shebang" in
+    "#!/bin/bash" | "#!/bin/dash" | "#!/bin/sh" | "#!/usr/bin/env bash" | "#!/usr/bin/env dash" | "#!/usr/bin/env sh")
+      shell_scripts+=("$path")
+      ;;
+    esac
   fi
 done
 

@@ -34,7 +34,7 @@ install_sccache() {
 
     echo "Installing sccache ${SCCACHE_VERSION}"
 
-    local os arch archive basename
+    local os arch archive basename temporary_directory
     os="$(uname -s)"
     arch="$(uname -m)"
 
@@ -58,9 +58,12 @@ install_sccache() {
     esac
 
     basename="${archive%.tar.gz}"
-    curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}" | tar xz
-    mv "${basename}/sccache" "${SCCACHE_DIR}/"
-    rm -rf "${basename}"
+    temporary_directory=$(mktemp -d)
+    trap 'rm -rf "$temporary_directory"' EXIT
+    curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}" | tar xz -C "$temporary_directory"
+    mv "${temporary_directory}/${basename}/sccache" "${SCCACHE_DIR}/"
+    rm -rf "$temporary_directory"
+    trap - EXIT
 
     if ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
       echo "Invalid sccache binary: ${SCCACHE_DIR}/sccache" >&2

@@ -34,7 +34,15 @@ else
   mode=(--check)
 fi
 
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "Missing required command: pnpm" >&2
+  exit 1
+fi
+
 pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${mode[@]}" || {
-  echo "Run ./script/prettier --write" >&2
-  false
+  status=$?
+  if [[ $status -eq 1 && ${1:-} != "--write" ]]; then
+    echo "Run ./script/prettier --write" >&2
+  fi
+  exit "$status"
 }
