@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.5
+Type=Application
+Name=Zaku
+GenericName=API Client
+Comment=Fast, open-source API client with fangs.
+TryExec=zaku
+Exec=zaku
+Icon=zaku
+Terminal=false
+Categories=Development;
+Keywords=http;request;

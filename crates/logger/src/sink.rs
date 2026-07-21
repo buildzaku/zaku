@@ -15,8 +15,8 @@ use std::{
 use crate::{SCOPE_STRING_SEP_CHAR, ScopeRef};
 
 static ENABLED_SINKS_FILE: Mutex<Option<File>> = Mutex::new(None);
-static SINK_FILE_PATH: OnceLock<&'static PathBuf> = OnceLock::new();
-static SINK_FILE_PATH_ROTATE: OnceLock<&'static PathBuf> = OnceLock::new();
+static SINK_FILE_PATH: OnceLock<PathBuf> = OnceLock::new();
+static SINK_FILE_PATH_ROTATE: OnceLock<PathBuf> = OnceLock::new();
 static ENABLED_SINKS_STDOUT: AtomicBool = AtomicBool::new(false);
 static ENABLED_SINKS_STDERR: AtomicBool = AtomicBool::new(false);
 static SINK_FILE_SIZE_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -46,13 +46,11 @@ pub fn init_output_stderr() {
     ENABLED_SINKS_STDERR.store(true, Ordering::Release);
 }
 
-pub fn init_output_file(
-    path: &'static PathBuf,
-    path_rotate: Option<&'static PathBuf>,
-) -> io::Result<()> {
+pub fn init_output_file(path: PathBuf, path_rotate: Option<PathBuf>) -> io::Result<()> {
     let mut enabled_sinks_file = ENABLED_SINKS_FILE.try_lock().map_err(|error| {
         io::Error::other(format!("log file lock unavailable during init: {error}"))
     })?;
+    let file = open_or_create_log_file(&path, path_rotate.as_ref(), SINK_FILE_SIZE_BYTES_MAX)?;
 
     SINK_FILE_PATH.set(path).map_err(|path| {
         io::Error::other(format!(
@@ -72,7 +70,6 @@ pub fn init_output_file(
             })?;
     }
 
-    let file = open_or_create_log_file(path, path_rotate, SINK_FILE_SIZE_BYTES_MAX)?;
     SINK_FILE_SIZE_BYTES.store(
         file.metadata().map_or(0, |metadata| metadata.len()),
         Ordering::Release,

@@ -483,10 +483,10 @@ pub fn config_dir() -> &'static PathBuf {
     })
 }
 
-/// Returns the path to the temp directory.
-pub fn temp_dir() -> &'static PathBuf {
-    static TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
-    TEMP_DIR.get_or_init(|| {
+/// Returns the path to the cache directory.
+pub fn cache_dir() -> &'static PathBuf {
+    static CACHE_DIR: OnceLock<PathBuf> = OnceLock::new();
+    CACHE_DIR.get_or_init(|| {
         #[cfg(target_os = "linux")]
         {
             if let Ok(flatpak_xdg_cache) = std::env::var("FLATPAK_XDG_CACHE_HOME") {
@@ -578,6 +578,18 @@ pub fn log_file() -> &'static PathBuf {
 pub fn old_log_file() -> &'static PathBuf {
     static OLD_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
     OLD_LOG_FILE.get_or_init(|| logs_dir().join("Zaku.log.old"))
+}
+
+/// Returns the path to the `Updater.log` file.
+pub fn updater_log_file() -> &'static PathBuf {
+    static UPDATER_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    UPDATER_LOG_FILE.get_or_init(|| logs_dir().join("Updater.log"))
+}
+
+/// Returns the path to the `Updater.log.old` file.
+pub fn old_updater_log_file() -> &'static PathBuf {
+    static OLD_UPDATER_LOG_FILE: OnceLock<PathBuf> = OnceLock::new();
+    OLD_UPDATER_LOG_FILE.get_or_init(|| logs_dir().join("Updater.log.old"))
 }
 
 /// Returns the path to the `settings.jsonc` file.

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -gt 0 ]]; then
+  echo "Unexpected argument: $1" >&2
+  exit 1
+fi
+
+if [[ $(uname -s) != "Linux" ]]; then
+  echo "Zaku can only be built and installed on Linux" >&2
+  exit 1
+fi
+
+missing_commands=()
+cargo_command="${CARGO:-cargo}"
+if ! command -v "$cargo_command" >/dev/null 2>&1; then
+  missing_commands+=("$cargo_command")
+fi
+for command in jq rustc rustup; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    missing_commands+=("$command")
+  fi
+done
+if [[ ${#missing_commands[@]} -gt 0 ]]; then
+  printf 'Missing build dependencies:' >&2
+  printf ' %s' "${missing_commands[@]}" >&2
+  printf '\n' >&2
+  echo "Run ./script/linux" >&2
+  exit 1
+fi
+
+case "$(uname -m)" in
+aarch64 | arm64)
+  arch="aarch64"
+  ;;
+x86_64 | amd64)
+  arch="x86_64"
+  ;;
+*)
+  echo "Unsupported Linux architecture: $(uname -m)" >&2
+  exit 1
+  ;;
+esac
+
+echo "Building and installing Zaku"
+version=$(./script/get-version)
+./script/bundle-linux
+
+target="${arch}-unknown-linux-gnu"
+archive_path="${CARGO_TARGET_DIR:-target}/${target}/release/Zaku-${version}-${arch}.tar.gz"
+ZAKU_BUNDLE_PATH="$archive_path" ./script/install.sh

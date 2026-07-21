@@ -4,6 +4,7 @@ mod git;
 pub mod merge_from;
 mod theme;
 mod ui;
+mod update;
 
 pub use editor::*;
 pub use fallible_options::*;
@@ -11,6 +12,7 @@ pub use git::*;
 pub use merge_from::MergeFrom as MergeFromTrait;
 pub use theme::*;
 pub use ui::*;
+pub use update::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -32,5 +34,6 @@ pub struct SettingsContent {
     pub ui: Option<UiSettingsContent>,
     pub editor: Option<EditorSettingsContent>,
     pub git: Option<GitSettingsContent>,
+    pub update: Option<UpdateSettingsContent>,
     pub log: Option<HashMap<String, String>>,
 }

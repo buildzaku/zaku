@@ -11,13 +11,16 @@ $scriptPath = Resolve-Path -LiteralPath $PSCommandPath -RelativeBasePath $worksp
 
 if ($args.Length -gt 0) {
     Write-Error "Unexpected argument: $($args[0])"
-    Write-Error "Usage: pwsh -File $scriptPath [-Verbose]"
+    Write-Error "Run pwsh -File $scriptPath -Help"
     exit 1
 }
 
 if ($Help) {
-    Write-Output "Usage: pwsh -File $scriptPath [-Verbose]"
+    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
     Write-Output "Check PowerShell scripts with PSScriptAnalyzer."
+    Write-Output "Options:"
+    Write-Output "  -Verbose   List scripts being checked."
+    Write-Output "  -h, -Help  Show help."
     exit 0
 }
 

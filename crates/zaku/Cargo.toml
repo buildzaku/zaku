@@ -1,5 +1,6 @@
 [package]
 name = "zaku"
+description = "Fast, open-source API client with fangs."
 version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -9,11 +10,9 @@ publish.workspace = true
 
 [package.metadata.bundle]
 name = "Zaku"
-description = "Fast, open-source API client with fangs."
-version = "Unreleased"
-repository = "https://github.com/buildzaku/zaku"
 identifier = "dev.zaku.Zaku"
 icon = ["resources/app-icon.png", "resources/app-icon@2x.png"]
+osx_minimum_system_version = "14.0"
 
 [lib]
 name = "zaku"
@@ -67,6 +66,7 @@ theme = { workspace = true }
 theme_settings = { workspace = true }
 title_bar = { workspace = true }
 ui = { workspace = true }
+updater = { workspace = true }
 uuid = { workspace = true }
 workspace = { workspace = true }
 
@@ -77,6 +77,12 @@ gpui_platform = { workspace = true, features = [
   "wayland",
   "x11",
 ] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true }
+
+[build-dependencies]
+resources = { workspace = true }
 
 [dev-dependencies]
 fs = { workspace = true, features = ["test"] }

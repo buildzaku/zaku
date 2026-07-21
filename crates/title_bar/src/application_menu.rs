@@ -4,6 +4,7 @@ use ui::{
     ActiveTheme, Color, ContextMenu, IconAsset, IconButton, IconButtonShape, IconSize, PopoverMenu,
     PopoverMenuHandle, SelectableButton, Tooltip,
 };
+use workspace::Root;
 
 pub(crate) struct ApplicationMenu {
     handle: PopoverMenuHandle<ContextMenu>,
@@ -17,12 +18,23 @@ impl ApplicationMenu {
     }
 
     fn build_menu(window: &mut Window, cx: &mut App) -> Entity<ContextMenu> {
+        let has_root = window.root::<Root>().flatten().is_some();
         ContextMenu::build(window, cx, |menu, _window, _cx| {
-            menu.action(
+            menu.when(
+                cfg!(any(target_os = "linux", target_os = "windows")),
+                |menu| {
+                    menu.action("About Zaku", actions::zaku::About.boxed_clone())
+                        .action("Check for Updates", actions::updater::Check.boxed_clone())
+                        .separator()
+                },
+            )
+            .action_disabled_when(
+                !has_root,
                 "Open Settings File",
                 actions::zaku::OpenSettingsFile.boxed_clone(),
             )
-            .action(
+            .action_disabled_when(
+                !has_root,
                 "Open Keymap File",
                 actions::zaku::OpenKeymapFile.boxed_clone(),
             )

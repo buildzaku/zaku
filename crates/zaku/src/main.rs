@@ -1,29 +1,30 @@
-#[cfg(target_os = "linux")]
-use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
 
 use anyhow::anyhow;
-use gpui::{App, Application, Empty, PromptLevel, QuitMode, WindowOptions, prelude::*};
-use indoc::formatdoc;
-
+#[cfg(target_os = "linux")]
+use ashpd::desktop::notification::{Notification, NotificationProxy, Priority};
+use gpui::{App, Application, PromptLevel, QuitMode, prelude::*};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use indoc::indoc;
-
-use std::{
-    collections::HashMap,
-    io::{ErrorKind, IsTerminal},
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::HashMap, io::ErrorKind, path::Path, sync::Arc};
 use uuid::Uuid;
+#[cfg(target_os = "windows")]
+use windows::{Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID, core::HSTRING};
 
 use assets::Assets;
 use db::{AppDatabase, kv::KeyValueStore};
 use fs::{Fs, NativeFs};
 use language::LanguageRegistry;
+#[cfg(target_os = "windows")]
+use metadata::ZAKU_IDENTIFIER;
 use reqwest_client::ReqwestClient;
 use session::{AppSession, Session};
 use theme::{ActiveTheme, GlobalTheme, LoadThemes};
 use workspace::AppState;
+use zaku::EmptyRoot;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -37,13 +38,25 @@ fn main() {
     }
 
     logger::init();
-    if std::io::stdout().is_terminal() {
+    if zaku::stdout_is_terminal() {
         logger::init_output_stdout();
     } else {
-        let result = logger::init_output_file(path::log_file(), Some(path::old_log_file()));
+        let result =
+            logger::init_output_file(path::log_file().clone(), Some(path::old_log_file().clone()));
         if let Err(error) = result {
             eprintln!("Could not open log file: {error}... Defaulting to stdout");
             logger::init_output_stdout();
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // SAFETY: `HSTRING::from(ZAKU_IDENTIFIER)` provides a valid UTF-16 buffer for the duration
+        // of this call.
+        let result =
+            unsafe { SetCurrentProcessExplicitAppUserModelID(&HSTRING::from(ZAKU_IDENTIFIER)) };
+        if let Err(error) = result {
+            log::error!("Failed to set Windows application user model ID: {error}");
         }
     }
 
@@ -56,6 +69,7 @@ fn main() {
     ));
 
     app.run(move |cx: &mut App| {
+        metadata::init(cx);
         cx.set_global(app_db);
         settings::init(cx);
         settings::log_settings::init(cx);
@@ -87,7 +101,13 @@ fn main() {
             }
         })
         .detach();
-        let app_state = Arc::new(AppState::new(fs, http_client, app_session, languages));
+        let app_state = Arc::new(AppState::new(
+            fs,
+            http_client.clone(),
+            app_session,
+            languages,
+        ));
+        updater::init(http_client, path::cache_dir().clone(), cx);
         workspace::init(app_state.clone(), cx);
         project_panel::init(cx);
         editor::init(cx);
@@ -100,27 +120,50 @@ fn main() {
         cx.set_menus(menus);
 
         cx.activate(true);
-        cx.spawn(async move |cx| {
-            if let Err(error) = zaku::restore_or_create_workspace(app_state, cx).await {
-                log::error!("Failed to restore or create workspace: {error:#}");
-            }
-        })
+        cx.spawn(
+            async move |cx| match zaku::restore_or_create_workspace(app_state, cx).await {
+                Ok(()) => {
+                    cx.update(|cx| {
+                        let menus = zaku::app_menu(cx);
+                        cx.set_menus(menus);
+                    });
+                }
+                Err(error) => {
+                    log::error!("Failed to restore or create workspace: {error:#}");
+                    cx.update(|cx| {
+                        fail_to_open_window(
+                            error,
+                            &format!(
+                                "Unable to open a window. Check the logs for more details:\n\n{}",
+                                path::log_file().display()
+                            ),
+                            cx,
+                        );
+                    });
+                }
+            },
+        )
         .detach();
     });
 }
 
 fn init_paths() -> HashMap<ErrorKind, Vec<&'static Path>> {
-    [path::config_dir(), path::data_dir(), path::logs_dir()]
-        .into_iter()
-        .fold(HashMap::default(), |mut errors, path| {
-            if let Err(error) = std::fs::create_dir_all(path) {
-                errors
-                    .entry(error.kind())
-                    .or_insert_with(Vec::new)
-                    .push(path);
-            }
+    [
+        path::config_dir(),
+        path::data_dir(),
+        path::logs_dir(),
+        path::cache_dir(),
+    ]
+    .into_iter()
+    .fold(HashMap::default(), |mut errors, path| {
+        if let Err(error) = std::fs::create_dir_all(path) {
             errors
-        })
+                .entry(error.kind())
+                .or_insert_with(Vec::new)
+                .push(path);
+        }
+        errors
+    })
 }
 
 fn register_embedded_fonts(cx: &App) {
@@ -157,7 +200,7 @@ fn register_embedded_fonts(cx: &App) {
 
 fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
     let message = "Zaku failed to launch";
-    let error_details = errors
+    let error_message = errors
         .into_iter()
         .filter_map(|(kind, paths)| {
             let error_kind_details = match paths.as_slice() {
@@ -187,74 +230,83 @@ fn files_not_created_on_launch(errors: HashMap<ErrorKind, Vec<&Path>>) {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    eprintln!("{message}: {error_details}");
+    eprintln!("{message}: {error_message}");
     Application::with_platform(gpui_platform::current_platform(false))
-        .with_quit_mode(QuitMode::Explicit)
+        .with_assets(Assets)
         .run(move |cx| {
-            if let Ok(window) = cx.open_window(WindowOptions::default(), |_, cx| cx.new(|_| Empty))
-            {
-                if let Err(error) = window.update(cx, |_, window, cx| {
-                    let response = window.prompt(
-                        PromptLevel::Critical,
-                        message,
-                        Some(&error_details),
-                        &["Exit"],
-                        cx,
-                    );
-
-                    cx.spawn_in(window, async move |_, cx| {
-                        response.await?;
-                        cx.update(|_, cx| cx.quit())
-                    })
-                    .detach_and_log_err(cx);
-                }) {
-                    let error = anyhow!(formatdoc! {"
-                            {message}: {error_details}
-
-                            Failed to show launch failure prompt: {error:?}
-                        "});
-                    fail_to_open_window(&error, cx);
-                }
-            } else {
-                let error = anyhow!("{message}: {error_details}");
-                fail_to_open_window(&error, cx);
-            }
+            settings::init(cx);
+            theme_settings::init(LoadThemes::JustBase, cx);
+            fail_to_open_window(anyhow!("{message}: {error_message}"), &error_message, cx);
         });
 }
 
-#[cfg(target_os = "linux")]
-fn fail_to_open_window(error: &anyhow::Error, cx: &mut App) {
+fn fail_to_open_window(error: anyhow::Error, error_message: &str, cx: &mut App) {
+    let message = "Zaku failed to launch";
+    let menus = zaku::app_menu(cx);
+    cx.set_menus(menus);
+    cx.set_quit_mode(QuitMode::LastWindowClosed);
+    let mut window_options = workspace::build_window_options(None, cx);
+    window_options.window_bounds = Some(workspace::default_window_bounds(cx));
+    let error = match cx.open_window(window_options, |window, cx| {
+        window.activate_window();
+        cx.new(|cx| EmptyRoot::new(window, cx))
+    }) {
+        Ok(window) => match window.update(cx, |_, window, cx| {
+            let response = window.prompt(
+                PromptLevel::Critical,
+                message,
+                Some(error_message),
+                &["Exit"],
+                cx,
+            );
+
+            cx.spawn_in(window, async move |_, cx| {
+                response.await?;
+                cx.update(|_, cx| cx.quit())
+            })
+            .detach_and_log_err(cx);
+        }) {
+            Ok(()) => return,
+            Err(prompt_error) => error.context(format!(
+                "failed to show launch failure prompt: {prompt_error:?}"
+            )),
+        },
+        Err(window_error) => error.context(format!(
+            "failed to open launch failure prompt: {window_error:?}"
+        )),
+    };
+
     eprintln!("Zaku failed to open a window: {error:?}.");
 
-    let notification_body = format!("{error:?}.");
-    cx.spawn(async move |_| {
-        let Ok(proxy) = NotificationProxy::new().await else {
+    #[cfg(target_os = "linux")]
+    {
+        let notification_body = error_message.to_string();
+        cx.spawn(async move |_| {
+            let Ok(proxy) = NotificationProxy::new().await else {
+                std::process::exit(1);
+            };
+
+            let notification_id = "dev.zaku.Oops";
+            if let Err(error) = proxy
+                .add_notification(
+                    notification_id,
+                    Notification::new("Zaku failed to launch")
+                        .body(Some(notification_body.as_str()))
+                        .priority(Priority::High)
+                        .icon(ashpd::desktop::Icon::with_names([
+                            "dialog-question-symbolic",
+                        ])),
+                )
+                .await
+            {
+                eprintln!("Failed to show launch failure notification: {error:?}.");
+            }
+
             std::process::exit(1);
-        };
+        })
+        .detach();
+    }
 
-        let notification_id = "dev.zaku.Oops";
-        if let Err(error) = proxy
-            .add_notification(
-                notification_id,
-                Notification::new("Zaku failed to launch")
-                    .body(Some(notification_body.as_str()))
-                    .priority(Priority::High)
-                    .icon(ashpd::desktop::Icon::with_names([
-                        "dialog-question-symbolic",
-                    ])),
-            )
-            .await
-        {
-            eprintln!("Failed to show launch failure notification: {error:?}.");
-        }
-
-        std::process::exit(1);
-    })
-    .detach();
-}
-
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn fail_to_open_window(error: &anyhow::Error, _cx: &mut App) {
-    eprintln!("Zaku failed to open a window: {error:?}.");
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     std::process::exit(1);
 }

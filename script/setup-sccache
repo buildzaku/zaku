@@ -2,51 +2,80 @@
 
 set -euo pipefail
 
-SCCACHE_VERSION="v0.16.0"
+SCCACHE_VERSION="0.16.0"
 SCCACHE_DIR="$(pwd)/target/sccache"
+
+if [[ $# -gt 0 ]]; then
+  echo "Unexpected argument: $1" >&2
+  exit 1
+fi
 
 install_sccache() {
   mkdir -p "$SCCACHE_DIR"
 
-  if [[ -x "${SCCACHE_DIR}/sccache" ]] && "${SCCACHE_DIR}/sccache" --version &>/dev/null; then
-    echo "sccache already cached: $("${SCCACHE_DIR}/sccache" --version)"
-  else
-    echo "Installing sccache ${SCCACHE_VERSION} from GitHub releases..."
+  local expected_version="sccache ${SCCACHE_VERSION}"
+  local installed_version=""
+  if [[ -x "${SCCACHE_DIR}/sccache" ]]; then
+    if ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
+      echo "Reinstalling invalid sccache binary"
+      installed_version=""
+    fi
+  fi
 
-    local os arch archive basename
+  if [[ "$installed_version" == "$expected_version" ]]; then
+    echo "Using $installed_version"
+  else
+    if [[ -n "$installed_version" ]]; then
+      echo "Stopping $installed_version"
+      if ! "${SCCACHE_DIR}/sccache" --stop-server &>/dev/null; then
+        echo "No running sccache server"
+      fi
+    fi
+
+    echo "Installing sccache ${SCCACHE_VERSION}"
+
+    local os arch archive basename temporary_directory
     os="$(uname -s)"
     arch="$(uname -m)"
 
     case "${os}-${arch}" in
     Linux-aarch64)
-      archive="sccache-${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz"
+      archive="sccache-v${SCCACHE_VERSION}-aarch64-unknown-linux-musl.tar.gz"
       ;;
     Linux-x86_64)
-      archive="sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+      archive="sccache-v${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz"
       ;;
     Darwin-arm64)
-      archive="sccache-${SCCACHE_VERSION}-aarch64-apple-darwin.tar.gz"
+      archive="sccache-v${SCCACHE_VERSION}-aarch64-apple-darwin.tar.gz"
       ;;
     Darwin-x86_64)
-      archive="sccache-${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz"
+      archive="sccache-v${SCCACHE_VERSION}-x86_64-apple-darwin.tar.gz"
       ;;
     *)
-      echo "Unsupported platform: ${os}-${arch}"
+      echo "Unsupported platform: ${os}-${arch}" >&2
       exit 1
       ;;
     esac
 
     basename="${archive%.tar.gz}"
-    curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/${archive}" | tar xz
-    mv "${basename}/sccache" "${SCCACHE_DIR}/"
-    rm -rf "${basename}"
-    echo "Installed sccache: $("${SCCACHE_DIR}/sccache" --version)"
-  fi
+    temporary_directory=$(mktemp -d)
+    trap 'rm -rf "$temporary_directory"' EXIT
+    curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/${archive}" | tar xz -C "$temporary_directory"
+    mv "${temporary_directory}/${basename}/sccache" "${SCCACHE_DIR}/"
+    rm -rf "$temporary_directory"
+    trap - EXIT
 
-  if ! "${SCCACHE_DIR}/sccache" --version &>/dev/null; then
-    echo "ERROR: sccache binary at ${SCCACHE_DIR}/sccache is not executable or corrupted"
-    rm -f "${SCCACHE_DIR}/sccache"
-    exit 1
+    if ! installed_version="$("${SCCACHE_DIR}/sccache" --version 2>/dev/null)"; then
+      echo "Invalid sccache binary: ${SCCACHE_DIR}/sccache" >&2
+      rm -f "${SCCACHE_DIR}/sccache"
+      exit 1
+    fi
+    if [[ "$installed_version" != "$expected_version" ]]; then
+      echo "Unexpected sccache version: $installed_version" >&2
+      rm -f "${SCCACHE_DIR}/sccache"
+      exit 1
+    fi
+    echo "Installed $installed_version"
   fi
 
   if [[ -n "${GITHUB_PATH:-}" ]]; then
@@ -77,7 +106,7 @@ configure_sccache() {
     return
   fi
 
-  echo "Configuring sccache with Cloudflare R2..."
+  echo "Configuring sccache with Cloudflare R2"
 
   local base_dir="${GITHUB_WORKSPACE:-$(pwd)}"
   local sccache_bin="${SCCACHE_DIR}/sccache"
@@ -102,12 +131,13 @@ configure_sccache() {
     } >>"$GITHUB_ENV"
   fi
 
-  echo "sccache configured with Cloudflare R2 (bucket: ${SCCACHE_BUCKET})"
+  echo "Configured sccache with Cloudflare R2 (bucket: ${SCCACHE_BUCKET})"
 }
 
 show_config() {
   echo "=== sccache configuration ==="
   echo "sccache version: $(sccache --version)"
+  echo "sccache path: $(command -v sccache)"
   echo "RUSTC_WRAPPER: ${RUSTC_WRAPPER:-<not set>}"
   echo "SCCACHE_BUCKET: ${SCCACHE_BUCKET:-<not set>}"
   echo "SCCACHE_ENDPOINT: ${SCCACHE_ENDPOINT:-<not set>}"

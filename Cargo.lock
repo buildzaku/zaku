@@ -4004,6 +4004,9 @@ dependencies = [
 name = "metadata"
 version = "0.0.0"
 dependencies = [
+ "gpui",
+ "jiff",
+ "semver",
  "serde",
  "toml 1.1.2+spec-1.1.0",
 ]
@@ -5785,6 +5788,15 @@ dependencies = [
  "http_client 0.0.0",
  "reqwest",
  "tokio",
+]
+
+[[package]]
+name = "resources"
+version = "0.0.0"
+dependencies = [
+ "embed-resource",
+ "indoc",
+ "semver",
 ]
 
 [[package]]
@@ -7751,6 +7763,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "updater"
+version = "0.0.0"
+dependencies = [
+ "actions",
+ "anyhow",
+ "db",
+ "futures",
+ "gpui",
+ "http_client 0.0.0",
+ "log",
+ "metadata",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "settings",
+ "smol",
+ "tempfile",
+ "ui",
+ "util 0.0.0",
+ "which 8.0.4",
+ "workspace",
+]
+
+[[package]]
+name = "updater_windows"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "logger",
+ "path",
+ "resources",
+ "scopeguard",
+ "tempfile",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9262,6 +9312,7 @@ dependencies = [
  "project_panel",
  "request_editor",
  "reqwest_client",
+ "resources",
  "response_panel",
  "serde_json",
  "session",
@@ -9272,7 +9323,9 @@ dependencies = [
  "theme_settings",
  "title_bar",
  "ui",
+ "updater",
  "uuid",
+ "windows 0.62.2",
  "workspace",
  "worktree",
 ]

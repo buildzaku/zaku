@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+CARGO_BUNDLE_VERSION="0.11.0"
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/bundle-macos --help" >&2
+    exit 1
+  fi
+  echo "Usage: ./script/bundle-macos [OPTIONS]"
+  echo "Build a macOS application bundle and disk image."
+  echo "Options:"
+  echo "  --arch <aarch64|x86_64>  [default: current]"
+  echo "  -h, --help               Show help."
+  exit 0
+fi
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
+  echo "Run ./script/bundle-macos --help" >&2
+  exit 1
+fi
+
+arch=""
+case "${1:-}" in
+"")
+  ;;
+--arch)
+  if [[ $# -ne 2 || -z ${2:-} ]]; then
+    echo "Missing value for --arch" >&2
+    echo "Run ./script/bundle-macos --help" >&2
+    exit 1
+  fi
+  arch="$2"
+  ;;
+*)
+  echo "Unexpected argument: $1" >&2
+  echo "Run ./script/bundle-macos --help" >&2
+  exit 1
+  ;;
+esac
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "macOS application bundles must be built on macOS" >&2
+  exit 1
+fi
+
+if [[ -z "$arch" ]]; then
+  case "$(uname -m)" in
+  arm64)
+    arch="aarch64"
+    ;;
+  x86_64)
+    arch="x86_64"
+    ;;
+  *)
+    echo "Unsupported macOS architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+  esac
+fi
+if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
+  echo "Unsupported macOS architecture: $arch" >&2
+  exit 1
+fi
+
+target="${arch}-apple-darwin"
+version=$(./script/get-version)
+short_version="${version%%-*}"
+if [[ "$short_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
+  short_version="${short_version}.0"
+fi
+cargo_bundle_version=$("${CARGO:-cargo}" bundle --version 2>/dev/null || true)
+if [[ "$cargo_bundle_version" != "cargo-bundle v${CARGO_BUNDLE_VERSION}" ]]; then
+  "${CARGO:-cargo}" install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
+fi
+
+rustup target add "$target"
+
+echo "Compiling Zaku"
+"${CARGO:-cargo}" build --release --package zaku --target "$target"
+
+echo "Creating macOS application bundle"
+app_path=$(
+  cd crates/zaku
+  CARGO_BUNDLE_SKIP_BUILD=true "${CARGO:-cargo}" bundle --release --format osx --target "$target" | sed -n '$s/^[[:space:]]*//p'
+)
+
+if [[ ! -d "$app_path" ]]; then
+  echo "Application bundle was not created at $app_path" >&2
+  exit 1
+fi
+
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${short_version}" "${app_path}/Contents/Info.plist"
+if [[ -n "${GITHUB_RUN_NUMBER:-}" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" "${app_path}/Contents/Info.plist"
+fi
+
+release_directory=$(dirname "$(dirname "$(dirname "$app_path")")")
+dmg_path="${release_directory}/Zaku-${version}-${arch}.dmg"
+dmg_source_directory=$(mktemp -d)
+dmg_output_directory=""
+
+cleanup() {
+  rm -rf "$dmg_source_directory"
+  if [[ -n "$dmg_output_directory" ]]; then
+    rm -rf "$dmg_output_directory"
+  fi
+}
+
+trap cleanup EXIT
+
+dmg_output_directory=$(mktemp -d "${release_directory}/.zaku-dmg.XXXXXX")
+temporary_dmg_path="${dmg_output_directory}/$(basename "$dmg_path")"
+
+ditto "$app_path" "${dmg_source_directory}/Zaku.app"
+ln -s /Applications "${dmg_source_directory}/Applications"
+
+echo "Creating disk image: $dmg_path"
+hdiutil create -volname Zaku -srcfolder "$dmg_source_directory" -ov -format UDZO "$temporary_dmg_path"
+hdiutil verify "$temporary_dmg_path"
+mv "$temporary_dmg_path" "$dmg_path"
+
+echo "Created macOS application bundle: $app_path"
+echo "Created disk image: $dmg_path"

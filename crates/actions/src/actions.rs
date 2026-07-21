@@ -7,5 +7,6 @@ pub mod projects;
 pub mod response_panel;
 pub mod text;
 pub mod theme;
+pub mod updater;
 pub mod workspace;
 pub mod zaku;

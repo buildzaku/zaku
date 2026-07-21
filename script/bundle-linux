@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/bundle-linux --help" >&2
+    exit 1
+  fi
+  echo "Usage: ./script/bundle-linux [OPTIONS]"
+  echo "Build a Linux application bundle."
+  echo "Options:"
+  echo "  --arch <aarch64|x86_64>  [default: current]"
+  echo "  -h, --help               Show help."
+  exit 0
+fi
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
+  echo "Run ./script/bundle-linux --help" >&2
+  exit 1
+fi
+
+arch=""
+case "${1:-}" in
+"")
+  ;;
+--arch)
+  if [[ $# -ne 2 || -z ${2:-} ]]; then
+    echo "Missing value for --arch" >&2
+    echo "Run ./script/bundle-linux --help" >&2
+    exit 1
+  fi
+  arch="$2"
+  ;;
+*)
+  echo "Unexpected argument: $1" >&2
+  echo "Run ./script/bundle-linux --help" >&2
+  exit 1
+  ;;
+esac
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "Linux application bundles must be built on Linux" >&2
+  exit 1
+fi
+
+case "$(uname -m)" in
+aarch64 | arm64)
+  host_arch="aarch64"
+  ;;
+x86_64 | amd64)
+  host_arch="x86_64"
+  ;;
+*)
+  echo "Unsupported Linux architecture: $(uname -m)" >&2
+  exit 1
+  ;;
+esac
+
+if [[ -z "$arch" ]]; then
+  arch="$host_arch"
+fi
+if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
+  echo "Unsupported Linux architecture: $arch" >&2
+  exit 1
+fi
+if [[ "$arch" != "$host_arch" ]]; then
+  echo "Linux application bundles must be built natively for $arch" >&2
+  exit 1
+fi
+
+target="${arch}-unknown-linux-gnu"
+target_directory="${CARGO_TARGET_DIR:-target}"
+version=$(./script/get-version)
+
+echo "Compiling Zaku"
+RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-args=-Wl,--disable-new-dtags,-rpath,\$ORIGIN/../lib" "${CARGO:-cargo}" build --release --package zaku --target "$target"
+
+binary_path="${target_directory}/${target}/release/zaku"
+if [[ ! -x "$binary_path" ]]; then
+  echo "Zaku executable was not created at $binary_path" >&2
+  exit 1
+fi
+
+echo "Creating Linux application bundle"
+bundle_directory=$(mktemp -d)
+archive_directory=""
+zaku_directory="${bundle_directory}/zaku.app"
+
+cleanup() {
+  rm -rf "$bundle_directory"
+  if [[ -n "$archive_directory" ]]; then
+    rm -rf "$archive_directory"
+  fi
+}
+
+trap cleanup EXIT
+
+mkdir -p "${zaku_directory}/libexec"
+cp "$binary_path" "${zaku_directory}/libexec/zaku"
+
+ldd_output=$(ldd "$binary_path")
+if grep -q '=> not found' <<<"$ldd_output"; then
+  echo "Zaku has unresolved dynamic library dependencies" >&2
+  echo "$ldd_output" >&2
+  exit 1
+fi
+
+mapfile -t libraries < <(
+  awk '
+    $2 == "=>" && $3 ~ /^\// && $3 !~ /\/(libc\.so|libgcc_s\.so|libm\.so|libpthread\.so|libdl\.so|libasound\.so)/ {
+      print $3
+    }
+  ' <<<"$ldd_output"
+)
+
+if [[ ${#libraries[@]} -gt 0 ]]; then
+  mkdir -p "${zaku_directory}/lib"
+  cp -L "${libraries[@]}" "${zaku_directory}/lib"
+fi
+
+mkdir -p "${zaku_directory}/share/icons/hicolor/512x512/apps"
+cp crates/zaku/resources/app-icon.png "${zaku_directory}/share/icons/hicolor/512x512/apps/zaku.png"
+
+mkdir -p "${zaku_directory}/share/icons/hicolor/1024x1024/apps"
+cp crates/zaku/resources/app-icon@2x.png "${zaku_directory}/share/icons/hicolor/1024x1024/apps/zaku.png"
+
+mkdir -p "${zaku_directory}/share/applications"
+cp crates/zaku/resources/dev.zaku.Zaku.desktop "${zaku_directory}/share/applications/dev.zaku.Zaku.desktop"
+chmod +x "${zaku_directory}/share/applications/dev.zaku.Zaku.desktop"
+
+release_directory="${target_directory}/${target}/release"
+archive_path="${release_directory}/Zaku-${version}-${arch}.tar.gz"
+archive_directory=$(mktemp -d "${release_directory}/.zaku-linux.XXXXXX")
+temporary_archive="${archive_directory}/$(basename "$archive_path")"
+
+tar -czf "$temporary_archive" -C "$bundle_directory" zaku.app
+mv "$temporary_archive" "$archive_path"
+
+echo "Created Linux application bundle: $archive_path"

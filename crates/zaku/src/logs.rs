@@ -157,6 +157,25 @@ pub(crate) fn open_log_file(
         };
 
         workspace.update_in(cx, |workspace, window, cx| {
+            let pane = workspace.pane().clone();
+            let existing_logs_view = pane.read(cx).items().enumerate().find_map(|(index, item)| {
+                item.downcast::<LogsView>()
+                    .map(|logs_view| (index, logs_view))
+            });
+
+            if let Some((index, logs_view)) = existing_logs_view {
+                logs_view.update(cx, |logs_view, cx| {
+                    logs_view.editor.update(cx, |editor, cx| {
+                        editor.set_text(&log, cx);
+                        editor.move_selection_to_end(cx);
+                    });
+                });
+                pane.update(cx, |pane, cx| {
+                    pane.activate_item(index, true, true, window, cx);
+                });
+                return;
+            }
+
             let buffer = cx.new(|cx| {
                 let mut buffer = Buffer::local(log, cx);
                 buffer.set_capability(Capability::ReadOnly, cx);

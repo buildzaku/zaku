@@ -530,9 +530,7 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
     {
         (Some(bounds), Some(display_uuid))
     } else if cx.windows().is_empty() {
-        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
-        bounds.origin.y -= gpui::px(36.0);
-        (Some(WindowBounds::Windowed(bounds)), None)
+        (Some(default_window_bounds(cx)), None)
     } else {
         (None, None)
     };
@@ -542,7 +540,13 @@ pub fn default_window_options(cx: &mut App) -> WindowOptions {
     options
 }
 
-fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptions {
+pub fn default_window_bounds(cx: &App) -> WindowBounds {
+    let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
+    bounds.origin.y -= gpui::px(36.0);
+    WindowBounds::Windowed(bounds)
+}
+
+pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowOptions {
     let display = display_uuid.and_then(|uuid| {
         cx.displays()
             .into_iter()
@@ -799,6 +803,12 @@ impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = self.workspace().clone();
         let workspace_key_context = workspace.update(cx, |workspace, cx| workspace.key_context(cx));
+        let has_worktree = workspace
+            .read(cx)
+            .project()
+            .read(cx)
+            .root_worktree(cx)
+            .is_some();
         let root = workspace.update(cx, |workspace, cx| {
             workspace.actions(gpui::div().flex().items_center(), window, cx)
         });
@@ -808,7 +818,9 @@ impl Render for Root {
             root.key_context(workspace_key_context)
                 .relative()
                 .size_full()
-                .on_action(cx.listener(Self::close_project))
+                .when(has_worktree, |root| {
+                    root.on_action(cx.listener(Self::close_project))
+                })
                 .on_action(cx.listener(Self::close_window))
                 .child(
                     gpui::div()
@@ -824,6 +836,47 @@ impl Render for Root {
             Tiling::default(),
         )
     }
+}
+
+pub fn reload(cx: &mut App) {
+    let mut workspace_windows = cx
+        .windows()
+        .into_iter()
+        .filter_map(|window| window.downcast::<Root>())
+        .collect::<Vec<_>>();
+    workspace_windows.sort_by_key(|window| window.is_active(cx) == Some(false));
+
+    cx.spawn(async move |cx| {
+        for window in workspace_windows {
+            let prepare_task = match window.update(cx, |root, window, cx| {
+                root.workspace().update(cx, |workspace, cx| {
+                    workspace.prepare_to_close(CloseIntent::Quit, window, cx)
+                })
+            }) {
+                Ok(prepare_task) => prepare_task,
+                Err(error) => {
+                    log::error!("Failed to prepare workspace for restart: {error}");
+                    return anyhow::Ok(());
+                }
+            };
+
+            let should_restart = match prepare_task.await {
+                Ok(should_restart) => should_restart,
+                Err(error) => {
+                    log::error!("Failed to prepare workspace for restart: {error}");
+                    return anyhow::Ok(());
+                }
+            };
+
+            if !should_restart {
+                return anyhow::Ok(());
+            }
+        }
+
+        cx.update(|cx| cx.restart());
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
 }
 
 #[cfg(any(test, feature = "test"))]
@@ -976,12 +1029,8 @@ pub fn client_side_decorations(
                     );
 
                     let edge = cx.try_global::<GlobalResizeEdge>();
-                    if new_edge != edge.map(|edge| edge.0)
-                        && let Err(error) = window.window_handle().update(cx, |root, _, cx| {
-                            cx.notify(root.entity_id());
-                        })
-                    {
-                        log::error!("Failed to notify resize edge change: {error:?}");
+                    if new_edge != edge.map(|edge| edge.0) {
+                        window.refresh();
                     }
                 })
                 .on_mouse_down(MouseButton::Left, move |event, window, _cx| {
@@ -1236,6 +1285,10 @@ impl Workspace {
         &self.app_state
     }
 
+    pub fn status_bar(&self) -> &Entity<StatusBar> {
+        &self.status_bar
+    }
+
     pub fn database_id(&self) -> Option<WorkspaceId> {
         self.database_id
     }
@@ -1379,9 +1432,7 @@ impl Workspace {
                     {
                         (Some(bounds), Some(display))
                     } else if cx.windows().is_empty() {
-                        let mut bounds = Bounds::centered(None, DEFAULT_WINDOW_SIZE, cx);
-                        bounds.origin.y -= gpui::px(36.0);
-                        (Some(WindowBounds::Windowed(bounds)), None)
+                        (Some(default_window_bounds(cx)), None)
                     } else {
                         (None, None)
                     };
@@ -3366,7 +3417,7 @@ mod tests {
         workspace.update_in(cx, |_, window, cx| {
             assert!(window.is_action_available(&actions::workspace::NewWindow, cx));
             assert!(window.is_action_available(&actions::workspace::Open::default(), cx));
-            assert!(window.is_action_available(&actions::workspace::CloseProject, cx));
+            assert!(!window.is_action_available(&actions::workspace::CloseProject, cx));
         });
     }
 

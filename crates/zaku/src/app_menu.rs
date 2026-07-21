@@ -3,18 +3,25 @@ use gpui::SystemMenuType;
 use gpui::{App, Menu, MenuItem};
 
 use metadata::ZAKU_NAME;
+use workspace::Root;
 
-pub fn app_menu(_cx: &mut App) -> Vec<Menu> {
+pub fn app_menu(cx: &mut App) -> Vec<Menu> {
+    let has_root = cx
+        .windows()
+        .iter()
+        .any(|window| window.downcast::<Root>().is_some());
+
     vec![
         Menu {
             name: ZAKU_NAME.into(),
             disabled: false,
             items: vec![
                 MenuItem::action(format!("About {ZAKU_NAME}"), actions::zaku::About),
+                MenuItem::action("Check for Updates", actions::updater::Check),
                 MenuItem::separator(),
                 MenuItem::submenu(Menu {
                     name: "Settings".into(),
-                    disabled: false,
+                    disabled: !has_root,
                     items: vec![
                         MenuItem::action("Open Settings File", actions::zaku::OpenSettingsFile),
                         MenuItem::action("Open Keymap File", actions::zaku::OpenKeymapFile),

@@ -6,13 +6,18 @@ mod settings;
 pub use app_menu::app_menu;
 pub use settings::{handle_keymap_file_changes, handle_settings_file_changes};
 
-use gpui::{App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Window, prelude::*};
-use std::{borrow::Cow, path::Path, sync::Arc};
+use gpui::{
+    App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Tiling, Window, prelude::*,
+};
+use std::{borrow::Cow, io::IsTerminal, path::Path, sync::Arc};
 
 use ::settings::{initial_user_keymap, initial_user_settings};
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use system_specs::SystemSpecs;
+use theme::ActiveTheme;
+use title_bar::TitleBar;
+use ui::StyledTypography;
 use workspace::{
     AppState, Breadcrumbs, CloseIntent, DockPosition, OpenMode, Panel, Root, SessionWorkspace,
     Toast, Workspace, WorkspaceDb, WorkspaceEvent, create_and_open_file,
@@ -20,6 +25,65 @@ use workspace::{
 };
 
 use crate::{logs::open_log_file, settings::migrate::MigrationBanner};
+
+pub struct EmptyRoot {
+    title_bar: Entity<TitleBar>,
+}
+
+impl EmptyRoot {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            title_bar: cx.new(|cx| TitleBar::new("title-bar", None, window, cx)),
+        }
+    }
+}
+
+impl Render for EmptyRoot {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let ui_font = theme::setup_ui_font(window, cx);
+        let theme_colors = cx.theme().colors();
+
+        workspace::client_side_decorations(
+            gpui::div()
+                .relative()
+                .size_full()
+                .on_action(|_: &actions::workspace::CloseWindow, window, _| window.remove_window())
+                .child(
+                    gpui::div()
+                        .flex()
+                        .flex_1()
+                        .size_full()
+                        .overflow_hidden()
+                        .child(
+                            gpui::div()
+                                .relative()
+                                .flex()
+                                .flex_col()
+                                .text_color(theme_colors.text)
+                                .font(ui_font)
+                                .text_ui(cx)
+                                .size_full()
+                                .overflow_hidden()
+                                .child(self.title_bar.clone())
+                                .child(
+                                    gpui::div()
+                                        .id("workspace")
+                                        .bg(theme_colors.background)
+                                        .relative()
+                                        .flex()
+                                        .flex_1()
+                                        .overflow_hidden()
+                                        .border_y_1()
+                                        .border_color(theme_colors.border),
+                                ),
+                        ),
+                ),
+            window,
+            cx,
+            Tiling::default(),
+        )
+    }
+}
 
 pub fn init(cx: &mut App) {
     register_actions(cx);
@@ -186,12 +250,19 @@ fn register_actions(cx: &mut App) {
             open_settings_file(path::keymap_file(), initial_user_keymap, window, cx);
         });
     })
-    .on_action(|_: &actions::zaku::OpenLogs, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            open_log_file(workspace, window, cx);
-        });
-    })
     .on_action(|_: &actions::workspace::CloseWindow, cx| Workspace::close_window(cx));
+
+    if !stdout_is_terminal() {
+        cx.on_action(|_: &actions::zaku::OpenLogs, cx| {
+            with_active_or_new_workspace(cx, |workspace, window, cx| {
+                open_log_file(workspace, window, cx);
+            });
+        });
+    }
+}
+
+pub fn stdout_is_terminal() -> bool {
+    std::io::stdout().is_terminal()
 }
 
 fn open_settings_file(
