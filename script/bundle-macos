@@ -4,7 +4,12 @@ set -euo pipefail
 
 CARGO_BUNDLE_VERSION="0.11.0"
 
-if [[ $# -eq 1 && ($1 == "-h" || $1 == "--help") ]]; then
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/bundle-macos --help" >&2
+    exit 1
+  fi
   echo "Usage: ./script/bundle-macos [OPTIONS]"
   echo "Build a macOS application bundle and disk image."
   echo "Options:"
@@ -14,7 +19,7 @@ if [[ $# -eq 1 && ($1 == "-h" || $1 == "--help") ]]; then
 fi
 if [[ $# -gt 2 ]]; then
   echo "Unexpected argument: $3" >&2
-  echo "Usage: ./script/bundle-macos [OPTIONS]" >&2
+  echo "Run ./script/bundle-macos --help" >&2
   exit 1
 fi
 
@@ -24,14 +29,15 @@ case "${1:-}" in
   ;;
 --arch)
   if [[ $# -ne 2 || -z ${2:-} ]]; then
-    echo "Usage: ./script/bundle-macos [OPTIONS]" >&2
+    echo "Missing value for --arch" >&2
+    echo "Run ./script/bundle-macos --help" >&2
     exit 1
   fi
   arch="$2"
   ;;
 *)
   echo "Unexpected argument: $1" >&2
-  echo "Usage: ./script/bundle-macos [OPTIONS]" >&2
+  echo "Run ./script/bundle-macos --help" >&2
   exit 1
   ;;
 esac

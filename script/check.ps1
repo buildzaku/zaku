@@ -11,7 +11,7 @@ $scriptPath = Resolve-Path -LiteralPath $PSCommandPath -RelativeBasePath $worksp
 
 if ($args.Length -gt 0) {
     Write-Error "Unexpected argument: $($args[0])"
-    Write-Error "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Error "Run pwsh -File $scriptPath -Help"
     exit 1
 }
 

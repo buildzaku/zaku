@@ -10,7 +10,7 @@ main() {
   -h | --help)
     if [ "$#" -ne 1 ]; then
       echo "Unexpected argument: $2" >&2
-      echo "Usage: ${0##*/} [OPTIONS]" >&2
+      echo "Run ${0##*/} --help" >&2
       exit 1
     fi
     echo "Usage: ${0##*/} [OPTIONS]"
@@ -22,14 +22,15 @@ main() {
     ;;
   --version)
     if [ "$#" -ne 2 ] || [ -z "$2" ]; then
-      echo "Usage: ${0##*/} [OPTIONS]" >&2
+      echo "Missing value for --version" >&2
+      echo "Run ${0##*/} --help" >&2
       exit 1
     fi
     version="$2"
     ;;
   *)
     echo "Unexpected argument: $1" >&2
-    echo "Usage: ${0##*/} [OPTIONS]" >&2
+    echo "Run ${0##*/} --help" >&2
     exit 1
     ;;
   esac
