@@ -40,12 +40,20 @@ jobs:
         with:
           version: 10.33.2
 
-      - name: "Check Prettier formatting"
-        run: ./script/prettier
+      - name: "Install shfmt"
+        env:
+          SHFMT_VERSION: 3.13.1
+          SHFMT_SHA256: fb096c5d1ac6beabbdbaa2874d025badb03ee07929f0c9ff67563ce8c75398b1
+        run: |
+          curl -fsSL "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" -o "${RUNNER_TEMP}/shfmt"
+          printf '%s  %s\n' "${SHFMT_SHA256}" "${RUNNER_TEMP}/shfmt" | sha256sum --check
+          chmod +x "${RUNNER_TEMP}/shfmt"
+          echo "${RUNNER_TEMP}" >>"${GITHUB_PATH}"
         shell: bash
 
-      - name: "Check Rust formatting"
-        run: cargo fmt --all -- --check
+      - name: "Check formatting"
+        run: ./script/fmt --check
+        shell: bash
 
       - name: "Check for typos"
         uses: crate-ci/typos@cf5f1c29a8ac336af8568821ec41919923b05a83 # v1.45.1

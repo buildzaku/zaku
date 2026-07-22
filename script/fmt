@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); then
+  echo "Bash 5.2 or later is required" >&2
+  exit 1
+fi
+
+PRETTIER_VERSION=3.9.6
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/fmt --help" >&2
+    exit 1
+  fi
+  echo "Usage: ./script/fmt [OPTIONS]"
+  echo "Fix or check repository formatting."
+  echo "Options:"
+  echo "  --check     Check formatting without writing changes."
+  echo "  -h, --help  Show help."
+  exit 0
+fi
+if [[ $# -gt 1 ]]; then
+  echo "Unexpected argument: $2" >&2
+  echo "Run ./script/fmt --help" >&2
+  exit 1
+fi
+if [[ $# -eq 1 && $1 != "--check" ]]; then
+  echo "Unexpected argument: $1" >&2
+  echo "Run ./script/fmt --help" >&2
+  exit 1
+fi
+
+cargo_command="${CARGO:-cargo}"
+for command in pnpm "$cargo_command" shfmt pwsh; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Missing required command: $command" >&2
+    exit 1
+  fi
+done
+
+if [[ "${1:-}" == "--check" ]]; then
+  prettier_mode=(--check --log-level warn)
+  rustfmt_mode=(-- --check)
+  shfmt_mode=(--diff)
+  powershell_mode=(-Check)
+else
+  prettier_mode=(--write --log-level warn)
+  rustfmt_mode=()
+  shfmt_mode=(--write)
+  powershell_mode=()
+fi
+
+script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+workspace_directory=$(dirname "$script_directory")
+cd "$workspace_directory"
+
+pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${prettier_mode[@]}"
+
+"$cargo_command" fmt --all "${rustfmt_mode[@]}"
+
+shfmt --indent 2 "${shfmt_mode[@]}" script
+
+pwsh -NoProfile -NonInteractive -File script/fmt-pwsh.ps1 "${powershell_mode[@]}"
