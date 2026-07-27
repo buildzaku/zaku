@@ -9308,6 +9308,7 @@ dependencies = [
  "multi_buffer",
  "parking_lot",
  "path",
+ "platform_title_bar",
  "project",
  "project_panel",
  "request_editor",
