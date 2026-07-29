@@ -7,15 +7,16 @@ pub use app_menu::app_menu;
 pub use settings::{handle_keymap_file_changes, handle_settings_file_changes};
 
 use gpui::{
-    App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Tiling, Window, prelude::*,
+    App, AsyncApp, ClipboardItem, Context, Entity, PromptLevel, Tiling, Window, WindowAppearance,
+    prelude::*,
 };
 use std::{borrow::Cow, io::IsTerminal, path::Path, sync::Arc};
 
-use ::settings::{initial_user_keymap, initial_user_settings};
+use ::settings::{SettingsStore, ThemeAppearanceMode, initial_user_keymap, initial_user_settings};
 use project_panel::ProjectPanel;
 use response_panel::ResponsePanel;
 use system_specs::SystemSpecs;
-use theme::ActiveTheme;
+use theme::{ActiveTheme, Appearance};
 use title_bar::TitleBar;
 use ui::StyledTypography;
 use workspace::{
@@ -86,6 +87,7 @@ impl Render for EmptyRoot {
 }
 
 pub fn init(cx: &mut App) {
+    init_window_appearance(cx);
     register_actions(cx);
 
     cx.observe_new(|workspace: &mut Workspace, window, cx| {
@@ -174,6 +176,31 @@ pub fn init(cx: &mut App) {
         }
     })
     .detach();
+}
+
+fn init_window_appearance(cx: &mut App) {
+    // Match native window chrome to the current theme instead of the OS appearance.
+    let apply = |cx: &mut App| {
+        let appearance = match cx
+            .global::<SettingsStore>()
+            .content()
+            .theme
+            .as_ref()
+            .and_then(|theme| theme.mode)
+            .unwrap_or_default()
+        {
+            ThemeAppearanceMode::System => None,
+            ThemeAppearanceMode::Light | ThemeAppearanceMode::Dark => {
+                Some(match cx.theme().appearance() {
+                    Appearance::Light => WindowAppearance::Light,
+                    Appearance::Dark => WindowAppearance::Dark,
+                })
+            }
+        };
+        cx.set_window_appearance(appearance);
+    };
+    apply(cx);
+    cx.observe_global::<SettingsStore>(apply).detach();
 }
 
 fn initialize_pane_toolbar(pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Workspace>) {

@@ -101,7 +101,8 @@ impl Item for Editor {
                     Text::new(description)
                         .size(TextSize::XSmall)
                         .line_height_style(LineHeightStyle::Compact)
-                        .color(Color::Muted),
+                        .color(Color::Muted)
+                        .alpha(0.7),
                 )
             })
             .into_any_element()

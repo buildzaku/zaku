@@ -6,6 +6,7 @@ use jiff::Timestamp;
 use std::path::{Path, PathBuf};
 
 use metadata::{ZAKU_DESCRIPTION, ZAKU_NAME};
+use path::PathExt;
 use theme::ActiveTheme;
 use ui::{
     ButtonCommon, ButtonLike, ButtonSize, Clickable, Color, FixedWidth, Icon, IconAsset, IconSize,
@@ -55,6 +56,7 @@ struct SectionButton {
     focus_handle: FocusHandle,
     tab_index: usize,
     text: SharedString,
+    secondary_text: Option<SharedString>,
     icon: IconAsset,
     action: Box<dyn Action>,
 }
@@ -62,6 +64,7 @@ struct SectionButton {
 impl SectionButton {
     fn new(
         text: impl Into<SharedString>,
+        secondary_text: Option<SharedString>,
         icon: IconAsset,
         action: &dyn Action,
         tab_index: usize,
@@ -71,6 +74,7 @@ impl SectionButton {
             focus_handle,
             tab_index,
             text: text.into(),
+            secondary_text,
             icon,
             action: action.boxed_clone(),
         }
@@ -92,18 +96,38 @@ impl RenderOnce for SectionButton {
                     .flex()
                     .items_center()
                     .w_full()
+                    .min_w_0()
                     .justify_between()
+                    .gap_2()
                     .child(
                         gpui::div()
                             .flex()
                             .items_center()
+                            .flex_1()
+                            .min_w_0()
                             .gap_2()
                             .child(
                                 Icon::new(self.icon)
                                     .color(Color::Muted)
                                     .size(IconSize::Small),
                             )
-                            .child(Text::new(self.text)),
+                            .child(
+                                gpui::div()
+                                    .flex()
+                                    .items_center()
+                                    .min_w_0()
+                                    .gap_2()
+                                    .text_left()
+                                    .child(Text::new(self.text).truncate())
+                                    .children(self.secondary_text.map(|text| {
+                                        Text::new(text)
+                                            .font_buffer(cx)
+                                            .color(Color::Muted)
+                                            .alpha(0.7)
+                                            .size(TextSize::XSmall)
+                                            .truncate_start()
+                                    })),
+                            ),
                     )
                     .child(
                         KeyBinding::for_action_in(action_ref, &self.focus_handle, cx)
@@ -126,6 +150,7 @@ impl SectionEntry {
     fn render(&self, button_index: usize, focus: &FocusHandle, _cx: &App) -> impl IntoElement {
         SectionButton::new(
             self.title,
+            None,
             self.icon,
             self.action,
             button_index,
@@ -295,6 +320,9 @@ impl WelcomePage {
 
         SectionButton::new(
             title,
+            path.parent()
+                .filter(|location| !location.as_os_str().is_empty())
+                .map(|location| location.compact().to_string_lossy().into_owned().into()),
             IconAsset::Folder,
             &actions::workspace::OpenRecentProject {
                 index: project_index,
@@ -331,7 +359,7 @@ impl Render for WelcomePage {
             .flex_1()
             .justify_center()
             .overflow_hidden()
-            .max_w_112()
+            .max_w(ui::rems_from_px(500_f32))
             .mx_auto()
             .gap_6()
             .child(
