@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); then
+  echo "Bash 5.2 or later is required" >&2
+  exit 1
+fi
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/bump-version --help" >&2
+    exit 1
+  fi
+  echo "Usage: ./script/bump-version <year|minor|patch> [beta] [--no-commit|--no-push]"
+  echo "       ./script/bump-version <beta|stable> [--no-commit|--no-push]"
+  echo "Update Zaku version, create a release branch and open a pull request."
+  echo "Options:"
+  echo "  --no-commit  Update version without creating a release branch or commit."
+  echo "  --no-push    Do not push the release branch or open a pull request."
+  echo "  -h, --help   Show help."
+  exit 0
+fi
+
+should_commit=true
+should_push=true
+if [[ $# -gt 0 ]]; then
+  case "${!#}" in
+  --no-commit)
+    should_commit=false
+    should_push=false
+    set -- "${@:1:$#-1}"
+    ;;
+  --no-push)
+    should_push=false
+    set -- "${@:1:$#-1}"
+    ;;
+  esac
+fi
+
+if [[ $# -eq 0 ]]; then
+  echo "Missing version operation" >&2
+  echo "Run ./script/bump-version --help" >&2
+  exit 1
+fi
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
+  echo "Run ./script/bump-version --help" >&2
+  exit 1
+fi
+
+operation="$1"
+start_beta=false
+case "$operation" in
+year | minor | patch)
+  if [[ $# -eq 2 ]]; then
+    if [[ "$2" != "beta" ]]; then
+      echo "Unexpected argument: $2" >&2
+      echo "Run ./script/bump-version --help" >&2
+      exit 1
+    fi
+    start_beta=true
+  fi
+  ;;
+beta | stable)
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/bump-version --help" >&2
+    exit 1
+  fi
+  ;;
+*)
+  echo "Unexpected argument: $operation" >&2
+  echo "Run ./script/bump-version --help" >&2
+  exit 1
+  ;;
+esac
+
+required_commands=(git jq cargo)
+if $should_push; then
+  required_commands+=(gh)
+fi
+for command in "${required_commands[@]}"; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Missing required command: $command" >&2
+    exit 1
+  fi
+done
+
+if $should_push && ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
+  echo "GitHub CLI authentication is required" >&2
+  exit 1
+fi
+
+if [[ "$(git branch --show-current)" != "main" ]]; then
+  echo "Switch to main before updating Zaku version" >&2
+  exit 1
+fi
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Working tree must be clean before updating Zaku version" >&2
+  exit 1
+fi
+
+current_version=$(./script/get-version)
+
+if [[ ! "$current_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-beta\.([1-9][0-9]*))?$ ]]; then
+  echo "Invalid Zaku version: $current_version" >&2
+  exit 1
+fi
+
+year="${BASH_REMATCH[1]}"
+minor="${BASH_REMATCH[2]}"
+patch="${BASH_REMATCH[3]}"
+beta_number="${BASH_REMATCH[5]:-}"
+
+target_year="$year"
+target_minor="$minor"
+target_patch="$patch"
+target_beta_number=""
+
+case "$operation" in
+year)
+  current_year=$(date +%Y)
+  target_year=$((10#${current_year: -2}))
+  if ! ((10#$year == 0 && 10#$minor == 0 && 10#$patch == 0)) &&
+    ((target_year <= 10#$year)); then
+    echo "Version for current year must be newer than $current_version: ${target_year}.0" >&2
+    exit 1
+  fi
+  target_minor=0
+  target_patch=0
+  if $start_beta; then
+    target_beta_number=1
+  fi
+  ;;
+minor)
+  target_minor=$((10#$minor + 1))
+  target_patch=0
+  if $start_beta; then
+    target_beta_number=1
+  fi
+  ;;
+patch)
+  target_patch=$((10#$patch + 1))
+  if $start_beta; then
+    target_beta_number=1
+  fi
+  ;;
+beta)
+  if [[ -z "$beta_number" ]]; then
+    echo "Current Zaku version must be beta before incrementing it: $current_version" >&2
+    exit 1
+  fi
+  target_beta_number=$((10#$beta_number + 1))
+  ;;
+stable)
+  if [[ -z "$beta_number" ]]; then
+    echo "Current Zaku version must be beta before promoting it to stable: $current_version" >&2
+    exit 1
+  fi
+  ;;
+esac
+
+cargo_version="${target_year}.${target_minor}.${target_patch}"
+display_version="${target_year}.${target_minor}"
+if ((target_patch != 0)); then
+  display_version="${display_version}.${target_patch}"
+fi
+if [[ -n "$target_beta_number" ]]; then
+  cargo_version="${cargo_version}-beta.${target_beta_number}"
+  display_version="${display_version}-beta.${target_beta_number}"
+fi
+
+if [[ "$cargo_version" == "$current_version" ]]; then
+  echo "Zaku version is already $display_version" >&2
+  exit 1
+fi
+
+release_branch="release/${display_version}"
+if $should_commit; then
+  if git show-ref --verify --quiet "refs/heads/${release_branch}"; then
+    echo "Release branch already exists: $release_branch" >&2
+    exit 1
+  fi
+  if git show-ref --verify --quiet "refs/tags/${display_version}"; then
+    echo "Release tag already exists: $display_version" >&2
+    exit 1
+  fi
+fi
+
+if ! command -v cargo-set-version >/dev/null 2>&1; then
+  cargo install cargo-edit
+fi
+
+echo "Updating Zaku version from $current_version to $cargo_version"
+if $should_commit; then
+  git switch --create "$release_branch"
+fi
+cargo set-version --workspace "$cargo_version"
+cargo check --quiet
+if ! $should_commit; then
+  echo "Updated Zaku version: $cargo_version"
+  exit 0
+fi
+
+git add -- Cargo.toml Cargo.lock
+git commit --message "Zaku $display_version"
+
+echo "Created release branch: $release_branch"
+echo "Created release commit: Zaku $display_version"
+if ! $should_push; then
+  echo "Push the release branch with:"
+  echo "  git push --set-upstream origin $release_branch"
+  echo "Open the pull request with:"
+  echo "  gh pr create --base main --head $release_branch --title \"Zaku $display_version\" --body \"\""
+  exit 0
+fi
+
+git push --set-upstream origin "$release_branch"
+echo "Pushed release branch: $release_branch"
+gh pr create --base main --head "$release_branch" --title "Zaku $display_version" --body ""
