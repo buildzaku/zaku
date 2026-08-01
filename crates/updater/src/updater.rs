@@ -12,6 +12,7 @@ use gpui::{
     App, AppContext, AsyncApp, Context, Entity, Global, PromptLevel, Task, TaskExt, Window,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use smol::fs::File;
 #[cfg(target_os = "windows")]
 use std::io;
@@ -156,7 +157,9 @@ impl PartialEq for UpdateStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReleaseAsset {
     pub version: AppVersion,
-    pub url: String,
+    pub size: u64,
+    pub sha256: String,
+    pub download_url: String,
 }
 
 #[cfg(target_os = "macos")]
@@ -807,34 +810,18 @@ async fn download_release(
     const PERCENTAGE_SCALE: u8 = 100;
     let mut target_file = File::create(target_path).await?;
 
-    let mut response = client.get(&release.url, AsyncBody::default(), true).await?;
+    let mut response = client
+        .get(&release.download_url, AsyncBody::default(), true)
+        .await?;
     anyhow::ensure!(
         response.status().is_success(),
         "failed to download update: {:?}",
         response.status()
     );
 
-    let total_bytes = response
-        .headers()
-        .get(http_client::http::header::CONTENT_LENGTH)
-        .map(|value| -> anyhow::Result<u64> {
-            value
-                .to_str()
-                .context("content length should be valid text")?
-                .parse::<u64>()
-                .context("content length should be a valid integer")
-        })
-        .transpose();
-    let total_bytes = match total_bytes {
-        Ok(total_bytes) => total_bytes.filter(|total_bytes| *total_bytes > 0),
-        Err(error) => {
-            log::warn!("Failed to read update content length: {error:#}");
-            None
-        }
-    };
-
     let mut downloaded_bytes = 0_u64;
     let mut last_reported_percent = None;
+    let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 8192];
     let body = response.body_mut();
     loop {
@@ -845,25 +832,31 @@ async fn download_release(
         let bytes = buffer
             .get(..bytes_read)
             .context("downloaded byte count exceeded the buffer")?;
-        target_file.write_all(bytes).await?;
-        downloaded_bytes += bytes_read as u64;
+        let bytes_read =
+            u64::try_from(bytes_read).context("downloaded byte count should fit in u64")?;
+        downloaded_bytes += bytes_read;
 
-        if let Some(total_bytes) = total_bytes {
-            let percentage_scale = u128::from(PERCENTAGE_SCALE);
-            let percent = u128::from(downloaded_bytes) * percentage_scale / u128::from(total_bytes);
-            let percent = percent.min(percentage_scale);
-            let percent = u8::try_from(percent).context("download percentage should fit in u8")?;
-            if last_reported_percent != Some(percent) {
-                last_reported_percent = Some(percent);
-                let fraction = f32::from(percent) / f32::from(PERCENTAGE_SCALE);
-                on_progress(Some(fraction));
-            }
+        hasher.update(bytes);
+        target_file.write_all(bytes).await?;
+
+        let percentage_scale = u128::from(PERCENTAGE_SCALE);
+        let percent = u128::from(downloaded_bytes) * percentage_scale / u128::from(release.size);
+        let percent = percent.min(percentage_scale);
+        let percent = u8::try_from(percent).context("download percentage should fit in u8")?;
+        if last_reported_percent != Some(percent) {
+            last_reported_percent = Some(percent);
+            let fraction = f32::from(percent) / f32::from(PERCENTAGE_SCALE);
+            on_progress(Some(fraction));
         }
     }
     target_file.flush().await?;
-    if total_bytes.is_some() && last_reported_percent != Some(PERCENTAGE_SCALE) {
-        on_progress(Some(1.0));
-    }
+
+    let sha256 = hex::encode(hasher.finalize());
+    anyhow::ensure!(
+        sha256.eq_ignore_ascii_case(&release.sha256),
+        "downloaded update SHA-256 does not match: expected {}, received {sha256}",
+        release.sha256,
+    );
     log::info!("Downloaded update to {}", target_path.display());
 
     Ok(())
@@ -1179,39 +1172,40 @@ mod tests {
         let (download_tx, download_rx) = oneshot::channel::<Vec<u8>>();
         let cache_dir = tempdir().unwrap();
         let installed_dir = Arc::new(tempdir().unwrap());
+        let update_contents = b"test-zaku-update".to_vec();
+        let update_size = u64::try_from(update_contents.len()).unwrap();
+        let update_sha256 = hex::encode(Sha256::digest(&update_contents));
 
         let (updater, _polling) = cx.update(|cx| {
             let release_available = Arc::clone(&release_available);
             let download_rx = Arc::new(Mutex::new(Some(download_rx)));
             let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
-            let artifact_extension = match OS {
-                "linux" => "tar.gz",
-                "macos" => "dmg",
-                "windows" => "exe",
-                unsupported_os => panic!("not supported: {unsupported_os}"),
-            };
-            let artifact_path = format!(
-                "/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
-            );
+            let artifact_path = format!("/releases/stable/26.1/{OS}-{ARCH}/download");
             let http_client = FakeHttpClient::create(move |request| {
                 let download_rx = download_rx.clone();
                 let discovery_path = discovery_path.clone();
                 let artifact_path = artifact_path.clone();
                 let release_available = release_available.load(Ordering::Relaxed);
+                let update_sha256 = update_sha256.clone();
                 async move {
                     let path = request.uri().path();
                     if path == discovery_path {
-                        let version = if release_available {
-                            "26.1"
-                        } else {
-                            "26.0"
-                        };
-                        let url = format!(
-                            "https://releases.zaku.dev/stable/{version}/{OS}-{ARCH}/Zaku-{version}-{ARCH}.{artifact_extension}"
+                        let version = if release_available { "26.1" } else { "26.0" };
+                        let download_url = format!(
+                            "https://api.zaku.dev/releases/stable/{version}/{OS}-{ARCH}/download"
                         );
                         Ok(Response::builder()
                             .status(200)
-                            .body(json!({ "version": version, "url": url }).to_string().into())
+                            .body(
+                                json!({
+                                    "version": version,
+                                    "size": update_size,
+                                    "sha256": update_sha256,
+                                    "download_url": download_url,
+                                })
+                                .to_string()
+                                .into(),
+                            )
                             .unwrap())
                     } else if path == artifact_path {
                         let download_rx = download_rx.lock().take().unwrap();
@@ -1268,7 +1262,6 @@ mod tests {
             "status should be downloading without progress, got {status:?}"
         );
 
-        let update_contents = b"fake-zaku-update".to_vec();
         download_tx.send(update_contents.clone()).unwrap();
 
         loop {
@@ -1317,12 +1310,6 @@ mod tests {
             let release_rx = Arc::new(Mutex::new(Some(release_rx)));
             let request_count = Arc::clone(&request_count);
             let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
-            let artifact_extension = match OS {
-                "linux" => "tar.gz",
-                "macos" => "dmg",
-                "windows" => "exe",
-                unsupported_os => panic!("not supported: {unsupported_os}"),
-            };
             let http_client = FakeHttpClient::create(move |request| {
                 let release_rx = release_rx.clone();
                 let discovery_path = discovery_path.clone();
@@ -1333,15 +1320,19 @@ mod tests {
                     request_count.fetch_add(1, Ordering::SeqCst);
                     let release_rx = release_rx.lock().take().unwrap();
                     release_rx.await.unwrap();
-                    let url = format!(
-                        "https://releases.zaku.dev/stable/26.0/{OS}-{ARCH}/Zaku-26.0-{ARCH}.{artifact_extension}"
-                    );
+                    let download_url =
+                        format!("https://api.zaku.dev/releases/stable/26.0/{OS}-{ARCH}/download");
                     Ok(Response::builder()
                         .status(200)
                         .body(
-                            json!({ "version": "26.0", "url": url })
-                                .to_string()
-                                .into(),
+                            json!({
+                                "version": "26.0",
+                                "size": 1,
+                                "sha256": hex::encode(Sha256::digest([0_u8])),
+                                "download_url": download_url,
+                            })
+                            .to_string()
+                            .into(),
                         )
                         .unwrap())
                 }
@@ -1497,34 +1488,19 @@ mod tests {
         cx.background_executor.allow_parking();
 
         let body = vec![0_u8; 20_000];
-        let content_length = body.len();
+        let release = ReleaseAsset {
+            version: "26.1".parse().unwrap(),
+            size: u64::try_from(body.len()).unwrap(),
+            sha256: hex::encode(Sha256::digest(&body)),
+            download_url: format!("{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/download"),
+        };
+        let expected_size = release.size;
         let http_client = FakeHttpClient::create(move |_| {
             let body = body.clone();
-            async move {
-                Ok(Response::builder()
-                    .status(200)
-                    .header(
-                        http_client::http::header::CONTENT_LENGTH,
-                        body.len().to_string(),
-                    )
-                    .body(body.into())
-                    .unwrap())
-            }
+            async move { Ok(Response::builder().status(200).body(body.into()).unwrap()) }
         });
         let temp_dir = tempdir().unwrap();
         let target_path = temp_dir.path().join("zaku-download");
-        let artifact_extension = match OS {
-            "linux" => "tar.gz",
-            "macos" => "dmg",
-            "windows" => "exe",
-            unsupported_os => panic!("not supported: {unsupported_os}"),
-        };
-        let release = ReleaseAsset {
-            version: "26.1".parse().unwrap(),
-            url: format!(
-                "https://releases.zaku.dev/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
-            ),
-        };
         let reported = Rc::new(RefCell::new(Vec::new()));
 
         download_release(&target_path, release, http_client, {
@@ -1560,57 +1536,37 @@ mod tests {
 
         let downloaded_length = std::fs::metadata(&target_path).unwrap().len();
         assert_eq!(
-            downloaded_length, content_length as u64,
-            "file size should match response body"
+            downloaded_length, expected_size,
+            "file size should match release metadata"
         );
     }
 
     #[gpui::test]
-    async fn test_download_release_without_content_length_reports_no_progress(
-        cx: &mut TestAppContext,
-    ) {
+    async fn test_download_release_rejects_sha256_mismatch(cx: &mut TestAppContext) {
         cx.background_executor.allow_parking();
 
-        let body = vec![0_u8; 20_000];
-        let content_length = body.len();
+        let body = b"test-zaku-update".to_vec();
+        let release = ReleaseAsset {
+            version: "26.1".parse().unwrap(),
+            size: u64::try_from(body.len()).unwrap(),
+            sha256: hex::encode(Sha256::digest(b"different-update")),
+            download_url: format!("{ZAKU_SERVER_URL}/releases/stable/26.1/{OS}-{ARCH}/download"),
+        };
         let http_client = FakeHttpClient::create(move |_| {
             let body = body.clone();
             async move { Ok(Response::builder().status(200).body(body.into()).unwrap()) }
         });
         let temp_dir = tempdir().unwrap();
         let target_path = temp_dir.path().join("zaku-download");
-        let artifact_extension = match OS {
-            "linux" => "tar.gz",
-            "macos" => "dmg",
-            "windows" => "exe",
-            unsupported_os => panic!("not supported: {unsupported_os}"),
-        };
-        let release = ReleaseAsset {
-            version: "26.1".parse().unwrap(),
-            url: format!(
-                "https://releases.zaku.dev/stable/26.1/{OS}-{ARCH}/Zaku-26.1-{ARCH}.{artifact_extension}"
-            ),
-        };
-        let reported = Rc::new(RefCell::new(Vec::new()));
 
-        download_release(&target_path, release, http_client, {
-            let reported = reported.clone();
-            move |fraction| {
-                reported.borrow_mut().push(fraction);
-            }
-        })
-        .await
-        .unwrap();
-
+        let error = download_release(&target_path, release, http_client, |_| {})
+            .await
+            .unwrap_err();
         assert!(
-            reported.borrow().is_empty(),
-            "progress should not be reported without content length, got {:?}",
-            reported.borrow()
-        );
-        let downloaded_length = std::fs::metadata(&target_path).unwrap().len();
-        assert_eq!(
-            downloaded_length, content_length as u64,
-            "file size should match response body"
+            error
+                .to_string()
+                .starts_with("downloaded update SHA-256 does not match"),
+            "unexpected error: {error:#}"
         );
     }
 }
