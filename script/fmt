@@ -7,7 +7,7 @@ if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); th
   exit 1
 fi
 
-PRETTIER_VERSION=3.9.6
+PRETTIER_VERSION="3.9.6"
 
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   if [[ $# -ne 1 ]]; then
@@ -33,8 +33,7 @@ if [[ $# -eq 1 && $1 != "--check" ]]; then
   exit 1
 fi
 
-cargo_command="${CARGO:-cargo}"
-for command in pnpm "$cargo_command" shfmt pwsh; do
+for command in pnpm cargo shfmt pwsh; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Missing required command: $command" >&2
     exit 1
@@ -59,7 +58,7 @@ cd "$workspace_directory"
 
 pnpm dlx "prettier@${PRETTIER_VERSION}" '**/*.{yml,yaml,json,jsonc,md,svg}' "${prettier_mode[@]}"
 
-"$cargo_command" fmt --all "${rustfmt_mode[@]}"
+cargo fmt --all "${rustfmt_mode[@]}"
 
 shfmt --indent 2 "${shfmt_mode[@]}" script
 

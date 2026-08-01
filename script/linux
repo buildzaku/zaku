@@ -125,13 +125,13 @@ else
   exit 1
 fi
 
-installed_rustup=0
+installed_rustup=false
 if ! command -v rustup >/dev/null 2>&1; then
   curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain none
-  installed_rustup=1
+  installed_rustup=true
 fi
 
 echo "Installed Linux dependencies"
-if [[ $installed_rustup -eq 1 ]]; then
+if $installed_rustup; then
   echo "Restart your shell or source \"$HOME/.cargo/env\" before building Zaku"
 fi

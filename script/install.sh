@@ -3,39 +3,62 @@
 set -eu
 
 main() {
+  channel="stable"
   version="latest"
-  case "${1:-}" in
-  "")
-    ;;
-  -h | --help)
-    if [ "$#" -ne 1 ]; then
-      echo "Unexpected argument: $2" >&2
+  version_set=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+    -h | --help)
+      if [ "$#" -ne 1 ]; then
+        echo "Unexpected argument: $2" >&2
+        echo "Run ${0##*/} --help" >&2
+        exit 1
+      fi
+      echo "Usage: ${0##*/} [OPTIONS]"
+      echo "Install Zaku on Linux."
+      echo "Options:"
+      echo "  --channel <stable|beta>  [default: stable]"
+      echo "  --version <version>      [default: latest]"
+      echo "  -h, --help               Show help."
+      exit 0
+      ;;
+    --channel)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        echo "Missing value for --channel" >&2
+        echo "Run ${0##*/} --help" >&2
+        exit 1
+      fi
+      channel="$2"
+      shift 2
+      ;;
+    --version)
+      if [ "$#" -lt 2 ] || [ -z "$2" ]; then
+        echo "Missing value for --version" >&2
+        echo "Run ${0##*/} --help" >&2
+        exit 1
+      fi
+      version="$2"
+      version_set=1
+      shift 2
+      ;;
+    *)
+      echo "Unexpected argument: $1" >&2
       echo "Run ${0##*/} --help" >&2
       exit 1
-    fi
-    echo "Usage: ${0##*/} [OPTIONS]"
-    echo "Install Zaku on Linux."
-    echo "Options:"
-    echo "  --version <version>  [default: latest]"
-    echo "  -h, --help           Show help."
-    exit 0
-    ;;
-  --version)
-    if [ "$#" -ne 2 ] || [ -z "$2" ]; then
-      echo "Missing value for --version" >&2
-      echo "Run ${0##*/} --help" >&2
-      exit 1
-    fi
-    version="$2"
+      ;;
+    esac
+  done
+
+  case "$channel" in
+  stable | beta)
     ;;
   *)
-    echo "Unexpected argument: $1" >&2
-    echo "Run ${0##*/} --help" >&2
+    echo "Unsupported release channel: $channel" >&2
     exit 1
     ;;
   esac
 
-  if [ "${1:-}" = "--version" ] && [ -n "${ZAKU_BUNDLE_PATH:-}" ]; then
+  if [ "$version_set" -eq 1 ] && [ -n "${ZAKU_BUNDLE_PATH:-}" ]; then
     echo "Cannot use --version with ZAKU_BUNDLE_PATH" >&2
     exit 1
   fi
@@ -197,7 +220,7 @@ main() {
     cp "$ZAKU_BUNDLE_PATH" "$archive_path"
   else
     echo "Downloading Zaku $version"
-    curl -fL "https://api.zaku.dev/releases/stable/$version/linux-$arch/download" -o "$archive_path"
+    curl -fL "https://api.zaku.dev/releases/$channel/$version/linux-$arch/download" -o "$archive_path"
   fi
 
   extracted_directory="$transaction_directory/extracted"

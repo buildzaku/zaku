@@ -72,25 +72,25 @@ if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
 fi
 
 target="${arch}-apple-darwin"
-version=$(./script/get-version)
+version=$(./script/get-version --display)
 short_version="${version%%-*}"
 if [[ "$short_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
   short_version="${short_version}.0"
 fi
-cargo_bundle_version=$("${CARGO:-cargo}" bundle --version 2>/dev/null || true)
+cargo_bundle_version=$(cargo bundle --version 2>/dev/null || true)
 if [[ "$cargo_bundle_version" != "cargo-bundle v${CARGO_BUNDLE_VERSION}" ]]; then
-  "${CARGO:-cargo}" install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
+  cargo install cargo-bundle --version "=${CARGO_BUNDLE_VERSION}" --locked
 fi
 
 rustup target add "$target"
 
 echo "Compiling Zaku"
-"${CARGO:-cargo}" build --release --package zaku --target "$target"
+cargo build --release --package zaku --target "$target"
 
 echo "Creating macOS application bundle"
 app_path=$(
   cd crates/zaku
-  CARGO_BUNDLE_SKIP_BUILD=true "${CARGO:-cargo}" bundle --release --format osx --target "$target" | sed -n '$s/^[[:space:]]*//p'
+  CARGO_BUNDLE_SKIP_BUILD=true cargo bundle --release --format osx --target "$target" | sed -n '$s/^[[:space:]]*//p'
 )
 
 if [[ ! -d "$app_path" ]]; then
@@ -104,7 +104,7 @@ if [[ -n "${GITHUB_RUN_NUMBER:-}" ]]; then
 fi
 
 release_directory=$(dirname "$(dirname "$(dirname "$app_path")")")
-dmg_path="${release_directory}/Zaku-${version}-${arch}.dmg"
+dmg_path="${release_directory}/Zaku-${version}-macos-${arch}.dmg"
 dmg_source_directory=$(mktemp -d)
 dmg_output_directory=""
 

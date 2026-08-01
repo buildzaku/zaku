@@ -56,8 +56,6 @@ $releaseDirectory = Join-Path $targetDirectory "$target/release"
 $bundleDirectory = Join-Path $releaseDirectory "bundle/windows"
 $sourceDirectory = Join-Path $bundleDirectory "source"
 $outputDirectory = Join-Path $bundleDirectory "output"
-$cargo = if ($env:CARGO) { $env:CARGO } else { "cargo" }
-
 $iscc = if ($env:ISCC_PATH) {
     $env:ISCC_PATH
 }
@@ -101,7 +99,7 @@ $visualStudioHostArch = if ($hostArch -ceq "x86_64") { "amd64" } else { "arm64" 
 
 Push-Location $workspaceDirectory
 try {
-    $version = & "$PSScriptRoot/get-version.ps1"
+    $version = & "$PSScriptRoot/get-version.ps1" -Display
     if (-not $version) {
         throw "Could not read the Zaku package version"
     }
@@ -117,7 +115,7 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Could not install the Rust target $target"
     }
-    & $cargo build --release --package zaku --package updater_windows --target $target
+    cargo build --release --package zaku --package updater_windows --target $target
     if ($LASTEXITCODE -ne 0) {
         throw "Could not compile Zaku for $target"
     }
@@ -138,11 +136,11 @@ try {
         throw "Could not create the Zaku installer"
     }
 
-    $installer = Join-Path $outputDirectory "Zaku-$version-$Arch.exe"
+    $installer = Join-Path $outputDirectory "Zaku-$version-windows-$Arch.exe"
     if (-not (Test-Path $installer -PathType Leaf)) {
         throw "Zaku installer was not created at $installer"
     }
-    $artifact = Join-Path $releaseDirectory "Zaku-$version-$Arch.exe"
+    $artifact = Join-Path $releaseDirectory "Zaku-$version-windows-$Arch.exe"
     Move-Item $installer $artifact -Force
     Write-Output "Created Windows installer: $artifact"
 }
