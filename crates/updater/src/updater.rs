@@ -1475,7 +1475,7 @@ mod tests {
     #[test]
     fn test_stable_update_rejects_prereleases() {
         for fetched_version in [
-            "26.1-preview.1",
+            "26.1-beta.1",
             "26.1-nightly.2026-07-19",
             "26.1-dev.1000.aaaaaaaa",
         ] {

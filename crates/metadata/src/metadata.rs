@@ -133,7 +133,7 @@ impl FromStr for AppVersion {
         if !version.pre.is_empty() {
             let identifiers = version.pre.as_str().split('.').collect::<Vec<_>>();
             let supported = match identifiers.as_slice() {
-                ["preview", number] => number.parse::<NonZeroU64>().is_ok(),
+                ["beta", number] => number.parse::<NonZeroU64>().is_ok(),
                 ["nightly", date] => {
                     version.patch == 0
                         && Date::strptime("%Y-%m-%d", date)
@@ -218,8 +218,8 @@ mod tests {
             ("26.1", "26.1"),
             ("26.1.0", "26.1"),
             ("26.1.1", "26.1.1"),
-            ("26.2-preview.2", "26.2-preview.2"),
-            ("26.2.0-preview.2", "26.2-preview.2"),
+            ("26.2-beta.2", "26.2-beta.2"),
+            ("26.2.0-beta.2", "26.2-beta.2"),
             ("26.3-nightly.2026-07-19", "26.3-nightly.2026-07-19"),
             ("26.3-dev.1000.aaaaaaaa", "26.3-dev.1000.aaaaaaaa"),
         ] {
@@ -231,11 +231,11 @@ mod tests {
     #[test]
     fn test_app_version_orders_releases() {
         for (older, newer) in [
-            ("26.1", "26.2-preview.1"),
-            ("26.2-preview.1", "26.2-preview.2"),
-            ("26.2-preview.2", "26.2"),
-            ("26.2", "26.2.1-preview.1"),
-            ("26.2.1-preview.1", "26.2.1"),
+            ("26.1", "26.2-beta.1"),
+            ("26.2-beta.1", "26.2-beta.2"),
+            ("26.2-beta.2", "26.2"),
+            ("26.2", "26.2.1-beta.1"),
+            ("26.2.1-beta.1", "26.2.1"),
             ("26.3-nightly.2026-07-31", "26.3-nightly.2026-08-01"),
             ("26.3-dev.999.ffffffff", "26.3-dev.1000.aaaaaaaa"),
         ] {
@@ -251,7 +251,7 @@ mod tests {
         for (version, reason) in [
             ("26", "minor version should be required"),
             ("26.1-alpha", "unknown prereleases should be rejected"),
-            ("26.1-preview.0", "preview numbers should start at one"),
+            ("26.1-beta.0", "beta numbers should start at one"),
             ("26.1-nightly.2026-02-30", "nightly date should be valid"),
             (
                 "26.1-nightly.2026-7-19",
