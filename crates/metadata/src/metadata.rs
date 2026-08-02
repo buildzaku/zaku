@@ -1,8 +1,9 @@
 use gpui::{App, Global};
 use jiff::civil::Date;
 use semver::{BuildMetadata, Prerelease, Version};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::{cmp::Ordering, env, error, fmt, num::NonZeroU64, str::FromStr};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+use std::{cmp::Ordering, env, num::NonZeroU64, str::FromStr};
+use thiserror::Error;
 
 pub const ZAKU_NAME: &str = env!("ZAKU_NAME");
 pub const ZAKU_DESCRIPTION: &str = env!("ZAKU_DESCRIPTION");
@@ -20,35 +21,17 @@ struct GlobalAppVersion(AppVersion);
 
 impl Global for GlobalAppVersion {}
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum AppVersionError {
+    #[error("version must use YY.MINOR[.PATCH][-PRERELEASE]")]
     InvalidFormat,
-    InvalidPrerelease,
-    InvalidVersion(semver::Error),
+    #[error("unsupported prerelease version")]
+    UnsupportedPrerelease,
+    #[error(transparent)]
+    Semver(#[from] semver::Error),
 }
 
-impl fmt::Display for AppVersionError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidFormat => {
-                write!(formatter, "version must use YY.MINOR[.PATCH][-PRERELEASE]")
-            }
-            Self::InvalidPrerelease => write!(formatter, "unsupported prerelease version"),
-            Self::InvalidVersion(error) => write!(formatter, "{error}"),
-        }
-    }
-}
-
-impl error::Error for AppVersionError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::InvalidFormat | Self::InvalidPrerelease => None,
-            Self::InvalidVersion(error) => Some(error),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AppVersion {
     major: u64,
     minor: u64,
@@ -131,8 +114,7 @@ impl FromStr for AppVersion {
         } else {
             return Err(AppVersionError::InvalidFormat);
         };
-        let version =
-            Version::parse(&normalized_version).map_err(AppVersionError::InvalidVersion)?;
+        let version = Version::parse(&normalized_version)?;
 
         if !version.pre.is_empty() {
             let identifiers = version.pre.as_str().split('.').collect::<Vec<_>>();
@@ -153,7 +135,7 @@ impl FromStr for AppVersion {
                 _ => false,
             };
             if !supported {
-                return Err(AppVersionError::InvalidPrerelease);
+                return Err(AppVersionError::UnsupportedPrerelease);
             }
         }
 
@@ -182,7 +164,7 @@ impl<'de> Deserialize<'de> for AppVersion {
     {
         String::deserialize(deserializer)?
             .parse()
-            .map_err(serde::de::Error::custom)
+            .map_err(de::Error::custom)
     }
 }
 
@@ -227,8 +209,8 @@ mod tests {
             ("26.3-nightly.2026-07-19", "26.3-nightly.2026-07-19"),
             ("26.3-dev.1000.aaaaaaaa", "26.3-dev.1000.aaaaaaaa"),
         ] {
-            let parsed = version.parse::<AppVersion>().unwrap();
-            assert_eq!(parsed.display(), display_version);
+            let parsed_version = version.parse::<AppVersion>().unwrap();
+            assert_eq!(parsed_version.display(), display_version);
         }
     }
 

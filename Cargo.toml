@@ -146,6 +146,7 @@ sysinfo = { version = "0.39" }
 tempfile = { version = "3.27" }
 tendril = { version = "0.5" }
 text = { git = "https://github.com/zed-industries/zed", rev = "1efdc3e63e", package = "text" }
+thiserror = { version = "2.0" }
 thread_local = { version = "1.1" }
 tokio = { version = "1.52", features = ["rt", "rt-multi-thread", "sync"] }
 toml = { version = "1.1" }

@@ -19,6 +19,7 @@ gpui = { workspace = true }
 jiff = { workspace = true }
 semver = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 
 [build-dependencies]
 serde = { workspace = true }
