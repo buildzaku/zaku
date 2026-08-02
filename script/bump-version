@@ -211,12 +211,12 @@ echo "Created release branch: $release_branch"
 echo "Created release commit: Zaku $display_version"
 if ! $should_push; then
   echo "Push the release branch with:"
-  echo "  git push --set-upstream origin $release_branch"
+  echo "  git push origin $release_branch"
   echo "Open the pull request with:"
   echo "  gh pr create --base main --head $release_branch --title \"Zaku $display_version\" --body \"\""
   exit 0
 fi
 
-git push --set-upstream origin "$release_branch"
+git push origin "$release_branch"
 echo "Pushed release branch: $release_branch"
 gh pr create --base main --head "$release_branch" --title "Zaku $display_version" --body ""

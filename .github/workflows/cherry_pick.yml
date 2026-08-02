@@ -1,0 +1,92 @@
+name: "Cherry Pick"
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  cherry_pick:
+    name: "Cherry Pick"
+    if: >-
+      github.event.issue.pull_request &&
+      (github.event.comment.body == '/cherry-pick beta' || github.event.comment.body == '/cherry-pick stable')
+    runs-on: ubuntu-24.04
+    steps:
+      - id: validate
+        name: "Validate"
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENTER_LOGIN: ${{ github.event.comment.user.login }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_PULL_REQUEST_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          echo "should_cherry_pick=false" >>"${GITHUB_OUTPUT}"
+
+          if ! commenter_permission=$(gh api "repos/${REPOSITORY}/collaborators/${COMMENTER_LOGIN}/permission" --jq .permission 2>/dev/null); then
+            exit 0
+          fi
+          case "$commenter_permission" in
+            admin | maintain | write) ;;
+            *) exit 0 ;;
+          esac
+
+          source_pull_request=$(gh api "repos/${REPOSITORY}/pulls/${SOURCE_PULL_REQUEST_NUMBER}")
+          if ! jq -e '.merged == true and .base.ref == "main"' <<<"$source_pull_request" >/dev/null; then
+            exit 0
+          fi
+
+          echo "channel=${COMMENT_BODY#/cherry-pick }" >>"${GITHUB_OUTPUT}"
+          echo "commit_sha=$(jq -r .merge_commit_sha <<<"$source_pull_request")" >>"${GITHUB_OUTPUT}"
+          echo "should_cherry_pick=true" >>"${GITHUB_OUTPUT}"
+        shell: bash
+
+      - name: "Checkout repository"
+        if: steps.validate.outputs.should_cherry_pick == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.CHERRY_PICK_TOKEN }}
+
+      - id: cherry_pick
+        name: "Cherry pick commit"
+        if: steps.validate.outputs.should_cherry_pick == 'true'
+        env:
+          CHANNEL: ${{ steps.validate.outputs.channel }}
+          COMMIT_SHA: ${{ steps.validate.outputs.commit_sha }}
+          GH_TOKEN: ${{ secrets.CHERRY_PICK_TOKEN }}
+          GIT_COMMITTER_EMAIL: ${{ github.event.comment.user.id }}+${{ github.event.comment.user.login }}@users.noreply.github.com
+          GIT_COMMITTER_NAME: ${{ github.event.comment.user.login }}
+        run: |
+          cherry_pick_pull_request_url=$(./script/cherry-pick "$COMMIT_SHA" "$CHANNEL")
+          echo "cherry_pick_pull_request_url=${cherry_pick_pull_request_url}" >>"${GITHUB_OUTPUT}"
+        shell: bash
+
+      - name: "Reply with pull request"
+        if: steps.cherry_pick.outcome == 'success'
+        env:
+          CHANNEL: ${{ steps.validate.outputs.channel }}
+          CHERRY_PICK_PULL_REQUEST_URL: ${{ steps.cherry_pick.outputs.cherry_pick_pull_request_url }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_PULL_REQUEST_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          cherry_pick_pull_request_number="${CHERRY_PICK_PULL_REQUEST_URL##*/}"
+          gh pr comment "$SOURCE_PULL_REQUEST_NUMBER" --body "Cherry-pick to ${CHANNEL} opened in #${cherry_pick_pull_request_number}."
+        shell: bash
+
+      - name: "Reply with failure"
+        if: failure() && steps.validate.outputs.should_cherry_pick == 'true' && steps.cherry_pick.outcome != 'success'
+        env:
+          CHANNEL: ${{ steps.validate.outputs.channel }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_PULL_REQUEST_NUMBER: ${{ github.event.issue.number }}
+          WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          printf -v comment_body 'Cherry-pick to %s failed:\n\n%s' "$CHANNEL" "$WORKFLOW_RUN_URL"
+          gh pr comment "$SOURCE_PULL_REQUEST_NUMBER" --body "$comment_body"
+        shell: bash

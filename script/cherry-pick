@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if ((BASH_VERSINFO[0] < 5 || BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] < 2)); then
+  echo "Bash 5.2 or later is required" >&2
+  exit 1
+fi
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  if [[ $# -ne 1 ]]; then
+    echo "Unexpected argument: $2" >&2
+    echo "Run ./script/cherry-pick --help" >&2
+    exit 1
+  fi
+  echo "Usage: ./script/cherry-pick <commit-sha> <beta|stable>"
+  echo "Cherry-pick a commit to a release channel and open a pull request."
+  echo "Options:"
+  echo "  -h, --help  Show help."
+  exit 0
+fi
+
+if [[ $# -eq 0 ]]; then
+  echo "Missing commit SHA" >&2
+  echo "Run ./script/cherry-pick --help" >&2
+  exit 1
+fi
+if [[ $# -eq 1 ]]; then
+  echo "Missing release channel" >&2
+  echo "Run ./script/cherry-pick --help" >&2
+  exit 1
+fi
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
+  echo "Run ./script/cherry-pick --help" >&2
+  exit 1
+fi
+
+commit_sha="$1"
+channel="$2"
+
+case "$channel" in
+beta | stable)
+  ;;
+*)
+  echo "Unsupported release channel: $channel" >&2
+  exit 1
+  ;;
+esac
+
+for command in git gh; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Missing required command: $command" >&2
+    exit 1
+  fi
+done
+
+if ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
+  echo "GitHub CLI authentication is required" >&2
+  exit 1
+fi
+
+git fetch --depth 2 origin "+${commit_sha}" "$channel" >&2
+short_sha=$(git rev-parse --short "$commit_sha")
+cherry_pick_branch="cherry-pick-${channel}-${short_sha}"
+
+git switch --create "$cherry_pick_branch" "origin/$channel" >&2
+git cherry-pick "$commit_sha" >&2
+git push origin "$cherry_pick_branch" >&2
+
+commit_title=$(git log -1 --format=%s "$commit_sha")
+commit_body=$(git log -1 --format=%b "$commit_sha")
+
+if [[ "$commit_title" =~ \(#([0-9]+)\)$ ]]; then
+  source_reference="#${BASH_REMATCH[1]}"
+else
+  source_reference="$commit_sha"
+fi
+pull_request_body="$commit_body"
+if [[ -n "$pull_request_body" ]]; then
+  pull_request_body+=$'\n\n'
+fi
+pull_request_body+="Cherry-picked from ${source_reference}"
+
+gh pr create --base "$channel" --head "$cherry_pick_branch" --title "$commit_title" --body "$pull_request_body"
