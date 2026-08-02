@@ -13,12 +13,13 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/bump-version --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/bump-version <year|minor|patch> [beta] [--no-commit|--no-push]"
-  echo "       ./script/bump-version <beta|stable> [--no-commit|--no-push]"
+  echo "Usage: ./script/bump-version <year|minor|patch> <beta|stable> [--no-commit|--no-push]"
+  echo "       ./script/bump-version increment beta [--no-commit|--no-push]"
+  echo "       ./script/bump-version promote stable [--no-commit|--no-push]"
   echo "Update Zaku version, create a release branch and open a pull request."
   echo "Options:"
-  echo "  --no-commit  Update version without creating a release branch or commit."
-  echo "  --no-push    Do not push the release branch or open a pull request."
+  echo "  --no-commit  Update Zaku version locally without creating a release branch or commit."
+  echo "  --no-push    Create a release branch and commit without pushing or opening a pull request."
   echo "  -h, --help   Show help."
   exit 0
 fi
@@ -44,6 +45,11 @@ if [[ $# -eq 0 ]]; then
   echo "Run ./script/bump-version --help" >&2
   exit 1
 fi
+if [[ $# -eq 1 ]]; then
+  echo "Missing release channel" >&2
+  echo "Run ./script/bump-version --help" >&2
+  exit 1
+fi
 if [[ $# -gt 2 ]]; then
   echo "Unexpected argument: $3" >&2
   echo "Run ./script/bump-version --help" >&2
@@ -51,27 +57,16 @@ if [[ $# -gt 2 ]]; then
 fi
 
 operation="$1"
-start_beta=false
-case "$operation" in
-year | minor | patch)
-  if [[ $# -eq 2 ]]; then
-    if [[ "$2" != "beta" ]]; then
-      echo "Unexpected argument: $2" >&2
-      echo "Run ./script/bump-version --help" >&2
-      exit 1
-    fi
-    start_beta=true
-  fi
+channel="$2"
+case "$operation $channel" in
+"year beta" | "year stable" | "minor beta" | "minor stable" | "patch beta" | "patch stable" | "increment beta")
+  source_branch="$channel"
   ;;
-beta | stable)
-  if [[ $# -ne 1 ]]; then
-    echo "Unexpected argument: $2" >&2
-    echo "Run ./script/bump-version --help" >&2
-    exit 1
-  fi
+"promote stable")
+  source_branch="beta"
   ;;
 *)
-  echo "Unexpected argument: $operation" >&2
+  echo "Unsupported version operation: $operation $channel" >&2
   echo "Run ./script/bump-version --help" >&2
   exit 1
   ;;
@@ -93,8 +88,8 @@ if $should_push && ! gh auth status --active --hostname github.com >/dev/null 2>
   exit 1
 fi
 
-if [[ "$(git branch --show-current)" != "main" ]]; then
-  echo "Switch to main before updating Zaku version" >&2
+if [[ "$(git branch --show-current)" != "$source_branch" ]]; then
+  echo "Switch to $source_branch before updating Zaku version" >&2
   exit 1
 fi
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -130,31 +125,31 @@ year)
   fi
   target_minor=0
   target_patch=0
-  if $start_beta; then
+  if [[ "$channel" == "beta" ]]; then
     target_beta_number=1
   fi
   ;;
 minor)
   target_minor=$((10#$minor + 1))
   target_patch=0
-  if $start_beta; then
+  if [[ "$channel" == "beta" ]]; then
     target_beta_number=1
   fi
   ;;
 patch)
   target_patch=$((10#$patch + 1))
-  if $start_beta; then
+  if [[ "$channel" == "beta" ]]; then
     target_beta_number=1
   fi
   ;;
-beta)
+increment)
   if [[ -z "$beta_number" ]]; then
     echo "Current Zaku version must be beta before incrementing it: $current_version" >&2
     exit 1
   fi
   target_beta_number=$((10#$beta_number + 1))
   ;;
-stable)
+promote)
   if [[ -z "$beta_number" ]]; then
     echo "Current Zaku version must be beta before promoting it to stable: $current_version" >&2
     exit 1
@@ -213,10 +208,10 @@ if ! $should_push; then
   echo "Push the release branch with:"
   echo "  git push origin $release_branch"
   echo "Open the pull request with:"
-  echo "  gh pr create --base main --head $release_branch --title \"Zaku $display_version\" --body \"\""
+  echo "  gh pr create --base $channel --head $release_branch --title \"Zaku $display_version\" --body \"\""
   exit 0
 fi
 
 git push origin "$release_branch"
 echo "Pushed release branch: $release_branch"
-gh pr create --base main --head "$release_branch" --title "Zaku $display_version" --body ""
+gh pr create --base "$channel" --head "$release_branch" --title "Zaku $display_version" --body ""
