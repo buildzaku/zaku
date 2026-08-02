@@ -75,6 +75,10 @@ impl AppVersion {
         self.prerelease.is_empty()
     }
 
+    pub fn is_beta(&self) -> bool {
+        self.prerelease.as_str().starts_with("beta.")
+    }
+
     pub fn display(&self) -> String {
         let mut version = if let Some(patch) = self.patch {
             format!("{}.{}.{patch}", self.major, self.minor)

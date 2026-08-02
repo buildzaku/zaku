@@ -30,7 +30,7 @@ use std::{
 use std::{error, fmt};
 
 use db::kv::KeyValueStore;
-use http_client::{AsyncBody, HttpClient};
+use http_client::{AsyncBody, HttpClient, http::StatusCode};
 use metadata::{AppVersion, ZAKU_SERVER_URL};
 use settings::{RegisterSetting, Settings, SettingsStore};
 use workspace::Workspace;
@@ -265,6 +265,7 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     .detach();
 
     let version = AppVersion::global(cx);
+    let should_poll_for_updates = !Updater::eligible_channels_for(&version).is_empty();
     let updater = cx.new(|cx| {
         let updater = Updater::new(
             version,
@@ -273,20 +274,22 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
             Arc::new(PlatformReleaseInstaller),
             cx,
         );
-        let mut update_subscription = UpdateSettings::get_global(cx)
-            .automatic
-            .then(|| updater.start_polling(cx));
+        if should_poll_for_updates {
+            let mut update_subscription = UpdateSettings::get_global(cx)
+                .automatic
+                .then(|| updater.start_polling(cx));
 
-        cx.observe_global::<SettingsStore>(move |updater, cx| {
-            if UpdateSettings::get_global(cx).automatic {
-                if update_subscription.is_none() {
-                    update_subscription = Some(updater.start_polling(cx));
+            cx.observe_global::<SettingsStore>(move |updater, cx| {
+                if UpdateSettings::get_global(cx).automatic {
+                    if update_subscription.is_none() {
+                        update_subscription = Some(updater.start_polling(cx));
+                    }
+                } else {
+                    update_subscription.take();
                 }
-            } else {
-                update_subscription.take();
-            }
-        })
-        .detach();
+            })
+            .detach();
+        }
 
         updater
     });
@@ -296,9 +299,13 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
 
 pub fn check_for_updates(_: &actions::updater::Check, window: &mut Window, cx: &mut App) {
     if let Some(updater) = Updater::get(cx) {
-        updater.update(cx, |updater, cx| {
-            updater.poll(UpdateCheckType::Manual, cx);
-        });
+        let should_poll_for_updates =
+            !Updater::eligible_channels_for(&updater.read(cx).current_version).is_empty();
+        if should_poll_for_updates {
+            updater.update(cx, |updater, cx| {
+                updater.poll(UpdateCheckType::Manual, cx);
+            });
+        }
     } else {
         drop(window.prompt(
             PromptLevel::Warning,
@@ -578,14 +585,19 @@ impl Updater {
 
     async fn get_release_asset(
         this: &Entity<Self>,
+        channel: &str,
         os: &str,
         arch: &str,
         cx: &mut AsyncApp,
-    ) -> anyhow::Result<ReleaseAsset> {
+    ) -> anyhow::Result<Option<ReleaseAsset>> {
         let client = this.read_with(cx, |this, _| this.client.clone());
-        let url = format!("{ZAKU_SERVER_URL}/releases/stable/latest/{os}-{arch}");
+        let url = format!("{ZAKU_SERVER_URL}/releases/{channel}/latest/{os}-{arch}");
 
         let mut response = client.get(&url, AsyncBody::default(), true).await?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
         let mut body = Vec::new();
         response.body_mut().read_to_end(&mut body).await?;
 
@@ -595,18 +607,26 @@ impl Updater {
             String::from_utf8_lossy(&body),
         );
 
-        serde_json::from_slice(body.as_slice()).with_context(|| {
+        let release_asset = serde_json::from_slice(&body).with_context(|| {
             format!(
-                "error deserializing release {:?}",
+                "error deserializing release: {}",
                 String::from_utf8_lossy(&body),
             )
-        })
+        })?;
+        Ok(Some(release_asset))
+    }
+
+    fn eligible_channels_for(version: &AppVersion) -> &'static [&'static str] {
+        if version.is_stable() {
+            &["stable"]
+        } else if version.is_beta() {
+            &["beta", "stable"]
+        } else {
+            &[]
+        }
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> anyhow::Result<()> {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
-        Self::check_dependencies()?;
-
         let (client, installed_version, previous_status, installer) =
             this.read_with(cx, |this, _| {
                 (
@@ -618,6 +638,19 @@ impl Updater {
             });
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         let cache_dir = this.read_with(cx, |this, _| this.cache_dir.clone());
+        let current_version = if let UpdateStatus::Updated { version } = &previous_status {
+            version
+        } else {
+            &installed_version
+        };
+        let Some((primary_channel, optional_channels)) =
+            Self::eligible_channels_for(current_version).split_first()
+        else {
+            return Ok(());
+        };
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        Self::check_dependencies()?;
 
         this.update(cx, |this, cx| {
             this.status = UpdateStatus::Checking;
@@ -625,10 +658,21 @@ impl Updater {
             cx.notify();
         });
 
-        let fetched_release_data = Self::get_release_asset(&this, OS, ARCH, cx).await?;
+        let mut release_asset = Self::get_release_asset(&this, primary_channel, OS, ARCH, cx)
+            .await?
+            .with_context(|| format!("{primary_channel} channel has no latest release"))?;
+        for channel in optional_channels {
+            let Some(candidate) = Self::get_release_asset(&this, channel, OS, ARCH, cx).await?
+            else {
+                continue;
+            };
+            if candidate.version > release_asset.version {
+                release_asset = candidate;
+            }
+        }
         let newer_version = Self::check_if_fetched_version_is_newer(
             installed_version,
-            fetched_release_data.version.clone(),
+            release_asset.version.clone(),
             previous_status.clone(),
         )?;
 
@@ -662,23 +706,18 @@ impl Updater {
         let target_path = Self::target_path(&installer_dir)?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
-        download_release(
-            &target_path,
-            fetched_release_data,
-            client,
-            move |progress| {
-                progress_entity.update(&mut progress_cx, |this, cx| {
-                    if let UpdateStatus::Downloading {
-                        progress: current_progress,
-                        ..
-                    } = &mut this.status
-                    {
-                        *current_progress = progress;
-                        cx.notify();
-                    }
-                });
-            },
-        )
+        download_release(&target_path, release_asset, client, move |progress| {
+            progress_entity.update(&mut progress_cx, |this, cx| {
+                if let UpdateStatus::Downloading {
+                    progress: current_progress,
+                    ..
+                } = &mut this.status
+                {
+                    *current_progress = progress;
+                    cx.notify();
+                }
+            });
+        })
         .await
         .with_context(|| format!("failed to download update to {}", target_path.display()))?;
 
@@ -714,16 +753,17 @@ impl Updater {
         fetched_version: AppVersion,
         status: UpdateStatus,
     ) -> anyhow::Result<Option<AppVersion>> {
-        anyhow::ensure!(
-            fetched_version.is_stable(),
-            "stable release version must not contain a prerelease"
-        );
-
         let current_version = if let UpdateStatus::Updated { version } = status {
             version
         } else {
             installed_version
         };
+        anyhow::ensure!(
+            fetched_version.is_stable() || current_version.is_beta() && fetched_version.is_beta(),
+            "{} is not an eligible update for Zaku {}",
+            fetched_version.display(),
+            current_version.display(),
+        );
         Ok(Self::check_if_fetched_version_is_newer_stable(
             &current_version,
             fetched_version,
@@ -1179,18 +1219,44 @@ mod tests {
         let (updater, _polling) = cx.update(|cx| {
             let release_available = Arc::clone(&release_available);
             let download_rx = Arc::new(Mutex::new(Some(download_rx)));
-            let discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
-            let artifact_path = format!("/releases/stable/26.1/{OS}-{ARCH}/download");
+            let beta_discovery_path = format!("/releases/beta/latest/{OS}-{ARCH}");
+            let stable_discovery_path = format!("/releases/stable/latest/{OS}-{ARCH}");
+            let artifact_path = format!("/releases/stable/26.2/{OS}-{ARCH}/download");
             let http_client = FakeHttpClient::create(move |request| {
                 let download_rx = download_rx.clone();
-                let discovery_path = discovery_path.clone();
+                let beta_discovery_path = beta_discovery_path.clone();
+                let stable_discovery_path = stable_discovery_path.clone();
                 let artifact_path = artifact_path.clone();
                 let release_available = release_available.load(Ordering::Relaxed);
                 let update_sha256 = update_sha256.clone();
                 async move {
                     let path = request.uri().path();
-                    if path == discovery_path {
-                        let version = if release_available { "26.1" } else { "26.0" };
+                    if path == beta_discovery_path {
+                        let version = "26.0-beta.1";
+                        let download_url = format!(
+                            "https://api.zaku.dev/releases/beta/{version}/{OS}-{ARCH}/download"
+                        );
+                        Ok(Response::builder()
+                            .status(200)
+                            .body(
+                                json!({
+                                    "version": version,
+                                    "size": update_size,
+                                    "sha256": update_sha256,
+                                    "download_url": download_url,
+                                })
+                                .to_string()
+                                .into(),
+                            )
+                            .unwrap())
+                    } else if path == stable_discovery_path {
+                        if !release_available {
+                            return Ok(Response::builder()
+                                .status(StatusCode::NOT_FOUND)
+                                .body(AsyncBody::default())
+                                .unwrap());
+                        }
+                        let version = "26.2";
                         let download_url = format!(
                             "https://api.zaku.dev/releases/stable/{version}/{OS}-{ARCH}/download"
                         );
@@ -1220,7 +1286,7 @@ mod tests {
             });
             let updater = cx.new(|cx| {
                 Updater::new(
-                    "26.0".parse().unwrap(),
+                    "26.0-beta.1".parse().unwrap(),
                     http_client,
                     cache_dir.path().to_path_buf(),
                     Arc::new(TestReleaseInstaller {
@@ -1239,7 +1305,7 @@ mod tests {
             assert_eq!(updater.status(), UpdateStatus::Idle);
             assert_eq!(
                 updater.current_version(),
-                "26.0".parse::<AppVersion>().unwrap()
+                "26.0-beta.1".parse::<AppVersion>().unwrap()
             );
         });
 
@@ -1257,7 +1323,7 @@ mod tests {
                 UpdateStatus::Downloading {
                     version,
                     progress: None,
-                } if version == &"26.1".parse::<AppVersion>().unwrap()
+                } if version == &"26.2".parse::<AppVersion>().unwrap()
             ),
             "status should be downloading without progress, got {status:?}"
         );
@@ -1278,7 +1344,7 @@ mod tests {
         assert_eq!(
             updater.read_with(cx, |updater, _| updater.status()),
             UpdateStatus::Updated {
-                version: "26.1".parse().unwrap(),
+                version: "26.2".parse().unwrap(),
             }
         );
 
@@ -1404,10 +1470,39 @@ mod tests {
     }
 
     #[test]
-    fn test_stable_does_not_update_when_fetched_version_is_not_higher() {
-        let installed_version = "26.0".parse::<AppVersion>().unwrap();
+    fn test_eligible_channels_for_version() {
+        for (version, expected_channels) in [
+            ("26.0-beta.1", &["beta", "stable"][..]),
+            ("26.1", &["stable"][..]),
+            ("26.1-nightly.2026-08-02", &[][..]),
+            ("26.1-dev.1000.aaaaaaaa", &[][..]),
+        ] {
+            let version = version.parse().unwrap();
+            assert_eq!(Updater::eligible_channels_for(&version), expected_channels);
+        }
+    }
 
-        for fetched_version in ["25.9.9", "26.0"] {
+    #[test]
+    fn test_beta_updates_to_newer_beta_or_stable() {
+        let installed_version = "26.0-beta.1".parse::<AppVersion>().unwrap();
+
+        for fetched_version in ["26.0-beta.2", "26.0"] {
+            let fetched_version = fetched_version.parse::<AppVersion>().unwrap();
+            let newer_version = Updater::check_if_fetched_version_is_newer(
+                installed_version.clone(),
+                fetched_version.clone(),
+                UpdateStatus::Idle,
+            );
+
+            assert_eq!(newer_version.unwrap(), Some(fetched_version));
+        }
+    }
+
+    #[test]
+    fn test_stable_does_not_update_when_fetched_version_is_not_higher() {
+        let installed_version = "26.1".parse::<AppVersion>().unwrap();
+
+        for fetched_version in ["26.0", "26.1"] {
             let newer_version = Updater::check_if_fetched_version_is_newer(
                 installed_version.clone(),
                 fetched_version.parse().unwrap(),
