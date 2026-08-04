@@ -94,12 +94,12 @@ dependencies = [
 
 [[package]]
 name = "actions"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "gpui",
  "schemars",
  "serde",
- "util 0.0.0",
+ "util 26.0.0-dev",
 ]
 
 [[package]]
@@ -242,7 +242,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "app_version"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "clap",
@@ -342,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "assets"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "gpui",
@@ -1165,7 +1165,8 @@ dependencies = [
 
 [[package]]
 name = "collections"
-version = "0.0.0"
+version = "0.1.0"
+source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
 dependencies = [
  "gpui_util",
  "indexmap",
@@ -1174,8 +1175,7 @@ dependencies = [
 
 [[package]]
 name = "collections"
-version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
+version = "26.0.0-dev"
 dependencies = [
  "gpui_util",
  "indexmap",
@@ -1216,7 +1216,7 @@ dependencies = [
 
 [[package]]
 name = "command_palette"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -1234,9 +1234,9 @@ dependencies = [
 
 [[package]]
 name = "command_palette_hooks"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
- "collections 0.0.0",
+ "collections 26.0.0-dev",
  "derive_more",
  "gpui",
 ]
@@ -1596,14 +1596,14 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
 name = "db"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "fs",
  "gpui",
  "inventory",
  "log",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "smol",
  "sql",
  "sql_macros",
@@ -1814,7 +1814,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "editor"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -1829,7 +1829,7 @@ dependencies = [
  "log",
  "multi_buffer",
  "num-traits",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "pretty_assertions",
  "project",
  "serde",
@@ -1840,8 +1840,8 @@ dependencies = [
  "text",
  "theme",
  "ui",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
  "workspace",
 ]
 
@@ -2215,7 +2215,7 @@ dependencies = [
 
 [[package]]
 name = "fs"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2227,13 +2227,13 @@ dependencies = [
  "log",
  "notify",
  "parking_lot",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "serde",
  "serde_json",
  "smol",
  "tempfile",
  "trash",
- "util 0.0.0",
+ "util 26.0.0-dev",
  "windows 0.62.2",
 ]
 
@@ -2491,19 +2491,19 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "git"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "fs",
  "futures",
  "gpui",
  "log",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "serde",
  "serde_json",
  "sum_tree",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
 ]
 
 [[package]]
@@ -2904,7 +2904,7 @@ dependencies = [
 
 [[package]]
 name = "grammars"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "language_core",
@@ -2914,7 +2914,7 @@ dependencies = [
  "tree-sitter-html",
  "tree-sitter-json",
  "tree-sitter-xml",
- "util 0.0.0",
+ "util 26.0.0-dev",
 ]
 
 [[package]]
@@ -3110,20 +3110,6 @@ dependencies = [
 
 [[package]]
 name = "http_client"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "bytes",
- "futures",
- "http",
- "http-body",
- "log",
- "parking_lot",
- "url",
-]
-
-[[package]]
-name = "http_client"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
 dependencies = [
@@ -3139,6 +3125,20 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "url",
+]
+
+[[package]]
+name = "http_client"
+version = "26.0.0-dev"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "futures",
+ "http",
+ "http-body",
+ "log",
+ "parking_lot",
  "url",
 ]
 
@@ -3469,7 +3469,7 @@ dependencies = [
 
 [[package]]
 name = "input"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "gpui",
  "theme",
@@ -3764,7 +3764,7 @@ dependencies = [
 
 [[package]]
 name = "language"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "clock",
@@ -3775,7 +3775,7 @@ dependencies = [
  "language_core",
  "log",
  "parking_lot",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "regex",
  "settings",
  "streaming-iterator",
@@ -3787,12 +3787,12 @@ dependencies = [
  "tree-sitter-html",
  "tree-sitter-json",
  "tree-sitter-xml",
- "util 0.0.0",
+ "util 26.0.0-dev",
 ]
 
 [[package]]
 name = "language_core"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "gpui",
@@ -3803,12 +3803,12 @@ dependencies = [
  "serde",
  "toml 1.1.2+spec-1.1.0",
  "tree-sitter",
- "util 0.0.0",
+ "util 26.0.0-dev",
 ]
 
 [[package]]
 name = "languages"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "grammars",
  "language",
@@ -3971,7 +3971,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "fs",
@@ -4146,7 +4146,7 @@ dependencies = [
 
 [[package]]
 name = "metadata"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "app_version",
  "gpui",
@@ -4171,7 +4171,7 @@ dependencies = [
 
 [[package]]
 name = "migrator"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "indoc",
@@ -4247,7 +4247,7 @@ dependencies = [
 
 [[package]]
 name = "multi_buffer"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "gpui",
  "indoc",
@@ -4968,7 +4968,17 @@ checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 
 [[package]]
 name = "path"
-version = "0.0.0"
+version = "0.1.0"
+source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
+dependencies = [
+ "anyhow",
+ "dunce",
+ "serde",
+]
+
+[[package]]
+name = "path"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "dirs",
@@ -4976,16 +4986,6 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "tendril 0.5.0",
-]
-
-[[package]]
-name = "path"
-version = "0.1.0"
-source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
-dependencies = [
- "anyhow",
- "dunce",
- "serde",
 ]
 
 [[package]]
@@ -5078,7 +5078,7 @@ dependencies = [
 
 [[package]]
 name = "picker"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -5141,7 +5141,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
 name = "platform_title_bar"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "gpui",
@@ -5355,10 +5355,10 @@ dependencies = [
 
 [[package]]
 name = "project"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
- "collections 0.0.0",
+ "collections 26.0.0-dev",
  "fs",
  "futures",
  "git",
@@ -5366,21 +5366,21 @@ dependencies = [
  "indoc",
  "language",
  "log",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "request_buffer",
  "serde_json",
  "sum_tree",
  "text",
  "tokio",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
  "which 8.0.4",
  "worktree",
 ]
 
 [[package]]
 name = "project_panel"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -5390,7 +5390,7 @@ dependencies = [
  "gpui",
  "indoc",
  "log",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "project",
  "request_editor",
  "serde_json",
@@ -5398,8 +5398,8 @@ dependencies = [
  "smallvec",
  "theme",
  "ui",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
  "workspace",
 ]
 
@@ -5824,13 +5824,6 @@ dependencies = [
 
 [[package]]
 name = "refineable"
-version = "0.0.0"
-dependencies = [
- "refineable_derive",
-]
-
-[[package]]
-name = "refineable"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
 dependencies = [
@@ -5838,8 +5831,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "refineable"
+version = "26.0.0-dev"
+dependencies = [
+ "refineable_derive",
+]
+
+[[package]]
 name = "refineable_derive"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5883,18 +5883,18 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "request_buffer"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "gpui",
  "language",
- "util 0.0.0",
+ "util 26.0.0-dev",
  "worktree",
 ]
 
 [[package]]
 name = "request_editor"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -5904,14 +5904,14 @@ dependencies = [
  "fs",
  "futures",
  "gpui",
- "http_client 0.0.0",
+ "http_client 26.0.0-dev",
  "indoc",
  "input",
  "language",
  "log",
  "multi_buffer",
  "parking_lot",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "project",
  "response_panel",
  "serde_json",
@@ -5919,8 +5919,8 @@ dependencies = [
  "theme",
  "toml 1.1.2+spec-1.1.0",
  "ui",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
  "workspace",
  "worktree",
 ]
@@ -5969,19 +5969,19 @@ dependencies = [
 
 [[package]]
 name = "reqwest_client"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "bytes",
  "futures",
- "http_client 0.0.0",
+ "http_client 26.0.0-dev",
  "reqwest",
  "tokio",
 ]
 
 [[package]]
 name = "resources"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "embed-resource",
  "indoc",
@@ -5990,12 +5990,12 @@ dependencies = [
 
 [[package]]
 name = "response_panel"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "editor",
  "gpui",
- "http_client 0.0.0",
+ "http_client 26.0.0-dev",
  "language",
  "log",
  "multi_buffer",
@@ -6549,18 +6549,18 @@ dependencies = [
 
 [[package]]
 name = "session"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "db",
  "gpui",
  "serde_json",
- "util 0.0.0",
+ "util 26.0.0-dev",
  "uuid",
 ]
 
 [[package]]
 name = "settings"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "fs",
@@ -6573,7 +6573,7 @@ dependencies = [
  "log",
  "logger",
  "migrator",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "pretty_assertions",
  "rust-embed",
  "serde",
@@ -6581,13 +6581,13 @@ dependencies = [
  "settings_content",
  "settings_jsonc",
  "settings_macros",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
 ]
 
 [[package]]
 name = "settings_content"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "indexmap",
@@ -6601,7 +6601,7 @@ dependencies = [
 
 [[package]]
 name = "settings_jsonc"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "jsonc-parser",
@@ -6612,7 +6612,7 @@ dependencies = [
 
 [[package]]
 name = "settings_macros"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "quote",
  "syn 2.0.118",
@@ -6830,7 +6830,7 @@ dependencies = [
 
 [[package]]
 name = "sql"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "futures",
@@ -6840,7 +6840,7 @@ dependencies = [
  "log",
  "num-traits",
  "parking_lot",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "sha2 0.11.0",
  "smol",
  "tempfile",
@@ -6850,7 +6850,7 @@ dependencies = [
 
 [[package]]
 name = "sql_macros"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "sql",
  "sqlformat",
@@ -7074,7 +7074,7 @@ dependencies = [
 
 [[package]]
 name = "svg"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "serde",
  "strum 0.28.0",
@@ -7151,7 +7151,7 @@ dependencies = [
 
 [[package]]
 name = "syntax_theme"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "gpui",
 ]
@@ -7217,7 +7217,7 @@ dependencies = [
 
 [[package]]
 name = "system_specs"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "gpui",
  "metadata",
@@ -7329,14 +7329,14 @@ dependencies = [
 
 [[package]]
 name = "theme"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "gpui",
  "jsonc-parser",
  "palette",
  "parking_lot",
- "refineable 0.0.0",
+ "refineable 26.0.0-dev",
  "schemars",
  "serde",
  "settings",
@@ -7346,7 +7346,7 @@ dependencies = [
 
 [[package]]
 name = "theme_settings"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "gpui",
  "log",
@@ -7509,7 +7509,7 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "title_bar"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "gpui",
@@ -7517,7 +7517,7 @@ dependencies = [
  "project",
  "smallvec",
  "ui",
- "util 0.0.0",
+ "util 26.0.0-dev",
  "workspace",
 ]
 
@@ -7864,7 +7864,7 @@ dependencies = [
 
 [[package]]
 name = "ui"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "gpui",
@@ -7878,12 +7878,12 @@ dependencies = [
  "svg",
  "theme",
  "ui_macros",
- "util 0.0.0",
+ "util 26.0.0-dev",
 ]
 
 [[package]]
 name = "ui_macros"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "quote",
  "syn 2.0.118",
@@ -7981,7 +7981,7 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "updater"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -7990,7 +7990,7 @@ dependencies = [
  "futures",
  "gpui",
  "hex",
- "http_client 0.0.0",
+ "http_client 26.0.0-dev",
  "log",
  "metadata",
  "parking_lot",
@@ -8001,19 +8001,19 @@ dependencies = [
  "smol",
  "tempfile",
  "ui",
- "util 0.0.0",
+ "util 26.0.0-dev",
  "which 8.0.4",
  "workspace",
 ]
 
 [[package]]
 name = "updater_windows"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "log",
  "logger",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "resources",
  "scopeguard",
  "tempfile",
@@ -8085,16 +8085,6 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "util"
-version = "0.0.0"
-dependencies = [
- "log",
- "rust-embed",
- "serde",
- "smol",
-]
-
-[[package]]
-name = "util"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
 dependencies = [
@@ -8137,11 +8127,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "util_macros"
-version = "0.0.0"
+name = "util"
+version = "26.0.0-dev"
 dependencies = [
- "quote",
- "syn 2.0.118",
+ "log",
+ "rust-embed",
+ "serde",
+ "smol",
 ]
 
 [[package]]
@@ -8150,6 +8142,14 @@ version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed?rev=1efdc3e63e#1efdc3e63e5dd148d9beeb56c574e8dea768883d"
 dependencies = [
  "perf",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
+name = "util_macros"
+version = "26.0.0-dev"
+dependencies = [
  "quote",
  "syn 2.0.118",
 ]
@@ -9290,7 +9290,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "workspace"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -9298,7 +9298,7 @@ dependencies = [
  "fs",
  "futures",
  "gpui",
- "http_client 0.0.0",
+ "http_client 26.0.0-dev",
  "indoc",
  "input",
  "itertools 0.14.0",
@@ -9307,7 +9307,7 @@ dependencies = [
  "log",
  "metadata",
  "parking_lot",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "project",
  "serde",
  "serde_json",
@@ -9317,19 +9317,19 @@ dependencies = [
  "theme",
  "theme_settings",
  "ui",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
  "uuid",
  "worktree",
 ]
 
 [[package]]
 name = "worktree"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "anyhow",
  "async-lock",
- "collections 0.0.0",
+ "collections 26.0.0-dev",
  "fs",
  "futures",
  "git",
@@ -9339,7 +9339,7 @@ dependencies = [
  "language",
  "log",
  "parking_lot",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "pretty_assertions",
  "serde",
  "serde_json",
@@ -9350,8 +9350,8 @@ dependencies = [
  "tokio",
  "toml 1.1.2+spec-1.1.0",
  "toml_edit 0.25.12+spec-1.1.0",
- "util 0.0.0",
- "util_macros 0.0.0",
+ "util 26.0.0-dev",
+ "util_macros 26.0.0-dev",
  "worktree",
 ]
 
@@ -9519,7 +9519,7 @@ dependencies = [
 
 [[package]]
 name = "zaku"
-version = "0.0.0"
+version = "26.0.0-dev"
 dependencies = [
  "actions",
  "anyhow",
@@ -9532,7 +9532,7 @@ dependencies = [
  "futures",
  "gpui",
  "gpui_platform",
- "http_client 0.0.0",
+ "http_client 26.0.0-dev",
  "indoc",
  "language",
  "languages",
@@ -9543,7 +9543,7 @@ dependencies = [
  "mimalloc",
  "multi_buffer",
  "parking_lot",
- "path 0.0.0",
+ "path 26.0.0-dev",
  "platform_title_bar",
  "project",
  "project_panel",
