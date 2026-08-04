@@ -17,6 +17,7 @@ workspace = true
 [dependencies]
 actions = { workspace = true }
 anyhow = { workspace = true }
+app_version = { workspace = true }
 db = { workspace = true }
 futures = { workspace = true }
 gpui = { workspace = true }

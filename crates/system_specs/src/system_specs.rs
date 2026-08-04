@@ -5,7 +5,7 @@ use std::{
 };
 use sysinfo::{MemoryRefreshKind, RefreshKind, System};
 
-use metadata::{AppVersion, ZAKU_COMMIT_SHA, ZAKU_NAME};
+use metadata::{ZAKU_COMMIT_SHA, ZAKU_NAME};
 
 #[derive(Debug, Clone)]
 pub struct SystemSpecs {
@@ -25,7 +25,7 @@ impl SystemSpecs {
         os_name: String,
         os_version: String,
     ) -> Task<Self> {
-        let app_version = AppVersion::global(cx).display();
+        let app_version = metadata::version(cx).to_string();
         let system = System::new_with_specifics(
             RefreshKind::nothing().with_memory(MemoryRefreshKind::everything()),
         );

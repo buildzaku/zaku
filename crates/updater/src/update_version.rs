@@ -5,7 +5,8 @@ use gpui::{
 };
 use std::sync::Arc;
 
-use metadata::{AppVersion, ZAKU_NAME, ZAKU_REPOSITORY};
+use app_version::AppVersion;
+use metadata::{ZAKU_NAME, ZAKU_REPOSITORY};
 use ui::{Text, Tooltip, UpdateButton};
 use workspace::{
     notifications::{
@@ -123,7 +124,7 @@ impl UpdateVersion {
                 }
                 UpdateStatus::Idle if manual_check.has_started => {
                     self.manual_check = None;
-                    let current_version = current_version.display();
+                    let current_version = current_version.to_string();
                     let detail = format!(
                         "Zaku {current_version} is currently the newest version available."
                     );
@@ -199,7 +200,7 @@ impl UpdateVersion {
     }
 
     fn version_tooltip_message(version: &AppVersion) -> String {
-        UpdateButton::version_tooltip_message(version.display())
+        UpdateButton::version_tooltip_message(version.to_string())
     }
 }
 
@@ -225,7 +226,7 @@ impl Render for UpdateVersion {
                             let message = match &update_version.read(cx).status {
                                 UpdateStatus::Downloading { version, progress } => {
                                     UpdateButton::downloading_tooltip_message(
-                                        version.display(),
+                                        version.to_string(),
                                         *progress,
                                     )
                                 }
@@ -266,7 +267,7 @@ impl StatusItemView for UpdateVersion {
 }
 
 pub(crate) fn show_update_notification(cx: &mut App) {
-    let version = AppVersion::global(cx).display();
+    let version = metadata::version(cx).to_string();
     show_app_notification(
         NotificationId::unique::<UpdateNotification>(),
         cx,

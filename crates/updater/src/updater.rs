@@ -29,9 +29,10 @@ use std::{
 #[cfg(target_os = "linux")]
 use std::{error, fmt};
 
+use app_version::AppVersion;
 use db::kv::KeyValueStore;
 use http_client::{AsyncBody, HttpClient, http::StatusCode};
-use metadata::{AppVersion, ZAKU_SERVER_URL};
+use metadata::ZAKU_SERVER_URL;
 use settings::{RegisterSetting, Settings, SettingsStore};
 use workspace::Workspace;
 
@@ -264,7 +265,7 @@ pub fn init(client: Arc<dyn HttpClient>, cache_dir: PathBuf, cx: &mut App) {
     })
     .detach();
 
-    let version = AppVersion::global(cx);
+    let version = metadata::version(cx);
     let should_poll_for_updates = !Updater::eligible_channels_for(&version).is_empty();
     let updater = cx.new(|cx| {
         let updater = Updater::new(
@@ -760,9 +761,7 @@ impl Updater {
         };
         anyhow::ensure!(
             fetched_version.is_stable() || current_version.is_beta() && fetched_version.is_beta(),
-            "{} is not an eligible update for Zaku {}",
-            fetched_version.display(),
-            current_version.display(),
+            "{fetched_version} is not an eligible update for Zaku {current_version}",
         );
         Ok(Self::check_if_fetched_version_is_newer_stable(
             &current_version,
