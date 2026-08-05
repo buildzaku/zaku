@@ -45,7 +45,7 @@ x86_64 | amd64)
 esac
 
 echo "Building and installing Zaku"
-version=$(./script/get-version --display)
+version=$(cargo run --quiet --package app_version -- show)
 ./script/bundle-linux
 
 target="${arch}-unknown-linux-gnu"

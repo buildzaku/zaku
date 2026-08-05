@@ -99,8 +99,8 @@ $visualStudioHostArch = if ($hostArch -ceq "x86_64") { "amd64" } else { "arm64" 
 
 Push-Location $workspaceDirectory
 try {
-    $version = & "$PSScriptRoot/get-version.ps1" -Display
-    if (-not $version) {
+    $version = cargo run --quiet --package app_version -- show
+    if ($LASTEXITCODE -ne 0 -or -not $version) {
         throw "Could not read the Zaku package version"
     }
     $versionCore = ($version -split "-", 2)[0]

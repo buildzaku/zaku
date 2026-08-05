@@ -72,7 +72,7 @@ if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
 fi
 
 target="${arch}-apple-darwin"
-version=$(./script/get-version --display)
+version=$(cargo run --quiet --package app_version -- show)
 short_version="${version%%-*}"
 if [[ "$short_version" =~ ^[0-9]+\.[0-9]+$ ]]; then
   short_version="${short_version}.0"
