@@ -13,8 +13,10 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/cherry-pick --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/cherry-pick <branch> <commit-sha> <beta|stable>"
   echo "Cherry-pick a commit to a release branch and open a pull request."
+  echo
+  echo "Usage: ./script/cherry-pick <branch> <commit-sha>"
+  echo
   echo "Options:"
   echo "  -h, --help  Show help."
   exit 0

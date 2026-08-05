@@ -13,8 +13,10 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/bundle-linux --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/bundle-linux [OPTIONS]"
   echo "Build a Linux application bundle."
+  echo
+  echo "Usage: ./script/bundle-linux [OPTIONS]"
+  echo
   echo "Options:"
   echo "  --arch <aarch64|x86_64>  [default: current]"
   echo "  -h, --help               Show help."
@@ -68,6 +70,7 @@ if [[ -z "$arch" ]]; then
 fi
 if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
   echo "Unsupported Linux architecture: $arch" >&2
+  echo "Run ./script/bundle-linux --help" >&2
   exit 1
 fi
 if [[ "$arch" != "$host_arch" ]]; then

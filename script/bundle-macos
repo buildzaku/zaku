@@ -15,8 +15,10 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/bundle-macos --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/bundle-macos [OPTIONS]"
   echo "Build a macOS application bundle and disk image."
+  echo
+  echo "Usage: ./script/bundle-macos [OPTIONS]"
+  echo
   echo "Options:"
   echo "  --arch <aarch64|x86_64>  [default: current]"
   echo "  -h, --help               Show help."
@@ -68,6 +70,7 @@ if [[ -z "$arch" ]]; then
 fi
 if [[ "$arch" != "aarch64" && "$arch" != "x86_64" ]]; then
   echo "Unsupported macOS architecture: $arch" >&2
+  echo "Run ./script/bundle-macos --help" >&2
   exit 1
 fi
 

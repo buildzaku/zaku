@@ -15,8 +15,10 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     echo "Run ./script/fmt --help" >&2
     exit 1
   fi
-  echo "Usage: ./script/fmt [OPTIONS]"
   echo "Fix or check repository formatting."
+  echo
+  echo "Usage: ./script/fmt [OPTIONS]"
+  echo
   echo "Options:"
   echo "  --check     Check formatting without writing changes."
   echo "  -h, --help  Show help."
@@ -33,9 +35,9 @@ if [[ $# -eq 1 && $1 != "--check" ]]; then
   exit 1
 fi
 
-for command in pnpm cargo shfmt pwsh; do
-  if ! command -v "$command" >/dev/null 2>&1; then
-    echo "Missing required command: $command" >&2
+for cmd in pnpm cargo shfmt pwsh; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd" >&2
     exit 1
   fi
 done

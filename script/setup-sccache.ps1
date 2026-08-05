@@ -99,7 +99,7 @@ function Install-Sccache {
     }
 }
 
-function Initialize-SccacheEnvironment {
+function Initialize-SccacheEnv {
     $missing = @()
 
     foreach ($name in @("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_SCCACHE_BUCKET")) {
@@ -146,7 +146,7 @@ function Initialize-SccacheEnvironment {
     Write-Information "Configured sccache with Cloudflare R2 (bucket: $($env:SCCACHE_BUCKET))" -InformationAction Continue
 }
 
-function Show-SccacheConfiguration {
+function Show-SccacheConfig {
     Write-Output "=== sccache configuration ==="
     Write-Output "sccache version: $(sccache --version)"
     Write-Output "sccache path: $((Get-Command sccache).Source)"
@@ -175,5 +175,5 @@ function Show-SccacheConfiguration {
 }
 
 Install-Sccache
-Initialize-SccacheEnvironment
-Show-SccacheConfiguration
+Initialize-SccacheEnv
+Show-SccacheConfig

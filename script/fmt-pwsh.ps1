@@ -16,8 +16,10 @@ if ($args.Length -gt 0) {
 }
 
 if ($Help) {
-    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
     Write-Output "Fix or check PowerShell script formatting."
+    Write-Output ""
+    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Output ""
     Write-Output "Options:"
     Write-Output "  -Check     Check formatting without writing changes."
     Write-Output "  -h, -Help  Show help."

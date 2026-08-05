@@ -16,8 +16,10 @@ if ($args.Length -gt 0) {
 }
 
 if ($Help) {
-    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
     Write-Output "Check PowerShell scripts with PSScriptAnalyzer."
+    Write-Output ""
+    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Output ""
     Write-Output "Options:"
     Write-Output "  -Verbose   List scripts being checked."
     Write-Output "  -h, -Help  Show help."

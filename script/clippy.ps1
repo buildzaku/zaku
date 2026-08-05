@@ -2,12 +2,12 @@
 $ErrorActionPreference = "Stop"
 $PSNativeCommandUseErrorActionPreference = $true
 
-$needAddWorkspace = $false
+$shouldAddWorkspace = $false
 if ($args -cnotcontains "-p" -and $args -cnotcontains "--package") {
-    $needAddWorkspace = $true
+    $shouldAddWorkspace = $true
 }
 
-if ($needAddWorkspace) {
+if ($shouldAddWorkspace) {
     cargo clippy @args --workspace --release --all-targets --all-features -- --deny warnings
 }
 else {

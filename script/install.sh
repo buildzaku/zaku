@@ -11,11 +11,13 @@ main() {
     -h | --help)
       if [ "$#" -ne 1 ]; then
         echo "Unexpected argument: $2" >&2
-        echo "Run ${0##*/} --help" >&2
+        echo "Run ./script/install.sh --help" >&2
         exit 1
       fi
-      echo "Usage: ${0##*/} [OPTIONS]"
       echo "Install Zaku on Linux."
+      echo
+      echo "Usage: ./script/install.sh [OPTIONS]"
+      echo
       echo "Options:"
       echo "  --channel <stable|beta>  [default: stable]"
       echo "  --version <version>      [default: latest]"
@@ -25,7 +27,7 @@ main() {
     --channel)
       if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         echo "Missing value for --channel" >&2
-        echo "Run ${0##*/} --help" >&2
+        echo "Run ./script/install.sh --help" >&2
         exit 1
       fi
       channel="$2"
@@ -34,7 +36,7 @@ main() {
     --version)
       if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         echo "Missing value for --version" >&2
-        echo "Run ${0##*/} --help" >&2
+        echo "Run ./script/install.sh --help" >&2
         exit 1
       fi
       version="$2"
@@ -43,7 +45,7 @@ main() {
       ;;
     *)
       echo "Unexpected argument: $1" >&2
-      echo "Run ${0##*/} --help" >&2
+      echo "Run ./script/install.sh --help" >&2
       exit 1
       ;;
     esac
@@ -54,6 +56,7 @@ main() {
     ;;
   *)
     echo "Unsupported release channel: $channel" >&2
+    echo "Run ./script/install.sh --help" >&2
     exit 1
     ;;
   esac

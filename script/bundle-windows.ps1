@@ -19,8 +19,10 @@ if ($args.Length -gt 0) {
 }
 
 if ($Help) {
-    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
     Write-Output "Build a Windows installer."
+    Write-Output ""
+    Write-Output "Usage: pwsh -File $scriptPath [OPTIONS]"
+    Write-Output ""
     Write-Output "Options:"
     Write-Output "  -Arch <aarch64|x86_64>  [default: current]"
     Write-Output "  -h, -Help                Show help."
@@ -131,7 +133,15 @@ try {
     Copy-Item "crates/zaku/resources/windows/app-icon.ico" (Join-Path $sourceDirectory "app-icon.ico")
 
     Write-Output "Creating Windows installer"
-    & $iscc "/DArchitecture=$Arch" "/DVersion=$version" "/DVersionInfoVersion=$versionInfoVersion" "/DSourceDir=$sourceDirectory" "/DOutputDir=$outputDirectory" "crates/zaku/resources/windows/zaku.iss"
+    $isccArguments = @(
+        "/DArchitecture=$Arch"
+        "/DVersion=$version"
+        "/DVersionInfoVersion=$versionInfoVersion"
+        "/DSourceDir=$sourceDirectory"
+        "/DOutputDir=$outputDirectory"
+        "crates/zaku/resources/windows/zaku.iss"
+    )
+    & $iscc @isccArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Could not create the Zaku installer"
     }
