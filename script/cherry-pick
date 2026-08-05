@@ -30,34 +30,20 @@ if [[ $# -eq 1 ]]; then
   echo "Run ./script/cherry-pick --help" >&2
   exit 1
 fi
-if [[ $# -eq 2 ]]; then
-  echo "Missing release channel" >&2
-  echo "Run ./script/cherry-pick --help" >&2
-  exit 1
-fi
-if [[ $# -gt 3 ]]; then
-  echo "Unexpected argument: $4" >&2
+if [[ $# -gt 2 ]]; then
+  echo "Unexpected argument: $3" >&2
   echo "Run ./script/cherry-pick --help" >&2
   exit 1
 fi
 
 target_branch="$1"
 commit_sha="$2"
-channel="$3"
 
 if [[ ! "$target_branch" =~ ^[0-9]{2}\.[0-9]+\.x$ ]]; then
   echo "Invalid release branch: $target_branch" >&2
+  echo "Run ./script/cherry-pick --help" >&2
   exit 1
 fi
-
-case "$channel" in
-beta | stable)
-  ;;
-*)
-  echo "Unsupported release channel: $channel" >&2
-  exit 1
-  ;;
-esac
 
 for cmd in git gh; do
   if ! command -v "$cmd" >/dev/null 2>&1; then

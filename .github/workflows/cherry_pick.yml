@@ -77,13 +77,12 @@ jobs:
         if: steps.validate.outputs.should_cherry_pick == 'true'
         env:
           BRANCH: ${{ steps.resolve_branch.outputs.branch }}
-          CHANNEL: ${{ steps.validate.outputs.channel }}
           COMMIT_SHA: ${{ steps.validate.outputs.commit_sha }}
           GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
           GIT_COMMITTER_EMAIL: ${{ github.event.comment.user.id }}+${{ github.event.comment.user.login }}@users.noreply.github.com
           GIT_COMMITTER_NAME: ${{ github.event.comment.user.login }}
         run: |
-          cherry_pick_pull_request_url=$(./script/cherry-pick "$BRANCH" "$COMMIT_SHA" "$CHANNEL")
+          cherry_pick_pull_request_url=$(./script/cherry-pick "$BRANCH" "$COMMIT_SHA")
           echo "cherry_pick_pull_request_url=${cherry_pick_pull_request_url}" >>"${GITHUB_OUTPUT}"
         shell: bash
 
