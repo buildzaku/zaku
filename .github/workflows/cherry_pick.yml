@@ -10,6 +10,9 @@ permissions:
   issues: write
   pull-requests: read
 
+env:
+  GH_API_VERSION: "2026-03-10"
+
 jobs:
   cherry_pick:
     name: "Cherry Pick"
@@ -29,7 +32,7 @@ jobs:
         run: |
           echo "should_cherry_pick=false" >>"${GITHUB_OUTPUT}"
 
-          if ! commenter_permission=$(gh api "repos/${REPOSITORY}/collaborators/${COMMENTER_LOGIN}/permission" --jq .permission 2>/dev/null); then
+          if ! commenter_permission=$(gh api -H "X-GitHub-Api-Version: ${GH_API_VERSION}" "repos/${REPOSITORY}/collaborators/${COMMENTER_LOGIN}/permission" --jq .permission 2>/dev/null); then
             exit 0
           fi
           case "$commenter_permission" in
@@ -37,13 +40,13 @@ jobs:
             *) exit 0 ;;
           esac
 
-          source_pull_request=$(gh api "repos/${REPOSITORY}/pulls/${SOURCE_PULL_REQUEST_NUMBER}")
-          if ! jq -e '.merged == true and .base.ref == "main"' <<<"$source_pull_request" >/dev/null; then
+          source_pull_request=$(gh pr view "$SOURCE_PULL_REQUEST_NUMBER" --repo "$REPOSITORY" --json baseRefName,mergeCommit,mergedAt)
+          if ! jq -e '.mergedAt != null and .baseRefName == "main"' <<<"$source_pull_request" >/dev/null; then
             exit 0
           fi
 
           echo "channel=${COMMENT_BODY#/cherry-pick }" >>"${GITHUB_OUTPUT}"
-          echo "commit_sha=$(jq -r .merge_commit_sha <<<"$source_pull_request")" >>"${GITHUB_OUTPUT}"
+          echo "commit_sha=$(jq -r .mergeCommit.oid <<<"$source_pull_request")" >>"${GITHUB_OUTPUT}"
           echo "should_cherry_pick=true" >>"${GITHUB_OUTPUT}"
         shell: bash
 
@@ -51,19 +54,36 @@ jobs:
         if: steps.validate.outputs.should_cherry_pick == 'true'
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          token: ${{ secrets.CHERRY_PICK_TOKEN }}
+          token: ${{ secrets.ZAKU_GITHUB_TOKEN }}
+
+      - id: resolve_branch
+        name: "Resolve branch"
+        if: steps.validate.outputs.should_cherry_pick == 'true'
+        env:
+          CHANNEL: ${{ steps.validate.outputs.channel }}
+        run: |
+          branch=$(cargo run --quiet --package app_version -- latest "$CHANNEL" --active --branch)
+          if [[ -z "$branch" ]]; then
+            echo "::error::There is no active release for the $CHANNEL channel"
+            exit 1
+          fi
+
+          echo "branch=$branch" >>"${GITHUB_OUTPUT}"
+          echo "Resolved $CHANNEL release branch: $branch"
+        shell: bash
 
       - id: cherry_pick
         name: "Cherry pick commit"
         if: steps.validate.outputs.should_cherry_pick == 'true'
         env:
+          BRANCH: ${{ steps.resolve_branch.outputs.branch }}
           CHANNEL: ${{ steps.validate.outputs.channel }}
           COMMIT_SHA: ${{ steps.validate.outputs.commit_sha }}
-          GH_TOKEN: ${{ secrets.CHERRY_PICK_TOKEN }}
+          GH_TOKEN: ${{ secrets.ZAKU_GITHUB_TOKEN }}
           GIT_COMMITTER_EMAIL: ${{ github.event.comment.user.id }}+${{ github.event.comment.user.login }}@users.noreply.github.com
           GIT_COMMITTER_NAME: ${{ github.event.comment.user.login }}
         run: |
-          cherry_pick_pull_request_url=$(./script/cherry-pick "$COMMIT_SHA" "$CHANNEL")
+          cherry_pick_pull_request_url=$(./script/cherry-pick "$BRANCH" "$COMMIT_SHA" "$CHANNEL")
           echo "cherry_pick_pull_request_url=${cherry_pick_pull_request_url}" >>"${GITHUB_OUTPUT}"
         shell: bash
 
