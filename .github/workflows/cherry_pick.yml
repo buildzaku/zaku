@@ -62,7 +62,7 @@ jobs:
         env:
           CHANNEL: ${{ steps.validate.outputs.channel }}
         run: |
-          branch=$(cargo run --quiet --package app_version -- latest "$CHANNEL" --active --branch)
+          branch=$(cargo app-version latest "$CHANNEL" --active --branch)
           if [[ -z "$branch" ]]; then
             echo "::error::There is no active release for the $CHANNEL channel"
             exit 1

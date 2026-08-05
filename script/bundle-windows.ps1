@@ -99,7 +99,7 @@ $visualStudioHostArch = if ($hostArch -ceq "x86_64") { "amd64" } else { "arm64" 
 
 Push-Location $workspaceDirectory
 try {
-    $version = cargo run --quiet --package app_version -- show
+    $version = cargo app-version show
     if ($LASTEXITCODE -ne 0 -or -not $version) {
         throw "Could not read the Zaku package version"
     }

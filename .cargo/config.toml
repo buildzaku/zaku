@@ -1,2 +1,5 @@
+[alias]
+app-version = "run --quiet --package app_version --"
+
 [env]
 MACOSX_DEPLOYMENT_TARGET = "14.0"
