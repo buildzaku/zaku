@@ -17,19 +17,13 @@ if [[ $(uname -s) != "Linux" ]]; then
   exit 1
 fi
 
-missing_commands=()
-for command in cargo jq rustc rustup; do
-  if ! command -v "$command" >/dev/null 2>&1; then
-    missing_commands+=("$command")
+for cmd in cargo rustc rustup; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Missing required command: $cmd" >&2
+    echo "Run ./script/linux" >&2
+    exit 1
   fi
 done
-if [[ ${#missing_commands[@]} -gt 0 ]]; then
-  printf 'Missing build dependencies:' >&2
-  printf ' %s' "${missing_commands[@]}" >&2
-  printf '\n' >&2
-  echo "Run ./script/linux" >&2
-  exit 1
-fi
 
 case "$(uname -m)" in
 aarch64 | arm64)

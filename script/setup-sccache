@@ -99,7 +99,7 @@ check_missing_r2_configuration() {
   done
 
   if ((${#missing[@]} > 0)); then
-    echo "Missing ${missing[*]}, skipping sccache configuration"
+    echo "Missing ${missing[*]}; skipping sccache configuration"
     return 0
   fi
 

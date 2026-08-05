@@ -18,11 +18,11 @@ if [[ $(uname -s) != "Linux" ]]; then
 fi
 
 if [[ $(id -u) -eq 0 ]]; then
-  privilege_command=()
+  privilege_cmd=()
 elif command -v sudo >/dev/null 2>&1; then
-  privilege_command=(sudo)
+  privilege_cmd=(sudo)
 elif command -v doas >/dev/null 2>&1; then
-  privilege_command=(doas)
+  privilege_cmd=(doas)
 else
   echo "Root access, sudo, or doas is required to install Linux dependencies" >&2
   exit 1
@@ -49,8 +49,8 @@ if package_manager=$(command -v apt-get); then
     rsync
     tar
   )
-  "${privilege_command[@]}" "$package_manager" update
-  "${privilege_command[@]}" "$package_manager" install -y "${dependencies[@]}"
+  "${privilege_cmd[@]}" "$package_manager" update
+  "${privilege_cmd[@]}" "$package_manager" install -y "${dependencies[@]}"
 elif package_manager=$(command -v dnf); then
   dependencies=(
     alsa-lib-devel
@@ -74,7 +74,7 @@ elif package_manager=$(command -v dnf); then
     vulkan-loader
     wayland-devel
   )
-  "${privilege_command[@]}" "$package_manager" install -y "${dependencies[@]}"
+  "${privilege_cmd[@]}" "$package_manager" install -y "${dependencies[@]}"
 elif package_manager=$(command -v zypper); then
   dependencies=(
     alsa-devel
@@ -98,7 +98,7 @@ elif package_manager=$(command -v zypper); then
     tar
     wayland-devel
   )
-  "${privilege_command[@]}" "$package_manager" --non-interactive install "${dependencies[@]}"
+  "${privilege_cmd[@]}" "$package_manager" --non-interactive install "${dependencies[@]}"
 elif package_manager=$(command -v pacman); then
   dependencies=(
     alsa-lib
@@ -119,7 +119,7 @@ elif package_manager=$(command -v pacman); then
     vulkan-icd-loader
     wayland
   )
-  "${privilege_command[@]}" "$package_manager" -Syu --needed --noconfirm "${dependencies[@]}"
+  "${privilege_cmd[@]}" "$package_manager" -Syu --needed --noconfirm "${dependencies[@]}"
 else
   echo "Unsupported Linux distribution" >&2
   exit 1

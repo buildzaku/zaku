@@ -82,9 +82,9 @@ main() {
     ;;
   esac
 
-  for command in mktemp sed tar; do
-    if ! command -v "$command" >/dev/null 2>&1; then
-      echo "Missing required command: $command" >&2
+  for cmd in mktemp sed tar; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo "Missing required command: $cmd" >&2
       exit 1
     fi
   done

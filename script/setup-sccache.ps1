@@ -93,8 +93,8 @@ function Install-Sccache {
     }
     $env:PATH = "$absolutePath;$env:PATH"
 
-    $sccacheCommand = Get-Command sccache -ErrorAction SilentlyContinue
-    if (-not $sccacheCommand) {
+    $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue
+    if (-not $sccacheCmd) {
         throw "Could not find sccache in PATH after installing it at $absolutePath"
     }
 }
@@ -109,19 +109,19 @@ function Initialize-SccacheEnvironment {
     }
 
     if ($missing.Length -gt 0) {
-        Write-Information "Missing $($missing -join ', '), skipping sccache configuration" -InformationAction Continue
+        Write-Information "Missing $($missing -join ' '); skipping sccache configuration" -InformationAction Continue
         return
     }
 
-    $sccacheCommand = Get-Command sccache -ErrorAction SilentlyContinue
-    if (-not $sccacheCommand) {
+    $sccacheCmd = Get-Command sccache -ErrorAction SilentlyContinue
+    if (-not $sccacheCmd) {
         throw "Could not find sccache in PATH while configuring RUSTC_WRAPPER"
     }
 
     Write-Information "Configuring sccache with Cloudflare R2" -InformationAction Continue
 
     $baseDir = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }
-    $sccacheBin = $sccacheCommand.Source
+    $sccacheBin = $sccacheCmd.Source
 
     $env:SCCACHE_ENDPOINT = "https://$($env:R2_ACCOUNT_ID).r2.cloudflarestorage.com"
     $env:SCCACHE_BUCKET = $env:R2_SCCACHE_BUCKET
